@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/shard_dataset_op.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/util/batch_util.h"
@@ -40,7 +41,7 @@ constexpr char kNextIndex[] = "next_index";
 
 class ShardDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 num_shards, int64 index,
+  Dataset(OpKernelContext* ctx, int64_t num_shards, int64_t index,
           bool require_non_empty, const DatasetBase* input)
       : DatasetBase(DatasetContext(ctx)),
         num_shards_(num_shards),
@@ -77,7 +78,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+    int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -120,6 +121,15 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params), next_index_(0) {}
 
     Status Initialize(IteratorContext* ctx) override {
+      if (dataset()->num_shards_ == kShardHint) {
+        return errors::FailedPrecondition(
+            "`tf.data.Dataset.shard(SHARD_HINT, ...)` can only be used in "
+            "`tf.distribute.Strategy.experimental_distribute_dataset()` with "
+            "`tf.data.experimental.AutoShardPolicy.HINT` policy, or tf.data "
+            "service with "
+            "`tf.data.experimental.service.ShardingPolicy.HINT` processing "
+            "mode.");
+      }
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
@@ -243,19 +253,19 @@ ShardDatasetOp::ShardDatasetOp(OpKernelConstruction* ctx)
 
 void ShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                  DatasetBase** output) {
-  int64 index = 0;
-  int64 num_shards = 0;
+  int64_t index = 0;
+  int64_t num_shards = 0;
 
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kNumShards, &num_shards));
   OP_REQUIRES(
-      ctx, num_shards > 0,
+      ctx, num_shards > 0 || num_shards == kShardHint,
       errors::InvalidArgument("Number of shards must be greater than zero "
                               "(currently num_shards = ",
                               num_shards, ")."));
 
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kIndex, &index));
   OP_REQUIRES(
-      ctx, index >= 0 && index < num_shards,
+      ctx, (index >= 0 && index < num_shards) || num_shards == kShardHint,
       errors::InvalidArgument("Index must be between 0 and ", num_shards - 1,
                               " (currently index = ", index, ")."));
 

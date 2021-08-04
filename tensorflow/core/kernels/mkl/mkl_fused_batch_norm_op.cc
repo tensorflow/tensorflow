@@ -45,16 +45,19 @@ struct MklBatchNormFwdParams {
   int depth;
   float eps;
   bool training;
+  TensorFormat data_format;
   FusedBNActivationMode activation_mode;
   memory::desc src_md;
 
   MklBatchNormFwdParams(const memory::dims& src_dims, int depth, float eps,
-                        bool training, memory::desc src_md,
+                        bool training, TensorFormat data_format,
+                        memory::desc src_md,
                         FusedBNActivationMode activation_mode)
       : src_dims(src_dims),
         depth(depth),
         eps(eps),
         training(training),
+        data_format(data_format),
         activation_mode(activation_mode),
         src_md(src_md) {}
 };
@@ -78,7 +81,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
   void Execute(const T* src_data, const U* weights_data, T* dst_data,
                U* mean_data, U* variance_data,
                std::shared_ptr<stream> fwd_stream, U* workspace_data) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     // TODO: Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *fwd_stream);
@@ -116,7 +119,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     if (workspace_data != nullptr) {
       context_.ws_mem->set_data_handle(workspace_data);
     }
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
 
     // Execute batch-normalization forward primitives.
     execute_primitives(context_.fwd_primitives, fwd_stream, context_.net_args);
@@ -356,6 +359,7 @@ class MklFusedBatchNormFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey<int>(fwdParams.depth);
     key_creator.AddAsKey<float>(fwdParams.eps);
     key_creator.AddAsKey<bool>(fwdParams.training);
+    key_creator.AddAsKey<TensorFormat>(fwdParams.data_format);
     key_creator.AddAsKey<FusedBNActivationMode>(fwdParams.activation_mode);
     key_creator.AddAsKey(typeid(T).name());
     key_creator.AddAsKey(typeid(U).name());
@@ -380,18 +384,20 @@ struct MklBatchNormBwdParams {
   int depth;
   float eps;
   bool training;
-
+  TensorFormat data_format;
   memory::desc src_md;
   memory::desc diff_dst_md;
 
   MklBatchNormBwdParams(memory::dims src_dims, memory::dims diff_dst_dims,
                         int depth, float eps, bool training,
-                        memory::desc src_md, memory::desc diff_dst_md)
+                        TensorFormat data_format, memory::desc src_md,
+                        memory::desc diff_dst_md)
       : src_dims(src_dims),
         diff_dst_dims(diff_dst_dims),
         depth(depth),
         eps(eps),
         training(training),
+        data_format(data_format),
         src_md(src_md),
         diff_dst_md(diff_dst_md) {}
 };
@@ -422,7 +428,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
                const T* diff_dst_data, const U* weights_data, T* diff_src_data,
                U* diff_weights_data, U* res_space_data,
                std::shared_ptr<stream> bwd_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     // TODO: Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *bwd_stream);
@@ -460,7 +466,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
     }
 
     context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data));
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
     // Execute backward batch-normalization primitives.
     DCHECK_EQ(context_.bwd_primitives.size(), context_.net_args.size());
     execute_primitives(context_.bwd_primitives, bwd_stream, context_.net_args);
@@ -614,6 +620,7 @@ class MklFusedBatchNormBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey<int>(bwdParams.depth);
     key_creator.AddAsKey<float>(bwdParams.eps);
     key_creator.AddAsKey<bool>(bwdParams.training);
+    key_creator.AddAsKey<TensorFormat>(bwdParams.data_format);
     key_creator.AddAsKey(typeid(T).name());
     key_creator.AddAsKey(typeid(U).name());
     return key_creator.GetKey();
@@ -774,7 +781,7 @@ class MklFusedBatchNormOp : public OpKernel {
                         : memory::desc(src_dims, MklDnnType<T>(), dnn_fmt);
 
       MklBatchNormFwdParams fwdParams(src_dims, depth_, epsilon_, is_training_,
-                                      src_md, activation_mode_);
+                                      tensor_format_, src_md, activation_mode_);
 
       // Get forward batch-normalization op from the primitive caching pool.
       MklFusedBatchNormFwdPrimitive<T, U>* bn_fwd =
@@ -866,7 +873,8 @@ class MklFusedBatchNormOp : public OpKernel {
 
       // Execute
       std::shared_ptr<stream> fwd_cpu_stream;
-      fwd_cpu_stream.reset(CreateStream(context, bn_fwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      fwd_cpu_stream.reset(CreateStream(&eigen_tp, bn_fwd->GetEngine()));
       bn_fwd->Execute(src_data, weights_op_data, dst_data, mean_op_data,
                       variance_op_data, fwd_cpu_stream, ws_data);
       float adjust_factor = 1.0;
@@ -1218,7 +1226,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
       diff_weights.AllocateBuffer(2 * depth_ * sizeof(U));
 
       MklBatchNormBwdParams bwdParams(src_dims, diff_dst_dims, depth_, epsilon_,
-                                      is_training_, src_md, diff_dst_md);
+                                      is_training_, tensor_format_, src_md,
+                                      diff_dst_md);
       MklFusedBatchNormBwdPrimitive<T, U>* bn_bwd =
           MklFusedBatchNormBwdPrimitiveFactory<T, U>::Get(bwdParams);
 
@@ -1272,7 +1281,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
 
       // Execute
       std::shared_ptr<stream> bwd_cpu_stream;
-      bwd_cpu_stream.reset(CreateStream(context, bn_bwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      bwd_cpu_stream.reset(CreateStream(&eigen_tp, bn_bwd->GetEngine()));
       bn_bwd->Execute(src_data, mean_data, variance_data, diff_dst_data,
                       weights_data, diff_src_data, diff_weights_data,
                       res_space_data, bwd_cpu_stream);

@@ -20,12 +20,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
-// TODO(b/165735381): Promote this op to builtin-op when we can add new builtin
-// ops.
-
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 namespace complex {
 
 static const int kInputTensor = 0;
@@ -43,9 +40,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   if (input->type == kTfLiteComplex64) {
-    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
   } else {
-    TF_LITE_ENSURE(context, output->type = kTfLiteFloat64);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat64);
   }
 
   TfLiteIntArray* output_shape = TfLiteIntArrayCopy(input->dims);
@@ -127,6 +124,37 @@ TfLiteStatus EvalImag(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+TfLiteStatus EvalAbs(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  switch (input->type) {
+    case kTfLiteComplex64: {
+      ExtractData<float>(
+          input,
+          static_cast<float (*)(const std::complex<float>&)>(std::abs<float>),
+          output);
+      break;
+    }
+    case kTfLiteComplex128: {
+      ExtractData<double>(input,
+                          static_cast<double (*)(const std::complex<double>&)>(
+                              std::abs<double>),
+                          output);
+      break;
+    }
+    default: {
+      TF_LITE_KERNEL_LOG(context,
+                         "Unsupported input type, ComplexAbs op only supports "
+                         "complex input, but got: ",
+                         TfLiteTypeGetName(input->type));
+      return kTfLiteError;
+    }
+  }
+
+  return kTfLiteOk;
+}
+
 }  // namespace complex
 
 TfLiteRegistration* Register_REAL() {
@@ -141,6 +169,12 @@ TfLiteRegistration* Register_IMAG() {
   return &r;
 }
 
-}  // namespace custom
+TfLiteRegistration* Register_COMPLEX_ABS() {
+  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
+                                 complex::Prepare, complex::EvalAbs};
+  return &r;
+}
+
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

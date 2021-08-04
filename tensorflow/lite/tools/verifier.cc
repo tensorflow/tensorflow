@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/verifier.h"
 
+#include <algorithm>
 #include <climits>
 #include <complex>
 #include <cstdint>
@@ -24,10 +25,11 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/tools/verifier_internal.h"
+#include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
-
 namespace {
 
 const char* NameOrEmptyString(const flatbuffers::String* str) {
@@ -49,6 +51,7 @@ void ReportError(ErrorReporter* error_reporter, const char* format, ...) {
     va_end(args);
   }
 }
+
 // Returns the int32_t value pointed by ptr.
 const uint32_t GetIntPtr(const char* ptr) {
 #if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
@@ -57,17 +60,6 @@ const uint32_t GetIntPtr(const char* ptr) {
 #else
   return *reinterpret_cast<const uint32_t*>(ptr);
 #endif
-}
-
-// Verifies flatbuffer format of the model contents and returns the in-memory
-// model.
-const Model* VerifyFlatbufferAndGetModel(const void* buf, size_t len) {
-  ::flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
-  if (VerifyModelBuffer(verifier)) {
-    return ::tflite::GetModel(buf);
-  } else {
-    return nullptr;
-  }
 }
 
 const uint32_t kMaxNumString = UINT_MAX / sizeof(int32_t) - 2;
@@ -422,6 +414,9 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_INT32:
       bytes_required *= sizeof(int32_t);
       break;
+    case TensorType_UINT32:
+      bytes_required *= sizeof(uint32_t);
+      break;
     case TensorType_UINT8:
       bytes_required *= sizeof(uint8_t);
       break;
@@ -475,7 +470,7 @@ using flatbuffers::Vector;
 
 bool VerifyOperators(const Vector<Offset<Operator>>& operators,
                      ErrorReporter* error_reporter) {
-  for (const auto& op : operators) {
+  for (const auto* op : operators) {
     if (!op->inputs()) {
       ReportError(error_reporter, "Missing 'inputs' for operator.");
       return false;
@@ -589,7 +584,7 @@ bool VerifySubGraphs(const Model& model, ErrorReporter* error_reporter) {
     ReportError(error_reporter, "Missing 'subgraphs' section.");
     return false;
   }
-  for (const auto& subgraph : *model.subgraphs()) {
+  for (const auto* subgraph : *model.subgraphs()) {
     if (!subgraph->operators()) {
       ReportError(error_reporter, "Missing 'operators' section in subgraph.");
       return false;
@@ -616,11 +611,11 @@ bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
     return false;
   }
 
-  for (const auto& subgraph : *model.subgraphs()) {
+  for (const auto* subgraph : *model.subgraphs()) {
     if (!subgraph->tensors()) {
       continue;
     }
-    for (const auto& tensor : *subgraph->tensors()) {
+    for (const auto* tensor : *subgraph->tensors()) {
       if (!tensor->buffer()) {
         continue;
       }
@@ -659,7 +654,28 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
   if (!model.operator_codes()) {
     return true;
   }
-  for (const auto& opcode : *model.operator_codes()) {
+
+  // Track whichs ops are used in only the validation subgraphs. Validation
+  // subgraphs are allowed to contain custom ops that are not in the resolver,
+  // as they will be run with a custom resolver.
+  absl::flat_hash_set<int> regular_code_indices;
+  absl::flat_hash_set<int> validation_code_indices;
+  for (const auto* subgraph : *model.subgraphs()) {
+    if (!subgraph->operators()) {
+      continue;
+    }
+    if (subgraph->name() && IsValidationSubgraph(subgraph->name()->c_str())) {
+      for (const auto& op : *(subgraph->operators())) {
+        validation_code_indices.insert(op->opcode_index());
+      }
+    } else {
+      for (const auto* op : *(subgraph->operators())) {
+        regular_code_indices.insert(op->opcode_index());
+      }
+    }
+  }
+  for (int i = 0; i < model.operator_codes()->size(); i++) {
+    const auto* opcode = model.operator_codes()->Get(i);
     auto builtin_code = GetBuiltinCode(opcode);
     if (builtin_code < BuiltinOperator_MIN ||
         builtin_code > BuiltinOperator_MAX) {
@@ -675,9 +691,12 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
         return false;
       } else if (!resolver.FindOp(opcode->custom_code()->c_str(),
                                   opcode->version())) {
-        ReportError(error_reporter, "Unsupported custom op: %s, version: %d",
-                    opcode->custom_code()->c_str(), opcode->version());
-        return false;
+        if (regular_code_indices.contains(i) ||
+            !validation_code_indices.contains(i)) {
+          ReportError(error_reporter, "Unsupported custom op: %s, version: %d",
+                      opcode->custom_code()->c_str(), opcode->version());
+          return false;
+        }
       }
     } else {
       if (!resolver.FindOp(builtin_code, opcode->version())) {
@@ -690,11 +709,7 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
   return true;
 }
 
-}  // namespace
-
-bool Verify(const void* buf, size_t len, const OpResolver& resolver,
-            ErrorReporter* error_reporter) {
-  const Model* model = VerifyFlatbufferAndGetModel(buf, len);
+bool VerifyModel(const Model* model, ErrorReporter* error_reporter) {
   if (model == nullptr) {
     ReportError(error_reporter, "Invalid flatbuffer format");
     return false;
@@ -709,9 +724,27 @@ bool Verify(const void* buf, size_t len, const OpResolver& resolver,
   if (!VerifyTensors(*model, error_reporter)) {
     return false;
   }
+  return true;
+}
+
+}  // namespace
+
+bool Verify(const void* buf, size_t len, ErrorReporter* error_reporter) {
+  const Model* model = internal::VerifyFlatBufferAndGetModel(buf, len);
+  return VerifyModel(model, error_reporter);
+}
+
+// Deprecated: see comments in header.
+bool Verify(const void* buf, size_t len, const OpResolver& resolver,
+            ErrorReporter* error_reporter) {
+  const Model* model = internal::VerifyFlatBufferAndGetModel(buf, len);
+  if (!VerifyModel(model, error_reporter)) {
+    return false;
+  }
   if (!VerifyOps(*model, resolver, error_reporter)) {
     return false;
   }
   return true;
 }
+
 }  // namespace tflite

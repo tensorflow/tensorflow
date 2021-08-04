@@ -1,0 +1,87 @@
+// RUN: json_to_flatbuffer %p/test_schema.fbs %s | flatbuffer_translate --tflite-flatbuffer-to-mlir --mlir-print-debuginfo -o - | FileCheck %s
+
+// CHECK: "tfl.split"
+// CHECK-SAME: loc(#[[SPLIT_LOC:.*]])
+// CHECK: #[[SPLIT_LOC]] = loc(fused["output0"("<stdin>":0:0), "output1"("<stdin>":0:0)])
+
+{
+  "version": 3,
+  "operator_codes": [
+    {
+      "builtin_code": "SPLIT"
+    }
+  ],
+  "subgraphs": [
+    {
+      "tensors": [
+        {
+          "shape": [
+            1
+          ],
+          "name": "split_dim",
+          "quantization": {
+          }
+        },
+        {
+          "shape": [
+            256,
+            32,
+            32,
+            3
+          ],
+          "name": "input",
+          "quantization": {
+          }
+        },
+        {
+          "shape": [
+            128,
+            32,
+            32,
+            3
+          ],
+          "name": "output0",
+          "quantization": {
+          }
+        },
+        {
+          "shape": [
+            128,
+            32,
+            32,
+            3
+          ],
+          "name": "output1",
+          "quantization": {
+          }
+        }
+      ],
+      "inputs": [
+        0,
+        1
+      ],
+      "outputs": [
+        2,
+        3
+      ],
+      "operators": [
+        {
+          "inputs": [
+            0,
+            1
+          ],
+          "outputs": [
+            2,
+            3
+          ],
+          "builtin_options_type": "SplitOptions",
+          "builtin_options": {
+            "num_splits": 2
+          }
+        }
+      ],
+      "name": "main"
+    }
+  ],
+  "description": "MLIR Converted."
+}

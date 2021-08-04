@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 
@@ -33,9 +34,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-// Returns true if the given StreamExecutor is for a Volta or newer nvidia GPU.
-bool IsVoltaOrLater(const se::StreamExecutor& stream_exec);
 
 // Returns (input, filter, output) XLA Layout protos given the StreamExecutor
 // layouts.
@@ -48,9 +46,23 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
 // Returns (input, filter, output) StreamExecutor layouts given the XLA layouts.
 StatusOr<
     std::tuple<se::dnn::DataLayout, se::dnn::FilterLayout, se::dnn::DataLayout>>
-XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
-                                      const Layout& input, const Layout& filter,
-                                      const Layout& output);
+XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
+                                     const Shape& input, const Shape& filter,
+                                     const Shape& output);
+
+// Finds the VECT_C dimension in input/filter/output, if present.
+//
+// A cudnn convolution may have layout NCHW_VECT_C, which means instead of
+// [N,C,H,W], the layout is [N,C/k,H,W,k] for some k (usually 4 or 32).
+//
+// ConvolutionDimensionNumbers doesn't explicitly store which is the `k`
+// dimension, because only cudnn convolutions have this feature; it's not
+// applicable elsewhere.  We find it by finding a dimension in the
+// input/filter/output shape that is *not* in dnums.
+std::tuple<absl::optional<int64>, absl::optional<int64>, absl::optional<int64>>
+FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
+                          const Shape& input, const Shape& filter,
+                          const Shape& output);
 
 // Generates and returns a unique lock per each provided executor.
 // Guarantees that blocks of code both holding a lock for the same provided
@@ -90,6 +102,15 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
 StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
     CudnnConvKind kind);
 StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(PrimitiveType type);
+
+// Returns result with the smallest time which has not failed.
+// If deterministic output is requested, returns first (not failing) result.
+StatusOr<tensorflow::AutotuneResult> PickBestResult(
+    absl::Span<tensorflow::AutotuneResult const> profile_results,
+    const HloInstruction& instr);
+
+// Returns whether determinism is required.
+bool RequireDeterminism(const HloModuleConfig& config);
 
 }  // namespace gpu
 }  // namespace xla

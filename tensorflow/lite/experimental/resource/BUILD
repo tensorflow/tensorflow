@@ -2,16 +2,18 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
     name = "resource",
     srcs = [
+        "initialization_status.cc",
         "resource_variable.cc",
         "static_hashtable.cc",
     ],
     hdrs = [
+        "initialization_status.h",
         "lookup_interfaces.h",
         "lookup_util.h",
         "resource_base.h",

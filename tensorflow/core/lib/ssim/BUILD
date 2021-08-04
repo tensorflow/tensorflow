@@ -2,7 +2,7 @@ package(
     default_visibility = [
         "//tensorflow/core:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 alias(

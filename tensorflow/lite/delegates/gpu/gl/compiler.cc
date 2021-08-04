@@ -137,7 +137,7 @@ class CompilerImpl : public Compiler {
       node->operation.attributes = std::move(attr);
     }
 
-    ModelTransformer transformer(&compiled_graph_, nullptr);
+    ModelTransformer transformer(&compiled_graph_);
     if (options_.fuse_operations) {
       FuseAutoOutputWithInline fuse_inline;
       if (!transformer.Apply("fuse_auto_with_inline", &fuse_inline)) {

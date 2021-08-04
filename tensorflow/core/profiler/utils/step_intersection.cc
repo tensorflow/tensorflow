@@ -168,6 +168,8 @@ StepIntersection::StepIntersection(
     uint32 max_steps,
     const absl::flat_hash_map<uint32, const StepDatabaseResult*>&
         perhost_stepdb) {
+  empty_intersect_ = false;
+
   // Figures out the host with the shortest timespan among their steps (called
   // this host the "chief").
   chief_host_id_ = kuint32max;
@@ -213,7 +215,14 @@ StepIntersection::StepIntersection(
                                 perhost_alignment_[host_id].num_steps;
     min_end_chief_idx = std::min(min_end_chief_idx, host_end_chief_idx);
   }
-  DCHECK(max_begin_chief_idx <= min_end_chief_idx);
+  if (max_begin_chief_idx > min_end_chief_idx) {
+    // The intersection is empty.
+    steps_dropped_ = 0;
+    begin_chief_idx_ = 0;
+    end_chief_idx_ = 0;
+    empty_intersect_ = true;
+    return;
+  }
 
   begin_chief_idx_ = max_begin_chief_idx;
 

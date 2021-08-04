@@ -44,6 +44,12 @@ namespace tensorflow {
 
 const char* const kColocationAttrName = "_class";
 const char* const kColocationGroupPrefix = "loc:@";
+// For TPU distributed rewrite, TPU args are collected and "staged" on the local
+// host using an IdentityN TF op. Some args may result from a remote source.
+// When all arg tensors are available, the TPUExecute op can be inovoked. See
+// DistributedTPURewritePass for more details.
+const char* const kTpuExecuteStagingOp = "IdentityN";
+const char* const kTpuExecuteStagingNodeName = "_variable_copy";
 
 AttrSlice::AttrSlice() : ndef_(nullptr) {
   static const AttrValueMap* const kEmptyAttrValueMap = new AttrValueMap;
@@ -447,7 +453,7 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
   const int original_size = sig->size();
   if (!arg_def.number_attr().empty()) {
     // Same type repeated "repeats" times.
-    int64 repeats = -1;
+    int64_t repeats = -1;
     TF_RETURN_IF_ERROR(
         GetNodeAttr(node_or_attrs, arg_def.number_attr(), &repeats));
     // We can't handle outputs that are larger than int32 sizes.
@@ -620,20 +626,15 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
     }
     auto iter = op_attrs.find(attr.first);
     if (iter == op_attrs.end()) {
-      // A common cause of this error is that TensorFlow has made a
-      // backwards-compatible change to the NodeDef (e.g., adding a
-      // new attr with a default value), but the binary consuming the
-      // NodeDef does not know about the new attribute; the solution
-      // in these cases is to ensure that the binary consuming the
-      // NodeDef is built with a version of TensorFlow no earlier than
-      // the binary producing it.
-      return errors::InvalidArgument(
-          "NodeDef mentions attr '", attr.first, "' not in ",
-          SummarizeOpDef(op_def),
-          "; NodeDef: ", FormatNodeDefForError(node_def),
-          ". (Check whether your GraphDef-interpreting binary is up to date "
-          "with your GraphDef-generating binary.).");
+      LOG_EVERY_N_SEC(ERROR, 5)
+          << "NodeDef mentions attribute " << attr.first
+          << " which is not in the op definition: " << SummarizeOpDef(op_def)
+          << " This may be expected if your graph generating binary is newer "
+          << " than this binary. Unknown attributes will be ignored."
+          << " NodeDef: " << FormatNodeDefForError(node_def);
+      continue;
     }
+
     // If attr value is placeholder, do not check it.
     if (attr.second.placeholder().empty()) {
       TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -641,6 +642,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
           "; NodeDef: ", FormatNodeDefForError(node_def), "; ",
           SummarizeOpDef(op_def));
     }
+
     // Keep track of which attr names have (not) been found in the NodeDef.
     op_attrs.erase(iter);
   }
@@ -877,8 +879,8 @@ void AddNodeAttr(StringPiece name, AttrValue&& value, NodeDef* node_def) {
   }
 ADD_NODE_ATTR(StringPiece)
 ADD_NODE_ATTR(const char*)
-ADD_NODE_ATTR(int32)
-ADD_NODE_ATTR(int64)
+ADD_NODE_ATTR(int32_t)
+ADD_NODE_ATTR(int64_t)
 ADD_NODE_ATTR(float)
 ADD_NODE_ATTR(double)
 ADD_NODE_ATTR(bool)
@@ -948,6 +950,27 @@ Status MaybeAddPrefixToColocationConstraints(
       if (match.find(string(original)) != match.end()) {
         (*constraints_list->mutable_s(i)) =
             strings::StrCat(kColocationGroupPrefix, prefix, original);
+      }
+    }
+  }
+  return Status::OK();
+}
+
+Status MaybeUpdateColocationConstraintsWithMap(
+    const std::map<absl::string_view, absl::string_view>& node_name_map,
+    NodeDef* node_def) {
+  auto attr = node_def->mutable_attr()->find(kColocationAttrName);
+  if (attr == node_def->mutable_attr()->end()) {
+    return Status::OK();
+  }
+  auto constraints_list = attr->second.mutable_list();
+  auto constraints_size = constraints_list->s_size();
+  for (size_t i = 0; i < constraints_size; ++i) {
+    StringPiece original(constraints_list->s(i));
+    if (absl::ConsumePrefix(&original, kColocationGroupPrefixStringPiece)) {
+      if (node_name_map.find(original) != node_name_map.end()) {
+        (*constraints_list->mutable_s(i)) =
+            strings::StrCat(kColocationGroupPrefix, node_name_map.at(original));
       }
     }
   }

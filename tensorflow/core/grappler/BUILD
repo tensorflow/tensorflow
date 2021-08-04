@@ -3,7 +3,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -14,7 +14,7 @@ filegroup(
         "grappler_item_builder.h",
     ],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/grappler:__pkg__",
     ],
 )
 

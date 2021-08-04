@@ -63,17 +63,15 @@ enum class TokKind {
   kw_replicated,
   kw_manual,
   kw_last_tile_dim_replicate,
-  kw_nan,
   kw_inf,
 
-  kNegNan,  // -nan
   kNegInf,  // -inf
 
   // Typed tokens.
   kPrimitiveType,  // F32, PRED, etc.
   kName,           // %foo
   kAttributeName,  // dimensions=
-  kDimLabels,      // [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
+  kDimLabels,      // [0-9bf?]{2,}_[0-9io?]{2,}->[0-9bf?]{2,}
   kDxD,            // [0-9]+(x[0-9]+)+
   kPad,            // [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*
   kIdent,          // other identifiers
@@ -112,7 +110,7 @@ class HloLexer {
     }
   }
   int64 GetInt64Val() const {
-    CHECK(GetKind() == TokKind::kInt);
+    CHECK(GetKind() == TokKind::kInt) << TokKindToString(GetKind());
     return token_state_.int64_val;
   }
   double GetDecimalVal() const {
@@ -163,6 +161,8 @@ class HloLexer {
   TokKind LexConstant();
   TokKind LexNumberOrPattern();
   TokKind LexString();
+
+  absl::optional<int64> LexNanPayload(absl::string_view& consumable);
 
   const absl::string_view buf_;
   const char* current_ptr_;

@@ -20,7 +20,7 @@ namespace tensorflow {
 
 Status GuardedPhiloxRandom::Init(OpKernelConstruction* context) {
   // Grab seed Attrs.
-  int64 seed, seed2;
+  int64_t seed, seed2;
   auto status = context->GetAttr("seed", &seed);
   if (!status.ok()) return status;
   status = context->GetAttr("seed2", &seed2);
@@ -31,7 +31,7 @@ Status GuardedPhiloxRandom::Init(OpKernelConstruction* context) {
   return Status::OK();
 }
 
-void GuardedPhiloxRandom::Init(int64 seed, int64 seed2) {
+void GuardedPhiloxRandom::Init(int64_t seed, int64_t seed2) {
   CHECK(!initialized_);
   if (seed == 0 && seed2 == 0) {
     // If both seeds are unspecified, use completely random seeds.
@@ -51,7 +51,7 @@ void GuardedPhiloxRandom::Init(random::PhiloxRandom::ResultType counter,
   initialized_ = true;
 }
 
-random::PhiloxRandom GuardedPhiloxRandom::ReserveSamples128(int64 samples) {
+random::PhiloxRandom GuardedPhiloxRandom::ReserveSamples128(int64_t samples) {
   CHECK(initialized_);
   mutex_lock lock(mu_);
   auto local = generator_;

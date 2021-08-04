@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/cache_ops.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
@@ -52,7 +52,7 @@ void MemoryCache::Reset() {
   cache_.clear();
 }
 
-const std::vector<Tensor>& MemoryCache::at(int64 index) {
+const std::vector<Tensor>& MemoryCache::at(int64_t index) {
   tf_shared_lock l(mu_);
   DCHECK(index < cache_.size());
   return cache_[index];

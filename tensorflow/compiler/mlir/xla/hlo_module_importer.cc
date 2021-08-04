@@ -30,21 +30,25 @@ limitations under the License.
 
 namespace xla {
 
-HloModuleImporter::HloModuleImporter(mlir::ModuleOp module)
-    : module_(module), builder_(module.getContext()) {
+HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
+                                     bool import_all_computation)
+    : import_all_computation_(import_all_computation),
+      module_(module),
+      builder_(module.getContext()) {
   module.getContext()->loadDialect<mlir::StandardOpsDialect>();
   module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
 }
 
 Status HloModuleImporter::Import(const xla::HloModule& module) {
-  // TODO(hinsu): Only import the entry computation here once all HLO ops with
-  // reference to other computation are updated to have a region instead of a
-  // function attribute. Currently the importer test doesn't refer to all the
-  // computations from the entry computation so tests may need some update.
-  for (const auto* computation : module.computations()) {
+  if (!import_all_computation_)
+    // Only import the entry computation, any reachable one will be imported
+    // unless turned into a region operation.
+    return HloFunctionImporter::ImportAsFunc(
+        *module.entry_computation(), module_, &function_map_, &builder_);
+
+  for (const auto* computation : module.computations())
     TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
         *computation, module_, &function_map_, &builder_));
-  }
 
   return Status::OK();
 }

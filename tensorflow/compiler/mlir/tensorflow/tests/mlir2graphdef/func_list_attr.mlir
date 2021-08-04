@@ -18,7 +18,6 @@ func @main() {
 // CHECK-NEXT:         dtype: DT_INT32
 // CHECK-NEXT:         tensor_shape {
 // CHECK-NEXT:         }
-// CHECK-NEXT:         int_val: 0
 // CHECK-NEXT:       }
 // CHECK-NEXT:     }
 // CHECK-NEXT:   }

@@ -25,6 +25,7 @@ from tensorflow.python.ops import gen_batch_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_batch_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -104,7 +105,7 @@ def batch_function(num_batch_threads,
             raise ValueError("All arguments to functions decorated with "
                              "`batch_function`  are supposed to be Tensors; "
                              "found %s" % repr(a))
-        return gen_batch_ops.batch_function(
+        outputs = gen_batch_ops.batch_function(
             num_batch_threads=num_batch_threads,
             max_batch_size=max_batch_size,
             batch_timeout_micros=batch_timeout_micros,
@@ -116,6 +117,8 @@ def batch_function(num_batch_threads,
             in_tensors=list(args),
             captured_tensors=computation.captured_inputs,
             Tout=[o.dtype for o in computation.outputs])
+        return nest.pack_sequence_as(
+            computation.structured_outputs, outputs, expand_composites=True)
 
     return decorated
 

@@ -105,9 +105,6 @@ class FormatConverter {
   std::vector<T> data_;
 };
 
-template <>
-bool FormatConverter<Eigen::half>::IsZero(const Eigen::half val);
-
 extern template class FormatConverter<int32_t>;
 extern template class FormatConverter<int8_t>;
 extern template class FormatConverter<float>;

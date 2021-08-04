@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <type_traits>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -27,9 +28,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -58,16 +61,32 @@ constexpr int kMinimumAlignment = 64;
 // Precondition: size % 2 == 0 (elements in the array are 16 bits long)
 void ConvertEndianShort(string* bytes) {
   CHECK_EQ(bytes->size() % 2, 0);
-  for (int64 i = 0, end = bytes->size(); i < end; i += 2) {
+  for (int64_t i = 0, end = bytes->size(); i < end; i += 2) {
     std::swap((*bytes)[i], (*bytes)[i + 1]);
   }
 }
 
-void ConvertEndianShort(char* bytes, int64 size) {
+void ConvertEndianShort(char* bytes, int64_t size) {
   CHECK_EQ(size % 2, 0);
-  for (int64 i = 0; i < size; i += 2) {
+  for (int64_t i = 0; i < size; i += 2) {
     std::swap(bytes[i], bytes[i + 1]);
   }
+}
+
+string CompactOneline(const string& input) {
+  string result;
+  std::vector<string> v = absl::StrSplit(input, absl::ByAnyChar("\n "));
+  bool first = true;
+  // Concatenate elements in "v" with spaces separating them, but ignoring
+  // empty entries.
+  for (const auto& s : v) {
+    if (s.empty()) {
+      continue;
+    }
+    absl::StrAppend(&result, (first ? "" : " "), s);
+    first = false;
+  }
+  return result;
 }
 
 // Since Eigen::half doesn't satisfy the absl::bit_cast contract, we need to be
@@ -76,7 +95,9 @@ template <typename T>
 T GetRawValue(T val) {
   return val;
 }
-uint16 GetRawValue(Eigen::half val) { return val.x; }
+uint16 GetRawValue(Eigen::half val) {
+  return Eigen::numext::bit_cast<uint16>(val);
+}
 
 bool LiteralProtoHasValues(const LiteralProto& proto) {
   return proto.preds_size() || !proto.s8s().empty() || !proto.u8s().empty() ||
@@ -208,11 +229,11 @@ Literal LiteralBase::CreateFromShape(const Shape& shape) {
   return literal;
 }
 
-int32 LiteralBase::GetDynamicSize(int64 dim_index) const {
+int32 LiteralBase::GetDynamicSize(int64_t dim_index) const {
   return GetDynamicSize(dim_index, {});
 }
 
-int32 LiteralBase::GetDynamicSize(int64 dim_index,
+int32 LiteralBase::GetDynamicSize(int64_t dim_index,
                                   const ShapeIndex& shape_index) const {
   return piece(shape_index).GetDynamicSize(dim_index);
 }
@@ -226,7 +247,7 @@ absl::optional<int64> LiteralBase::GetFirstInteger() const {
     case U32:
       return GetFirstElement<uint32>();
     case U64: {
-      int64 v = GetFirstElement<uint64>();
+      int64_t v = GetFirstElement<uint64>();
       if (v < 0) {
         return absl::nullopt;
       }
@@ -249,8 +270,8 @@ template <typename NativeT>
 Status MutableLiteralBase::CopySliceFromInternal(
     const LiteralBase& src_literal, absl::Span<const int64> src_base,
     absl::Span<const int64> dest_base, absl::Span<const int64> copy_size) {
-  const int64 src_base_size = src_base.size();
-  const int64 dest_base_size = dest_base.size();
+  const int64_t src_base_size = src_base.size();
+  const int64_t dest_base_size = dest_base.size();
   TF_RET_CHECK(src_literal.shape().rank() == src_base_size);
   TF_RET_CHECK(shape().rank() == dest_base_size);
 
@@ -290,8 +311,8 @@ Status MutableLiteralBase::CopySliceFromInternal(
       std::transform(indexes.begin(), indexes.end(), dest_base.begin(),
                      dest_indexes.begin(), std::plus<int64>());
 
-      int64 src_index = linear_index(src_literal.shape(), src_indexes);
-      int64 dest_index = linear_index(shape(), dest_indexes);
+      int64_t src_index = linear_index(src_literal.shape(), src_indexes);
+      int64_t dest_index = linear_index(shape(), dest_indexes);
 
       // `this->` is needed to workaround MSVC bug: #16882
       StridedCopy(this->data<NativeT>(), dest_index, stride_config.dest_stride,
@@ -311,11 +332,12 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
                                            absl::Span<const int64> src_index,
                                            absl::Span<const int64> dest_index) {
   DCHECK_EQ(shape().element_type(), src_literal.shape().element_type());
-  const int64 src_linear_index = IndexUtil::MultidimensionalIndexToLinearIndex(
-      src_literal.shape(), src_index);
-  const int64 dest_linear_index =
+  const int64_t src_linear_index =
+      IndexUtil::MultidimensionalIndexToLinearIndex(src_literal.shape(),
+                                                    src_index);
+  const int64_t dest_linear_index =
       IndexUtil::MultidimensionalIndexToLinearIndex(shape(), dest_index);
-  const int64 primitive_size =
+  const int64_t primitive_size =
       ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
 
   char* dest_address =
@@ -350,7 +372,7 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   TF_RETURN_IF_ERROR(literal.root_piece_->ForEachMutableSubpieceWithStatus(
       [&](const ShapeIndex& index, Piece* piece) {
         const LiteralProto* proto_element = &proto;
-        for (int64 i : index) {
+        for (int64_t i : index) {
           CHECK(i < proto_element->tuple_literals_size());
           proto_element = &proto_element->tuple_literals(i);
         }
@@ -384,6 +406,16 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   return std::move(literal);
 }
 
+Literal Literal::SubLiteral(ShapeIndexView shape_index) {
+  if (!shape_index.empty()) {
+    auto decomposed = this->DecomposeTuple();
+    return decomposed.at(shape_index.front())
+        .SubLiteral(shape_index.ConsumeFront());
+  } else {
+    return std::move(*this);
+  }
+}
+
 std::vector<Literal> Literal::DecomposeTuple() {
   CHECK(shape().IsTuple());
   std::vector<Literal> elements;
@@ -394,7 +426,7 @@ std::vector<Literal> Literal::DecomposeTuple() {
     element.root_piece_->ForEachMutableSubpiece(
         [&](const ShapeIndex& index, Piece* dest_piece) {
           ShapeIndex src_index = {i};
-          for (int64 j : index) {
+          for (int64_t j : index) {
             src_index.push_back(j);
           }
           Piece& src_piece = piece(src_index);
@@ -431,7 +463,7 @@ void CopyElementsBetween(absl::Span<NativeT> dest,
 }
 }  // namespace
 
-int32 LiteralBase::Piece::GetDynamicSize(int64 dim_index) const {
+int32 LiteralBase::Piece::GetDynamicSize(int64_t dim_index) const {
   CHECK(LayoutUtil::IsDenseArray(subshape()));
   if (!subshape_->is_dynamic_dimension(dim_index)) {
     // This is a static dimension, return size.
@@ -441,7 +473,7 @@ int32 LiteralBase::Piece::GetDynamicSize(int64 dim_index) const {
   return dynamic_size_buffer_[dim_index];
 }
 
-void LiteralBase::Piece::SetDynamicSize(int64 dim_index, int32 size) {
+void LiteralBase::Piece::SetDynamicSize(int64_t dim_index, int32_t size) {
   CHECK(LayoutUtil::IsDenseArray(subshape()));
   CHECK(subshape_->is_dynamic_dimension(dim_index));
   if (dynamic_size_buffer() == nullptr) {
@@ -507,13 +539,13 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
   return Status::OK();
 }
 
-void MutableLiteralBase::SetDynamicSize(int64 dim_index, int32 size) {
+void MutableLiteralBase::SetDynamicSize(int64_t dim_index, int32_t size) {
   return SetDynamicSize(dim_index, {}, size);
 }
 
-void MutableLiteralBase::SetDynamicSize(int64 dim_index,
+void MutableLiteralBase::SetDynamicSize(int64_t dim_index,
                                         const ShapeIndex& shape_index,
-                                        int32 size) {
+                                        int32_t size) {
   Shape* subshape_ = ShapeUtil::GetMutableSubshape(shape_.get(), shape_index);
   CHECK_GE(subshape_->dimensions(dim_index), size);
   if (subshape_->dimensions(dim_index) == size) {
@@ -566,7 +598,7 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
         }
         // Construct the index of the corresponding piece in the source literal.
         ShapeIndex src_piece_index = src_shape_index;
-        for (int64 i = dest_shape_index.size(), end = index.size(); i < end;
+        for (int64_t i = dest_shape_index.size(), end = index.size(); i < end;
              ++i) {
           src_piece_index.push_back(index[i]);
         }
@@ -595,7 +627,7 @@ Status Literal::MoveFrom(Literal&& src_literal,
         }
 
         ShapeIndex dest_index = dest_shape_index;
-        for (int64 i : src_index) {
+        for (int64_t i : src_index) {
           dest_index.push_back(i);
         }
         Piece& dest_piece = piece(dest_index);
@@ -682,7 +714,7 @@ void MutableLiteralBase::PopulateR1(const tensorflow::core::Bitmap& values) {
   CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(element_count(), values.bits());
   CHECK_EQ(shape().element_type(), PRED);
-  for (int64 i = 0; i < static_cast<int64>(values.bits()); ++i) {
+  for (int64_t i = 0; i < static_cast<int64>(values.bits()); ++i) {
     Set({i}, values.get(i));
   }
 }
@@ -725,7 +757,7 @@ Literal LiteralBase::ToBoundedDynamic(const Shape& bounded_shape) const {
         if (!subshape.IsArray()) {
           return;
         }
-        for (int64 i = 0; i < subshape.rank(); ++i) {
+        for (int64_t i = 0; i < subshape.rank(); ++i) {
           result.SetDynamicSize(i, subshape.dimensions(i));
         }
       });
@@ -742,7 +774,7 @@ Literal LiteralBase::ToStatic() const {
         if (!subshape->IsArray()) {
           return;
         }
-        for (int64 i = 0; i < subshape->rank(); ++i) {
+        for (int64_t i = 0; i < subshape->rank(); ++i) {
           subshape->set_dynamic_dimension(i, false);
           subshape->set_dimensions(i, GetDynamicSize(i, index));
         }
@@ -758,7 +790,7 @@ StatusOr<Literal> LiteralBase::Broadcast(
     return InvalidArgument("Broadcast only supports arrays.");
   }
 
-  for (int64 i = 0, end = dimensions.size(); i < end; i++) {
+  for (int64_t i = 0, end = dimensions.size(); i < end; i++) {
     TF_RET_CHECK(shape().dimensions(i) ==
                  result_shape.dimensions(dimensions[i]));
   }
@@ -772,22 +804,22 @@ StatusOr<Literal> LiteralBase::Broadcast(
 
   char* dest_data = static_cast<char*>(result.untyped_data());
   const char* source_data = static_cast<const char*>(untyped_data());
-  const int64 primitive_size =
+  const int64_t primitive_size =
       ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
 
-  for (int64 i = 0; i < dimensions.size(); ++i) {
-    int64 dynamic_size = GetDynamicSize(i);
+  for (int64_t i = 0; i < dimensions.size(); ++i) {
+    int64_t dynamic_size = GetDynamicSize(i);
     result.SetDynamicSize(dimensions[i], dynamic_size);
   }
 
   ShapeUtil::ForEachIndex(
       result_shape, [&](absl::Span<const int64> output_index) {
-        for (int64 i = 0, end = dimensions.size(); i < end; ++i) {
+        for (int64_t i = 0, end = dimensions.size(); i < end; ++i) {
           scratch_source_index[i] = output_index[dimensions[i]];
         }
-        int64 dest_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+        int64_t dest_index = IndexUtil::MultidimensionalIndexToLinearIndex(
             result_shape, output_index);
-        int64 source_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+        int64_t source_index = IndexUtil::MultidimensionalIndexToLinearIndex(
             shape(), scratch_source_index);
         memcpy(dest_data + primitive_size * dest_index,
                source_data + primitive_size * source_index, primitive_size);
@@ -816,8 +848,8 @@ StatusOr<Literal> LiteralBase::Reshape(
   *output.mutable_shape_do_not_use() =
       ShapeUtil::MakeShape(shape().element_type(), dimensions);
 
-  int64 elements_before = ShapeUtil::ElementsIn(shape());
-  int64 elements_after = ShapeUtil::ElementsIn(output.shape());
+  int64_t elements_before = ShapeUtil::ElementsIn(shape());
+  int64_t elements_after = ShapeUtil::ElementsIn(output.shape());
   if (elements_before != elements_after) {
     return InvalidArgument(
         "Shapes before and after Literal::Reshape have different numbers "
@@ -830,15 +862,13 @@ StatusOr<Literal> LiteralBase::Reshape(
 
 Literal LiteralBase::Transpose(absl::Span<const int64> permutation) const {
   CHECK(shape().IsArray()) << "Tuple is not supported for transpose";
-  CHECK(IsPermutation(permutation, shape().rank()))
+  CHECK(shape().rank() == permutation.size() && IsPermutation(permutation))
       << "Given permutation is not a permutation of dimension numbers";
   // To transpose the array, we just permute the dimensions and layout, and
   // do a straight memory copy of the raw data set.
   // This is considerably faster than iterating over every array element using
   // the EachCell<>() and Set<>() APIs.
-  std::vector<int64> inverse_permutation = InversePermutation(permutation);
-  Shape permuted_shape =
-      ShapeUtil::PermuteDimensions(inverse_permutation, shape());
+  Shape permuted_shape = ShapeUtil::PermuteDimensions(permutation, shape());
   // Replace the layout with one affine to this shape, such that a
   // transpose operation can be performed by leaving the flat values
   // representation intact.
@@ -852,6 +882,7 @@ Literal LiteralBase::Transpose(absl::Span<const int64> permutation) const {
   // dimension has within the transposed array, a layout is affine if
   // MinMaj(Di) == TMinMaj(T(Di)), with TMinMaj() being the minor to major
   // vector of the affine layout.
+  std::vector<int64> inverse_permutation = InversePermutation(permutation);
   CHECK(LayoutUtil::IsDenseArray(permuted_shape));
   Layout* layout = permuted_shape.mutable_layout();
   layout->clear_minor_to_major();
@@ -859,7 +890,7 @@ Literal LiteralBase::Transpose(absl::Span<const int64> permutation) const {
     layout->add_minor_to_major(inverse_permutation[index]);
   }
   Literal new_literal(permuted_shape);
-  for (int64 i = 0; i < shape().rank(); i++) {
+  for (int64_t i = 0; i < shape().rank(); i++) {
     new_literal.SetDynamicSize(inverse_permutation[i], GetDynamicSize(i));
   }
   DCHECK_EQ(ShapeUtil::ByteSizeOf(new_literal.shape()),
@@ -875,15 +906,15 @@ Literal LiteralBase::SliceInternal(
   DimensionVector new_indices(result_shape.rank());
   CHECK(result_literal
             .Populate<NativeT>([&](absl::Span<const int64> indices) {
-              for (int64 i = 0; i < result_shape.rank(); ++i) {
+              for (int64_t i = 0; i < result_shape.rank(); ++i) {
                 new_indices[i] = indices[i] + start_indices[i];
               }
               return Get<NativeT>(new_indices);
             })
             .ok());
-  for (int64 dnum = 0; dnum < shape().rank(); ++dnum) {
+  for (int64_t dnum = 0; dnum < shape().rank(); ++dnum) {
     if (shape().is_dynamic_dimension(dnum)) {
-      int64 dynamic_size = GetDynamicSize(dnum) - start_indices[dnum];
+      int64_t dynamic_size = GetDynamicSize(dnum) - start_indices[dnum];
       CHECK_GE(dynamic_size, 0) << GetDynamicSize(dnum);
       dynamic_size = std::min(dynamic_size, result_shape.dimensions(dnum));
       result_literal.SetDynamicSize(dnum, dynamic_size);
@@ -897,11 +928,11 @@ Literal LiteralBase::Slice(absl::Span<const int64> start_indices,
   CHECK(shape().IsArray()) << "tuple is not supported for slice";
 
   DimensionVector result_dimensions;
-  for (int64 dnum = 0; dnum < shape().rank(); ++dnum) {
+  for (int64_t dnum = 0; dnum < shape().rank(); ++dnum) {
     CHECK_GE(start_indices[dnum], 0);
     CHECK_LE(limit_indices[dnum], shape().dimensions(dnum))
         << "dnum = " << dnum;
-    int64 dimension = limit_indices[dnum] - start_indices[dnum];
+    int64_t dimension = limit_indices[dnum] - start_indices[dnum];
     CHECK_GE(dimension, 0) << "dnum = " << dnum;
     result_dimensions.push_back(dimension);
   }
@@ -1086,7 +1117,7 @@ size_t LiteralBase::Hash() const {
 }
 
 Status MutableLiteralBase::SetIntegralAsS64(absl::Span<const int64> multi_index,
-                                            int64 value) {
+                                            int64_t value) {
   CHECK(LayoutUtil::IsDenseArray(shape()));
   switch (shape().element_type()) {
     case PRED:
@@ -1170,7 +1201,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
                               const ShapeIndex& shape_index, bool print_shape,
                               bool print_layout, std::vector<string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
-  int64 rank = subshape.rank();
+  int64_t rank = subshape.rank();
 
   std::function<void(absl::Span<const int64> dimensions, std::vector<int64>*)>
       to_string_recursive = [&](absl::Span<const int64> dimensions,
@@ -1194,7 +1225,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
           }
           // Handle the non-innermost tensors of a 2D+ tensor.
           if (brace == "{") {
-            const int64 accum_indices_size = accum_indices->size();
+            const int64_t accum_indices_size = accum_indices->size();
             if (rank > 3 && !accum_indices->empty() &&
                 accum_indices_size < rank) {
               int index = accum_indices->size() - 1;
@@ -1234,7 +1265,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
     pieces->push_back(ShapeToString(print_layout, subshape));
     if (subshape.is_dynamic()) {
       pieces->push_back("(");
-      for (int64 i = 0; i < subshape.dimensions_size(); ++i) {
+      for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
         pieces->push_back(StrCat(literal.GetDynamicSize(i, shape_index)));
         if (i < subshape.dimensions_size() - 1) {
           pieces->push_back(",");
@@ -1247,7 +1278,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
   std::vector<int64> indices = {};
   std::vector<int64> dimensions;
   dimensions.reserve(subshape.rank());
-  for (int64 i = 0; i < subshape.rank(); ++i) {
+  for (int64_t i = 0; i < subshape.rank(); ++i) {
     dimensions.push_back(literal.GetDynamicSize(i, shape_index));
   }
   to_string_recursive(dimensions, &indices);
@@ -1281,6 +1312,10 @@ string LiteralBase::ToString() const {
   return absl::StrJoin(pieces, "");
 }
 
+string LiteralBase::ToStringOneline() const {
+  return CompactOneline(ToString());
+}
+
 string LiteralBase::ToStringWithoutShape() const {
   std::vector<string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
@@ -1289,12 +1324,20 @@ string LiteralBase::ToStringWithoutShape() const {
   return absl::StrJoin(pieces, "");
 }
 
+string LiteralBase::ToStringWithoutShapeOneline() const {
+  return CompactOneline(ToStringWithoutShape());
+}
+
 string LiteralBase::ToStringWithLayout() const {
   std::vector<string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
   ToStringHelper(*this, {}, /*print_shape=*/true,
                  /*print_layout=*/true, &pieces);
   return absl::StrJoin(pieces, "");
+}
+
+string LiteralBase::ToStringWithLayoutOneline() const {
+  return CompactOneline(ToStringWithLayout());
 }
 
 void LiteralBase::EachCellAsString(
@@ -1320,16 +1363,16 @@ Literal ConvertBetweenNativeTypesWithConverter(const LiteralBase& src_literal,
       primitive_util::NativeToPrimitiveType<NativeDestT>()));
   auto src_data = src_literal.data<NativeSrcT>();
   auto dest_data = result_literal.template data<NativeDestT>();
-  int64 num_elements = src_literal.element_count();
+  int64_t num_elements = src_literal.element_count();
 
-  for (int64 i = 0; i < num_elements; ++i) {
+  for (int64_t i = 0; i < num_elements; ++i) {
     dest_data[i] = converter(src_data[i]);
   }
   return result_literal;
 }
 
 template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<(std::is_same<NativeSrcT, Eigen::half>::value) &&
+typename std::enable_if<std::is_same<NativeSrcT, Eigen::half>::value &&
                             (std::is_same<NativeDestT, complex64>::value ||
                              std::is_same<NativeDestT, complex128>::value),
                         Literal>::type
@@ -1342,9 +1385,46 @@ ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
 }
 
 template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<(!std::is_same<NativeSrcT, Eigen::half>::value) ||
-                            (!std::is_same<NativeDestT, complex64>::value &&
-                             !std::is_same<NativeDestT, complex128>::value),
+typename std::enable_if<std::is_floating_point<NativeSrcT>::value &&
+                            std::is_integral<NativeDestT>::value,
+                        Literal>::type
+ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
+  auto converter = [](NativeSrcT src) {
+    // C++ [conv.bool]p1:
+    //   A prvalue of arithmetic [...] type can be converted to a prvalue of
+    //   type bool. A zero value [...] is converted to false; any other value is
+    //   converted to true.
+    // C++ [conv.fpint]p1:
+    //   [...] The behavior is undefined if the truncated value cannot be
+    //   represented in the destination type.
+    //
+    // Using static_cast to convert a float to an integral type other than bool
+    // may be undefined if the value's magnitude is too large or it is a NaN.
+    // Let's choose saturating arithmetic as it captures the spirit of infinity
+    // and arbitrarily map NaN to zero.
+    if (!std::is_same<NativeDestT, bool>::value) {
+      if (src != src) {
+        return NativeDestT{0};
+      }
+      if (src >= std::numeric_limits<NativeDestT>::max()) {
+        return std::numeric_limits<NativeDestT>::max();
+      }
+      if (src <= std::numeric_limits<NativeDestT>::lowest()) {
+        return std::numeric_limits<NativeDestT>::lowest();
+      }
+    }
+    return static_cast<NativeDestT>(src);
+  };
+  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
+      src_literal, converter);
+}
+
+template <typename NativeSrcT, typename NativeDestT>
+typename std::enable_if<!(std::is_floating_point<NativeSrcT>::value &&
+                          std::is_integral<NativeDestT>::value) &&
+                            !(std::is_same<NativeSrcT, Eigen::half>::value &&
+                              (std::is_same<NativeDestT, complex64>::value ||
+                               std::is_same<NativeDestT, complex128>::value)),
                         Literal>::type
 ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
   auto converter = [](NativeSrcT src) { return static_cast<NativeDestT>(src); };
@@ -1370,9 +1450,9 @@ typename std::enable_if<(sizeof(NativeSrcT) == sizeof(Eigen::half) &&
                         Literal>::type
 BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
   // Eigen::half doesn't satisfy the absl::bit_cast contract, so explicitly
-  // cast to unsigned short and then use raw_uint16_to_half.
+  // cast to unsigned short first.
   auto converter = [](NativeSrcT src) {
-    return Eigen::half_impl::raw_uint16_to_half(
+    return Eigen::numext::bit_cast<Eigen::half>(
         absl::bit_cast<uint16>(GetRawValue(src)));
   };
   return ConvertBetweenNativeTypesWithConverter<NativeSrcT, Eigen::half>(
@@ -1552,7 +1632,7 @@ void LiteralBase::Piece::CopyElementsWithDynamicBound(
   std::vector<int64> index(dest_shape.rank());
   do {
     bool out_of_bound = false;
-    for (int64 i = 0; i < index.size(); ++i) {
+    for (int64_t i = 0; i < index.size(); ++i) {
       // Do not copy elements beyond dynamic bound.
       if (index[i] >= GetDynamicSize(i) || index[i] >= src.GetDynamicSize(i)) {
         out_of_bound = true;
@@ -1574,7 +1654,7 @@ bool LiteralBase::Piece::EqualElementsInternal(
   if (multi_index->size() == subshape().rank()) {
     return (Get<NativeT>(*multi_index) == other.Get<NativeT>(*multi_index));
   }
-  for (int64 i = 0; i < GetDynamicSize(multi_index->size()); ++i) {
+  for (int64_t i = 0; i < GetDynamicSize(multi_index->size()); ++i) {
     multi_index->push_back(i);
     if (!EqualElementsInternal<NativeT>(other, multi_index)) {
       return false;
@@ -1591,7 +1671,7 @@ bool LiteralBase::Piece::EqualDynamicSize(
     return true;
   }
 
-  for (int64 i = 0; i < subshape().rank(); ++i) {
+  for (int64_t i = 0; i < subshape().rank(); ++i) {
     if (GetDynamicSize(i) != other.GetDynamicSize(i)) {
       return false;
     }
@@ -1667,7 +1747,7 @@ bool LiteralBase::operator==(const LiteralBase& other) const {
           return false;
         }
 
-        for (int64 i = 0; i < subshape.rank(); ++i) {
+        for (int64_t i = 0; i < subshape.rank(); ++i) {
           if (piece.GetDynamicSize(i) != other_piece.GetDynamicSize(i)) {
             return false;
           }
@@ -1685,7 +1765,7 @@ namespace {
 template <typename NativeT>
 static bool AllElementsEqualValue(absl::Span<const NativeT> data,
                                   NativeT value) {
-  for (int64 i = 0; i < data.size(); ++i) {
+  for (int64_t i = 0; i < data.size(); ++i) {
     if (data[i] != value) {
       return false;
     }
@@ -1695,7 +1775,7 @@ static bool AllElementsEqualValue(absl::Span<const NativeT> data,
 
 }  // namespace
 
-bool LiteralBase::IsAll(int8 value) const {
+bool LiteralBase::IsAll(int8_t value) const {
   return root_piece().ForEachSubpieceWithBool([&](const ShapeIndex& index,
                                                   const Piece& piece) {
     if (!piece.subshape().IsArray()) {
@@ -1900,7 +1980,7 @@ bool LiteralBase::IsR1Iota() const {
     return false;
   }
 
-  auto is_iota_at_idx = [&](const int64 idx) {
+  auto is_iota_at_idx = [&](const int64_t idx) {
     switch (shape().element_type()) {
       case U8:
         return static_cast<int64>(Get<uint8>({idx})) == idx;
@@ -1936,14 +2016,68 @@ bool LiteralBase::IsR1Iota() const {
     }
   };
 
-  const int64 elements = ShapeUtil::ElementsIn(shape());
-  for (int64 idx = 0; idx < elements; ++idx) {
+  const int64_t elements = ShapeUtil::ElementsIn(shape());
+  for (int64_t idx = 0; idx < elements; ++idx) {
     if (!is_iota_at_idx(idx)) {
       return false;
     }
   }
 
   return true;
+}
+
+// Returns a stride if the literal is a strided iota, i.e., iota multiplied by a
+// stride. Only applicable for integer iotas. Returns absl::nullopt if the
+// literal is not a strided iota.
+absl::optional<int64> LiteralBase::IsR1StridedIota() const {
+  if (!shape().IsArray() || shape().rank() != 1) {
+    return absl::nullopt;
+  }
+
+  const int64_t elements = ShapeUtil::ElementsIn(shape());
+  const PrimitiveType type = shape().element_type();
+  if (elements <= 1 || !primitive_util::IsIntegralType(type)) {
+    return absl::nullopt;
+  }
+
+  auto get_element_at = [&](const int64_t idx) -> int64 {
+    switch (type) {
+      case U8:
+        return static_cast<int64>(Get<uint8>({idx}));
+      case U16:
+        return static_cast<int64>(Get<uint16>({idx}));
+      case U32:
+        return static_cast<int64>(Get<uint32>({idx}));
+      case U64:
+        return static_cast<int64>(Get<uint64>({idx}));
+      case S8:
+        return Get<int8>({idx});
+      case S16:
+        return Get<int16>({idx});
+      case S32:
+        return Get<int32>({idx});
+      case S64:
+        return Get<int64>({idx});
+      default:
+        CHECK(0);
+        return 0;
+    }
+  };
+
+  // Infer the stride as the second element (since first element is supposed
+  // to be zero).
+  int64_t stride = get_element_at(1);
+  if (stride == 0) {
+    return absl::nullopt;
+  }
+
+  for (int64_t idx = 0; idx < elements; ++idx) {
+    if (get_element_at(idx) != idx * stride) {
+      return absl::nullopt;
+    }
+  }
+
+  return stride;
 }
 
 bool LiteralBase::IsZero(absl::Span<const int64> indices) const {
@@ -2179,16 +2313,16 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     case C64: {
       auto complex_data = data<complex64>();
       TF_RET_CHECK(proto.c64s_size() == complex_data.size() * 2);
-      for (int64 i = 0; i < complex_data.size(); ++i) {
+      for (int64_t i = 0; i < complex_data.size(); ++i) {
         complex_data[i] = complex64{proto.c64s(i * 2), proto.c64s(i * 2 + 1)};
       }
       break;
     }
     case C128: {
       auto complex_data = data<complex128>();
-      const int64 complex_data_size_doubled = complex_data.size() * 2;
+      const int64_t complex_data_size_doubled = complex_data.size() * 2;
       TF_RET_CHECK(proto.c128s_size() == complex_data_size_doubled);
-      for (int64 i = 0, end = complex_data.size(); i < end; ++i) {
+      for (int64_t i = 0, end = complex_data.size(); i < end; ++i) {
         complex_data[i] =
             complex128{proto.c128s(i * 2), proto.c128s(i * 2 + 1)};
       }
@@ -2209,7 +2343,7 @@ LiteralProto LiteralBase::ToProto() const {
   root_piece().ForEachSubpiece(
       [&](const ShapeIndex& index, const Piece& piece) {
         LiteralProto* proto_piece = &proto;
-        for (int64 i : index) {
+        for (int64_t i : index) {
           while (proto_piece->tuple_literals_size() <= i) {
             proto_piece->add_tuple_literals();
           }

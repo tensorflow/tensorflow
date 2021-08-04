@@ -16,16 +16,18 @@ limitations under the License.
 
 #include <atomic>
 #include <deque>
+#include <functional>
+#include <string>
 #include <utility>
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -93,9 +95,9 @@ constexpr char KMessage[] = "msg";
 class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
-          std::unique_ptr<CapturedFunction> captured_func, int64 cycle_length,
-          int64 block_length, DeterminismPolicy deterministic,
-          int64 buffer_output_elements, int64 prefetch_input_elements,
+          std::unique_ptr<CapturedFunction> captured_func, int64_t cycle_length,
+          int64_t block_length, DeterminismPolicy deterministic,
+          int64_t buffer_output_elements, int64_t prefetch_input_elements,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes, int op_version)
       : DatasetBase(DatasetContext(ctx)),
@@ -279,13 +281,19 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           workers_(dataset()->num_threads()),
           worker_thread_states_(dataset()->num_threads()) {}
 
-    ~Iterator() override { CancelThreads(); }
+    ~Iterator() override {
+      CancelThreads();
+      if (deregister_fn_) deregister_fn_();
+    }
 
+    // TODO(jsimsa): Register cancellation callback once the implementation is
+    // refactored not to hold mu_ while calling `GetNext` on the input.
     Status Initialize(IteratorContext* ctx) override {
-      // TODO(jsimsa): Register cancellation callback once the implementation is
-      // refactored not to hold mu_ while calling `GetNext` on the input.
-      TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
+      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      IteratorContext::Params params(ctx);
+      params.cancellation_manager = cancellation_manager_.get();
+      TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
+          IteratorContext(params), this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -304,9 +312,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         // that do not have an item readily available.
         bool can_produce_elements = false;
         bool must_wait_for_input = true;
-        for (int64 i = 0; i < interleave_indices_.size(); ++i) {
-          int64 index = (next_index_ + i) % interleave_indices_.size();
-          int64 current_worker_index = interleave_indices_[index];
+        for (int64_t i = 0; i < interleave_indices_.size(); ++i) {
+          int64_t index = (next_index_ + i) % interleave_indices_.size();
+          int64_t current_worker_index = interleave_indices_[index];
           if (current_worker_index < 0) {
             continue;  // Empty interleave elements.
           }
@@ -464,7 +472,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         } else {
           input_impl_.reset();
         }
-        int64 temp;
+        int64_t temp;
         TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kNextIndex, &temp));
         next_index_ = size_t(temp);
         TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kBlockCount, &temp));
@@ -477,7 +485,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                                   " worker states but found ", temp, ".");
         }
         for (size_t i = 0; i < dataset()->num_threads(); ++i) {
-          TF_RETURN_IF_ERROR(ReadWorkerStateLocked(reader, i, ctx));
+          TF_RETURN_IF_ERROR(ReadWorkerStateLocked(ctx, reader, i));
         }
       }
       std::unique_ptr<thread::ThreadPool> threadpool = ctx->CreateThreadPool(
@@ -487,7 +495,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       for (size_t i = 0; i < dataset()->num_threads(); ++i) {
         threadpool->Schedule([this, i, ctx, reader, &s, &counter] {
           WorkerThreadState state;
-          Status result = ReadWorkerThreadStateLocked(reader, i, ctx, &state);
+          Status result = ReadWorkerThreadStateLocked(ctx, reader, i, &state);
           mutex_lock l(mu_);
           mutex_lock ckpt_l(ckpt_mu_);
           if (!result.ok()) {
@@ -509,12 +517,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       // Restore `interleave_indices_`.
       std::set<int64> all_indices;
       {
-        int64 interleave_size;
+        int64_t interleave_size;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(prefix(), kInterleaveSize, &interleave_size));
         interleave_indices_.reserve(interleave_size);
-        for (int64 i = 0; i < interleave_size; ++i) {
-          int64 temp;
+        for (int64_t i = 0; i < interleave_size; ++i) {
+          int64_t temp;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
               prefix(), strings::StrCat(kInterleaveIndices, "_", i), &temp));
           if (temp >= 0 && all_indices.find(temp) != all_indices.end()) {
@@ -531,11 +539,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
       // Restore `staging_indices_`.
       {
-        int64 staging_size;
+        int64_t staging_size;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(prefix(), kStagingSize, &staging_size));
         for (int i = 0; i < staging_size; ++i) {
-          int64 temp;
+          int64_t temp;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
               prefix(), strings::StrCat(kStagingIndices, "_", i), &temp));
           if (all_indices.find(temp) != all_indices.end()) {
@@ -579,7 +587,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       int64 id = -1;
 
       explicit OutputElem(const Status& s) : status(s) {}
-      OutputElem(const Status& s, int64 id) : status(s), id(id) {}
+      OutputElem(const Status& s, int64_t id) : status(s), id(id) {}
     };
 
     // Worker threads operate on their relevant WorkerState structs.
@@ -647,6 +655,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     };
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
+      cancellation_manager_->StartCancel();
       mutex_lock l(mu_);
       cancelled_ = true;
       for (auto& worker : workers_) {
@@ -658,7 +667,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (worker_threads_.empty() && input_impl_) {
         worker_threads_.reserve(dataset()->num_threads());
-        for (int64 i = 0; i < dataset()->num_threads(); ++i) {
+        for (int64_t i = 0; i < dataset()->num_threads(); ++i) {
           std::vector<Tensor> args;
           bool end_of_input = false;
           Status s = input_impl_->GetNext(ctx, &args, &end_of_input);
@@ -685,7 +694,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // Produces elements into the worker's output buffers.
     void WorkerThread(const std::shared_ptr<IteratorContext>& ctx,
-                      const int64 thread_index) {
+                      const int64_t thread_index) {
       // Notes on checkpointing thread local state, i.e., `WorkerThreadState`:
       //
       // 1. Any local state that may need to be checkpointed should be kept
@@ -925,29 +934,29 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    Status ReadWorkerStateLocked(IteratorStateReader* reader, int index,
-                                 IteratorContext* ctx)
+    Status ReadWorkerStateLocked(IteratorContext* ctx,
+                                 IteratorStateReader* reader, int index)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
       string worker_prefix =
           strings::StrCat(prefix(), "::", kWorker, "_", index);
       // Restore inputs.
-      int64 input_size;
+      int64_t input_size;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(worker_prefix, kInputSize, &input_size));
       workers_[index].input.reserve(input_size);
       for (int i = 0; i < input_size; ++i) {
         workers_[index].input.emplace_back();
-        TF_RETURN_IF_ERROR(reader->ReadTensor(worker_prefix,
+        TF_RETURN_IF_ERROR(reader->ReadTensor(ctx->flr(), worker_prefix,
                                               strings::StrCat(kInput, "_", i),
                                               &workers_[index].input.back()));
       }
-      int64 outputs_size;
+      int64_t outputs_size;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(worker_prefix, kOutputsSize, &outputs_size));
       for (int i = 0; i < outputs_size; ++i) {
         workers_[index].outputs.emplace_back(Status::OK());
         TF_RETURN_IF_ERROR(ReadOutputElemLocked(
-            reader, &workers_[index].outputs.back(), worker_prefix,
+            ctx, reader, &workers_[index].outputs.back(), worker_prefix,
             strings::StrCat(kOutputs, "_", i)));
       }
       if (reader->Contains(worker_prefix, kIsProducing)) {
@@ -991,19 +1000,19 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    Status ReadWorkerThreadStateLocked(IteratorStateReader* reader, int index,
-                                       IteratorContext* ctx,
+    Status ReadWorkerThreadStateLocked(IteratorContext* ctx,
+                                       IteratorStateReader* reader, int index,
                                        WorkerThreadState* state) {
       string worker_prefix =
           strings::StrCat(prefix(), "::", kWorkerThread, "_", index);
       // Restore inputs.
-      int64 input_size;
+      int64_t input_size;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(worker_prefix, kInputSize, &input_size));
       state->input.reserve(input_size);
       for (int i = 0; i < input_size; ++i) {
         state->input.emplace_back();
-        TF_RETURN_IF_ERROR(reader->ReadTensor(worker_prefix,
+        TF_RETURN_IF_ERROR(reader->ReadTensor(ctx->flr(), worker_prefix,
                                               strings::StrCat(kInput, "_", i),
                                               &state->input.back()));
       }
@@ -1022,7 +1031,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ReadStatusLocked(reader, worker_prefix,
                                           kIteratorCreationStatus,
                                           &state->iterator_creation_status));
-      TF_RETURN_IF_ERROR(ReadOutputElemLocked(reader, &state->output_elem,
+      TF_RETURN_IF_ERROR(ReadOutputElemLocked(ctx, reader, &state->output_elem,
                                               worker_prefix, kOutput));
       if (reader->Contains(worker_prefix, kEndOfSequence)) {
         state->end_of_sequence = true;
@@ -1051,23 +1060,25 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    Status ReadOutputElemLocked(IteratorStateReader* reader,
+    Status ReadOutputElemLocked(IteratorContext* ctx,
+                                IteratorStateReader* reader,
                                 OutputElem* output_elem,
                                 const string& iterator_name,
                                 const string& prefix) {
       TF_RETURN_IF_ERROR(ReadStatusLocked(reader, iterator_name,
                                           strings::StrCat(prefix, "_", kStatus),
                                           &output_elem->status));
-      int64 output_size;
+      int64_t output_size;
       TF_RETURN_IF_ERROR(reader->ReadScalar(
           iterator_name, strings::StrCat(prefix, "_", kOutputSize),
           &output_size));
       output_elem->output.reserve(output_size);
       for (int i = 0; i < output_size; ++i) {
         output_elem->output.emplace_back();
-        TF_RETURN_IF_ERROR(reader->ReadTensor(
-            iterator_name, strings::StrCat(prefix, "_", kOutput, "_", i),
-            &output_elem->output.back()));
+        TF_RETURN_IF_ERROR(
+            reader->ReadTensor(ctx->flr(), iterator_name,
+                               strings::StrCat(prefix, "_", kOutput, "_", i),
+                               &output_elem->output.back()));
       }
       return Status::OK();
     }
@@ -1090,7 +1101,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     Status ReadStatusLocked(IteratorStateReader* reader,
                             const string& iterator_name, const string& prefix,
                             Status* status) {
-      int64 code_int;
+      int64_t code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(
           iterator_name, strings::StrCat(prefix, "_", kCode), &code_int));
       error::Code code = static_cast<error::Code>(code_int);
@@ -1123,6 +1134,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // `ckpt_mu_` in either shared or exclusive modes.
     mutex ckpt_mu_;
 
+    // Controls cancellation of `input_impl_`. Must be ordered before
+    // `input_impl_` so that `input_impl_` is destroyed first.
+    std::unique_ptr<CancellationManager> cancellation_manager_;
+
     // The iterator producing elements which are converted to datasets by
     // the dataset()->captured_func_ then interleaved together.
     // input_impl_ is reset when we have exhausted its input.
@@ -1154,6 +1169,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // threads have exited before any other members are deallocated.
     // TODO(b/65178177): Avoid allocating additional threads.
     std::vector<std::unique_ptr<Thread>> worker_threads_ TF_GUARDED_BY(mu_);
+
+    // Method for deregistering the cancellation callback.
+    std::function<void()> deregister_fn_;
   };
 
   const DatasetBase* const input_;
@@ -1188,12 +1206,12 @@ ParallelInterleaveDatasetOp::ParallelInterleaveDatasetOp(
 void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
                                               DatasetBase* input,
                                               DatasetBase** output) {
-  int64 cycle_length = 0;
+  int64_t cycle_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCycleLength, &cycle_length));
   OP_REQUIRES(ctx, cycle_length > 0,
               errors::InvalidArgument("`cycle_length` must be > 0"));
 
-  int64 block_length = 0;
+  int64_t block_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBlockLength, &block_length));
   OP_REQUIRES(ctx, block_length > 0,
               errors::InvalidArgument("`block_length` must be > 0"));
@@ -1210,13 +1228,13 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
     }
   }
 
-  int64 buffer_output_elements = 0;
+  int64_t buffer_output_elements = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBufferOutputElements,
                                           &buffer_output_elements));
   OP_REQUIRES(ctx, buffer_output_elements > 0,
               errors::InvalidArgument("`buffer_output_elements` must be > 0"));
 
-  int64 prefetch_input_elements = 0;
+  int64_t prefetch_input_elements = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kPrefetchInputElements,
                                           &prefetch_input_elements));
   OP_REQUIRES(

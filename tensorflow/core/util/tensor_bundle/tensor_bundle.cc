@@ -41,11 +41,17 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
+
+#ifdef PLATFORM_WINDOWS
+#undef DeleteFile
+#endif
 
 namespace tensorflow {
 
@@ -253,7 +259,7 @@ Status WriteStringTensor(const Tensor& val, FileOutputBuffer* out,
   string lengths;
   lengths.reserve(val.NumElements());  // At least 1 byte per element.
   *crc32c = 0;
-  for (int64 i = 0; i < val.NumElements(); ++i) {
+  for (int64_t i = 0; i < val.NumElements(); ++i) {
     const tstring* elem = &strings[i];
     DCHECK_EQ(elem->size(), static_cast<uint64>(elem->size()));
     const uint64 elem_size = static_cast<uint64>(elem->size());
@@ -283,7 +289,7 @@ Status WriteStringTensor(const Tensor& val, FileOutputBuffer* out,
   *bytes_written += sizeof(uint32);
 
   // Writes all the string bytes out.
-  for (int64 i = 0; i < val.NumElements(); ++i) {
+  for (int64_t i = 0; i < val.NumElements(); ++i) {
     const tstring* string = &strings[i];
     TF_RETURN_IF_ERROR(out->Append(*string));
     *bytes_written += string->size();
@@ -304,7 +310,7 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
 
   *crc32c = 0;
   *bytes_written = 0;
-  for (int64 i = 0; i < val.NumElements(); ++i) {
+  for (int64_t i = 0; i < val.NumElements(); ++i) {
     VariantTensorData data;
     val.flat<Variant>()(i).Encode(&data);
     VariantTensorDataProto proto;
@@ -406,11 +412,7 @@ Status PadAlignment(FileOutputBuffer* out, int alignment, int64* size) {
 }  // namespace
 
 BundleWriter::BundleWriter(Env* env, StringPiece prefix, const Options& options)
-    : env_(env),
-      options_(options),
-      prefix_(prefix),
-      out_(nullptr),
-      size_(0) {
+    : env_(env), options_(options), prefix_(prefix), out_(nullptr), size_(0) {
   status_ = env_->HasAtomicMove(prefix_, &use_temp_file_);
   if (!status_.ok()) return;
 
@@ -761,7 +763,7 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
   metadata_ = wrapper.release();
 
   table::Options o;
-  int64 cache_size;
+  int64_t cache_size;
   Status s =
       ReadInt64FromEnvVar("TF_TABLE_INDEX_CACHE_SIZE_IN_MB", 0, &cache_size);
   if (s.ok() && cache_size > 0) {
@@ -1138,7 +1140,24 @@ string BundleReader::DebugString() {
   return shape_str;
 }
 
-FileOutputBuffer::~FileOutputBuffer() { delete file_; }
+namespace {
+inline char* AlignedMalloc(size_t size) {
+  char* buffer = static_cast<char*>(port::AlignedMalloc(size, 64));
+  DCHECK(buffer);
+  return buffer;
+}
+}  // namespace
+
+FileOutputBuffer::FileOutputBuffer(WritableFile* file, size_t buffer_size)
+    : file_(file), position_(0), buffer_size_(buffer_size) {
+  DCHECK_GT(buffer_size, 0);
+  buffer_ptr_ = AlignedMalloc(buffer_size);
+}
+
+FileOutputBuffer::~FileOutputBuffer() {
+  if (buffer_ptr_) port::AlignedFree(buffer_ptr_);
+  delete file_;
+}
 
 Status FileOutputBuffer::Append(StringPiece data) {
   // In the below, it is critical to calculate the checksum on the actually
@@ -1146,23 +1165,23 @@ Status FileOutputBuffer::Append(StringPiece data) {
   // points to tensor buffers, which may be concurrently written.
   if (data.size() + position_ <= buffer_size_) {
     // Can fit into the current buffer.
-    memcpy(&buffer_[position_], data.data(), data.size());
-    crc32c_ = crc32c::Extend(crc32c_, &buffer_[position_], data.size());
+    memcpy(buffer_ptr_ + position_, data.data(), data.size());
+    crc32c_ = crc32c::Extend(crc32c_, buffer_ptr_ + position_, data.size());
   } else if (data.size() <= buffer_size_) {
     // Cannot fit, but can fit after flushing.
-    TF_RETURN_IF_ERROR(FlushBuffer());
-    memcpy(&buffer_[0], data.data(), data.size());
-    crc32c_ = crc32c::Extend(crc32c_, &buffer_[0], data.size());
+    TF_RETURN_IF_ERROR(FlushBuffer(false));
+    memcpy(buffer_ptr_, data.data(), data.size());
+    crc32c_ = crc32c::Extend(crc32c_, buffer_ptr_, data.size());
   } else {
     // Cannot fit even after flushing.  So we break down "data" by chunk, and
     // flush/checksum each chunk.
-    TF_RETURN_IF_ERROR(FlushBuffer());
+    TF_RETURN_IF_ERROR(FlushBuffer(false));
     for (size_t i = 0; i < data.size(); i += buffer_size_) {
       const size_t nbytes = std::min(data.size() - i, buffer_size_);
-      memcpy(&buffer_[0], data.data() + i, nbytes);
-      crc32c_ = crc32c::Extend(crc32c_, &buffer_[0], nbytes);
+      memcpy(buffer_ptr_, data.data() + i, nbytes);
+      crc32c_ = crc32c::Extend(crc32c_, buffer_ptr_, nbytes);
       position_ = nbytes;
-      TF_RETURN_IF_ERROR(FlushBuffer());
+      TF_RETURN_IF_ERROR(FlushBuffer(false));
     }
     return Status::OK();
   }
@@ -1171,13 +1190,18 @@ Status FileOutputBuffer::Append(StringPiece data) {
 }
 
 Status FileOutputBuffer::Close() {
-  TF_RETURN_IF_ERROR(FlushBuffer());
+  TF_RETURN_IF_ERROR(FlushBuffer(true));
   return file_->Close();
 }
 
-Status FileOutputBuffer::FlushBuffer() {
+Status FileOutputBuffer::FlushBuffer(bool closing) {
   if (position_ > 0) {
-    TF_RETURN_IF_ERROR(file_->Append(StringPiece(&buffer_[0], position_)));
+    // Use Cord to avoid extra data copy for some WritableFile implementations.
+    absl::Cord buffer = absl::MakeCordFromExternal(
+        StringPiece(buffer_ptr_, position_),
+        [ptr = buffer_ptr_](StringPiece) { port::AlignedFree(ptr); });
+    buffer_ptr_ = closing ? nullptr : AlignedMalloc(buffer_size_);
+    TF_RETURN_IF_ERROR(file_->Append(buffer));
     position_ = 0;
   }
   return Status::OK();

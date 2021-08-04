@@ -328,7 +328,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
         // Define the shapes following the comment of CooSparse.
         // TODO(yuefengz): we probably want to use different dim values for the
         // three tensors of a SparseTensor.
-        int64 dim = std::max(1, cfg.placeholder_unknown_output_shape_dim);
+        int64_t dim = std::max(1, cfg.placeholder_unknown_output_shape_dim);
         TensorShape shape_1d({dim});
         TensorShape shape_2d({dim, dim});
 

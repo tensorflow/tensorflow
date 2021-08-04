@@ -63,7 +63,7 @@ class MatrixSolveOpTest(test.TestCase):
             a_ph = array_ops.placeholder(dtypes.as_dtype(np_type))
             b_ph = array_ops.placeholder(dtypes.as_dtype(np_type))
             tf_ans = linalg_ops.matrix_solve(a_ph, b_ph, adjoint=adjoint)
-            with self.cached_session(use_gpu=True) as sess:
+            with self.cached_session() as sess:
               out = sess.run(tf_ans, {a_ph: a, b_ph: b})
           else:
             tf_ans = linalg_ops.matrix_solve(a, b, adjoint=adjoint)
@@ -109,6 +109,12 @@ class MatrixSolveOpTest(test.TestCase):
     # The matrix and right-hand sides should have the same number of rows.
     matrix = constant_op.constant([[1., 0.], [0., 1.]])
     rhs = constant_op.constant([[1., 0.]])
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      self.evaluate(linalg_ops.matrix_solve(matrix, rhs))
+
+    # The matrix and right-hand side should have the same batch dimensions
+    matrix = np.random.normal(size=(2, 6, 2, 2))
+    rhs = np.random.normal(size=(2, 3, 2, 2))
     with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
       self.evaluate(linalg_ops.matrix_solve(matrix, rhs))
 

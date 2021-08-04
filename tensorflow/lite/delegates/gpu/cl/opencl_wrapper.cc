@@ -232,6 +232,8 @@ void LoadOpenCLFunctions(void* libopencl, bool use_wrapper) {
   LoadFunction(clCreateFromEGLImageKHR);
   LoadFunction(clEnqueueAcquireEGLObjectsKHR);
   LoadFunction(clEnqueueReleaseEGLObjectsKHR);
+
+  LoadQcomExtensionFunctions();
 }
 
 // No OpenCL support, do not set function addresses
@@ -351,6 +353,8 @@ PFN_clCreateEventFromEGLSyncKHR clCreateEventFromEGLSyncKHR;
 PFN_clCreateFromEGLImageKHR clCreateFromEGLImageKHR;
 PFN_clEnqueueAcquireEGLObjectsKHR clEnqueueAcquireEGLObjectsKHR;
 PFN_clEnqueueReleaseEGLObjectsKHR clEnqueueReleaseEGLObjectsKHR;
+
+DEFINE_QCOM_FUNCTION_PTRS
 
 cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,
                            const cl_image_format* image_format,

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_local_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_lookup.h"
+#include "tensorflow/core/tpu/kernels/tpu_fingerprint_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_pod_state.h"
@@ -47,6 +48,20 @@ Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
     return errors::FailedPrecondition(
         "The TPU system has not been initialized.");
   }
+  return Status::OK();
+}
+
+Status CreateTpuFingerprintLookup(ResourceMgr* rmgr) {
+  VLOG(1) << "CreateTpuFingerprintLookup";
+  tpu::TpuFingerprintLookup* fingerprint_lookup;
+  TF_RETURN_IF_ERROR(rmgr->LookupOrCreate<tpu::TpuFingerprintLookup>(
+      rmgr->default_container(), tpu::kFingerprintLookupResourceName,
+      &fingerprint_lookup, [&](tpu::TpuFingerprintLookup** new_lookup) {
+        *new_lookup = tpu::TpuFingerprintLookup::Create();
+        return Status::OK();
+      }));
+
+  core::ScopedUnref fingerprint_lookup_ref(fingerprint_lookup);
   return Status::OK();
 }
 
@@ -139,6 +154,7 @@ void ConfigureDistributedTpuOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &ctx_output));
   ctx_output->scalar<tstring>()() = std::move(host_config_output);
 
+  OP_REQUIRES_OK(ctx, CreateTpuFingerprintLookup(rmgr));
   VLOG(1) << "ConfigureDistributedTpuOp done";
 }
 

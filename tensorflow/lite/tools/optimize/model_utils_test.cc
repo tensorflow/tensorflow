@@ -18,9 +18,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/test_util.h"
@@ -68,5 +65,3 @@ TEST(ModelUtilsTest, HasMinMax) {
 }  // namespace utils
 }  // namespace optimize
 }  // namespace tflite
-
-int main(int argc, char** argv) { return RUN_ALL_TESTS(); }

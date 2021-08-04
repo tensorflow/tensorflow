@@ -20,16 +20,16 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status GpuIdManager::InsertTfPlatformGpuIdPair(
-    TfDeviceId tf_gpu_id, PlatformDeviceId platform_gpu_id) {
-  return DeviceIdManager::InsertTfPlatformDeviceIdPair(DEVICE_GPU, tf_gpu_id,
-                                                       platform_gpu_id);
+Status GpuIdManager::InsertTfPlatformDeviceIdPair(
+    TfDeviceId tf_device_id, PlatformDeviceId platform_device_id) {
+  return DeviceIdManager::InsertTfPlatformDeviceIdPair(DEVICE_GPU, tf_device_id,
+                                                       platform_device_id);
 }
 
-Status GpuIdManager::TfToPlatformGpuId(TfDeviceId tf_gpu_id,
-                                       PlatformDeviceId* platform_gpu_id) {
-  return DeviceIdManager::TfToPlatformDeviceId(DEVICE_GPU, tf_gpu_id,
-                                               platform_gpu_id);
+Status GpuIdManager::TfToPlatformDeviceId(
+    TfDeviceId tf_device_id, PlatformDeviceId* platform_device_id) {
+  return DeviceIdManager::TfToPlatformDeviceId(DEVICE_GPU, tf_device_id,
+                                               platform_device_id);
 }
 
 void GpuIdManager::TestOnlyReset() { DeviceIdManager::TestOnlyReset(); }

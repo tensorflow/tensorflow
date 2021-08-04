@@ -58,8 +58,8 @@ XlaComputation CreateScalarComparisonComputation(
   }
 
   CHECK_EQ(operand_types.size(), generators.size());
-  int64 parameter_count = 0;
-  int64 last_generator_index = 0;
+  int64_t parameter_count = 0;
+  int64_t last_generator_index = 0;
   std::vector<XlaOp> lhs_params;
   std::vector<XlaOp> rhs_params;
 
@@ -95,7 +95,7 @@ XlaComputation CreateScalarComparisonComputation(
                                 AsInt64Slice(shape.dimensions()));
   XlaOp result = param_equal;
 
-  for (int64 i = 0; i < parameter_count; i++) {
+  for (int64_t i = 0; i < parameter_count; i++) {
     if (generators[i].has_value()) {
       result = Select(param_equal,
                       generators[i].value()(lhs_params[i], rhs_params[i], {}),

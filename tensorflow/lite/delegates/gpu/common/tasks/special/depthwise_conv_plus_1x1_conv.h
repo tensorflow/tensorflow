@@ -32,7 +32,7 @@ namespace tflite {
 namespace gpu {
 
 bool IsDepthwiseConvPlus1x1ConvSupported(
-    const OperationDef& definition,
+    const OperationDef& definition, const GpuInfo& gpu_info,
     const DepthwiseConvolution2DAttributes& dw_attr,
     const Convolution2DAttributes& conv_attr);
 

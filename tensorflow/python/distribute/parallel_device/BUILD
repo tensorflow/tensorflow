@@ -2,7 +2,7 @@ load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Pybind rules must live in tensorflow/python due to header rule visibility.
@@ -15,11 +15,15 @@ py_library(
     name = "parallel_device",
     srcs = ["parallel_device.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tensorflow_numerics/extensions:__pkg__",
+    ],
     deps = [
         ":saving",
         "//tensorflow/python:_pywrap_parallel_device",
         "//tensorflow/python/distribute:device_util",
-        "//tensorflow/python/tpu:tpu_ops",
+        "//tensorflow/python/tpu/ops",
     ],
 )
 

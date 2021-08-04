@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/external/external_delegate.h"
@@ -50,6 +51,8 @@ class ExternalDelegateProvider : public DelegateProvider {
   void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
+  std::pair<TfLiteDelegatePtr, int> CreateRankedTfLiteDelegate(
+      const ToolParams& params) const final;
 
   std::string GetName() const final { return "EXTERNAL"; }
 };
@@ -114,6 +117,14 @@ TfLiteDelegatePtr ExternalDelegateProvider::CreateTfLiteDelegate(
     });
   }
   return delegate;
+}
+
+std::pair<TfLiteDelegatePtr, int>
+ExternalDelegateProvider::CreateRankedTfLiteDelegate(
+    const ToolParams& params) const {
+  auto ptr = CreateTfLiteDelegate(params);
+  return std::make_pair(std::move(ptr), params.GetPosition<std::string>(
+                                            "external_delegate_path"));
 }
 
 }  // namespace tools

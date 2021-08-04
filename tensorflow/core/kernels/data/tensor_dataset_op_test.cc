@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/tensor_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include <string>
+#include <utility>
+
+#include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -73,13 +77,16 @@ class TensorDatasetParams : public DatasetParams {
 
 class TensorDatasetOpTest : public DatasetOpsTestBase {};
 
+std::vector<Tensor> PlainTensors() {
+  return {CreateTensor<int64>(TensorShape({}), {1}),
+          CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
+          CreateTensor<double>(TensorShape({}), {37.0}),
+          CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})};
+}
+
 // Test case 1: test a dataset that represents a single tuple of plain tensors.
 TensorDatasetParams PlainTensorDatasetParams() {
-  return {/*components=*/
-          {CreateTensor<int64>(TensorShape({}), {1}),
-           CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
-           CreateTensor<double>(TensorShape({}), {37.0}),
-           CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})},
+  return {/*components=*/PlainTensors(),
           /*node_name=*/kNodeName};
 }
 
@@ -98,12 +105,7 @@ TensorDatasetParams NestedTensorDatasetParams() {
 
 std::vector<GetNextTestCase<TensorDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/PlainTensorDatasetParams(),
-           /*expected_outputs=*/{CreateTensor<int64>(TensorShape({}), {1}),
-                                 CreateTensor<int64>(TensorShape({1, 3}),
-                                                     {1, 2, 3}),
-                                 CreateTensor<double>(TensorShape({}), {37.0}),
-                                 CreateTensor<tstring>(TensorShape({1, 2}),
-                                                       {"a", "b"})}},
+           /*expected_outputs=*/PlainTensors()},
           {/*dataset_params=*/NestedTensorDatasetParams(),
            /*expected_outputs=*/
            {CreateTensor<Variant>(TensorShape({}),
@@ -202,10 +204,7 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/PlainTensorDatasetParams(),
            /*breakpoints=*/{0, 1, 2},
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({}), {1}),
-            CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
-            CreateTensor<double>(TensorShape({}), {37.0}),
-            CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})}},
+           PlainTensors()},
           {/*dataset_params=*/NestedTensorDatasetParams(),
            /*breakpoints=*/{0, 1, 2},
            /*expected_outputs=*/
@@ -277,6 +276,19 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, SaveAndRestore) {
 INSTANTIATE_TEST_CASE_P(TensorDatasetOpTest,
                         ParameterizedIteratorSaveAndRestoreTest,
                         ::testing::ValuesIn(IteratorSaveAndRestoreTestCases()));
+
+TEST_F(TensorDatasetOpTest, Splitting) {
+  auto params = PlainTensorDatasetParams();
+  TF_ASSERT_OK(InitializeRuntime(params));
+  TF_EXPECT_OK(CheckSplitProviderFullIteration(
+      params, /*expected_outputs=*/PlainTensors()));
+  TF_EXPECT_OK(CheckSplitProviderShardedIteration(
+      params, /*num_shards=*/3, /*shard_index=*/2,
+      /*expected_outputs=*/CreateTensors<int64>(TensorShape({}), {})));
+  TF_EXPECT_OK(CheckSplitProviderShardedIteration(
+      params, /*num_shards=*/3, /*shard_index=*/0,
+      /*expected_outputs=*/PlainTensors()));
+}
 
 }  // namespace
 }  // namespace data

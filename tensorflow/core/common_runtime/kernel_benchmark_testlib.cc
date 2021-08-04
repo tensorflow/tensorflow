@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -60,8 +59,8 @@ Benchmark::Benchmark(const string& device, Graph* g,
     options = &default_options;
   }
 
-  old_benchmark_api_ = old_benchmark_api;
-  if (old_benchmark_api_) testing::StopTiming();
+  CHECK(!old_benchmark_api) << "Expected new API only";
+  old_benchmark_api_ = false;
   string t = absl::AsciiStrToUpper(device);
   // Allow NewDevice to allocate a new threadpool with different number of
   // threads for each new benchmark.
@@ -138,9 +137,7 @@ Benchmark::~Benchmark() {
   }
 }
 
-void Benchmark::Run(int iters) { RunWithRendezvousArgs({}, {}, iters); }
-
-void Benchmark::Run(::testing::benchmark::State& state) {
+void Benchmark::Run(benchmark::State& state) {
   RunWithRendezvousArgs({}, {}, state);
 }
 
@@ -160,7 +157,7 @@ string GetRendezvousKey(const Node* node) {
 
 void Benchmark::RunWithRendezvousArgs(
     const std::vector<std::pair<string, Tensor>>& inputs,
-    const std::vector<string>& outputs, ::testing::benchmark::State& state) {
+    const std::vector<string>& outputs, benchmark::State& state) {
   CHECK(!old_benchmark_api_)
       << "This method should only be called with new benchmark API";
   if (!device_ || state.max_iterations == 0) {
@@ -208,59 +205,6 @@ void Benchmark::RunWithRendezvousArgs(
     }
   }
   TF_CHECK_OK(device_->Sync());
-}
-
-void Benchmark::RunWithRendezvousArgs(
-    const std::vector<std::pair<string, Tensor>>& inputs,
-    const std::vector<string>& outputs, int iters) {
-  CHECK(old_benchmark_api_) << "This method should only be called when running "
-                               "with old benchmark API";
-  if (!device_ || iters == 0) {
-    return;
-  }
-  Tensor unused;  // In benchmark, we don't care the return value.
-  bool is_dead;
-
-  // Warm up
-  Executor::Args args;
-  args.rendezvous = rendez_;
-  args.runner = [this](std::function<void()> closure) {
-    pool_->Schedule(closure);
-  };
-  static const int kWarmupRuns = 3;
-  for (int i = 0; i < kWarmupRuns; ++i) {
-    for (const auto& p : inputs) {
-      Rendezvous::ParsedKey parsed;
-      TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
-      TF_CHECK_OK(rendez_->Send(parsed, Rendezvous::Args(), p.second, false));
-    }
-    TF_CHECK_OK(exec_->Run(args));
-    for (const string& key : outputs) {
-      Rendezvous::ParsedKey parsed;
-      TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
-      TF_CHECK_OK(rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead));
-    }
-  }
-  TF_CHECK_OK(device_->Sync());
-  VLOG(3) << kWarmupRuns << " warmup runs done.";
-
-  testing::StartTiming();
-  while (iters-- > 0) {
-    for (const auto& p : inputs) {
-      Rendezvous::ParsedKey parsed;
-      TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
-      TF_CHECK_OK(rendez_->Send(parsed, Rendezvous::Args(), p.second, false));
-    }
-    TF_CHECK_OK(exec_->Run(args));
-    for (const string& key : outputs) {
-      Rendezvous::ParsedKey parsed;
-      TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
-      TF_CHECK_OK(rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead));
-    }
-  }
-
-  TF_CHECK_OK(device_->Sync());
-  testing::StopTiming();
 }
 
 }  // end namespace test

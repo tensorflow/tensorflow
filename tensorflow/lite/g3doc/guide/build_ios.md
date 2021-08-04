@@ -10,8 +10,9 @@ details on how to use them in your iOS projects.
 
 In some cases, you might wish to use a local build of TensorFlow Lite, for
 example when you want to make local changes to TensorFlow Lite and test those
-changes in your iOS app. To create a universal iOS framework for TensorFlow Lite
-locally, you need to build it using Bazel on a macOS machine.
+changes in your iOS app or you prefer using static framework to our provided
+dynamic one. To create a universal iOS framework for TensorFlow Lite locally,
+you need to build it using Bazel on a macOS machine.
 
 ### Install Xcode
 
@@ -42,7 +43,7 @@ Run the `./configure` script in the root TensorFlow checkout directory, and
 answer "Yes" when the script asks if you wish to build TensorFlow with iOS
 support.
 
-### Build TensorFlowLiteC framework
+### Build TensorFlowLiteC dynamic framework (recommended)
 
 Note: This step is not necessary if (1) you are using Bazel for your app, or (2)
 you only want to test local changes to the Swift or Objective-C APIs. In these
@@ -63,6 +64,22 @@ By default, the generated framework contains a "fat" binary, containing armv7,
 arm64, and x86_64 (but no i386). To see the full list of build flags used when
 you specify `--config=ios_fat`, please refer to the iOS configs section in the
 [`.bazelrc` file][bazelrc].
+
+### Build TensorFlowLiteC static framework
+
+By default, we only distribute the dynamic framework via Cocoapods. If you want
+to use the static framework instead, you can build the `TensorFlowLiteC` static
+framework with the following command:
+
+```
+bazel build --config=ios_fat -c opt \
+  //tensorflow/lite/ios:TensorFlowLiteC_static_framework
+```
+
+The command will generate a file named `TensorFlowLiteC_static_framework.zip`
+under `bazel-bin/tensorflow/lite/ios/` directory under your TensorFlow root
+directory. This static framework can be used in the exact same way as the
+dynamic one.
 
 ## Use in your own application
 

@@ -33,9 +33,9 @@ using xla::llvm_ir::IrArray;
 namespace xla {
 namespace cpu {
 
-StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
-                                                        llvm::Value* lhs,
-                                                        llvm::Value* rhs) {
+StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
+    PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs,
+    absl::string_view /*name*/) {
   string function_name;
   bool cast_result_to_fp16 = false;
   switch (prim_type) {

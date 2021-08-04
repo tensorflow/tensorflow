@@ -73,6 +73,54 @@ XLA_TEST_F(MatrixTest, Triangle) {
   ComputeAndCompareR3<int32>(&builder, expected, {a_data.get()});
 }
 
+XLA_TEST_F(MatrixTest, Symmetrize) {
+  for (bool lower : {false, true}) {
+    XlaBuilder builder(TestName());
+    float nan = std::numeric_limits<float>::quiet_NaN();
+    Array<float> input = {
+        {1, nan, nan},
+        {2, 3, nan},
+        {4, 5, 6},
+    };
+
+    XlaOp a;
+    auto a_data = CreateParameter<float>(input, 0, "a", &builder, &a);
+    Symmetrize(lower ? a : TransposeInMinorDims(a), /*lower=*/lower);
+
+    Array<float> expected = {
+        {1, 2, 4},
+        {2, 3, 5},
+        {4, 5, 6},
+    };
+
+    ComputeAndCompare<float>(&builder, expected, {a_data.get()});
+  }
+}
+
+XLA_TEST_F(MatrixTest, SymmetrizeComplex) {
+  for (bool lower : {false, true}) {
+    XlaBuilder builder(TestName());
+    float nan = std::numeric_limits<float>::quiet_NaN();
+    Array<complex64> input = {
+        {complex64{1, nan}, nan, nan},
+        {complex64{2, 7}, complex64{3, nan}, nan},
+        {complex64{4, 8}, complex64{5, 9}, complex64{6, nan}},
+    };
+
+    XlaOp a;
+    auto a_data = CreateParameter<complex64>(input, 0, "a", &builder, &a);
+    Symmetrize(lower ? a : Conj(TransposeInMinorDims(a)), /*lower=*/lower);
+
+    Array<complex64> expected = {
+        {1, complex64{2, -7}, complex64{4, -8}},
+        {complex64{2, 7}, 3, complex64{5, -9}},
+        {complex64{4, 8}, complex64{5, 9}, 6},
+    };
+
+    ComputeAndCompare<complex64>(&builder, expected, {a_data.get()});
+  }
+}
+
 template <typename T>
 void MatrixTest::TestMatrixDiagonal() {
   XlaBuilder builder("SetMatrixDiagonal");

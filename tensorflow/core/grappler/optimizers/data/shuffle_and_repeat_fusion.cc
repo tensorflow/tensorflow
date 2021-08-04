@@ -205,13 +205,6 @@ Status ShuffleAndRepeatFusion::OptimizeAndCollectStats(
   return Status::OK();
 }
 
-void ShuffleAndRepeatFusion::Feedback(Cluster* cluster,
-                                      const GrapplerItem& item,
-                                      const GraphDef& optimize_output,
-                                      double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(ShuffleAndRepeatFusion,
                             "shuffle_and_repeat_fusion");
 

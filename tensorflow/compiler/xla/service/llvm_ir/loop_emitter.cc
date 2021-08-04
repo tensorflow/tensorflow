@@ -67,7 +67,7 @@ static LoopEmitter::BodyEmitter MakeBodyEmitterForMultiOutput(
     CHECK_EQ(target_element->getType()->getStructNumElements(),
              target_arrays.size());
 
-    for (int64 i = 0; i < target_arrays.size(); ++i) {
+    for (int64_t i = 0; i < target_arrays.size(); ++i) {
       target_arrays[i].EmitWriteArrayElement(
           array_index, b->CreateExtractValue(target_element, i), b);
     }
@@ -100,7 +100,7 @@ IrArray::Index LoopEmitter::EmitStaticIndex(ForLoopNest* loop_nest,
   // dimension (of the target shape).
   std::vector<llvm::Value*> array_multi_index(shape_.dimensions_size());
   for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
-    int64 dimension = LayoutUtil::Major(shape_.layout(), i);
+    int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
     std::unique_ptr<ForLoop> loop = loop_nest->AddLoop(
         /*start_index=*/0,
         /*end_index=*/shape_.dimensions(dimension),
@@ -119,7 +119,7 @@ IrArray::Index LoopEmitter::EmitDynamicIndex(ForLoopNest* loop_nest,
   // dimension (of the target shape).
   std::vector<llvm::Value*> array_multi_index(shape_.dimensions_size());
   for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
-    int64 dimension = LayoutUtil::Major(shape_.layout(), i);
+    int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
     std::unique_ptr<ForLoop> loop = loop_nest->AddLoop(
         /*suffix=*/absl::StrFormat("dim.%d", dimension),
         /*start_index=*/llvm::ConstantInt::get(index_type, 0),

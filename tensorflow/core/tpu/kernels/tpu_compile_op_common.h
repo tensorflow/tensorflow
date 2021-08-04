@@ -22,9 +22,7 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -147,62 +145,7 @@ class TpuCompileOpKernelCommon {
   static Status GetDynamicShapes(OpKernelContext* ctx,
                                  std::vector<TensorShape>* shapes);
 
-  // Adds TPU_REPLICATED_CORE device assignments to the _Arg and _Retval
-  // nodes in `graph', using the sharding/index assignments in
-  // `arg_core_mapping` and `retval_core_mapping`. The mappings are maps from
-  // original argument/return index to (sharding, per-core argument/return
-  // index) pairs. Node attributes, such as device assignments, are not
-  // preserved on function argument and return values nodes, so we must recreate
-  // them the compilation metadata.
-  static Status AssignDevicesToArgsAndRetvals(
-      absl::Span<const tpu::ShardingAndIndex> arg_core_mapping,
-      absl::Span<const tpu::ShardingAndIndex> retval_core_mapping,
-      Graph* graph);
-
-  // Optimizes `graph`, given the argument descriptions in `metadata` and
-  // `arg_shapes`.
-  static Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
-                              const std::vector<PartialTensorShape>& arg_shapes,
-                              std::unique_ptr<Graph>* graph,
-                              FunctionLibraryRuntime* flr,
-                              FunctionLibraryDefinition* fld);
-
-  // Converts a TF Function into XLA HLO, stores generated HLO module and
-  // accompanying metadata in CompilationResult.
-  Status CompileTFFunctionToHlo(
-      const FunctionLibraryDefinition& flib_def, int graph_def_version,
-      const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-      const std::vector<TensorShape>& arg_shapes,
-      const GuaranteedConsts& guaranteed_constants,
-      const NameAttrList& function,
-      std::function<Status(ResourceMgr*)> populate_resource_manager_fn,
-      xla::CompileOnlyClient* client,
-      std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
-      std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-      XlaCompiler::CompilationResult* compilation_result);
-
-  // Gets information regarding how input arguments are sharded across multiple
-  // cores.
-  Status GetShardingInfo(
-      absl::Span<const TensorShape> arg_shapes,
-      const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-      std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
-      std::vector<std::vector<xla::Shape>>* per_core_arg_shapes);
-
-  // Populates the mapping from return value to ShardingAndIndex.
-  Status AssignReturnValueToCore(
-      std::vector<tpu::ShardingAndIndex>* retval_core_mapping);
-
-  // Populates the arguments, core mapping and per core argument shape for the
-  // computation.
-  Status BuildComputationArgumentDescriptions(
-      const std::vector<TensorShape>& arg_shapes,
-      const GuaranteedConsts& guaranteed_constants, const XlaCompiler& compiler,
-      std::vector<XlaCompiler::Argument>* args,
-      std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
-      std::vector<std::vector<xla::Shape>>* per_core_arg_shapes);
-
-  const tpu::TPUCompileMetadataProto metadata_;
+  tpu::TPUCompileMetadataProto metadata_;
 
   // Whether to compile given MLIR module in `mlir_module` instead of
   // TensorFlow function referenced in `function_`.
@@ -232,6 +175,10 @@ class TpuCompileOpKernelCommon {
 
   // Persistent cache for compiled TPU program for inference.
   std::unique_ptr<TpuPersistentCompilationCacheInterface> persistent_cache_;
+
+  Status RegisterXLAFingerprints(const std::vector<TensorShape>& arg_shapes,
+                                 TpuProgramGroupInterface* tpu_program_group,
+                                 uint64 fingerprint);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(TpuCompileOpKernelCommon);

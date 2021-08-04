@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteObjC'
-  s.version          = '2.4.0'
+  s.version          = '2.5.0'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
@@ -20,7 +20,7 @@ Pod::Spec.new do |s|
   s.static_framework = true
 
   tfl_dir = 'tensorflow/lite/'
-  objc_dir = tfl_dir + 'experimental/objc/'
+  objc_dir = tfl_dir + 'objc/'
 
   s.pod_target_xcconfig = {
     'HEADER_SEARCH_PATHS' =>

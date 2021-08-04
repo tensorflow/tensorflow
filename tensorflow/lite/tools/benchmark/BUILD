@@ -6,7 +6,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 common_copts = tflite_copts() + tflite_copts_warnings()
@@ -216,6 +216,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/profiling:memory_info",
+        "//tensorflow/lite/profiling:memory_usage_monitor",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",

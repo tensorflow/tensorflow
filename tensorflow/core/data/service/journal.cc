@@ -41,7 +41,7 @@ Status ParseSequenceNumber(const std::string& journal_file,
 }  // namespace
 
 std::string DataServiceJournalFile(const std::string& journal_dir,
-                                   int64 sequence_number) {
+                                   int64_t sequence_number) {
   return io::JoinPath(journal_dir,
                       absl::StrCat(kJournal, "_", sequence_number));
 }
@@ -56,9 +56,9 @@ Status FileJournalWriter::EnsureInitialized() {
   std::vector<std::string> journal_files;
   TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(journal_dir_));
   TF_RETURN_IF_ERROR(env_->GetChildren(journal_dir_, &journal_files));
-  int64 latest_sequence_number = -1;
+  int64_t latest_sequence_number = -1;
   for (const auto& file : journal_files) {
-    int64 sequence_number;
+    int64_t sequence_number;
     TF_RETURN_IF_ERROR(ParseSequenceNumber(file, &sequence_number));
     latest_sequence_number = std::max(latest_sequence_number, sequence_number);
   }
@@ -100,7 +100,7 @@ Status FileJournalReader::Read(Update& update, bool& end_of_journal) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   while (true) {
     tstring record;
-    Status s = reader_->ReadRecord(&offset_, &record);
+    Status s = reader_->ReadRecord(&record);
     if (errors::IsOutOfRange(s)) {
       sequence_number_++;
       std::string next_journal_file =
@@ -129,8 +129,9 @@ Status FileJournalReader::Read(Update& update, bool& end_of_journal) {
 Status FileJournalReader::UpdateFile(const std::string& filename) {
   VLOG(1) << "Reading from journal file " << filename;
   TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(filename, &file_));
-  reader_ = absl::make_unique<io::RecordReader>(file_.get());
-  offset_ = 0;
+  io::RecordReaderOptions opts;
+  opts.buffer_size = 2 << 20;  // 2MB
+  reader_ = absl::make_unique<io::SequentialRecordReader>(file_.get(), opts);
   return Status::OK();
 }
 

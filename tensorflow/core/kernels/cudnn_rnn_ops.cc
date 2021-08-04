@@ -15,6 +15,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <stddef.h>
+
 #include <atomic>
 #include <cmath>
 #include <functional>
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
@@ -311,7 +313,7 @@ DeviceMemory<U> CastDeviceMemory(Tensor* tensor) {
 }
 
 DeviceMemoryBase SliceDeviceMemory(const DeviceMemoryBase& device_memory,
-                                   int64 offset, int64 size) {
+                                   int64_t offset, int64_t size) {
   const void* base_ptr = device_memory.opaque();
   void* offset_ptr =
       const_cast<char*>(reinterpret_cast<const char*>(base_ptr) + offset);
@@ -367,10 +369,10 @@ class CudnnRnnAllocatorInTemp : public ScratchAllocator {
     return std::numeric_limits<int64>::max();
   }
 
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
     Tensor temporary_memory;
     const DataType tf_data_type = ToTFDataType<T>::value;
-    int64 allocate_count =
+    int64_t allocate_count =
         Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
     Status allocation_status(context_->allocate_temp(
         tf_data_type, TensorShape({allocate_count}), &temporary_memory));
@@ -411,10 +413,10 @@ class CudnnRnnAllocatorInOutput : public ScratchAllocator {
   int64 GetMemoryLimitInBytes() override {
     return std::numeric_limits<int64>::max();
   }
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
     CHECK(total_byte_size_ == 0)
         << "Reserve space allocator can only be called once";
-    int64 allocate_count =
+    int64_t allocate_count =
         Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
 
     Tensor* temporary_memory = nullptr;
@@ -437,39 +439,39 @@ class CudnnRnnAllocatorInOutput : public ScratchAllocator {
   int output_index_;
 };
 
-// A helper to allocate persistent memory for Cudnn RNN models, which is
+// A helper to allocate memory for Cudnn RNN models, which is
 // expected to live between kernel invocations.
 // This class is not thread-safe.
-class CudnnRNNPersistentSpaceAllocator : public ScratchAllocator {
+class CudnnRNNSpaceAllocator : public ScratchAllocator {
  public:
-  explicit CudnnRNNPersistentSpaceAllocator(OpKernelContext* context)
+  explicit CudnnRNNSpaceAllocator(OpKernelContext* context)
       : context_(context) {}
 
-  ~CudnnRNNPersistentSpaceAllocator() override {}
+  ~CudnnRNNSpaceAllocator() override {}
 
   int64 GetMemoryLimitInBytes() override {
     return std::numeric_limits<int64>::max();
   }
 
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
     if (total_byte_size_ != 0) {
       return Status(error::FAILED_PRECONDITION,
-                    "Persistent space allocator can only be called once");
+                    "Space allocator can only be called once");
     }
 
-    Status allocation_status = context_->allocate_persistent(
-        DT_UINT8, TensorShape({byte_size}), &handle_, nullptr);
+    Status allocation_status =
+        context_->allocate_temp(DT_UINT8, TensorShape({byte_size}), &tensor_);
     if (!allocation_status.ok()) {
       return ToExecutorStatus(allocation_status);
     }
     total_byte_size_ += byte_size;
-    return AsDeviceMemory<uint8>(handle_.AccessTensor(context_));
+    return AsDeviceMemory<uint8>(&tensor_);
   }
   int64 TotalByteSize() { return total_byte_size_; }
 
  private:
   int64 total_byte_size_ = 0;
-  PersistentTensor handle_;
+  Tensor tensor_;
   OpKernelContext* context_;  // not owned
 };
 
@@ -557,7 +559,7 @@ struct CudnnRnnConfigComparator {
 // a hash table value in CudnnRNNForwardOp and CudnnRNNBackwardOp).
 struct RnnScratchSpace {
   std::unique_ptr<RnnDescriptor> rnn_desc;
-  std::unique_ptr<CudnnRNNPersistentSpaceAllocator> dropout_state_allocator;
+  std::unique_ptr<CudnnRNNSpaceAllocator> dropout_state_allocator;
 };
 
 // Extract and checks the forward input tensors, parameters, and shapes from the
@@ -694,7 +696,7 @@ Status CreateForwardAndBackwardIODescriptors(
     std::unique_ptr<RnnStateTensorDescriptor>* h_state_desc,
     std::unique_ptr<RnnStateTensorDescriptor>* c_state_desc,
     std::unique_ptr<RnnSequenceTensorDescriptor>* output_desc,
-    const absl::Span<const int>& seq_lengths, bool time_major) {
+    const absl::Span<const int> seq_lengths, bool time_major) {
   StreamExecutor* executor = context->op_device_context()->stream()->parent();
   se::dnn::DataType data_type = ToDataType<T>::value;
 
@@ -826,14 +828,34 @@ Status DoForward(OpKernelContext* context, const RnnDescriptor& rnn_desc,
   }
 
   Stream* stream = context->op_device_context()->stream();
+
+  Tensor seq_lengths_tensor;
+  DeviceMemory<int> seq_lengths_ptr;
+  if (sequence_lengths != nullptr) {
+    TF_RETURN_IF_ERROR(context->allocate_temp(
+        DT_INT32, {static_cast<long>(seq_lengths.size())},
+        &seq_lengths_tensor));
+    seq_lengths_ptr = AsDeviceMemory<int>(&seq_lengths_tensor);
+    if (!stream
+             ->ThenMemcpy(&seq_lengths_ptr, seq_lengths.data(),
+                          seq_lengths.size() * sizeof(int))
+             .ok()) {
+      return errors::InvalidArgument(
+          "Failed to copy memory from host to "
+          "device for sequence_lengths in "
+          "CudnnRNNV3");
+    }
+  }
+
   bool launch_success =
       stream
-          ->ThenRnnForward(rnn_desc, *input_desc, input_data, *h_state_desc,
-                           input_h_data, *c_state_desc, input_c_data,
-                           params_data, *output_desc, &output_data,
-                           *h_state_desc, &output_h_data, *c_state_desc,
-                           &output_c_data, is_training, reserve_space_allocator,
-                           workspace_allocator, output_profile_result)
+          ->ThenRnnForward(rnn_desc, *input_desc, input_data, seq_lengths_ptr,
+                           *h_state_desc, input_h_data, *c_state_desc,
+                           input_c_data, params_data, *output_desc,
+                           &output_data, *h_state_desc, &output_h_data,
+                           *c_state_desc, &output_c_data, is_training,
+                           reserve_space_allocator, workspace_allocator,
+                           output_profile_result)
           .ok();
   return launch_success
              ? Status::OK()
@@ -905,17 +927,36 @@ Status DoBackward(
   // Creates a memory callback for the workspace. The memory lives to the end
   // of this kernel calls.
   Stream* stream = context->op_device_context()->stream();
+
+  Tensor seq_lengths_tensor;
+  DeviceMemory<int> seq_lengths_ptr;
+  if (sequence_lengths != nullptr) {
+    TF_RETURN_IF_ERROR(context->allocate_temp(
+        DT_INT32, {static_cast<long>(seq_lengths.size())},
+        &seq_lengths_tensor));
+    seq_lengths_ptr = AsDeviceMemory<int>(&seq_lengths_tensor);
+    if (!stream
+             ->ThenMemcpy(&seq_lengths_ptr, seq_lengths.data(),
+                          seq_lengths.size() * sizeof(int))
+             .ok()) {
+      return errors::InvalidArgument(
+          "Failed to copy memory from host to "
+          "device for sequence_lengths in "
+          "CudnnRNNBackwardOpV3");
+    }
+  }
+
   bool launch_success =
       stream
           ->ThenRnnBackward(
-              rnn_desc, *input_desc, input_data, *h_state_desc, input_h_data,
-              *c_state_desc, input_c_data, params_data, *output_desc,
-              output_data, *h_state_desc, output_h_data, *c_state_desc,
-              output_c_data, output_backprop_data, output_h_backprop_data,
-              output_c_backprop_data, &input_backprop_data,
-              &input_h_backprop_data, &input_c_backprop_data,
-              &params_backprop_data, &reserve_space_uint8, workspace_allocator,
-              output_profile_result)
+              rnn_desc, *input_desc, input_data, seq_lengths_ptr, *h_state_desc,
+              input_h_data, *c_state_desc, input_c_data, params_data,
+              *output_desc, output_data, *h_state_desc, output_h_data,
+              *c_state_desc, output_c_data, output_backprop_data,
+              output_h_backprop_data, output_c_backprop_data,
+              &input_backprop_data, &input_h_backprop_data,
+              &input_c_backprop_data, &params_backprop_data,
+              &reserve_space_uint8, workspace_allocator, output_profile_result)
           .ok();
   return launch_success
              ? Status::OK()
@@ -933,8 +974,8 @@ void RestoreParams(const OpInputList params_input,
       << "Number of params mismatch. Expected " << params_input.size()
       << ", got " << num_params;
   for (int i = 0; i < params.size(); i++) {
-    int64 size_in_bytes = params[i].size;
-    int64 size = size_in_bytes / sizeof(T);
+    int64_t size_in_bytes = params[i].size;
+    int64_t size = size_in_bytes / sizeof(T);
     CHECK(size == params_input[i].NumElements())
         << "Params size mismatch. Expected " << size << ", got "
         << params_input[i].NumElements();
@@ -1087,8 +1128,8 @@ class CudnnRNNKernelCommon : public OpKernel {
     auto key = std::make_pair(model_shapes, algo_config.algorithm());
     RnnScratchSpace& rnn_state = (*cache)[key];
     if (rnn_state.rnn_desc == nullptr || ResetRndGenState()) {
-      CudnnRNNPersistentSpaceAllocator* dropout_state_allocator =
-          new CudnnRNNPersistentSpaceAllocator(context);
+      CudnnRNNSpaceAllocator* dropout_state_allocator =
+          new CudnnRNNSpaceAllocator(context);
       rnn_state.dropout_state_allocator.reset(dropout_state_allocator);
       Status status = CreateRnnDescriptor<T>(
           context, model_shapes, input_mode, algo_config,
@@ -1127,10 +1168,10 @@ class CudnnRNNParamsSizeOp<GPUDevice, T, Index> : public CudnnRNNKernelCommon {
     std::unique_ptr<RnnDescriptor> rnn_desc;
     OP_REQUIRES_OK(context,
                    ExtractCudnnRNNParamsInfo<T>(context, num_proj_, &rnn_desc));
-    int64 params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
+    int64_t params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
     CHECK(params_size_in_bytes % sizeof(T) == 0)
         << "params_size_in_bytes must be multiple of element size";
-    int64 params_size = params_size_in_bytes / sizeof(T);
+    int64_t params_size = params_size_in_bytes / sizeof(T);
 
     Tensor* output_t = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, {1}, &output_t));
@@ -1200,7 +1241,7 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
     std::unique_ptr<RnnDescriptor> rnn_desc;
     OP_REQUIRES_OK(context,
                    ExtractCudnnRNNParamsInfo<T>(context, num_proj_, &rnn_desc));
-    int64 params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
+    int64_t params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
     CHECK(params_size_in_bytes % sizeof(T) == 0)
         << "params_size_in_bytes must be multiple of element size";
 
@@ -1258,8 +1299,8 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
     int h_num_units = (num_proj_ == 0 ? num_units : num_proj_);
     int c_num_units = (num_proj_ == 0 ? 0 : num_units);
     for (int i = 0; i < rnn_desc->ParamsWeightRegions().size(); i++) {
-      int64 size_in_bytes = rnn_desc->ParamsWeightRegions()[i].size;
-      int64 size = size_in_bytes / sizeof(T);
+      int64_t size_in_bytes = rnn_desc->ParamsWeightRegions()[i].size;
+      int64_t size = size_in_bytes / sizeof(T);
       const int layer_idx = i / num_params_weights_per_layer;
       const int index_within_layer = i % num_params_weights_per_layer;
       int width = 0, height = (num_proj_ == 0 ? h_num_units : c_num_units);
@@ -1309,8 +1350,8 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
                                 num_params_biases_, ", got ",
                                 rnn_desc->ParamsBiasRegions().size()));
     for (int i = 0; i < rnn_desc->ParamsBiasRegions().size(); i++) {
-      int64 size_in_bytes = rnn_desc->ParamsBiasRegions()[i].size;
-      int64 size = size_in_bytes / sizeof(T);
+      int64_t size_in_bytes = rnn_desc->ParamsBiasRegions()[i].size;
+      int64_t size = size_in_bytes / sizeof(T);
       OP_REQUIRES(context, size == num_units,
                   errors::InvalidArgument("Params size mismatch. Expected ",
                                           num_units, ", got ", size));
@@ -1377,7 +1418,7 @@ class CudnnRNNCanonicalToParams<GPUDevice, T> : public CudnnRNNKernelCommon {
     std::unique_ptr<RnnDescriptor> rnn_desc;
     OP_REQUIRES_OK(context,
                    ExtractCudnnRNNParamsInfo<T>(context, num_proj_, &rnn_desc));
-    int64 params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
+    int64_t params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
     CHECK(params_size_in_bytes % sizeof(T) == 0)
         << "params_size_in_bytes must be multiple of element size";
     Tensor* output = nullptr;
@@ -1665,6 +1706,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
               << algo_config->algorithm()->tensor_ops_enabled() << ").";
       return Status::OK();
     }
+    profiler::ScopedAnnotation trace("cudnn_autotuning");
 
     // Create temp tensors when profiling backprop pass.
     auto data_type = input->dtype();

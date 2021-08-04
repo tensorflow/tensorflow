@@ -25,7 +25,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Tensor VecShape(int64 v) {
+Tensor VecShape(int64_t v) {
   if (v >= std::numeric_limits<int32>::max()) {
     Tensor shape(DT_INT64, TensorShape({1}));
     shape.vec<int64>()(0) = v;
@@ -37,21 +37,21 @@ Tensor VecShape(int64 v) {
   }
 }
 
-Graph* RandomUniform(int64 n) {
+Graph* RandomUniform(int64_t n) {
   Graph* g = new Graph(OpRegistry::Global());
   test::graph::RandomUniform(g, test::graph::Constant(g, VecShape(n)),
                              DT_FLOAT);
   return g;
 }
 
-Graph* RandomNormal(int64 n) {
+Graph* RandomNormal(int64_t n) {
   Graph* g = new Graph(OpRegistry::Global());
   test::graph::RandomGaussian(g, test::graph::Constant(g, VecShape(n)),
                               DT_FLOAT);
   return g;
 }
 
-Graph* TruncatedNormal(int64 n) {
+Graph* TruncatedNormal(int64_t n) {
   Graph* g = new Graph(OpRegistry::Global());
   test::graph::TruncatedNormal(g, test::graph::Constant(g, VecShape(n)),
                                DT_FLOAT);
@@ -76,7 +76,7 @@ BM_RNG(gpu, RandomUniform);
 BM_RNG(gpu, RandomNormal);
 BM_RNG(gpu, TruncatedNormal);
 
-Tensor VecAlphas(int64 n) {
+Tensor VecAlphas(int64_t n) {
   Tensor alphas(DT_DOUBLE, TensorShape({n}));
   for (int i = 0; i < n; i++) {
     // Alternate back and forth between small-and-growing (.25) and

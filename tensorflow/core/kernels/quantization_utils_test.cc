@@ -167,7 +167,7 @@ void TestRequantizeManyInNewRange32To8Bit(
   qint32 high = FloatToQuantized<qint32>(out_max, in_min, in_max);
   std::vector<qint32> vals;
   vals.clear();
-  for (int32 i = low; i <= high; ++i) vals.push_back(i);
+  for (int32_t i = low; i <= high; ++i) vals.push_back(i);
   TestRequantizeMany(eigen_device, in_min, in_max, out_min, out_max, vals);
 }
 
@@ -277,7 +277,7 @@ void TestRequantizeManyInNewRangeEigenVsNonEigen() {
 }
 
 template <typename InputType, typename OutputType>
-void TimeRequantizeManyInNewRange(int64 num_elements, int64 iterations,
+void TimeRequantizeManyInNewRange(int64_t num_elements, int64_t iterations,
                                   bool use_eigen) {
   const float input_min = -100.0f;
   const float input_max = 100.0f;
@@ -306,9 +306,9 @@ void TimeRequantizeManyInNewRange(int64 num_elements, int64 iterations,
                       TensorShape{num_elements});
   auto output_values_ref = o_tensor_ref.flat<OutputType>();
 
-  int64 total_duration = 0;
+  int64_t total_duration = 0;
   for (int i = 0; i < iterations; ++i) {
-    const int64 start_time = Env::Default()->NowMicros();
+    const int64_t start_time = Env::Default()->NowMicros();
     if (use_eigen) {
       RequantizeManyInNewRangeUsingEigen<InputType, OutputType>(
           eigen_device, i_tensor, input_min, input_max, output_min, output_max,
@@ -318,12 +318,12 @@ void TimeRequantizeManyInNewRange(int64 num_elements, int64 iterations,
           i_array.data(), i_array.size(), input_min, input_max, output_min,
           output_max, output_values_ref.data());
     }
-    const int64 end_time = Env::Default()->NowMicros();
+    const int64_t end_time = Env::Default()->NowMicros();
     total_duration += end_time - start_time;
   }
-  const int64 one_run_duration = total_duration / iterations;
+  const int64_t one_run_duration = total_duration / iterations;
 
-  const int64 num_ops = num_elements;
+  const int64_t num_ops = num_elements;
 
   const double million_ops_per_second =
       (iterations * num_ops) / static_cast<double>(total_duration);
@@ -363,8 +363,8 @@ void TestFloatToQuantizedInPlaceUsingEigen(
 
     const int tolerance = 1;
     for (int i = 0; i < values_count; ++i) {
-      int32 expected = FloatToQuantized<T>(input_array(i), f_min, f_max);
-      int32 actual = output_array(i);
+      int32_t expected = FloatToQuantized<T>(input_array(i), f_min, f_max);
+      int32_t actual = output_array(i);
 
       // The eigen computation uses float for constants and computation
       // instead
@@ -404,7 +404,7 @@ void TestQuantizedToFloatInPlaceUsingEigen(
       if (sizeof(T) == 1) {
         input_array(i) = Eigen::NumTraits<T>::lowest() + i;
       } else {
-        int64 offset = static_cast<int64>(q_range / values_count * i);
+        int64_t offset = static_cast<int64>(q_range / values_count * i);
         input_array(i) = static_cast<int32>(
             std::min<int64>(Eigen::NumTraits<T>::lowest() + offset,
                             Eigen::NumTraits<T>::highest()));
@@ -694,7 +694,7 @@ void TestQuantizedTensorToFloat() {
 
   // Use a quantizer centered at 0.
   float input_range = 1LL << 25;
-  int64 num_levels = (1LL << 32) - 1;
+  int64_t num_levels = (1LL << 32) - 1;
   float step_size =
       static_cast<float>(static_cast<double>(input_range) / num_levels);
   float q_compatible_min_value =

@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/text_line_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -28,7 +28,7 @@ tstring LocalTempFilename() {
 class TextLineDatasetParams : public DatasetParams {
  public:
   TextLineDatasetParams(std::vector<tstring> filenames,
-                        CompressionType compression_type, int64 buffer_size,
+                        CompressionType compression_type, int64_t buffer_size,
                         string node_name)
       : DatasetParams({DT_STRING}, {PartialTensorShape({})},
                       std::move(node_name)),

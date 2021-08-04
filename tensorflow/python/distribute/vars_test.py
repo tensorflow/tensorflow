@@ -444,15 +444,17 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
         self.assertEqual(3.0, self.evaluate(v_on_write.read_value()))
 
 
-@combinations.generate(
-    combinations.combine(
-        distribution=[
-            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-        ],
-        mode=["graph", "eager"],
-        use_var_policy=[True, False]))
+ms_combination = combinations.combine(
+    distribution=[strategy_combinations.mirrored_strategy_with_gpu_and_cpu],
+    mode=["graph", "eager"])
+tpu_combination = combinations.combine(
+    distribution=[strategy_combinations.tpu_strategy_packed_var],
+    mode=["graph", "eager"])
+
+
 class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
 
+  @combinations.generate(ms_combination)
   def testScatterSub(self, distribution):
     with distribution.scope():
       v = variables_lib.Variable(
@@ -477,6 +479,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
             distribution.run(scatter_sub)))
     self.assertAllEqual([[0., -1., -1.], [0., -1., -1.]], per_replica_results)
 
+  @combinations.generate(ms_combination)
   def testScatterAdd(self, distribution):
     with distribution.scope():
       v = variables_lib.Variable(
@@ -498,6 +501,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
             distribution.run(scatter_add)))
     self.assertAllEqual([[0, 2, 2], [0, 2, 2]], per_replica_results)
 
+  @combinations.generate(ms_combination)
   def testScatterDiv(self, distribution):
     with distribution.scope():
       v = variables_lib.Variable(
@@ -519,6 +523,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
             distribution.run(scatter_div)))
     self.assertAllEqual([[0, 2, 1], [0, 2, 1]], per_replica_results)
 
+  @combinations.generate(ms_combination)
   def testScatterMul(self, distribution):
     with distribution.scope():
       v = variables_lib.Variable(
@@ -541,6 +546,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
             distribution.run(scatter_mul)))
     self.assertAllClose([[2., 1.5, 1.], [2., 1.5, 1.]], per_replica_results)
 
+  @combinations.generate(ms_combination)
   def testScatterMin(self, distribution):
     with distribution.scope():
       v1 = variables_lib.Variable(
@@ -568,6 +574,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
             distribution.run(scatter_min, args=(v2,))))
     self.assertAllClose([[0, 1, 0], [0, 1, 0]], per_replica_results)
 
+  @combinations.generate(ms_combination)
   def testScatterMax(self, distribution):
     with distribution.scope():
       v1 = variables_lib.Variable(
@@ -595,6 +602,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
             distribution.run(scatter_max, args=(v2,))))
     self.assertAllClose([[1, 0, 0], [1, 0, 0]], per_replica_results)
 
+  @combinations.generate(ms_combination)
   def testScatterUpdate(self, distribution):
     with distribution.scope():
       v1 = variables_lib.Variable(
@@ -622,6 +630,40 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
             distribution.run(scatter_update, args=(v2,))))
     self.assertAllClose([[0, 3, 0], [0, 3, 0]], per_replica_results)
 
+  @combinations.generate(ms_combination + tpu_combination)
+  def testScatterOpsWithNoneAggregation(self, distribution):
+
+    def assert_close(v, op, delta, expect):
+      scatter_op = getattr(v, op)
+
+      @def_function.function
+      def scatter_xxx():
+        return scatter_op(delta)
+
+      per_replica_results = self.evaluate(
+          distribution.experimental_local_results(
+              distribution.run(scatter_xxx)))
+      self.assertAllClose([expect, expect], per_replica_results)
+
+    with distribution.scope():
+      v = variables_lib.Variable(
+          [4.], aggregation=variables_lib.VariableAggregation.NONE)
+    self.evaluate(variables_lib.global_variables_initializer())
+
+    delta = indexed_slices.IndexedSlices(
+        values=array_ops.identity([2.]),
+        indices=array_ops.identity([0]),
+        dense_shape=(1,))
+
+    assert_close(v, "scatter_sub", delta, [2.])
+    assert_close(v, "scatter_add", delta, [4.])
+    assert_close(v, "scatter_max", delta, [4.])
+    assert_close(v, "scatter_min", delta, [2.])
+    assert_close(v, "scatter_mul", delta, [4.])
+    assert_close(v, "scatter_div", delta, [2.])
+    assert_close(v, "scatter_update", delta, [2.])
+
+  @combinations.generate(ms_combination + tpu_combination)
   def testScatterOpsInCrossReplicaContext(self, distribution):
     with distribution.scope():
       v1 = variables_lib.Variable(

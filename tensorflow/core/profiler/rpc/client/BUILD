@@ -14,7 +14,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -23,6 +23,7 @@ cc_library(
     hdrs = ["capture_profile.h"],
     copts = tf_profiler_copts(),
     visibility = [
+        "//tensorflow/compiler/xla/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
     ],
     deps = [
@@ -136,6 +137,7 @@ cc_library(
     srcs = ["remote_profiler_session_manager.cc"],
     hdrs = ["remote_profiler_session_manager.h"],
     copts = tf_profiler_copts(),
+    tags = ["notap"],  # TODO(b/188564813): Flaky test.
     deps = [
         ":profiler_client_for_pybind",
         "//tensorflow/core:lib",

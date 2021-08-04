@@ -18,9 +18,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -29,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -37,17 +38,22 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+using tensorflow::data::AutoShardPolicy;
+
 constexpr char kAssertCardinalityDatasetOpName[] = "AssertCardinalityDataset";
 constexpr char kShardDatasetOpName[] = "ShardDataset";
 constexpr char kShuffleDatasetOpName[] = "ShuffleDataset";
 constexpr char kShuffleDatasetV2OpName[] = "ShuffleDatasetV2";
 constexpr char kShuffleDatasetV3OpName[] = "ShuffleDatasetV3";
 constexpr char kPrefetchDatasetOpName[] = "PrefetchDataset";
+constexpr char kFinalizeDatasetOpName[] = "FinalizeDataset";
+constexpr char kOptionsDatasetOpName[] = "OptionsDataset";
 constexpr char kRebatchDatasetOpName[] = "RebatchDataset";
 constexpr char kRebatchDatasetV2OpName[] = "RebatchDatasetV2";
 constexpr char kTensorDatasetOpName[] = "TensorDataset";
 constexpr char kTensorSliceDatasetOpName[] = "TensorSliceDataset";
 constexpr char kPlaceholderOpName[] = "Placeholder";
+constexpr char kConstOpName[] = "Const";
 
 constexpr char kNumWorkersAttrName[] = "num_workers";
 constexpr char kNumReplicasAttrName[] = "num_replicas";
@@ -71,7 +77,7 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 28> kPassThroughOps = {
+constexpr std::array<const char*, 31> kPassThroughOps = {
     "_Retval",
     "AssertNextDataset",
     "BatchDataset",
@@ -80,13 +86,16 @@ constexpr std::array<const char*, 28> kPassThroughOps = {
     "ExperimentalParseExampleDataset",
     "ExperimentalRebatchDataset",
     "FilterDataset",
+    "FinalizeDataset",
     "Identity",
     "MapAndBatchDataset",
     "MapDataset",
     "MaxIntraOpParallelismDataset",
     "ModelDataset",
     "OptimizeDataset",
+    "OptionsDataset",
     "PaddedBatchDataset",
+    "ParallelBatchDataset",
     "ParallelMapDataset",
     "ParseExampleDataset",
     "PrefetchDataset",
@@ -120,9 +129,10 @@ constexpr std::array<const char*, 5> kUnshardableSourceDatasetOps = {
 };
 // clang-format on
 
-Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
-                     AutoShardPolicy policy, int64 num_replicas,
-                     GraphDef* output);
+Status OptimizeGraph(const GrapplerItem& item, int64_t num_workers,
+                     int64_t index, AutoShardPolicy policy,
+                     int64_t num_replicas, GraphDef* output,
+                     AutoShardPolicy* policy_applied);
 
 template <std::size_t SIZE>
 bool IsDatasetNodeOfType(const NodeDef& node,
@@ -138,7 +148,7 @@ bool IsDatasetNodeOfType(const NodeDef& node,
 
 // Adds a ShardDataset node before `add_before`.
 Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
-                    int64 num_workers, int64 index) {
+                    int64_t num_workers, int64_t index) {
   NodeDef new_node;
   new_node.set_op(kShardDatasetOpName);
   graph_utils::SetUniqueGraphNodeName(kShardDatasetOpName, graph->graph(),
@@ -379,7 +389,7 @@ Status RemoveShuffleDatasetV3(MutableGraphView* graph, const NodeDef& node,
 
 Status ProcessDatasetSourceNode(MutableGraphView* graph, const NodeDef& node,
                                 absl::flat_hash_set<string>* nodes_to_delete,
-                                int64 num_workers, int64 index) {
+                                int64_t num_workers, int64_t index) {
   string shuffle_op_name = "";
   string buffer_size_node = "";
   string seed_node = "";
@@ -420,7 +430,7 @@ Status ProcessDatasetSourceNode(MutableGraphView* graph, const NodeDef& node,
 }
 
 const NodeDef* FindFuncAndTensorSliceDataset(
-    const NodeDef* node, int64 num_workers, int64 index,
+    const NodeDef* node, int64_t num_workers, int64_t index,
     FunctionLibraryDefinition* flib, MutableGraphView* graph,
     absl::flat_hash_set<string>* nodes_to_delete) {
   if (IsDatasetNodeOfType(*node, kFuncDatasetOps)) {
@@ -446,8 +456,8 @@ const NodeDef* FindFuncAndTensorSliceDataset(
                                        graph, nodes_to_delete);
 }
 
-Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers, int64 index,
-                           FunctionLibraryDefinition* flib,
+Status RecursivelyHandleOp(const NodeDef& node, int64_t num_workers,
+                           int64_t index, FunctionLibraryDefinition* flib,
                            MutableGraphView* graph,
                            absl::flat_hash_set<string>* nodes_to_delete) {
   if (node.op() == kAssertCardinalityDatasetOpName) {
@@ -551,7 +561,7 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers, int64 index,
 // Additionally, we remove sources of randomness (e.g. ShuffleDataset) that
 // occur upstream of the ShardDataset transformation to ensure that sharding
 // returns a sensible result.
-Status ShardByFile(const NodeDef& sink_node, int64 num_workers, int64 index,
+Status ShardByFile(const NodeDef& sink_node, int64_t num_workers, int64_t index,
                    FunctionLibraryDefinition* flib, MutableGraphView* graph) {
   absl::flat_hash_set<string> nodes_to_delete;
   TF_RETURN_IF_ERROR(RecursivelyHandleOp(sink_node, num_workers, index, flib,
@@ -559,7 +569,7 @@ Status ShardByFile(const NodeDef& sink_node, int64 num_workers, int64 index,
   return graph->DeleteNodes(nodes_to_delete);
 }
 
-Status RewriteRebatchV2ToV1(const NodeDef& sink_node, int64 num_replicas,
+Status RewriteRebatchV2ToV1(const NodeDef& sink_node, int64_t num_replicas,
                             MutableGraphView* graph) {
   // The final node before AutoShardDataset is RebatchDataset.
   // This is always the case as RebatchDataset and AutoShardDataset are internal
@@ -608,15 +618,19 @@ Status RewriteRebatchV2ToV1(const NodeDef& sink_node, int64 num_replicas,
   return Status::OK();
 }
 
-Status ShardByData(const NodeDef& sink_node, int64 num_workers, int64 index,
-                   int64 num_replicas, MutableGraphView* graph) {
+Status ShardByData(const NodeDef& sink_node, int64_t num_workers, int64_t index,
+                   int64_t num_replicas, MutableGraphView* graph) {
   const NodeDef* shard_before = &sink_node;
-  // We sometimes insert a PrefetchDataset at the end of the input pipeline
-  // before autosharding. When sharding by data, we should insert the shard
-  // before the prefetch so that the right number of elements is prefetched.
+  // We sometimes insert a PrefetchDataset, OptionsDataset, and FinalizeDataset
+  // at the end of the input pipeline before autosharding. When sharding by
+  // data, we should insert the shard before the these datasets so that the
+  // right number of elements is prefetched.
   NodeDef* input_node = graph_utils::GetInputNode(sink_node, *graph);
-  if (input_node->op() == kPrefetchDatasetOpName) {
+  while (input_node->op() == kPrefetchDatasetOpName ||
+         input_node->op() == kOptionsDatasetOpName ||
+         input_node->op() == kFinalizeDatasetOpName) {
     shard_before = input_node;
+    input_node = graph_utils::GetInputNode(*input_node, *graph);
   }
   // Sharding by data only works with legacy RebatchDataset. As such, we rewrite
   // all instances of RebatchDatasetV2 to RebatchDataset.
@@ -624,9 +638,40 @@ Status ShardByData(const NodeDef& sink_node, int64 num_workers, int64 index,
   return AddShardNode(graph, *shard_before, num_workers, index);
 }
 
-Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
-                     AutoShardPolicy policy, int64 num_replicas,
-                     GraphDef* output) {
+// Searches the dataset graph replacing any occurence of `shard(1, 0)` with
+// `shard(num_workers, index)`.
+Status ShardByHint(const NodeDef& sink_node, int64_t num_workers, int64_t index,
+                   int64_t num_replicas, MutableGraphView* graph) {
+  auto get_shard_node = [graph](const NodeDef& node) -> const NodeDef* {
+    if (node.op() != kShardDatasetOpName) return nullptr;
+    auto num_workers_node = graph->GetNode(node.input(1));
+    if (num_workers_node->op() != kConstOpName) return nullptr;
+    if (num_workers_node->attr().at("value").tensor().int64_val(0) !=
+        tensorflow::data::kShardHint)
+      return nullptr;
+    return &node;
+  };
+
+  auto* num_workers_node =
+      graph_utils::AddScalarConstNode(static_cast<int64>(num_workers), graph);
+  auto* worker_index_node =
+      graph_utils::AddScalarConstNode(static_cast<int64>(index), graph);
+
+  for (const NodeDef& node : graph->graph()->node()) {
+    const NodeDef* shard_node = get_shard_node(node);
+    if (!shard_node) continue;
+    auto mutable_node = graph->GetNode(shard_node->name());
+    *mutable_node->mutable_input(1) = num_workers_node->name();
+    *mutable_node->mutable_input(2) = worker_index_node->name();
+  }
+  return Status::OK();
+}
+
+Status OptimizeGraph(const GrapplerItem& item, int64_t num_workers,
+                     int64_t index, AutoShardPolicy policy,
+                     int64_t num_replicas, GraphDef* output,
+                     AutoShardPolicy* policy_applied) {
+  *policy_applied = policy;
   if (policy == AutoShardPolicy::OFF ||
       (policy == AutoShardPolicy::FILE && num_workers == 1 && index == 0)) {
     return Status::OK();
@@ -642,24 +687,25 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
   switch (policy) {
     case AutoShardPolicy::OFF:
       return Status::OK();
-
     case AutoShardPolicy::FILE:
       return ShardByFile(*sink_node, num_workers, index, &flib, &graph);
-
     case AutoShardPolicy::DATA:
       return ShardByData(*sink_node, num_workers, index, num_replicas, &graph);
-
+    case AutoShardPolicy::HINT:
+      return ShardByHint(*sink_node, num_workers, index, num_replicas, &graph);
     case AutoShardPolicy::AUTO:
     default:
       Status s = ShardByFile(*sink_node, num_workers, index, &flib, &graph);
       if (errors::IsNotFound(s)) {
-        LOG(WARNING) << "In AUTO-mode, and switching to DATA-based sharding, "
-                        "instead of FILE-based sharding as we cannot find "
-                        "appropriate reader dataset op(s) to shard. Error: "
+        LOG(WARNING) << "AUTO sharding policy will apply DATA sharding policy "
+                        "as it failed to apply FILE sharding policy because of "
+                        "the following reason: "
                      << s.error_message();
+        *policy_applied = AutoShardPolicy::DATA;
         return ShardByData(*sink_node, num_workers, index, num_replicas,
                            &graph);
       }
+      *policy_applied = AutoShardPolicy::FILE;
       return s;
   }
 }
@@ -689,7 +735,8 @@ Status AutoShard::Init(
   if (auto_shard_policy_ != AutoShardPolicy::OFF &&
       auto_shard_policy_ != AutoShardPolicy::AUTO &&
       auto_shard_policy_ != AutoShardPolicy::DATA &&
-      auto_shard_policy_ != AutoShardPolicy::FILE) {
+      auto_shard_policy_ != AutoShardPolicy::FILE &&
+      auto_shard_policy_ != AutoShardPolicy::HINT) {
     return errors::InvalidArgument(kAutoShardPolicyAttrName, " is invalid.");
   }
 
@@ -710,13 +757,23 @@ Status AutoShard::Init(
   return Status::OK();
 }
 
-Status AutoShard::OptimizeAndCollectStats(Cluster* /* cluster */,
+Status AutoShard::OptimizeAndCollectStats(Cluster* cluster,
                                           const GrapplerItem& item,
                                           GraphDef* output,
                                           OptimizationStats* stats) {
   *output = item.graph;
+  AutoShardPolicy policy_applied;
   TF_RETURN_IF_ERROR(OptimizeGraph(item, num_workers_, index_,
-                                   auto_shard_policy_, num_replicas_, output));
+                                   auto_shard_policy_, num_replicas_, output,
+                                   &policy_applied));
+
+  // Only record on the first shard to avoid duplication.
+  if (index_ == 0) {
+    // item.id is always the same so we use the address of the cluster as id.
+    string id = strings::StrCat(reinterpret_cast<uint64>(cluster));
+    metrics::RecordTFDataAutoShard(id, policy_applied, num_workers_,
+                                   num_replicas_);
+  }
   stats->num_changes++;
   return Status::OK();
 }

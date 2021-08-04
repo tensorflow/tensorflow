@@ -11,8 +11,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/shuffle_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include <string>
+#include <utility>
+
+#include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -24,8 +28,9 @@ constexpr char kShuffleAndRepeatNodeName[] = "shuffle_and_repeat_dataset";
 class ShuffleDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  ShuffleDatasetParams(T input_dataset_params, int64 buffer_size, int64 seed,
-                       int64 seed2, int64 count, bool reshuffle_each_iteration,
+  ShuffleDatasetParams(T input_dataset_params, int64_t buffer_size,
+                       int64_t seed, int64_t seed2, int64_t count,
+                       bool reshuffle_each_iteration,
                        DataTypeVector output_dtypes,
                        std::vector<PartialTensorShape> output_shapes,
                        string node_name)

@@ -75,7 +75,7 @@ TEST(AddQuantAdjustments, OneNode) {
   ASSERT_EQ(2, graph.values().size());
 
   auto transformation = NewAddQuantAdjustments();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("add_quant_adjustments", transformation.get());
 
   EXPECT_EQ(1, graph.nodes().size());
@@ -141,7 +141,7 @@ TEST(AddQuantAdjustments, GeneralCase) {
   ASSERT_EQ(4, graph.values().size());
 
   auto transformation = NewAddQuantAdjustments();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("add_quant_adjustments", transformation.get());
 
   EXPECT_EQ(4, graph.nodes().size());

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/stream_executor/gpu/gpu_types.h"
 
 #if TENSORFLOW_USE_ROCM
 // Local hipify of cuda symbols
@@ -48,12 +49,16 @@ namespace xla {
 namespace gpu {
 
 ncclRedOp_t ToNcclReduction(ReductionKind kind);
-StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type);
+StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
+    PrimitiveType element_type);
 
 bool IsGlobalNcclConfig();
+bool IsNcclLaunchModeParallel();
 
-Status ToStatus(ncclResult_t s, const char* file, int64 line, const char* expr);
-Status ToStatus(cudaError_t s, const char* file, int64 line, const char* expr);
+Status ToStatus(ncclResult_t s, const char* file, int64_t line,
+                const char* expr);
+Status ToStatus(cudaError_t s, const char* file, int64_t line,
+                const char* expr);
 
 // Macros to return or warn on CUDA/NCCL errors.  (The same macro works for both
 // NCCL and CUDA errors.)
@@ -61,7 +66,7 @@ Status ToStatus(cudaError_t s, const char* file, int64 line, const char* expr);
 // It's tempting to say these macros belong in an XLA header somewhere, but in
 // practice we don't do much direct-to-CUDA-API stuff outside of this file.
 #define XLA_CUDA_STATUS(expr) \
-  ::xla::gpu::ToStatus(expr, __FILE__, __LINE__, #expr)
+  xla::gpu::ToStatus(expr, __FILE__, __LINE__, #expr)
 
 #define XLA_CUDA_RETURN_IF_ERROR(expr) \
   do {                                 \
@@ -100,8 +105,6 @@ class NcclClique {
   absl::Mutex mu_;
 };
 
-RefcountingHashMap<NcclCliqueKey, NcclClique>& NcclCliqueCache();
-
 struct LocalParticipant {
   int device_ordinal;
   int rank;
@@ -113,13 +116,12 @@ StatusOr<std::vector<LocalParticipant>> GetLocalParticipants(
 
 class LockedNcclClique {
  public:
-  LockedNcclClique(std::shared_ptr<NcclClique> clique,
-                   std::unique_ptr<absl::MutexLock> lock,
+  LockedNcclClique(NcclClique& clique, std::unique_ptr<absl::MutexLock> lock,
                    absl::BlockingCounter* counter);
   LockedNcclClique(LockedNcclClique&&);
   ~LockedNcclClique();
 
-  std::shared_ptr<NcclClique> clique;
+  NcclClique& clique;
 
  private:
   // Must come after clique, so it is destroyed first.
@@ -128,10 +130,62 @@ class LockedNcclClique {
   absl::BlockingCounter* counter_;
 };
 
+// Threadsafe leaky map from NcclCliqueKeys to NcclCliques.
+class NcclCliqueMap {
+ public:
+  StatusOr<NcclClique*> GetOrTryCreateIfAbsent(
+      const NcclCliqueKey& key,
+      const std::function<StatusOr<std::unique_ptr<NcclClique>>(
+          const NcclCliqueKey&)>& value_factory) ABSL_LOCKS_EXCLUDED(mu_);
+
+  // Runs a function over every key/value in the map.
+  void ForEach(
+      const std::function<void(const NcclCliqueKey&, const NcclClique&)>& fn)
+      ABSL_LOCKS_EXCLUDED(mu_);
+
+ private:
+  absl::Mutex mu_;
+  absl::flat_hash_map<NcclCliqueKey, std::unique_ptr<NcclClique>> map_
+      ABSL_GUARDED_BY(mu_);
+};
+
+NcclCliqueMap& NcclCliqueCache();
+
+struct NcclCliqueParticipantData : public ParticipantData {
+  // For running in StreamExecutor. To be deprecated after transitioning to
+  // TFRT.
+  NcclCliqueParticipantData(const RendezvousKey& rendezvous_key,
+                            int64_t device_ordinal, se::Stream* stream)
+      : ParticipantData(rendezvous_key),
+        device_ordinal(device_ordinal),
+        stream(stream) {}
+
+  // For running in TFRT.
+  NcclCliqueParticipantData(const RendezvousKey& rendezvous_key,
+                            se::gpu::GpuContextHandle context)
+      : ParticipantData(rendezvous_key), stream(nullptr), context(context) {}
+
+  int64 device_ordinal;
+  se::Stream* stream;
+  se::gpu::GpuContextHandle context;
+
+  std::string ToString() const override {
+    if (stream != nullptr) {
+      return absl::StrFormat(
+          "NcclCliqueParticipantData{rendezvous_key=%s, "
+          "device_ordinal=%d, stream=%p}",
+          rendezvous_key.ToString(), device_ordinal, stream);
+    }
+    return absl::StrFormat(
+        "NcclCliqueParticipantData{rendezvous_key=%s, context=%p}",
+        rendezvous_key.ToString(), context);
+  }
+};
+
 // Acquires a locked NCCL clique for use in NCCL collective operations.
 StatusOr<LockedNcclClique> AcquireNcclClique(
-    const RendezvousKey& rendezvous_key, int local_device_ordinal,
-    se::Stream* stream, const std::vector<LocalParticipant>& local_participants,
+    const NcclCliqueParticipantData& participant,
+    const std::vector<LocalParticipant>& local_participants,
     const NcclUniqueIdCallback* callback);  // may be null
 
 }  // namespace gpu

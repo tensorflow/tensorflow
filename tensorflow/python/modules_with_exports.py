@@ -46,7 +46,7 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.client.client_lib import *
 
 # Ops
-from tensorflow.python.ops.standard_ops import *
+from tensorflow.python.ops.standard_ops import *  # pylint: disable=redefined-builtin
 
 # Namespaces
 from tensorflow.python.ops import initializers_ns as initializers
@@ -77,7 +77,6 @@ tf_export(v1=['AttrValue'])(AttrValue)
 tf_export(v1=['ConfigProto'])(ConfigProto)
 tf_export(v1=['Event', 'summary.Event'])(Event)
 tf_export(v1=['GPUOptions'])(GPUOptions)
-tf_export(v1=['GraphDef'])(GraphDef)
 tf_export(v1=['GraphOptions'])(GraphOptions)
 tf_export(v1=['HistogramProto'])(HistogramProto)
 tf_export(v1=['LogMessage'])(LogMessage)

@@ -27,7 +27,6 @@ import numbers
 
 import numpy as np
 
-from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -642,12 +641,10 @@ def sparse_cross(inputs, name=None, separator=None):
   Returns:
     A `SparseTensor` of type `string`.
   """
-  if separator is None and not tf_compat.forward_compatible(2020, 6, 14):
-    return _sparse_cross_internal(inputs=inputs, hashed_output=False, name=name)
   if separator is None:
     separator = "_X_"
   separator = ops.convert_to_tensor(separator, dtypes.string)
-  indices, values, shapes, dense_inputs = _sparse_cross_internval_v2(inputs)
+  indices, values, shapes, dense_inputs = _sparse_cross_internal_v2(inputs)
   indices_out, values_out, shape_out = gen_sparse_ops.sparse_cross_v2(
       indices=indices,
       values=values,
@@ -713,7 +710,7 @@ _sparse_cross_hashed = sparse_cross_hashed
 _DEFAULT_HASH_KEY = 0xDECAFCAFFE
 
 
-def _sparse_cross_internval_v2(inputs):
+def _sparse_cross_internal_v2(inputs):
   """See gen_sparse_ops.sparse_cross_v2."""
   if not isinstance(inputs, (tuple, list)):
     raise TypeError("Inputs must be a list")
@@ -1126,7 +1123,7 @@ def sparse_split_v2(sp_input=None,
 @tf_export("sparse.slice", v1=["sparse.slice", "sparse_slice"])
 @deprecation.deprecated_endpoints("sparse_slice")
 def sparse_slice(sp_input, start, size, name=None):
-  """Slice a `SparseTensor` based on the `start` and `size.
+  """Slice a `SparseTensor` based on the `start` and `size`.
 
   For example, if the input is
 
@@ -2035,9 +2032,9 @@ def sparse_reset_shape(sp_input, new_shape=None):
       `SparseTensor`.
 
   Returns:
-    A `SparseTensor` indices and values unchanged from `input_sp`. Its shape is
+    A `SparseTensor` indices and values unchanged from `sp_input`. Its shape is
       `new_shape` if that is set. Otherwise it is the tight bounding box of
-       `input_sp`
+       `sp_input`
 
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
@@ -2431,13 +2428,30 @@ def sparse_tensor_dense_matmul(sp_a,
   (or SparseTensor) "B". Please note that one and only one of the inputs MUST
   be a SparseTensor and the other MUST be a dense matrix.
 
-  No validity checking is performed on the indices of `A`.  However, the
-  following input format is recommended for optimal behavior:
+  The following input format is recommended (but not required) for optimal
+  performance:
 
   * If `adjoint_a == false`: `A` should be sorted in lexicographically
     increasing order.  Use `sparse.reorder` if you're not sure.
   * If `adjoint_a == true`: `A` should be sorted in order of increasing
     dimension 1 (i.e., "column major" order instead of "row major" order).
+
+  Args:
+    sp_a: SparseTensor (or dense Matrix) A, of rank 2.
+    b: dense Matrix (or SparseTensor) B, with the same dtype as sp_a.
+    adjoint_a: Use the adjoint of A in the matrix multiply.  If A is complex,
+      this is transpose(conj(A)).  Otherwise it's transpose(A).
+    adjoint_b: Use the adjoint of B in the matrix multiply.  If B is complex,
+      this is transpose(conj(B)).  Otherwise it's transpose(B).
+    name: A name prefix for the returned tensors (optional)
+
+  Returns:
+    A dense matrix (pseudo-code in dense np.matrix notation):
+      `A = A.H if adjoint_a else A`
+      `B = B.H if adjoint_b else B`
+      `return A*B`
+
+  Notes:
 
   Using `tf.nn.embedding_lookup_sparse` for sparse multiplication:
 
@@ -2610,20 +2624,6 @@ def sparse_tensor_dense_matmul(sp_a,
   0.8    25  False 1000  1000  0.00211448    0.00752736   3.55992
   ```
 
-  Args:
-    sp_a: SparseTensor (or dense Matrix) A, of rank 2.
-    b: dense Matrix (or SparseTensor) B, with the same dtype as sp_a.
-    adjoint_a: Use the adjoint of A in the matrix multiply.  If A is complex,
-      this is transpose(conj(A)).  Otherwise it's transpose(A).
-    adjoint_b: Use the adjoint of B in the matrix multiply.  If B is complex,
-      this is transpose(conj(B)).  Otherwise it's transpose(B).
-    name: A name prefix for the returned tensors (optional)
-
-  Returns:
-    A dense matrix (pseudo-code in dense np.matrix notation):
-      `A = A.H if adjoint_a else A`
-      `B = B.H if adjoint_b else B`
-      `return A*B`
   """
   # pylint: enable=line-too-long
 

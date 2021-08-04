@@ -44,6 +44,15 @@ struct ClusterFormationPass
   }
 
   void runOnFunction() override;
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-device-cluster-formation";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Form clusters from instructions assigned to same device";
+  }
 };
 
 // Cluster structure captures all the operations that are assigned to same
@@ -188,7 +197,7 @@ void BuildClusters(Block* block, OpBuilder builder) {
   llvm::MapVector<StringRef, Cluster> nearest_clusters;
   for (Operation& op : llvm::make_early_inc_range(*block)) {
     auto device = GetDevice(&op);
-    if (device == "") continue;
+    if (device.empty()) continue;
 
     // If no cluster of same device has been formed yet, create a new cluster
     // with op alone.
@@ -238,9 +247,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateClusterFormationPass() {
   return std::make_unique<ClusterFormationPass>();
 }
 
-static PassRegistration<ClusterFormationPass> pass(
-    "tf-device-cluster-formation",
-    "Form clusters from instructions assigned to same device");
+static PassRegistration<ClusterFormationPass> pass;
 
 }  // namespace TFDevice
 }  // namespace mlir

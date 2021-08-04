@@ -20,8 +20,10 @@ from __future__ import print_function
 
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("__internal__.saved_model.load.VersionedTypeRegistration", v1=[])
 class VersionedTypeRegistration(object):
   """Holds information about one version of a revived type."""
 
@@ -105,6 +107,7 @@ _REVIVED_TYPE_REGISTRY = {}
 _TYPE_IDENTIFIERS = []
 
 
+@tf_export("__internal__.saved_model.load.register_revived_type", v1=[])
 def register_revived_type(identifier, predicate, versions):
   """Register a type for revived objects.
 
@@ -129,7 +132,9 @@ def register_revived_type(identifier, predicate, versions):
           "Got multiple registrations with version {} for type {}".format(
               registration.version, identifier))
     version_numbers.add(registration.version)
-  if identifier in _REVIVED_TYPE_REGISTRY:
+  # TODO(kathywu): Remove the "optimizer" special case here after the Keras
+  # repo optimizer registration has been submitted.
+  if identifier in _REVIVED_TYPE_REGISTRY and identifier != "optimizer":
     raise AssertionError(
         "Duplicate registrations for type {}".format(identifier))
 
@@ -167,11 +172,28 @@ def deserialize(proto):
   return None
 
 
+@tf_export("__internal__.saved_model.load.registered_identifiers", v1=[])
 def registered_identifiers():
+  """Return all the current registered revived object identifiers.
+
+  Returns:
+    A set of strings.
+  """
   return _REVIVED_TYPE_REGISTRY.keys()
 
 
+@tf_export("__internal__.saved_model.load.get_setter", v1=[])
 def get_setter(proto):
+  """Gets the registered setter function for the SavedUserObject proto.
+
+  See VersionedTypeRegistration for info about the setter function.
+
+  Args:
+    proto: SavedUserObject proto
+
+  Returns:
+    setter function
+  """
   _, type_registrations = _REVIVED_TYPE_REGISTRY.get(
       proto.identifier, (None, None))
   if type_registrations is not None:

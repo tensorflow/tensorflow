@@ -366,9 +366,6 @@ class Delegate {
       const auto& input_tensor = tensors_[input];
       const auto tensor_id = input_tensor.tensor_id;
       input_ids.push_back(input);
-      if (input_tensor.shape.b != 1) {
-        return absl::UnimplementedError("Batching is not supported yet.");
-      }
       input_dimensions[input] = input_tensor.shape;
       graph_inputs_.push_back({
           input,               // .id
@@ -440,6 +437,7 @@ class Delegate {
     InferenceContext::CreateInferenceInfo create_info;
     create_info.precision = precision;
     create_info.storage_type = TensorStorageType::BUFFER;
+    create_info.hints.Add(ModelHints::kAllowSpecialKernels);
     RETURN_IF_ERROR(
         inference_context_.InitFromGraphWithTransforms(create_info, &graph, metal_device_));
     return absl::OkStatus();

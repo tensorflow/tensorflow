@@ -48,9 +48,13 @@ GPUOperation CreatePReLU(const GpuInfo& gpu_info,
   if (alpha_hwc) {
     const BHWC shape =
         BHWC(1, alpha_hwc->shape.h, alpha_hwc->shape.w, alpha_hwc->shape.c);
-    TensorStorageType storage_type = SelectBestStorageType(
+    TensorStorageType storage_type;
+    auto status = SelectBestStorageType(
         gpu_info, shape, definition.GetPrimaryStorageType(),
-        definition.GetDataType(), Layout::HWC);
+        definition.GetDataType(), Layout::HWC, &storage_type);
+    if (!status.ok()) {
+      storage_type = TensorStorageType::BUFFER;
+    }
     TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
     desc.UploadData(*alpha_hwc);
     result.args_.AddObject(

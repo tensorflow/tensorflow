@@ -49,7 +49,8 @@ def set_tf_options():
 def do_test(create_signature,
             canonicalize=False,
             show_debug_info=False,
-            use_lite=False):
+            use_lite=False,
+            lift_variables=True):
   """Runs test.
 
   1. Performs absl and tf "main"-like initialization that must run before almost
@@ -70,6 +71,7 @@ def do_test(create_signature,
     show_debug_info: If true, shows debug locations in the resulting MLIR.
     use_lite: If true, importer will not do any graph transformation such as
       lift variables.
+    lift_variables: If false, no variable lifting will be done on the graph.
   """
 
   # Make LOG(ERROR) in C++ code show up on the console.
@@ -100,13 +102,12 @@ def do_test(create_signature,
     builder.save()
 
     logging.info('Saved model to: %s', save_model_path)
-    # TODO(b/153507667): Set the following boolean flag once the hoisting
-    #                    variables logic from SavedModel importer is removed.
-    lift_variables = False
+    exported_names = ''
     upgrade_legacy = True
     if use_lite:
       mlir = pywrap_mlir.experimental_convert_saved_model_v1_to_mlir_lite(
-          save_model_path, ','.join([tf.saved_model.tag_constants.SERVING]),
+          save_model_path, exported_names,
+          ','.join([tf.saved_model.tag_constants.SERVING]),
           upgrade_legacy, show_debug_info)
       # We don't strictly need this, but it serves as a handy sanity check
       # for that API, which is otherwise a bit annoying to test.
@@ -116,7 +117,8 @@ def do_test(create_signature,
                                                         show_debug_info)
     else:
       mlir = pywrap_mlir.experimental_convert_saved_model_v1_to_mlir(
-          save_model_path, ','.join([tf.saved_model.tag_constants.SERVING]),
+          save_model_path, exported_names,
+          ','.join([tf.saved_model.tag_constants.SERVING]),
           lift_variables, upgrade_legacy, show_debug_info)
 
     if canonicalize:

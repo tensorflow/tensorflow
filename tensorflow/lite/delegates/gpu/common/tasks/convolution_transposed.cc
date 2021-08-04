@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
@@ -34,6 +35,19 @@ ConvolutionTransposed::ConvolutionTransposed(
     : GPUOperation(definition),
       stride_(attr.stride.w, attr.stride.h, 1, 1),
       block_size_(2, 2, 1, 2) {
+  if (weights_are_buffer) {
+    if (gpu_info.IsApple()) {
+      weights_layout_ = WeightsLayout::kOSpatialIOGroupO4I4;
+    } else {
+      weights_layout_ = WeightsLayout::kOSpatialIOGroupI4O4;
+    }
+  } else {
+    if (gpu_info.IsApple()) {
+      weights_layout_ = WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4;
+    } else {
+      weights_layout_ = WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4;
+    }
+  }
   const bool is_f16 = definition.precision == CalculationsPrecision::F16;
   if (gpu_info.IsMali()) {
     if (gpu_info.mali_info.IsMidgard()) {
@@ -67,6 +81,19 @@ ConvolutionTransposed::ConvolutionTransposed(
     : GPUOperation(definition),
       stride_(attr.stride.w, attr.stride.h, attr.stride.d, 1),
       block_size_(2, 2, 1, 2) {
+  if (weights_are_buffer) {
+    if (gpu_info.IsApple()) {
+      weights_layout_ = WeightsLayout::kOSpatialIOGroupO4I4;
+    } else {
+      weights_layout_ = WeightsLayout::kOSpatialIOGroupI4O4;
+    }
+  } else {
+    if (gpu_info.IsApple()) {
+      weights_layout_ = WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4;
+    } else {
+      weights_layout_ = WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4;
+    }
+  }
   const bool is_f16 = definition.precision == CalculationsPrecision::F16;
   if (gpu_info.IsMali()) {
     if (gpu_info.mali_info.IsMidgard()) {
@@ -97,21 +124,6 @@ ConvolutionTransposed::ConvolutionTransposed(
                                             weights_are_buffer, block_size_);
 }
 
-ConvolutionTransposed::ConvolutionTransposed(ConvolutionTransposed&& operation)
-    : GPUOperation(std::move(operation)),
-      stride_(operation.stride_),
-      block_size_(operation.block_size_) {}
-
-ConvolutionTransposed& ConvolutionTransposed::operator=(
-    ConvolutionTransposed&& operation) {
-  if (this != &operation) {
-    std::swap(stride_, operation.stride_);
-    std::swap(block_size_, operation.block_size_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
 std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     const OperationDef& op_def, const GpuInfo& gpu_info,
     bool weights_are_buffer, const int4& block_size) {
@@ -120,13 +132,23 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   AddSrcTensor("src_tensor", src_desc);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
-  if (op_def.src_tensors.size() == 2) {
+  if (op_def.src_tensors.size() != 1) {
     // dynamic weights
-    BufferDescriptor desc;
-    desc.element_type = op_def.src_tensors[1].data_type;
-    desc.element_size = 16;
-    desc.memory_type = MemoryType::GLOBAL;
-    AddSrcBuffer("weights", desc);
+    if (weights_layout_ == WeightsLayout::kOSpatialIOGroupI4O4 ||
+        weights_layout_ == WeightsLayout::kOSpatialIOGroupO4I4) {
+      BufferDescriptor desc;
+      desc.element_type = op_def.src_tensors[1].data_type;
+      desc.element_size = 16;
+      desc.memory_type = MemoryType::GLOBAL;
+      AddSrcBuffer("weights", desc);
+    } else {
+      for (int i = 0; i < 4; ++i) {
+        Texture2DDescriptor desc;
+        desc.element_type = op_def.src_tensors[1 + i].data_type;
+        const std::string name = "weights" + std::to_string(i);
+        AddSrcTexture2D("weights" + std::to_string(i), desc);
+      }
+    }
   }
 
   const auto& src_def = op_def.src_tensors[0];
@@ -134,32 +156,48 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   std::string c;
 
   for (int s = 0; s < block_size.w; ++s) {
-    const std::string f0 = weights_are_buffer ? "FLT16_0123(weights_cache[" +
-                                                    std::to_string(s) + "])"
-                                              : "f" + std::to_string(s * 4 + 0);
-    const std::string f1 = weights_are_buffer ? "FLT16_4567(weights_cache[" +
-                                                    std::to_string(s) + "])"
-                                              : "f" + std::to_string(s * 4 + 1);
-    const std::string f2 = weights_are_buffer ? "FLT16_89ab(weights_cache[" +
-                                                    std::to_string(s) + "])"
-                                              : "f" + std::to_string(s * 4 + 2);
-    const std::string f3 = weights_are_buffer ? "FLT16_cdef(weights_cache[" +
-                                                    std::to_string(s) + "])"
-                                              : "f" + std::to_string(s * 4 + 3);
-    switch (op_def.precision) {
-      case CalculationsPrecision::F32:
-      case CalculationsPrecision::F16:
-        c += "#define CONV" + std::to_string(s) + "(R, S)    \\\n";
-        c += "R += S.x * " + f0 + "; \\\n";
-        c += "R += S.y * " + f1 + "; \\\n";
-        c += "R += S.z * " + f2 + "; \\\n";
-        c += "R += S.w * " + f3 + ";   \n";
-        break;
-      case CalculationsPrecision::F32_F16:
-        c += "#define CONV" + std::to_string(s) + "(R, S) \\\n";
-        c += "R += TO_ACCUM_TYPE(S.x * " + f0 + " + S.y * " + f1 + " + S.z * " +
-             f2 + " + S.w * " + f3 + ");\n";
-        break;
+    std::string f0, f1, f2, f3;
+    if (weights_are_buffer) {
+      if (gpu_info.SupportsPointersInKernels()) {
+        f0 = "FLT16_0123(weights_cache[" + std::to_string(s) + "])";
+        f1 = "FLT16_4567(weights_cache[" + std::to_string(s) + "])";
+        f2 = "FLT16_89ab(weights_cache[" + std::to_string(s) + "])";
+        f3 = "FLT16_cdef(weights_cache[" + std::to_string(s) + "])";
+      } else {
+        f0 = "FLT16_0123(flt16val)";
+        f1 = "FLT16_4567(flt16val)";
+        f2 = "FLT16_89ab(flt16val)";
+        f3 = "FLT16_cdef(flt16val)";
+      }
+    } else {
+      f0 = "f" + std::to_string(s * 4 + 0);
+      f1 = "f" + std::to_string(s * 4 + 1);
+      f2 = "f" + std::to_string(s * 4 + 2);
+      f3 = "f" + std::to_string(s * 4 + 3);
+    }
+    if (GetWeightsDescription().IsI4O4()) {
+      switch (op_def.precision) {
+        case CalculationsPrecision::F32:
+        case CalculationsPrecision::F16:
+          c += "#define CONV" + std::to_string(s) + "(R, S)    \\\n";
+          c += "R += S.x * " + f0 + "; \\\n";
+          c += "R += S.y * " + f1 + "; \\\n";
+          c += "R += S.z * " + f2 + "; \\\n";
+          c += "R += S.w * " + f3 + ";   \n";
+          break;
+        case CalculationsPrecision::F32_F16:
+          c += "#define CONV" + std::to_string(s) + "(R, S) \\\n";
+          c += "R += TO_ACCUM_TYPE(S.x * " + f0 + " + S.y * " + f1 +
+               " + S.z * " + f2 + " + S.w * " + f3 + ");\n";
+          break;
+      }
+    } else {
+      // O4I4
+      c += "#define CONV" + std::to_string(s) + "(R, S)    \\\n";
+      c += "R.x += dot(S, " + f0 + "); \\\n";
+      c += "R.y += dot(S, " + f1 + "); \\\n";
+      c += "R.z += dot(S, " + f2 + "); \\\n";
+      c += "R.w += dot(S, " + f3 + ");   \n";
     }
   }
 
@@ -443,9 +481,10 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     }
   }
   if (weights_are_buffer) {
-    c += "        __global FLT16* weights_cache = "
-         "args.weights.GetPtr(f_offset);\n";
-    c += "        f_offset += " + std::to_string(block_size.w) + ";\n";
+    if (gpu_info.SupportsPointersInKernels()) {
+      c += "        __global FLT16* weights_cache = "
+           "args.weights.GetPtr(f_offset);\n";
+    }
   } else {
     for (int s = 0; s < block_size.w; ++s) {
       c += absl::Substitute(
@@ -459,6 +498,10 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     c += "        x_c++;\n";
   }
   for (int s = 0; s < block_size.w; ++s) {
+    if (weights_are_buffer && !gpu_info.SupportsPointersInKernels()) {
+      c += "        FLT16 flt16val = args.weights.Read(f_offset + " +
+           std::to_string(s) + ");\n";
+    }
     const std::string sind = std::to_string(s);
     for (int z = 0; z < block_size.z; ++z) {
       const std::string zind = std::to_string(z);
@@ -472,6 +515,9 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
         }
       }
     }
+  }
+  if (weights_are_buffer) {
+    c += "        f_offset += " + std::to_string(block_size.w) + ";\n";
   }
   c += "      }\n";
   c += "    }\n";
@@ -547,7 +593,7 @@ void ConvolutionTransposed::GetPossibleKernelWorkGroups(
 ConvolutionTransposed CreateConvolutionTransposed(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  const bool weights_are_buffer = gpu_info.IsMali();
+  const bool weights_are_buffer = gpu_info.IsMali() || gpu_info.IsApple();
   ConvolutionTransposed result(definition, attr, gpu_info, weights_are_buffer);
   result.UploadWeights(attr.weights, weights_are_buffer);
 
@@ -564,7 +610,7 @@ ConvolutionTransposed CreateConvolutionTransposed(
 ConvolutionTransposed CreateConvolutionTransposed3D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposed3DAttributes& attr) {
-  const bool weights_are_buffer = gpu_info.IsMali();
+  const bool weights_are_buffer = gpu_info.IsMali() || gpu_info.IsApple();
   ConvolutionTransposed result(definition, attr, gpu_info, weights_are_buffer);
   result.UploadWeights(attr.weights, weights_are_buffer);
 
@@ -581,13 +627,32 @@ ConvolutionTransposed CreateConvolutionTransposed3D(
 ConvolutionTransposed CreateConvolutionTransposedDynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  const bool weights_are_buffer = true;
-  ConvolutionTransposed result(definition, attr, gpu_info, weights_are_buffer);
+  const bool weights_are_buffer = gpu_info.IsMali();
+  OperationDef new_def = definition;
+  new_def.src_tensors = {
+      definition.src_tensors[0]};  // leaving only src_tensor def, weights defs
+                                   // will be added later
+  const DataType weights_type = definition.GetDataType();
+  if (weights_are_buffer) {
+    // add 1 src_tensor(buffer) for weights
+    new_def.src_tensors.push_back(
+        {weights_type, TensorStorageType::BUFFER, Layout::HWC});
+  } else {
+    // add 4 src_tensors(4X textures 2d) for weights
+    new_def.src_tensors.push_back(
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+    new_def.src_tensors.push_back(
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+    new_def.src_tensors.push_back(
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+    new_def.src_tensors.push_back(
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+  }
+  ConvolutionTransposed result(new_def, attr, gpu_info, weights_are_buffer);
 
   TensorLinearDescriptor desc;
-  desc.storage_type =
-      DeduceLinearStorageType(definition.GetPrimaryStorageType());
-  desc.element_type = definition.GetDataType();
+  desc.storage_type = DeduceLinearStorageType(new_def.GetPrimaryStorageType());
+  desc.element_type = new_def.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
       "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));

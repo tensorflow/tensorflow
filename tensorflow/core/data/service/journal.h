@@ -26,7 +26,7 @@ namespace data {
 
 // Returns the location of the journal file within the journal directory.
 std::string DataServiceJournalFile(const std::string& journal_dir,
-                                   int64 sequence_number);
+                                   int64_t sequence_number);
 
 // Interface for writing to a journal.
 class JournalWriter {
@@ -105,10 +105,8 @@ class FileJournalReader : public JournalReader {
   const std::string journal_dir_;
   // Sequence number of current journal file.
   int64 sequence_number_ = 0;
-  // Current offset into `file_`.
-  uint64 offset_ = 0;
   std::unique_ptr<RandomAccessFile> file_;
-  std::unique_ptr<io::RecordReader> reader_;
+  std::unique_ptr<io::SequentialRecordReader> reader_;
 };
 
 }  // namespace data

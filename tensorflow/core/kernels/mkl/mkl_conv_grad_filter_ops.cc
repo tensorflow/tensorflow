@@ -104,7 +104,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
   void Execute(const T* src_data, const T* diff_filter_data,
                const T* diff_bias_data, const T* diff_dst_data,
                std::shared_ptr<stream> bwd_filter_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     // TODO: Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *bwd_filter_stream);
@@ -129,7 +129,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
     }
     context_.diff_dst_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(diff_dst_data)));
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
     execute_primitives(context_.bwd_filter_primitives, bwd_filter_stream,
                        context_.bwd_filter_primitives_args);
 
@@ -453,7 +453,7 @@ class MklConvCustomBackpropFilterOp
       memory::dims diff_bias_dims = {};
       int64 depth = 0;
       if (bias_enabled) {
-        TensorShape obp_tf_shape = GetTfShape(context, 2);
+        TensorShape obp_tf_shape = GetTfShape(context, 2, native_format);
         depth = (this->data_format_ == FORMAT_NCHW)
                     ? obp_tf_shape.dim_size(1)
                     : obp_tf_shape.dim_size(is_conv2d ? 3 : 4);
@@ -585,7 +585,9 @@ class MklConvCustomBackpropFilterOp
 
       // Execute convolution backward filter.
       std::shared_ptr<stream> bwd_cpu_stream;
-      bwd_cpu_stream.reset(CreateStream(context, conv_bwd_filter->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      bwd_cpu_stream.reset(
+          CreateStream(&eigen_tp, conv_bwd_filter->GetEngine()));
       if (bias_enabled) {
         T* diff_bias_data =
             static_cast<T*>(const_cast<T*>(diff_bias_tensor->flat<T>().data()));
@@ -702,7 +704,7 @@ class MklConvCustomBackpropFilterOp
     MklDnnShape bias_grad_mkl_shape;
     bias_grad_mkl_shape.SetMklTensor(false);
     AllocateOutputSetMklShape(context, 1, bias_grad_tensor, bias_grad_shape,
-                              bias_grad_mkl_shape);
+                              bias_grad_mkl_shape, native_format);
   }
 };
 
@@ -754,7 +756,13 @@ class MklConvCustomBackpropFilterOp
           .Device(DEVICE_CPU)                                            \
           .TypeConstraint<T>("T")                                        \
           .Label(mkl_op_registry::kMklNameChangeOpLabel),                \
-      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false, true>);
+      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false, true>);  \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_MklNativeConv2DBackpropFilterWithBias")                     \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<T>("T")                                        \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel),                \
+      MklConvCustomBackpropFilterOp<CPUDevice, T, true, false, true>);
 
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_FILTER_KERNELS);

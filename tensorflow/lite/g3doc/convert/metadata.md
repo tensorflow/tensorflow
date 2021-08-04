@@ -16,6 +16,31 @@ All image models published on
 and [TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite) have been
 populated with metadata.
 
+## Model with metadata format
+
+<center><img src="../images/convert/model_with_metadata.png" alt="model_with_metadata" width="70%"></center>
+<center>Figure 1. TFLite model with metadata and associated files.</center>
+
+Model metadata is defined in
+[metadata_schema.fbs](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs),
+a
+[FlatBuffer](https://google.github.io/flatbuffers/index.html#flatbuffers_overview)
+file. As shown in Figure 1, it is stored in the
+[metadata](https://github.com/tensorflow/tensorflow/blob/bd73701871af75539dd2f6d7fdba5660a8298caf/tensorflow/lite/schema/schema.fbs#L1208)
+field of the
+[TFLite model schema](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema.fbs),
+under the name, `"TFLITE_METADATA"`. Some models may come with associated files,
+such as
+[classification label files](https://github.com/tensorflow/examples/blob/dd98bc2b595157c03ac9fa47ac8659bb20aa8bbd/lite/examples/image_classification/android/models/src/main/assets/labels.txt#L1).
+These files are concatenated to the end of the original model file as a ZIP
+using the ZipFile
+["append" mode](https://pymotw.com/2/zipfile/#appending-to-files) (`'a'` mode).
+TFLite Interpreter can consume the new file format in the same way as before.
+See [Pack the associated files](#pack-the-associated-files) for more
+information.
+
+See the instruction below about how to populate, visualize, and read metadata.
+
 ## Setup the metadata tools
 
 Before adding metadata to your model, you will need to a Python programming
@@ -29,9 +54,14 @@ additional tooling:
 pip install tflite-support
 ```
 
-TensorFlow Lite metadata tooling supports both Python 2 and Python 3.
+TensorFlow Lite metadata tooling supports Python 3.
 
-## Adding metadata
+## Adding metadata using Flatbuffers Python API
+
+Note: to create metadata for the popular ML tasks supported in
+[TensorFlow Lite Task Library](../inference_with_metadata/task_library/overview),
+use the high-level API in the
+[TensorFlow Lite Metadata Writer Library](metadata_writer_tutorial.ipynb).
 
 There are three parts to the model metadata in the
 [schema](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs):
@@ -167,6 +197,10 @@ When processing image data for uint8 models, normalization and quantization are
 sometimes skipped. It is fine to do so when the pixel values are in the range of
 [0, 255]. But in general, you should always process the data according to the
 normalization and quantization parameters when applicable.
+
+[TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/overview)
+can handle normalization for you if you set up `NormalizationOptions` in
+metadata. Quantization and dequantization processing is always encapluated.
 
 ### Examples
 
@@ -410,7 +444,7 @@ Flatbuffers library.
 
 To use the Metadata Extractor library in your Android app, we recommend using
 the
-[TensorFlow Lite Metadata AAR hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-metadata).
+[TensorFlow Lite Metadata AAR hosted at MavenCentral](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-metadata).
 It contains the `MetadataExtractor` class, as well as the FlatBuffers Java
 bindings for the
 [metadata schema](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs)
@@ -424,6 +458,9 @@ dependencies {
     implementation 'org.tensorflow:tensorflow-lite-metadata:0.1.0'
 }
 ```
+
+To use nightly snapshots, make sure that you have added
+[Sonatype snapshot repository](../guide/build_android#use_nightly_snapshots).
 
 You can initialize a `MetadataExtractor` object with a `ByteBuffer` that points
 to the model:

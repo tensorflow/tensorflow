@@ -61,7 +61,6 @@ namespace {
 using DeadnessPredicate = DeadnessAnalysis::DeadnessPredicate;
 using jit::DeviceId;
 using jit::DeviceSet;
-using xla::StatusOr;
 
 // The clusters we create here are eventually lowered into an
 // _XlaCompile/_XlaRun pair with a TF executor "fallback" that uses the
@@ -637,7 +636,7 @@ StatusOr<bool> MarkForCompilationPassImpl::Initialize() {
 template <typename FnTy>
 StatusOr<bool> MarkForCompilationPassImpl::ForEachEdgeInPostOrder(FnTy fn) {
   bool changed = false;
-  for (int32 node : cycles_graph_.AllNodesInPostOrder()) {
+  for (int32_t node : cycles_graph_.AllNodesInPostOrder()) {
     Cluster* cluster_from = GetClusterForCyclesGraphNode(node);
     if (!cluster_from) {
       continue;
@@ -1200,6 +1199,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
         CreateOperationFilter(*registration);
     filter.require_always_compilable = true;
     filter.allow_string_consts = false;
+    filter.allow_collective_reduce_v2 = false;
 
     RecursiveCompilabilityChecker checker(
         filter, DeviceType{registration->compilation_device_name});
@@ -1696,9 +1696,15 @@ Status MarkForCompilation(
   // So fix up the source and sink edges before calling into deadness analysis.
   FixupSourceAndSinkEdges(graph);
 
-  // See explanation on `kXlaAlreadyClustered`.
   for (Node* n : graph->nodes()) {
+    // See explanation on `kXlaAlreadyClustered`.
     if (n->attrs().Find(kXlaAlreadyClustered)) {
+      return Status::OK();
+    }
+    // Skip the pass if we found TPUExecute ops in the graph, which indicates
+    // the graph is produced by TPU TF-XLA bridge and doesn't require auto
+    // clustering.
+    if (n->type_string() == "TPUExecute") {
       return Status::OK();
     }
   }
@@ -1711,7 +1717,7 @@ Status MarkForCompilation(
       .Run();
 }
 
-std::atomic<int64>* GetPointerToFuel(int64 initial_value) {
+std::atomic<int64>* GetPointerToFuel(int64_t initial_value) {
   static std::atomic<int64>* fuel = [&]() {
     std::atomic<int64>* fuel = new std::atomic<int64>;
     *fuel = initial_value;
@@ -1785,10 +1791,10 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
             "Identity", "IdentityN", "Relu", "Relu6", "ReluGrad", "Relu6Grad",
             "LeakyReluGrad", "Elu", "EluGrad", "Selu", "SeluGrad", "Select",
             "SelectV2", "Transpose", "ConjugateTranspose",
-            "_UnaryOpsComposition",
-            // The following 4 operations are converted to identity
+            "_UnaryOpsComposition", "CollectiveReduceV2",
+            // The following 5 operations are converted to identity
             "PlaceholderWithDefault", "PreventGradient", "StopGradient",
-            "Snapshot"}},
+            "Snapshot", "_EagerConst"}},
           // clang-format off
     {"RED",
      {"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"}},
@@ -1839,6 +1845,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "AvgPoolGrad",
                                      "BatchMatMul",
                                      "BatchMatMulV2",
+                                     "BatchMatMulV3",
                                      "BatchToSpace",
                                      "BatchToSpaceND",
                                      "BesselI0e",
@@ -1868,6 +1875,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "Dequantize",
                                      "Diag",
                                      "DynamicStitch",
+                                     "DynamicPartition",
                                      "Einsum",
                                      "EmptyTensorList",
                                      "EnsureShape",
@@ -1936,6 +1944,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "Qr",
                                      "QuantizeAndDequantizeV2",
                                      "QuantizeAndDequantizeV3",
+                                     "QuantizeAndDequantizeV4",
                                      "RFFT",
                                      "RFFT2D",
                                      "RFFT3D",
@@ -2043,6 +2052,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "TensorScatterMin",
                                      "TensorScatterSub",
                                      "TensorScatterUpdate",
+                                     "ToBool",
                                      "TridiagonalSolve",
                                      "TruncatedNormal",
                                      "Unique",
@@ -2057,8 +2067,10 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "While",
                                      "XlaBroadcastHelper",
                                      "XlaConv",
+                                     "XlaConvV2",
                                      "XlaDequantize",
                                      "XlaDot",
+                                     "XlaDotV2",
                                      "XlaDynamicSlice",
                                      "XlaDynamicUpdateSlice",
                                      "XlaEinsum",
@@ -2069,7 +2081,9 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaRecv",
                                      "XlaReduce",
                                      "XlaReduceWindow",
+                                     "XlaRemoveDynamicDimensionSize",
                                      "XlaReplicaId",
+                                     "XlaRngBitGenerator",
                                      "XlaScatter",
                                      "XlaSelectAndScatter",
                                      "XlaSelfAdjointEig",
@@ -2082,6 +2096,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaSpmdShardToFullShape",
                                      "XlaSvd",
                                      "XlaVariadicReduce",
+                                     "XlaVariadicReduceV2",
                                      "XlaVariadicSort",
                                      "XlaWhile",
                                      "Zeta",

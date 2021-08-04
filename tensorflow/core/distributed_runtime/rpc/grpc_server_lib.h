@@ -69,7 +69,7 @@ struct GrpcServerOptions {
   WorkerCreationFunction worker_func = nullptr;
   StatsPublisherFactory stats_factory = CreateNoOpStatsPublisher;
   GrpcWorkerServiceOptions worker_service_options;
-  const DeviceMgr* local_device_mgr = nullptr;
+  DeviceMgr* local_device_mgr = nullptr;
 };
 
 class GrpcServer : public ServerInterface {
@@ -79,7 +79,10 @@ class GrpcServer : public ServerInterface {
              Env* env);
   // Allow children classes to override this and provide custom args to the
   // server before it is constructed. Default behavior is to do nothing.
-  virtual void MaybeMutateBuilder(::grpc::ServerBuilder* builder);
+  // requested_port provides the port requested by caller as bound_port() is
+  // not available till BuildAndStart has been called.
+  virtual void MaybeMutateBuilder(::grpc::ServerBuilder* builder,
+                                  int requested_port) {}
 
  public:
   static Status Create(const ServerDef& server_def, Env* env,
@@ -88,7 +91,7 @@ class GrpcServer : public ServerInterface {
                        std::unique_ptr<GrpcServer>* out_server);
   // Reuse the local_device_mgr.
   static Status Create(const ServerDef& server_def, Env* env,
-                       const DeviceMgr* local_device_mgr,
+                       DeviceMgr* local_device_mgr,
                        std::unique_ptr<ServerInterface>* out_server);
 
   // Destruction is only supported in the factory method. Clean
@@ -101,15 +104,19 @@ class GrpcServer : public ServerInterface {
   Status Join() override;
   const string target() const override;
 
-  WorkerEnv* worker_env() { return &worker_env_; }
-  MasterEnv* master_env() { return &master_env_; }
+  WorkerEnv* worker_env() override { return &worker_env_; }
+  MasterEnv* master_env() override { return &master_env_; }
 
   // Add master eager context to local eager service in order to handle enqueue
   // requests from remote workers.
   Status AddMasterEagerContextToEagerService(
-      const tensorflow::uint64 context_id, tensorflow::EagerContext* context);
+      const tensorflow::uint64 context_id,
+      tensorflow::EagerContext* context) override;
   // Update the set of workers that can be reached by the GRPC server
-  Status UpdateServerDef(const ServerDef& server_def);
+  Status UpdateServerDef(const ServerDef& server_def) override;
+  // Pass coordination service agent instance to server's RPC handler
+  Status SetCoordinationServiceAgentInstance(
+      CoordinationServiceAgent* agent) override;
 
  protected:
   virtual Status GetHostAndPort(const ServerDef& server_def, string* host_name,
@@ -128,6 +135,23 @@ class GrpcServer : public ServerInterface {
   virtual Status WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
                                     WorkerCacheInterface** worker_cache);
 
+  // Override to return extra services to be brought up and managed along with
+  // the standard {master, worker, eager} services. The map key is an aribtrary
+  // string and the value is a pointer to the service to be brought up.
+  // Ownership of the pointer is transferred to GrpcServer after this call
+  // returns, and the service will be destroyed during the destruction of
+  // GrpcServer. Each service will have its HandleRPCsLoop called in a separate
+  // thread. An example usage would be to add a RDMA based partial worker
+  // service to offload tensor and data buffer transfers.
+  virtual std::map<std::string, AsyncServiceInterface*> ExtraServices(
+      ::grpc::ServerBuilder*) {
+    return {};
+  }
+
+  virtual std::map<std::string, AsyncServiceInterface*> GetExtraServices() {
+    return extra_services_;
+  }
+
   // Parses a WorkerCacheFactoryOptions into a GrpcChannelSpec.
   Status ParseChannelSpec(const WorkerCacheFactoryOptions& options,
                           GrpcChannelSpec* channel_spec);
@@ -135,6 +159,9 @@ class GrpcServer : public ServerInterface {
   // Returns the port to which this server is bound.
   // This method may only be called after `this->Init()` returns successfully.
   int bound_port() const { return bound_port_; }
+
+  // Returns hostname.
+  const string& host_name() const { return host_name_; }
 
   const ServerDef& server_def() const { return server_def_; }
   GrpcWorker* worker_impl() const { return worker_impl_.get(); }
@@ -169,6 +196,10 @@ class GrpcServer : public ServerInterface {
   std::unique_ptr<Master> master_impl_;
   AsyncServiceInterface* master_service_ = nullptr;
   std::unique_ptr<Thread> master_thread_ TF_GUARDED_BY(mu_);
+
+  std::map<std::string, AsyncServiceInterface*> extra_services_;
+  std::vector<std::unique_ptr<Thread>> extra_service_threads_
+      TF_GUARDED_BY(mu_);
 
   // Implementation of a TensorFlow worker, and RPC polling thread.
   WorkerEnv worker_env_;

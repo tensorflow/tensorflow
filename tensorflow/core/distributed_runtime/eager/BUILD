@@ -14,7 +14,7 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -109,12 +109,14 @@ cc_library(
         ":remote_tensor_handle",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:immediate_execution_distributed_manager",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:context_distributed_manager",
         "//tensorflow/core/common_runtime/eager:core",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:execute",
@@ -241,6 +243,6 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python:__subpackages__",
     ],
 )

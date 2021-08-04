@@ -399,7 +399,7 @@ class ScopedAllocatorDevice : public DeviceBase {
   }
 
   Allocator* GetScopedAllocator(AllocatorAttributes attrs,
-                                int64 /*step_id*/) override {
+                                int64_t /*step_id*/) override {
     CHECK_GT(attrs.scope_id, 0);
     num_scoped_allocations_++;
     if (scope_allocated_) {

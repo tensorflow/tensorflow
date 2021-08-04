@@ -36,7 +36,7 @@ class TensorKey : public Tensor {
     if (t1.dtype() == DT_STRING) {
       const auto s1 = t1.unaligned_flat<tstring>();
       const auto s2 = t2.unaligned_flat<tstring>();
-      for (int64 i = 0, n = t1.NumElements(); i < n; ++i) {
+      for (int64_t i = 0, n = t1.NumElements(); i < n; ++i) {
         if (TF_PREDICT_FALSE(s1(i) != s2(i))) {
           return false;
         }
@@ -56,6 +56,7 @@ class TensorKey : public Tensor {
     const uint8* d = static_cast<uint8*>(k.data());
     size_t s = k.AllocatedBytes();
     std::vector<uint8> vec;
+    vec.reserve(s);
     for (int i = 0; i < s; i++) {
       vec.push_back(d[i]);
     }

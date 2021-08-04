@@ -58,7 +58,8 @@ Value CalculateShapeValue(Location loc, Value operand,
   int64_t rank = result_type.getRank();
   shape_values.reserve(rank);
   for (int64_t i = 0; i < rank; ++i) {
-    shape_values.push_back(rewriter.create<mlir::DimOp>(loc, operand, i));
+    shape_values.push_back(
+        rewriter.create<mlir::tensor::DimOp>(loc, operand, i));
   }
   return rewriter.create<tensor::FromElementsOp>(loc, shape_values);
 }

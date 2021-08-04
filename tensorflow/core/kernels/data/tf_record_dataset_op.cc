@@ -15,9 +15,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/tf_record_dataset_op.h"
 
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -40,11 +40,12 @@ constexpr char kCurrentFileIndex[] = "current_file_index";
 constexpr char kOffset[] = "offset";
 constexpr char kGcsFsPrefix[] = "gs://";
 constexpr char kS3FsPrefix[] = "s3://";
-constexpr int64 kCloudTpuBlockSize = 127LL << 20;  // 127MB.
-constexpr int64 kS3BlockSize = kCloudTpuBlockSize;
+constexpr int64_t kCloudTpuBlockSize = 127LL << 20;  // 127MB.
+constexpr int64_t kS3BlockSize = kCloudTpuBlockSize;
 
 bool is_cloud_tpu_gcs_fs() {
-#if defined(PLATFORM_CLOUD_TPU) && defined(TPU_GCS_FS)
+#if (defined(PLATFORM_CLOUD_TPU) && defined(TPU_GCS_FS)) || \
+    defined(LIBTPU_ON_GCE)
   return true;
 #endif
   return false;
@@ -53,7 +54,7 @@ bool is_cloud_tpu_gcs_fs() {
 class TFRecordDatasetOp::Dataset : public DatasetBase {
  public:
   explicit Dataset(OpKernelContext* ctx, std::vector<string> filenames,
-                   const string& compression_type, int64 buffer_size)
+                   const string& compression_type, int64_t buffer_size)
       : DatasetBase(DatasetContext(ctx)),
         filenames_(std::move(filenames)),
         compression_type_(compression_type),
@@ -158,6 +159,47 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
       } while (true);
     }
 
+    Status SkipInternal(IteratorContext* ctx, int num_to_skip,
+                        bool* end_of_sequence, int* num_skipped) override {
+      *num_skipped = 0;
+      mutex_lock l(mu_);
+      do {
+        // We are currently processing a file, so try to skip reading
+        // the next (num_to_skip - *num_skipped) record.
+        if (reader_) {
+          int last_num_skipped;
+          Status s = reader_->SkipRecords(num_to_skip - *num_skipped,
+                                          &last_num_skipped);
+          *num_skipped += last_num_skipped;
+          if (s.ok()) {
+            *end_of_sequence = false;
+            return Status::OK();
+          }
+          if (!errors::IsOutOfRange(s)) {
+            // In case of other errors e.g., DataLoss, we still move forward
+            // the file index so that it works with ignore_errors.
+            // Otherwise the same file will repeat.
+            ResetStreamsLocked();
+            ++current_file_index_;
+            return s;
+          }
+
+          // We have reached the end of the current file, so maybe move on to
+          // next file.
+          ResetStreamsLocked();
+          ++current_file_index_;
+        }
+
+        // Iteration ends when there are no more files to process.
+        if (current_file_index_ == dataset()->filenames_.size()) {
+          *end_of_sequence = true;
+          return Status::OK();
+        }
+
+        TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
+      } while (true);
+    }
+
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
@@ -181,12 +223,12 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       ResetStreamsLocked();
-      int64 current_file_index;
+      int64_t current_file_index;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurrentFileIndex),
                                             &current_file_index));
       current_file_index_ = size_t(current_file_index);
       if (reader->Contains(full_name(kOffset))) {
-        int64 offset;
+        int64_t offset;
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kOffset), &offset));
         TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
         TF_RETURN_IF_ERROR(reader_->SeekOffset(offset));
@@ -251,13 +293,14 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
     filenames.push_back(filenames_tensor->flat<tstring>()(i));
     is_gcs_fs &= absl::StartsWith(filenames[i], kGcsFsPrefix);
     is_s3_fs &= absl::StartsWith(filenames[i], kS3FsPrefix);
+    metrics::RecordTFDataFilename(kDatasetType, filenames[i]);
   }
 
   tstring compression_type;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kCompressionType,
                                                    &compression_type));
 
-  int64 buffer_size = -1;
+  int64_t buffer_size = -1;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(ctx, buffer_size >= 0,

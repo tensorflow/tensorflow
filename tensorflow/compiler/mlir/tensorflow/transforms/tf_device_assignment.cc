@@ -38,7 +38,7 @@ class SimpleTFDeviceAssignmentPass
     getFunction().walk([&](Operation* op) {
       if (auto device_attr = op->getAttrOfType<StringAttr>("device")) {
         // We assign default device to ops with device attribute that is empty.
-        if (device_attr.getValue() == "") {
+        if (device_attr.getValue().empty()) {
           op->setAttr("device", builder.getStringAttr(default_device_));
         }
       } else if (op->getDialect() == tf) {
@@ -47,6 +47,12 @@ class SimpleTFDeviceAssignmentPass
         op->setAttr("device", builder.getStringAttr(default_device_));
       }
     });
+  }
+
+  StringRef getArgument() const final { return "tf-simple-device-assignment"; }
+
+  StringRef getDescription() const final {
+    return "Simple device assignment in TF dialect.";
   }
 
  private:
@@ -62,8 +68,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
   return std::make_unique<SimpleTFDeviceAssignmentPass>(default_device);
 }
 
-static PassRegistration<SimpleTFDeviceAssignmentPass> pass(
-    "tf-simple-device-assignment", "Simple device assignment in TF dialect.");
+static PassRegistration<SimpleTFDeviceAssignmentPass> register_pass;
 
 }  // namespace TF
 }  // namespace mlir

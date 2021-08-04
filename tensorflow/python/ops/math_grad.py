@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.client import pywrap_tf_session as c_api
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -330,9 +331,10 @@ def _SegmentMeanGrad(op, grad):
   input_rank = array_ops.rank(op.inputs[0])
   ones_shape = array_ops.concat([
       array_ops.shape(op.inputs[1]),
-      array_ops.fill(array_ops.expand_dims(input_rank - 1, 0), 1)
+      array_ops.ones(
+          array_ops.expand_dims(input_rank - 1, 0), dtype=dtypes.int32)
   ], 0)
-  ones = array_ops.fill(ones_shape, constant_op.constant(1, dtype=grad.dtype))
+  ones = array_ops.ones(ones_shape, dtype=grad.dtype)
   scaled_grad = math_ops.divide(grad, math_ops.segment_sum(ones, op.inputs[1]))
   return array_ops.gather(scaled_grad, op.inputs[1]), None
 
@@ -340,19 +342,26 @@ def _SegmentMeanGrad(op, grad):
 @ops.RegisterGradient("SparseSegmentSum")
 def _SparseSegmentSumGrad(op, grad):
   """Gradient for SparseSegmentSum."""
-  input_rows = array_ops.shape(op.inputs[0])[0]
-  return (math_ops.unsorted_segment_sum(
-      array_ops.gather(grad, op.inputs[2]), op.inputs[1], input_rows), None,
-          None)
+  dim0 = array_ops.shape(op.inputs[0])[0]
+  if compat.forward_compatible(2021, 6, 10):
+    return (math_ops.sparse_segment_sum_grad(grad, op.inputs[1], op.inputs[2],
+                                             dim0), None, None)
+  else:
+    return (math_ops.unsorted_segment_sum(
+        array_ops.gather(grad, op.inputs[2]), op.inputs[1], dim0), None, None)
 
 
 @ops.RegisterGradient("SparseSegmentSumWithNumSegments")
 def _SparseSegmentSumWithNumSegmentsGrad(op, grad):
   """Gradient for SparseSegmentSumWithNumSegments."""
-  input_rows = array_ops.shape(op.inputs[0])[0]
-  return (math_ops.unsorted_segment_sum(
-      array_ops.gather(grad, op.inputs[2]), op.inputs[1], input_rows), None,
-          None, None)
+  dim0 = array_ops.shape(op.inputs[0])[0]
+  if compat.forward_compatible(2021, 6, 10):
+    return (math_ops.sparse_segment_sum_grad(grad, op.inputs[1], op.inputs[2],
+                                             dim0), None, None, None)
+  else:
+    return (math_ops.unsorted_segment_sum(
+        array_ops.gather(grad, op.inputs[2]), op.inputs[1],
+        dim0), None, None, None)
 
 
 @ops.RegisterGradient("SparseSegmentMean")
@@ -641,7 +650,7 @@ def _SqrtGradGrad(op, grad):
   y = op.outputs[0]  # y = 0.5 * b / conj(a)
   with ops.control_dependencies([grad]):
     ga = grad / a
-    return -math_ops.conj(ga) * y, 0.5 * ga
+    return -math_ops.conj(ga) * y, 0.5 * ga  # pylint: disable=invalid-unary-operand-type
 
 
 @ops.RegisterGradient("Rsqrt")
@@ -915,7 +924,7 @@ def _SpenceGrad(op, grad):
   with ops.control_dependencies([grad]):
     partial_x = math_ops.log(x) / (1 - x)
     partial_x = array_ops.where(
-        math_ops.equal(x, 1.), -array_ops.ones_like(x), partial_x)
+        math_ops.equal(x, 1.), -array_ops.ones_like(x), partial_x)  # pylint: disable=invalid-unary-operand-type
     return grad * partial_x
 
 
@@ -1132,7 +1141,7 @@ def _ZetaGrad(op, grad):
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
     q = math_ops.conj(q)
-    partial_q = -x * math_ops.zeta(x + 1, q)
+    partial_q = -x * math_ops.zeta(x + 1, q)  # pylint: disable=invalid-unary-operand-type
     return (None,
             array_ops.reshape(math_ops.reduce_sum(partial_q * grad, rq), sq))
 
@@ -1178,7 +1187,7 @@ def _SigmoidGradGrad(op, grad):
 def _SignGrad(op, _):
   """Returns 0."""
   x = op.inputs[0]
-  return array_ops.zeros(array_ops.shape(x), dtype=x.dtype)
+  return array_ops.zeros_like(x)
 
 
 @ops.RegisterGradient("Sin")
@@ -1413,11 +1422,12 @@ def _DivGrad(op, grad):
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  return (array_ops.reshape(
-      math_ops.reduce_sum(math_ops.divide(grad, y), rx), sx),
-          array_ops.reshape(
-              math_ops.reduce_sum(
-                  grad * math_ops.divide(math_ops.divide(-x, y), y), ry), sy))
+  # pylint: disable=invalid-unary-operand-type
+  return (
+      array_ops.reshape(math_ops.reduce_sum(math_ops.divide(grad, y), rx), sx),
+      array_ops.reshape(
+          math_ops.reduce_sum(grad * math_ops.divide(math_ops.divide(-x, y), y),
+                              ry), sy))
 
 
 @ops.RegisterGradient("FloorDiv")
@@ -1461,7 +1471,7 @@ def _RealDivGrad(op, grad):
       math_ops.reduce_sum(math_ops.realdiv(grad, y), rx), sx),
           array_ops.reshape(
               math_ops.reduce_sum(
-                  grad * math_ops.realdiv(math_ops.realdiv(-x, y), y), ry), sy))
+                  grad * math_ops.realdiv(math_ops.realdiv(-x, y), y), ry), sy))  # pylint: disable=invalid-unary-operand-type
 
 
 @ops.RegisterGradient("DivNoNan")
@@ -1474,12 +1484,14 @@ def _DivNoNanGrad(op, grad):
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  return (array_ops.reshape(
-      math_ops.reduce_sum(math_ops.div_no_nan(grad, y), rx), sx),
-          array_ops.reshape(
-              math_ops.reduce_sum(
-                  grad * math_ops.div_no_nan(math_ops.div_no_nan(-x, y), y),
-                  ry), sy))
+  return (
+      array_ops.reshape(
+          math_ops.reduce_sum(math_ops.div_no_nan(grad, y), rx), sx),
+      array_ops.reshape(
+          math_ops.reduce_sum(
+              grad * math_ops.div_no_nan(math_ops.div_no_nan(-x, y), y),  # pylint: disable=invalid-unary-operand-type
+              ry),
+          sy))
 
 
 @ops.RegisterGradient("Pow")
@@ -1560,11 +1572,9 @@ def _MaximumMinimumGrad(op, grad, selector_op):
     # No gradient skipping, so do the full gradient computation
     pass
   x = op.inputs[0]
-  gdtype = grad.dtype
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
-  gradshape = array_ops.shape(grad)
-  zeros = array_ops.zeros(gradshape, gdtype)
+  zeros = array_ops.zeros_like(grad)
   xmask = selector_op(x, y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   if skip_input_indices is not None and 0 in skip_input_indices:
@@ -1584,13 +1594,13 @@ def _MaximumMinimumGrad(op, grad, selector_op):
 
 @ops.RegisterGradient("Maximum")
 def _MaximumGrad(op, grad):
-  """Returns grad*(x > y, x <= y) with type of grad."""
+  """Returns grad*(x >= y, x < y) with type of grad."""
   return _MaximumMinimumGrad(op, grad, math_ops.greater_equal)
 
 
 @ops.RegisterGradient("Minimum")
 def _MinimumGrad(op, grad):
-  """Returns grad*(x < y, x >= y) with type of grad."""
+  """Returns grad*(x <= y, x > y) with type of grad."""
   return _MaximumMinimumGrad(op, grad, math_ops.less_equal)
 
 
@@ -1845,6 +1855,7 @@ def _BatchMatMul(op, grad):
 
 
 @ops.RegisterGradient("BatchMatMulV2")
+@ops.RegisterGradient("BatchMatMulV3")
 def _BatchMatMulV2(op, grad):
   """Returns the gradient of x and y given the gradient of x * y."""
   x = op.inputs[0]

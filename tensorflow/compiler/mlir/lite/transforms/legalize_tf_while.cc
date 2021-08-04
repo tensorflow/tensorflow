@@ -37,6 +37,16 @@ struct LegalizeWhile
     registry.insert<TFL::TensorFlowLiteDialect>();
   }
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-legalize-tf-while";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Legalize from TensorFlow While to TensorFlow Lite While";
+  }
+
   void RunOnFunction(FuncOp func);
 
   void runOnOperation() override {
@@ -46,26 +56,28 @@ struct LegalizeWhile
 
 }  // namespace
 
+// Inserts call to the given function into the 'region'.
+void CreateRegionWithCall(FuncOp func, Region& region, Location loc) {
+  OpBuilder builder(region);
+  auto block = builder.createBlock(&region);
+  SmallVector<Value, 4> new_operands;
+  for (Type t : func.getType().getInputs())
+    new_operands.push_back(block->addArgument(t));
+  auto call = builder.create<CallOp>(loc, func, new_operands);
+  builder.create<YieldOp>(loc, call.getResults());
+  // Mark old function as private so that it can be DCE'd if not called.
+  func.setPrivate();
+}
+
 void RunOnWhile(TF::WhileOp while_op) {
   Operation* op = while_op.getOperation();
   // Create new TFL While op that will be used to replace TF While op.
   auto new_op = OpBuilder(op).create<TFL::WhileOp>(
       op->getLoc(), op->getResultTypes(), op->getOperands(),
       while_op.is_stateless());
-  // Insert call to the given function into the 'region'.
-  auto create_region_with_call = [&while_op](FuncOp func, Region& region) {
-    OpBuilder builder(region);
-    auto block = builder.createBlock(&region);
-    SmallVector<Value, 4> new_operands;
-    for (Type t : func.getType().getInputs())
-      new_operands.push_back(block->addArgument(t));
-    auto call = builder.create<CallOp>(while_op.getLoc(), func, new_operands);
-    builder.create<YieldOp>(while_op.getLoc(), call.getResults());
-    // Mark old function as private so that it can be DCE'd if not called.
-    func.setPrivate();
-  };
-  create_region_with_call(while_op.cond_function(), new_op.cond());
-  create_region_with_call(while_op.body_function(), new_op.body());
+  Location loc = while_op->getLoc();
+  CreateRegionWithCall(while_op.cond_function(), new_op.cond(), loc);
+  CreateRegionWithCall(while_op.body_function(), new_op.body(), loc);
 
   op->replaceAllUsesWith(new_op.getResults());
   op->erase();
@@ -81,9 +93,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass() {
   return std::make_unique<LegalizeWhile>();
 }
 
-static PassRegistration<LegalizeWhile> pass(
-    "tfl-legalize-tf-while",
-    "Legalize from TensorFlow While to TensorFlow Lite While");
+static PassRegistration<LegalizeWhile> pass;
 
 }  // namespace TFL
 }  // namespace mlir

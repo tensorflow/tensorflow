@@ -233,7 +233,8 @@ void ParseURI(StringPiece remaining, StringPiece* scheme, StringPiece* host,
   // 0. Parse scheme
   // Make sure scheme matches [a-zA-Z][0-9a-zA-Z.]*
   // TODO(keveman): Allow "+" and "-" in the scheme.
-  // Keep URI pattern in tensorboard/backend/server.py updated accordingly
+  // Keep URI pattern in TensorBoard's `_parse_event_files_spec` updated
+  // accordingly
   if (!strings::Scanner(remaining)
            .One(strings::Scanner::LETTER)
            .Many(strings::Scanner::LETTER_DIGIT_DOT)
@@ -269,7 +270,7 @@ string CreateURI(StringPiece scheme, StringPiece host, StringPiece path) {
 // Returns a unique number every time it is called.
 int64 UniqueId() {
   static mutex mu(LINKER_INITIALIZED);
-  static int64 id = 0;
+  static int64_t id = 0;
   mutex_lock l(mu);
   return ++id;
 }

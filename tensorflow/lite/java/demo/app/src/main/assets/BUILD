@@ -1,6 +1,6 @@
 package(
     default_visibility = ["//visibility:private"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(

@@ -2,7 +2,7 @@ load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
@@ -104,7 +104,10 @@ filegroup(
         "testdata/embedding.ckpt.index",
         "testdata/embedding.ckpt.meta",
         "testdata/unicode_vocabulary",
+        "testdata/unicode_vocabulary.tfrecord.gz",
+        "testdata/warriors_vocabulary.tfrecord.gz",
         "testdata/warriors_vocabulary.txt",
+        "testdata/wire_vocabulary.tfrecord.gz",
         "testdata/wire_vocabulary.txt",
     ],
 )

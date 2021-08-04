@@ -30,7 +30,7 @@ extern const char kXlaFrontendAttributesAttrName[];
 //
 // Return an InvalidArgument error if some attributes are present but
 // cannot be parsed.
-xla::StatusOr<absl::optional<xla::FrontendAttributes>>
+StatusOr<absl::optional<xla::FrontendAttributes>>
 GetFrontendAttributesFromAttrSlice(const AttrSlice& attrs);
 
 }  // namespace tensorflow

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -121,7 +122,7 @@ TEST_F(HloConstantFoldingTest, Concatenate) {
     HloComputation::Builder builder(TestName());
     std::vector<int64> dimensions(test_config.dimensions.begin(),
                                   test_config.dimensions.end());
-    int64 concat_size = 0;
+    int64_t concat_size = 0;
     std::vector<HloInstruction*> operands;
     for (auto csize : test_config.concat_sizes) {
       dimensions[test_config.concat_dimension] = csize;
@@ -202,7 +203,7 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   bool matched = true;
   root->literal().EachCell<NativeT>(
       [&](absl::Span<const int64> indices, NativeT value) {
-        std::vector<int64> rindexes = Permute(permutation, indices);
+        std::vector<int64> rindexes = PermuteInverse(indices, permutation);
         matched = matched && (value == literal_clone.Get<NativeT>(rindexes));
       });
   EXPECT_TRUE(matched);

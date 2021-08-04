@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/parallel_interleave_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 
 namespace tensorflow {
@@ -27,9 +27,9 @@ class ParallelInterleaveDatasetParams : public DatasetParams {
   template <typename T>
   ParallelInterleaveDatasetParams(
       T input_dataset_params, std::vector<Tensor> other_arguments,
-      int64 cycle_length, int64 block_length, const std::string& deterministic,
-      int64 buffer_output_elements, int64 prefetch_input_elements,
-      FunctionDefHelper::AttrValueWrapper func,
+      int64_t cycle_length, int64_t block_length,
+      const std::string& deterministic, int64_t buffer_output_elements,
+      int64_t prefetch_input_elements, FunctionDefHelper::AttrValueWrapper func,
       std::vector<FunctionDef> func_lib, DataTypeVector type_arguments,
       const DataTypeVector& output_dtypes,
       const std::vector<PartialTensorShape>& output_shapes, string node_name)

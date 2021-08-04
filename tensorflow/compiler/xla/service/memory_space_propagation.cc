@@ -19,8 +19,13 @@ namespace xla {
 
 StatusOr<bool> MemorySpacePropagation::Run(HloModule* module) {
   bool modified = false;
+  // Configure bitcasts to define values. Otherwise, if there is only a bitcast
+  // between a fusion input and output and these two values are in different
+  // memory spaces, we can get inconsistent memory spaces between the parameter
+  // and fusion operand or root and fusion output.
   TF_ASSIGN_OR_RETURN(auto dataflow_analysis,
-                      HloDataflowAnalysis::Run(*module));
+                      HloDataflowAnalysis::Run(*module, /*ssa_form=*/false,
+                                               /*bitcast_defines_value=*/true));
   dataflow_analysis_ = std::move(dataflow_analysis);
 
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
@@ -32,7 +37,7 @@ StatusOr<bool> MemorySpacePropagation::Run(HloModule* module) {
           for (const ShapeUtil::IndexedShape& indexed_shape :
                ShapeUtil::GetLeafShapes(
                    instruction->operand(operand_idx)->shape())) {
-            int64 memory_space = indexed_shape.shape.layout().memory_space();
+            int64_t memory_space = indexed_shape.shape.layout().memory_space();
             modified |= Propagate(indexed_shape.index,
                                   instruction->fused_parameter(operand_idx),
                                   memory_space);
@@ -42,7 +47,7 @@ StatusOr<bool> MemorySpacePropagation::Run(HloModule* module) {
         // Propagate output subshapes.
         for (const ShapeUtil::IndexedShape& indexed_shape :
              ShapeUtil::GetLeafShapes(instruction->shape())) {
-          int64 memory_space = indexed_shape.shape.layout().memory_space();
+          int64_t memory_space = indexed_shape.shape.layout().memory_space();
           modified |=
               Propagate(indexed_shape.index,
                         instruction->fused_expression_root(), memory_space);
@@ -55,7 +60,7 @@ StatusOr<bool> MemorySpacePropagation::Run(HloModule* module) {
 
 bool MemorySpacePropagation::Propagate(ShapeIndexView index,
                                        const HloInstruction* callee_instruction,
-                                       int64 memory_space) const {
+                                       int64_t memory_space) const {
   bool modified = false;
   const HloValue& value = dataflow_analysis_->GetUniqueValueAt(
       callee_instruction, index.ToShapeIndex());

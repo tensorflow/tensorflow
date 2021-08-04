@@ -323,7 +323,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         compute_devices, self._variable_device)
 
   def _input_workers_with_options(self, options=None):
-    if not options or options.experimental_prefetch_to_device:
+    if not options or options.experimental_fetch_to_device:
       return input_lib.InputWorkers(
           [(self._worker_device, self._compute_devices)])
     else:
@@ -343,7 +343,8 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        num_replicas_in_sync=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync,
+        options=options)
 
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(
@@ -394,9 +395,9 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
-        self._input_workers_with_options(options),
-        [input_context],
-        self._container_strategy())
+        self._input_workers_with_options(options), [input_context],
+        self._container_strategy(),
+        options=options)
 
   def _experimental_distribute_values_from_function(self, value_fn):
     per_replica_values = []
@@ -422,9 +423,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
   def _allow_variable_partition(self):
     return not context.executing_eagerly()
 
-  # TODO(yuefengz): Not all ops in device_setter.STANDARD_PS_OPS will go through
-  # this creator, such as "MutableHashTable".
-  def _create_variable(self, next_creator, **kwargs):
+  def _create_var_creator(self, next_creator, **kwargs):
     if self._num_replicas_in_sync > 1:
       aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
       if aggregation not in (
@@ -469,8 +468,14 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
           ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, wrapped)
 
         return wrapped
+      return var_creator
     else:
-      var_creator = next_creator
+      return next_creator
+
+  # TODO(yuefengz): Not all ops in device_setter.STANDARD_PS_OPS will go through
+  # this creator, such as "MutableHashTable".
+  def _create_variable(self, next_creator, **kwargs):
+    var_creator = self._create_var_creator(next_creator, **kwargs)
 
     if "colocate_with" in kwargs:
       colocate_with = kwargs["colocate_with"]
@@ -531,19 +536,8 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     """Select any single value in `structured`."""
 
     def _select_fn(x):  # pylint: disable=g-missing-docstring
-      if isinstance(x, values.Mirrored):
-        if len(x._devices) == 1:  # pylint: disable=protected-access
-          return x._primary  # pylint: disable=protected-access
-        else:
-          raise ValueError(
-              "You cannot update variable with a Mirrored object with multiple "
-              "components %r when using ParameterServerStrategy. You must "
-              "specify a single value or a Mirrored with a single value." % x)
-      elif isinstance(x, values.PerReplica):
-        raise ValueError(
-            "You cannot update variable with a PerReplica object %r when using "
-            "ParameterServerStrategy. You must specify a single value or a "
-            "Mirrored with a single value" % x)
+      if isinstance(x, values.Mirrored) or isinstance(x, values.PerReplica):
+        return x._primary  # pylint: disable=protected-access
       else:
         return x
 
@@ -572,11 +566,6 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         return result
       else:
         return nest.map_structure(self._local_results, result)
-
-  def _local_results(self, val):
-    if isinstance(val, values.DistributedValues):
-      return val.values
-    return (val,)
 
   def value_container(self, val):
     if (hasattr(val, "_aggregating_container") and

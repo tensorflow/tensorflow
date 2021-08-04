@@ -63,7 +63,6 @@ def QI32 : QuantizedType<"Uniform", [32], 1>;
 // https://www.tensorflow.org/lite/performance/quantization_spec
 //===----------------------------------------------------------------------===//
 
-// TODO(b/157870442): replace all FixedResultScale trait
 def FixedOutputRangeInterface : OpInterface<
   "FixedOutputRangeInterface"> {
   let description = [{
@@ -79,9 +78,6 @@ def FixedOutputRangeInterface : OpInterface<
   ];
 }
 
-// TODO(b/157870442): extend this trait to replace the other two
-// tratis/interfaces AccumulatorUniformScale and AffineOpCoefficient, which
-// are used to generate the op quantization specs.
 def AffineQuantizedOpInterface : OpInterface<
   "AffineQuantizedOpInterface"> {
   let description = [{

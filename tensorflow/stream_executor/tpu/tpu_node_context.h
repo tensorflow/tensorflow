@@ -67,6 +67,8 @@ class TpuNodeContext final {
 
   stream_executor::StreamExecutor* stream_executor() const;
 
+  bool CompactionSupported(int device_ordinal) const;
+
  private:
   const int device_ordinal_;
   XLA_TpuNodeContext* const node_context_;

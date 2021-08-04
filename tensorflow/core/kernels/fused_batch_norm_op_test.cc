@@ -156,6 +156,27 @@ TEST_F(FusedBatchNormOpTest, InferenceIgnoreAvgFactor) {
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 0.01);
 }
 
+TEST_F(FusedBatchNormOpTest, EmptyInput) {
+  TF_EXPECT_OK(NodeDefBuilder("batch_norm_op", "FusedBatchNorm")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("epsilon", 0.001)
+                   .Attr("is_training", true)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1, 1, 0, 0}), {});
+  AddInputFromArray<float>(TensorShape({0}), {});
+  AddInputFromArray<float>(TensorShape({0}), {});
+  AddInputFromArray<float>(TensorShape({0}), {});
+  AddInputFromArray<float>(TensorShape({0}), {});
+
+  TF_ASSERT_OK(RunOpKernel());
+  EXPECT_EQ(GetOutput(0)->shape(), TensorShape({1, 1, 0, 0}));
+}
+
 class FusedBatchNormGradOpTest : public OpsTestBase {};
 
 TEST_F(FusedBatchNormGradOpTest, Simple) {
@@ -283,18 +304,23 @@ static Graph* FusedBatchNormGrad(int n, int h, int w, int c, bool is_training,
 // -------------------------------------------------------------------------- //
 // FusedBatchNorm inference
 // -------------------------------------------------------------------------- //
+// clang-format off
+// NOLINTBEGIN
+#define BM_FusedBatchNorm(N, H, W, C, T, IS_TRAINING, FORMAT, DEVICE)         \
+  static void BM_NAME(FusedBatchNorm, N, H, W, C, T, IS_TRAINING, FORMAT, DEVICE)(::testing::benchmark::State & state) {                     \
+    test::Benchmark(                                                          \
+        #DEVICE,                                                              \
+        FusedBatchNormInference<T>(N, H, W, C, IS_TRAINING, FORMAT_##FORMAT), \
+        /*old_benchmark_api*/ false)                                          \
+        .Run(state);                                                          \
+    state.SetItemsProcessed(state.iterations() * N * H * W * C);              \
+  }                                                                           \
+  BENCHMARK(                                                                  \
+      BM_NAME(FusedBatchNorm, N, H, W, C, T, IS_TRAINING, FORMAT, DEVICE))    \
+      ->UseRealTime();
 
-#define BM_FusedBatchNorm(N, H, W, C, T, IS_TRAINING, FORMAT, DEVICE)       \
-  static void BM_NAME(FusedBatchNorm, N, H, W, C, T, IS_TRAINING, FORMAT,   \
-                      DEVICE)(int iters) {                                  \
-    testing::UseRealTime();                                                 \
-    testing::ItemsProcessed(static_cast<int64>(iters) * N * H * W * C);     \
-    test::Benchmark(#DEVICE, FusedBatchNormInference<T>(                    \
-                                 N, H, W, C, IS_TRAINING, FORMAT_##FORMAT)) \
-        .Run(iters);                                                        \
-  }                                                                         \
-  BENCHMARK(                                                                \
-      BM_NAME(FusedBatchNorm, N, H, W, C, T, IS_TRAINING, FORMAT, DEVICE));
+// NOLINTEND
+// clang-format on
 
 BM_FusedBatchNorm(64, 14, 14, 256, fp32, false, NHWC, cpu);
 BM_FusedBatchNorm(64, 14, 14, 256, fp16, false, NHWC, cpu);
@@ -320,17 +346,19 @@ BM_FusedBatchNorm(64, 14, 14, 256, fp16, true, NCHW, gpu);
 // FusedBatchNorm gradient
 // -------------------------------------------------------------------------- //
 
-#define BM_FusedBatchNormGrad(N, H, W, C, T, IS_TRAINING, FORMAT, DEVICE)     \
-  static void BM_NAME(FusedBatchNormGrad, N, H, W, C, T, IS_TRAINING, FORMAT, \
-                      DEVICE)(int iters) {                                    \
-    testing::UseRealTime();                                                   \
-    testing::ItemsProcessed(static_cast<int64>(iters) * N * H * W * C);       \
-    test::Benchmark(#DEVICE, FusedBatchNormGrad<T>(N, H, W, C, IS_TRAINING,   \
-                                                   FORMAT_##FORMAT))          \
-        .Run(iters);                                                          \
-  }                                                                           \
-  BENCHMARK(BM_NAME(FusedBatchNormGrad, N, H, W, C, T, IS_TRAINING, FORMAT,   \
-                    DEVICE));
+#define BM_FusedBatchNormGrad(N, H, W, C, T, IS_TRAINING, FORMAT, DEVICE)      \
+  static void BM_NAME(FusedBatchNormGrad, N, H, W, C, T, IS_TRAINING, FORMAT,  \
+                      DEVICE)(::testing::benchmark::State & state) {           \
+    test::Benchmark(                                                           \
+        #DEVICE,                                                               \
+        FusedBatchNormGrad<T>(N, H, W, C, IS_TRAINING, FORMAT_##FORMAT),       \
+        /*old_benchmark_api*/ false)                                           \
+        .Run(state);                                                           \
+    state.SetItemsProcessed(state.iterations() * N * H * W * C);               \
+  }                                                                            \
+  BENCHMARK(                                                                   \
+      BM_NAME(FusedBatchNormGrad, N, H, W, C, T, IS_TRAINING, FORMAT, DEVICE)) \
+      ->UseRealTime();
 
 #define BM_FusedBatchNormGradResnetShapes(T, IS_TRAINING, FORMAT, DEVICE) \
   BM_FusedBatchNormGrad(64, 56, 56, 64, T, IS_TRAINING, FORMAT, DEVICE);  \

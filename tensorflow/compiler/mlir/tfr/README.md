@@ -14,7 +14,7 @@ simpler, but it introduces runtime overhead and it cannot easily be used to
 apply dedicated optimizations to op kernels.
 
 The composable TF framework allows the user to define portable TF ops as
-ompositions of other TF ops. It translates a Python function used to define the
+compositions of other TF ops. It translates a Python function used to define the
 composition directly into a portable IR at build time, and uses it to expand the
 composite op in the TF program during compilation / execution. By using this
 expansion mechanism, new op are readily available on different platforms without

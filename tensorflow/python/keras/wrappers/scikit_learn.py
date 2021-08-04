@@ -12,11 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Wrapper for using the Scikit-Learn API with Keras models.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Wrapper for using the Scikit-Learn API with Keras models."""
+# pylint: disable=g-classes-have-attributes
 
 import copy
 import types

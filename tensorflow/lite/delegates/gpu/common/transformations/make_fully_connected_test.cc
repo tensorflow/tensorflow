@@ -91,7 +91,7 @@ TEST(MakeFullyConnected, Smoke) {
   ASSERT_EQ(4, graph.values().size());
 
   auto transformation = NewMakeFullyConnectedFromConvolution();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("make_fully_connected", transformation.get());
 
   ASSERT_EQ(3, graph.nodes().size());

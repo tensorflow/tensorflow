@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_COMPILER_MLIR_MLIR_BRIDGE_ROLLOUT_POLICY_H_
 #define THIRD_PARTY_TENSORFLOW_COMPILER_MLIR_MLIR_BRIDGE_ROLLOUT_POLICY_H_
 
+#include "mlir/IR/BuiltinOps.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -35,6 +36,9 @@ enum class MlirBridgeRolloutPolicy {
   // features in the model, the MLIR bridge should be run. If the MLIR Bridge
   // errors, the fallback path should be used whenever possible.
   kEnabledAfterGraphAnalysis,
+  // The bridge was fallback enabled in a safe mode and passed all graph
+  // analysis checks.
+  kEnabledAfterGraphAnalysisSafeModeFallback
 };
 
 // Analyzes the user requested policy as well as the contents of the graph and
@@ -50,8 +54,14 @@ enum class MlirBridgeRolloutPolicy {
 // to decide whether to emit metrics on unsupported features of the graph.
 MlirBridgeRolloutPolicy GetMlirBridgeRolloutPolicy(
     const tensorflow::Graph& graph,
+    const FunctionLibraryDefinition* function_library,
     absl::optional<tensorflow::ConfigProto> config_proto,
-    bool record_stats = false);
+    bool uses_uninitialized_resource_args, bool record_stats = false);
+
+static inline MlirBridgeRolloutPolicy GetMlirBridge2ndPhaseRolloutPolicy(
+    mlir::ModuleOp module) {
+  return MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis;
+}
 
 }  // namespace tensorflow
 

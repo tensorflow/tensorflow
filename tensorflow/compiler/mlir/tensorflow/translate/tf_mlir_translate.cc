@@ -169,22 +169,32 @@ StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    MLIRImportOptions options) {
-  tensorflow::SavedModelBundle bundle;
+    MLIRImportOptions options, bool lift_variables,
+    std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle) {
+  // Create local bundle if no one is provided to use.
+  std::unique_ptr<tensorflow::SavedModelBundle> bundle;
+  if (saved_model_bundle == nullptr) {
+    bundle = std::make_unique<tensorflow::SavedModelBundle>();
+  } else if (*saved_model_bundle == nullptr) {
+    *saved_model_bundle = std::make_unique<tensorflow::SavedModelBundle>();
+  }
+  SavedModelBundle* bundle_ptr =
+      saved_model_bundle ? saved_model_bundle->get() : bundle.get();
   tensorflow::SessionOptions session_options;
+
   // Force saved model states to be restored to CPU.
   (*session_options.config.mutable_device_count())["GPU"] = 0;
-  auto load_status =
-      tensorflow::LoadSavedModel(session_options, /* run_options = */ {},
-                                 std::string(saved_model_dir), tags, &bundle);
+  auto load_status = tensorflow::LoadSavedModel(
+      session_options, /* run_options = */ {}, std::string(saved_model_dir),
+      tags, bundle_ptr);
   if (!load_status.ok()) {
     LOG(ERROR) << "Failed to load saved model v1 '" << saved_model_dir
                << "': " << load_status;
     return load_status;
   }
 
-  auto module_or =
-      ConvertSavedModelV1ToMlir(bundle, exported_names, context, options);
+  auto module_or = ConvertSavedModelV1ToMlir(*bundle_ptr, exported_names,
+                                             context, options, lift_variables);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel V1 import failed: " << module_or.status();
   }
@@ -205,8 +215,14 @@ StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImportLite(
     return status;
   }
 
-  auto module_or = ConvertSavedModelV1ToMlirLite(
-      meta_graph_def, /*debug_info=*/{}, exported_names, context, options);
+  absl::optional<absl::Span<const std::string>> optional_exported_names;
+  if (!exported_names.empty()) optional_exported_names = exported_names;
+
+  // TODO(b/186898924): debug info in the savedmodel should not be ignored and
+  // should be passed here.
+  auto module_or =
+      ConvertSavedModelV1ToMlirLite(meta_graph_def, /*debug_info=*/{},
+                                    optional_exported_names, context, options);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel V1 import failed: " << module_or.status();
   }

@@ -23,7 +23,7 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 VectorSupportLibrary::VectorSupportLibrary(PrimitiveType primitive_type,
-                                           int64 vector_size,
+                                           int64_t vector_size,
                                            llvm::IRBuilder<>* b,
                                            std::string name)
     : vector_size_(vector_size),
@@ -152,7 +152,7 @@ llvm::Type* VectorSupportLibrary::IntegerTypeForFloatSize(bool vector) {
   CHECK(scalar_type()->isFloatingPointTy());
   const llvm::DataLayout& data_layout =
       b()->GetInsertBlock()->getModule()->getDataLayout();
-  int64 float_size_bits = data_layout.getTypeSizeInBits(scalar_type());
+  int64_t float_size_bits = data_layout.getTypeSizeInBits(scalar_type());
   llvm::Type* scalar_int_type = b()->getIntNTy(float_size_bits);
   if (vector) {
     return llvm::VectorType::get(scalar_int_type, vector_size(), false);
@@ -219,7 +219,8 @@ llvm::Value* VectorSupportLibrary::LoadVector(llvm::Value* pointer) {
     pointer = b()->CreateBitCast(pointer, vector_pointer_type(), name());
   }
   return b()->CreateAlignedLoad(
-      pointer, ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_), name());
+      pointer, llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)),
+      name());
 }
 
 llvm::Value* VectorSupportLibrary::LoadScalar(llvm::Value* pointer) {
@@ -227,7 +228,8 @@ llvm::Value* VectorSupportLibrary::LoadScalar(llvm::Value* pointer) {
     pointer = b()->CreateBitCast(pointer, scalar_pointer_type(), name());
   }
   return b()->CreateAlignedLoad(
-      pointer, ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_), name());
+      pointer, llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)),
+      name());
 }
 
 void VectorSupportLibrary::StoreVector(llvm::Value* value,
@@ -236,8 +238,9 @@ void VectorSupportLibrary::StoreVector(llvm::Value* value,
   if (pointer->getType() != vector_pointer_type()) {
     pointer = b()->CreateBitCast(pointer, vector_pointer_type());
   }
-  b()->CreateAlignedStore(value, pointer,
-                          ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_));
+  b()->CreateAlignedStore(
+      value, pointer,
+      llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)));
 }
 
 void VectorSupportLibrary::StoreScalar(llvm::Value* value,
@@ -246,8 +249,9 @@ void VectorSupportLibrary::StoreScalar(llvm::Value* value,
   if (pointer->getType() != scalar_pointer_type()) {
     pointer = b()->CreateBitCast(pointer, scalar_pointer_type(), name());
   }
-  b()->CreateAlignedStore(value, pointer,
-                          ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_));
+  b()->CreateAlignedStore(
+      value, pointer,
+      llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)));
 }
 
 llvm::Value* VectorSupportLibrary::LoadBroadcast(llvm::Value* pointer) {
@@ -355,7 +359,7 @@ std::vector<llvm::Value*> VectorSupportLibrary::ComputeHorizontalSums(
   std::transform(vectors.begin(), vectors.end(), std::back_inserter(result),
                  [this](llvm::Value* vector) { return AddReduce(vector); });
   if (init_values) {
-    for (int64 i = 0, e = result.size(); i < e; i++) {
+    for (int64_t i = 0, e = result.size(); i < e; i++) {
       result[i] = Add(result[i],
                       b()->CreateExtractElement(init_values, b()->getInt32(i)));
     }
@@ -367,7 +371,7 @@ std::vector<llvm::Value*>
 VectorSupportLibrary::ComputeAvxOptimizedHorizontalSums(
     std::vector<llvm::Value*> vectors, llvm::Value* init_values) {
   // vectors are N llvm vector values, each with N elements.
-  int64 lane_width = vectors.size();
+  int64_t lane_width = vectors.size();
 
   while (vectors.size() != 2) {
     std::vector<llvm::Value*> new_vectors;
@@ -437,7 +441,7 @@ std::vector<llvm::Value*> TileVariable::Get() const {
 
 void TileVariable::Set(absl::Span<llvm::Value* const> value) {
   CHECK_EQ(value.size(), storage_.size());
-  for (int64 i = 0, e = value.size(); i < e; i++) {
+  for (int64_t i = 0, e = value.size(); i < e; i++) {
     storage_[i].Set(value[i]);
   }
 }

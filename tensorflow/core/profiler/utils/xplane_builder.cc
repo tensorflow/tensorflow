@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
@@ -50,7 +51,7 @@ XPlaneBuilder::XPlaneBuilder(XPlane* plane)
   }
 }
 
-XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(int64 metadata_id) {
+XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(int64_t metadata_id) {
   XEventMetadata& metadata = (*plane_->mutable_event_metadata())[metadata_id];
   metadata.set_id(metadata_id);
   return &metadata;
@@ -79,7 +80,19 @@ XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(std::string&& name) {
   return metadata;
 }
 
-XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(int64 metadata_id) {
+XEventMetadata* XPlaneBuilder::GetEventMetadata(absl::string_view name) const {
+  auto result = event_metadata_by_name_.find(name);
+  if (result == event_metadata_by_name_.end()) return nullptr;
+  return result->second;
+}
+
+XStatMetadata* XPlaneBuilder::GetStatMetadata(absl::string_view name) const {
+  auto result = stat_metadata_by_name_.find(name);
+  if (result == stat_metadata_by_name_.end()) return nullptr;
+  return result->second;
+}
+
+XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(int64_t metadata_id) {
   XStatMetadata& metadata = (*plane_->mutable_stat_metadata())[metadata_id];
   metadata.set_id(metadata_id);
   return &metadata;
@@ -107,7 +120,7 @@ XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(std::string&& name) {
   return metadata;
 }
 
-XLineBuilder XPlaneBuilder::GetOrCreateLine(int64 line_id) {
+XLineBuilder XPlaneBuilder::GetOrCreateLine(int64_t line_id) {
   XLine*& line = lines_by_id_[line_id];
   if (line == nullptr) {
     line = plane_->add_lines();
@@ -128,8 +141,8 @@ XEventBuilder XLineBuilder::AddEvent(const XEvent& event) {
   return XEventBuilder(line_, plane_, new_event);
 }
 
-void XLineBuilder::SetTimestampNsAndAdjustEventOffsets(int64 timestamp_ns) {
-  int64 offset_ps = NanosToPicos(line_->timestamp_ns() - timestamp_ns);
+void XLineBuilder::SetTimestampNsAndAdjustEventOffsets(int64_t timestamp_ns) {
+  int64_t offset_ps = NanosToPicos(line_->timestamp_ns() - timestamp_ns);
   line_->set_timestamp_ns(timestamp_ns);
   if (offset_ps) {
     for (auto& event : *line_->mutable_events()) {

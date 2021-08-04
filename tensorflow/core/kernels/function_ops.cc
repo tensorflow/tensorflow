@@ -34,7 +34,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-static const char* const kGradientOp = FunctionLibraryDefinition::kGradientOp;
+static constexpr const char* const kGradientOp =
+    FunctionLibraryDefinition::kGradientOp;
 
 ArgOp::ArgOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
@@ -93,7 +94,6 @@ REGISTER_SYSTEM_KERNEL_BUILDER(Name(kDeviceRetOp).Device(DEVICE_CPU), RetvalOp);
 // TPU runtime, and does not need to be registered when selective registration
 // is turned on.
 REGISTER_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_TPU_SYSTEM), RetvalOp);
-
 
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
@@ -202,7 +202,6 @@ REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         PassOn);
-
 
 class SymbolicGradientOp : public AsyncOpKernel {
  public:
@@ -332,6 +331,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     opts.remote_execution = true;
   }
   opts.create_rendezvous = true;
+  opts.collective_executor = ctx->collective_executor();
   std::vector<Tensor> args(arguments.begin(), arguments.end());
   opts.args_alloc_attrs.reserve(input_dtypes_.size());
   for (const auto& dtype : input_dtypes_) {
@@ -350,19 +350,20 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
           << " with handle: " << handle;
   profiler::TraceMe trace_me(
       [&] {
-        return absl::StrCat("RemoteCallOp#func_name=", func_name,
-                            ",device=", target_device, "#");
+        return profiler::TraceMeEncode(
+            "RemoteCallOp",
+            {{"func_name", func_name}, {"device", target_device}});
       },
       profiler::TraceMeLevel::kInfo);
   lib->Run(
       opts, handle, args, rets,
       [rets, done = std::move(done), func_name, ctx,
-       function_step_id = opts.step_id,
        target_device = std::move(function_target.first)](const Status& status) {
         profiler::TraceMe activity(
             [&] {
-              return absl::StrCat("RemoteCallOpDone#func_name=", func_name,
-                                  ",device=", target_device, "#");
+              return profiler::TraceMeEncode(
+                  "RemoteCallOpDone",
+                  {{"func_name", func_name}, {"device", target_device}});
             },
             profiler::TraceMeLevel::kInfo);
         if (!status.ok()) {

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <string>
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -38,7 +39,7 @@ class LaunchDimensions {
   LaunchDimensions()
       : block_counts_({1, 1, 1}), thread_counts_per_block_({1, 1, 1}) {}
 
-  LaunchDimensions(int64 block_x_count, int64 thread_x_count_per_block)
+  LaunchDimensions(int64_t block_x_count, int64_t thread_x_count_per_block)
       : block_counts_({block_x_count, 1, 1}),
         thread_counts_per_block_({thread_x_count_per_block, 1, 1}) {}
 
@@ -57,6 +58,14 @@ class LaunchDimensions {
            thread_counts_per_block_.z;
   }
 
+  std::string ToString() const {
+    return absl::StrCat("blocks: {", block_counts_.x, ", ", block_counts_.y,
+                        ", ", block_counts_.z, "}, threads/block: {",
+                        thread_counts_per_block_.x, ", ",
+                        thread_counts_per_block_.y, ", ",
+                        thread_counts_per_block_.z, "}");
+  }
+
  private:
   Dim3D block_counts_;
   Dim3D thread_counts_per_block_;
@@ -65,10 +74,39 @@ class LaunchDimensions {
 std::ostream& operator<<(std::ostream& out,
                          const LaunchDimensions& launch_dims);
 
-LaunchDimensions CalculateLaunchDimensions(const Shape& shape,
-                                           GpuDeviceInfo gpu_device_info,
-                                           int unroll_factor = 1,
-                                           bool few_waves = false);
+struct LaunchDimensionsConfig {
+  // The kernel implementation will be unrolled if `unroll_factor` is
+  // greater than one.
+  int unroll_factor = 1;
+  // A wave is a group of blocks that execute at the same time on the
+  // GPU. If there are more blocks then the number that can run
+  // concurrently, there are multiple waves of blocks running
+  // sequentially.  If `few_waves` is true, each thread will loop over
+  // a block of unroll_factor elements. Otherwise each thread will
+  // handle only unroll_factor.
+  bool few_waves = false;
+  // If `row_optimized` is true, then the block size will equal to
+  // `hlo.shape().dimensions().back()/unroll_factor`.
+  // Currently few_waves and row_vectorized do not work together.
+  bool row_vectorized = false;
+
+  std::string ToString() {
+    return absl::StrCat("unroll_factor=", unroll_factor,
+                        ", few_waves=", few_waves,
+                        ", row_vectorized=", row_vectorized);
+  }
+};
+
+// Returns -1 if the shape doesn't allows the row vectorization code path.
+// If supported, return the number of threads to use in that case.
+int64 ThreadsPerBlockRowVectorized(const Shape& shape,
+                                   GpuDeviceInfo gpu_device_info,
+                                   LaunchDimensionsConfig dim_config);
+
+// Calculates the launch dimensions used to invoke `hlo`.
+StatusOr<LaunchDimensions> CalculateLaunchDimensions(
+    const Shape& shape, GpuDeviceInfo gpu_device_info,
+    LaunchDimensionsConfig dim_config = {});
 
 }  // namespace gpu
 }  // namespace xla

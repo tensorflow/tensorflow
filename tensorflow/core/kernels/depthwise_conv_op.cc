@@ -85,25 +85,26 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename T>
 struct DepthwiseConv2DKernel {
   static void Run(const DepthwiseArgs& args,
-                  const int64 padded_filter_inner_dim_size, const int64 out_r,
-                  const int64 out_c, const T* filter, const T* input_buffer,
-                  T* output, TensorFormat data_format) {
+                  const int64_t padded_filter_inner_dim_size,
+                  const int64_t out_r, const int64_t out_c, const T* filter,
+                  const T* input_buffer, T* output, TensorFormat data_format) {
     typedef typename Eigen::internal::packet_traits<T>::type Packet;
-    static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
+    static const int64_t kPacketSize = (sizeof(Packet) / sizeof(T));
 
-    const int64 out_depth = args.out_depth;
-    const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
-    const int64 output_scalar_size = out_depth % kPacketSize;
-    const int64 output_vectorized_size =
+    const int64_t out_depth = args.out_depth;
+    const int64_t filter_spatial_size = args.filter_rows * args.filter_cols;
+    const int64_t output_scalar_size = out_depth % kPacketSize;
+    const int64_t output_vectorized_size =
         (out_depth / kPacketSize) * kPacketSize;
-    const int64 base_output_index = (out_r * args.out_cols + out_c) * out_depth;
+    const int64_t base_output_index =
+        (out_r * args.out_cols + out_c) * out_depth;
 
     for (int i = 0; i < output_vectorized_size; i += kPacketSize) {
       // Reset accumulator.
       auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
       for (int j = 0; j < filter_spatial_size; ++j) {
         // Calculate index.
-        const int64 index = i + j * padded_filter_inner_dim_size;
+        const int64_t index = i + j * padded_filter_inner_dim_size;
         // Load filter.
         // TODO(andydavis) Unroll 'out_c' loop in caller so we can load
         // multiple inputs here to amortize the cost of each filter block load.
@@ -123,7 +124,7 @@ struct DepthwiseConv2DKernel {
     if (output_scalar_size > 0) {
       auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
       for (int j = 0; j < filter_spatial_size; ++j) {
-        const int64 index =
+        const int64_t index =
             output_vectorized_size + j * padded_filter_inner_dim_size;
         const auto filter_block =
             Eigen::internal::ploadu<Packet>(filter + index);
@@ -135,7 +136,7 @@ struct DepthwiseConv2DKernel {
       // Load accumulator into an array and loop through output.
       T out_buf[kPacketSize];
       Eigen::internal::pstoreu<T>(out_buf, vaccum);
-      const int64 last_output_index =
+      const int64_t last_output_index =
           base_output_index + output_vectorized_size;
       for (int j = 0; j < output_scalar_size; ++j) {
         output[last_output_index + j] = out_buf[j];
@@ -166,15 +167,15 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
         ctx, data_format == FORMAT_NHWC,
         errors::Unimplemented(
             "Depthwise convolution on CPU is only supported for NHWC format"));
-    static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
+    static const int64_t kPacketSize = (sizeof(Packet) / sizeof(T));
 
     // Pad 'depthwise_filter' to vector register width (if needed).
     const bool pad_filter = (args.out_depth % kPacketSize) == 0 ? false : true;
     Tensor padded_filter;
     if (pad_filter) {
       // Allocate space for padded filter.
-      const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
-      const int64 padded_filter_inner_dim_size =
+      const int64_t filter_spatial_size = args.filter_rows * args.filter_cols;
+      const int64_t padded_filter_inner_dim_size =
           ((args.out_depth + kPacketSize - 1) / kPacketSize) * kPacketSize;
       OP_REQUIRES_OK(
           ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
@@ -190,14 +191,14 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
 
     // Computes one shard of depthwise conv2d output.
     auto shard = [&ctx, &args, &input, &filter_data, &output, data_format](
-                     int64 start, int64 limit) {
-      static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
-      const int64 input_image_size =
+                     int64_t start, int64_t limit) {
+      static const int64_t kPacketSize = (sizeof(Packet) / sizeof(T));
+      const int64_t input_image_size =
           args.in_rows * args.in_cols * args.in_depth;
-      const int64 output_image_size =
+      const int64_t output_image_size =
           args.out_rows * args.out_cols * args.out_depth;
-      const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
-      const int64 padded_filter_inner_dim_size =
+      const int64_t filter_spatial_size = args.filter_rows * args.filter_cols;
+      const int64_t padded_filter_inner_dim_size =
           ((args.out_depth + kPacketSize - 1) / kPacketSize) * kPacketSize;
 
       // Allocate buffer for local input regions.
@@ -209,14 +210,14 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
                                   &input_buffer));
       T* input_buffer_data = input_buffer.template flat<T>().data();
 
-      for (int64 i = start; i < limit; ++i) {
-        const int64 b = i / args.out_rows;
-        const int64 in_base = b * input_image_size;
-        const int64 out_base = b * output_image_size;
+      for (int64_t i = start; i < limit; ++i) {
+        const int64_t b = i / args.out_rows;
+        const int64_t in_base = b * input_image_size;
+        const int64_t out_base = b * output_image_size;
 
-        const int64 out_r = i % args.out_rows;
+        const int64_t out_r = i % args.out_rows;
 
-        for (int64 out_c = 0; out_c < args.out_cols; ++out_c) {
+        for (int64_t out_c = 0; out_c < args.out_cols; ++out_c) {
           // Populate 'input_buffer_data' with data from local input region.
           functor::DepthwiseInputCopyOp<T>()(args, padded_filter_inner_dim_size,
                                              out_r, out_c, input + in_base,
@@ -230,7 +231,7 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
       }
     };
 
-    const int64 total_shards = args.batch * args.out_rows;
+    const int64_t total_shards = args.batch * args.out_rows;
 
     // Empirically tested to give reasonable performance boosts at batch size 1
     // without reducing throughput at batch size 32.
@@ -238,7 +239,7 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
 
     // TODO(andydavis): Estimate shard cost (in cycles) based on the number of
     // flops/loads/stores required to compute one shard.
-    const int64 shard_cost = kCostMultiplier * args.out_cols * args.out_depth;
+    const int64_t shard_cost = kCostMultiplier * args.out_cols * args.out_depth;
 
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, total_shards,
@@ -280,9 +281,9 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
     stride_ = GetTensorDim(strides_, data_format_, 'H');
-    const int64 stride_w = GetTensorDim(strides_, data_format_, 'W');
-    const int64 stride_n = GetTensorDim(strides_, data_format_, 'N');
-    const int64 stride_c = GetTensorDim(strides_, data_format_, 'C');
+    const int64_t stride_w = GetTensorDim(strides_, data_format_, 'W');
+    const int64_t stride_n = GetTensorDim(strides_, data_format_, 'N');
+    const int64_t stride_c = GetTensorDim(strides_, data_format_, 'C');
 
     OP_REQUIRES(context, stride_ == stride_w,
                 errors::InvalidArgument(
@@ -340,39 +341,39 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
                                         filter.shape().DebugString()));
 
     // in_depth for input and filter must match.
-    const int64 in_depth = GetTensorDim(input, data_format_, 'C');
+    const int64_t in_depth = GetTensorDim(input, data_format_, 'C');
     OP_REQUIRES(context, in_depth == filter.dim_size(2),
                 errors::InvalidArgument(
                     "input and filter must have the same depth: ", in_depth,
                     " vs ", filter.dim_size(2)));
 
     // The last dimension for filter is depth multiplier.
-    const int32 depth_multiplier = filter.dim_size(3);
+    const int32_t depth_multiplier = filter.dim_size(3);
 
     // The output depth is input depth x depth multiplier
-    const int32 out_depth = in_depth * depth_multiplier;
+    const int32_t out_depth = in_depth * depth_multiplier;
 
-    const int64 input_rows_raw = GetTensorDim(input, data_format_, 'H');
+    const int64_t input_rows_raw = GetTensorDim(input, data_format_, 'H');
     OP_REQUIRES(
         context,
         FastBoundsCheck(input_rows_raw, std::numeric_limits<int32>::max()),
         errors::InvalidArgument("Input rows too large"));
-    const int32 input_rows = static_cast<int32>(input_rows_raw);
-    const int32 filter_rows = filter.dim_size(0);
+    const int32_t input_rows = static_cast<int32>(input_rows_raw);
+    const int32_t filter_rows = filter.dim_size(0);
 
-    const int64 input_cols_raw = GetTensorDim(input, data_format_, 'W');
+    const int64_t input_cols_raw = GetTensorDim(input, data_format_, 'W');
     OP_REQUIRES(
         context,
         FastBoundsCheck(input_cols_raw, std::numeric_limits<int32>::max()),
         errors::InvalidArgument("Input cols too large"));
-    const int32 input_cols = static_cast<int32>(input_cols_raw);
-    const int32 filter_cols = filter.dim_size(1);
+    const int32_t input_cols = static_cast<int32>(input_cols_raw);
+    const int32_t filter_cols = filter.dim_size(1);
 
     // The first dimension for input is batch.
-    const int32 batch = input.dim_size(0);
+    const int32_t batch = input.dim_size(0);
 
-    int64 out_rows = 0, out_cols = 0, pad_top = 0, pad_bottom = 0, pad_left = 0,
-          pad_right = 0;
+    int64_t out_rows = 0, out_cols = 0, pad_top = 0, pad_bottom = 0,
+            pad_left = 0, pad_right = 0;
     if (padding_ == Padding::EXPLICIT) {
       GetExplicitPaddingForDim(explicit_paddings_, data_format_, 'H', &pad_top,
                                &pad_bottom);
@@ -431,7 +432,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       // filter_in_depth  | in_depth         | in_depth / group_count
       //
       // For depthwise convolution, we have group_count == in_depth.
-      int32 filter_in_depth = 1;
+      int32_t filter_in_depth = 1;
       TensorShape shape =
           TensorShape{filter_rows, filter_cols, filter_in_depth, out_depth};
       Tensor reshaped_filter(/*type=*/dtype_);

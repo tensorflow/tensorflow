@@ -93,9 +93,14 @@ void FillFn(Tensor* tensor, std::function<T(int)> fn) {
   for (int i = 0; i < flat.size(); ++i) flat(i) = fn(i);
 }
 
-// Expects "x" and "y" are tensors of the same type, same shape, and
-// identical values (within 4 ULPs for floating point types).
-void ExpectEqual(const Tensor& x, const Tensor& y);
+// Expects "x" and "y" are tensors of the same type, same shape, and identical
+// values (within 4 ULPs for floating point types unless explicitly disabled).
+enum class Tolerance {
+  kNone,
+  kDefault,
+};
+void ExpectEqual(const Tensor& x, const Tensor& y,
+                 Tolerance t = Tolerance ::kDefault);
 
 // Expects "x" and "y" are tensors of the same (floating point) type,
 // same shape and element-wise difference between x and y is no more
@@ -110,6 +115,27 @@ template <typename T>
 void ExpectTensorEqual(const Tensor& x, const Tensor& y) {
   EXPECT_EQ(x.dtype(), DataTypeToEnum<T>::value);
   ExpectEqual(x, y);
+}
+
+::testing::AssertionResult IsSameType(const Tensor& x, const Tensor& y);
+::testing::AssertionResult IsSameShape(const Tensor& x, const Tensor& y);
+
+template <typename T>
+void ExpectTensorEqual(const Tensor& x, const Tensor& y,
+                       std::function<bool(const T&, const T&)> is_equal) {
+  EXPECT_EQ(x.dtype(), DataTypeToEnum<T>::value);
+  ASSERT_TRUE(IsSameType(x, y));
+  ASSERT_TRUE(IsSameShape(x, y));
+
+  const T* Tx = x.unaligned_flat<T>().data();
+  const T* Ty = y.unaligned_flat<T>().data();
+  auto size = x.NumElements();
+  int max_failures = 10;
+  int num_failures = 0;
+  for (decltype(size) i = 0; i < size; ++i) {
+    EXPECT_TRUE(is_equal(Tx[i], Ty[i])) << "i = " << (++num_failures, i);
+    ASSERT_LT(num_failures, max_failures) << "Too many mismatches, giving up.";
+  }
 }
 
 // Expects "x" and "y" are tensors of the same type T, same shape, and

@@ -180,7 +180,7 @@ absl::Status MetalArguments::Init(
     const std::map<std::string, std::string>& linkables, MetalDevice* device,
     Arguments* args, std::string* code) {
   RETURN_IF_ERROR(AllocateObjects(*args, device->device()));
-  RETURN_IF_ERROR(AddObjectArgs(args));
+  RETURN_IF_ERROR(AddObjectArgs(device->GetInfo(), args));
   RETURN_IF_ERROR(
       ResolveSelectorsPass(device->GetInfo(), *args, linkables, code));
   object_refs_ = std::move(args->object_refs_);
@@ -200,6 +200,8 @@ using namespace metal;
   const bool use_local_id = code->find("LOCAL_ID_") != std::string::npos;
   const bool use_group_id = code->find("GROUP_ID_") != std::string::npos;
   const bool use_group_size = code->find("GROUP_SIZE_") != std::string::npos;
+  const bool use_simd_id =
+      code->find("SUB_GROUP_LOCAL_ID") != std::string::npos;
   if (use_global_id) {
     AppendArgument("uint3 reserved_gid[[thread_position_in_grid]]", &arguments);
   }
@@ -213,6 +215,10 @@ using namespace metal;
   }
   if (use_group_size) {
     AppendArgument("uint3 reserved_group_size[[threads_per_threadgroup]]",
+                   &arguments);
+  }
+  if (use_simd_id) {
+    AppendArgument("uint reserved_simd_id[[thread_index_in_simdgroup]]",
                    &arguments);
   }
   if (!use_global_id && !use_local_id && !use_group_id && !use_group_size &&
@@ -460,12 +466,13 @@ absl::Status MetalArguments::AllocateObjects(const Arguments& args,
   return absl::OkStatus();
 }
 
-absl::Status MetalArguments::AddObjectArgs(Arguments* args) {
+absl::Status MetalArguments::AddObjectArgs(const GpuInfo& gpu_info,
+                                           Arguments* args) {
   for (auto& t : args->objects_) {
-    AddGPUResources(t.first, t.second->GetGPUResources(), args);
+    AddGPUResources(t.first, t.second->GetGPUResources(gpu_info), args);
   }
   for (auto& t : args->object_refs_) {
-    AddGPUResources(t.first, t.second->GetGPUResources(), args);
+    AddGPUResources(t.first, t.second->GetGPUResources(gpu_info), args);
   }
   return absl::OkStatus();
 }
@@ -485,6 +492,9 @@ std::string MetalArguments::GetListOfArgs(int buffer_offset,
   for (auto& t : images2d_) {
     std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
     std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    if (t.second.desc.normalized) {
+      data_type = ToMetalDataType(t.second.desc.normalized_type);
+    }
     AppendArgument(absl::StrCat("texture2d<", data_type, ", ", access, "> ",
                                 t.first, "[[texture(", textures_offset, ")]]"),
                    &result);
@@ -713,18 +723,9 @@ absl::Status MetalArguments::ResolveSelector(
     const std::string& object_name, const std::string& selector,
     const std::vector<std::string>& function_args,
     const std::vector<std::string>& template_args, std::string* result) {
-  const GPUObjectDescriptor* desc_ptr;
-  auto it_ref = args.object_refs_.find(object_name);
-  auto it_obj = args.objects_.find(object_name);
-  if (it_ref != args.object_refs_.end()) {
-    desc_ptr = it_ref->second.get();
-  } else if (it_obj != args.objects_.end()) {
-    desc_ptr = it_obj->second.get();
-  } else {
-    return absl::NotFoundError(
-        absl::StrCat("No object with name - ", object_name));
-  }
-  auto names = desc_ptr->GetGPUResources().GetNames();
+  GPUObjectDescriptor* desc_ptr;
+  RETURN_IF_ERROR(args.GetDescriptor(object_name, &desc_ptr));
+  auto names = desc_ptr->GetGPUResources(gpu_info).GetNames();
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
   if (tensor_desc && (selector == "Write" || selector == "Linking")) {
     auto it = linkables.find(object_name);

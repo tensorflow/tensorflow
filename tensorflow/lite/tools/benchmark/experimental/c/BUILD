@@ -2,7 +2,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 package(
     default_visibility = ["benchmark"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(

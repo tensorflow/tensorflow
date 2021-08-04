@@ -91,7 +91,8 @@ std::vector<int32_t> GetWeightInputIndices(const OperatorCodeT* op_code,
              builtin_op_code == BuiltinOperator_DEPTHWISE_CONV_2D ||
              builtin_op_code == BuiltinOperator_FULLY_CONNECTED ||
              builtin_op_code == BuiltinOperator_BATCH_MATMUL ||
-             builtin_op_code == BuiltinOperator_EMBEDDING_LOOKUP) {
+             builtin_op_code == BuiltinOperator_EMBEDDING_LOOKUP ||
+             builtin_op_code == BuiltinOperator_TRANSPOSE_CONV) {
     return {1};
   } else if (builtin_op_code == BuiltinOperator_SVDF) {
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/svdf.cc

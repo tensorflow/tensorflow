@@ -197,8 +197,8 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
     std::cout << std::endl;
   }
 
-  int64 const_parameter_count = 0;
-  int64 variable_parameter_count = 0;
+  int64_t const_parameter_count = 0;
+  int64_t variable_parameter_count = 0;
   int control_edge_count = 0;
   std::map<string, int> device_counts;
   for (const NodeDef& node : graph.node()) {

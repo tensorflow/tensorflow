@@ -14,10 +14,6 @@
 # ==============================================================================
 """Built-in linear model classes."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import initializers
@@ -95,7 +91,6 @@ class LinearModel(training.Model):
     self.kernel_regularizer = regularizers.get(kernel_regularizer)
     self.bias_regularizer = regularizers.get(bias_regularizer)
     super(LinearModel, self).__init__(**kwargs)
-    base_layer.keras_premade_model_gauge.get_cell('Linear').set(True)
 
   def build(self, input_shape):
     if isinstance(input_shape, dict):

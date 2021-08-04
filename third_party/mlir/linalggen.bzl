@@ -1,3 +1,7 @@
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 """BUILD extensions for MLIR linalg generation."""
 
 def genlinalg(name, linalggen, src, linalg_outs):
@@ -27,10 +31,9 @@ def genlinalg(name, linalggen, src, linalg_outs):
             srcs = [src],
             outs = [out],
             tools = [linalggen],
-            cmd = (" ".join(base_args) + " -o $@"),
+            cmd = (" ".join(base_args)),
         )
 
-    # List of opts that do not generate cc files.
     hdrs = [f for (opts, f) in linalg_outs]
     native.cc_library(
         name = name,

@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/experimental/conv_emitter/conv_emitter_transforms.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
@@ -63,7 +65,7 @@ struct ShapeInfo {
 };
 
 ShapeInfo GetShapeInfo(
-    const Shape& shape, int64 n_dim, int64 c_dim,
+    const Shape& shape, int64_t n_dim, int64_t c_dim,
     absl::Span<const tensorflow::protobuf_int64> spatial_dims,
     mlir::Builder builder) {
   ShapeInfo shape_info;
@@ -76,22 +78,22 @@ ShapeInfo GetShapeInfo(
 
   nchw_to_logical.push_back(n_dim);
   nchw_to_logical.push_back(c_dim);
-  for (int64 dim : spatial_dims) {
+  for (int64_t dim : spatial_dims) {
     nchw_to_logical.push_back(dim);
   }
 
-  for (int64 dim : nchw_to_logical) {
+  for (int64_t dim : nchw_to_logical) {
     shape_info.nchw_dimensions.push_back(shape.dimensions(dim));
   }
 
-  for (int64 dim : physical_to_logical) {
+  for (int64_t dim : physical_to_logical) {
     shape_info.physical_dimensions.push_back(shape.dimensions(dim));
   }
 
   std::vector<mlir::AffineExpr> affine_exprs;
   // We want physical to nchw order.
-  for (int64 dim : ComposePermutations(InversePermutation(nchw_to_logical),
-                                       physical_to_logical)) {
+  for (int64_t dim : ComposePermutations(InversePermutation(nchw_to_logical),
+                                         physical_to_logical)) {
     affine_exprs.push_back(builder.getAffineDimExpr(dim));
   }
 
@@ -154,7 +156,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
         ancestor.getUpperBoundMap().getSingleConstantResult());
   }
 
-  if (auto alloc = mlir::dyn_cast<mlir::AllocOp>(begin_op)) {
+  if (auto alloc = mlir::dyn_cast<mlir::memref::AllocOp>(begin_op)) {
     CHECK(std::next(begin_op) == end_op)
         << "alloc() needs to be hoisted by its own";
 
@@ -165,8 +167,8 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
                                type.getShape().begin(), type.getShape().end());
     mlir::MemRefType new_type =
         mlir::MemRefType::get(ancestor_dimensions, type.getElementType());
-    auto new_alloc =
-        builder.create<mlir::AllocOp>(builder.getUnknownLoc(), new_type);
+    auto new_alloc = builder.create<mlir::memref::AllocOp>(
+        builder.getUnknownLoc(), new_type);
 
     std::vector<mlir::Value> indvars;
     for (auto ancestor : ancestors) {
@@ -231,7 +233,7 @@ mlir::Operation* HoistAndFix(mlir::Operation* op, mlir::AffineForOp where) {
 struct InitialMlirConvAnchors {
   std::vector<mlir::AffineForOp> cartesian_product_loops;
   std::vector<mlir::AffineForOp> reduction_loops;
-  mlir::AllocOp output_acc;
+  mlir::memref::AllocOp output_acc;
 };
 
 // Return the following IR with the anchors set to corresponding operations.
@@ -260,7 +262,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
   builder =
       OpBuilder::atBlockTerminator(cartesian_product_loops.back().getBody());
 
-  mlir::AllocOp output_acc = builder.create<mlir::AllocOp>(
+  auto output_acc = builder.create<mlir::memref::AllocOp>(
       location, mlir::MemRefType::get({}, builder.getF32Type()));
 
   builder.create<mlir::AffineStoreOp>(
@@ -396,7 +398,7 @@ StatusOr<TransformedMlirConvAnchors> TransformMlirConv(
   std::vector<mlir::AffineForOp> cartesian_product_loops =
       anchors.cartesian_product_loops;
   std::vector<mlir::AffineForOp> reduction_loops = anchors.reduction_loops;
-  mlir::AllocOp output_acc = anchors.output_acc;
+  mlir::memref::AllocOp output_acc = anchors.output_acc;
 
   // TODO(timshen): consider using pattern matchers for transformations
   //
@@ -443,7 +445,7 @@ StatusOr<TransformedMlirConvAnchors> TransformMlirConv(
   //       output[...] = output_acc[...]
   //     }
   //   }
-  output_acc = llvm::cast<mlir::AllocOp>(
+  output_acc = llvm::cast<mlir::memref::AllocOp>(
       HoistAndFix(output_acc, tiled_cartesian_loops.front()));
 
   // Hoist everything before reduction loops (aka zero initializations of

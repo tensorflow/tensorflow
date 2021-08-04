@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(

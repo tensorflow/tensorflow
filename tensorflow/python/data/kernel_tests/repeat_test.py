@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -67,6 +68,46 @@ class RepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
         [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
     self.assertDatasetProduces(dataset,
                                [components] * (inner_count * outer_count))
+
+
+class RepeatDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                  parameterized.TestCase):
+
+  def _build_repeat_dataset(self, count, take_count=3):
+    components = (np.arange(10),)
+    return dataset_ops.Dataset.from_tensor_slices(components).take(
+        take_count).repeat(count)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testFiniteRepeat(self, verify_fn):
+    count = 10
+    verify_fn(
+        self,
+        lambda: self._build_repeat_dataset(count),
+        num_outputs=(3 * count))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testEmptyRepeat(self, verify_fn):
+    verify_fn(self, lambda: self._build_repeat_dataset(0), num_outputs=0)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testInfiniteRepeat(self):
+    self.verify_unused_iterator(
+        lambda: self._build_repeat_dataset(-1), 10, verify_exhausted=False)
+    self.verify_multiple_breaks(
+        lambda: self._build_repeat_dataset(-1), 20, verify_exhausted=False)
+    self.verify_reset_restored_iterator(
+        lambda: self._build_repeat_dataset(-1), 20, verify_exhausted=False)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testInfiniteEmptyRepeat(self, verify_fn):
+    verify_fn(self, lambda: self._build_repeat_dataset(-1, 0), num_outputs=0)
 
 
 if __name__ == "__main__":

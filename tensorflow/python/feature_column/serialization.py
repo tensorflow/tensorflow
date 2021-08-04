@@ -25,6 +25,7 @@ from tensorflow.python.feature_column import sequence_feature_column as sfc_lib
 from tensorflow.python.ops import init_ops
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
 _FEATURE_COLUMNS = [
@@ -38,6 +39,7 @@ _FEATURE_COLUMNS = [
 ]
 
 
+@tf_export('__internal__.feature_column.serialize_feature_column', v1=[])
 def serialize_feature_column(fc):
   """Serializes a FeatureColumn or a raw string key.
 
@@ -86,6 +88,7 @@ def serialize_feature_column(fc):
     raise ValueError('Instance: {} is not a FeatureColumn'.format(fc))
 
 
+@tf_export('__internal__.feature_column.deserialize_feature_column', v1=[])
 def deserialize_feature_column(config,
                                custom_objects=None,
                                columns_by_name=None):
@@ -94,7 +97,6 @@ def deserialize_feature_column(config,
   This method should only be used to deserialize parent FeatureColumns when
   implementing FeatureColumn.from_config(), else deserialize_feature_columns()
   is preferable. Returns a FeatureColumn for this config.
-  TODO(b/118939620): Simplify code if Keras utils support object deduping.
 
   Args:
     config: A Dict with the serialization of feature columns acquired by
@@ -111,6 +113,7 @@ def deserialize_feature_column(config,
   Returns:
     A FeatureColumn corresponding to the input `config`.
   """
+  # TODO(b/118939620): Simplify code if Keras utils support object deduping.
   if isinstance(config, six.string_types):
     return config
   # A dict from class_name to class for all FeatureColumns in this module.

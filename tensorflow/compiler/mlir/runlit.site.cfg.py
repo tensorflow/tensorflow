@@ -41,9 +41,12 @@ config.mlir_tools_dir = os.path.join(external_srcdir, 'llvm-project', 'mlir')
 config.suffixes = ['.td', '.mlir', '.pbtxt']
 
 mlir_tf_tools_dirs = [
+    'tensorflow/core/ir/tests/',
+    'tensorflow/core/transforms/',
     'tensorflow/compiler/mlir',
     'tensorflow/compiler/mlir/hlo',
     'tensorflow/compiler/mlir/lite',
+    'tensorflow/compiler/mlir/lite/experimental/tac',
     'tensorflow/compiler/mlir/tensorflow',
     'tensorflow/compiler/mlir/tfjs',
     'tensorflow/compiler/mlir/xla',

@@ -22,7 +22,7 @@ namespace tensorflow {
 REGISTER_OP("CollectiveReduce")
     .Input("input: T")
     .Output("data: T")
-    .Attr("T: {float, float16, float64, int32, int64}")
+    .Attr("T: {bfloat16, float, float16, float64, int32, int64}")
     .Attr("group_size: int")
     .Attr("group_key: int")
     .Attr("instance_key: int")
@@ -33,6 +33,7 @@ REGISTER_OP("CollectiveReduce")
     .Attr("communication_hint: string = 'auto'")
     .Attr("timeout_seconds: float = 0")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("CollectiveGather")
@@ -46,6 +47,7 @@ REGISTER_OP("CollectiveGather")
     .Attr("communication_hint: string = 'auto'")
     .Attr("timeout_seconds: float = 0")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       // Scalar input is not supported.
       shape_inference::ShapeHandle unused;
@@ -90,6 +92,7 @@ REGISTER_OP("CollectiveBcastSend")
     .Attr("communication_hint: string = 'auto'")
     .Attr("timeout_seconds: float = 0")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn(shape_inference::ExplicitShape);
 
 REGISTER_OP("CollectiveBcastRecv")
@@ -102,12 +105,13 @@ REGISTER_OP("CollectiveBcastRecv")
     .Attr("communication_hint: string = 'auto'")
     .Attr("timeout_seconds: float = 0")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn(shape_inference::ExplicitShape);
 
 REGISTER_OP("CollectiveReduceV2")
     .Input("input: T")
     .Output("data: T")
-    .Attr("T: {float, float16, float64, int32, int64}")
+    .Attr("T: {bfloat16, float, float16, float64, int32, int64}")
     .Input("group_size: int32")
     .Input("group_key: int32")
     .Input("instance_key: int32")
@@ -117,7 +121,9 @@ REGISTER_OP("CollectiveReduceV2")
     .Attr("communication_hint: string = 'auto'")
     .Attr("timeout_seconds: float = 0")
     .Attr("Nordering_token: int >= 0 = 0")
+    .Attr("max_subdivs_per_device: int = -1")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("CollectiveGatherV2")
@@ -132,6 +138,7 @@ REGISTER_OP("CollectiveGatherV2")
     .Attr("timeout_seconds: float = 0")
     .Attr("Nordering_token: int >= 0 = 0")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       // Scalar input is not supported.
       shape_inference::ShapeHandle unused;
@@ -155,6 +162,7 @@ REGISTER_OP("CollectiveBcastSendV2")
     .Attr("communication_hint: string = 'auto'")
     .Attr("timeout_seconds: float = 0")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("CollectiveBcastRecvV2")
@@ -168,6 +176,7 @@ REGISTER_OP("CollectiveBcastRecvV2")
     .Attr("communication_hint: string = 'auto'")
     .Attr("timeout_seconds: float = 0")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       // The output shape is given by the `shape` input at index 3.
       shape_inference::ShapeHandle out;

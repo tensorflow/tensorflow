@@ -29,7 +29,7 @@ std::string CreateShapePrefix(
     const std::vector<tensorflow::TensorShape>& dynamic_shapes) {
   std::string shapes_prefix;
   for (const TensorShape& shape : dynamic_shapes) {
-    for (int64 size : shape.dim_sizes()) {
+    for (int64_t size : shape.dim_sizes()) {
       absl::StrAppend(&shapes_prefix, size, ",");
     }
     absl::StrAppend(&shapes_prefix, ";");
@@ -74,7 +74,8 @@ std::string CreateConfigPrefix(const TPUCompileMetadataProto& metadata) {
 uint64 CreateFingerprintWithNameAndShapes(
     uint64 name, const std::vector<tensorflow::TensorShape>& shapes) {
   std::string shape_prefix = CreateShapePrefix(shapes);
-  LOG(INFO) << "name: " << name << ", shape_prefix: " << shape_prefix;
+  VLOG(2) << "CreateFingerprintWithNameAndShapes, name: " << name
+          << ", shape_prefix: " << shape_prefix;
   return TpuCompileInterface::Get()->FingerprintString(
       absl::StrCat(name, "_", shape_prefix));
 }

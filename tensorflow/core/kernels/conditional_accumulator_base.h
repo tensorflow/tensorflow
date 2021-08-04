@@ -56,7 +56,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
 
   typedef AsyncOpKernel::DoneCallback DoneCallback;
 
-  virtual void TryApplyGrad(int64 local_step, OpKernelContext* ctx) = 0;
+  virtual void TryApplyGrad(int64_t local_step, OpKernelContext* ctx) = 0;
   void TryTakeGrad(int num_required, OpKernelContext* ctx,
                    DoneCallback callback);
 
@@ -73,7 +73,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
   // SetGlobalStep is a modifier method for current_global_step.
   // It returns an InvalidArgument error if the new_global_step is less than
   // current_global_step.
-  Status SetGlobalStep(int64 new_global_step);
+  Status SetGlobalStep(int64_t new_global_step);
 
   Status MatchesNodeDef(const NodeDef& node_def);
 
@@ -193,9 +193,7 @@ class TypeConverter {
 template <typename U>
 class TypeConverter<Eigen::half, U> {
  public:
-  static Eigen::half ConvertUToT(U c) {
-    return Eigen::half_impl::float_to_half_rtne(c);
-  }
+  static Eigen::half ConvertUToT(U c) { return static_cast<Eigen::half>(c); }
 };
 
 }  // namespace tensorflow

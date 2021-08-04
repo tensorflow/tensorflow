@@ -71,6 +71,10 @@ TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
                         const TfLiteTensor* lookup, const TfLiteTensor* value,
                         TfLiteTensor* output) {
   const int row_size = SizeOfDimension(value, 0);
+  if (row_size == 0) {
+    // Propagate empty tensor if input is empty
+    return kTfLiteOk;
+  }
   const int row_bytes = value->bytes / row_size;
 
   char* output_raw = GetTensorData<char>(output);

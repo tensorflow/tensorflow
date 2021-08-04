@@ -176,7 +176,7 @@ class UniformDistribution<Generator, int32> {
   typedef int32 ResultElementType;
 
   // Must have lo < hi
-  UniformDistribution(int32 lo, int32 hi)
+  UniformDistribution(int32_t lo, int32_t hi)
       : lo_(lo), range_(static_cast<uint32>(hi) - static_cast<uint32>(lo)) {}
 
   PHILOX_DEVICE_INLINE
@@ -211,7 +211,7 @@ class UniformDistribution<Generator, int64> {
   typedef int64 ResultElementType;
 
   // Must have lo < hi
-  UniformDistribution(int64 lo, int64 hi)
+  UniformDistribution(int64_t lo, int64_t hi)
       : lo_(lo), range_(static_cast<uint64>(hi) - static_cast<uint64>(lo)) {}
 
   PHILOX_DEVICE_INLINE
@@ -758,8 +758,7 @@ PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16 x) {
   const uint16 exp = static_cast<uint16>(15);
   const uint16 val = (exp << 10) | man;
 
-  Eigen::half result;
-  result.x = val;
+  Eigen::half result = Eigen::numext::bit_cast<Eigen::half>(val);
   return result - Eigen::half(1.0);
 }
 

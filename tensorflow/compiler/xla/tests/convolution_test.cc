@@ -53,11 +53,15 @@ class ConvolutionTest : public ClientLibraryTestBase {
 #endif
 };
 
-#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
-using TestTypes = ::testing::Types<float>;
-#else
-using TestTypes = ::testing::Types<float, Eigen::half>;
+using TestTypes = ::testing::Types<
+// TODO(b/183565702): Support integer convs on GPU.
+#if !XLA_TEST_BACKEND_GPU
+    int32,
 #endif
+#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
+    Eigen::half,
+#endif
+    float>;
 
 template <typename T>
 class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
@@ -73,7 +77,7 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
     auto alhs = absl::make_unique<Array4D<T>>(
         kMiniBatchSize, kInputActivationSizeZ, kInputActivationSizeY,
         kInputActivationSizeX);
-    alhs->FillWithMultiples(static_cast<T>(1.0f));
+    alhs->FillWithMultiples(static_cast<T>(static_cast<T>(1.0f)));
     ASSERT_EQ(3, alhs->width());
     ASSERT_EQ(3, alhs->height());
 
@@ -81,8 +85,8 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
                                               kInputActivationSizeZ,
                                               kKernelSizeY, kKernelSizeX);
     Array2D<T> rhs_raster({
-        {1.0f, 0.0f},  // row 0
-        {0.0f, 0.0f},  // row 1
+        {static_cast<T>(1.0f), static_cast<T>(0.0f)},  // row 0
+        {static_cast<T>(0.0f), static_cast<T>(0.0f)},  // row 1
     });
     arhs->FillWithYX(rhs_raster);
     ASSERT_EQ(2, arhs->width());
@@ -122,11 +126,11 @@ class Convolve_1x1x1x2_1x1x1x2_Valid : public ConvolutionTest {
 
     Array4D<T> input_data(1, 1, 1, 2);
     input_data.FillWithYX(Array2D<T>({
-        {1.0f, 2.0f},
+        {static_cast<T>(1.0f), static_cast<T>(2.0f)},
     }));
     Array4D<T> filter_data(1, 1, 1, 2);
     filter_data.FillWithYX(Array2D<T>({
-        {5.0f, 6.0f},
+        {static_cast<T>(5.0f), static_cast<T>(6.0f)},
     }));
 
     ComputeAndCompare(&builder,
@@ -153,15 +157,19 @@ class Convolve_1x1x4x4_1x1x2x2_Valid : public ConvolutionTest {
 
     Array4D<T> input_data(1, 1, 4, 4);
     input_data.FillWithYX(Array2D<T>({
-        {1.0f, 2.0f, 3.0f, 4.0f},
-        {5.0f, 6.0f, 7.0f, 8.0f},
-        {9.0f, 10.0f, 11.0f, 12.0f},
-        {13.0f, 14.0f, 15.0f, 16.0f},
+        {static_cast<T>(1.0f), static_cast<T>(2.0f), static_cast<T>(3.0f),
+         static_cast<T>(4.0f)},
+        {static_cast<T>(5.0f), static_cast<T>(6.0f), static_cast<T>(7.0f),
+         static_cast<T>(8.0f)},
+        {static_cast<T>(9.0f), static_cast<T>(10.0f), static_cast<T>(11.0f),
+         static_cast<T>(12.0f)},
+        {static_cast<T>(13.0f), static_cast<T>(14.0f), static_cast<T>(15.0f),
+         static_cast<T>(16.0f)},
     }));
     Array4D<T> filter_data(1, 1, 2, 2);
     filter_data.FillWithYX(Array2D<T>({
-        {5.0f, 6.0f},
-        {7.0f, 8.0f},
+        {static_cast<T>(5.0f), static_cast<T>(6.0f)},
+        {static_cast<T>(7.0f), static_cast<T>(8.0f)},
     }));
     ComputeAndCompare(&builder,
                       {LiteralUtil::CreateFromArray(input_data),
@@ -187,15 +195,19 @@ class Convolve_1x1x4x4_1x1x2x2_Same : public ConvolutionTest {
 
     Array4D<T> input_data(1, 1, 4, 4);
     input_data.FillWithYX(Array2D<T>({
-        {1.0f, 2.0f, 3.0f, 4.0f},
-        {5.0f, 6.0f, 7.0f, 8.0f},
-        {9.0f, 10.0f, 11.0f, 12.0f},
-        {13.0f, 14.0f, 15.0f, 16.0f},
+        {static_cast<T>(1.0f), static_cast<T>(2.0f), static_cast<T>(3.0f),
+         static_cast<T>(4.0f)},
+        {static_cast<T>(5.0f), static_cast<T>(6.0f), static_cast<T>(7.0f),
+         static_cast<T>(8.0f)},
+        {static_cast<T>(9.0f), static_cast<T>(10.0f), static_cast<T>(11.0f),
+         static_cast<T>(12.0f)},
+        {static_cast<T>(13.0f), static_cast<T>(14.0f), static_cast<T>(15.0f),
+         static_cast<T>(16.0f)},
     }));
     Array4D<T> filter_data(1, 1, 2, 2);
     filter_data.FillWithYX(Array2D<T>({
-        {5.0f, 6.0f},
-        {7.0f, 8.0f},
+        {static_cast<T>(5.0f), static_cast<T>(6.0f)},
+        {static_cast<T>(7.0f), static_cast<T>(8.0f)},
     }));
 
     ComputeAndCompare(&builder,
@@ -222,13 +234,21 @@ class Convolve_1x1x4x4_1x1x3x3_Same : public ConvolutionTest {
     Conv(input, filter, {1, 1}, Padding::kSame);
 
     Array4D<T> input_data(1, 1, 4, 4);
-    input_data.FillWithYX(Array2D<T>({{1.0f, 2.0f, 3.0f, 4.0f},
-                                      {5.0f, 6.0f, 7.0f, 8.0f},
-                                      {9.0f, 10.0f, 11.0f, 12.0f},
-                                      {13.0f, 14.0f, 15.0f, 16.0f}}));
+    input_data.FillWithYX(
+        Array2D<T>({{static_cast<T>(1.0f), static_cast<T>(2.0f),
+                     static_cast<T>(3.0f), static_cast<T>(4.0f)},
+                    {static_cast<T>(5.0f), static_cast<T>(6.0f),
+                     static_cast<T>(7.0f), static_cast<T>(8.0f)},
+                    {static_cast<T>(9.0f), static_cast<T>(10.0f),
+                     static_cast<T>(11.0f), static_cast<T>(12.0f)},
+                    {static_cast<T>(13.0f), static_cast<T>(14.0f),
+                     static_cast<T>(15.0f), static_cast<T>(16.0f)}}));
     Array4D<T> filter_data(1, 1, 3, 3);
     filter_data.FillWithYX(Array2D<T>(
-        {{5.0f, 6.0f, 7.0f}, {8.0f, 9.0f, 10.0f}, {11.0f, 12.0f, 13.0f}}));
+        {{static_cast<T>(5.0f), static_cast<T>(6.0f), static_cast<T>(7.0f)},
+         {static_cast<T>(8.0f), static_cast<T>(9.0f), static_cast<T>(10.0f)},
+         {static_cast<T>(11.0f), static_cast<T>(12.0f),
+          static_cast<T>(13.0f)}}));
     // clang-format on
     ComputeAndCompare(&builder,
                       {LiteralUtil::CreateFromArray(input_data),

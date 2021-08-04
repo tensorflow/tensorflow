@@ -542,6 +542,40 @@ TEST_F(NgramKernelTest, TestEmptyInput) {
   assert_int64_equal(expected_splits, *GetOutput(1));
 }
 
+TEST_F(NgramKernelTest, TestNoTokens) {
+  MakeOp("|", {3}, "L", "R", -1, false);
+  // Batch items are:
+  // 0:
+  // 1: "a"
+  AddInputFromArray<tstring>(TensorShape({1}), {"a"});
+  AddInputFromArray<int64>(TensorShape({3}), {0, 0, 1});
+  TF_ASSERT_OK(RunOpKernel());
+
+  std::vector<tstring> expected_values(
+      {"L|L|R", "L|R|R",             // no input in first split
+       "L|L|a", "L|a|R", "a|R|R"});  // second split
+  std::vector<int64> expected_splits({0, 2, 5});
+
+  assert_string_equal(expected_values, *GetOutput(0));
+  assert_int64_equal(expected_splits, *GetOutput(1));
+}
+
+TEST_F(NgramKernelTest, TestNoTokensNoPad) {
+  MakeOp("|", {3}, "", "", 0, false);
+  // Batch items are:
+  // 0:
+  // 1: "a"
+  AddInputFromArray<tstring>(TensorShape({1}), {"a"});
+  AddInputFromArray<int64>(TensorShape({3}), {0, 0, 1});
+  TF_ASSERT_OK(RunOpKernel());
+
+  std::vector<tstring> expected_values({});
+  std::vector<int64> expected_splits({0, 0, 0});
+
+  assert_string_equal(expected_values, *GetOutput(0));
+  assert_int64_equal(expected_splits, *GetOutput(1));
+}
+
 TEST_F(NgramKernelTest, ShapeFn) {
   ShapeInferenceTestOp op("StringNGrams");
   INFER_OK(op, "?;?", "[?];[?]");

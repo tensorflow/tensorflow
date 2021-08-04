@@ -1,0 +1,24 @@
+// RUN: hlo_to_llvm_ir %s
+
+HloModule Test
+
+%fused_computation (param_0.5307: bf16[], param_1.5984: bf16[]) -> bf16[] {
+  %param_1.5984 = bf16[] parameter(1)
+  %convert.72239 = f32[] convert(bf16[] %param_1.5984)
+  %param_0.5307 = bf16[] parameter(0)
+  %convert.72238 = f32[] convert(bf16[] %param_0.5307)
+  %add.3846 = f32[] add(f32[] %convert.72239, f32[] %convert.72238), metadata={op_type="add" op_name="add"}
+  ROOT %convert.72237 = bf16[] convert(f32[] %add.3846)
+}
+
+%all_reduce_computation (parameter.47449: bf16[], parameter.47450: bf16[]) -> bf16[] {
+  %parameter.47450 = bf16[] parameter(1), metadata={op_type="add" op_name="add"}
+  %parameter.47449 = bf16[] parameter(0), metadata={op_type="add" op_name="add"}
+  ROOT %fusion.1743 = bf16[] fusion(bf16[] %parameter.47450, bf16[] %parameter.47449), kind=kLoop, calls=%fused_computation
+}
+
+ENTRY main {
+  input = bf16[8]{0} parameter(0)
+  ROOT crs = bf16[8]{0} all-reduce(input), replica_groups={{0}}, to_apply=%all_reduce_computation
+}
+

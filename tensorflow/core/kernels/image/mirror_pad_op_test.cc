@@ -76,6 +76,9 @@ class MirrorPadOpTest : public OpsTestBase {
 
 REGISTER_TEST(float)
 REGISTER_TEST(double)
+REGISTER_TEST(quint8)
+REGISTER_TEST(qint8)
+REGISTER_TEST(qint32)
 REGISTER_TEST(uint8)
 REGISTER_TEST(uint16)
 REGISTER_TEST(int8)

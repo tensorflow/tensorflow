@@ -584,8 +584,8 @@ Status HadoopFileSystem::Stat(const string& fname, TransactionToken* token,
   return Status::OK();
 }
 
-REGISTER_FILE_SYSTEM("hdfs", HadoopFileSystem);
-REGISTER_FILE_SYSTEM("viewfs", HadoopFileSystem);
-REGISTER_FILE_SYSTEM("har", HadoopFileSystem);
+REGISTER_LEGACY_FILE_SYSTEM("hdfs", HadoopFileSystem);
+REGISTER_LEGACY_FILE_SYSTEM("viewfs", HadoopFileSystem);
+REGISTER_LEGACY_FILE_SYSTEM("har", HadoopFileSystem);
 
 }  // namespace tensorflow

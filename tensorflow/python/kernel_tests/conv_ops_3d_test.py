@@ -211,7 +211,7 @@ class Conv3DTest(test.TestCase):
         x2, filter_in, strides=[1, 1, 1, 1, 1], padding="VALID")
     self.assertEqual(conv1.shape, tensor_in_sizes_batch)
     self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
-    self.assertAllEqual(conv1, self.evaluate(conv2).reshape(conv1.shape))
+    self.assertAllClose(conv1, self.evaluate(conv2).reshape(conv1.shape))
 
   @test_util.run_in_graph_and_eager_modes
   def testConvolutionClass3DExpandedBatch(self):
@@ -237,7 +237,7 @@ class Conv3DTest(test.TestCase):
     conv2 = convolver2(x2, filter_in)
     self.assertEqual(conv1.shape, tensor_in_sizes_batch)
     self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
-    self.assertAllEqual(conv1, self.evaluate(conv2).reshape(conv1.shape))
+    self.assertAllClose(conv1, self.evaluate(conv2).reshape(conv1.shape))
 
   @test_util.run_in_graph_and_eager_modes
   def testConvolutionWith2SpatialDimensionsAndExpandedBatch(self):
@@ -253,7 +253,7 @@ class Conv3DTest(test.TestCase):
         x2, filter_in, strides=[1, 1, 1], padding="VALID")
     self.assertEqual(conv1.shape, tensor_in_sizes_batch)
     self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
-    self.assertAllEqual(conv1, self.evaluate(conv2).reshape(conv1.shape))
+    self.assertAllClose(conv1, self.evaluate(conv2).reshape(conv1.shape))
 
   def testConv3D1x1x1Filter(self):
     expected_output = [

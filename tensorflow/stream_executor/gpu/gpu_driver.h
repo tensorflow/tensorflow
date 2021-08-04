@@ -227,6 +227,10 @@ class GpuDriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g27a365aebb0eb548166309f58a1e8b8e
   static void DestroyContext(GpuContext* context);
 
+  // Returns the context handle (CUcontext for CUDA and hipCtx_t for ROCm) of a
+  // GpuContext.
+  static GpuContextHandle GetContextHandle(GpuContext* context);
+
   // Queries the runtime for the specified attribute of the specified function.
   // cuFuncGetAttribute (the underlying CUDA driver API routine) only operates
   // in terms of integer-sized values, so there's no potential for overrun (as
@@ -473,6 +477,11 @@ class GpuDriver {
   // (supported on ROCm only)
   static port::Status GetGpuGCNArchName(GpuDeviceHandle device,
                                         std::string* gcnArchName);
+
+#if TENSORFLOW_USE_ROCM
+  // tests the current device for MFMA insn support (ROCm only)
+  static port::StatusOr<bool> GetMFMASupport();
+#endif
 
   // Returns the number of multiprocessors on the device (note that the device
   // may be multi-GPU-per-board).

@@ -92,7 +92,7 @@ class KernelSpecs {
 
   KernelSpecs& WithSignature(const KernelSpecs::Signature& signature,
                              const ScaleFn& fn) {
-    Add(signature, {ScaleConstraintType::CustomScale, fn});
+    (void)Add(signature, {ScaleConstraintType::CustomScale, fn});
     return *this;
   }
 

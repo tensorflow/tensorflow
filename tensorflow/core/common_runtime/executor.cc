@@ -83,7 +83,7 @@ static const Tensor* const kEmptyTensor = new Tensor;
 namespace nodestats {
 inline int64 NowInNsec() { return EnvTime::NowNanos(); }
 
-void SetScheduled(NodeExecStatsInterface* stats, int64 micros) {
+void SetScheduled(NodeExecStatsInterface* stats, int64_t micros) {
   if (!stats) return;
   stats->SetScheduled(micros * EnvTime::kMicrosToNanos);
 }
@@ -159,7 +159,7 @@ class ExecutorImpl : public Executor {
       is_expensive_.resize(gview.num_nodes());
       cost_estimates_ =
           absl::make_unique<std::atomic_uint_fast64_t[]>(gview.num_nodes());
-      for (int32 i = 0; i < gview.num_nodes(); ++i) {
+      for (int32_t i = 0; i < gview.num_nodes(); ++i) {
         if (gview.node(i)) {
           is_expensive_[i] =
               gview.node(i)->kernel && gview.node(i)->kernel->IsExpensive();
@@ -287,7 +287,7 @@ class ExecutorState {
   struct AsyncState;
 
   // Process a ready node in current thread.
-  void Process(TaggedNode node, int64 scheduled_nsec);
+  void Process(TaggedNode node, int64_t scheduled_nsec);
 
   Status ProcessSync(const NodeItem& item, OpKernelContext::Params* params,
                      EntryVector* outputs, NodeExecStatsInterface* stats);
@@ -344,6 +344,8 @@ class ExecutorState {
   const bool log_memory_;
 
   int64 step_id_;
+  int64 start_time_usecs_ = 0;
+
   // Not owned.
   RendezvousInterface* rendezvous_;
   CollectiveExecutor* collective_executor_ = nullptr;
@@ -364,6 +366,7 @@ class ExecutorState {
   const ImmutableExecutorState& immutable_state_;
   ExecutorImpl::KernelStats* const kernel_stats_;
   CancellationManager* cancellation_manager_;
+  CoordinationServiceAgent* coordination_service_agent_;
   // If not null, use this device to schedule intra-op operation
   std::unique_ptr<DeviceBase> user_device_;
   Executor::Args::Runner runner_;
@@ -394,6 +397,7 @@ ExecutorState<PropagatorStateType>::ExecutorState(
     : vlog_(VLOG_IS_ON(1)),
       log_memory_(LogMemory::IsEnabled()),
       step_id_(args.step_id),
+      start_time_usecs_(args.start_time_usecs),
       rendezvous_(args.rendezvous),
       collective_executor_(args.collective_executor),
       session_state_(args.session_state),
@@ -410,6 +414,7 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       immutable_state_(immutable_state),
       kernel_stats_(kernel_stats),
       cancellation_manager_(args.cancellation_manager),
+      coordination_service_agent_(args.coordination_service_agent),
       runner_(args.runner),
       sync_on_finish_(args.sync_on_finish),
       run_all_kernels_inline_(args.run_all_kernels_inline),
@@ -662,7 +667,7 @@ void ExecutorState<PropagatorStateType>::ProcessConstTensor(
 
 template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
-                                                 int64 scheduled_nsec) {
+                                                 int64_t scheduled_nsec) {
   profiler::TraceMeConsumer activity(
       // From TraceMeProducer in DirectSession::RunInternal,
       // GraphMgr::ExecuteAsync, or FunctionLibraryRuntime::Run.
@@ -694,6 +699,7 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
   } else {
     params.device = device;
   }
+  params.start_time_usecs = start_time_usecs_;
   params.log_memory = log_memory_;
   params.rendezvous = rendezvous_;
   params.collective_executor = collective_executor_;
@@ -702,6 +708,7 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
   params.session_metadata = session_metadata_;
   params.tensor_store = tensor_store_;
   params.cancellation_manager = cancellation_manager_;
+  params.coordination_service_agent = coordination_service_agent_;
   params.call_frame = call_frame_;
   params.function_library = immutable_state_.params().function_library;
   params.resource_manager = device->resource_manager();
@@ -988,8 +995,12 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
                 s.error_message(),
                 "\nHint: If you want to see a list of allocated tensors when "
                 "OOM happens, add report_tensor_allocations_upon_oom "
-                "to RunOptions for current allocation info.\n"));
+                "to RunOptions for current allocation info. This isn't "
+                "available when running in Eager mode.\n"));
       }
+    } else if (s.code() == error::UNAVAILABLE &&
+               !item.is_distributed_communication) {
+      s = errors::ReplaceErrorFromNonCommunicationOps(s, item.kernel->name());
     }
     return s;
   }
@@ -1142,7 +1153,7 @@ void ExecutorState<PropagatorStateType>::ScheduleReady(
     TaggedNodeSeq* ready, TaggedNodeReadyQueue* inline_ready) {
   DCHECK(!ready->empty());
 
-  int64 scheduled_nsec = 0;
+  int64_t scheduled_nsec = 0;
   if (stats_collector_) {
     scheduled_nsec = nodestats::NowInNsec();
   }
@@ -1228,7 +1239,7 @@ void ExecutorState<PropagatorStateType>::Finish() {
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
-  int64 step_id = step_id_;
+  int64_t step_id = step_id_;
   CHECK(done_cb != nullptr);
   Device* device = immutable_state_.params().device;
 

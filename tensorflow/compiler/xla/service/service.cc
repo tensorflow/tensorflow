@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
+#include "tensorflow/compiler/xla/service/dynamic_padder.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -289,14 +291,6 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     const Compiler::CompileOptions& options, bool run_backend_only) {
   VLOG(1) << StrFormat("BuildExecutable on service %p", this);
 
-  // Dump computation proto state if flag is set.
-  std::vector<std::unique_ptr<HloProto>> hlo_protos;
-  for (int64 i = 0, end = module_protos.size(); i < end; ++i) {
-    auto hlo_proto = absl::make_unique<HloProto>();
-    *hlo_proto->mutable_hlo_module() = *module_protos[i];
-    hlo_protos.push_back(std::move(hlo_proto));
-  }
-
   VLOG(1) << "Computations:";
   for (const HloModuleProto* proto : module_protos) {
     VLOG(1) << proto->name();
@@ -305,7 +299,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   CHECK_EQ(module_protos.size(), module_configs.size());
   auto module_group =
       absl::make_unique<HloModuleGroup>(module_protos[0]->name());
-  for (int64 i = 0, end = module_protos.size(); i < end; ++i) {
+  for (int64_t i = 0, end = module_protos.size(); i < end; ++i) {
     const HloModuleProto* proto = module_protos[i];
     const HloModuleConfig& config = *module_configs[i];
     TF_ASSIGN_OR_RETURN(
@@ -326,14 +320,6 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
                           backend->compiler()->RunBackend(
                               std::move(module), executors[0][0], options));
       executables.push_back(std::move(executable));
-    }
-  }
-
-  for (size_t i = 0; i < module_protos.size(); ++i) {
-    const auto& debug_opts = module_configs[i]->debug_options();
-    if (DumpingEnabledForHloModule(module_protos[i]->name(), debug_opts) &&
-        debug_opts.xla_dump_hlo_snapshots()) {
-      executables[i]->set_hlo_proto(std::move(hlo_protos[i]));
     }
   }
 
@@ -361,20 +347,20 @@ Service::ExecuteParallelAndRegisterResult(
   // Build DeviceAssignment for all cores based on the provided device handles.
   DeviceAssignment device_assignment(options_.number_of_replicas(),
                                      executables.size());
-  for (int64 i = 0; i < executables.size(); i++) {
+  for (int64_t i = 0; i < executables.size(); i++) {
     TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handles[i]));
     CHECK_EQ(replicas.size(), arguments[i].size());
-    for (int64 replica = 0, end = replicas.size(); replica < end; ++replica) {
+    for (int64_t replica = 0, end = replicas.size(); replica < end; ++replica) {
       device_assignment(replica, i) = replicas[replica]->device_ordinal();
     }
   }
 
-  for (int64 i = 0, end = executables.size(); i < end; i++) {
+  for (int64_t i = 0, end = executables.size(); i < end; i++) {
     // Stream executors for the replicas of the current computation.
     TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handles[i]));
     CHECK_EQ(replicas.size(), arguments[i].size());
     std::vector<ScopedShapedBuffer> result_buffers;
-    for (int64 replica = 0; replica < replicas.size(); ++replica) {
+    for (int64_t replica = 0; replica < replicas.size(); ++replica) {
       TF_ASSIGN_OR_RETURN(StreamPool::Ptr stream,
                           backend->BorrowStream(replicas[replica]));
       streams.push_back(std::move(stream));
@@ -428,7 +414,7 @@ Service::ExecuteParallelAndRegisterResult(
   }
 
   // Wait for all executions to complete.
-  for (int64 i = 0, end = streams.size(); i < end; ++i) {
+  for (int64_t i = 0, end = streams.size(); i < end; ++i) {
     Status block_status = streams[i]->BlockHostUntilDone();
     if (!block_status.ok()) {
       return InternalError("failed to complete execution for stream %d: %s", i,
@@ -484,7 +470,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
 
   DeviceAssignment device_assignment(options_.number_of_replicas(),
                                      /*computation_count=*/1);
-  for (int64 replica = 0; replica < replicas.size(); ++replica) {
+  for (int64_t replica = 0; replica < replicas.size(); ++replica) {
     device_assignment(replica, 0) = replicas[replica]->device_ordinal();
   }
 
@@ -523,8 +509,8 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
 }
 
 StatusOr<std::vector<se::StreamExecutor*>> Service::GetExecutors(
-    const ExecutionOptions& execution_options, int64 requests_size,
-    int64 request_index) const {
+    const ExecutionOptions& execution_options, int64_t requests_size,
+    int64_t request_index) const {
   if (execution_options.device_handles().empty()) {
     return FailedPrecondition(
         "device handles must be given to execute parallel computations");
@@ -586,7 +572,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
         num_requested_devices);
   }
 
-  for (int64 i = 0; i < arg->requests_size(); ++i) {
+  for (int64_t i = 0; i < arg->requests_size(); ++i) {
     // Get the stream executor for the i'th computation. This stream executor
     // is one of the executors to run the replicated computation.
     const ExecutionOptions& execution_options =
@@ -731,8 +717,8 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
 
 Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                                  GetDeviceHandlesResponse* result) {
-  const int64 available_device_count = execute_backend_->device_count();
-  const int64 replica_count = options_.number_of_replicas();
+  const int64_t available_device_count = execute_backend_->device_count();
+  const int64_t replica_count = options_.number_of_replicas();
   if (replica_count <= 0) {
     return FailedPrecondition("Replica count must be a positive integer");
   }
@@ -743,7 +729,7 @@ Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
         arg->device_count(), replica_count, available_device_count);
   }
 
-  for (int64 i = 0; i < arg->device_count(); ++i) {
+  for (int64_t i = 0; i < arg->device_count(); ++i) {
     DeviceHandle device_handle;
     device_handle.set_handle(i);
     device_handle.set_device_count(arg->device_count());
@@ -775,14 +761,6 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       backend->compiler()->RunBackend(std::move(module), executor, options));
-
-  const auto& debug_opts = module_config->debug_options();
-  if (DumpingEnabledForHloModule(module_proto.name(), debug_opts) &&
-      debug_opts.xla_dump_hlo_snapshots()) {
-    auto hlo_proto = absl::make_unique<HloProto>();
-    *hlo_proto->mutable_hlo_module() = module_proto;
-    executable->set_hlo_proto(std::move(hlo_proto));
-  }
 
   return std::move(executable);
 }
@@ -844,14 +822,14 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
 
   // Check that the replicated_arguments has the same shape and layout as the
   // module config used when creating the executable.
-  const int64 num_module_args =
+  const int64_t num_module_args =
       executable->module_config().entry_computation_layout().parameter_count();
   if (num_module_args != arg->arguments_size()) {
     return InvalidArgument(
         "The executable expects %lld arguments, but sees %lld.",
         num_module_args, arg->arguments_size());
   }
-  for (int64 i = 0; i < num_module_args; i++) {
+  for (int64_t i = 0; i < num_module_args; i++) {
     const Shape& shape_module =
         executable->module_config().entry_computation_layout().parameter_shape(
             i);
@@ -985,7 +963,7 @@ Status Service::TransferToServer(const TransferToServerRequest* arg,
 
 Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
                                  TransferToInfeedResponse* result) {
-  const int64 replica_count = options_.number_of_replicas();
+  const int64_t replica_count = options_.number_of_replicas();
   if (arg->replica_id() < 0 || arg->replica_id() >= replica_count) {
     return FailedPrecondition(
         "%s",
@@ -1014,7 +992,7 @@ Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
 
 Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
                                     TransferFromOutfeedResponse* result) {
-  const int64 replica_count = options_.number_of_replicas();
+  const int64_t replica_count = options_.number_of_replicas();
   if (arg->replica_id() < 0 || arg->replica_id() >= replica_count) {
     return FailedPrecondition(
         "The replica_id=%d on TransferFromOutfeedRequest not in range [0, %d)",
@@ -1073,12 +1051,28 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       CreateModuleFromProto(arg->computation(), config));
+  DynamicPadder dynamic_padder;
+  TF_RETURN_IF_ERROR(dynamic_padder.Run(module.get()).status());
 
   TF_ASSIGN_OR_RETURN(DynamicDimensionInference dynamic_dimension_inference,
                       DynamicDimensionInference::Run(module.get()));
 
   HloEvaluator evaluator;
   evaluator.set_dynamic_dimension_inference(&dynamic_dimension_inference);
+  evaluator.set_custom_call_handler(
+      [](HloInstruction* custom_call,
+         absl::Span<const Literal*> operands) -> StatusOr<Literal> {
+        if (custom_call->custom_call_target() == "SliceToDynamic") {
+          auto result = operands[0]->Clone();
+          for (int64_t i = 0; i < result.shape().rank(); ++i) {
+            result.SetDynamicSize(i, operands[1 + i]->Get<int32>({}));
+          }
+          return result.ToStatic();
+        }
+        return Unimplemented("Custom call %s is not supported: %s",
+                             custom_call->custom_call_target(),
+                             custom_call->ToString());
+      });
   TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate(*module, {}));
 
   // Since the result layout is non-effective to the Evaluator results, explicit

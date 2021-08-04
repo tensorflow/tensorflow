@@ -448,6 +448,33 @@ func @inference_standard_lstm_time_major_can_fuse_last_output(%arg0: tensor<?x8x
 // -----
 
 module {
+func @inference_standard_lstm_with_mask(%arg0: tensor<?x8x8xf32>, %arg1: tensor<8x10xf32>, %arg2: tensor<8x10xf32>, %arg3: tensor<8x40xf32>, %arg4: tensor<10x40xf32>, %arg5: tensor<40xf32>, %arg6: tensor<?x8xi1>) -> (tensor<8x10xf32>, tensor<?x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>) attributes {tf._input_shapes = ["tfshape$dim { size: -1 } dim { size: 8 } dim { size: 8 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$unknown_rank: true", "tfshape$unknown_rank: false", "tfshape$unknown_rank: false", "tfshape$dim { size: -1 } dim { size: 8 }"], tf.api_implements = "lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c", tf.api_preferred_device = "CPU", tf.go_backwards = false, tf.time_major = true} {
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg3) {adj_x = false, adj_y = false} : (tensor<?x8x8xf32>, tensor<8x40xf32>) -> tensor<?x8x40xf32>
+  %1 = "tf.Add"(%0, %arg5) : (tensor<?x8x40xf32>, tensor<40xf32>) -> tensor<?x8x40xf32>
+  %2 = "tf.BatchMatMulV2"(%1, %arg4) {adj_x = false, adj_y = true} : (tensor<?x8x40xf32>, tensor<10x40xf32>) -> tensor<?x8x10xf32>
+  %3 = "tf.Add"(%2, %arg1) : (tensor<?x8x10xf32>, tensor<8x10xf32>) -> tensor<?x8x10xf32>
+  %4 = "tf.Add"(%2, %arg2) : (tensor<?x8x10xf32>, tensor<8x10xf32>) -> tensor<?x8x10xf32>
+  %5 = "tf.Add"(%arg1, %arg2) : (tensor<8x10xf32>, tensor<8x10xf32>) -> tensor<8x10xf32>
+  %6 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "/device:CPU:0", dtype = f32, value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  return %5, %4, %5, %5, %6 : tensor<8x10xf32>, tensor<?x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
+}
+
+// CHECK:       func @inference_standard_lstm_with_mask([[ARG_0:%.*]]: tensor<?x8x8xf32>, [[ARG_1:%.*]]: tensor<8x10xf32>, [[ARG_2:%.*]]: tensor<8x10xf32>, [[ARG_3:%.*]]: tensor<8x40xf32>, [[ARG_4:%.*]]: tensor<10x40xf32>, [[ARG_5:%.*]]: tensor<40xf32>,  [[ARG_6:%.*]]: tensor<?x8xi1>) -> (tensor<8x10xf32>, tensor<?x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>) attributes {tf._input_shapes = ["tfshape$dim { size: -1 } dim { size: 8 } dim { size: 8 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$unknown_rank: true", "tfshape$unknown_rank: false", "tfshape$unknown_rank: false", "tfshape$dim { size: -1 } dim { size: 8 }"], tf.api_implements = "lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c", tf.api_preferred_device = "CPU", tf.go_backwards = false, tf.time_major = true} {
+// CHECK:         [[VAL_0:%.*]] = "tf.BatchMatMulV2"([[ARG_0]], [[ARG_3]]) {adj_x = false, adj_y = false} : (tensor<?x8x8xf32>, tensor<8x40xf32>) -> tensor<?x8x40xf32>
+// CHECK:         [[VAL_1:%.*]] = "tf.Add"([[VAL_0]], [[ARG_5]]) : (tensor<?x8x40xf32>, tensor<40xf32>) -> tensor<?x8x40xf32>
+// CHECK:         [[VAL_2:%.*]] = "tf.BatchMatMulV2"([[VAL_1]], [[ARG_4]]) {adj_x = false, adj_y = true} : (tensor<?x8x40xf32>, tensor<10x40xf32>) -> tensor<?x8x10xf32>
+// CHECK:         [[VAL_3:%.*]] = "tf.Add"([[VAL_2]], [[ARG_1]]) : (tensor<?x8x10xf32>, tensor<8x10xf32>) -> tensor<?x8x10xf32>
+// CHECK:         [[VAL_4:%.*]] = "tf.Add"([[VAL_2]], [[ARG_2]]) : (tensor<?x8x10xf32>, tensor<8x10xf32>) -> tensor<?x8x10xf32>
+// CHECK:         [[VAL_5:%.*]] = "tf.Add"([[ARG_1]], [[ARG_2]]) : (tensor<8x10xf32>, tensor<8x10xf32>) -> tensor<8x10xf32>
+// CHECK:         [[VAL_6:%.*]] = "tf.Const"() {_output_shapes = ["tfshape$"], device = "/device:CPU:0", dtype = f32, value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK:         return [[VAL_5]], [[VAL_4]], [[VAL_5]], [[VAL_5]], [[VAL_6]] : tensor<8x10xf32>, tensor<?x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
+// CHECK:       }
+
+}
+
+// -----
+
+module {
 func @inference_cannot_fuse(%arg0: tensor<?x8x8xf32>, %arg1: tensor<?x10xf32>, %arg2: tensor<?x10xf32>, %arg3: tensor<8x40xf32>, %arg4: tensor<10x40xf32>, %arg5: tensor<40xf32>) {
   %0 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "", dtype = f32, value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
   %1:5 = "tf.PartitionedCall"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5) {Tin = ["tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT"], _output_shapes = ["tfshape$dim { size: 9 } dim { size: 10 }", "tfshape$dim { size: -1 } dim { size: 9 } dim { size: 10 }", "tfshape$dim { size: -1 } dim { size: 10 }", "tfshape$dim { size: -1 } dim { size: 10 }", "tfshape$"], _read_only_resource_inputs = [], config = "", config_proto = "\0A\07\0A\03CPU\10\01\0A\07\0A\03GPU\10\002\02J\008\01", device = "", executor_type = "", f = @inference_standard_lstm_time_major_cannot_fuse} : (tensor<?x8x8xf32>, tensor<?x10xf32>, tensor<?x10xf32>, tensor<8x40xf32>, tensor<10x40xf32>, tensor<40xf32>) -> (tensor<?x10xf32>, tensor<?x8x10xf32>, tensor<?x10xf32>, tensor<?x10xf32>, tensor<f32>)
@@ -523,13 +550,13 @@ func @nms_padded(%arg0: tensor<100x4xf32>, %arg1: tensor<100xf32>, %arg2: tensor
 // -----
 
 module {
-// expected-error @+1 {{Invalid number of results from non_max_suppression_padded_v2}}
+// expected-warning @+1 {{Invalid number of results from non_max_suppression_padded_v2}}
 func private @nms_padded_invalid_num_results(%arg0: tensor<100x4xf32>, %arg1: tensor<100xf32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<f32>, %arg5: tensor<i1>, %arg6: tensor<i1>, %arg7: tensor<i1>, %arg8: tensor<i32>) -> () attributes  {tf._implements = "non_max_suppression_padded_v2", tf._reference = "mlir"}
 
-// expected-error @+1 {{Invalid number of arguments to non_max_suppression_padded_v2}}
+// expected-warning @+1 {{Invalid number of arguments to non_max_suppression_padded_v2}}
 func private @nms_padded_invalid_num_args(%arg0: tensor<100x4xf32>, %arg1: tensor<100xf32>, %arg2: tensor<i32>, %arg3: tensor<f32>) -> (tensor<1x10xi32>, tensor<i32>) attributes  {tf._implements = "non_max_suppression_padded_v2", tf._reference = "mlir"}
 
-// expected-error @+1 {{TFLite does not support batched input for non_max_suppression_padded}}
+// expected-warning @+1 {{TFLite does not support batched input for non_max_suppression_padded}}
 func private @nms_padded_with_batches(%arg0: tensor<2x100x4xf32>, %arg1: tensor<2x100xf32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<f32>, %arg5: tensor<i1>, %arg6: tensor<i1>, %arg7: tensor<i1>, %arg8: tensor<i32>) -> (tensor<2x10xi32>, tensor<i32>) attributes  {tf._implements = "non_max_suppression_padded_v2", tf._reference = "mlir"}
 }
 
@@ -548,7 +575,7 @@ func @func_with_call(%arg0: tensor<100xf32>) -> tensor<100xf32> {
 // -----
 
 module {
-func @tflite_custom_nms(%arg0: tensor<1x100x4xf32>, %arg1: tensor<1x100x91xf32>, %arg2: tensor<100x4xf32>) -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) attributes  {tf._implements = #tf.func<@"TFLite_Detection_PostProcess", {max_detections = 10 : i64, max_classes_per_detection = 1 : i64, num_classes = 91 : i64, nms_score_threshold = 0.5 : f32, nms_iou_threshold = 0.6 : f32, y_scale = 5.0 : f32, x_scale = 10.0 : f32, h_scale = 1.0 : f32, w_scale = 2.0 : f32, use_regular_nms = 0 : i1}>, tf._reference = "mlir"} {
+func @tflite_custom_nms(%arg0: tensor<1x100x4xf32>, %arg1: tensor<1x100x91xf32>, %arg2: tensor<100x4xf32>) -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) attributes  {tf._implements = #tf_type.func<@"TFLite_Detection_PostProcess", {max_detections = 10 : i64, max_classes_per_detection = 1 : i64, num_classes = 91 : i64, nms_score_threshold = 0.5 : f32, nms_iou_threshold = 0.6 : f32, y_scale = 5.0 : f32, x_scale = 10.0 : f32, h_scale = 1.0 : f32, w_scale = 2.0 : f32, use_regular_nms = 0 : i1}>, tf._reference = "mlir"} {
   %0 = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
   %1 = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
   %2 = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
@@ -568,14 +595,14 @@ func @tflite_custom_nms(%arg0: tensor<1x100x4xf32>, %arg1: tensor<1x100x91xf32>,
 // -----
 
 module {
-// expected-error @+1 {{Invalid number of results from TFLite_Detection_PostProcess}}
-func private @tflite_custom_nms_invalid_results(%arg0: tensor<1x100x4xf32>, %arg1: tensor<1x100x91xf32>, %arg2: tensor<100x4xf32>) -> (tensor<f32>, tensor<f32>, tensor<f32>) attributes  {tf._implements = #tf.func<@"TFLite_Detection_PostProcess", {max_detections = 10 : i64, max_classes_per_detection = 1 : i64, num_classes = 91 : i64, nms_score_threshold = 0.5 : f32, nms_iou_threshold = 0.6 : f32, y_scale = 5.0 : f32, x_scale = 10.0 : f32, h_scale = 1.0 : f32, w_scale = 2.0 : f32, use_regular_nms = 0 : i1}>, tf._reference = "mlir"}
+// expected-warning @+1 {{Invalid number of results from TFLite_Detection_PostProcess}}
+func private @tflite_custom_nms_invalid_results(%arg0: tensor<1x100x4xf32>, %arg1: tensor<1x100x91xf32>, %arg2: tensor<100x4xf32>) -> (tensor<f32>, tensor<f32>, tensor<f32>) attributes  {tf._implements = #tf_type.func<@"TFLite_Detection_PostProcess", {max_detections = 10 : i64, max_classes_per_detection = 1 : i64, num_classes = 91 : i64, nms_score_threshold = 0.5 : f32, nms_iou_threshold = 0.6 : f32, y_scale = 5.0 : f32, x_scale = 10.0 : f32, h_scale = 1.0 : f32, w_scale = 2.0 : f32, use_regular_nms = 0 : i1}>, tf._reference = "mlir"}
 
-// expected-error @+1 {{Invalid number of arguments to TFLite_Detection_PostProcess}}
-func private @tflite_custom_nms_invalid_args(%arg0: tensor<1x100x4xf32>, %arg1: tensor<1x100x91xf32>) -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) attributes  {tf._implements = #tf.func<@"TFLite_Detection_PostProcess", {max_detections = 10 : i64, max_classes_per_detection = 1 : i64, num_classes = 91 : i64, nms_score_threshold = 0.5 : f32, nms_iou_threshold = 0.6 : f32, y_scale = 5.0 : f32, x_scale = 10.0 : f32, h_scale = 1.0 : f32, w_scale = 2.0 : f32, use_regular_nms = 0 : i1}>, tf._reference = "mlir"}
+// expected-warning @+1 {{Invalid number of arguments to TFLite_Detection_PostProcess}}
+func private @tflite_custom_nms_invalid_args(%arg0: tensor<1x100x4xf32>, %arg1: tensor<1x100x91xf32>) -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) attributes  {tf._implements = #tf_type.func<@"TFLite_Detection_PostProcess", {max_detections = 10 : i64, max_classes_per_detection = 1 : i64, num_classes = 91 : i64, nms_score_threshold = 0.5 : f32, nms_iou_threshold = 0.6 : f32, y_scale = 5.0 : f32, x_scale = 10.0 : f32, h_scale = 1.0 : f32, w_scale = 2.0 : f32, use_regular_nms = 0 : i1}>, tf._reference = "mlir"}
 
-// expected-error @+1 {{max_classes_per_detection attribute is not set or not an integer}}
-func private @tflite_custom_nms_missing_func_args(%arg0: tensor<1x100x4xf32>, %arg1: tensor<1x100x91xf32>, %arg2: tensor<100x4xf32>) -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) attributes  {tf._implements = #tf.func<@"TFLite_Detection_PostProcess", {max_detections = 10 : i64, num_classes = 91 : i64, nms_score_threshold = 0.5 : f32, nms_iou_threshold = 0.6 : f32, y_scale = 5.0 : f32, x_scale = 10.0 : f32, h_scale = 1.0 : f32, w_scale = 2.0 : f32, use_regular_nms = 0 : i1}>, tf._reference = "mlir"} {
+// expected-warning @+1 {{max_classes_per_detection attribute is not set or not an integer}}
+func private @tflite_custom_nms_missing_func_args(%arg0: tensor<1x100x4xf32>, %arg1: tensor<1x100x91xf32>, %arg2: tensor<100x4xf32>) -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) attributes  {tf._implements = #tf_type.func<@"TFLite_Detection_PostProcess", {max_detections = 10 : i64, num_classes = 91 : i64, nms_score_threshold = 0.5 : f32, nms_iou_threshold = 0.6 : f32, y_scale = 5.0 : f32, x_scale = 10.0 : f32, h_scale = 1.0 : f32, w_scale = 2.0 : f32, use_regular_nms = 0 : i1}>, tf._reference = "mlir"} {
   %0 = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
   %1 = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
   %2 = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
@@ -587,7 +614,7 @@ func private @tflite_custom_nms_missing_func_args(%arg0: tensor<1x100x4xf32>, %a
 // -----
 
 module {
-func @max_unpooling_2d(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = [2, 2]}>} {
+func @max_unpooling_2d(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf_type.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = [2, 2]}>} {
   %0 = "tf.Const"() {value = dense<[4, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
   %2 = "tf.Const"() {value = dense<0> : tensor<1x1x2x1xi32>} : () -> tensor<1x1x2x1xi32>
@@ -618,35 +645,35 @@ func @max_unpooling_2d(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -
 // -----
 
 module {
-// expected-error @+1 {{Invalid number of results from MaxUnpooling2D}}
-func private @max_unpooling_2d_invalid_results(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> (tensor<1x2x4x1xf32>, tensor<1x2x4x1xi32>) attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = [2, 2]}>}
+// expected-warning @+1 {{Invalid number of results from MaxUnpooling2D}}
+func private @max_unpooling_2d_invalid_results(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> (tensor<1x2x4x1xf32>, tensor<1x2x4x1xi32>) attributes {tf._implements = #tf_type.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = [2, 2]}>}
 
-// expected-error @+1 {{Invalid number of arguments to MaxUnpooling2D}}
-func private @max_unpooling_2d_invalid_args(%arg0: tensor<1x1x2x1xf32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = [2, 2]}>}
+// expected-warning @+1 {{Invalid number of arguments to MaxUnpooling2D}}
+func private @max_unpooling_2d_invalid_args(%arg0: tensor<1x1x2x1xf32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf_type.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = [2, 2]}>}
 
-// expected-error @+1 {{Padding for MaxUnpooling2D must be 'SAME' or 'VALID'}}
-func private @max_unpooling_2d_wrong_padding(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "NO", pool_size = [2, 2], strides = [2, 2]}>}
+// expected-warning @+1 {{Padding for MaxUnpooling2D must be 'SAME' or 'VALID'}}
+func private @max_unpooling_2d_wrong_padding(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf_type.func<@"addons:MaxUnpooling2D", {padding = "NO", pool_size = [2, 2], strides = [2, 2]}>}
 
-// expected-error @+1 {{'pool_size' attribute for MaxUnpooling2D must be set and has size of 2}}
-func private @max_unpooling_2d_wrong_filter(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2], strides = [2, 2]}>}
+// expected-warning @+1 {{'pool_size' attribute for MaxUnpooling2D must be set and has size of 2}}
+func private @max_unpooling_2d_wrong_filter(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf_type.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2], strides = [2, 2]}>}
 
-// expected-error @+1 {{'strides' attribute for MaxUnpooling2D must be set and has size of 2}}
-func private @max_unpooling_2d_wrong_strides(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = [2, 2, 2]}>}
+// expected-warning @+1 {{'strides' attribute for MaxUnpooling2D must be set and has size of 2}}
+func private @max_unpooling_2d_wrong_strides(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf_type.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = [2, 2, 2]}>}
 
-// expected-error @+1 {{'padding' attribute for MaxUnpooling2D is not set or not a string}}
-func private @max_unpooling_2d_no_padding(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {pool_size = [2, 2], strides = [2, 2]}>}
+// expected-warning @+1 {{'padding' attribute for MaxUnpooling2D is not set or not a string}}
+func private @max_unpooling_2d_no_padding(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf_type.func<@"addons:MaxUnpooling2D", {pool_size = [2, 2], strides = [2, 2]}>}
 
-// expected-error @+1 {{'pool_size' attribute for MaxUnpooling2D must be set and has size of 2}}
-func private @max_unpooling_2d_no_filter(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", strides = [2, 2]}>}
+// expected-warning @+1 {{'pool_size' attribute for MaxUnpooling2D must be set and has size of 2}}
+func private @max_unpooling_2d_no_filter(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf_type.func<@"addons:MaxUnpooling2D", {padding = "SAME", strides = [2, 2]}>}
 
-// expected-error @+1 {{'strides' attribute for MaxUnpooling2D must be set and has size of 2}}
-func private @max_unpooling_2d_no_strides(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2]}>}
+// expected-warning @+1 {{'strides' attribute for MaxUnpooling2D must be set and has size of 2}}
+func private @max_unpooling_2d_no_strides(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf_type.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2]}>}
 
-// expected-error @+1 {{'pool_size' attribute for MaxUnpooling2D does not contain integer values}}
-func private @max_unpooling_2d_filter_wrong_type(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = ["a", "b"], strides = [2, 2]}>}
+// expected-warning @+1 {{'pool_size' attribute for MaxUnpooling2D does not contain integer values}}
+func private @max_unpooling_2d_filter_wrong_type(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf_type.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = ["a", "b"], strides = [2, 2]}>}
 
-  // expected-error @+1 {{'strides' attribute for MaxUnpooling2D does not contain integer values}}
-func private @max_unpooling_2d_strides_wrong_type(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = ["2", "2"]}>}
+  // expected-warning @+1 {{'strides' attribute for MaxUnpooling2D does not contain integer values}}
+func private @max_unpooling_2d_strides_wrong_type(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf_type.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = ["2", "2"]}>}
 }
 
 // -----
@@ -735,27 +762,27 @@ func private @__inference_interpolate_bilinear(%arg0: tensor<2x4x4x1xf32>, %arg1
 // -----
 
 module {
-// expected-error @+1 {{Invalid number of arguments to DenseImageWarp}}
+// expected-warning @+1 {{Invalid number of arguments to DenseImageWarp}}
 func private @dense_image_warp_invalid_inputs(%arg0: tensor<2x4x4x1xf32>) -> tensor<2x4x4x1xf32> attributes {tf._implements = "addons:DenseImageWarp"}
 
-// expected-error @+1 {{Image should be a 4D float tensor}}
+// expected-warning @+1 {{Image should be a 4D float tensor}}
 func private @dense_image_warp_invalid_input_shape(%arg0: tensor<2x4x4xf32>, %arg1: tensor<2x4x4x2xf32>) -> tensor<2x4x4x1xf32> attributes {tf._implements = "addons:DenseImageWarp"}
 
-// expected-error @+1 {{Flow should be a 4D float tensor}}
+// expected-warning @+1 {{Flow should be a 4D float tensor}}
 func private @dense_image_warp_invalid_flow_shape(%arg0: tensor<2x4x4x1xf32>, %arg1: tensor<2x4x4xf32>) -> tensor<2x4x4x1xf32> attributes {tf._implements = "addons:DenseImageWarp"}
 
-// expected-error @+1 {{Output should be a 4D float tensor}}
+// expected-warning @+1 {{Output should be a 4D float tensor}}
 func private @dense_image_warp_invalid_output_shape(%arg0: tensor<2x4x4x1xf32>, %arg1: tensor<2x4x4x2xf32>) -> tensor<2x4x4xf32> attributes {tf._implements = "addons:DenseImageWarp"}
 
-// expected-error @+1 {{Image should be a 4D float tensor}}
+// expected-warning @+1 {{Image should be a 4D float tensor}}
 func private @dense_image_warp_dynamic_shape(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> attributes {tf._implements = "addons:DenseImageWarp"}
 
-// expected-error @+1 {{Image should be a 4D float tensor}}
+// expected-warning @+1 {{Image should be a 4D float tensor}}
 func private @dense_image_warp_invalid_input_type(%arg0: tensor<2x4x4x1xi32>, %arg1: tensor<2x4x4x2xf32>) -> tensor<2x4x4x1xf32> attributes {tf._implements = "addons:DenseImageWarp"}
 
-// expected-error @+1 {{Flow should be a 4D float tensor}}
+// expected-warning @+1 {{Flow should be a 4D float tensor}}
 func private @dense_image_warp_invalid_flow_type(%arg0: tensor<2x4x4x1xf32>, %arg1: tensor<2x4x4x2xi32>) -> tensor<2x4x4x1xf32> attributes {tf._implements = "addons:DenseImageWarp"}
 
-// expected-error @+1 {{Output should be a 4D float tensor}}
+// expected-warning @+1 {{Output should be a 4D float tensor}}
 func private @dense_image_warp_invalid_output_type(%arg0: tensor<2x4x4x1xf32>, %arg1: tensor<2x4x4x2xf32>) -> tensor<2x4x4x1xi32> attributes {tf._implements = "addons:DenseImageWarp"}
 }

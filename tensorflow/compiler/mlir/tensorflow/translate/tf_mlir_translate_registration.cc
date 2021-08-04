@@ -75,6 +75,7 @@ static LogicalResult MlirToGraphdefTranslateFunction(
 
   // TODO(fengliuai): Add exporter flags.
   tensorflow::GraphExportConfig confs;
+  confs.export_entry_func_to_flib = export_entry_func_to_flib;
   StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
       tensorflow::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {

@@ -886,7 +886,7 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(expected_output_shapes,
                      dataset_ops.get_legacy_output_shapes(iterator))
 
-  @combinations.generate(test_base.default_test_combinations())
+  @combinations.generate(test_base.graph_only_combinations())
   def testIteratorGetNextName(self):
     with ops.Graph().as_default():
       iterator = dataset_ops.make_one_shot_iterator(

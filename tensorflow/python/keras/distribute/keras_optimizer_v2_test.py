@@ -14,12 +14,9 @@
 # ==============================================================================
 """Tests that show that DistributionStrategy works with optimizer v2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
+
 from tensorflow.python import keras
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context

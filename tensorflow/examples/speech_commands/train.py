@@ -18,7 +18,7 @@ This is a self-contained example script that will train a very basic audio
 recognition model in TensorFlow. It downloads the necessary training data and
 runs with reasonable defaults to train within a few hours even only using a CPU.
 For more information, please see
-https://www.tensorflow.org/tutorials/audio_recognition.
+https://www.tensorflow.org/tutorials/audio/simple_audio.
 
 It is intended as an introduction to using neural networks for audio
 recognition, and is not a full speech recognition system. For more advanced

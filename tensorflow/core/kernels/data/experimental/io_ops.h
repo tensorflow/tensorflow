@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_IO_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_IO_OPS_H_
 
+#include <string>
+
+#include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
@@ -62,6 +64,45 @@ class SaveDatasetOp : public HybridAsyncOpKernel {
   std::shared_ptr<FunctionMetadata> func_metadata_;
 };
 
+// An operation that can save a dataset to one or more files. This
+// version of the implementation subclasses from UnaryDatasetOpKernel to align
+// the implementation of save with that of the other tf.data transformations.
+class SaveDatasetV2Op : public UnaryDatasetOpKernel {
+ public:
+  static constexpr const char* const kInputDataset = "input_dataset";
+  static constexpr const char* const kPath = "path";
+  static constexpr const char* const kCompression = "compression";
+
+  static constexpr const char* const kDatasetType = "SaveV2";
+  static constexpr const char* const kOutputTypes = "output_types";
+  static constexpr const char* const kOutputShapes = "output_shapes";
+
+  static constexpr const char* const kShardFunc = "shard_func";
+  static constexpr const char* const kShardFuncOtherArgs =
+      "shard_func_other_args";
+  static constexpr const char* const kUseShardFunc = "use_shard_func";
+  static constexpr const char* const kShardFuncTarguments = "Tshard_func_args";
+
+  explicit SaveDatasetV2Op(OpKernelConstruction* ctx);
+
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override;
+
+ private:
+  class Dataset;
+
+  static constexpr const int kFileFormatVersion = 2;
+
+  tstring path_;
+  std::string compression_;
+  std::unique_ptr<CapturedFunction> shard_func_;
+  bool use_shard_func_;
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
+  std::shared_ptr<FunctionMetadata> func_metadata_;
+  std::string writer_prefix_;
+};
+
 // An operation that can load a dataset from one or more files.
 class LoadDatasetOp : public DatasetOpKernel {
  public:
@@ -92,4 +133,5 @@ class LoadDatasetOp : public DatasetOpKernel {
 }  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow
+
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_IO_OPS_H_

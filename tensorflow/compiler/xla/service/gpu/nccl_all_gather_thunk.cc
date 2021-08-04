@@ -23,13 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#if GOOGLE_CUDA
-#include "third_party/nccl/nccl.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/include/rccl/rccl.h"
-#endif
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -37,35 +32,35 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-NcclAllGatherConfig GetNcclAllGatherConfig(const HloInstruction* hlo,
-                                           int64 replica_count) {
+/*static*/ NcclAllGatherConfig NcclAllGatherThunk::GetNcclAllGatherConfig(
+    mlir::lmhlo::AllGatherOp op) {
   NcclAllGatherConfig config;
-  config.config = GetNcclCollectiveConfig(hlo, replica_count);
+  config.config =
+      GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids());
   return config;
 }
 
-/*static*/ bool NcclAllGatherThunk::CanImplement(const HloInstruction* hlo) {
-  auto operands_are_supported = [hlo]() {
-    return absl::c_all_of(hlo->operands(), [](HloInstruction* operand) {
-      return LayoutUtil::IsDenseArray(operand->shape()) &&
-             ToNcclDataType(operand->shape().element_type()).ok();
-    });
-  };
-  return (Cast<HloAllGatherInstruction>(hlo)->all_gather_dimension() == 0) &&
-         operands_are_supported();
+/*static*/ bool NcclAllGatherThunk::CanImplement(mlir::lmhlo::AllGatherOp op) {
+  return absl::c_all_of(op.operands(), [&](mlir::Value operand) {
+    Shape shape = GetShape(operand);
+    return LayoutUtil::IsDenseArray(shape) &&
+           IsTypeSupportedByNccl(shape.element_type()) &&
+           LayoutUtil::MinorToMajor(shape).back() == op.all_gather_dimension();
+  });
 }
 
 NcclAllGatherThunk::NcclAllGatherThunk(
-    ThunkInfo thunk_info, NcclAllGatherConfig config,
+    ThunkInfo thunk_info, mlir::lmhlo::AllGatherOp op,
     std::vector<NcclAllGatherThunk::Buffer> buffers)
     : NcclCollectiveThunk(Thunk::kNcclAllGather, thunk_info),
-      config_(std::move(config)),
+      config_(GetNcclAllGatherConfig(op)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
 Status NcclAllGatherThunk::RunNcclCollective(const ExecuteParams& params,
                                              ncclComm_t comm) {
+#if XLA_ENABLE_XCCL
   int device_ordinal = params.stream->parent()->device_ordinal();
   VLOG(3) << "Performing all-gather from device ordinal: " << device_ordinal;
 
@@ -82,27 +77,30 @@ Status NcclAllGatherThunk::RunNcclCollective(const ExecuteParams& params,
         params.buffer_allocations->GetDeviceAddress(buffer.destination_buffer)
             .opaque();
 
-    TF_ASSIGN_OR_RETURN(ncclDataType_t datatype,
-                        ToNcclDataType(config_.config.operand_element_type[i]));
+    PrimitiveType element_type = config_.config.operand_element_type[i];
+    TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
+                        ToNcclDataTypeAndCountMultiplier(element_type));
+    ncclDataType_t dtype = dtype_and_multiplier.first;
+    int element_count = buffer.element_count * dtype_and_multiplier.second;
 
     VLOG(3) << absl::StreamFormat(
-        "Calling ncclAllGather(send_buffer=%p, recv_buffer=%p, count=%d, "
+        "Calling ncclAllGather(send_buffer=%p, recv_buffer=%p, sendcount=%d, "
         "comm=%p, stream=%p)",
-        send_buffer, recv_buffer, buffer.element_count,
-        static_cast<const void*>(comm), cu_stream);
+        send_buffer, recv_buffer, element_count, static_cast<const void*>(comm),
+        cu_stream);
 
-    XLA_CUDA_RETURN_IF_ERROR(ncclAllGather(send_buffer, recv_buffer,
-                                           buffer.element_count, datatype, comm,
-                                           *cu_stream));
+    XLA_CUDA_RETURN_IF_ERROR(ncclAllGather(
+        send_buffer, recv_buffer, element_count, dtype, comm, *cu_stream));
   }
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing all-gather for ordinal: " << device_ordinal;
   return Status::OK();
-}
-
-const NcclCollectiveConfig& NcclAllGatherThunk::config() const {
-  return config_.config;
+#else   // XLA_ENABLE_XCCL
+  return Unimplemented(
+      "NCCL support is not available: this binary was not built with a CUDA "
+      "compiler, which is necessary to build the NCCL source library.");
+#endif  // XLA_ENABLE_XCCL
 }
 
 }  // namespace gpu

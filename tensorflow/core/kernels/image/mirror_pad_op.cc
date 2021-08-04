@@ -173,6 +173,7 @@ namespace functor {
   DECLARE_CPU_SPEC(T, int64, 5);
 
 TF_CALL_POD_TYPES(DECLARE_CPU_SPECS);
+TF_CALL_QUANTIZED_TYPES(DECLARE_CPU_SPECS);
 TF_CALL_tstring(DECLARE_CPU_SPECS);
 
 #undef DECLARE_CPU_SPEC
@@ -195,6 +196,7 @@ TF_CALL_tstring(DECLARE_CPU_SPECS);
 
 // Note that we do register for bool type, but not in the gradient op.
 TF_CALL_POD_TYPES(REGISTER_KERNEL);
+TF_CALL_QUANTIZED_TYPES(REGISTER_KERNEL);
 TF_CALL_tstring(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
@@ -301,7 +303,7 @@ class MirrorPadGradOp : public OpKernel {
                   errors::InvalidArgument(
                       "Paddings must be non-negative: ", before, ", ", after));
 
-      const int64 out_size = in0.dim_size(d) - (before + after);
+      const int64_t out_size = in0.dim_size(d) - (before + after);
       if (offset_ == 0) {  // SYMMETRIC mode.
         OP_REQUIRES(context, before <= out_size && after <= out_size,
                     errors::InvalidArgument("paddings must be no greater "

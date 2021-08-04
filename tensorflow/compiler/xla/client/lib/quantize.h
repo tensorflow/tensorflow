@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace xla {
 
-constexpr int64 kBitsOfByte = 8;
+constexpr int64_t kBitsOfByte = 8;
 
 // Represents the range used for quantization
 struct QuantizedRange {
@@ -48,19 +48,19 @@ struct QuantizedRange {
 
 template <typename T>
 inline std::vector<uint32> PackToUint32(absl::Span<const T> input) {
-  const int64 kElementsPerPack = sizeof(uint32) / sizeof(T);
-  const int64 input_size = input.size();
-  const int64 output_size = CeilOfRatio(input_size, kElementsPerPack);
+  const int64_t kElementsPerPack = sizeof(uint32) / sizeof(T);
+  const int64_t input_size = input.size();
+  const int64_t output_size = CeilOfRatio(input_size, kElementsPerPack);
 
   std::vector<uint32> output_vec;
-  constexpr int64 kShiftBits = sizeof(T) / sizeof(uint8) * kBitsOfByte;
+  constexpr int64_t kShiftBits = sizeof(T) / sizeof(uint8) * kBitsOfByte;
 
-  for (int64 i = 0; i < output_size; i++) {
+  for (int64_t i = 0; i < output_size; i++) {
     uint32 result = 0;
-    for (int64 p = 0; p < kElementsPerPack; p++) {
-      int64 index = i * kElementsPerPack + p;
+    for (int64_t p = 0; p < kElementsPerPack; p++) {
+      int64_t index = i * kElementsPerPack + p;
       if (index < input_size) {
-        int64 total_shift_bits = kShiftBits * (kElementsPerPack - p - 1);
+        int64_t total_shift_bits = kShiftBits * (kElementsPerPack - p - 1);
         result |= (input[index] << total_shift_bits);
       }
     }
@@ -90,7 +90,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
             : (static_cast<float>(std::numeric_limits<T>::max()) -
                std::numeric_limits<T>::min() + 1) /
                   2.0f;
-    const int64 unpack_size = sizeof(uint32) / sizeof(T);
+    const int64_t unpack_size = sizeof(uint32) / sizeof(T);
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(input));
 
     auto element_type = shape.element_type();

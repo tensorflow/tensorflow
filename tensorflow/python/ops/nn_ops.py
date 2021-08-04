@@ -12,7 +12,126 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Wrappers for primitive Neural Net (NN) Operations."""
+"""Primitive Neural Net (NN) Operations.
+
+## Notes on padding
+
+Several neural network operations, such as `tf.nn.conv2d` and
+`tf.nn.max_pool2d`, take a `padding` parameter, which controls how the input is
+padded before running the operation. The input is padded by inserting values
+(typically zeros) before and after the tensor in each spatial dimension. The
+`padding` parameter can either be the string `'VALID'`, which means use no
+padding, or `'SAME'` which adds padding according to a formula which is
+described below. Certain ops also allow the amount of padding per dimension to
+be explicitly specified by passing a list to `padding`.
+
+In the case of convolutions, the input is padded with zeros. In case of pools,
+the padded input values are ignored. For example, in a max pool, the sliding
+window ignores padded values, which is equivalent to the padded values being
+`-infinity`.
+
+### `'VALID'` padding
+
+Passing `padding='VALID'` to an op causes no padding to be used. This causes the
+output size to typically be smaller than the input size, even when the stride is
+one. In the 2D case, the output size is computed as:
+
+```
+out_height = ceil((in_height - filter_height + 1) / stride_height)
+out_width  = ceil((in_width - filter_width + 1) / stride_width)
+```
+
+The 1D and 3D cases are similar. Note `filter_height` and `filter_width` refer
+to the filter size after dilations (if any) for convolutions, and refer to the
+window size for pools.
+
+### `'SAME'` padding
+
+With `'SAME'` padding, padding is applied to each spatial dimension. When the
+strides are 1, the input is padded such that the output size is the same as the
+input size. In the 2D case, the output size is computed as:
+
+```
+out_height = ceil(in_height / stride_height)
+out_width  = ceil(in_width / stride_width)
+```
+
+The amount of padding used is the smallest amount that results in the output
+size. The formula for the total amount of padding per dimension is:
+
+```
+if (in_height % strides[1] == 0):
+  pad_along_height = max(filter_height - stride_height, 0)
+else:
+  pad_along_height = max(filter_height - (in_height % stride_height), 0)
+if (in_width % strides[2] == 0):
+  pad_along_width = max(filter_width - stride_width, 0)
+else:
+  pad_along_width = max(filter_width - (in_width % stride_width), 0)
+```
+
+Finally, the padding on the top, bottom, left and right are:
+
+```
+pad_top = pad_along_height // 2
+pad_bottom = pad_along_height - pad_top
+pad_left = pad_along_width // 2
+pad_right = pad_along_width - pad_left
+```
+
+Note that the division by 2 means that there might be cases when the padding on
+both sides (top vs bottom, right vs left) are off by one. In this case, the
+bottom and right sides always get the one additional padded pixel. For example,
+when pad_along_height is 5, we pad 2 pixels at the top and 3 pixels at the
+bottom. Note that this is different from existing libraries such as PyTorch and
+Caffe, which explicitly specify the number of padded pixels and always pad the
+same number of pixels on both sides.
+
+Here is an example of `'SAME'` padding:
+
+>>> in_height = 5
+>>> filter_height = 3
+>>> stride_height = 2
+>>>
+>>> in_width = 2
+>>> filter_width = 2
+>>> stride_width = 1
+>>>
+>>> inp = tf.ones((2, in_height, in_width, 2))
+>>> filter = tf.ones((filter_height, filter_width, 2, 2))
+>>> strides = [stride_height, stride_width]
+>>> output = tf.nn.conv2d(inp, filter, strides, padding='SAME')
+>>> output.shape[1]  # output_height: ceil(5 / 2)
+3
+>>> output.shape[2] # output_width: ceil(2 / 1)
+2
+
+### Explicit padding
+
+Certain ops, like `tf.nn.conv2d`, also allow a list of explicit padding amounts
+to be passed to the `padding` parameter. This list is in the same format as what
+is passed to `tf.pad`, except the padding must be a nested list, not a tensor.
+For example, in the 2D case, the list is in the format `[[0, 0], [pad_top,
+pad_bottom], [pad_left, pad_right], [0, 0]]` when `data_format` is its default
+value of `'NHWC'`. The two `[0, 0]` pairs  indicate the batch and channel
+dimensions have no padding, which is required, as only spatial dimensions can
+have padding.
+
+For example:
+
+>>> inp = tf.ones((1, 3, 3, 1))
+>>> filter = tf.ones((2, 2, 1, 1))
+>>> strides = [1, 1]
+>>> padding = [[0, 0], [1, 2], [0, 1], [0, 0]]
+>>> output = tf.nn.conv2d(inp, filter, strides, padding=padding)
+>>> tuple(output.shape)
+(1, 5, 3, 1)
+>>> # Equivalently, tf.pad can be used, since convolutions pad with zeros.
+>>> inp = tf.pad(inp, padding)
+>>> # 'VALID' means to use no padding in conv2d (we already padded inp)
+>>> output2 = tf.nn.conv2d(inp, filter, strides, padding='VALID')
+>>> tf.debugging.assert_equal(output, output2)
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,11 +139,11 @@ from __future__ import print_function
 
 import functools
 import numbers
-import os
 
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -39,6 +158,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables as variables_lib
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -3302,19 +3422,6 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
         name=name)
 
 
-def _tf_deterministic_ops():
-  if _tf_deterministic_ops.value is None:
-    tf_deterministic_ops = os.environ.get("TF_DETERMINISTIC_OPS")
-    if tf_deterministic_ops is not None:
-      tf_deterministic_ops = tf_deterministic_ops.lower()
-    _tf_deterministic_ops.value = (
-        tf_deterministic_ops == "true" or tf_deterministic_ops == "1")
-  return _tf_deterministic_ops.value
-
-
-_tf_deterministic_ops.value = None
-
-
 @tf_export("nn.bias_add")
 @dispatch.add_dispatch_support
 def bias_add(value, bias, data_format=None, name=None):
@@ -3360,7 +3467,7 @@ def bias_add(value, bias, data_format=None, name=None):
 
     # TODO(duncanriach): Implement deterministic functionality at CUDA kernel
     #   level.
-    if _tf_deterministic_ops():
+    if config.deterministic_ops_enabled():
       # Note that this code does not implement the same error checks as the
       # pre-existing C++ ops.
       if data_format == "NCHW":
@@ -3434,7 +3541,7 @@ def crelu(features, name=None, axis=-1):
   """
   with ops.name_scope(name, "CRelu", [features]) as name:
     features = ops.convert_to_tensor(features, name="features")
-    c = array_ops.concat([features, -features], axis, name=name)
+    c = array_ops.concat([features, -features], axis, name=name)  # pylint: disable=invalid-unary-operand-type
     return gen_nn_ops.relu(c)
 
 
@@ -3476,6 +3583,7 @@ def leaky_relu(features, alpha=0.2, name=None):
   Source: [Rectifier Nonlinearities Improve Neural Network Acoustic Models.
   AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013]
   (https://ai.stanford.edu/~amaas/papers/relu_hybrid_icml2013_final.pdf).
+
   Args:
     features: A `Tensor` representing preactivation values. Must be one of
       the following types: `float16`, `float32`, `float64`, `int32`, `int64`.
@@ -3660,59 +3768,26 @@ def _wrap_2d_function(inputs, compute_op, dim=-1, name=None):
     return fix_output(outputs)
 
 
-@tf_export(v1=["nn.softmax", "math.softmax"])
-@dispatch.add_dispatch_support
-@deprecation.deprecated_args(None, "dim is deprecated, use axis instead", "dim")
-def softmax(logits, axis=None, name=None, dim=None):
-  """Computes softmax activations.
-
-  This function performs the equivalent of
-
-      softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis)
-
-  See: https://en.wikipedia.org/wiki/Softmax_function
-
-  Example usage:
-
-  >>> tf.nn.softmax([-1, 0., 1.])
-  <tf.Tensor: shape=(3,), dtype=float32,
-  numpy=array([0.09003057, 0.24472848, 0.66524094], dtype=float32)>
-
-  Args:
-    logits: A non-empty `Tensor`, or an object whose type has a registered
-      `Tensor` conversion function. Must be one of the following types:
-      `half`,`float32`, `float64`. See also `convert_to_tensor`
-    axis: The dimension softmax would be performed on. The default is -1 which
-      indicates the last dimension.
-    name: A name for the operation (optional).
-    dim: Deprecated alias for `axis`.
-
-  Returns:
-    A `Tensor`. Has the same type and shape as `logits`.
-
-  Raises:
-    InvalidArgumentError: if `logits` is empty or `axis` is beyond the last
-      dimension of `logits`.
-    TypeError: If no conversion function is registered for `logits` to
-      Tensor.
-    RuntimeError: If a registered conversion function returns an invalid
-      value.
-
-  """
-  axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
-  if axis is None:
-    axis = -1
-  return _wrap_2d_function(logits, gen_nn_ops.softmax, axis, name)
-
-
 @tf_export("nn.softmax", "math.softmax", v1=[])
 @dispatch.add_dispatch_support
 def softmax_v2(logits, axis=None, name=None):
   """Computes softmax activations.
 
+  Used for multi-class predictions. The sum of all outputs generated by softmax
+  is 1.
+
   This function performs the equivalent of
 
       softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis)
+
+  Example usage:
+
+  >>> softmax = tf.nn.softmax([-1, 0., 1.])
+  >>> softmax
+  <tf.Tensor: shape=(3,), dtype=float32,
+  numpy=array([0.09003057, 0.24472848, 0.66524094], dtype=float32)>
+  >>> sum(softmax)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.0>
 
   Args:
     logits: A non-empty `Tensor`. Must be one of the following types: `half`,
@@ -3731,6 +3806,19 @@ def softmax_v2(logits, axis=None, name=None):
   if axis is None:
     axis = -1
   return _wrap_2d_function(logits, gen_nn_ops.softmax, axis, name)
+
+
+@tf_export(v1=["nn.softmax", "math.softmax"])
+@dispatch.add_dispatch_support
+@deprecation.deprecated_args(None, "dim is deprecated, use axis instead", "dim")
+def softmax(logits, axis=None, name=None, dim=None):
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
+  if axis is None:
+    axis = -1
+  return _wrap_2d_function(logits, gen_nn_ops.softmax, axis, name)
+
+
+softmax.__doc__ = softmax_v2.__doc__
 
 
 @tf_export(v1=["nn.log_softmax", "math.log_softmax"])
@@ -3960,10 +4048,14 @@ def softmax_cross_entropy_with_logits_v2_helper(
     labels = _flatten_outer_dims(labels)
 
     # Do the actual op computation.
-    # The second output tensor contains the gradients.  We use it in
-    # CrossEntropyGrad() in nn_grad but not here.
-    cost, unused_backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
-        precise_logits, labels, name=name)
+    if config.deterministic_ops_enabled():
+      log_probs = log_softmax_v2(precise_logits)
+      cost = -math_ops.reduce_sum(labels * log_probs, axis=1)
+    else:
+      # The second output tensor contains the gradients.  We use it in
+      # CrossEntropyGrad() in nn_grad but not here.
+      cost, unused_backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
+          precise_logits, labels, name=name)
 
     # The output cost shape should be the input minus axis.
     output_shape = array_ops.slice(input_shape, [0],
@@ -4197,14 +4289,14 @@ def sparse_softmax_cross_entropy_with_logits_v2(labels, logits, name=None):
   example, each CIFAR-10 image is labeled with one and only one label: an image
   can be a dog or a truck, but not both.
 
-  **NOTE:**  For this operation, the probability of a given label is considered
+  Note:  For this operation, the probability of a given label is considered
   exclusive.  That is, soft classes are not allowed, and the `labels` vector
   must provide a single specific index for the true class for each row of
   `logits` (each minibatch entry).  For soft softmax classification with
   a probability distribution for each entry, see
   `softmax_cross_entropy_with_logits_v2`.
 
-  **WARNING:** This op expects unscaled logits, since it performs a `softmax`
+  Warning: This op expects unscaled logits, since it performs a `softmax`
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
 
@@ -4215,8 +4307,16 @@ def sparse_softmax_cross_entropy_with_logits_v2(labels, logits, name=None):
   `logits` must have the dtype of `float16`, `float32`, or `float64`, and
   `labels` must have the dtype of `int32` or `int64`.
 
-  **Note that to avoid confusion, it is required to pass only named arguments to
-  this function.**
+  >>> logits = tf.constant([[2., -5., .5, -.1],
+  ...                       [0., 0., 1.9, 1.4],
+  ...                       [-100., 100., -100., -100.]])
+  >>> labels = tf.constant([0, 3, 1])
+  >>> tf.nn.sparse_softmax_cross_entropy_with_logits(
+  ...     labels=labels, logits=logits).numpy()
+  array([0.29750752, 1.1448325 , 0.        ], dtype=float32)
+
+  To avoid confusion, passing only named arguments to this function is
+  recommended.
 
   Args:
     labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-1}]` (where `r` is rank of
@@ -4478,7 +4578,66 @@ def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None): 
 @tf_export("nn.max_pool", v1=["nn.max_pool_v2"])
 @dispatch.add_dispatch_support
 def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
-  """Performs the max pooling on the input.
+  """Performs max pooling on the input.
+
+  For a given window of `ksize`, takes the maximum value within that window.
+  Used for reducing computation and preventing overfitting.
+
+  Consider an example of pooling with 2x2, non-overlapping windows:
+
+  >>> matrix = tf.constant([
+  ...     [0, 0, 1, 7],
+  ...     [0, 2, 0, 0],
+  ...     [5, 2, 0, 0],
+  ...     [0, 0, 9, 8],
+  ... ])
+  >>> reshaped = tf.reshape(matrix, (1, 4, 4, 1))
+  >>> tf.nn.max_pool(reshaped, ksize=2, strides=2, padding="SAME")
+  <tf.Tensor: shape=(1, 2, 2, 1), dtype=int32, numpy=
+  array([[[[2],
+           [7]],
+          [[5],
+           [9]]]], dtype=int32)>
+
+  We can adjust the window size using the `ksize` parameter. For example, if we
+  were to expand the window to 3:
+
+  >>> tf.nn.max_pool(reshaped, ksize=3, strides=2, padding="SAME")
+  <tf.Tensor: shape=(1, 2, 2, 1), dtype=int32, numpy=
+  array([[[[5],
+           [7]],
+          [[9],
+           [9]]]], dtype=int32)>
+
+  We've now picked up two additional large numbers (5 and 9) in two of the
+  pooled spots.
+
+  Note that our windows are now overlapping, since we're still moving by 2 units
+  on each iteration. This is causing us to see the same 9 repeated twice, since
+  it is part of two overlapping windows.
+
+  We can adjust how far we move our window with each iteration using the
+  `strides` parameter. Updating this to the same value as our window size
+  eliminates the overlap:
+
+  >>> tf.nn.max_pool(reshaped, ksize=3, strides=3, padding="SAME")
+  <tf.Tensor: shape=(1, 2, 2, 1), dtype=int32, numpy=
+  array([[[[2],
+           [7]],
+          [[5],
+           [9]]]], dtype=int32)>
+
+  Because the window does not neatly fit into our input, padding is added around
+  the edges, giving us the same result as when we used a 2x2 window. We can skip
+  padding altogether and simply drop the windows that do not fully fit into our
+  input by instead passing `"VALID"` to the `padding` argument:
+
+  >>> tf.nn.max_pool(reshaped, ksize=3, strides=3, padding="VALID")
+  <tf.Tensor: shape=(1, 1, 1, 1), dtype=int32, numpy=array([[[[5]]]],
+   dtype=int32)>
+
+  Now we've grabbed the largest value in the 3x3 window starting from the upper-
+  left corner. Since no other windows fit in our input, they are dropped.
 
   Args:
     input:  Tensor of rank N+2, of shape `[batch_size] + input_spatial_shape +
@@ -5027,7 +5186,7 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
   Args:
     x: A floating point tensor.
     keep_prob: (deprecated) A deprecated alias for `(1-rate)`.
-    noise_shape: A 1-D `Tensor` of type `int32`, representing the
+    noise_shape: A 1-D integer `Tensor`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
       `tf.random.set_seed` for behavior.
@@ -5043,14 +5202,14 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
       point tensor.
   """
   try:
-    keep = 1. - keep_prob if keep_prob is not None else None
+    rate_from_keep_prob = 1. - keep_prob if keep_prob is not None else None
   except TypeError:
     raise ValueError("keep_prob must be a floating point number or Tensor "
                      "(got %r)" % keep_prob)
 
   rate = deprecation.deprecated_argument_lookup(
       "rate", rate,
-      "keep_prob", keep)
+      "keep_prob", rate_from_keep_prob)
 
   if rate is None:
     raise ValueError("You must provide a rate to dropout.")
@@ -5062,6 +5221,18 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
 @dispatch.add_dispatch_support
 def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
   """Computes dropout: randomly sets elements to zero to prevent overfitting.
+
+  Warning: You should consider using
+  `tf.nn.experimental.stateless_dropout` instead of this function. The
+  difference between `tf.nn.experimental.stateless_dropout` and this
+  function is analogous to the difference between
+  `tf.random.stateless_uniform` and `tf.random.uniform`. Please see
+  [Random number
+  generation](https://www.tensorflow.org/guide/random_numbers) guide
+  for a detailed description of the various RNG systems in TF. As the
+  guide states, legacy stateful RNG ops like `tf.random.uniform` and
+  `tf.nn.dropout` are not deprecated yet but highly discouraged,
+  because their states are hard to control.
 
   Note: The behavior of dropout has changed between TensorFlow 1.x and 2.x.
   When converting 1.x code, please use named arguments to ensure behavior stays
@@ -5118,7 +5289,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     rate: A scalar `Tensor` with the same type as x. The probability
       that each element is dropped. For example, setting rate=0.1 would drop
       10% of input elements.
-    noise_shape: A 1-D `Tensor` of type `int32`, representing the
+    noise_shape: A 1-D integer `Tensor`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
       `tf.random.set_seed` for behavior.
@@ -5132,7 +5303,182 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       tensor. `rate=1` is disallowed, because the output would be all zeros,
       which is likely not what was intended.
   """
-  with ops.name_scope(name, "dropout", [x]) as name:
+  uniform_sampler = functools.partial(random_ops.random_uniform, seed=seed)
+  def dummy_rng_step():
+    random_seed.get_seed(seed)
+  return _dropout(x=x, rate=rate, noise_shape=noise_shape,
+                  uniform_sampler=uniform_sampler,
+                  dummy_rng_step=dummy_rng_step, name=name,
+                  default_name="dropout")
+
+
+@tf_export("nn.experimental.stateless_dropout")
+@dispatch.add_dispatch_support
+def stateless_dropout(x, rate, seed, rng_alg=None, noise_shape=None, name=None):
+  """Computes dropout: randomly sets elements to zero to prevent overfitting.
+
+  [Dropout](https://arxiv.org/abs/1207.0580) is useful for regularizing DNN
+  models. Inputs elements are randomly set to zero (and the other elements are
+  rescaled). This encourages each node to be independently useful, as it cannot
+  rely on the output of other nodes.
+
+  More precisely: With probability `rate` elements of `x` are set to `0`.
+  The remaining elements are scaled up by `1.0 / (1 - rate)`, so that the
+  expected value is preserved.
+
+  >>> x = tf.ones([3,5])
+  >>> tf.nn.experimental.stateless_dropout(x, rate=0.5, seed=[1, 0])
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[2., 0., 2., 0., 0.],
+         [0., 0., 2., 0., 2.],
+         [0., 0., 0., 0., 2.]], dtype=float32)>
+
+  >>> x = tf.ones([3,5])
+  >>> tf.nn.experimental.stateless_dropout(x, rate=0.8, seed=[1, 0])
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[5., 0., 0., 0., 0.],
+         [0., 0., 0., 0., 5.],
+         [0., 0., 0., 0., 5.]], dtype=float32)>
+
+  >>> tf.nn.experimental.stateless_dropout(x, rate=0.0, seed=[1, 0]) == x
+  <tf.Tensor: shape=(3, 5), dtype=bool, numpy=
+  array([[ True,  True,  True,  True,  True],
+         [ True,  True,  True,  True,  True],
+         [ True,  True,  True,  True,  True]])>
+
+
+  This function is a stateless version of `tf.nn.dropout`, in the
+  sense that no matter how many times you call this function, the same
+  `seed` will lead to the same results, and different `seed` will lead
+  to different results.
+
+  >>> x = tf.ones([3,5])
+  >>> tf.nn.experimental.stateless_dropout(x, rate=0.8, seed=[1, 0])
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[5., 0., 0., 0., 0.],
+         [0., 0., 0., 0., 5.],
+         [0., 0., 0., 0., 5.]], dtype=float32)>
+  >>> tf.nn.experimental.stateless_dropout(x, rate=0.8, seed=[1, 0])
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[5., 0., 0., 0., 0.],
+         [0., 0., 0., 0., 5.],
+         [0., 0., 0., 0., 5.]], dtype=float32)>
+  >>> tf.nn.experimental.stateless_dropout(x, rate=0.8, seed=[2, 0])
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[5., 0., 0., 0., 0.],
+         [0., 0., 0., 5., 0.],
+         [0., 0., 0., 0., 0.]], dtype=float32)>
+  >>> tf.nn.experimental.stateless_dropout(x, rate=0.8, seed=[2, 0])
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[5., 0., 0., 0., 0.],
+         [0., 0., 0., 5., 0.],
+         [0., 0., 0., 0., 0.]], dtype=float32)>
+
+  Compare the above results to those of `tf.nn.dropout` below. The
+  second time `tf.nn.dropout` is called with the same seed, it will
+  give a different output.
+
+  >>> tf.random.set_seed(0)
+  >>> x = tf.ones([3,5])
+  >>> tf.nn.dropout(x, rate=0.8, seed=1)
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[0., 0., 0., 5., 5.],
+         [0., 5., 0., 5., 0.],
+         [5., 0., 5., 0., 5.]], dtype=float32)>
+  >>> tf.nn.dropout(x, rate=0.8, seed=1)
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[0., 0., 0., 0., 0.],
+         [0., 0., 0., 5., 0.],
+         [0., 0., 0., 0., 0.]], dtype=float32)>
+  >>> tf.nn.dropout(x, rate=0.8, seed=2)
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[0., 0., 0., 0., 0.],
+         [0., 5., 0., 5., 0.],
+         [0., 0., 0., 0., 0.]], dtype=float32)>
+  >>> tf.nn.dropout(x, rate=0.8, seed=2)
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[0., 0., 0., 0., 0.],
+         [5., 0., 5., 0., 5.],
+         [0., 5., 0., 0., 5.]], dtype=float32)>
+
+  The difference between this function and `tf.nn.dropout` is
+  analogous to the difference between `tf.random.stateless_uniform`
+  and `tf.random.uniform`. Please see [Random number
+  generation](https://www.tensorflow.org/guide/random_numbers) guide
+  for a detailed description of the various RNG systems in TF. As the
+  guide states, legacy stateful RNG ops like `tf.random.uniform` and
+  `tf.nn.dropout` are not deprecated yet but highly discouraged,
+  because their states are hard to control.
+
+  By default, each element is kept or dropped independently.  If `noise_shape`
+  is specified, it must be
+  [broadcastable](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+  to the shape of `x`, and only dimensions with `noise_shape[i] == shape(x)[i]`
+  will make independent decisions. This is useful for dropping whole
+  channels from an image or sequence. For example:
+
+  >>> x = tf.ones([3,10])
+  >>> tf.nn.experimental.stateless_dropout(x, rate=2/3, noise_shape=[1,10],
+  ...                                      seed=[1, 0])
+  <tf.Tensor: shape=(3, 10), dtype=float32, numpy=
+  array([[3., 0., 0., 0., 0., 0., 0., 3., 0., 3.],
+         [3., 0., 0., 0., 0., 0., 0., 3., 0., 3.],
+         [3., 0., 0., 0., 0., 0., 0., 3., 0., 3.]], dtype=float32)>
+
+  Args:
+    x: A floating point tensor.
+    rate: A scalar `Tensor` with the same type as x. The probability
+      that each element is dropped. For example, setting rate=0.1 would drop
+      10% of input elements.
+    seed: An integer tensor of shape `[2]`. The seed of the random numbers.
+    rng_alg: The algorithm used to generate the random numbers
+      (default to `"auto_select"`). See the `alg` argument of
+      `tf.random.stateless_uniform` for the supported values.
+    noise_shape: A 1-D integer `Tensor`, representing the
+      shape for randomly generated keep/drop flags.
+    name: A name for this operation.
+
+  Returns:
+    A Tensor of the same shape and dtype of `x`.
+
+  Raises:
+    ValueError: If `rate` is not in `[0, 1)` or if `x` is not a floating point
+      tensor. `rate=1` is disallowed, because the output would be all zeros,
+      which is likely not what was intended.
+  """
+  uniform_sampler = functools.partial(
+      stateless_random_ops.stateless_random_uniform, seed=seed, alg=rng_alg)
+  def dummy_rng_step():
+    pass
+  return _dropout(x=x, rate=rate, noise_shape=noise_shape,
+                  uniform_sampler=uniform_sampler,
+                  dummy_rng_step=dummy_rng_step, name=name,
+                  default_name="stateless_dropout")
+
+
+def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
+             default_name):
+  """Shared implementation of the various dropout functions.
+
+  Args:
+    x: same as the namesake in `dropout_v2`.
+    rate: same as the namesake in `dropout_v2`.
+    noise_shape: same as the namesake in `dropout_v2`.
+    uniform_sampler: a callable of signature `(shape, dtype) ->
+      Tensor`, used to generate a tensor of uniformly-distributed
+      random numbers, of the given shape and dtype.
+    dummy_rng_step: a callable of signature `() -> None`, to make a
+      dummy RNG call in the fast path. In the fast path where rate is
+      0, we don't need to generate random numbers, but some samplers
+      still require you to make an RNG call, to make sure that RNG
+      states won't depend on whether the fast path is taken.
+    name: same as the namesake in `dropout_v2`.
+    default_name: a default name in case `name` is `None`.
+
+  Returns:
+    A Tensor of the same shape and dtype of `x`.
+  """
+  with ops.name_scope(name, default_name, [x]) as name:
     is_rate_number = isinstance(rate, numbers.Real)
     if is_rate_number and (rate < 0 or rate >= 1):
       raise ValueError("rate must be a scalar tensor or a float in the "
@@ -5148,11 +5494,11 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       # and after `x` has been converted to a tensor, to prevent inconsistent
       # tensor conversions/error raising if rate is changed to/from 0.
       #
-      # We also explicitly call `random_seed.get_seed` to make sure
+      # We also explicitly call `dummy_rng_step` to make sure
       # we don't change the random number generation behavior of
       # stateful random ops by entering a fastpath,
       # despite not generating a random tensor in the fastpath
-      random_seed.get_seed(seed)
+      dummy_rng_step()
       return x
 
     is_executing_eagerly = context.executing_eagerly()
@@ -5170,22 +5516,16 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       if rate_dtype != x_dtype:
         if not rate_dtype.is_compatible_with(x_dtype):
           raise ValueError(
-              "Tensor dtype %s is incomptaible with Tensor dtype %s: %r" %
-              (x_dtype.name, rate_dtype.name, rate))
+              "`x` has dtype %s which is incomptaible with `rate`'s dtype %s" %
+              (x_dtype.name, rate_dtype.name))
         rate = gen_math_ops.cast(rate, x_dtype, name="rate")
       one_tensor = constant_op.constant(1, dtype=x_dtype)
       ret = gen_math_ops.real_div(x, gen_math_ops.sub(one_tensor, rate))
 
     noise_shape = _get_noise_shape(x, noise_shape)
     # Sample a uniform distribution on [0.0, 1.0) and select values larger
-    # than rate.
-    #
-    # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
-    # and subtract 1.0.
-    random_tensor = random_ops.random_uniform(
-        noise_shape, seed=seed, dtype=x_dtype)
-    # NOTE: if (1.0 + rate) - 1 is equal to rate, then that float is selected,
-    # hence a >= comparison is used.
+    # than or equal to `rate`.
+    random_tensor = uniform_sampler(shape=noise_shape, dtype=x_dtype)
     keep_mask = random_tensor >= rate
     ret = gen_math_ops.mul(ret, gen_math_ops.cast(keep_mask, x_dtype))
     if not is_executing_eagerly:

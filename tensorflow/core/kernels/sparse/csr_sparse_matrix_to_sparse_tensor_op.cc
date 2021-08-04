@@ -81,10 +81,10 @@ class CSRSparseMatrixToSparseTensorCPUOp : public OpKernel {
     c->set_output(2, dense_shape);
 
     const int batch_size = csr_sparse_matrix->batch_size();
-    const int64 total_nnz = csr_sparse_matrix->total_nnz();
+    const int64_t total_nnz = csr_sparse_matrix->total_nnz();
     const int rank = csr_sparse_matrix->dense_shape().dim_size(0);
     auto dense_shape_vec = dense_shape.vec<int64>();
-    const int64 num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
+    const int64_t num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
 
     Tensor* indices;
     OP_REQUIRES_OK(
@@ -96,20 +96,21 @@ class CSRSparseMatrixToSparseTensorCPUOp : public OpKernel {
     auto batch_ptrs = csr_sparse_matrix->batch_pointers().vec<int32>();
 
     // Process the individual batches in parallel using a threadpool.
-    auto shard = [&](int64 batch_begin, int64 batch_end) {
-      for (int64 batch_idx = batch_begin; batch_idx < batch_end; ++batch_idx) {
-        const int64 csr_batch_offset = batch_ptrs(batch_idx);
+    auto shard = [&](int64_t batch_begin, int64_t batch_end) {
+      for (int64_t batch_idx = batch_begin; batch_idx < batch_end;
+           ++batch_idx) {
+        const int64_t csr_batch_offset = batch_ptrs(batch_idx);
 
         for (int row_idx = 0; row_idx < num_rows; ++row_idx) {
-          const int64 row_offset = batch_idx * (num_rows + 1) + row_idx;
+          const int64_t row_offset = batch_idx * (num_rows + 1) + row_idx;
 
           // The column indices of the current row lie in the range:
           //  [csr_row_ptr[row_offset], csr_row_ptr[row_offset + 1])
-          const int64 col_begin = csr_row_ptr(row_offset);
-          const int64 col_end = csr_row_ptr(row_offset + 1);
-          for (int64 i = col_begin; i < col_end; ++i) {
-            const int64 col_idx = csr_col_ind(csr_batch_offset + i);
-            const int64 indices_offset = rank * (csr_batch_offset + i);
+          const int64_t col_begin = csr_row_ptr(row_offset);
+          const int64_t col_end = csr_row_ptr(row_offset + 1);
+          for (int64_t i = col_begin; i < col_end; ++i) {
+            const int64_t col_idx = csr_col_ind(csr_batch_offset + i);
+            const int64_t indices_offset = rank * (csr_batch_offset + i);
 
             if (rank == 2) {
               indices_flat(indices_offset) = row_idx;
@@ -148,10 +149,10 @@ class CSRSparseMatrixToSparseTensorGPUOp : public OpKernel {
     c->set_output(2, dense_shape_t);
     const int rank = dense_shape_t.dim_size(0);
     const int batch_size = csr_sparse_matrix->batch_size();
-    const int64 total_nnz = csr_sparse_matrix->total_nnz();
+    const int64_t total_nnz = csr_sparse_matrix->total_nnz();
 
     auto dense_shape = dense_shape_t.vec<int64>();
-    const int64 rows = dense_shape((rank == 2) ? 0 : 1);
+    const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
 
     Tensor* indices_t;
     OP_REQUIRES_OK(
@@ -209,10 +210,8 @@ class CSRSparseMatrixToSparseTensorGPUOp : public OpKernel {
 
 REGISTER_GPU(float)
 REGISTER_GPU(double)
-#if GOOGLE_CUDA
 REGISTER_GPU(complex64)
 REGISTER_GPU(complex128)
-#endif
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

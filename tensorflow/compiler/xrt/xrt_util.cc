@@ -55,7 +55,7 @@ class ScopedHandles {
   // Adds the given handle at the index position, by marking it releasable
   // according to the release argument. If an existing, and to-be-released
   // handle already exists at the same index, it will be released.
-  Status Add(size_t index, int64 handle, bool release) {
+  Status Add(size_t index, int64_t handle, bool release) {
     if (index >= handles_.size()) {
       handles_.resize(index + 1, XRTMemoryManager::InvalidKey());
       handles_release_.resize(index + 1, false);
@@ -93,7 +93,7 @@ class ScopedHandles {
   // Releases the handle at the given index. The destructor will not use that
   // XRTMemoryManager::Release() API on such handle.
   int64 Release(size_t index) {
-    int64 handle = handles_.at(index);
+    int64_t handle = handles_.at(index);
     handles_[index] = XRTMemoryManager::InvalidKey();
     handles_release_[index] = false;
     return handle;
@@ -133,7 +133,7 @@ string SafeDebugPath(const string& path) {
   return string();
 }
 
-Status MakeOutput(const RefPtr<XRTTupleAllocation>& output, int64 index,
+Status MakeOutput(const RefPtr<XRTTupleAllocation>& output, int64_t index,
                   RefPtr<XRTTupleAllocation>* result) {
   if (index == 0) {
     *result = output;
@@ -150,7 +150,8 @@ Status MakeOutput(const RefPtr<XRTTupleAllocation>& output, int64 index,
 Status PopulateOpWorkingSet(xla::Backend* backend,
                             const xrt::XRTChainedExecuteOp& op,
                             int current_index, const ScopedHandles& outputs,
-                            XRTMemoryManager::WorkingSet* working_set) {
+                            XRTMemoryManager::WorkingSet* working_set,
+                            se::DeviceMemoryAllocator* allocator) {
   for (int i = 0; i < op.inputs_size(); ++i) {
     auto& input = op.inputs(i);
     if (input.op_index() >= current_index) {
@@ -158,8 +159,8 @@ Status PopulateOpWorkingSet(xla::Backend* backend,
           "Input index ", input.op_index(),
           " is above the current position: ", current_index);
     }
-    TF_RETURN_IF_ERROR(
-        working_set->LookupAndPin(backend, outputs[input.op_index()]));
+    TF_RETURN_IF_ERROR(working_set->LookupAndPin(
+        backend, outputs[input.op_index()], allocator));
   }
   return Status::OK();
 }
@@ -212,7 +213,7 @@ xla::StatusOr<std::vector<InputCoords>> GetComputationInputs(
     } else {
       TF_RET_CHECK(TensorShapeUtils::IsVector(arg.shape()));
       auto arg_vec = arg.vec<int64>();
-      const int64 num_elts = arg.shape().dim_size(0);
+      const int64_t num_elts = arg.shape().dim_size(0);
       for (int i = 0; i < num_elts; ++i) {
         input_coords.emplace_back(arg_vec(i));
       }
@@ -235,7 +236,7 @@ bool InputShapeMatches(const xla::Shape& parameter_shape,
       if (pshape.is_static() && pshape.layout() != ishape->layout()) {
         return errors::InvalidArgument("Mismatching layouts");
       }
-      for (int64 dim = 0; dim < pshape.rank(); ++dim) {
+      for (int64_t dim = 0; dim < pshape.rank(); ++dim) {
         if (pshape.is_dynamic_dimension(dim)) {
           if (pshape.dimensions(dim) < ishape->dimensions(dim)) {
             return errors::InvalidArgument("Mismatching shapes");
@@ -255,8 +256,9 @@ bool InputShapeMatches(const xla::Shape& parameter_shape,
 xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetInputTupleAllocations(
     const std::vector<InputCoords>& input_coords,
     XRTMemoryManager::WorkingSet* working_set, xla::Backend* backend,
-    int64 num_input_shapes,
-    const std::function<xla::Shape(int64)>& shape_getter, bool release_inputs) {
+    int64_t num_input_shapes,
+    const std::function<xla::Shape(int64_t)>& shape_getter, bool release_inputs,
+    se::DeviceMemoryAllocator* allocator) {
   if (input_coords.size() != num_input_shapes) {
     return errors::InvalidArgument(
         "Number of inputs does not match executable proto input shapes: ",
@@ -266,7 +268,7 @@ xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetInputTupleAllocations(
   input_tuples.reserve(input_coords.size());
   for (size_t i = 0; i < input_coords.size(); ++i) {
     TF_RETURN_IF_ERROR(
-        working_set->LookupAndPin(backend, input_coords[i].handle));
+        working_set->LookupAndPin(backend, input_coords[i].handle, allocator));
     auto tuple = working_set->PinnedTuples().back();
     if (release_inputs) {
       // We are holding a reference to the tuple, so we can safely delete it
@@ -326,7 +328,7 @@ xla::StatusOr<std::vector<xla::ExecutionInput>> GetArgumentsBuffers(
   bool alias_outputs = release_inputs && input_tuples.size() == 1 &&
                        input_tuples[0]->IsExclusiveOwner() && !is_dynamic(0);
   arguments.reserve(input_tuples.size());
-  for (int64 i = 0; i < input_tuples.size(); ++i) {
+  for (int64_t i = 0; i < input_tuples.size(); ++i) {
     auto alias_checker =
         [&](const xla::ShapeIndex& index) -> xla::StatusOr<bool> {
       if (input_output_alias.ParameterHasAlias(i, index)) {
@@ -347,13 +349,13 @@ Status CreateExecuteOutput(OpKernelContext* context,
                            RefPtr<XRTTupleAllocation> output_tuple,
                            bool return_exploded_tuple) {
   if (return_exploded_tuple && output_tuple->on_host_shape().IsTuple()) {
-    int64 tuple_element_count =
+    int64_t tuple_element_count =
         xla::ShapeUtil::TupleElementCount(output_tuple->on_device_shape());
     Tensor* output_tensor;
     TF_RETURN_IF_ERROR(context->allocate_output(
         0, TensorShape({tuple_element_count}), &output_tensor));
 
-    for (int64 i = 0; i < tuple_element_count; ++i) {
+    for (int64_t i = 0; i < tuple_element_count; ++i) {
       XRTTupleAllocation* suballocation;
       TF_RETURN_IF_ERROR(XRTTupleAllocation::MakeSubBuffer(
           output_tuple.get(), {i}, &suballocation,
@@ -375,7 +377,8 @@ Status ExecuteChained(OpKernelContext* context,
                       xla::Backend* backend, int device_ordinal,
                       const xrt::XRTChainedExecutePlan& plan,
                       const xrt::XRTChainedExecuteConfig& config,
-                      const ChainedExecuteFn& execute_op) {
+                      const ChainedExecuteFn& execute_op,
+                      se::DeviceMemoryAllocator* allocator) {
   // Create the vector which tracks the uses of the intermediate chained
   // operations outputs.
   std::vector<int64> uses(plan.ops_size(), 0);
@@ -399,8 +402,8 @@ Status ExecuteChained(OpKernelContext* context,
       // handler. Populating the working set makes sure the input allocations
       // for this execute operations are pinned to device memory.
       XRTMemoryManager::WorkingSet working_set(memory_manager);
-      TF_RETURN_IF_ERROR(
-          PopulateOpWorkingSet(backend, op, i, outputs, &working_set));
+      TF_RETURN_IF_ERROR(PopulateOpWorkingSet(backend, op, i, outputs,
+                                              &working_set, allocator));
       TF_ASSIGN_OR_RETURN(auto tuple,
                           execute_op(op, working_set.PinnedTuples()));
       TF_RETURN_IF_ERROR(outputs.Add(i, std::move(tuple)));

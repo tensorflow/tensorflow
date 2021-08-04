@@ -49,6 +49,15 @@ from tensorflow.python.util import tf_inspect
 # Caution: the google and oss versions of this import are different.
 import base_dir
 
+# pylint: disable=g-import-not-at-top
+try:
+  from tensorflow.python.types import doc_typealias
+  _EXTRA_DOCS = getattr(doc_typealias, "_EXTRA_DOCS", {})
+  del doc_typealias
+except ImportError:
+  _EXTRA_DOCS = {}
+# pylint: enable=g-import-not-at-top
+
 # `tf` has an `__all__` that doesn't list important things like `keras`.
 # The doc generator recognizes `__all__` as the list of public symbols.
 # So patch `tf.__all__` to list everything.
@@ -139,7 +148,9 @@ class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
   """A `tf_export`, `keras_export` and `estimator_export` aware doc_visitor."""
 
   def _score_name(self, name):
-    all_exports = [tf_export.TENSORFLOW_API_NAME, tf_export.ESTIMATOR_API_NAME]
+    all_exports = [tf_export.TENSORFLOW_API_NAME,
+                   tf_export.KERAS_API_NAME,
+                   tf_export.ESTIMATOR_API_NAME]
 
     for api_name in all_exports:
       canonical = tf_export.get_canonical_name_for_symbol(
@@ -185,6 +196,11 @@ def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
     pass
 
   try:
+    doc_controls.do_not_generate_docs(tf.keras.__internal__)
+  except AttributeError:
+    pass
+
+  try:
     doc_controls.do_not_generate_docs(tf.__operators__)
   except AttributeError:
     pass
@@ -221,6 +237,7 @@ def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
       visitor_cls=TfExportAwareVisitor,
       private_map=_PRIVATE_MAP,
       gen_report=gen_report,
+      extra_docs=_EXTRA_DOCS
   )
 
   doc_generator.build(output_dir)
@@ -238,7 +255,7 @@ def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
       "tf/nn/sigmoid_cross_entropy_with_logits.md":
           "python/ops/nn_impl.py",
       "tf/keras/Model.md":
-          "tensorflow/python/keras/engine/training.py",
+          "keras/engine/training.py",
       "tf/keras/preprocessing/image/random_brightness.md":
           "keras_preprocessing/image/affine_transformations.py"
   }

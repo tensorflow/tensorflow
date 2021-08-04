@@ -16,6 +16,7 @@ limitations under the License.
 #include <numeric>
 
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -77,7 +78,7 @@ class SelectOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(SelectOp);
 };
 
-REGISTER_XLA_OP(Name("Select"), SelectOp);
+REGISTER_XLA_OP(Name("Select"), MlirXlaOpKernel);
 
 class SelectOpV2 : public XlaOpKernel {
  public:

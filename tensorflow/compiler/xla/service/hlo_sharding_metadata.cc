@@ -39,7 +39,7 @@ enum class AssignmentKind { kUnassigned, kAssigned, kConflict };
 // partial information. At the end of the propagation the sharding of
 // tuple-shaped instructions using kUnassignedDevice's is cleared.
 // TODO(b/112883246): Centralized enum of reserved devices.
-constexpr int64 kUnassignedDevice = -2;
+constexpr int64_t kUnassignedDevice = -2;
 
 struct PassThrough {
   PassThrough(HloInstruction* user, HloInstruction* operand)
@@ -314,7 +314,7 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
 // instruction).
 StatusOr<int64> ApplyDomainShardingPass(const DomainMetadata::Domain& domain,
                                         const HloSharding& domain_sharding) {
-  int64 assigned = 0;
+  int64_t assigned = 0;
   // domain.instructions are ordered in a post-order manner. As we do
   // user->operand propagation we process instructions in reverse order. In so
   // doing we are guaranteed to process all users before their operands.
@@ -351,7 +351,7 @@ Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
   VLOG(1) << "Assigning non-trivial sharding " << sharding;
   TF_RETURN_IF_ERROR(ApplyDomainShardingPass(domain, sharding).status());
 
-  int64 unassigned = 0;
+  int64_t unassigned = 0;
   for (HloInstruction* instruction : domain.instructions) {
     if (!instruction->has_sharding()) {
       LOG(WARNING) << "Unassigned instruction: " << instruction->ToString();

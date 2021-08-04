@@ -20,7 +20,7 @@ def tflite_ios_per_kernel_test(**kwargs):
     _ignore = [kwargs]
     pass
 
-def ios_visibility_whitelist():
+def ios_visibility_allowlist():
     """This is a no-op outside of Google."""
     pass
 
@@ -29,6 +29,36 @@ def internal_visibility_allowlist():
     return [
         "//visibility:public",
     ]
+
+def nonportable_visibility_allowlist():
+    """Grant public visibility to nonportable targets so that other repos can depend on them."""
+    return [
+        "//visibility:public",
+    ]
+
+def op_resolver_internal_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/core/api:op_resolver_internal.
+
+    This is a no-op outside of Google."""
+    return []
+
+def nnapi_plugin_impl_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin_impl.
+
+    This is a no-op outside of Google."""
+    return []
+
+def nnapi_sl_headers_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/nnapi/sl:nnapi_support_library_headers.
+
+    This is a no-op outside of Google."""
+    return []
+
+def verifier_internal_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/tools:verifier_internal.
+
+    This is a no-op outside of Google."""
+    return []
 
 def tflite_extra_gles_deps():
     """This is a no-op outside of Google."""
@@ -44,7 +74,7 @@ def if_nnapi(supported, not_supported = [], supported_android = None):
     if supported_android == None:
         supported_android = supported
 
-    # We use a blacklist rather than a whitelist for known unsupported platforms.
+    # We use a denylist rather than a allowlist for known unsupported platforms.
     return select({
         clean_dep("//tensorflow:emscripten"): not_supported,
         clean_dep("//tensorflow:ios"): not_supported,
@@ -99,4 +129,8 @@ def flex_portable_tensorflow_deps():
 
 def tflite_copts_extra():
     """Defines extra compile time flags for tflite_copts(). Currently empty."""
+    return []
+
+def tflite_extra_arm_config_settings():
+    """Defines extra ARM CPU config_setting targets. Currently empty."""
     return []

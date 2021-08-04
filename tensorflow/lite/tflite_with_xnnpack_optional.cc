@@ -28,16 +28,6 @@ namespace tflite {
 using TfLiteDelegatePtr =
     std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
 
-#ifndef TFLITE_BUILD_WITH_XNNPACK_DELEGATE
-// Using weak symbols to create a delegate allows automatic injection of the
-// delegate simply by adding it as a dependency. See the strong override in
-// lite/tflite_with_xnnpack.cc,
-TFLITE_ATTRIBUTE_WEAK TfLiteDelegatePtr
-AcquireXNNPACKDelegate(int num_threads) {
-  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
-}
-#endif
-
 #ifdef TFLITE_BUILD_WITH_XNNPACK_DELEGATE
 TfLiteDelegatePtr MaybeCreateXNNPACKDelegate(int num_threads) {
   auto opts = TfLiteXNNPackDelegateOptionsDefault();
@@ -47,6 +37,14 @@ TfLiteDelegatePtr MaybeCreateXNNPACKDelegate(int num_threads) {
                            TfLiteXNNPackDelegateDelete);
 }
 #else
+// Using weak symbols to create a delegate allows automatic injection of the
+// delegate simply by adding it as a dependency. See the strong override in
+// lite/tflite_with_xnnpack.cc,
+TFLITE_ATTRIBUTE_WEAK TfLiteDelegatePtr
+AcquireXNNPACKDelegate(int num_threads) {
+  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+}
+
 TfLiteDelegatePtr MaybeCreateXNNPACKDelegate(int num_threads) {
   return AcquireXNNPACKDelegate(num_threads);
 }

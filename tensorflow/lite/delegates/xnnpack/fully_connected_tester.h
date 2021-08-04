@@ -78,6 +78,23 @@ class FullyConnectedTester {
 
   inline bool FP16Weights() const { return fp16_weights_; }
 
+  inline FullyConnectedTester& INT8Weights() {
+    int8_weights_ = true;
+    return *this;
+  }
+
+  inline bool INT8Weights() const { return int8_weights_; }
+
+  inline FullyConnectedTester& NoBias() {
+    has_bias_ = false;
+    return *this;
+  }
+
+  inline FullyConnectedTester& WithBias() {
+    has_bias_ = true;
+    return *this;
+  }
+
   inline FullyConnectedTester& ReluActivation() {
     activation_ = ::tflite::ActivationFunctionType_RELU;
     return *this;
@@ -98,6 +115,8 @@ class FullyConnectedTester {
  private:
   std::vector<char> CreateTfLiteModel() const;
 
+  inline bool HasBias() const { return has_bias_; }
+
   inline ::tflite::ActivationFunctionType Activation() const {
     return activation_;
   }
@@ -110,6 +129,8 @@ class FullyConnectedTester {
   int32_t output_channels_ = 1;
   bool keep_dims_ = false;
   bool fp16_weights_ = false;
+  bool int8_weights_ = false;
+  bool has_bias_ = true;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
 };

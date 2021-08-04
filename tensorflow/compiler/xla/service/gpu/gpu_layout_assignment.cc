@@ -54,13 +54,30 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   constexpr auto kAllNCHW =
       std::make_tuple(DataLayout::kBatchDepthYX, FilterLayout::kOutputInputYX,
                       DataLayout::kBatchDepthYX);
+  // kBatchDepthYX4 has the same layout as kBatchDepthYX32; they're both VECT_C
+  // layouts as far as cudnn is concerned.
+  constexpr auto kAllNCHW_VECT_C =
+      std::make_tuple(DataLayout::kBatchDepthYX4, FilterLayout::kOutputInputYX4,
+                      DataLayout::kBatchDepthYX4);
   constexpr auto kAllNHWC =
       std::make_tuple(DataLayout::kBatchYXDepth, FilterLayout::kOutputYXInput,
                       DataLayout::kBatchYXDepth);
 
-  // Integer convolution must use NHWC.
-  if (primitive_util::IsIntegralType(
-          instr->operand(0)->shape().element_type())) {
+  // Integer convolution must use NHWC or NCHW_VECT_C.
+  //
+  // TODO(jlebar): Do non-VECT_C int8 convs still require NHWC with new versions
+  // of cudnn?
+  const ConvolutionDimensionNumbers& dnums =
+      instr->convolution_dimension_numbers();
+  Shape input_shape = instr->operand(0)->shape();
+  PrimitiveType input_ty = instr->operand(0)->shape().element_type();
+  if (primitive_util::IsIntegralType(input_ty)) {
+    if (input_ty == S8 && dnums.input_spatial_dimensions_size() == 2 &&
+        input_shape.dimensions_size() == 5) {
+      VLOG(2) << "Using NCHW_VECT_C for int8 conv " << instr->ToString();
+      return kAllNCHW_VECT_C;
+    }
+    VLOG(2) << "Using NHWC for int8 conv " << instr->ToString();
     return kAllNHWC;
   }
 
@@ -79,8 +96,10 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
 
   // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
   // NCHW.
-  if (instr->operand(0)->shape().element_type() != xla::PrimitiveType::F16 ||
-      !IsVoltaOrLater(*stream_executor) ||
+  if (input_ty != F16 ||
+      !stream_executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
       instr->shape().tuple_shapes(0).dimensions_size() != 4) {
     return kAllNCHW;
   }
@@ -220,7 +239,7 @@ Status GpuLayoutAssignment::AddBackendConstraints(
                dim_nums.rhs_batch_dimensions_size());
       CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,
                instruction->shape().rank());
-      for (int64 batch_dim : dim_nums.lhs_batch_dimensions()) {
+      for (int64_t batch_dim : dim_nums.lhs_batch_dimensions()) {
         CHECK_LT(batch_dim, instruction->shape().rank() - 2);
       }
 
@@ -253,7 +272,7 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       Shape keys_shape = instruction->operand(0)->shape();
       Layout keys_layout =
           LayoutUtil::GetDefaultLayoutForRank(keys_shape.rank());
-      for (int64 i = 0; i < instruction->operand_count(); ++i) {
+      for (int64_t i = 0; i < instruction->operand_count(); ++i) {
         Shape shape = instruction->operand(i)->shape();
         *shape.mutable_layout() = keys_layout;
         TF_RETURN_IF_ERROR(
@@ -299,6 +318,29 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           constraints->SetOperandLayout(op1_shape, instruction, 1));
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(output_shape, instruction));
+    } else if (instruction->opcode() == HloOpcode::kReduceScatter) {
+      // XLA:GPU can only support reduce-scatter where the scatter dimension
+      // is the most major dimension in the layout.
+      auto ars = Cast<HloReduceScatterInstruction>(instruction);
+      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+          ShapeUtil::MoveDimToMajor(ars->shape(), ars->scatter_dimension()),
+          ars));
+    } else if (instruction->opcode() == HloOpcode::kAllGather) {
+      // XLA:GPU can only support all-gathers where the gather dimension is the
+      // most major dimension in the layout.
+      auto ag = Cast<HloAllGatherInstruction>(instruction);
+      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+          ShapeUtil::MoveDimToMajor(ag->shape(), ag->all_gather_dimension()),
+          ag));
+    } else if (instruction->opcode() == HloOpcode::kAllToAll &&
+               instruction->shape().IsArray()) {
+      // XLA:GPU can only support all-to-all with split dimensions where the
+      // split dimension is the most major dimension in the layout.
+      auto* all_to_all = Cast<HloAllToAllInstruction>(instruction);
+      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+          ShapeUtil::MoveDimToMajor(all_to_all->shape(),
+                                    *all_to_all->split_dimension()),
+          all_to_all));
     }
   }
   return Status::OK();
@@ -348,7 +390,7 @@ Status GpuLayoutAssignment::PropagateOperandConstraint(
     TF_RETURN_IF_ERROR(constraints->SetBufferLayout(
         layout_constraint.shape_layout().layout(), *out_buf));
 
-    int64 operand_to_set = layout_constraint.operand_no() == 0 ? 4 : 0;
+    int64_t operand_to_set = layout_constraint.operand_no() == 0 ? 4 : 0;
     TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
         layout_constraint.shape_layout().shape(), instruction, operand_to_set));
   }

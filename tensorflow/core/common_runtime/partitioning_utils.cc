@@ -36,7 +36,7 @@ Status PartitionFunctionGraph(
     // Currently, we simply split the graph at device boundaries.
     return node->assigned_device_name();
   };
-  int64 edge_name_counter = 0;
+  int64_t edge_name_counter = 0;
   partition_options.new_name = [&edge_name_counter](const string& prefix) {
     return strings::StrCat(prefix, "/_", ++edge_name_counter);
   };
@@ -56,12 +56,9 @@ Status PartitionFunctionGraph(
   for (auto& partition : partitions) {
     const string& device = partition.first;
     GraphDef& graph_def = partition.second;
-    // Each partition gets a copy of all the
-    // std::unique_ptr<Graph> subgraph(new Graph(graph->flib_def()));
+    // Each partition gets a new graph.
     std::unique_ptr<Graph> subgraph(
-        new Graph(graph->flib_def().ReachableDefinitions(graph_def)));
-    FunctionLibraryDefinition global_flib(OpRegistry::Global(), {});
-    TF_CHECK_OK(subgraph->AddFunctionLibrary(global_flib.ToProto()));
+        new Graph(graph->flib_def().default_registry()));
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     opts.expect_device_spec = true;

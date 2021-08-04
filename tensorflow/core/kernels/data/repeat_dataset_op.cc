@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/repeat_dataset_op.h"
 
+#include <utility>
+
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -36,11 +38,11 @@ constexpr char kFiniteRepeat[] = "FiniteRepeat";
 constexpr char kCurIteration[] = "i";
 constexpr char kInputImplEmpty[] = "input_impl_empty";
 constexpr char kUninitialized[] = "uninitialized";
-constexpr int64 kKnownRatio = 1;
+constexpr int64_t kKnownRatio = 1;
 
 class RepeatDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 count, const DatasetBase* input)
+  Dataset(OpKernelContext* ctx, int64_t count, const DatasetBase* input)
       : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
     input_->Ref();
   }
@@ -73,7 +75,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+    int64_t n = input_->Cardinality();
     if (count_ < 0) {
       if (n == 0) {
         return 0;
@@ -163,8 +165,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
         ++i_;
-        if (ctx->split_provider()) {
-          TF_RETURN_IF_ERROR(ctx->split_provider()->Reset());
+        for (const auto& provider : ctx->split_providers()) {
+          TF_RETURN_IF_ERROR(provider->Reset());
         }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
@@ -232,26 +234,26 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
               ctx, this, prefix(), &input_impl_));
         }
-        Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+        TF_RETURN_IF_ERROR(
+            input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
         DCHECK(!*end_of_sequence || out_tensors->empty());
-        if (first_call_ && *end_of_sequence && !ctx->split_provider()) {
-          // If the first call to GetNext() fails because the end
-          // of sequence has been reached, we terminate the
-          // iteration immediately. (Otherwise, this iterator
-          // would loop infinitely and never produce a value.)
+        if (first_call_ && *end_of_sequence && ctx->split_providers().empty()) {
+          // If the first call to GetNext() fails because the end of sequence
+          // has been reached, we terminate the iteration immediately.
+          // Otherwise, this iterator would loop infinitely and never produce a
+          // value.
           input_impl_.reset();
           return Status::OK();
         }
         first_call_ = false;
         if (!*end_of_sequence) {
-          return s;
-        } else {
-          if (ctx->split_provider()) {
-            TF_RETURN_IF_ERROR(ctx->split_provider()->Reset());
-          }
-          input_impl_.reset();
-          first_call_ = true;
+          return Status::OK();
         }
+        for (const auto& provider : ctx->split_providers()) {
+          TF_RETURN_IF_ERROR(provider->Reset());
+        }
+        input_impl_.reset();
+        first_call_ = true;
       } while (true);
     }
 
@@ -304,7 +306,7 @@ void RepeatDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                   DatasetBase** output) {
   // Create a new RepeatDatasetOp::Dataset, insert it in the step-local
   // container, and return it as the output.
-  int64 count;
+  int64_t count;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kCount, &count));
   *output = new Dataset(ctx, count, input);
 }

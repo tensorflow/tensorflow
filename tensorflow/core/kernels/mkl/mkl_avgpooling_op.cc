@@ -129,7 +129,8 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
 
       T* dst_data = output_tensor->flat<T>().data();
       std::shared_ptr<stream> fwd_cpu_stream;
-      fwd_cpu_stream.reset(CreateStream(context, pooling_fwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      fwd_cpu_stream.reset(CreateStream(&eigen_tp, pooling_fwd->GetEngine()));
       // Execute pooling op.
       pooling_fwd->Execute(src_data, dst_data, nullptr, fwd_cpu_stream);
 
@@ -146,9 +147,9 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
         output_min_mkl_shape.SetMklTensor(false);
         output_max_mkl_shape.SetMklTensor(false);
         AllocateOutputSetMklShape(context, 1, &output_min, {},
-                                  output_min_mkl_shape);
+                                  output_min_mkl_shape, this->native_format_);
         AllocateOutputSetMklShape(context, 2, &output_max, {},
-                                  output_max_mkl_shape);
+                                  output_max_mkl_shape, this->native_format_);
         output_min->flat<float>()(0) = min_input;
         output_max->flat<float>()(0) = max_input;
       }
@@ -250,7 +251,8 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           MklPoolingBwdPrimitiveFactory<T>::Get(bwdParams);
 
       std::shared_ptr<stream> bwd_cpu_stream;
-      bwd_cpu_stream.reset(CreateStream(context, pooling_bwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      bwd_cpu_stream.reset(CreateStream(&eigen_tp, pooling_bwd->GetEngine()));
       Tensor* output_tensor = nullptr;
       this->AllocateOutputTensor(context, *(pooling_bwd->GetPoolingBwdPd()),
                                  orig_input_dims_mkl_order,
@@ -354,13 +356,13 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizedAvgPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklAvgPoolingOp<CPUDevice, quint8>);
+                        MklAvgPoolingOp<CPUDevice, quint8, true>);
 
 REGISTER_KERNEL_BUILDER(Name("_MklQuantizedAvgPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklAvgPoolingOp<CPUDevice, qint8>);
+                        MklAvgPoolingOp<CPUDevice, qint8, true>);
 
 }  // namespace tensorflow
 

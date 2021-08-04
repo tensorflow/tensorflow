@@ -81,6 +81,9 @@ void AddTypeConstraint(TF_KernelBuilder* kernel_builder, const char* attr_name,
   // TF_CALL_ALL_TYPES macro can find tensorflow::string as string.
   switch (dtype) {
     TF_CALL_ALL_TYPES(CASE);
+    TF_CALL_QUANTIZED_TYPES(CASE);
+    TF_CALL_quint16(CASE);
+    TF_CALL_qint16(CASE);
     default:
       status->status = errors::Unimplemented("Unexpected type ", dtype);
       return;
@@ -382,8 +385,8 @@ void TF_OpKernelConstruction_GetAttrSize(TF_OpKernelConstruction* ctx,
   }
 
 DEFINE_TF_GETATTR(Type, TF_DataType, tensorflow::DataType, "type", type)
-DEFINE_TF_GETATTR(Int32, int32_t, tensorflow::int32, "int", i)
-DEFINE_TF_GETATTR(Int64, int64_t, tensorflow::int64, "int", i)
+DEFINE_TF_GETATTR(Int32, int32_t, int32_t, "int", i)
+DEFINE_TF_GETATTR(Int64, int64_t, int64_t, "int", i)
 DEFINE_TF_GETATTR(Float, float, float, "float", f)
 DEFINE_TF_GETATTR(Bool, TF_Bool, bool, "bool", b)
 

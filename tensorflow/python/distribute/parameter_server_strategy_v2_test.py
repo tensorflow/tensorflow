@@ -24,32 +24,67 @@ import functools
 import os
 
 from absl.testing import parameterized
+import numpy as np
+
+from tensorflow.core.protobuf import saved_model_pb2
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import linalg_ops_impl
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
+from tensorflow.python.saved_model import save
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as tracking_util
 
+# We create one cluster to share between tests. The cluster should be large
+# enough to accommodate all the tests. Adjust the following constants as needed
+# but be aware of resource limitations in OSS tests.
+MAX_NUM_WORKER = 2
+MAX_NUM_PS = 3
+
+_cluster = None
+
+
+def get_cluster_def(num_workers, num_ps):
+  if num_workers > MAX_NUM_WORKER or num_ps > MAX_NUM_PS:
+    raise ValueError("Requesting more servers than the maximum, adjust"
+                     "MAX_NUM_PS and MAX_NUM_WORKER")
+  global _cluster
+  if _cluster is None:
+    _cluster = multi_worker_test_base.create_in_process_cluster(
+        num_workers=MAX_NUM_WORKER, num_ps=MAX_NUM_PS)
+  return {
+      "worker": _cluster["worker"][:num_workers],
+      "ps": _cluster["ps"][:num_ps],
+  }
+
 
 class ParameterServerStrategyV2Test(test.TestCase):
 
-  @classmethod
-  def setUpClass(cls):
-    super(ParameterServerStrategyV2Test, cls).setUpClass()
-    cluster_def = multi_worker_test_base.create_in_process_cluster(
-        num_workers=2, num_ps=3)
-    cls.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+  def setUp(self):
+    super().setUp()
+    cluster_def = get_cluster_def(num_workers=2, num_ps=3)
+    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
 
   def tearDown(self):
     super().tearDown()
@@ -67,67 +102,208 @@ class ParameterServerStrategyV2Test(test.TestCase):
       v4 = variables.Variable(initial_value=3.0)
       v5 = variables.Variable(initial_value=4.0)
     # v1 was created outside scope so should be on client.
-    self.assertEqual(v1.device, "/job:chief/replica:0/task:0/device:CPU:0")
+    gpu_devices = context.num_gpus()
+    if gpu_devices:
+      # For tests with GPUs
+      self.assertEqual(v1.device, "/job:chief/replica:0/task:0/device:GPU:0")
+    else:
+      self.assertEqual(v1.device, "/job:chief/replica:0/task:0/device:CPU:0")
     # v2 through v5 are created in scope and in a round-robin manner.
     self.assertEqual(v2.device, "/job:ps/replica:0/task:0/device:CPU:0")
     self.assertEqual(v3.device, "/job:ps/replica:0/task:1/device:CPU:0")
     self.assertEqual(v4.device, "/job:ps/replica:0/task:2/device:CPU:0")
     self.assertEqual(v5.device, "/job:ps/replica:0/task:0/device:CPU:0")
 
-  @contextlib.contextmanager
-  def _assertRaisesUsageError(self):
-    with self.assertRaisesRegexp(
-        NotImplementedError,
-        "`tf.distribute.experimental.ParameterServerStrategy` must be used "
-        "with `tf.distribute.experimental.coordinator.ClusterCoordinator`."):
-      yield
+  def testInteractionWithDeviceScope(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+
+    # The strategy scope always wins.
+    with strategy.scope():
+      with ops.device("/job:ps/replica:0/task:1"):
+        v0 = variables.Variable(initial_value=0.0)
+      self.assertEqual(v0.device, "/job:ps/replica:0/task:0/device:CPU:0")
+
+      with ops.device("/job:ps/replica:0/task:0"):
+        v1 = variables.Variable(initial_value=0.0)
+      self.assertEqual(v1.device, "/job:ps/replica:0/task:1/device:CPU:0")
+
+    with ops.device("/job:ps/replica:0/task:1"):
+      with strategy.scope():
+        v2 = variables.Variable(initial_value=0.0)
+        self.assertEqual(v2.device, "/job:ps/replica:0/task:2/device:CPU:0")
+
+        v3 = variables.Variable(initial_value=0.0)
+        self.assertEqual(v3.device, "/job:ps/replica:0/task:0/device:CPU:0")
+
+  def testInteractionWithVariableCreatorScope(self):
+
+    def var_creator(next_creator, **kwargs):
+      if "colocate_with" in kwargs:
+        with ops.device(None):
+          with ops.colocate_with(kwargs["colocate_with"]):
+            return next_creator(**kwargs)
+
+      self.assertIn("ps1", kwargs["name"])
+      with ops.device("/job:ps/task:1"):
+        return next_creator(**kwargs)
+
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+
+    # variable_creator_scope itself will work.
+    with variable_scope.variable_creator_scope(var_creator):
+      v0 = variables.Variable(initial_value=0.0, name="ps1_0")
+    self.assertEqual(v0.device, "/job:ps/replica:0/task:1/device:CPU:0")
+
+    # variable_creator_scope inside strategy.scope will not work.
+    with strategy.scope():
+      with variable_scope.variable_creator_scope(var_creator):
+        v1 = variables.Variable(initial_value=0.0, name="ps1_1")
+    self.assertEqual(v1.device, "/job:ps/replica:0/task:0/device:CPU:0")
+
+    # strategy.scope still assigns variables in a round robin fashion.
+    with strategy.scope():
+      v2 = variables.Variable(initial_value=0.0, name="ps1_2")
+    self.assertEqual(v2.device, "/job:ps/replica:0/task:1/device:CPU:0")
+
+    with strategy.scope():
+      v3 = variables.Variable(initial_value=0.0, name="ps1_3")
+    self.assertEqual(v3.device, "/job:ps/replica:0/task:2/device:CPU:0")
+
+    # variable_creator_scope outside strategy.scope will work.
+    with variable_scope.variable_creator_scope(var_creator):
+      with strategy.scope():
+        v4 = variables.Variable(initial_value=0.0, name="ps1_4")
+    self.assertEqual(v4.device, "/job:ps/replica:0/task:1/device:CPU:0")
+
+    with variable_scope.variable_creator_scope(var_creator):
+      with strategy.scope():
+        v5 = variables.Variable(initial_value=0.0, name="ps1_5")
+    self.assertEqual(v5.device, "/job:ps/replica:0/task:1/device:CPU:0")
+
+    # variable_creator_scope can be made to respect "colocate_with" as well.
+    with variable_scope.variable_creator_scope(var_creator):
+      with strategy.scope():
+        with strategy.extended.colocate_vars_with(v1):
+          v6 = variables.Variable(initial_value=0.0, name="ps1_6")
+    self.assertEqual(v6.device, "/job:ps/replica:0/task:0/device:CPU:0")
 
   @contextlib.contextmanager
-  def _assertRaisesUsageErrorWithSchedule(self):
-    with self.assertRaisesRegexp(
-        NotImplementedError,
-        "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
-        "`reduce` must be used within a function passed to `"
-        "tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`."):
+  def _assertRaisesUsageWarningWithSchedule(self):
+    with self.assertLogs(level="WARNING") as logs:
       yield
+
+    self.assertIn(
+        "It is detected that a function used with "
+        "`tf.distribute.experimental.ParameterServerStrategy` "
+        "is executed locally on the coordinator. This is inefficient but may "
+        "be valid for one-off tasks such as inferring output signature. "
+        "To properly distribute functions to run on workers, `run` or "
+        "`reduce` should be used within a function passed to `"
+        "tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`.",
+        logs.output[0])
 
   def testRunNotUsedWithClusterCoordinator(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
-    dataset = dataset_ops.DatasetV2.range(3)
+    dataset = dataset_ops.DatasetV2.range(8)
     with strategy.scope():
       v = variables.Variable(1, dtype=dtypes.int64)
 
     def step_fn(iterator):
       return next(iterator) + v
 
-    with self._assertRaisesUsageErrorWithSchedule():
+    with self._assertRaisesUsageWarningWithSchedule():
       strategy.run(step_fn, args=(iter(dataset),))
+
+  def testRunUsedWithTestOnlyMode(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    strategy.extended._allow_run_without_coordinator = True
+    dataset = dataset_ops.DatasetV2.range(15)
+    with strategy.scope():
+      v = variables.Variable(1, dtype=dtypes.int64)
+
+    def step_fn(iterator):
+      return next(iterator) + v
+
+    strategy.run(step_fn, args=(iter(dataset),))
 
   def testReduceNotUsedWithClusterCoordinator(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
-    with self._assertRaisesUsageErrorWithSchedule():
+    with self._assertRaisesUsageWarningWithSchedule():
       strategy.reduce("SUM", None, axis=None)
 
-  def testDistributeDatasetNotUsedWithClusterCoordinator(self):
+  def testDistributeDatasetUsedDirectly(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
     dataset = dataset_ops.DatasetV2.range(3)
-    with self._assertRaisesUsageError():
-      def_function.function(
-          lambda: strategy.experimental_distribute_dataset(dataset))()
+    distributed_dataset = strategy.experimental_distribute_dataset(dataset)
+    with self.assertRaises(ValueError):
+      iter(distributed_dataset)
 
-  def testDistributeDatasetFromFunctionNotUsedWithClusterCoordinator(self):
+    distributed_dataset = strategy.distribute_datasets_from_function(
+        lambda: dataset)
+    with self.assertRaises(ValueError):
+      iter(distributed_dataset)
+
+  def testSparselyReadForEmbeddingLookup(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
 
-    def dataset_fn(_):
-      return dataset_ops.DatasetV2.range(3)
+    class FakeModel(module.Module):
 
-    with self._assertRaisesUsageError():
-      def_function.function(
-          lambda: strategy.distribute_datasets_from_function(dataset_fn))()
+      def __init__(self):
+        self._var0 = variables.Variable([1.0, 2.0, 3.0, 4.0])
+        self._var1 = variables.Variable([5.0, 6.0, 7.0, 8.0])
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[2], dtype=dtypes.int32, name="inputs")
+      ])
+      def func(self, x):
+        return embedding_ops.embedding_lookup([self._var0, self._var1], x)
+
+    with strategy.scope():
+      model = FakeModel()
+
+    # Assert that ResourceGather op exists instead of Gather in training
+    # function.
+    found_resource_gather = False
+    found_gather = False
+
+    for n in model.func.get_concrete_function().graph.as_graph_def().node:
+      if n.op == "ResourceGather":
+        found_resource_gather = True
+      elif n.op == "Gather":
+        found_gather = True
+    self.assertTrue(found_resource_gather)
+    self.assertFalse(found_gather)
+
+    # Assert that ResourceGather op exists instead of Gather in saved_model.
+    found_resource_gather = False
+    found_gather = False
+
+    tmp_dir = self.get_temp_dir()
+    save.save(model, tmp_dir, signatures=model.func)
+
+    with gfile.Open("%s/saved_model.pb" % tmp_dir, "rb") as f:
+      saved_model_proto = saved_model_pb2.SavedModel().FromString(f.read())
+
+    for function in saved_model_proto.meta_graphs[0].graph_def.library.function:
+      for n in function.node_def:
+        if n.op == "ResourceGather":
+          found_resource_gather = True
+          resource_gather_device = n.device
+        elif n.op == "Gather":
+          found_gather = True
+    self.assertTrue(found_resource_gather)
+    self.assertFalse(found_gather)
+
+    # We also assert that the colocate_with in embedding_ops will not result in
+    # a hard-coded device string.
+    self.assertEmpty(resource_gather_device)
 
 
 class PartitionAwareIdentity(object):
@@ -143,12 +319,10 @@ class PartitionAwareIdentity(object):
 
 class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
-  @classmethod
-  def setUpClass(cls):
-    super(VariablePartitioningTest, cls).setUpClass()
-    cluster_def = multi_worker_test_base.create_in_process_cluster(
-        num_workers=2, num_ps=2)
-    cls.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+  def setUp(self):
+    super().setUp()
+    cluster_def = get_cluster_def(num_workers=2, num_ps=2)
+    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
 
   def tearDown(self):
     super().tearDown()
@@ -192,6 +366,72 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
     self.assertRegex(v2.variables[1].device, "/job:ps/replica:0/task:1")
     self.assertAllEqual(v2.variables[0], [[0], [1], [2]])
     self.assertAllEqual(v2.variables[1], [[3], [4], [5]])
+
+  def testBasicVariableWithAggregation(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    strategy.extended._allow_run_without_coordinator = True
+    with strategy.scope():
+      v = variables.Variable(
+          initial_value=[0, 0, 0, 0, 0, 0, 0, 0],
+          dtype=dtypes.float32,
+          aggregation=variable_scope.VariableAggregation.SUM)
+
+    if strategy.num_replicas_in_sync > 1:
+      self.assertIsInstance(v, ps_values.AggregatingVariable)
+    else:
+      self.assertIsInstance(v, variables.Variable)
+
+    def replica_fn():
+      replica_id = distribution_strategy_context.get_replica_context(
+      ).replica_id_in_sync_group
+      val = array_ops.reshape(
+          math_ops.cast(replica_id + 10, dtype=v.dtype), [1])
+      v.assign(
+          array_ops.concat(
+              [val, constant_op.constant([1., 2., 3., 4., 5., 6., 7.])], 0))
+
+    strategy.run(replica_fn)
+
+    expected_result = np.arange(8.) * strategy.num_replicas_in_sync
+    for i in range(strategy.num_replicas_in_sync):
+      expected_result[0] = expected_result[0] + i + 10
+    self.assertAllEqual(v, expected_result)
+
+  def testBasicShardedVariableWithAggregation(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
+    strategy.extended._allow_run_without_coordinator = True
+    with strategy.scope():
+      v = variables.Variable(
+          initial_value=[0, 0, 0, 0, 0, 0, 0, 0],
+          dtype=dtypes.float32,
+          aggregation=variable_scope.VariableAggregation.SUM)
+
+    self.assertIsInstance(v, sharded_variable.ShardedVariable)
+    self.assertLen(v.variables, 2)
+    if strategy.num_replicas_in_sync > 1:
+      self.assertIsInstance(v.variables[0], ps_values.AggregatingVariable)
+    else:
+      self.assertIsInstance(v.variables[0], variables.Variable)
+
+    def replica_fn():
+      replica_id = distribution_strategy_context.get_replica_context(
+      ).replica_id_in_sync_group
+      val = array_ops.reshape(
+          math_ops.cast(replica_id + 10, dtype=v.dtype), [1])
+      v.assign(
+          array_ops.concat(
+              [val, constant_op.constant([1., 2., 3., 4., 5., 6., 7.])], 0))
+
+    strategy.run(replica_fn)
+
+    expected_result = np.arange(8.) * strategy.num_replicas_in_sync
+    for i in range(strategy.num_replicas_in_sync):
+      expected_result[0] = expected_result[0] + i + 10
+    expected_result = np.array_split(expected_result, 2)
+    self.assertAllEqual(expected_result[0], v.variables[0])
+    self.assertAllEqual(expected_result[1], v.variables[1])
 
   def testNonCallableInitialValue(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
@@ -424,35 +664,10 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
 class ClusterTypeNameTest(test.TestCase):
 
-  def testArbitraryChiefName(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1,
-        num_ps=1,
-        has_chief=True,
-        chief_name="some_arbitrary_name")
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
-    cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def), rpc_layer="grpc")
-    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
-      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
-
-  def testArbitraryWorkerName(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=1, worker_name="some_arbitrary_name")
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
-    cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def), rpc_layer="grpc")
-    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
-      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
-
-  def testArbitraryPsName(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=1, ps_name="some_arbitrary_name")
-    cluster_def["chief"] = [
+  def testArbitraryJobName(self):
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=1, num_ps=1, has_chief=True)
+    cluster_def["some_arbitrary_name"] = [
         "localhost:%d" % multi_worker_test_base.pick_unused_port()
     ]
     cluster_resolver = SimpleClusterResolver(
@@ -461,18 +676,15 @@ class ClusterTypeNameTest(test.TestCase):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testArbitraryCurrentTaskType(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=1)
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=1, num_ps=1, has_chief=True)
     cluster_resolver = SimpleClusterResolver(
         ClusterSpec(cluster_def), rpc_layer="grpc", task_type="foobar")
     with self.assertRaisesRegexp(ValueError, "Unrecognized task_type: foobar"):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testMoreThanOneChief(self):
-    cluster_def = multi_worker_test_base._create_cluster(
+    cluster_def = multi_worker_test_base.create_cluster_spec(
         num_workers=1, num_ps=1)
     chief_ports = [multi_worker_test_base.pick_unused_port() for _ in range(3)]
     cluster_def["chief"] = ["localhost:%s" % port for port in chief_ports]
@@ -486,11 +698,8 @@ class ClusterTypeNameTest(test.TestCase):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testLessThanOneWorker(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=0, num_ps=1)
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=0, num_ps=1, has_chief=True)
     cluster_resolver = SimpleClusterResolver(
         ClusterSpec(cluster_def), rpc_layer="grpc", task_type="ps", task_id=0)
     with self.assertRaisesRegexp(ValueError,
@@ -498,11 +707,8 @@ class ClusterTypeNameTest(test.TestCase):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testLessThanOnePs(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=0)
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=1, num_ps=0, has_chief=True)
     cluster_resolver = SimpleClusterResolver(
         ClusterSpec(cluster_def),
         rpc_layer="grpc",
@@ -513,4 +719,5 @@ class ClusterTypeNameTest(test.TestCase):
 
 
 if __name__ == "__main__":
+  v2_compat.enable_v2_behavior()
   test.main()

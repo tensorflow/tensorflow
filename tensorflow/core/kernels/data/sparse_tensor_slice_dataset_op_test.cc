@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include <string>
+#include <utility>
+
+#include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -373,7 +377,7 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
 
   int cur_iteration = 0;
   bool end_of_sequence = false;
-  int64 num_slices = dataset_->Cardinality();
+  int64_t num_slices = dataset_->Cardinality();
   std::vector<Tensor> out_tensors;
 
   for (int breakpoint : test_case.breakpoints) {

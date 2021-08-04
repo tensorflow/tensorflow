@@ -26,7 +26,7 @@ function install_ctpu {
   # using CTPU.
   # Replace cloud-tpu-client with google-api-python-client oauth2client to test
   # the client at head.
-  "${PIP_CMD}" install --user --upgrade cloud-tpu-client
+  "${PIP_CMD}" install --user --upgrade --ignore-installed cloud-tpu-client
 
   wget -nv "https://dl.google.com/cloud_tpu/ctpu/latest/linux/ctpu"
   chmod a+x ctpu

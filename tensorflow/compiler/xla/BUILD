@@ -8,7 +8,7 @@ load(
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -17,6 +17,8 @@ package_group(
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/python/tpu/...",
+        "//third_party/iree/...",
+        "//third_party/mlir_edge/model_curriculum/...",
         "//third_party/py/jax/...",
     ],
 )
@@ -241,6 +243,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -248,6 +251,41 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "util_test",
+    srcs = ["util_test.cc"],
+    deps = [
+        ":test",
+        ":types",
+        ":util",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:bfloat16",
+    ],
+)
+
+cc_library(
+    name = "permutation_util",
+    srcs = ["permutation_util.cc"],
+    hdrs = ["permutation_util.h"],
+    deps = [
+        ":types",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "permutation_util_test",
+    srcs = ["permutation_util_test.cc"],
+    deps = [
+        ":permutation_util",
+        ":test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -266,18 +304,6 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/time",
-    ],
-)
-
-tf_cc_test(
-    name = "util_test",
-    srcs = ["util_test.cc"],
-    deps = [
-        ":test",
-        ":types",
-        ":util",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:bfloat16",
     ],
 )
 
@@ -312,6 +338,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":permutation_util",
         ":protobuf_util",
         ":status",
         ":status_macros",
@@ -326,6 +353,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
@@ -344,6 +372,7 @@ tf_cc_test(
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test_benchmark",
         "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/strings",
     ],
@@ -353,6 +382,7 @@ tf_cc_test(
     name = "shape_util_test",
     srcs = ["shape_util_test.cc"],
     deps = [
+        ":permutation_util",
         ":shape_util",
         ":status_macros",
         ":test",
@@ -430,6 +460,7 @@ cc_library(
         ":array2d",
         ":array3d",
         ":array4d",
+        ":permutation_util",
         ":shape_util",
         ":status_macros",
         ":types",
@@ -539,6 +570,7 @@ cc_library(
     name = "array",
     srcs = ["array.cc"],
     hdrs = ["array.h"],
+    visibility = [":friends"],
     deps = [
         ":status",
         ":types",

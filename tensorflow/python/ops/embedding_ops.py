@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -83,6 +82,16 @@ def _clip(params, ids, max_norm):
             else math_ops.range(ids_rank, params_rank)))
 
 
+def _colocate_with(param):
+  if ops.inside_function() and hasattr(param, "handle"):
+    # The `ops.colocate_with` will hard-code a device string if `param.device`
+    # is known, which will then break serving. We capture it here so that it
+    # produces a tensor without a device.
+    return ops.colocate_with(ops.get_default_graph().capture(param.handle))
+  else:
+    return ops.colocate_with(param)
+
+
 def _embedding_lookup_and_transform(params,
                                     ids,
                                     partition_strategy="mod",
@@ -129,18 +138,19 @@ def _embedding_lookup_and_transform(params,
     np = len(params)  # Number of partitions
     # Preserve the resource variable status to avoid accidental dense reads.
     if not any(
-        isinstance(p, resource_variable_ops.ResourceVariable) for p in params):
+        isinstance(p, resource_variable_ops.BaseResourceVariable)
+        for p in params):
       params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     ids = ops.convert_to_tensor(ids, name="ids")
     if np == 1 and (not transform_fn or ids.get_shape().ndims == 1):
-      with ops.colocate_with(params[0]):
+      with _colocate_with(params[0]):
         result = _clip(
             array_ops.gather(params[0], ids, name=name), ids, max_norm)
         if transform_fn:
           result = transform_fn(result)
       # Make sure the final result does not have colocation constraints on the
       # params. Similar to the case np > 1 where parallel_dynamic_stitch is
-      # outside the scioe of all with ops.colocate_with(params[p]).
+      # outside the scope of all with _colocate_with(params[p]).
       return array_ops.identity(result)
     else:
       # Flatten the ids. There are two cases where we need to do this.
@@ -173,7 +183,7 @@ def _embedding_lookup_and_transform(params,
             if param_p_dim is not None:
               dim_0_sizes.append(param_p_dim)
             else:
-              with ops.colocate_with(params[p]):
+              with _colocate_with(params[p]):
                 dim_0_sizes.append(array_ops.shape(params[p])[0])
           num_total_ids = math_ops.reduce_sum(
               math_ops.cast(array_ops.stack(dim_0_sizes), flat_ids.dtype))
@@ -204,13 +214,14 @@ def _embedding_lookup_and_transform(params,
       partitioned_result = []
       for p in xrange(np):
         pids = gather_ids[p]
-        with ops.colocate_with(params[p]):
-          result = array_ops.gather(params[p], pids)
-          if transform_fn:
-            # If transform_fn is provided, the clip_by_norm precedes
-            # the transform and hence must be co-located. See below
-            # for the counterpart if transform_fn is not provided.
-            result = transform_fn(_clip(result, pids, max_norm))
+        with ops.device_v2(None):
+          with _colocate_with(params[p]):
+            result = array_ops.gather(params[p], pids)
+            if transform_fn:
+              # If transform_fn is provided, the clip_by_norm precedes
+              # the transform and hence must be co-located. See below
+              # for the counterpart if transform_fn is not provided.
+              result = transform_fn(_clip(result, pids, max_norm))
         partitioned_result.append(result)
       # Stitch these back together
       ret = data_flow_ops.parallel_dynamic_stitch(
@@ -230,7 +241,7 @@ def _embedding_lookup_and_transform(params,
       elif transform_fn is None:
         # It's important that we compute params[0].shape on the right device
         # to avoid data motion.
-        with ops.colocate_with(params[0]):
+        with _colocate_with(params[0]):
           params_shape = array_ops.shape(params[0])
         element_shape_d = params_shape[1:]
       else:
@@ -510,21 +521,24 @@ def embedding_lookup_sparse(params,
 
     embeddings = embedding_lookup(
         params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
-    if embeddings.dtype in (dtypes.float16, dtypes.bfloat16):
-      embeddings = math_ops.cast(embeddings, dtypes.float32)
     if not ignore_weights:
       if segment_ids.dtype != dtypes.int32:
         segment_ids = math_ops.cast(segment_ids, dtypes.int32)
 
       weights = sp_weights.values
+      embeddings = array_ops.gather(embeddings, idx)
+
+      original_dtype = embeddings.dtype
+      if embeddings.dtype in (dtypes.float16, dtypes.bfloat16):
+        # Cast low-precision embeddings to float32 during the computation to
+        # avoid numerical issues.
+        embeddings = math_ops.cast(embeddings, dtypes.float32)
       if weights.dtype != embeddings.dtype:
         weights = math_ops.cast(weights, embeddings.dtype)
 
-      embeddings = array_ops.gather(embeddings, idx)
-
       # Reshape weights to allow broadcast
-      ones = array_ops.fill(
-          array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0), 1)
+      ones_shape = array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0)
+      ones = array_ops.ones(ones_shape, dtype=dtypes.int32)
       bcast_weights_shape = array_ops.concat([array_ops.shape(weights), ones],
                                              0)
 
@@ -545,22 +559,20 @@ def embedding_lookup_sparse(params,
       elif combiner == "mean":
         embeddings = math_ops.segment_sum(embeddings, segment_ids)
         weight_sum = math_ops.segment_sum(weights, segment_ids)
-        embeddings = math_ops.divide(embeddings, weight_sum, name=name)
+        embeddings = math_ops.div_no_nan(embeddings, weight_sum, name=name)
       elif combiner == "sqrtn":
         embeddings = math_ops.segment_sum(embeddings, segment_ids)
         weights_squared = math_ops.pow(weights, 2)
         weight_sum = math_ops.segment_sum(weights_squared, segment_ids)
         weight_sum_sqrt = math_ops.sqrt(weight_sum)
-        embeddings = math_ops.divide(embeddings, weight_sum_sqrt, name=name)
+        embeddings = math_ops.div_no_nan(embeddings, weight_sum_sqrt, name=name)
       else:
         assert False, "Unrecognized combiner"
+      if embeddings.dtype != original_dtype:
+        embeddings = math_ops.cast(embeddings, original_dtype)
     else:
-      if compat.forward_compatible(2020, 5, 14):
-        if segment_ids.dtype not in (dtypes.int32, dtypes.int64):
-          segment_ids = math_ops.cast(segment_ids, dtypes.int32)
-      else:
-        if segment_ids.dtype != dtypes.int32:
-          segment_ids = math_ops.cast(segment_ids, dtypes.int32)
+      if segment_ids.dtype not in (dtypes.int32, dtypes.int64):
+        segment_ids = math_ops.cast(segment_ids, dtypes.int32)
       assert idx is not None
       if combiner == "sum":
         embeddings = math_ops.sparse_segment_sum(

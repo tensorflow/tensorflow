@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
 
-
 namespace tensorflow {
 
 namespace {
@@ -124,6 +123,17 @@ REGISTER_KERNEL(GPU, Variant);
 #undef REGISTER_KERNEL
 #endif
 
+#define REGISTER_DEFAULT_KERNEL(TYPE)                                     \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("Const").Device(DEVICE_DEFAULT).TypeConstraint<TYPE>("dtype"), \
+      ConstantOp);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
+TF_CALL_QUANTIZED_TYPES(REGISTER_DEFAULT_KERNEL);
+TF_CALL_qint16(REGISTER_DEFAULT_KERNEL);
+TF_CALL_quint16(REGISTER_DEFAULT_KERNEL);
+TF_CALL_bool(REGISTER_DEFAULT_KERNEL);
+TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
+#undef REGISTER_DEFAULT_KERNEL
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -189,7 +199,6 @@ REGISTER_KERNEL(CPU, qint8);
 REGISTER_KERNEL(CPU, qint16);
 REGISTER_KERNEL(CPU, qint32);
 #undef REGISTER_CPU_KERNEL
-
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -264,17 +273,20 @@ TF_CALL_POD_STRING_TYPES(REGISTER_CPU);
 REGISTER_CPU(Variant);
 #undef REGISTER_CPU
 
-
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER_KERNEL(bool, GPU);
 REGISTER_KERNEL(Eigen::half, GPU);
-REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
+REGISTER_KERNEL(int64, GPU);
+#endif
+
+REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
-REGISTER_KERNEL(int64, GPU);
 REGISTER_KERNEL(Variant, GPU);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_GPU)
@@ -309,17 +321,19 @@ class OnesLikeOp : public OpKernel {
 TF_CALL_POD_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 
-
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER_KERNEL(bool, GPU);
 REGISTER_KERNEL(Eigen::half, GPU);
-REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
+REGISTER_KERNEL(int64, GPU);
+#endif
+REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
-REGISTER_KERNEL(int64, GPU);
 REGISTER_KERNEL_BUILDER(Name("OnesLike")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")

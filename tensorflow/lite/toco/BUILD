@@ -11,7 +11,7 @@ load(
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_proto_library(
@@ -362,7 +362,6 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_protobuf//:protobuf_headers",
         "@com_googlesource_code_re2//:re2",
     ],
 )

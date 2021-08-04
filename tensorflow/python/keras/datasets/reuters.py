@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Reuters topic classification dataset.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Reuters topic classification dataset."""
 
 import json
 
@@ -59,42 +55,41 @@ def load_data(path='reuters.npz',
   As a convention, "0" does not stand for a specific word, but instead is used
   to encode any unknown word.
 
-
   Args:
-      path: where to cache the data (relative to `~/.keras/dataset`).
-      num_words: integer or None. Words are
-          ranked by how often they occur (in the training set) and only
-          the `num_words` most frequent words are kept. Any less frequent word
-          will appear as `oov_char` value in the sequence data. If None,
-          all words are kept. Defaults to None, so all words are kept.
-      skip_top: skip the top N most frequently occurring words
-          (which may not be informative). These words will appear as
-          `oov_char` value in the dataset. Defaults to 0, so no words are
-          skipped.
-      maxlen: int or None. Maximum sequence length.
-          Any longer sequence will be truncated. Defaults to None, which
-          means no truncation.
-      test_split: Float between 0 and 1. Fraction of the dataset to be used
-        as test data. Defaults to 0.2, meaning 20% of the dataset is used as
-        test data.
-      seed: int. Seed for reproducible data shuffling.
-      start_char: int. The start of a sequence will be marked with this
-          character. Defaults to 1 because 0 is usually the padding character.
-      oov_char: int. The out-of-vocabulary character.
-          Words that were cut out because of the `num_words` or
-          `skip_top` limits will be replaced with this character.
-      index_from: int. Index actual words with this index and higher.
-      **kwargs: Used for backwards compatibility.
+    path: where to cache the data (relative to `~/.keras/dataset`).
+    num_words: integer or None. Words are
+        ranked by how often they occur (in the training set) and only
+        the `num_words` most frequent words are kept. Any less frequent word
+        will appear as `oov_char` value in the sequence data. If None,
+        all words are kept. Defaults to None, so all words are kept.
+    skip_top: skip the top N most frequently occurring words
+        (which may not be informative). These words will appear as
+        `oov_char` value in the dataset. Defaults to 0, so no words are
+        skipped.
+    maxlen: int or None. Maximum sequence length.
+        Any longer sequence will be truncated. Defaults to None, which
+        means no truncation.
+    test_split: Float between 0 and 1. Fraction of the dataset to be used
+      as test data. Defaults to 0.2, meaning 20% of the dataset is used as
+      test data.
+    seed: int. Seed for reproducible data shuffling.
+    start_char: int. The start of a sequence will be marked with this
+        character. Defaults to 1 because 0 is usually the padding character.
+    oov_char: int. The out-of-vocabulary character.
+        Words that were cut out because of the `num_words` or
+        `skip_top` limits will be replaced with this character.
+    index_from: int. Index actual words with this index and higher.
+    **kwargs: Used for backwards compatibility.
 
   Returns:
-      Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
+    Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
 
-      **x_train, x_test**: lists of sequences, which are lists of indexes
-        (integers). If the num_words argument was specific, the maximum
-        possible index value is `num_words - 1`. If the `maxlen` argument was
-        specified, the largest possible sequence length is `maxlen`.
+  **x_train, x_test**: lists of sequences, which are lists of indexes
+    (integers). If the num_words argument was specific, the maximum
+    possible index value is `num_words - 1`. If the `maxlen` argument was
+    specified, the largest possible sequence length is `maxlen`.
 
-      **y_train, y_test**: lists of integer labels (1 or 0).
+  **y_train, y_test**: lists of integer labels (1 or 0).
 
   Note: The 'out of vocabulary' character is only used for
   words that were present in the training set but are not included
@@ -116,7 +111,7 @@ def load_data(path='reuters.npz',
       origin=origin_folder + 'reuters.npz',
       file_hash=
       'd6586e694ee56d7a4e65172e12b3e987c03096cb01eab99753921ef915959916')
-  with np.load(path, allow_pickle=True) as f:
+  with np.load(path, allow_pickle=True) as f:  # pylint: disable=unexpected-keyword-arg
     xs, labels = f['x'], f['y']
 
   rng = np.random.RandomState(seed)
@@ -145,8 +140,8 @@ def load_data(path='reuters.npz',
     xs = [[w for w in x if skip_top <= w < num_words] for x in xs]
 
   idx = int(len(xs) * (1 - test_split))
-  x_train, y_train = np.array(xs[:idx]), np.array(labels[:idx])
-  x_test, y_test = np.array(xs[idx:]), np.array(labels[idx:])
+  x_train, y_train = np.array(xs[:idx], dtype='object'), np.array(labels[:idx])
+  x_test, y_test = np.array(xs[idx:], dtype='object'), np.array(labels[idx:])
 
   return (x_train, y_train), (x_test, y_test)
 

@@ -1,4 +1,4 @@
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "verifier_internal_visibility_allowlist")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
@@ -6,7 +6,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files([
@@ -17,6 +17,16 @@ py_binary(
     name = "visualize",
     srcs = ["visualize.py"],
     python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/lite/python:schema_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "visualize_lib",
+    srcs = ["visualize.py"],
     srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/python:schema_py",
@@ -179,7 +189,7 @@ cc_test(
     ],
     deps = [
         ":gen_op_registration",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -188,15 +198,30 @@ cc_library(
     srcs = ["verifier.cc"],
     hdrs = ["verifier.h"],
     deps = [
+        ":verifier_internal",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+cc_library(
+    name = "verifier_internal",
+    srcs = ["verifier_internal.cc"],
+    hdrs = ["verifier_internal.h"],
+    visibility = verifier_internal_visibility_allowlist() + [
+        "//tensorflow/lite/core/shims:__subpackages__",
+        "//tensorflow/lite/java/src/main/native:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/lite/schema:schema_fbs",
     ],
 )
 
@@ -220,7 +245,26 @@ cc_test(
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "verifier_internal_test",
+    size = "small",
+    srcs = ["verifier_internal_test.cc"],
+    deps = [
+        ":verifier_internal",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -255,7 +299,10 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = tflite_copts(),
-    deps = ["//tensorflow/lite/tools:logging"],
+    deps = [
+        "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_test(
@@ -265,6 +312,7 @@ cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":command_line_flags",
+        ":tool_params",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -352,7 +400,7 @@ tf_cc_test(
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )

@@ -19,7 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/EquivalenceClasses.h"
+#include "llvm/Support/Debug.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/utils/cycle_detector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"              // TF:llvm-project
@@ -479,7 +481,7 @@ class FusionPlanner {
   EquivalenceClasses<int32_t> leader_for_node_;
 };
 
-struct MhloFusionPass : public mlir::PassWrapper<MhloFusionPass, FunctionPass> {
+struct MhloFusionPass : public MhloFusionPassBase<MhloFusionPass> {
   void runOnFunction() override {
     FuncOp func = getFunction();
     if (!IsTargetFunc(func)) {
@@ -533,7 +535,7 @@ struct MhloFusionPass : public mlir::PassWrapper<MhloFusionPass, FunctionPass> {
         locations.push_back(op->getLoc());
       }
       Location fused_loc =
-          FusedLoc::get(locations, pattern.back()->getContext());
+          FusedLoc::get(pattern.back()->getContext(), locations);
 
       SmallVector<Value, 4> inputs = GetInputsOfFusionPattern(pattern);
       SmallVector<Value, 4> outputs = GetOutputsOfFusionPattern(pattern);

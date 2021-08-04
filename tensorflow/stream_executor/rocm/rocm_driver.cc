@@ -352,6 +352,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
 /* static */ port::Status GpuDriver::CreateContext(
     int device_ordinal, hipDevice_t device, const DeviceOptions& device_options,
     GpuContext** context) {
+  // TODO(hanbinyoon): Create a real context, i.e., by calling hipCtxCreate().
   *context = new GpuContext(device_ordinal);
   return port::Status::OK();
 }
@@ -360,6 +361,11 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
     return;
   }
   delete context;
+}
+
+/* static */ hipCtx_t GpuDriver::GetContextHandle(GpuContext* context) {
+  // TODO(hanbinyoon): Return a real context.
+  return nullptr;
 }
 
 /* static */ port::Status GpuDriver::FuncGetAttribute(
@@ -1093,6 +1099,27 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
       port::error::INTERNAL,
       absl::StrFormat("failed to determine AMDGpu GCN Arch Name for device %d",
                       device)};
+}
+
+/* static */ port::StatusOr<bool> GpuDriver::GetMFMASupport() {
+  hipDeviceProp_t props;
+  int dev = 0;
+  hipError_t result = hipGetDevice(&dev);
+  result = tensorflow::wrap::hipGetDeviceProperties(&props, dev);
+  if (result == hipSuccess) {
+    std::string gcnArchName = props.gcnArchName;
+    VLOG(1) << "GCN arch name " << gcnArchName;
+    auto pos = gcnArchName.find(":");
+    if (pos != string::npos) gcnArchName = gcnArchName.substr(0, pos);
+    pos = gcnArchName.find("gfx");
+    if (pos != string::npos) gcnArchName = gcnArchName.substr(pos + 3);
+    VLOG(1) << "GCN arch name (stripped) " << gcnArchName;
+    return ((gcnArchName == "908") || (gcnArchName == "909"));
+  }
+  return port::Status{
+      port::error::INTERNAL,
+      absl::StrFormat("failed to determine AMDGpu GCN Arch Name for device %d",
+                      dev)};
 }
 
 // Helper function that turns the integer output of hipDeviceGetAttribute to

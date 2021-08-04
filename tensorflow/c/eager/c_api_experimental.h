@@ -175,6 +175,31 @@ TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
 TFE_MonitoringGetCellStringGauge2(TFE_MonitoringStringGauge2* gauge,
                                   const char* label1, const char* label2);
 
+// APIs for String Gauge with 3 labels.
+typedef struct TFE_MonitoringStringGauge3 TFE_MonitoringStringGauge3;
+TF_CAPI_EXPORT extern TFE_MonitoringStringGauge3* TFE_MonitoringNewStringGauge3(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1, const char* label2, const char* label3);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge3(
+    TFE_MonitoringStringGauge3* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
+TFE_MonitoringGetCellStringGauge3(TFE_MonitoringStringGauge3* gauge,
+                                  const char* label1, const char* label2,
+                                  const char* label3);
+
+// APIs for String Gauge with 4 labels.
+typedef struct TFE_MonitoringStringGauge4 TFE_MonitoringStringGauge4;
+TF_CAPI_EXPORT extern TFE_MonitoringStringGauge4* TFE_MonitoringNewStringGauge4(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1, const char* label2, const char* label3,
+    const char* label4);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge4(
+    TFE_MonitoringStringGauge4* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
+TFE_MonitoringGetCellStringGauge4(TFE_MonitoringStringGauge4* gauge,
+                                  const char* label1, const char* label2,
+                                  const char* label3, const char* label4);
+
 typedef struct TFE_MonitoringBoolGaugeCell TFE_MonitoringBoolGaugeCell;
 TF_CAPI_EXPORT extern void TFE_MonitoringBoolGaugeCellSet(
     TFE_MonitoringBoolGaugeCell* cell, bool value);
@@ -268,6 +293,10 @@ TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
 // Sets whether to use TFRT
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
                                                      bool use_tfrt);
+
+// Sets whether to use TFRT distributed runtime
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrtDistributedRuntime(
+    TFE_ContextOptions* options, bool use_tfrt_distributed_runtime);
 
 // Returns the context_id from the EagerContext which is used by the
 // EagerService to maintain consistency between client and worker. The
@@ -384,9 +413,11 @@ TF_CAPI_EXPORT extern void* TFE_TensorHandleDevicePointer(TFE_TensorHandle*,
 TF_CAPI_EXPORT extern size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle*,
                                                               TF_Status*);
 
-// Creates a new TensorHandle from memory residing in device_name. Takes
-// ownership of the memory, and will call deleter to release it after TF
-// no longer needs it or in case of error.
+// Creates a new TensorHandle from memory residing in the physical device
+// device_name. Takes ownership of the memory, and will call deleter to release
+// it after TF no longer needs it or in case of error.
+//
+// Custom devices must use TFE_NewCustomDeviceTensorHandle instead.
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
     TFE_Context* ctx, const char* device_name, TF_DataType, const int64_t* dims,
     int num_dims, void* data, size_t len,
@@ -517,28 +548,47 @@ TF_CAPI_EXPORT extern void TFE_RegisterCustomDevice(TFE_Context* ctx,
                                                     void* device_info,
                                                     TF_Status* status);
 
+// Struct to be filled in to define a custom device tensor handle. Fields are
+// required except where indicated.
+typedef struct TFE_CustomDeviceTensorHandleMethods {
+  int version = TFE_CUSTOM_DEVICE_VERSION;
+
+  // Computes the rank of the tensor handle.
+  //
+  // Shapes are specified via callbacks because retrieving the shape of a tensor
+  // is a blocking operation for async eager; custom devices should avoid
+  // retrieving shapes of tensors they wrap until the custom device tensor's
+  // shape is explicitly requested where possible.
+  int (*num_dims)(void* data, TF_Status* status);
+
+  // Computes the axis length at `dim_index`.
+  int64_t (*dim)(void* data, int dim_index, TF_Status* status);
+
+  void (*deallocator)(void* data);
+
+  // Summarizes the value of this tensor. The caller takes ownership of the
+  // returned buffer. If `status` is not TF_OK, instead returns a null pointer.
+  //
+  // Does not include the shape and dtype of the tensor (which is generally
+  // appended later), but should include any information specific to this custom
+  // device which would be useful for debugging.
+  //
+  // Optional. If null, defaults to resolving the TFE_TensorHandle into a
+  // TF_Tensor and summarizing that.
+  TF_Buffer* (*summarize)(void* data, TF_Status* status) = nullptr;
+} TFE_CustomDeviceTensorHandle;
+
 // Creates a new TensorHandle from memory residing in a custom device. Takes
-// ownership of the memory, and will call `deallocator` to release it after TF
-// no longer needs it or in case of error.
+// ownership of the memory pointed to by `tensor_handle_data`, and calls
+// `methods.deallocator` to release it after TF no longer needs it or in case of
+// an error.
 //
-// `num_dims_callback` is a callback computing the rank of the tensor, and
-// `dim_callback` computes the axis length at `dim_index`. Shapes are specified
-// via callbacks because retrieving the shape of a tensor is a blocking
-// operation for async eager; custom devices should avoid retrieving shapes of
-// tensors they wrap until the custom device tensor's shape is explicitly
-// requested where possible.
-//
-// `arg` is passed to the callbacks unmodified for any extra information the
-// caller needs to provide them.
-//
-// This call is similar to `TFE_NewTensorHandleFromDeviceMemory`, but does not
-// require blocking waiting for exact shapes.
+// This call is similar to `TFE_NewTensorHandleFromDeviceMemory`, but supports
+// custom devices instead of physical devices and does not require blocking
+// waiting for exact shapes.
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewCustomDeviceTensorHandle(
-    TFE_Context* ctx, const char* device_name, TF_DataType, void* data,
-    int (*num_dims_callback)(void* data, void* arg, TF_Status* status),
-    int64_t (*dim_callback)(void* data, int dim_index, void* arg,
-                            TF_Status* status),
-    void (*deallocator)(void* data, void* arg), void* arg, TF_Status* status);
+    TFE_Context*, const char* device_name, TF_DataType, void* data,
+    TFE_CustomDeviceTensorHandle methods, TF_Status* status);
 
 TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
                                                      const char* function_name,
@@ -596,6 +646,42 @@ TF_CAPI_EXPORT extern int TFE_TensorHandleDeviceID(TFE_TensorHandle* h,
 TF_CAPI_EXPORT extern void TFE_GetExecutedOpNames(TFE_Context* ctx,
                                                   TF_Buffer* buf,
                                                   TF_Status* status);
+
+// Set logical devices to the context's device manager.
+// If logical devices are already configured at context initialization
+// through TFE_ContextOptions, this method should not be called.
+TF_CAPI_EXPORT extern void TFE_SetLogicalCpuDevices(TFE_Context* ctx,
+                                                    int num_cpus,
+                                                    const char* prefix,
+                                                    TF_Status* status);
+
+// Set configuration key and value using coordination service.
+// If coordination service is enabled, the key-value will be stored on the
+// leader and become accessible to all workers in the cluster.
+// Currently, a config key can only be set with one value, and subsequently
+// setting the same key will lead to errors.
+//
+// Note that the key-values are only expected to be used for cluster
+// configuration data, and should not be used for storing large amount of data
+// or being accessed very frequently.
+TF_CAPI_EXPORT extern void TFE_InsertConfigKeyValue(TFE_Context* ctx,
+                                                    const char* key,
+                                                    const char* value,
+                                                    TF_Status* status);
+
+// Get configuration key and value using coordination service.
+// The config key must be set before getting its value. Getting value of
+// non-existing config keys will result in errors.
+TF_CAPI_EXPORT extern void TFE_GetConfigKeyValue(TFE_Context* ctx,
+                                                 const char* key,
+                                                 TF_Buffer* value_buf,
+                                                 TF_Status* status);
+
+// Delete configuration key-value. If `key` is a directory, recursively clean up
+// all key-values under the path specified by `key`.
+TF_CAPI_EXPORT extern void TFE_DeleteConfigKeyValue(TFE_Context* ctx,
+                                                    const char* key,
+                                                    TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

@@ -13,13 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Utilites for `Model.compile`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import copy
-
-import six
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.keras import losses as losses_mod
@@ -149,6 +144,10 @@ class LossesContainer(Container):
     self._create_metrics()
     self._built = True
 
+  @property
+  def built(self):
+    return self._built
+
   def _create_metrics(self):
     """Creates per-output loss metrics, but only for multi-output Models."""
     if len(self._output_names) == 1:
@@ -250,6 +249,15 @@ class LossesContainer(Container):
       # Ok for a model to have no compiled loss.
       return array_ops.zeros(shape=())
 
+  def reset_state(self):
+    """Resets the state of loss metrics."""
+    if not self._built:
+      return
+    metrics = [self._loss_metric] + nest.flatten(self._per_output_metrics)
+    for metric_obj in metrics:
+      if metric_obj is not None:
+        metric_obj.reset_state()
+
   def _get_loss_object(self, loss):
     """Returns a `Loss` object.
 
@@ -284,7 +292,19 @@ class LossesContainer(Container):
 class MetricsContainer(Container):
   """A container class for metrics passed to `Model.compile`."""
 
-  def __init__(self, metrics=None, weighted_metrics=None, output_names=None):
+  def __init__(self, metrics=None, weighted_metrics=None, output_names=None,
+               from_serialized=False):
+    """Initializes a container for metrics.
+
+    Arguments:
+      metrics: see the `metrics` argument from `tf.keras.Model.compile`.
+      weighted_metrics: see the `weighted_metrics` argument from
+        `tf.keras.Model.compile`.
+      output_names: A list of strings of names of outputs for the model.
+      from_serialized: Whether the model being compiled is from a serialized
+        model.  Used to avoid redundantly applying pre-processing renaming
+        steps.
+    """
     super(MetricsContainer, self).__init__(output_names=output_names)
 
     # Keep user-supplied values untouched for recompiling and serialization.
@@ -294,6 +314,8 @@ class MetricsContainer(Container):
     self._metrics = metrics
     self._weighted_metrics = weighted_metrics
     self._built = False
+
+    self._from_serialized = from_serialized
 
   @property
   def metrics(self):
@@ -348,9 +370,17 @@ class MetricsContainer(Container):
         y_pred, self._weighted_metrics, check_types=False)
 
     # Assumes metrics, weighted_metrics have been flattened up to outputs.
-    self._set_metric_names()
+    #
+    # If we are loading a model that has been already serialized, we do not
+    # want to re-apply any pre-processing metric renaming steps.
+    if not self._from_serialized:
+      self._set_metric_names()
     self._create_ordered_metrics()
     self._built = True
+
+  @property
+  def built(self):
+    return self._built
 
   def _set_metric_names(self):
     """Sets unique metric names."""
@@ -434,6 +464,21 @@ class MetricsContainer(Container):
           continue
         weighted_metric_obj.update_state(y_t, y_p, sample_weight=sw)
 
+  def reset_state(self):
+    """Resets the state of all `Metric`s in this container."""
+    if self._built:
+      metrics = self._metrics_in_order
+    else:
+      # If the user supplied `Metric` objects directly, we should
+      # reset those. This could also contain `str`s or `function`s
+      # though.
+      metrics = nest.flatten(self._user_metrics) + nest.flatten(
+          self._user_weighted_metrics)
+
+    for metric_obj in metrics:
+      if isinstance(metric_obj, metrics_mod.Metric):
+        metric_obj.reset_state()
+
   def _get_metric_objects(self, metrics, y_t, y_p):
     """Convert user-supplied metrics to `Metric` objects."""
     metrics = nest.flatten(metrics)
@@ -455,7 +500,7 @@ class MetricsContainer(Container):
 
     # Convenience feature for selecting b/t binary, categorical,
     # and sparse categorical.
-    if metric not in ['accuracy', 'acc', 'crossentropy', 'ce']:
+    if str(metric).lower() not in ['accuracy', 'acc', 'crossentropy', 'ce']:
       metric_obj = metrics_mod.get(metric)
     else:
       y_t_rank = len(y_t.shape.as_list())
@@ -467,7 +512,7 @@ class MetricsContainer(Container):
       is_sparse_categorical = (
           y_t_rank < y_p_rank or y_t_last_dim == 1 and y_p_last_dim > 1)
 
-      if metric in ['accuracy', 'acc']:
+      if str(metric).lower() in ['accuracy', 'acc']:
         if is_binary:
           metric_obj = metrics_mod.binary_accuracy
         elif is_sparse_categorical:
@@ -486,7 +531,7 @@ class MetricsContainer(Container):
       metric_obj._allow_sum_over_batch_size = True  # pylint: disable=protected-access
 
     if not isinstance(metric_obj, metrics_mod.Metric):
-      if isinstance(metric, six.string_types):
+      if isinstance(metric, str):
         metric_name = metric
       else:
         metric_name = get_custom_object_name(metric)

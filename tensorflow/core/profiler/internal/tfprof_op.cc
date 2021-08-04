@@ -143,10 +143,10 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
   }
 
   // Perform the display and optionally redo accounting.
-  int64 depth = 0;
+  int64_t depth = 0;
   std::vector<OpNode*> show_nodes;
-  int64 start = SearchRoot(account_nodes, opts.start_name_regexes);
-  for (int64 i = start, end = account_nodes.size(); i < end; ++i, ++depth) {
+  int64_t start = SearchRoot(account_nodes, opts.start_name_regexes);
+  for (int64_t i = start, end = account_nodes.size(); i < end; ++i, ++depth) {
     OpNode* n = account_nodes[i];
     if (ShouldTrim(n, opts.trim_name_regexes) || depth > opts.max_depth) {
       break;
@@ -194,8 +194,8 @@ int64 TFOp::SearchRoot(const std::vector<OpNode*> nodes,
   if (regexes.empty() || (regexes.size() == 1 && regexes[0] == ".*")) {
     return 0;
   }
-  int64 i = 0;
-  const int64 nodes_size = nodes.size();
+  int64_t i = 0;
+  const int64_t nodes_size = nodes.size();
   for (; i < nodes_size; ++i) {
     for (const string& regex : regexes) {
       if (RE2::FullMatch(nodes[i]->name(), regex)) {
@@ -206,8 +206,9 @@ int64 TFOp::SearchRoot(const std::vector<OpNode*> nodes,
   return i;
 }
 
-string TFOp::FormatMemoryNode(int64 node_total_bytes, int64 root_total_bytes,
-                              int64 node_bytes) const {
+string TFOp::FormatMemoryNode(int64_t node_total_bytes,
+                              int64_t root_total_bytes,
+                              int64_t node_bytes) const {
   double accu_pct = 0.0;
   double pct = 0.0;
   if (node_bytes > 0) {
@@ -298,7 +299,7 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) const {
   }
 
   if (opts.select.find(kShown[7]) != opts.select.end()) {
-    int64 total_runs = 0;
+    int64_t total_runs = 0;
     for (const auto& gnode : node->proto().graph_nodes()) {
       total_runs += gnode.run_count();
     }

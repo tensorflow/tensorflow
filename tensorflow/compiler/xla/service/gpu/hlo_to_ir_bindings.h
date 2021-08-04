@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 
@@ -34,14 +33,9 @@ namespace gpu {
 // values that represent their addresses.
 class HloToIrBindings {
  public:
-  HloToIrBindings(const HloModule& module,
-                  const BufferAssignment* buffer_assignment,
-                  llvm::IRBuilder<>* b, llvm::Module* llvm_module,
+  HloToIrBindings(llvm::IRBuilder<>* b, llvm::Module* llvm_module,
                   bool is_nested)
-      : buffer_assignment_(buffer_assignment),
-        is_nested_(is_nested),
-        b_(b),
-        module_(llvm_module) {}
+      : is_nested_(is_nested), b_(b), module_(llvm_module) {}
 
   void EmitBasePointersForHlos(
       absl::Span<const HloInstruction* const> io_hlos,
@@ -97,8 +91,6 @@ class HloToIrBindings {
   llvm::Value* GetTypedIrValue(const HloInstruction& hlo,
                                ShapeIndexView shape_index,
                                llvm::Value* ir_value);
-
-  const BufferAssignment* buffer_assignment_;
 
   const bool is_nested_;
 

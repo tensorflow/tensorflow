@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 
 #include "llvm/ADT/StringSet.h"
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -26,6 +27,9 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
+namespace {
+
+constexpr char kTpuReplicateAttr[] = "_tpu_replicate";
 
 // Returns the set of ops that we want to generate shared_names for them if
 // empty.
@@ -33,6 +37,8 @@ const llvm::StringSet<>& GetSharedNameGenerationCompatibleOps() {
   static auto* const ops = new llvm::StringSet<>({"VariableV2", "Variable"});
   return *ops;
 }
+
+}  // namespace
 
 Status GenerateResourceSharedNameIfEmpty(
     GraphDef& gdef, const OpRegistryInterface* default_registry) {
@@ -76,8 +82,10 @@ Status GenerateResourceSharedNameIfEmpty(
       auto func_name = fdef.signature().name();
       for (auto& node_def : *fdef.mutable_node_def()) {
         const OpDef* op_def = nullptr;
-        TF_RETURN_IF_ERROR(flib_def->LookUpOpDef(node_def.op(), &op_def));
-        if (is_resource_op_with_empty_shared_name(node_def, *op_def)) {
+        // With lazy loading, some functions might not be executed, thus we skip
+        // the node if the op is not registered.
+        if (flib_def->LookUpOpDef(node_def.op(), &op_def).ok() &&
+            is_resource_op_with_empty_shared_name(node_def, *op_def)) {
           // Use the concat of function name and node name for such ops in a
           // function as the shared_name. "@" is used as the separator because
           // it is not allowed in the function name or the node name.
@@ -169,6 +177,23 @@ stream_executor::port::StatusOr<GraphDef> RunGrappler(
       std::move(*item), config_proto, cpu_device, &cluster, &output_graph_def));
 
   return output_graph_def;
+}
+
+Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
+                          bool restrict_functionalization_to_tpu_nodes) {
+  // If `restrict_functionalization_to_tpu_nodes` is true let filter function
+  // return true for `_tpu_replicate` nodes, otherwise don't set filter.
+  NodeFilter node_filter =
+      restrict_functionalization_to_tpu_nodes
+          ? [](const Node* n) { return n->attrs().Find(kTpuReplicateAttr); }
+          : NodeFilter{};
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      FunctionalizeControlFlow(graph, flib_def, node_filter,
+                               /*include_functions=*/true),
+      "Failed to functionalize Control Flow V1 ops. Consider using Control "
+      "Flow V2 ops instead. See https://www.tensorflow.org/api_docs/python/tf/"
+      "compat/v1/enable_control_flow_v2.");
+  return Status::OK();
 }
 
 }  // namespace tensorflow

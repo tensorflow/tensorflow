@@ -25,9 +25,9 @@ import os
 import platform
 import sys
 
-from tensorflow.python import _pywrap_python_op_gen
 from tensorflow.python.client import pywrap_tf_session as py_tf
 from tensorflow.python.eager import context
+from tensorflow.python.framework import _pywrap_python_op_gen
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -65,7 +65,7 @@ def load_op_library(library_filename):
     py_tf.TF_DeleteLibraryHandle(lib_handle)
 
   # Get a unique name for the module.
-  module_name = hashlib.md5(wrappers).hexdigest()
+  module_name = hashlib.sha1(wrappers).hexdigest()
   if module_name in sys.modules:
     return sys.modules[module_name]
   module = imp.new_module(module_name)

@@ -32,6 +32,12 @@ limitations under the License.
 
 namespace xla {
 
+// Postprocessor of the HloInstructionSequence. This is an opt-in postprocessing
+// function to MemorySchedulerAlgorithm to enforce certain hlo schedule
+// constraints desired for custom-calls.
+using MemorySchedulerPostprocessor =
+    std::function<HloInstructionSequence(const HloInstructionSequence&)>;
+
 // A memory scheduler computes an execution sequence for the HLO instructions in
 // 'computation' that minimizes peak memory, given a points-to analysis result
 // that describes buffer aliasing, together with a target-specific size function
@@ -44,6 +50,7 @@ typedef std::function<StatusOr<HloInstructionSequence>(
     HloComputation*, const TuplePointsToAnalysis&, const HloAliasAnalysis&,
     const LogicalBuffer::SizeFunction&,
     const absl::flat_hash_map<const HloComputation*, int64>&,
+    const MemorySchedulerPostprocessor&,
     /*peak_memory*/ int64*)>
     MemorySchedulerAlgorithm;
 
@@ -57,7 +64,7 @@ typedef std::function<StatusOr<HloSchedule>(
 // Lift a computation scheduler into a module scheduler by calling the
 // computation scheduler on all computations in a module.
 ModuleSchedulerAlgorithm ComputationSchedulerToModuleScheduler(
-    const MemorySchedulerAlgorithm&);
+    const MemorySchedulerAlgorithm&, const MemorySchedulerPostprocessor& = {});
 
 // List scheduler
 StatusOr<HloInstructionSequence> ListMemoryScheduler(
@@ -67,7 +74,7 @@ StatusOr<HloInstructionSequence> ListMemoryScheduler(
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation,
-    int64* peak_memory);
+    const MemorySchedulerPostprocessor& postprocessor, int64* peak_memory);
 
 // DFS-order scheduler
 StatusOr<HloInstructionSequence> DFSMemoryScheduler(
@@ -77,7 +84,7 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation,
-    int64* peak_memory);
+    const MemorySchedulerPostprocessor& postprocessor, int64* peak_memory);
 
 // Naive Post Order scheduler
 StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
@@ -87,7 +94,7 @@ StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation,
-    int64* peak_memory);
+    const MemorySchedulerPostprocessor& postprocessor, int64* peak_memory);
 
 // The default scheduling algorithm. Runs the list scheduler, the DFS scheduler,
 // and the post-order scheduler and chooses whichever returns a lower min-
@@ -100,7 +107,7 @@ StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation,
-    int64* peak_memory);
+    const MemorySchedulerPostprocessor& postprocessor, int64* peak_memory);
 
 StatusOr<HloSchedule> DefaultModuleScheduler(
     HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
@@ -120,7 +127,8 @@ StatusOr<HloSchedule> ScheduleModule(
 // Currently only used by the GPU backend.
 StatusOr<HloInstructionSequence> ScheduleComputation(
     HloComputation* computation,
-    const LogicalBuffer::SizeFunction& size_function);
+    const LogicalBuffer::SizeFunction& size_function,
+    const MemorySchedulerPostprocessor& postprocessor);
 
 // A pass which schedules the HLO instructions in a module. The HloModule's
 // schedule field is set to the resulting HloSchedule using

@@ -29,7 +29,7 @@ namespace xla {
 // Transposes the given scatter_indices such that the index_vector_dim becomes
 // the most-minor dimension.
 static StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
-    HloInstruction* scatter_indices, int64 index_vector_dim) {
+    HloInstruction* scatter_indices, int64_t index_vector_dim) {
   const Shape& scatter_indices_shape = scatter_indices->shape();
 
   if (scatter_indices_shape.dimensions_size() == index_vector_dim) {
@@ -42,7 +42,7 @@ static StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
 
   std::vector<int64> permutation;
   permutation.reserve(scatter_indices_shape.dimensions_size());
-  for (int64 i = 0, e = scatter_indices_shape.dimensions_size(); i < e; i++) {
+  for (int64_t i = 0, e = scatter_indices_shape.dimensions_size(); i < e; i++) {
     if (i != index_vector_dim) {
       permutation.push_back(i);
     }
@@ -54,7 +54,7 @@ static StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
 // Canonicalizes the scatter_indices tensor in order to keep them uniform while
 // performing the scatter operation.
 static StatusOr<HloInstruction*> CanonicalizeScatterIndices(
-    HloInstruction* scatter_indices, int64 index_vector_dim) {
+    HloInstruction* scatter_indices, int64_t index_vector_dim) {
   // Transpose the non-index-vector dimensions to the front.
   TF_ASSIGN_OR_RETURN(
       HloInstruction * transposed_scatter_indices,
@@ -70,7 +70,7 @@ static StatusOr<HloInstruction*> CanonicalizeScatterIndices(
       index_vector_dim == scatter_indices->shape().dimensions_size();
 
   // The number of dimensions in scatter_indices that are index dimensions.
-  const int64 index_dims_in_scatter_indices = indices_are_scalar ? 0 : 1;
+  const int64_t index_dims_in_scatter_indices = indices_are_scalar ? 0 : 1;
 
   // If there is only one index (i.e. scatter_indices has rank 1 and this
   // scatter is really just a dynamic update slice) add a leading degenerate
@@ -94,10 +94,10 @@ static StatusOr<HloInstruction*> CanonicalizeScatterIndices(
 static StatusOr<HloInstruction*> PermuteScatterAndWindowDims(
     HloInstruction* updates, absl::Span<const int64> update_window_dims) {
   std::vector<int64> permutation;
-  const int64 updates_rank = updates->shape().rank();
+  const int64_t updates_rank = updates->shape().rank();
   permutation.reserve(updates_rank);
 
-  for (int64 i = 0; i < updates_rank; ++i) {
+  for (int64_t i = 0; i < updates_rank; ++i) {
     bool is_scatter_dim = !absl::c_binary_search(update_window_dims, i);
     if (is_scatter_dim) {
       permutation.push_back(i);
@@ -113,8 +113,8 @@ static StatusOr<HloInstruction*> PermuteScatterAndWindowDims(
 // Expands or contracts the scatter indices in the updates tensor.
 static StatusOr<HloInstruction*> AdjustScatterDims(
     const Shape& scatter_indices_shape, HloInstruction* updates,
-    int64 index_vector_dim) {
-  int64 num_scatter_dims = scatter_indices_shape.dimensions_size();
+    int64_t index_vector_dim) {
+  int64_t num_scatter_dims = scatter_indices_shape.dimensions_size();
   if (index_vector_dim < scatter_indices_shape.dimensions_size()) {
     --num_scatter_dims;
   }
@@ -131,7 +131,7 @@ static StatusOr<HloInstruction*> AdjustScatterDims(
 // can be used to dynamic-update-slice to perform the scatter update.
 static StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
     HloInstruction* index_vector, const ScatterDimensionNumbers& dim_numbers,
-    int64 operand_rank) {
+    int64_t operand_rank) {
   HloComputation* computation = index_vector->parent();
   const Shape& index_shape = index_vector->shape();
 
@@ -150,7 +150,7 @@ static StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
   std::vector<HloInstruction*> expanded_index_components;
 
   for (int i = 0; i < operand_rank; i++) {
-    int64 index_vector_dim_index =
+    int64_t index_vector_dim_index =
         FindIndex(dim_numbers.scatter_dims_to_operand_dims(), i);
     if (index_vector_dim_index !=
         dim_numbers.scatter_dims_to_operand_dims_size()) {
@@ -332,8 +332,8 @@ static int64 ScatterTripCount(HloInstruction* scatter) {
   const Shape& scatter_indices_shape = scatter_indices->shape();
   const ScatterDimensionNumbers& dim_numbers =
       scatter->scatter_dimension_numbers();
-  int64 scatter_loop_trip_count = 1;
-  for (int64 i = 0, e = scatter_indices_shape.dimensions_size(); i < e; i++) {
+  int64_t scatter_loop_trip_count = 1;
+  for (int64_t i = 0, e = scatter_indices_shape.dimensions_size(); i < e; i++) {
     if (i != dim_numbers.index_vector_dim()) {
       scatter_loop_trip_count *= scatter_indices_shape.dimensions(i);
     }
@@ -374,7 +374,7 @@ StatusOr<HloInstruction*> ScatterExpander::ExpandInstruction(
 
   // Compute the trip count for the while loop to be used for scatter. This
   // should be the number of indices we should scatter into the operand.
-  int64 scatter_loop_trip_count = ScatterTripCount(scatter);
+  int64_t scatter_loop_trip_count = ScatterTripCount(scatter);
   if (!IsInt32(scatter_loop_trip_count)) {
     return Unimplemented(
         "Scatter operations with more than 2147483647 scatter indices are not "

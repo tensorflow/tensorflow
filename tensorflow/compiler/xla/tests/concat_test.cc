@@ -472,11 +472,11 @@ XLA_TEST_F(ConcatTest, ConcatR3WeirdDims) {
   arr1.Fill(2);
 
   Array3D<float> expected(9, 17, arr0.n3() + arr1.n3());
-  for (int64 i = 0; i < expected.n1(); ++i) {
-    for (int64 j = 0; j < expected.n2(); ++j) {
-      int64 kk = 0;
+  for (int64_t i = 0; i < expected.n1(); ++i) {
+    for (int64_t j = 0; j < expected.n2(); ++j) {
+      int64_t kk = 0;
       for (const Array3D<float>& arr : {arr0, arr1}) {
-        for (int64 k = 0; k < arr.n3(); ++k, ++kk) {
+        for (int64_t k = 0; k < arr.n3(); ++k, ++kk) {
           expected(i, j, kk) = arr(i, j, k);
         }
       }

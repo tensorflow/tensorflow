@@ -49,7 +49,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
   auto config = absl::make_unique<HloModuleConfig>(program_shape);
   ComputationLayout* computation_layout =
       config->mutable_entry_computation_layout();
-  const int64 argument_shapes_size = argument_shapes.size();
+  const int64_t argument_shapes_size = argument_shapes.size();
   if (program_shape.parameters_size() != argument_shapes_size) {
     return InvalidArgument("computation takes %d parameters, but %u given",
                            program_shape.parameters_size(),
@@ -96,8 +96,6 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     config->set_use_spmd_partitioning(
         execution_options->use_spmd_partitioning());
     config->set_deduplicate_hlo(execution_options->deduplicate_hlo());
-    config->set_broadcast_replicated_params(
-        execution_options->broadcast_replicated_parameters_via_collectives());
     config->set_seed(execution_options->seed());
     config->set_launch_id(execution_options->launch_id());
     config->set_debug_options(execution_options->debug_options());

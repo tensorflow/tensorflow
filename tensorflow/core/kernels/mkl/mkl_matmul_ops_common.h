@@ -33,14 +33,18 @@ using mkldnn::stream;
 
 namespace tensorflow {
 
+#define L1_SIZE 32 * 1024
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifdef INTEL_MKL_DNN_ONLY
-// Temporarily copying some definitions from mkl_cblas.h so the same code can
-// be used when calling oneDNN or CBLAS batchmatmul in mkl_batch_matmul_op.cc.
-typedef enum { CblasRowMajor, CblasColumnMajor } CBLAS_LAYOUT;
-#define MKL_INT int
-#endif
+inline bool ExecuteSingleThreadedGemm(int m, int n, int k) {
+  // Ideally we would like to determine blocking and then come up with
+  // a heuristic but what we are targeting are very small models whose
+  // total size is < few L1's. So we will do this simple calculation
+  // to determine if the matrix multiplication should be run on a single thread.
+  constexpr int kHeuristicMultiplier = 8;
+  return ((sizeof(float) * (m * n + k * (m + n))) <
+          L1_SIZE * kHeuristicMultiplier);
+}
 
 // This structure aggregates multiple inputs to MklDnnMatMul* methods.
 struct MklDnnMatMulFwdParams {
@@ -48,9 +52,9 @@ struct MklDnnMatMulFwdParams {
   memory::dims weight_dims;
   memory::dims bias_dims;
   memory::dims dst_dims;
-  MEMORY_FORMAT src_format;
-  MEMORY_FORMAT weight_format;
-  MEMORY_FORMAT dst_format;
+  memory::format_tag src_format;
+  memory::format_tag weight_format;
+  memory::format_tag dst_format;
   string dtypes = string("");
   struct PostOpParam {
     string name;
@@ -58,11 +62,12 @@ struct MklDnnMatMulFwdParams {
   };
   std::vector<PostOpParam> post_op_params;
 
-  MklDnnMatMulFwdParams(memory::dims src_dims, memory::dims weight_dims,
-                        memory::dims bias_dims, memory::dims dst_dims,
-                        MEMORY_FORMAT src_format = MEMORY_FORMAT::any,
-                        MEMORY_FORMAT weight_format = MEMORY_FORMAT::any,
-                        MEMORY_FORMAT dst_format = MEMORY_FORMAT::any)
+  MklDnnMatMulFwdParams(
+      memory::dims src_dims, memory::dims weight_dims, memory::dims bias_dims,
+      memory::dims dst_dims,
+      memory::format_tag src_format = memory::format_tag::any,
+      memory::format_tag weight_format = memory::format_tag::any,
+      memory::format_tag dst_format = memory::format_tag::any)
       : src_dims(src_dims),
         weight_dims(weight_dims),
         bias_dims(bias_dims),
@@ -101,7 +106,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   void Execute(const Tinput* src_data, const Tweight* weight_data,
                const Tbias* bias_data, Toutput* dst_data,
                std::shared_ptr<stream> fwd_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<Tinput*>(src_data)), *fwd_stream);
     context_.weight_mem->set_data_handle(
@@ -118,7 +123,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.bias_mem->set_data_handle(
         static_cast<void*>(const_cast<Tbias*>(bias_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
 
     execute_primitives(context_.fwd_primitives, fwd_stream, context_.net_args);
 
@@ -233,6 +238,13 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           float op_beta = post_op_param.param[2];
           post_ops.append_eltwise(op_scale, mkldnn::algorithm::eltwise_tanh,
                                   op_alpha, op_beta);
+        } else if (post_op_param.name == "logistic") {
+          DCHECK_EQ(post_op_param.param.size(), 3);
+          float op_scale = post_op_param.param[0];
+          float op_alpha = post_op_param.param[1];
+          float op_beta = post_op_param.param[2];
+          post_ops.append_eltwise(op_scale, mkldnn::algorithm::eltwise_logistic,
+                                  op_alpha, op_beta);
         } else if (post_op_param.name == "output_scale") {
           DCHECK_EQ(post_op_param.param.size(), 1);
           std::vector<float> scales;
@@ -248,6 +260,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
                  (post_op_param.name == "relu6") ||
                  (post_op_param.name == "elu") ||
                  (post_op_param.name == "tanh") ||
+                 (post_op_param.name == "logistic") ||
                  (post_op_param.name == "sum") ||
                  (post_op_param.name == "leakyrelu") ||
                  (post_op_param.name == "output_scale"));
@@ -344,6 +357,7 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     for (auto const& post_op_param : mkldnn_matmul_fwd_dims.post_op_params) {
       if (post_op_param.name == "relu" || post_op_param.name == "relu6" ||
           post_op_param.name == "elu" || post_op_param.name == "tanh" ||
+          post_op_param.name == "logistic" ||
           post_op_param.name == "leakyrelu") {
         DCHECK_EQ(post_op_param.param.size(), 3);
         key_creator.AddAsKey(post_op_param.name);
@@ -390,7 +404,8 @@ class MklDnnMatMulOpBase : public OpKernel {
       OpKernelContext* context,
       const inner_product_forward::primitive_desc& mkldnn_matmul_prim_desc,
       const memory::dims& output_dims_mkl_order,
-      MklTensorFormat output_tf_format, Tensor** output_tensor) {
+      MklTensorFormat output_tf_format, Tensor** output_tensor,
+      bool native_format = false) {
     DCHECK(output_tensor);
     auto dst_pd = mkldnn_matmul_prim_desc.dst_desc();
 
@@ -404,9 +419,12 @@ class MklDnnMatMulOpBase : public OpKernel {
     TensorShape output_tf_shape;
     output_tf_shape.AddDim((dst_pd.get_size() / sizeof(Toutput)));
 
+    if (native_format) {
+      output_tf_shape = output_mkl_shape.GetTfShape();
+    }
     // Allocate Output Tensor
     AllocateOutputSetMklShape(context, kOutputIndexDst, output_tensor,
-                              output_tf_shape, output_mkl_shape);
+                              output_tf_shape, output_mkl_shape, native_format);
   }
 
   // TF_LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
@@ -418,7 +436,7 @@ class MklDnnMatMulOpBase : public OpKernel {
     return (weight_oi_.NumElements() == 0);
   }
 
-  // Cache the converted weight in a persistent tensor.
+  // Cache the converted weight in a tensor.
   // Only one thread can execute this method at any given time.
   void CacheWeight(
       OpKernelContext* context,
@@ -428,7 +446,7 @@ class MklDnnMatMulOpBase : public OpKernel {
       MklDnnData<Tweight>& weight, const memory::desc& weight_md)
       TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
-    const Tensor& weight_t = *weight_oi_.AccessTensor(context);
+    const Tensor& weight_t = weight_oi_;
 
     // If the weights are already cached, there's nothing to do
     if (weight_t.NumElements() > 0) {
@@ -441,39 +459,35 @@ class MklDnnMatMulOpBase : public OpKernel {
                                context);
     weight_data = static_cast<Tweight*>(weight.GetOpMem().get_data_handle());
 
-    Tensor* weight_tensor_ptr = nullptr;
-
     size_t weight_size = matmul_fwd_pd.get()->weights_desc().get_size();
     TensorShape weight_tf_shape;
     weight_tf_shape.AddDim(weight_size / sizeof(Tweight));
 
-    OP_REQUIRES_OK(context, context->allocate_persistent(
-                                DataTypeToEnum<Tweight>::value, weight_tf_shape,
-                                &weight_oi_, &weight_tensor_ptr));
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DataTypeToEnum<Tweight>::value,
+                                          weight_tf_shape, &weight_oi_));
 
-    void* weight_oi_t_data = weight.GetTensorBuffer(weight_tensor_ptr);
+    void* weight_oi_t_data = weight.GetTensorBuffer(&weight_oi_);
     memcpy(weight_oi_t_data, weight_data, weight_size);
 
     // cache the memory descriptor
     auto expected_md = matmul_fwd_pd->weights_desc();
-    Tensor* weight_md_tensor_ptr = nullptr;
     TensorShape weight_mkl_format;
     weight_mkl_format.AddDim(sizeof(expected_md) / sizeof(Tweight));
 
-    OP_REQUIRES_OK(
-        context, context->allocate_persistent(DataTypeToEnum<Tweight>::value,
-                                              weight_mkl_format, &weight_oi_md_,
-                                              &weight_md_tensor_ptr));
-    *reinterpret_cast<memory::desc*>(
-        weight_md_tensor_ptr->flat<Tweight>().data()) = expected_md;
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DataTypeToEnum<Tweight>::value,
+                                          weight_mkl_format, &weight_oi_md_));
+    *reinterpret_cast<memory::desc*>(weight_oi_md_.flat<Tweight>().data()) =
+        expected_md;
   }
 
   Tweight* GetCachedWeight(OpKernelContext* context,
                            const memory::desc& expected_md)
       TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock(mu_);
-    const Tensor& weight_t = *weight_oi_.AccessTensor(context);
-    const Tensor& weight_md_t = *weight_oi_md_.AccessTensor(context);
+    const Tensor& weight_t = weight_oi_;
+    const Tensor& weight_md_t = weight_oi_md_;
 
     // Check if the memory descriptor of the cached weight is same as
     // expected_md. if so use the cached memory, else return NULL
@@ -493,8 +507,8 @@ class MklDnnMatMulOpBase : public OpKernel {
  protected:
   // Tensor to save reordered weight
   mutex mu_;
-  PersistentTensor weight_oi_ TF_GUARDED_BY(mu_);
-  PersistentTensor weight_oi_md_ TF_GUARDED_BY(mu_);
+  Tensor weight_oi_ TF_GUARDED_BY(mu_);
+  Tensor weight_oi_md_ TF_GUARDED_BY(mu_);
 
   bool is_weight_const_;
 
@@ -540,7 +554,7 @@ class MklMatMulPrimitive : public MklPrimitive {
 
   void Execute(const T* a_data, const T* b_data, T* c_data,
                std::shared_ptr<stream> stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     context_.a_mem->set_data_handle(static_cast<void*>(const_cast<T*>(a_data)),
                                     *stream);
     context_.b_mem->set_data_handle(static_cast<void*>(const_cast<T*>(b_data)),
@@ -551,7 +565,7 @@ class MklMatMulPrimitive : public MklPrimitive {
     context_.a_mem->set_data_handle(static_cast<void*>(const_cast<T*>(a_data)));
     context_.b_mem->set_data_handle(static_cast<void*>(const_cast<T*>(b_data)));
     context_.c_mem->set_data_handle(static_cast<void*>(const_cast<T*>(c_data)));
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
     execute_primitives(context_.matmul_primitives, stream, context_.net_args);
 
     // After execution, set data handle back
@@ -718,7 +732,8 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
 
   // Execute matmul primitive.
   std::shared_ptr<stream> cpu_stream;
-  cpu_stream.reset(CreateStream(ctx, matmul_prim->GetEngine()));
+  MklDnnThreadPool eigen_tp(ctx);
+  cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
   matmul_prim->Execute(a, b, c, cpu_stream);
 }
 

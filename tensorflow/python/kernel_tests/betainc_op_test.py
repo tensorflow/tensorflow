@@ -135,6 +135,7 @@ class BetaincTest(test.TestCase):
     self._testBetaInc(a_s, b_s, x_s, dtypes.float64)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/178338235")
   def testBetaIncDoubleVerySmallValues(self):
     a_s = np.abs(np.random.randn(10, 10) * 1e-16)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 1e-16)  # in (0, infty)
@@ -142,6 +143,7 @@ class BetaincTest(test.TestCase):
     self._testBetaInc(a_s, b_s, x_s, dtypes.float64)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/178338235")
   def testBetaIncFloatVerySmallValues(self):
     a_s = np.abs(np.random.randn(10, 10) * 1e-8)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 1e-8)  # in (0, infty)
@@ -164,10 +166,10 @@ class BetaincTest(test.TestCase):
            gradients_impl.gradients(tf_gout_t, [ga_s_t, gb_s_t, gx_s_t])[2]])
 
       # Equivalent to `assertAllFalse` (if it existed).
-      self.assertAllEqual(np.zeros_like(grads_x).astype(np.bool),
-                          np.isnan(tf_gout))
-      self.assertAllEqual(np.zeros_like(grads_x).astype(np.bool),
-                          np.isnan(grads_x))
+      self.assertAllEqual(
+          np.zeros_like(grads_x).astype(np.bool_), np.isnan(tf_gout))
+      self.assertAllEqual(
+          np.zeros_like(grads_x).astype(np.bool_), np.isnan(grads_x))
 
   @test_util.run_deprecated_v1
   def testBetaIncGrads(self):

@@ -90,7 +90,7 @@ class ScopedMemoryDebugAnnotation {
     annotation_.pending_op_name = op_name;
   }
 
-  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64 step_id) {
+  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64_t step_id) {
     last_annotation_ = annotation_;
     CleanupAnnotation();
     annotation_.pending_op_name = op_name;
@@ -100,7 +100,8 @@ class ScopedMemoryDebugAnnotation {
   // This constructor keeps the pending_op_name and pending_step_id from parent
   // (if any).  Otherwise it overwrites with op_name.
   explicit ScopedMemoryDebugAnnotation(const char* op_name,
-                                       const char* region_type, int32 data_type,
+                                       const char* region_type,
+                                       int32_t data_type,
                                        const TensorShape* shape) {
     last_annotation_ = annotation_;
     if (!annotation_.pending_op_name) {
@@ -111,8 +112,9 @@ class ScopedMemoryDebugAnnotation {
     annotation_.pending_shape = shape;
   }
 
-  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64 step_id,
-                                       const char* region_type, int32 data_type,
+  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64_t step_id,
+                                       const char* region_type,
+                                       int32_t data_type,
                                        const TensorShape* shape) {
     last_annotation_ = annotation_;
     annotation_.pending_op_name = op_name;
@@ -282,10 +284,18 @@ class Allocator {
   // Fills in 'stats' with statistics collected by this allocator.
   virtual absl::optional<AllocatorStats> GetStats() { return absl::nullopt; }
 
-  // Clears the internal stats except for the `in_use` field.
-  virtual void ClearStats() {}
+  // If implemented, clears the internal stats except for the `in_use` fields
+  // and sets the `peak_bytes_in_use` to be equal to the `bytes_in_use`. Returns
+  //  true if implemented.
+  //
+  // REQUIRES: GetStats is overridden.
+  virtual bool ClearStats() TF_MUST_USE_RESULT { return false; }
 
   virtual void SetSafeFrontier(uint64 count) {}
+
+  // For allocator that are stream aware, allow to specify the compute
+  // stream this allocator is used for.
+  virtual void SetStream(void* stream) {}
 };
 
 // An implementation of Allocator that delegates all calls to another Allocator.

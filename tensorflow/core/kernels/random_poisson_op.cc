@@ -97,16 +97,16 @@ struct PoissonFunctor<CPUDevice, T, U> {
     typedef random::UniformDistribution<random::PhiloxRandom, CT> Uniform;
 
     auto DoWork = [num_samples, num_rate, &rng, samples_flat, rate_flat](
-                      int64 start_output, int64 limit_output) {
+                      int64_t start_output, int64_t limit_output) {
       // Capturing "rng" by value would only make a copy for the _shared_
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "rng" by reference and explicitly do a copy assignment.
 
       Uniform uniform;
       typename Uniform::ResultType uniform_result;
-      for (int64 output_idx = start_output; output_idx < limit_output;
+      for (int64_t output_idx = start_output; output_idx < limit_output;
            /* output_idx incremented within inner loop below */) {
-        const int64 rate_idx = output_idx / num_samples;
+        const int64_t rate_idx = output_idx / num_samples;
 
         // Several calculations can be done on a per-rate basis.
         const CT rate = CT(rate_flat[rate_idx]);
@@ -125,12 +125,12 @@ struct PoissonFunctor<CPUDevice, T, U> {
           const CT exp_neg_rate = Eigen::numext::exp(-rate);
 
           // Compute the rest of the samples for the current rate value.
-          for (int64 sample_idx = output_idx % num_samples;
+          for (int64_t sample_idx = output_idx % num_samples;
                sample_idx < num_samples && output_idx < limit_output;
                sample_idx++, output_idx++) {
             random::PhiloxRandom gen = rng;
             gen.Skip(kReservedSamplesPerOutput * output_idx);
-            int16 uniform_remaining = 0;
+            int16_t uniform_remaining = 0;
 
             CT prod = 1;
             CT x = 0;
@@ -152,7 +152,7 @@ struct PoissonFunctor<CPUDevice, T, U> {
         }
         if (Eigen::numext::isinf(rate) && rate > CT(0)) {
           // Fill the rest of the samples for the current rate value.
-          for (int64 sample_idx = output_idx % num_samples;
+          for (int64_t sample_idx = output_idx % num_samples;
                sample_idx < num_samples && output_idx < limit_output;
                sample_idx++, output_idx++) {
             U k = Eigen::NumTraits<U>::infinity();
@@ -197,12 +197,12 @@ struct PoissonFunctor<CPUDevice, T, U> {
         const CT inv_alpha = CT(1.1239) + CT(1.1328) / (b - CT(3.4));
 
         // Compute the rest of the samples for the current rate value.
-        for (int64 sample_idx = output_idx % num_samples;
+        for (int64_t sample_idx = output_idx % num_samples;
              sample_idx < num_samples && output_idx < limit_output;
              sample_idx++, output_idx++) {
           random::PhiloxRandom gen = rng;
           gen.Skip(kReservedSamplesPerOutput * output_idx);
-          int16 uniform_remaining = 0;
+          int16_t uniform_remaining = 0;
 
           while (true) {
             UNIFORM(u);
@@ -295,7 +295,7 @@ class RandomPoissonOp : public OpKernel {
 
     TensorShape samples_shape;
     OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_t, &samples_shape));
-    const int64 num_samples = samples_shape.num_elements();
+    const int64_t num_samples = samples_shape.num_elements();
 
     samples_shape.AppendShape(rate_t.shape());
     // Allocate output samples.
@@ -304,7 +304,7 @@ class RandomPoissonOp : public OpKernel {
     if (num_samples == 0) return;
 
     const auto rate_flat = rate_t.flat<T>().data();
-    const int64 num_rate = rate_t.NumElements();
+    const int64_t num_rate = rate_t.NumElements();
     auto samples_flat = samples_t->flat<U>().data();
     random::PhiloxRandom rng = generator_.ReserveRandomOutputs(
         num_samples * num_rate, kReservedSamplesPerOutput);

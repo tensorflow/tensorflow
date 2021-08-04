@@ -744,40 +744,58 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[1],
                field_specs={"b": tensor_spec.TensorSpec([], dtypes.int32)}),
-           msg="Value does not match typespec"),
+           msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_ListDictKey",
            pyval=[{"a": 1}],
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[1],
                field_specs={"b": tensor_spec.TensorSpec([], dtypes.int32)}),
-           msg="Value does not match typespec"),
+           msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_RankMismatch",
            pyval=[{"a": 1}],
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[],
                field_specs={"a": tensor_spec.TensorSpec([], dtypes.int32)}),
-           msg=r"Value does not match typespec \(rank mismatch\)"),
+           msg=r"Value at \(\) does not match typespec \(rank mismatch\)"),
       dict(testcase_name="TypeSpecMismatch_Scalar",
            pyval=0,
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[], field_specs={}),
-           msg="Value does not match typespec"),
+           msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_ListTensor",
            pyval={"a": [[1]]},
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[],
                field_specs={"a": tensor_spec.TensorSpec([], dtypes.int32)}),
-           msg="Value does not match typespec"),
+           msg=r"Value at \('a',\) does not match typespec"),
+      dict(testcase_name="TypeSpecMismatch_ListTensorDeep",
+           pyval={"a": {"b": [[1]]}},
+           type_spec=structured_tensor.StructuredTensorSpec(
+               shape=[],
+               field_specs={"a": structured_tensor.StructuredTensorSpec(
+                   shape=[],
+                   field_specs={"b": tensor_spec.TensorSpec([],
+                                                            dtypes.int32)})}),
+           msg=r"Value at \('a', 'b'\) does not match typespec"),
+      dict(testcase_name="TypeSpecMismatch_ListTensorDeep_infer",
+           pyval={"a": [{"b": [[1]]}, {"b": [["c"]]}]},
+           type_spec=None,
+           msg=r"Error parsing path \('a', 'b'\)"),
+      dict(testcase_name="TypeSpecMismatch_ListTensorDeep_infer2",
+           pyval=[{"a": 1}, {"a": "c"}],
+           type_spec=None,
+           msg=r"Error parsing path \('a',\)"),
+
       dict(testcase_name="TypeSpecMismatch_ListSparse",
            pyval=[1, 2],
            type_spec=sparse_tensor.SparseTensorSpec([None], dtypes.int32),
-           msg="Value does not match typespec"),
+           msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_ListStruct",
            pyval=[[1]],
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[1, 1],
                field_specs={"a": tensor_spec.TensorSpec([], dtypes.int32)}),
-           msg="Value does not match typespec"),
+           msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="InconsistentDictionaryDepth",
            pyval=[{}, [{}]],
            msg="Inconsistent depth of dictionaries"),
@@ -978,114 +996,6 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
         ValueError, r"Expected outer_axis \(2\) to be less than "
         r"or equal to inner_axis \(1\)"):
       st.merge_dims(2, 1)
-
-  @parameterized.named_parameters([
-      dict(
-          testcase_name="0D_0",
-          st={"x": 1},
-          axis=0,
-          expected=[{"x": 1}]),
-      dict(
-          testcase_name="0D_minus_1",
-          st={"x": 1},
-          axis=-1,
-          expected=[{"x": 1}]),
-      dict(
-          testcase_name="1D_0",
-          st=[{"x": [1, 3]}, {"x": [2, 7, 9]}],
-          axis=0,
-          expected=[[{"x": [1, 3]}, {"x": [2, 7, 9]}]]),
-      dict(
-          testcase_name="1D_1",
-          st=[{"x": [1]}, {"x": [2, 10]}],
-          axis=1,
-          expected=[[{"x": [1]}], [{"x": [2, 10]}]]),
-      dict(
-          testcase_name="2D_0",
-          st=[[{"x": [1]}, {"x": [2]}], [{"x": [3, 4]}]],
-          axis=0,
-          expected=[[[{"x": [1]}, {"x": [2]}], [{"x": [3, 4]}]]]),
-      dict(
-          testcase_name="2D_1",
-          st=[[{"x": 1}, {"x": 2}], [{"x": 3}]],
-          axis=1,
-          expected=[[[{"x": 1}, {"x": 2}]], [[{"x": 3}]]]),
-      dict(
-          testcase_name="2D_2",
-          st=[[{"x": [1]}, {"x": [2]}], [{"x": [3, 4]}]],
-          axis=2,
-          expected=[[[{"x": [1]}], [{"x": [2]}]], [[{"x": [3, 4]}]]]),
-      dict(
-          testcase_name="3D_0",
-          st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
-          axis=0,
-          expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]],
-                     [[{"x": [4, 5]}]]]]),
-      dict(
-          testcase_name="3D_minus_4",
-          st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
-          axis=-4,  # same as zero
-          expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]],
-                     [[{"x": [4, 5]}]]]]),
-      dict(
-          testcase_name="3D_1",
-          st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
-          axis=1,
-          expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]]],
-                    [[[{"x": [4, 5]}]]]]),
-      dict(
-          testcase_name="3D_minus_3",
-          st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
-          axis=-3,  # same as 1
-          expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]]],
-                    [[[{"x": [4, 5]}]]]]),
-      dict(
-          testcase_name="3D_2",
-          st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
-          axis=2,
-          expected=[[[[{"x": [1]}, {"x": [2]}]], [[{"x": [3]}]]],
-                    [[[{"x": [4, 5]}]]]]),
-      dict(
-          testcase_name="3D_minus_2",
-          st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
-          axis=-2,  # same as 2
-          expected=[[[[{"x": [1]}, {"x": [2]}]], [[{"x": [3]}]]],
-                    [[[{"x": [4, 5]}]]]]),
-      dict(
-          testcase_name="3D_3",
-          st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
-          axis=3,
-          expected=[[[[{"x": [1]}], [{"x": [2]}]], [[{"x": [3]}]]],
-                    [[[{"x": [4, 5]}]]]]),
-  ])  # pyformat: disable
-  def testExpandDims(self, st, axis, expected):
-    st = StructuredTensor.from_pyval(st)
-    result = array_ops.expand_dims(st, axis)
-    self.assertAllEqual(result, expected)
-
-  def testExpandDimsAxisTooBig(self):
-    st = [[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]]
-    st = StructuredTensor.from_pyval(st)
-    with self.assertRaisesRegex(ValueError,
-                                "axis=4 out of bounds: expected -4<=axis<4"):
-      array_ops.expand_dims(st, 4)
-
-  def testExpandDimsAxisTooSmall(self):
-    st = [[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]]
-    st = StructuredTensor.from_pyval(st)
-    with self.assertRaisesRegex(ValueError,
-                                "axis=-5 out of bounds: expected -4<=axis<4"):
-      array_ops.expand_dims(st, -5)
-
-  def testExpandDimsScalar(self):
-    # Note that if we expand_dims for the final dimension and there are scalar
-    # fields, then the shape is (2, None, None, 1), whereas if it is constructed
-    # from pyval it is (2, None, None, None).
-    st = [[[{"x": 1}, {"x": 2}], [{"x": 3}]], [[{"x": 4}]]]
-    st = StructuredTensor.from_pyval(st)
-    result = array_ops.expand_dims(st, 3)
-    expected_shape = tensor_shape.TensorShape([2, None, None, 1])
-    self.assertEqual(repr(expected_shape), repr(result.shape))
 
   def testTupleFieldValue(self):
     st = StructuredTensor.from_pyval({"a": 5, "b": {"c": [1, 2, 3]}})
@@ -1372,6 +1282,33 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     # Unchanged value.
     self.assertAllEqual(st_updated.field_value(("b", "c")), 23)
 
+  def test_from_pyval_list_of_empty(self):
+    """See b/183245576."""
+    st = structured_tensor.StructuredTensor.from_pyval([{}])
+    self.assertAllEqual([1], st.shape.as_list())
+
+  def test_from_pyval_list_of_empty_three(self):
+    """See b/183245576."""
+    st = structured_tensor.StructuredTensor.from_pyval([{}, {}, {}])
+    self.assertAllEqual([3], st.shape.as_list())
+    self.assertEmpty(st.field_names())
+
+  def test_from_pyval_deep_list_of_empty(self):
+    """See b/183245576."""
+    st = structured_tensor.StructuredTensor.from_pyval([[{
+        "a": {},
+        "b": [3, 4]
+    }, {
+        "a": {},
+        "b": [5]
+    }], [{
+        "a": {},
+        "b": [7, 8, 9]
+    }]])
+    self.assertAllEqual(2, st.rank)
+    self.assertEqual(2, st.shape[0])
+    self.assertEmpty(st.field_value("a").field_names())
+
   def testWithUpdatesChecks(self):
     pyval = {"a": 12, "b": {"c": 23, "d": {"e": 11}}}
     st = StructuredTensor.from_pyval(pyval)
@@ -1467,6 +1404,27 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     self.assertEqual(updated_st.rank, 0)
     self.assertFalse(updated_st.row_partitions)
     self.assertIsNone(updated_st.nrows())
+
+  def test_from_pyval_deep_row_partitions(self):
+    """See b/179195750."""
+    st = structured_tensor.StructuredTensor.from_pyval([{
+        "foo": [{
+            "bar": [{
+                "baz": [b"FW"]
+            }]
+        }]
+    }])
+    st2 = st.field_value(("foo", "bar"))
+    self.assertLen(st2.row_partitions, st2.rank - 1)
+
+  def test_from_fields_deep_row_partitions(self):
+    """Test a field with its own row_partition. See b/179195750."""
+    st = structured_tensor.StructuredTensor.from_pyval([[[{"baz": [b"FW"]}]]])
+    self.assertLen(st.row_partitions, st.rank - 1)
+    st2 = structured_tensor.StructuredTensor.from_fields(
+        fields={"bar": st}, shape=(None, None), validate=False)
+    st3 = st2.field_value("bar")
+    self.assertLen(st3.row_partitions, st3.rank - 1)
 
 
 if __name__ == "__main__":

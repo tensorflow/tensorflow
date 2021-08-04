@@ -42,13 +42,15 @@ Status RetryingUtils::CallWithRetries(const std::function<Status()>& f,
                                       const RetryConfig& config) {
   return CallWithRetries(
       f,
-      [](int64 micros) { return Env::Default()->SleepForMicroseconds(micros); },
+      [](int64_t micros) {
+        return Env::Default()->SleepForMicroseconds(micros);
+      },
       config);
 }
 
 Status RetryingUtils::CallWithRetries(
     const std::function<Status()>& f,
-    const std::function<void(int64)>& sleep_usec, const RetryConfig& config) {
+    const std::function<void(int64_t)>& sleep_usec, const RetryConfig& config) {
   int retries = 0;
   while (true) {
     auto status = f();
@@ -64,9 +66,9 @@ Status RetryingUtils::CallWithRetries(
               "All ", config.max_retries,
               " retry attempts failed. The last failure: ", status.ToString()));
     }
-    int64 delay_micros = 0;
+    int64_t delay_micros = 0;
     if (config.init_delay_time_us > 0) {
-      const int64 random_micros = random::New64() % 1000000;
+      const int64_t random_micros = random::New64() % 1000000;
       delay_micros = std::min(config.init_delay_time_us << retries,
                               config.max_delay_time_us) +
                      random_micros;

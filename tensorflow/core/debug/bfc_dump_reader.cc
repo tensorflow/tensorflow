@@ -67,7 +67,7 @@ MemoryDump FilterByChunkType(MemoryDump md, const char chunk_type) {
 }
 
 void PrintChunk(const MemChunk& mc, const uint64 ac_offset, bool freed_at,
-                const int64 total_bytes, int64* cumulative_bytes) {
+                const int64_t total_bytes, int64* cumulative_bytes) {
   // A size class corresponding approximately to log base 100.
   int size_class = floor(0.5 * log10(static_cast<double>(mc.size())));
   *cumulative_bytes += mc.size();
@@ -118,8 +118,8 @@ void PrintSortedChunks(
     bool freed_at, bool by_addr) {
   std::vector<const MemChunk*> chunks;
   chunks.reserve(md.chunk_size());
-  int64 total_bytes = 0;
-  int64 cumulative_bytes = 0;
+  int64_t total_bytes = 0;
+  int64_t cumulative_bytes = 0;
   uint64 max_action_count = 0;
   for (auto& it : md.chunk()) {
     chunks.push_back(&it);

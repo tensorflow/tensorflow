@@ -72,6 +72,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
     tflite_model = convert.toco_convert_graph_def(
         sess.graph_def, [("input", [1, 16, 16, 3])], ["add"],
         enable_mlir_converter=False,
+        control_output_arrays=None,
         inference_type=dtypes.float32)
     self.assertTrue(tflite_model)
 
@@ -110,6 +111,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
         input_arrays_map,
         output_arrays,
         enable_mlir_converter=False,
+        control_output_arrays=None,
         inference_type=dtypes.uint8,
         quantized_input_stats=[(0., 1.), (0., 1.)])
     self.assertTrue(tflite_model)
@@ -157,6 +159,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
           input_arrays_map,
           output_arrays,
           enable_mlir_converter=False,
+          control_output_arrays=None,
           inference_type=dtypes.uint8)
     self.assertEqual(
         "The `quantized_input_stats` flag must be defined when either "
@@ -286,7 +289,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
             self._getGraphOpTypes(
                 stubbed_graphdef,
                 output_nodes=[op_hint._tensor_name_base(output.name)]),
-            set(["add_test", "Const", "Identity", "Add"]))
+            set(["add_test", "Const", "Identity", "AddV2"]))
 
   def _get_input_index(self, x):
     return x.op.node_def.attr[op_hint.OpHint.FUNCTION_INPUT_INDEX_ATTR].i

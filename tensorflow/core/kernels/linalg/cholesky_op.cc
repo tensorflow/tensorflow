@@ -64,11 +64,18 @@ class CholeskyOp : public LinearAlgebraOp<Scalar> {
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
         llt_decomposition(input);
 
-    OP_REQUIRES(context, llt_decomposition.info() == Eigen::Success,
-                errors::InvalidArgument(kErrMsg));
-
-    // Output the lower triangular in a dense form.
-    outputs->at(0) = llt_decomposition.matrixL();
+    // If decomposition fails, fill output with NaNs so the failure can
+    // be detected at runtime.
+    if (llt_decomposition.info() != Eigen::Success) {
+      LOG(ERROR) << kErrMsg << " Eigen::LLT failed with error code "
+                 << llt_decomposition.info()
+                 << ". Filling lower-triangular output with NaNs.";
+      outputs->at(0).template triangularView<Eigen::Lower>().fill(
+          Eigen::NumTraits<Scalar>::quiet_NaN());
+    } else {
+      // Output the lower triangular in a dense form.
+      outputs->at(0) = llt_decomposition.matrixL();
+    }
   }
 };
 
@@ -99,7 +106,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64 n = input.dim_size(ndims - 1);
+    const int64_t n = input.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(
         context, ndims >= 2,
@@ -140,7 +147,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
               output_reshaped);
 
     // Launch a Cholesky kernel for each matrix in the batch.
-    const int64 batch_size = input_reshaped.dimension(0);
+    const int64_t batch_size = input_reshaped.dimension(0);
     std::vector<DeviceLapackInfo> dev_info;
 
 #if CUDA_VERSION >= 9020

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 
 namespace tensorflow {
@@ -793,7 +794,7 @@ TEST(TensorBundleTest, StringTensors) {
 class VariantObject {
  public:
   VariantObject() {}
-  VariantObject(const string& metadata, int64 value)
+  VariantObject(const string& metadata, int64_t value)
       : metadata_(metadata), value_(value) {}
 
   string TypeName() const { return "TEST VariantObject"; }
@@ -900,7 +901,7 @@ TEST(TensorBundleTest, Error) {
   }
   {  // Not found.
     BundleReader reader(Env::Default(), Prefix("nonexist"));
-    EXPECT_TRUE(absl::StrContains(reader.status().ToString(), "Not found"));
+    EXPECT_EQ(reader.status().code(), error::NOT_FOUND);
   }
 }
 
@@ -1112,9 +1113,10 @@ TEST_F(TensorBundleAlignmentTest, AlignmentTest) {
   }
 }
 
-static void BM_BundleAlignmentByteOff(::testing::benchmark::State& state,
-                                      int alignment, int tensor_size) {
+static void BM_BundleAlignment(::testing::benchmark::State& state) {
   {
+    const int alignment = state.range(0);
+    const int tensor_size = state.range(1);
     BundleWriter::Options opts;
     opts.data_alignment = alignment;
     BundleWriter writer(Env::Default(), Prefix("foo"), opts);
@@ -1130,18 +1132,36 @@ static void BM_BundleAlignmentByteOff(::testing::benchmark::State& state,
   }
 }
 
-#define BM_BundleAlignment(ALIGN, SIZE)            \
-  static void BM_BundleAlignment_##ALIGN##_##SIZE( \
-      ::testing::benchmark::State& state) {        \
-    BM_BundleAlignmentByteOff(state, ALIGN, SIZE); \
-  }                                                \
-  BENCHMARK(BM_BundleAlignment_##ALIGN##_##SIZE)
+BENCHMARK(BM_BundleAlignment)->ArgPair(1, 512);
+BENCHMARK(BM_BundleAlignment)->ArgPair(1, 4096);
+BENCHMARK(BM_BundleAlignment)->ArgPair(1, 1048576);
+BENCHMARK(BM_BundleAlignment)->ArgPair(4096, 512);
+BENCHMARK(BM_BundleAlignment)->ArgPair(4096, 4096);
+BENCHMARK(BM_BundleAlignment)->ArgPair(4096, 1048576);
 
-BM_BundleAlignment(1, 512);
-BM_BundleAlignment(1, 4096);
-BM_BundleAlignment(1, 1048576);
-BM_BundleAlignment(4096, 512);
-BM_BundleAlignment(4096, 4096);
-BM_BundleAlignment(4096, 1048576);
+static void BM_BundleWriterSmallTensor(::testing::benchmark::State& state) {
+  const int64_t bytes = state.range(0);
+  Tensor t = Constant(static_cast<int8>('a'), TensorShape{bytes});
+  BundleWriter writer(Env::Default(), Prefix("foo"));
+  int suffix = 0;
+  for (auto s : state) {
+    TF_CHECK_OK(writer.Add(strings::StrCat("small", suffix++), t));
+  }
+}
+
+BENCHMARK(BM_BundleWriterSmallTensor)->Range(1, 1 << 20);
+
+static void BM_BundleWriterLargeTensor(::testing::benchmark::State& state) {
+  const int mb = state.range(0);
+  const int64_t bytes = static_cast<int64>(mb) * (1 << 20);
+  Tensor t = Constant(static_cast<int8>('a'), TensorShape{bytes});
+  for (auto s : state) {
+    BundleWriter writer(Env::Default(), Prefix("foo"));
+    TF_CHECK_OK(writer.Add("big", t));
+  }
+}
+
+BENCHMARK(BM_BundleWriterLargeTensor)->Arg(1 << 10);
+BENCHMARK(BM_BundleWriterLargeTensor)->Arg(4 << 10);
 
 }  // namespace tensorflow

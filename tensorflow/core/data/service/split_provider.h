@@ -16,10 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SPLIT_PROVIDER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SPLIT_PROVIDER_H_
 
-#include <queue>
+#include <functional>
+#include <memory>
+#include <string>
 
-#include "tensorflow/core/data/service/data_service.h"
+#include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace data {
@@ -28,11 +33,12 @@ namespace data {
 class DataServiceSplitProvider : public SplitProvider {
  public:
   DataServiceSplitProvider(const std::string& address,
-                           const std::string& protocol, int64 job_id,
-                           int64 timeout_ms)
+                           const std::string& protocol, int64_t job_id,
+                           int64_t split_provider_index, int64_t timeout_ms)
       : address_(address),
         protocol_(protocol),
         job_id_(job_id),
+        split_provider_index_(split_provider_index),
         timeout_ms_(timeout_ms) {}
 
   Status GetNext(Tensor* split, bool* end_of_splits) override;
@@ -46,6 +52,7 @@ class DataServiceSplitProvider : public SplitProvider {
   const std::string address_;
   const std::string protocol_;
   const int64 job_id_;
+  const int64 split_provider_index_;
   const int64 timeout_ms_;
 
   mutex mu_;

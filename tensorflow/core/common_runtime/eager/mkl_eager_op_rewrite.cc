@@ -81,7 +81,8 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   std::unordered_map<std::string, bool> registered_kernels_map_;
 };
 
-REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
+REGISTER_REWRITE(EagerOpRewriteRegistry::POST_PLACEMENT, 10000,
+                 MklEagerOpRewrite);
 
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
@@ -107,6 +108,7 @@ MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
                      CreateGenericMklOp});
   InsertMKLEagerOps({"DepthwiseConv2dNativeBackpropInput", RewriteConv2D,
                      CreateGenericMklOp});
+  InsertMKLEagerOps({"Einsum", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"FusedBatchNorm", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"FusedBatchNormGrad", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps(
@@ -154,9 +156,11 @@ Status MklEagerOpRewrite::SetupNewOp(
     (*new_mkl_op)->MutableAttrs()->Set(attr.first, attr.second);
   }
 
-  (*new_mkl_op)
-      ->MutableAttrs()
-      ->Set("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
+  if (!orig_op->EagerContext().RunEagerOpAsFunction()) {
+    (*new_mkl_op)
+        ->MutableAttrs()
+        ->Set("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
+  }
 
   string device_name = orig_op->DeviceName();
   return (*new_mkl_op)->SetDeviceName(device_name.c_str());
@@ -172,11 +176,15 @@ Status MklEagerOpRewrite::CreateGenericMklOp(
 
 bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
   // Don't rewrite the op if MKL use is disabled at runtime.
-  if (DisableMKL()) {
+  if (!IsMKLEnabled()) {
     return false;
   }
   DataType data_type;
   if (op->Attrs().Get("T", &data_type) != Status::OK()) {
+    return false;
+  }
+  // Only rewrite if op is to be run on CPU device.
+  if (op->GetDeviceParsedName().type != "CPU") {
     return false;
   }
   // Check if we have registered MKL kernel for this op.

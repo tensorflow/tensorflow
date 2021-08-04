@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow.data;
 
+import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 
@@ -24,4 +25,9 @@ message CompressedElement {
   bytes data = 1;
   // Metadata for the components of the element.
   repeated CompressedComponentMetadata component_metadata = 2;
+}
+
+// An uncompressed dataset element.
+message UncompressedElement {
+  repeated TensorProto components = 1;
 }

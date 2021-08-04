@@ -26,10 +26,8 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 filegroup(
     name = "all_py_srcs",
@@ -134,9 +132,10 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:ps_values",
-        "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/distribute",
         "//tensorflow/python/types",
     ],
 )
@@ -256,15 +255,10 @@ py_library(
 )
 
 cuda_py_test(
-    name = "keras_test",
+    name = "layer_test",
     size = "medium",
-    srcs = ["keras_test.py"],
-    data = [
-        "//tensorflow/python/keras/mixed_precision/testdata:lso_ckpt_tf2.2",
-        "//tensorflow/python/keras/mixed_precision/testdata:lso_savedmodel_tf2.2",
-    ],
+    srcs = ["layer_test.py"],
     python_version = "PY3",
-    shard_count = 10,
     tags = [
         "no_pip",
         "no_windows",  # b/139083295: bfloat16 tests fail on Windows
@@ -281,12 +275,38 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "model_test",
+    size = "medium",
+    srcs = ["model_test.py"],
+    data = [
+        "//tensorflow/python/keras/mixed_precision/testdata:lso_ckpt_tf2.2",
+        "//tensorflow/python/keras/mixed_precision/testdata:lso_savedmodel_tf2.2",
+    ],
+    python_version = "PY3",
+    shard_count = 5,
+    tags = [
+        "no_pip",
+        "no_windows",  # b/139083295: bfloat16 tests fail on Windows
+    ],
+    deps = [
+        ":test_util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
     name = "layer_correctness_test",
     size = "medium",
     srcs = ["layer_correctness_test.py"],
     python_version = "PY3",
     shard_count = 10,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/compat:v2_compat",

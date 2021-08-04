@@ -64,7 +64,7 @@ class RunHandlerPool {
   //
   // Will block unless there is an inactive handler.
   std::unique_ptr<RunHandler> Get(
-      int64 step_id = 0, int64 timeout_in_ms = 0,
+      int64_t step_id = 0, int64_t timeout_in_ms = 0,
       const RunOptions::Experimental::RunHandlerPoolOptions& options =
           RunOptions::Experimental::RunHandlerPoolOptions());
 
@@ -171,7 +171,7 @@ class ThreadWorkSource {
 
   int64 GetTracemeId();
 
-  void SetTracemeId(int64 value);
+  void SetTracemeId(int64_t value);
 
   void SetWaiter(uint64 version, Waiter* waiter, mutex* mutex);
 
@@ -264,7 +264,7 @@ class RunHandlerThreadPool {
       bool* task_from_blocking_queue, ThreadWorkSource** tws);
 
   void WaitForWork(bool is_blocking, int thread_id,
-                   int32 max_blocking_inflight);
+                   int32_t max_blocking_inflight);
 
   void WaitForWorkInSubThreadPool(bool is_blocking, int sub_thread_pool_id);
 

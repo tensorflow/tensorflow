@@ -19,8 +19,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 DEFINE_BINARY2(zeta, float, double);
 DEFINE_BINARY2(polygamma, float, double);
+#endif
 }  // namespace functor
 }  // namespace tensorflow
 

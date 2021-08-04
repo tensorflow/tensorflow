@@ -45,7 +45,7 @@ class Exhaustive32BitOrMoreBinaryTest
   }
 
   void FillInput(std::array<Literal, 2>* input_literals) override {
-    int64 input_size = GetInputSize();
+    int64_t input_size = GetInputSize();
     FpValues values_0;
     FpValues values_1;
     std::tie(values_0, values_1) = GetParam();
@@ -115,7 +115,7 @@ BINARY_TEST_FLOAT_32(Min, {
 // TODO(bixia): Need to investigate the failure on CPU and file bugs.
 BINARY_TEST_FLOAT_32(DISABLED_ON_CPU(AbsComplex), {
   // TODO(timshen): see b/162664705.
-  known_incorrect_fn_ = [this](int64 val) {
+  known_incorrect_fn_ = [this](int64_t val) {
     return std::isnan(this->ConvertValue(val));
   };
   auto host_abs_complex = [](float x, float y) {
@@ -203,7 +203,7 @@ BINARY_TEST_FLOAT_64(Min, {
 // TODO(bixia): Need to investigate the failure on CPU and file bugs.
 BINARY_TEST_FLOAT_64(DISABLED_ON_CPU(AbsComplex), {
   // TODO(timshen): see b/162664705.
-  known_incorrect_fn_ = [this](int64 val) {
+  known_incorrect_fn_ = [this](int64_t val) {
     return std::isnan(this->ConvertValue(val));
   };
   auto host_abs_complex = [](double x, double y) {

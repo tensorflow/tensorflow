@@ -53,6 +53,7 @@ void NnApiHandler::Reset() {
 void NnApiHandler::SetAndroidSdkVersion(int version,
                                         bool set_unsupported_ops_to_null) {
   nnapi_->android_sdk_version = version;
+  nnapi_->nnapi_runtime_feature_level = version;
 
   if (!set_unsupported_ops_to_null) {
     return;

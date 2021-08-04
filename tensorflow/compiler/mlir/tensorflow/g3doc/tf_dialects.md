@@ -43,9 +43,10 @@ systems in general.
 
 Operations in this dialect usually operate on tensor and scalar types defined in
 the standard dialect. The extra defined types are specific to TensorFlow: `QINT`
-types like !tf.qint8 (etc), `QUINT` types like !tf.quint8, all of the `REF`
-types like !tf.uint8ref, as well as !tf.string, !tf.resource, and !tf.variant
-which correspond to the tensorflow types of the same name.
+types like !tf_type.qint8 (etc), `QUINT` types like !tf_type.quint8, all of the
+`REF` types like !tf_type.uint8ref, as well as !tf_type.string,
+!tf_type.resource, and !tf_type.variant which correspond to the tensorflow types
+of the same name.
 
 ### Example:
 

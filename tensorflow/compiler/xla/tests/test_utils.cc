@@ -93,7 +93,8 @@ void PopulateWithIntNext<half>(Literal* literal) {
     // Zero-out the MSB of the exponent to avoid Infs and NaNs, and put it into
     // the sign bit. We could be less wasteful, but this is best-effort anyway.
     uint16 exponent_msb = next_value & 0x4000;
-    value.x = (next_value & 0xBFFF) | (exponent_msb << 1);
+    value = Eigen::numext::bit_cast<half, uint16>((next_value & 0xBFFF) |
+                                                  (exponent_msb << 1));
     next_value++;
   }
 }
@@ -107,7 +108,8 @@ void PopulateWithIntNext<bfloat16>(Literal* literal) {
     // Zero-out the MSB of the exponent to avoid Infs and NaNs, and put it into
     // the sign bit. We could be less wasteful, but this is best-effort anyway.
     uint16 exponent_msb = next_value & 0x4000;
-    value.value = (next_value & 0xBFFF) | (exponent_msb << 1);
+    value = Eigen::numext::bit_cast<bfloat16, uint16>((next_value & 0xBFFF) |
+                                                      (exponent_msb << 1));
     next_value++;
   }
 }
@@ -365,7 +367,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 // range [min, max]. Currently this works only for INT types.
 StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
                                                     std::minstd_rand0* engine,
-                                                    int64 min, int64 max,
+                                                    int64_t min, int64_t max,
                                                     bool is_sorted) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
@@ -479,7 +481,7 @@ ConstantType GetInitValue(const HloComputation& computation) {
 bool NeedsInitValue(const HloUse& use) {
   const HloInstruction* const instruction = use.instruction;
   const HloOpcode opcode = instruction->opcode();
-  const int64 op_num = use.operand_number;
+  const int64_t op_num = use.operand_number;
   return ((opcode == HloOpcode::kReduceWindow && op_num == 1) ||
           (opcode == HloOpcode::kSelectAndScatter && op_num == 2) ||
           (opcode == HloOpcode::kReduce &&
@@ -488,7 +490,7 @@ bool NeedsInitValue(const HloUse& use) {
 
 // Generate random values that are constrained to the input_shape minus the
 // output_shape so as not to produce wrapping slices, for instance.
-Literal MakeRandomIndex(int64 index_bound, std::minstd_rand0* engine) {
+Literal MakeRandomIndex(int64_t index_bound, std::minstd_rand0* engine) {
   std::uniform_int_distribution<int32> generator(0, index_bound);
   return LiteralUtil::CreateR0<int32>(generator(*engine));
 }
@@ -506,7 +508,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
     for (const HloUse& use : value.uses()) {
       HloInstruction* instruction = use.instruction;
       const HloOpcode opcode = instruction->opcode();
-      const int64 op_num = use.operand_number;
+      const int64_t op_num = use.operand_number;
       if ((opcode == HloOpcode::kDynamicSlice && op_num >= 1) ||
           (opcode == HloOpcode::kDynamicUpdateSlice && op_num >= 2)) {
         constrained_uses.push_back(instruction);
@@ -548,7 +550,7 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
     const absl::Span<HloInstruction* const> constrained_uses,
     const HloInstruction& param, const Shape& param_shape,
     std::minstd_rand0* engine, bool use_large_range) {
-  int64 index_bound = INT64_MAX;
+  int64_t index_bound = INT64_MAX;
   bool no_duplicates = false;
   bool needs_constant = false;
   bool needs_sorted_indices = false;
@@ -561,9 +563,9 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
         const Shape& slice_shape = use->opcode() == HloOpcode::kDynamicSlice
                                        ? use->shape()
                                        : use->operand(1)->shape();
-        const int64 first_index =
+        const int64_t first_index =
             Cast<HloDynamicIndexInstruction>(use)->first_index_operand_number();
-        for (int64 operand = first_index; operand < use->operand_count();
+        for (int64_t operand = first_index; operand < use->operand_count();
              ++operand) {
           if (use->operand(operand) == &param) {
             index_bound = std::min(

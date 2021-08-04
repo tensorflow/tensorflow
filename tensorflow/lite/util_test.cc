@@ -120,10 +120,15 @@ TEST(GetOpNameByRegistration, CustomName) {
   op_name = GetOpNameByRegistration(registration);
   EXPECT_EQ("DELEGATE TestDelegate", op_name);
 }
+
+TEST(ValidationSubgraph, NameIsDetected) {
+  EXPECT_FALSE(IsValidationSubgraph(nullptr));
+  EXPECT_FALSE(IsValidationSubgraph(""));
+  EXPECT_FALSE(IsValidationSubgraph("a name"));
+  EXPECT_FALSE(IsValidationSubgraph("VALIDATIONfoo"));
+  EXPECT_TRUE(IsValidationSubgraph("VALIDATION:"));
+  EXPECT_TRUE(IsValidationSubgraph("VALIDATION:main"));
+}
+
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

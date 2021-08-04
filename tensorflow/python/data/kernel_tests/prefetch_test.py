@@ -21,6 +21,7 @@ import time
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -73,6 +74,20 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
       time.sleep(0.5)
       sess.close()
       thread.join()
+
+
+class PrefetchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                             parameterized.TestCase):
+
+  def build_dataset(self, seed=10):
+    return dataset_ops.Dataset.range(100).prefetch(10).shuffle(
+        buffer_size=10, seed=seed, reshuffle_each_iteration=False)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    verify_fn(self, self.build_dataset, num_outputs=100)
 
 
 if __name__ == "__main__":

@@ -110,7 +110,7 @@ class Optional(composite_tensor.CompositeTensor):
     tf.TensorSpec(shape=(), dtype=tf.int32, name=None)
 
     Returns:
-      A nested structure of `tf.TypeSpec` objects matching the structure of an
+      A (nested) structure of `tf.TypeSpec` objects matching the structure of an
       element of this optional, specifying the type of individual components.
     """
     raise NotImplementedError("Optional.element_spec")
@@ -128,7 +128,7 @@ class Optional(composite_tensor.CompositeTensor):
     tf.Tensor(False, shape=(), dtype=bool)
 
     Args:
-      element_spec: A nested structure of `tf.TypeSpec` objects matching the
+      element_spec: A (nested) structure of `tf.TypeSpec` objects matching the
         structure of an element of this optional.
 
     Returns:
@@ -222,7 +222,7 @@ class OptionalSpec(type_spec.TypeSpec):
   tf.Tensor(25, shape=(), dtype=int32)
 
   Attributes:
-    element_spec: A nested structure of `TypeSpec` objects that represents the
+    element_spec: A (nested) structure of `TypeSpec` objects that represents the
       type specification of the optional element.
   """
 

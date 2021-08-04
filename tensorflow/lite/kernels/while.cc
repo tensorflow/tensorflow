@@ -138,6 +138,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* subgraphs = this_subgraph->GetSubgraphs();
   TF_LITE_ENSURE(context, op_data->cond_subgraph_index < subgraphs->size());
   TF_LITE_ENSURE(context, op_data->body_subgraph_index < subgraphs->size());
+  TF_LITE_ENSURE(context,
+                 op_data->cond_subgraph_index != op_data->body_subgraph_index);
 
   Subgraph* cond_subgraph = (*subgraphs)[op_data->cond_subgraph_index].get();
   Subgraph* body_subgraph = (*subgraphs)[op_data->body_subgraph_index].get();

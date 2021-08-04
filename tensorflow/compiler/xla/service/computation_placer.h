@@ -50,9 +50,14 @@ class DeviceAssignment : public Array2D<int> {
   int replica_count() const { return height(); }
   int computation_count() const { return width(); }
 
+  // The logical ID of a device is its (replica ID, computation ID) pair.
+  struct LogicalID {
+    int replica_id;
+    int computation_id;
+  };
+
   // Finds the (replica ID, computation ID) pair for the given device.
-  StatusOr<std::pair<int, int>> LogicalIdsForDevice(
-      GlobalDeviceId device_id) const;
+  StatusOr<LogicalID> LogicalIdForDevice(GlobalDeviceId device_id) const;
   // Finds the replica ID for the given device.
   StatusOr<int> ReplicaIdForDevice(GlobalDeviceId device_id) const;
 

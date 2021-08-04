@@ -14,9 +14,6 @@
 # ==============================================================================
 # pylint: disable=protected-access
 """Sample `get_config` results for testing backwards compatibility."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 # inputs = tf.keras.Input(10)
 # x = tf.keras.layers.Dense(10, activation='relu')(inputs)

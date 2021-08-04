@@ -25,17 +25,27 @@ namespace xla {
 // given a (batched) matrix a, computes an orthonormal matrix Q and an
 // upper-triangular matrix R such that a = QR.
 // `a` must be a (batched) matrix of size [..., m, n].
-// The algorithm implements a blocked QR decomposition; `block_size` is
-// the block size to use.
-// TODO(phawkins): handle the complex case.
-struct QRDecompositionResult {
-  XlaOp q;
-  XlaOp r;
+struct QrDecomposition {
+  // A matrix with the same shape as the input matrix `a`, whose upper triangle
+  // (inclusive of the diagonal) is the matrix R, and whose lower triangle
+  // (exclusive of the diagonal) contains the elementary Householder reflectors.
+  // This is the same output format as used by LAPACK's xGEQRF routine.
+  XlaOp q_and_r;
+  // A vector of shape [..., min(m, n)] containing the scalar factors of the
+  // elementary Householder reflectors.
+  XlaOp taus;
 };
 
-StatusOr<QRDecompositionResult> QRDecomposition(
-    XlaOp a, bool full_matrices, int64 block_size = 128,
-    PrecisionConfig::Precision precision = PrecisionConfig::HIGHEST);
+QrDecomposition Qr(XlaOp a);
+
+// Given `a` and `taus` as returned by `QRDecomposition`, compute the product of
+// the elementary Householder reflectors (i.e., the matrix Q of the QR
+// decomposition). The equivalent LAPACK routine is xORGQR/xUNGQR.
+XlaOp ProductOfElementaryHouseholderReflectors(XlaOp a, XlaOp taus);
+
+// Helper that combines `Qr` and `ProductOfElementaryHouseholderReflectors` to
+// compute explicit matrices `q` and `r`.
+void QrExplicit(XlaOp a, bool full_matrices, XlaOp& q, XlaOp& r);
 
 }  // namespace xla
 

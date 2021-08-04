@@ -12,6 +12,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "experimental_payloads"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "message"
     mtype: "<type \'property\'>"
   }
@@ -25,6 +29,6 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'node_def\', \'op\', \'message\', \'error_code\'], varargs=None, keywords=None, defaults=[\'2\'], "
+    argspec: "args=[\'self\', \'node_def\', \'op\', \'message\'], varargs=args, keywords=None, defaults=None"
   }
 }

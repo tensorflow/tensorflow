@@ -62,7 +62,8 @@ Status GenerateXlaDeviceAssignment(
         num_cores_per_replica, " computation_devices=",
         xrt_device_assignment.computation_devices_size());
   }
-  for (int64 c = 0; c < xrt_device_assignment.computation_devices_size(); ++c) {
+  for (int64_t c = 0; c < xrt_device_assignment.computation_devices_size();
+       ++c) {
     const auto& computation_devices =
         xrt_device_assignment.computation_devices(c);
     if (num_replicas != computation_devices.replica_devices_size()) {
@@ -72,7 +73,7 @@ Status GenerateXlaDeviceAssignment(
           num_replicas,
           " replica_devices=", computation_devices.replica_devices_size());
     }
-    for (int64 r = 0; r < computation_devices.replica_devices_size(); ++r) {
+    for (int64_t r = 0; r < computation_devices.replica_devices_size(); ++r) {
       const auto& coords = computation_devices.replica_devices(r);
       if (coords.value_size() != 4) {
         return errors::InvalidArgument(
@@ -161,7 +162,7 @@ Status XRTCompileOp::Compile(OpKernelContext* ctx,
   build_options.set_device_ordinal(device_ref.device_ordinal());
   build_options.set_num_replicas(num_replicas);
   build_options.set_result_layout(xla::Shape(config.program_shape().result()));
-  build_options.set_device_allocator(device_ref.backend()->memory_allocator());
+  build_options.set_device_allocator(device_ref.allocator());
   if (config.has_debug_options()) {
     *build_options.mutable_debug_options() =
         BuildXlaDebugOptions(config.debug_options());
@@ -211,7 +212,7 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, cache_or.status());
   auto cache = cache_or.ConsumeValueOrDie();
 
-  int64 uid;
+  int64_t uid;
   OP_REQUIRES_OK(
       ctx, cache->CompileIfKeyAbsent(
                key, &uid, [&](std::unique_ptr<xla::LocalExecutable>* program) {
@@ -268,8 +269,8 @@ void XRTReleaseCompilationRefOp::Compute(OpKernelContext* ctx) {
 
   const Tensor& keys_tensor = ctx->input(0);
   auto flat_keys = keys_tensor.flat<int64>();
-  for (int64 i = 0; i < flat_keys.size(); ++i) {
-    int64 key = flat_keys(i);
+  for (int64_t i = 0; i < flat_keys.size(); ++i) {
+    int64_t key = flat_keys(i);
     OP_REQUIRES_OK(ctx, cache->Release(key));
     VLOG(2) << "Released computation handle " << key;
   }

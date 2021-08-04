@@ -120,7 +120,7 @@ void PropagateLivenessThroughTuple(
     HloLivenessAnalysis::HloIndexMap* live_index_map, Worklist* worklist,
     Workset* workset) {
   CHECK_EQ(instruction->opcode(), HloOpcode::kTuple);
-  for (int64 operand_index = 0; operand_index < instruction->operand_count();
+  for (int64_t operand_index = 0; operand_index < instruction->operand_count();
        ++operand_index) {
     const ShapeTree<bool>& index_tree = FindOrDie(*live_index_map, instruction);
     ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {

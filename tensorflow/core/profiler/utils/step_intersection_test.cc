@@ -72,6 +72,52 @@ PerHostStepDb CreateTestSteps(uint32 num_hosts, uint64 shift_ps) {
   return result;
 }
 
+PerHostStepDb CreateEmptyIntersectTestSteps() {
+  PerHostStepDb result;
+
+  uint64 step_begin_ps;
+  uint32 host_id;
+
+  // Host-0
+  host_id = 0;
+  step_begin_ps = 0;
+  uint64 host_0_num_steps = 10;
+  StepDatabaseResult step_db_0;
+  for (uint32 step_idx = 0; step_idx < host_0_num_steps; step_idx++) {
+    *step_db_0.add_step_sequence() =
+        CreateOneTestStep(host_id, host_0_num_steps, step_idx, step_begin_ps);
+    step_begin_ps += (kStepDurationPs + kStepGapPs);
+  }
+  result[host_id] = step_db_0;
+
+  // Host-1
+  host_id = 1;
+  step_begin_ps = (host_0_num_steps - 2) * (kStepDurationPs + kStepGapPs);
+  uint64 host_1_num_steps = 5;
+  StepDatabaseResult step_db_1;
+  for (uint32 step_idx = 0; step_idx < host_1_num_steps; step_idx++) {
+    *step_db_1.add_step_sequence() =
+        CreateOneTestStep(host_id, host_1_num_steps, step_idx, step_begin_ps);
+    step_begin_ps += (kStepDurationPs + kStepGapPs);
+  }
+  result[host_id] = step_db_1;
+
+  // Host-2
+  host_id = 2;
+  step_begin_ps = (host_0_num_steps + host_1_num_steps - 4) *
+                  (kStepDurationPs + kStepGapPs);
+  uint64 host_2_num_steps = 10;
+  StepDatabaseResult step_db_2;
+  for (uint32 step_idx = 0; step_idx < host_2_num_steps; step_idx++) {
+    *step_db_2.add_step_sequence() =
+        CreateOneTestStep(host_id, host_2_num_steps, step_idx, step_begin_ps);
+    step_begin_ps += (kStepDurationPs + kStepGapPs);
+  }
+  result[host_id] = step_db_2;
+
+  return result;
+}
+
 PerHostStepDb CreateNoStep(uint32 num_hosts) {
   PerHostStepDb result;
   for (uint32 host_id = 0; host_id < num_hosts; host_id++) {
@@ -193,6 +239,17 @@ TEST(StepIntersectionTest, NoStep) {
   StepIntersection intersection =
       StepIntersection(max_steps, Convert(perhost_stepdb));
   EXPECT_EQ(intersection.NumSteps(), 0);
+  EXPECT_FALSE(intersection.EmptyIntersect());
+}
+
+TEST(StepIntersectionTest, EmptyIntersection) {
+  uint32 max_steps = 100;
+  PerHostStepDb perhost_stepdb = CreateEmptyIntersectTestSteps();
+  StepIntersection intersection =
+      StepIntersection(max_steps, Convert(perhost_stepdb));
+  EXPECT_EQ(intersection.StepsDropped(), 0);
+  EXPECT_EQ(intersection.NumSteps(), 0);
+  EXPECT_TRUE(intersection.EmptyIntersect());
 }
 
 }  // namespace

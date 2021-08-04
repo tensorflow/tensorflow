@@ -46,6 +46,22 @@ class OpResolver {
   }
 
   virtual ~OpResolver() {}
+
+ private:
+  /// Returns true if this OpResolver may contain any "user defined" ops.
+  /// By "user defined" ops, we mean any op definitions other than those
+  /// contained in tflite::ops::builtin::BuiltinOpResolver.
+  ///
+  /// If this method returns true, it doesn't necessarily mean that the
+  /// OpResolver contains a user-defined op, just that the absence of
+  /// user-defined ops can't be guaranteed.
+  ///
+  /// Note that "user-defined" ops are not the same as "custom" ops;
+  /// BuiltinOpResolver may support certain "custom" ops, in addition to
+  /// "builtin" ops, and may not support all of the "builtin" op enum values.
+  virtual bool MayContainUserDefinedOps() const { return true; }
+
+  friend class OpResolverInternal;
 };
 
 // Handles the logic for converting between an OperatorCode structure extracted

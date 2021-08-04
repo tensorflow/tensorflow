@@ -5,13 +5,13 @@ the TensorFlow interop has a number of known sharp corners.
 
 ## TensorArray TF/XLA interconversion is not supported
 
-*Error message*:
-`Support for TensorList crossing the XLA/TF boundary is not implemented`.
+*Error message*: `Support for TensorList crossing the XLA/TF boundary is not
+implemented`.
 
-XLA supports `tf.TensorArray`. However, the _interconversion_ between TF and
-XLA representations is not implemented yet.
-This error often arises when the `TensorArray` is used inside the compiled
-block, but the derivative is taken outside.
+XLA supports `tf.TensorArray`. However, the _interconversion_ between TF and XLA
+representations is not implemented yet. This error often arises when the
+`TensorArray` is used inside the compiled block, but the derivative is taken
+outside.
 
 *Workaround*: compile the outermost scope which is taking the derivative.
 
@@ -42,7 +42,7 @@ exceeds the original bound.
 ## Random number generation ignores TF seed
 
 XLA currently ignores TF seeds to random operations. This affects stateful TF
-random operations, such as `tf.random.normal`, or `tf.nn.dropout`.  XLA will
+random operations, such as `tf.random.normal`, or `tf.nn.dropout`. XLA will
 behave as if the compilation was seeded with a new unique seed at each run. This
 limitation does not apply to stateless random ops.
 
@@ -52,3 +52,10 @@ Assertions created using `tf.Assert` and similar functions are noops when
 compiled to XLA. While proper assertion support is in principle possible, it
 might make certain optimizations impossible (mainly fusing the buffer on which
 the assertion is performed).
+
+## Non-deterministic output
+
+On CPU and GPU the output may be non-deterministic (same as TF proper).
+
+*Workaround*: To enforce determinism, set the `TF_DETERMINISTIC_OPS` environment
+variable to `1` (same as for TF).

@@ -12,23 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-
-"""Contains the normalization layer classes and their functional aliases.
-"""
+# pylint: disable=g-classes-have-attributes
+"""Contains the normalization layer classes and their functional aliases."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import warnings
 
-from tensorflow.python.keras.layers import normalization as keras_normalization
+from tensorflow.python.keras.layers.normalization import batch_normalization_v1
 from tensorflow.python.keras.legacy_tf_layers import base
 from tensorflow.python.ops import init_ops
+from tensorflow.python.util.tf_export import keras_export
 from tensorflow.python.util.tf_export import tf_export
 
 
+@keras_export(v1=['keras.__internal__.legacy.layers.BatchNormalization'])
 @tf_export(v1=['layers.BatchNormalization'])
-class BatchNormalization(keras_normalization.BatchNormalization, base.Layer):
+class BatchNormalization(batch_normalization_v1.BatchNormalization, base.Layer):
   """Batch Normalization layer from (Ioffe et al., 2015).
 
   Keras APIs handle BatchNormalization updates to the moving_mean and
@@ -172,6 +173,7 @@ class BatchNormalization(keras_normalization.BatchNormalization, base.Layer):
     return super(BatchNormalization, self).call(inputs, training=training)
 
 
+@keras_export(v1=['keras.__internal__.legacy.layers.batch_normalization'])
 @tf_export(v1=['layers.batch_normalization'])
 def batch_normalization(inputs,
                         axis=-1,

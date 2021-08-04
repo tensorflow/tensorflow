@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include <string>
+#include <utility>
+
+#include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -269,7 +273,7 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, SaveAndRestore) {
 
   auto params =
       static_cast<TensorSliceDatasetParams&>(test_case.dataset_params);
-  int64 num_slices = params.num_slices();
+  int64_t num_slices = params.num_slices();
   size_t num_tensors_per_slice = params.num_tensors_per_slice();
   std::vector<Tensor> out_tensors;
   const std::vector<int>& breakpoints = test_case.breakpoints;

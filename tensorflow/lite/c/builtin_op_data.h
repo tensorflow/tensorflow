@@ -63,7 +63,6 @@ typedef struct {
 } TfLiteMirrorPaddingParams;
 
 // Possible fused activation functions.
-// TODO(aselle): rename to TfLiteActivation
 typedef enum {
   kTfLiteActNone = 0,
   kTfLiteActRelu,
@@ -97,6 +96,8 @@ typedef struct {
   int dilation_depth_factor;
   TfLiteFusedActivation activation;
 } TfLiteConv3DParams;
+
+typedef TfLiteConv3DParams TfLiteConv3DTransposeParams;
 
 typedef struct {
   TfLitePadding padding;
@@ -328,8 +329,9 @@ typedef struct {
 } TfLitePadV2Params;
 
 typedef struct {
-  // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
-  // For now we will fix the maximum possible number of dimensions.
+  // These fields are only used in old models for backward compatibility.
+  // In the current implementation, we use the 2nd input of the op as the shape,
+  // and these fields are unused.
   int shape[TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT];
   int num_dimensions;
 } TfLiteReshapeParams;
@@ -365,6 +367,7 @@ typedef struct {
 
 typedef struct {
   int axis;
+  int batch_dims;
 } TfLiteGatherParams;
 
 typedef struct {
@@ -487,6 +490,17 @@ typedef struct {
 typedef struct {
   int init_subgraph_index;
 } TfLiteCallOnceParams;
+
+typedef struct {
+  int table_id;
+  TfLiteType key_dtype;
+  TfLiteType value_dtype;
+} TfLiteHashtableParams;
+
+typedef struct {
+  const char* container;
+  const char* shared_name;
+} TfLiteVarHandleParams;
 
 #ifdef __cplusplus
 }  // extern "C"

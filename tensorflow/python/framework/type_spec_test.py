@@ -170,7 +170,7 @@ class NestOfTensorsSpec(type_spec.TypeSpec):
         self.spec._fields, collections_abc.Sequence) and all(
             isinstance(f, six.string_types) for f in self.spec._fields):
       return "%s(%r)" % (type(self).__name__, self._serialize())
-    return super(type_spec.TypeSpec, self).__repr__()
+    return super(type_spec.TypeSpec, self).__repr__()  # pylint: disable=bad-super-call
 
   @classmethod
   def from_value(cls, value):
@@ -185,6 +185,7 @@ type_spec.register_type_spec_from_value_converter(
     NestOfTensors, NestOfTensorsSpec.from_value)
 
 _TestNamedTuple = collections.namedtuple("NamedTuple", ["a", "b"])
+_TestNamedTuple2 = collections.namedtuple("NamedTuple", ["a", "b"])
 _TestNamedTupleSingleField = collections.namedtuple("SingleField", ["a"])
 _TestNamedTupleDifferentField = collections.namedtuple("DifferentField",
                                                        ["a", "c"])
@@ -273,6 +274,20 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ("UnknownRank",
        TwoTensorsSpec(None, dtypes.int32, None, dtypes.bool),
        TwoTensorsSpec([5, 3], dtypes.int32, [8], dtypes.bool)),
+      ("NamedTuple",
+       NestOfTensorsSpec(_TestNamedTuple(
+           a=tensor_spec.TensorSpec([None, 5], dtypes.int32),
+           b=tensor_spec.TensorSpec([None, None], dtypes.int32))),
+       NestOfTensorsSpec(_TestNamedTuple(
+           a=tensor_spec.TensorSpec([8, 5], dtypes.int32),
+           b=tensor_spec.TensorSpec([8, 12], dtypes.int32)))),
+      ("NamedTupleRedefined",
+       NestOfTensorsSpec(_TestNamedTuple(
+           a=tensor_spec.TensorSpec([None, 5], dtypes.int32),
+           b=tensor_spec.TensorSpec([None, None], dtypes.int32))),
+       NestOfTensorsSpec(_TestNamedTuple2(  # Separate but equivalent type.
+           a=tensor_spec.TensorSpec([8, 5], dtypes.int32),
+           b=tensor_spec.TensorSpec([8, 12], dtypes.int32)))),
       )
   def testIsCompatibleWith(self, v1, v2):
     self.assertTrue(v1.is_compatible_with(v2))
@@ -337,6 +352,16 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        NestOfTensorsSpec(_TestNamedTuple(
            a=tensor_spec.TensorSpec((), dtypes.int32),
            b=tensor_spec.TensorSpec((), dtypes.int32)))),
+      ("NamedTupleRedefined",
+       NestOfTensorsSpec(_TestNamedTuple(
+           a=tensor_spec.TensorSpec((), dtypes.int32),
+           b=tensor_spec.TensorSpec((), dtypes.int32))),
+       NestOfTensorsSpec(_TestNamedTuple2(  # Separate but equivalent type.
+           a=tensor_spec.TensorSpec((), dtypes.int32),
+           b=tensor_spec.TensorSpec((), dtypes.int32))),
+       NestOfTensorsSpec(_TestNamedTuple(
+           a=tensor_spec.TensorSpec((), dtypes.int32),
+           b=tensor_spec.TensorSpec((), dtypes.int32)))),
       )
   def testMostSpecificCompatibleType(self, v1, v2, expected):
     self.assertEqual(v1.most_specific_compatible_type(v2), expected)
@@ -349,6 +374,13 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ("IncompatibleMetadata",
        TwoTensorsSpec([5, 3], dtypes.int32, None, dtypes.bool, "red"),
        TwoTensorsSpec([5, 3], dtypes.int32, None, dtypes.bool, "blue")),
+      ("IncompatibleNestType",
+       NestOfTensorsSpec(_TestNamedTuple(
+           a=tensor_spec.TensorSpec((), dtypes.int32),
+           b=tensor_spec.TensorSpec((), dtypes.int32))),
+       NestOfTensorsSpec(dict(
+           a=tensor_spec.TensorSpec((), dtypes.int32),
+           b=tensor_spec.TensorSpec((), dtypes.int32)))),
       )
   def testMostSpecificCompatibleTypeException(self, v1, v2):
     with self.assertRaises(ValueError):

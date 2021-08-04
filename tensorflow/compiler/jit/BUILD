@@ -16,11 +16,18 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
-load("//tensorflow/core/platform:build_config_root.bzl", "tf_cuda_tests_tags")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+    "tf_cuda_tests_tags",
+)
 
 package(
-    default_visibility = [":internal"],
-    licenses = ["notice"],  # Apache 2.0
+    default_visibility = [
+        ":internal",
+        "//third_party/cloud_tpu/inference_converter:__pkg__",
+    ],
+    licenses = ["notice"],
 )
 
 package_group(
@@ -148,6 +155,7 @@ cc_library(
         ":jit_compilation_passes",
         ":xla_device",
         ":xla_kernel_creator",  # buildcleaner: keep
+        ":xla_device_no_jit_rewrite_registration",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/jit/kernels:xla_ops",
@@ -172,7 +180,6 @@ cc_library(
     hdrs = ["xla_tpu_device.h"],
     visibility = [":friends"],
     deps = [
-        ":jit_compilation_passes",
         ":xla_device",
         ":xla_kernel_creator",  # buildcleaner: keep
         "//tensorflow/compiler/jit/kernels:xla_ops",
@@ -183,7 +190,6 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
-        "//tensorflow/core/common_runtime:copy_tensor",
         "//tensorflow/core/common_runtime:device",
         "//tensorflow/core/common_runtime:device_factory",
         "//tensorflow/core/common_runtime:dma_helper",
@@ -198,7 +204,10 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_node_context",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/stream_executor/tpu:tpu_stream_interface",
-    ],
+    ] + if_static([
+        "//tensorflow/core/common_runtime:copy_tensor",
+        ":jit_compilation_passes",
+    ]),
     alwayslink = 1,
 )
 
@@ -265,10 +274,12 @@ XLA_DEVICE_DEPS = [
     "//tensorflow/core/kernels:resource_variable_ops",
     "//tensorflow/core/kernels:shape_ops",
     "//tensorflow/core/kernels:variable_ops",
+    "//tensorflow/core/kernels/data:finalize_dataset_op",
     "//tensorflow/core/kernels/data:generator_dataset_op",
     "//tensorflow/core/kernels/data:iterator_ops",
     "//tensorflow/core/kernels/data:optional_ops",
     "//tensorflow/core/kernels/data:prefetch_dataset_op",
+    "//tensorflow/core/kernels/data:options_dataset_op",
     "//tensorflow/core/profiler/lib:traceme",
     "//tensorflow/stream_executor:tf_allocator_adapter",
     "//tensorflow/stream_executor/platform",
@@ -294,6 +305,7 @@ cc_library(
     # Public visibility is needed for external TF/XLA backends.
     visibility = ["//visibility:public"],
     deps = XLA_DEVICE_DEPS + [":xla_compilation_cache"],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -339,6 +351,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -352,12 +365,17 @@ cc_library(
         "//tensorflow/compiler/xla:parse_flags_from_env",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
 cc_header_only_library(
     name = "flags_headers_only",
+    features = [
+        "-parse_headers",  # buildifier: disable=no-parse-headers
+    ],
     deps = [":flags_headers"],
 )
 
@@ -380,6 +398,8 @@ cc_library(
     hdrs = ["xla_launch_util.h"],
     visibility = [
         ":internal",
+        # We reuse VariableInfo in TFRT's implementation of TpuExecuteOp.
+        "//learning/brain/tfrt/tf_tpu:__pkg__",
     ],
     deps = [
         ":common",
@@ -431,6 +451,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -476,7 +497,6 @@ cc_library(
     hdrs = ["get_compiler_ir.h"],
     visibility = [
         ":internal",
-        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
     ],
     deps = [
@@ -487,6 +507,8 @@ cc_library(
         ":xla_launch_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -507,7 +529,6 @@ cc_library(
     textual_hdrs = ["get_compiler_ir.h"],
     visibility = [
         ":internal",
-        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
     ],
     deps = [
@@ -521,6 +542,9 @@ cc_library(
 
 cc_header_only_library(
     name = "get_compiler_ir_hdrs_only",
+    features = [
+        "-parse_headers",  # buildifier: disable=no-parse-headers
+    ],
     deps = [":get_compiler_ir_hdrs"],
 )
 
@@ -544,7 +568,6 @@ cc_library(
     ],
     visibility = [
         ":internal",
-        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
     ],
     deps = [
@@ -920,7 +943,6 @@ tf_cc_test(
         # TODO(b/141643254) Re-enable msan after fixing
         # use-of-uninitialized-value error.
         "nomsan",
-        "no_cuda_asan",  # TODO(b/171317460): re-enable.
     ] + tf_cuda_tests_tags(),
     deps = [
         ":common",

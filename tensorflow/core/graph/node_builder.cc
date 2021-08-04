@@ -15,14 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/graph/node_builder.h"
 
+#include <unordered_map>
 #include <vector>
+
+#include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/full_type_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
-NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
+NodeBuilder::NodeOut::NodeOut(Node* n, int32_t i)  // NOLINT(runtime/explicit)
     : node(n),
       error(false),
       name(node != nullptr ? node->name() : (error = true, "")),
@@ -31,7 +38,7 @@ NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
 
 NodeBuilder::NodeOut::NodeOut(OutputTensor t) : NodeOut(t.node, t.index) {}
 
-NodeBuilder::NodeOut::NodeOut(StringPiece n, int32 i, DataType t)
+NodeBuilder::NodeOut::NodeOut(StringPiece n, int32_t i, DataType t)
     : node(nullptr), error(false), name(n), index(i), dt(t) {}
 
 NodeBuilder::NodeOut::NodeOut()
@@ -112,6 +119,25 @@ NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
   return *this;
 }
 
+namespace {
+
+StatusOr<FullTypeDef> run_type_constructor(Graph* graph,
+                                           const NodeDef& node_def) {
+  // TODO(mdan): Decouple this from graph building, or run again after.
+  const auto* op_registry = graph->op_registry();
+  const tensorflow::OpRegistrationData* op_reg_data;
+  TF_RETURN_IF_ERROR(op_registry->LookUp(node_def.op(), &op_reg_data));
+  if (op_reg_data->type_ctor == nullptr) {
+    // Default to the default unset type.
+    return FullTypeDef();
+  }
+
+  // TODO(mdan): Do we still need to save this info in the Graph object?
+  return full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def);
+}
+
+}  // namespace
+
 Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   // In case of error, set *created_node to nullptr.
   if (created_node != nullptr) *created_node = nullptr;
@@ -124,9 +150,18 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, def_builder_.op_def()));
   TF_RETURN_IF_ERROR(
       CheckOpDeprecation(def_builder_.op_def(), graph->versions().producer()));
+
+  const auto ret = run_type_constructor(graph, node_def);
+  TF_RETURN_IF_ERROR(ret.status());
+
   Status status;
   Node* node = graph->AddNode(std::move(node_def), &status);
-  if (!status.ok()) return status;
+  TF_RETURN_IF_ERROR(status);
+
+  FullTypeDef ft = ret.ValueOrDie();
+  if (ft.type_id() != TFT_UNSET) {
+    graph->SetNodeType(node->name(), ft);
+  }
 
   node->set_assigned_device_name(assigned_device_);
 

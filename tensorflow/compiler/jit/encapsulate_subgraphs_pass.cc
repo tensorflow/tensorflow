@@ -65,8 +65,8 @@ const char* const kXlaHostTransferSequencerAttr =
 const char* const kXlaHasReferenceVarsAttr = "_XlaHasReferenceVars";
 
 void SortControlInputs(GraphDef* gdef) {
-  int64 num_nodes = gdef->node_size();
-  for (int64 i = 0; i < num_nodes; ++i) {
+  int64_t num_nodes = gdef->node_size();
+  for (int64_t i = 0; i < num_nodes; ++i) {
     NodeDef* node = gdef->mutable_node(i);
     // Stable sort control inputs and leave the order of data inputs unchanged.
     std::stable_sort(node->mutable_input()->begin(),

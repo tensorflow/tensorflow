@@ -197,6 +197,20 @@ message GPUOptions {
     // launch an additional kernel will stall until an event
     // completes.
     int32 kernel_tracker_max_pending = 9;
+
+    // BFC Allocator can return an allocated chunk of memory upto 2x the
+    // requested size. For virtual devices with tight memory constraints, and
+    // proportionately large allocation requests, this can lead to a significant
+    // reduction in available memory. The threshold below controls when a chunk
+    // should be split if the chunk size exceeds requested memory size. It is
+    // expressed as a fraction of total available memory for the tf device. For
+    // example setting it to 0.05 would imply a chunk needs to be split if its
+    // size exceeds the requested memory by 5% of the total virtual device/gpu
+    // memory size.
+    double internal_fragmentation_fraction = 10;
+
+    // When true, use CUDA cudaMallocAsync API instead of TF gpu allocator.
+    bool use_cuda_malloc_async = 11;
   }
 
   // Everything inside experimental is subject to change and is not subject
@@ -208,9 +222,14 @@ message GPUOptions {
 // Options passed to the graph optimizer
 message OptimizerOptions {
   // If true, optimize the graph using common subexpression elimination.
+  // Note: the optimization Level L1 will override this setting to true. So in
+  // order to disable common subexpression elimination the opt_level has to be
+  // set to L0.
   bool do_common_subexpression_elimination = 1;
 
   // If true, perform constant folding optimization on the graph.
+  // Note: the optimization Level L1 will override this setting to true. So in
+  // order to disable constant folding the opt_level has to be set to L0.
   bool do_constant_folding = 2;
 
   // Constant folding optimization replaces tensors whose values can be
@@ -350,6 +369,14 @@ message RPCOptions {
 
   // Disables TCP connection sharing when opening a new RPC channel.
   bool disable_session_connection_sharing = 5;
+
+  // Setting num_channels_per_target > 0 allows uses of multiple channels to
+  // communicate to the same target. This can be used to improve the aggregate
+  // throughput on high speed links (e.g 100G) where single connection is not
+  // sufficient to maximize link utilization. Note that a single RPC only goes
+  // on a single channel, this only helps in situations where there are multiple
+  // transfers to the same target overlapping in time.
+  int32 num_channels_per_target = 6;
 }
 
 // Metadata about the session.
@@ -385,7 +412,7 @@ message ConfigProto {
   // The first session created determines the number of threads in this pool.
   // All subsequent sessions reuse/share this one global pool.
   //
-  // There are notable exceptions to the default behavior describe above:
+  // There are notable exceptions to the default behavior described above:
   // 1. There is an environment variable  for overriding this thread pool,
   //    named TF_OVERRIDE_GLOBAL_THREADPOOL.
   // 2. When connecting to a server, such as a remote `tf.train.Server`
@@ -598,6 +625,13 @@ message ConfigProto {
       // supported by the MLIR bridge, the MLIR bridge will be used to run the
       // graph.
       MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED = 3;
+      // Enable the MLIR bridge in a fallback mode on a per graph basis based
+      // on an analysis of the features used in the graph.
+      // Running the MLIR bridge in the fallback mode means that it is
+      // executed and it commits all the changes to the TF graph in case
+      // of success. And it does not in case of failures and let the old bridge
+      // to process the TF graph.
+      MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED = 4;
     }
     // This field is underdevelopment, for now use enable_mlir_bridge
     // (b/166038521).
@@ -629,7 +663,17 @@ message ConfigProto {
     // Whether runtime execution uses TFRT.
     bool use_tfrt = 18;
 
-    // Next: 19
+    // Distributed coordination service to be enabled if set.
+    // Currently only effective in multi-client setup.
+    string coordination_service = 19;
+
+    // Whether the remote devices in the cluster should be fetched during setup
+    // of multi-client cluster. If enabled, the workers will run an extra device
+    // information exchange step during startup and the workers' EagerContexts
+    // will become aware of remote devices in the cluster as well.
+    bool fetch_remote_devices_in_multi_client = 20;
+
+    // Next: 21
   }
 
   Experimental experimental = 16;

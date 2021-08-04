@@ -189,9 +189,10 @@ TEST(BasicInterpreter, CheckAllocate) {
     TfLiteType type;
     size_t size;
   } cases[] = {
-      {kTfLiteFloat32, sizeof(float)}, {kTfLiteInt32, sizeof(int32_t)},
-      {kTfLiteUInt8, sizeof(uint8_t)}, {kTfLiteInt64, sizeof(int64_t)},
-      {kTfLiteInt16, sizeof(int16_t)}, {kTfLiteFloat16, sizeof(TfLiteFloat16)},
+      {kTfLiteFloat32, sizeof(float)},         {kTfLiteInt32, sizeof(int32_t)},
+      {kTfLiteUInt32, sizeof(uint32_t)},       {kTfLiteUInt8, sizeof(uint8_t)},
+      {kTfLiteInt64, sizeof(int64_t)},         {kTfLiteInt16, sizeof(int16_t)},
+      {kTfLiteFloat16, sizeof(TfLiteFloat16)},
   };
 
   for (auto test : cases) {
@@ -261,11 +262,11 @@ TEST(BasicInterpreter, CheckQuantization) {
 TEST(BasicInterpreter, CheckResize) {
   const float floats[] = {-3., -4.};
   const int32_t int32s[] = {-3, -4};
+  const uint32_t uint32s[] = {3, 4};
   const uint8_t uint8s[] = {3, 4};
   const int64_t int64s[] = {6, -7};
   const int16_t int16s[] = {8, -9};
-  const Eigen::half float16s[] = {Eigen::half_impl::float_to_half_rtne(-3.f),
-                                  Eigen::half_impl::float_to_half_rtne(-4.f)};
+  const Eigen::half float16s[] = {Eigen::half(-3.f), Eigen::half(-4.f)};
 
   struct {
     TfLiteType type;
@@ -274,6 +275,7 @@ TEST(BasicInterpreter, CheckResize) {
   } cases[] = {
       {kTfLiteFloat32, sizeof(float), reinterpret_cast<const char*>(floats)},
       {kTfLiteInt32, sizeof(int32_t), reinterpret_cast<const char*>(int32s)},
+      {kTfLiteUInt32, sizeof(uint32_t), reinterpret_cast<const char*>(uint32s)},
       {kTfLiteUInt8, sizeof(uint8_t), reinterpret_cast<const char*>(uint8s)},
       {kTfLiteInt64, sizeof(int64_t), reinterpret_cast<const char*>(int64s)},
       {kTfLiteInt16, sizeof(int16_t), reinterpret_cast<const char*>(int16s)},
@@ -313,8 +315,9 @@ TEST(BasicInterpreter, CheckResize) {
 TEST(BasicInterpreter, CheckAlignment) {
   struct {
     TfLiteType type;
-  } cases[] = {{kTfLiteFloat32}, {kTfLiteInt32}, {kTfLiteUInt8},
-               {kTfLiteInt64},   {kTfLiteInt16}, {kTfLiteFloat16}};
+  } cases[] = {{kTfLiteFloat32}, {kTfLiteInt32}, {kTfLiteUInt32},
+               {kTfLiteUInt8},   {kTfLiteInt64}, {kTfLiteInt16},
+               {kTfLiteFloat16}};
 
   for (auto test : cases) {
     Interpreter interpreter;
@@ -1144,6 +1147,12 @@ TEST_F(InterpreterTest, GetSetResetExternalContexts) {
   ASSERT_EQ(interpreter_.SetNumThreads(4), kTfLiteOk);
 }
 
+TEST_F(InterpreterTest, SetNumThreadsSucceedsWithZero) {
+  ASSERT_EQ(interpreter_.SetNumThreads(0), kTfLiteOk);
+  // num_threads == 0 has the same effect as num_threads == 1.
+  EXPECT_EQ(interpreter_.subgraph(0)->context()->recommended_num_threads, 1);
+}
+
 struct TestCpuBackendContext : public TfLiteInternalBackendContext {
   // Count the number of calls to ClearCaches for the backend context.
   void ClearCaches() override { ++num_calls; }
@@ -1172,7 +1181,7 @@ TEST_F(InterpreterTest, ExternalBackendContextClearsCachesOnDelete) {
 // node graph that can be executed in either [0,1] order or [1,0] order.
 // The CopyOp records when it is invoked in the class member run_order_
 // so we can test whether the execution plan was honored.
-class TestExecutionPlan : public ::testing::Test {
+class TestExecutionPlan : public InterpreterTest {
   // Encapsulates the node ids and provides them to a C primitive data type
   // Allocatable with placement new, but never destructed, so make sure this
   // doesn't own any heap allocated data. This is then is used as op local
@@ -1266,8 +1275,6 @@ class TestExecutionPlan : public ::testing::Test {
   }
 
  protected:
-  Interpreter interpreter_;
-
   // list of node_ids that were run
   std::vector<int> run_order_;
 };
@@ -1280,21 +1287,21 @@ TEST_F(TestExecutionPlan, DefaultExecutionPlan) {
 
 TEST_F(TestExecutionPlan, ReversedExecutionPlan) {
   // Check reversed order
-  interpreter_.SetExecutionPlan({1, 0});
+  SetExecutionPlan({1, 0});
   ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
   ASSERT_EQ(run_order_, std::vector<int>({1, 0}));
 }
 
 TEST_F(TestExecutionPlan, SubsetExecutionPlan) {
   // Check running only node index 1
-  interpreter_.SetExecutionPlan({1});
+  SetExecutionPlan({1});
   ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
   ASSERT_EQ(run_order_, std::vector<int>({1}));
 }
 
 TEST_F(TestExecutionPlan, NullExecutionPlan) {
   // Check nothing executed.
-  interpreter_.SetExecutionPlan({});
+  SetExecutionPlan({});
   ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
   ASSERT_EQ(run_order_, std::vector<int>());
 }
@@ -1601,15 +1608,28 @@ TEST_F(TestCustomAllocation, InvalidAlignment) {
   VerifyInvoke();
 }
 
+TEST_F(TestCustomAllocation, InvalidAlignment_SkipCheck) {
+  const TfLiteTensor* input_tensor =
+      interpreter_->tensor(interpreter_->inputs()[0]);
+  const int required_alignment = kDefaultTensorAlignment - 1;
+  auto tensor_alloc = NewCustomAlloc(input_tensor->bytes, required_alignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->inputs()[0], tensor_alloc,
+                /**flags**/ kTfLiteCustomAllocationFlagsSkipAlignCheck),
+            kTfLiteOk);
+
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+}
+
 TEST_F(TestCustomAllocation, InsufficientBytes) {
   auto input_alloc = NewCustomAlloc(4, kDefaultTensorAlignment);
+
+  // Setting the custom alloc works, but AllocateTensors doesn't.
   ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
                 interpreter_->inputs()[0], input_alloc),
-            kTfLiteError);
-
-  // Allocate tensors & Invoke should still work.
-  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
-  VerifyInvoke();
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteError);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteError);
 }
 
 TEST_F(TestCustomAllocation, CustomInputAlloc) {
@@ -1694,7 +1714,7 @@ TEST_F(TestCustomAllocation, CustomAlloc_VariableTensor) {
   }
 }
 
-TEST_F(TestCustomAllocation, ResizeTensorsWithoutEnoughMemory) {
+TEST_F(TestCustomAllocation, ResizeInputsWithoutEnoughMemory) {
   // Set custom allocations for all input tensors.
   AssignCustomAllocForTensor(interpreter_->inputs()[0],
                              /*required_alignment=*/kDefaultTensorAlignment);
@@ -1716,7 +1736,7 @@ TEST_F(TestCustomAllocation, ResizeTensorsWithoutEnoughMemory) {
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteError);
 }
 
-TEST_F(TestCustomAllocation, ResizeTensorsWithEnoughMemory) {
+TEST_F(TestCustomAllocation, ResizeInputsWithEnoughMemory) {
   // Set custom allocations for all input tensors, with double the required
   // memory.
   const TfLiteTensor* input0_tensor =
@@ -1761,6 +1781,62 @@ TEST_F(TestCustomAllocation, ResizeTensorsWithEnoughMemory) {
 
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   VerifyInvoke();
+}
+
+// Verify typical use-cases where tensors are resized & custom allocs need to be
+// set for every Invoke().
+TEST_F(TestCustomAllocation, ResizeAndAllocateForEveryInvoke) {
+  // First assign exactly sized allocs for all IO tensors.
+  AssignCustomAllocForTensor(interpreter_->inputs()[0],
+                             /*required_alignment=*/kDefaultTensorAlignment);
+  AssignCustomAllocForTensor(interpreter_->inputs()[1],
+                             /*required_alignment=*/kDefaultTensorAlignment);
+  AssignCustomAllocForTensor(interpreter_->outputs()[0],
+                             /*required_alignment=*/kDefaultTensorAlignment);
+  AssignCustomAllocForTensor(interpreter_->outputs()[1],
+                             /*required_alignment=*/kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  // Now resize inputs to a smaller: {3, 1} to {1, 1}.
+  // Total alloc sized required now: 1 float == 4 bytes.
+  ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1, 1}),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1, 1}),
+            kTfLiteOk);
+  // Assign allocs for all I/O tensors.
+  // Even though the smaller output tensor sizes have not been propagated yet,
+  // custom allocation works because verification of allocs happens after
+  // preparing all ops & tensors.
+  auto input0_alloc =
+      NewCustomAlloc(/**num_bytes=**/ 4, kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->inputs()[0], input0_alloc),
+            kTfLiteOk);
+  auto input1_alloc =
+      NewCustomAlloc(/**num_bytes=**/ 4, kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->inputs()[1], input1_alloc),
+            kTfLiteOk);
+  auto output0_alloc =
+      NewCustomAlloc(/**num_bytes=**/ 4, kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->outputs()[0], output0_alloc),
+            kTfLiteOk);
+  auto output1_alloc =
+      NewCustomAlloc(/**num_bytes=**/ 4, kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->outputs()[1], output1_alloc),
+            kTfLiteOk);
+  // AllocateTensors works.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  std::vector<float> input = {2.0f};
+  std::vector<float> expected_output = {4.0f};
+  TfLiteTensor* tensor = interpreter_->tensor(interpreter_->outputs()[0]);
+  memcpy(interpreter_->typed_tensor<float>(0), input.data(), sizeof(float));
+  memcpy(interpreter_->typed_tensor<float>(1), input.data(), sizeof(float));
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  EXPECT_EQ(tensor->data.f[0], expected_output[0]);
 }
 
 // Tests related to lazy delegate providers that are primarily used for applying
@@ -1837,33 +1913,31 @@ TEST_F(TestLazyDelegateProvider, ApplicationSkipped) {
 }
 
 TEST_F(InterpreterTest, SingleSignature_get_signatures) {
-  const char kMethodName[] = "test_method";
-  const char kSignatureDefKey[] = "test_key";
-  BuildSignature(kMethodName, kSignatureDefKey, {{"Input1", 0}, {"Input2", 1}},
+  const char kSignatureKey[] = "test_method";
+  BuildSignature(kSignatureKey, {{"Input1", 0}, {"Input2", 1}},
                  {{"Output1", 5}});
-  auto results = interpreter_.signature_def_names();
+  auto results = interpreter_.signature_keys();
   ASSERT_EQ(1, results.size());
-  EXPECT_EQ(kMethodName, *results[0]);
+  EXPECT_EQ(kSignatureKey, *results[0]);
 }
 
 TEST_F(InterpreterTest, SingleSignature_get_inputs) {
-  const char kMethodName[] = "test_method";
-  const char kSignatureDefKey[] = "test_key";
+  const char kSignatureKey[] = "test_method";
   const std::map<std::string, uint32_t> inputs = {{"Input1", 0}, {"Input2", 1}};
   const std::map<std::string, uint32_t> outputs = {{"Output1", 5}};
-  BuildSignature(kMethodName, kSignatureDefKey, inputs, outputs);
-  EXPECT_THAT(interpreter_.signature_inputs(kMethodName), testing::Eq(inputs));
-  EXPECT_THAT(interpreter_.signature_outputs(kMethodName),
+  BuildSignature(kSignatureKey, inputs, outputs);
+  EXPECT_THAT(interpreter_.signature_inputs(kSignatureKey),
+              testing::Eq(inputs));
+  EXPECT_THAT(interpreter_.signature_outputs(kSignatureKey),
               testing::Eq(outputs));
 }
 
 TEST_F(InterpreterTest, SingleSignature_validate_get_tensor) {
-  const char kMethodName[] = "test_method";
-  const char kSignatureDefKey[] = "test_key";
+  const char kSignatureKey[] = "test_method";
   const std::map<std::string, uint32_t> inputs = {{"Input1", 0}, {"Input2", 1}};
   const std::map<std::string, uint32_t> outputs = {{"Output1", 5}};
 
-  BuildSignature(kMethodName, kSignatureDefKey, inputs, outputs);
+  BuildSignature(kSignatureKey, inputs, outputs);
   ASSERT_EQ(interpreter_.AddTensors(6), kTfLiteOk);
   ASSERT_EQ(interpreter_.SetInputs({0, 1}), kTfLiteOk);
   ASSERT_EQ(interpreter_.SetOutputs({5}), kTfLiteOk);
@@ -1879,32 +1953,24 @@ TEST_F(InterpreterTest, SingleSignature_validate_get_tensor) {
             kTfLiteOk);
   ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
 
-  EXPECT_TRUE(interpreter_.input_tensor_by_signature_name(
-                  "Input1", kMethodName) != nullptr);
-  EXPECT_TRUE(interpreter_.input_tensor_by_signature_name(
-                  "Input2", kMethodName) != nullptr);
-  EXPECT_TRUE(interpreter_.output_tensor_by_signature_name(
-                  "Output1", kMethodName) != nullptr);
+  EXPECT_TRUE(interpreter_.input_tensor_by_signature("Input1", kSignatureKey) !=
+              nullptr);
+  EXPECT_TRUE(interpreter_.input_tensor_by_signature("Input2", kSignatureKey) !=
+              nullptr);
+  EXPECT_TRUE(interpreter_.output_tensor_by_signature(
+                  "Output1", kSignatureKey) != nullptr);
 
   // Invalid tensor
-  EXPECT_EQ(interpreter_.input_tensor_by_signature_name("Input3", kMethodName),
+  EXPECT_EQ(interpreter_.input_tensor_by_signature("Input3", kSignatureKey),
             nullptr);
-  EXPECT_EQ(interpreter_.output_tensor_by_signature_name("Input3", kMethodName),
+  EXPECT_EQ(interpreter_.output_tensor_by_signature("Input3", kSignatureKey),
             nullptr);
   // Invalid method
-  EXPECT_EQ(
-      interpreter_.input_tensor_by_signature_name("Input1", "InvalidMethod"),
-      nullptr);
-  EXPECT_EQ(
-      interpreter_.output_tensor_by_signature_name("Output1", "InvalidMethod"),
-      nullptr);
+  EXPECT_EQ(interpreter_.input_tensor_by_signature("Input1", "InvalidMethod"),
+            nullptr);
+  EXPECT_EQ(interpreter_.output_tensor_by_signature("Output1", "InvalidMethod"),
+            nullptr);
 }
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_plugin_init.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -496,51 +497,6 @@ TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
   return tensorflow::wrap(tensorflow::TensorHandle::CreateLocalHandle(tensor));
 }
 
-namespace {
-tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
-                                       TFE_Context* ctx) {
-  // We don't use the TF_RETURN_IF_ERROR macro directly since that destroys the
-  // server object (which currently CHECK-fails) and we miss the error, instead,
-  // we log the error, and then return to allow the user to see the error
-  // message.
-#define LOG_AND_RETURN_IF_ERROR(...)                    \
-  do {                                                  \
-    const ::tensorflow::Status _status = (__VA_ARGS__); \
-    if (TF_PREDICT_FALSE(!_status.ok())) {              \
-      LOG(ERROR) << _status.error_message();            \
-      return _status;                                   \
-    }                                                   \
-  } while (0);
-
-  // New server created for new server_def. Unused if updating server_def.
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  tensorflow::GrpcServer* grpc_server =
-      dynamic_cast<tensorflow::GrpcServer*>(context->GetServer());
-  if (grpc_server == nullptr) {
-    std::unique_ptr<tensorflow::ServerInterface> new_server;
-    LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &new_server));
-    grpc_server = dynamic_cast<tensorflow::GrpcServer*>(new_server.get());
-    if (grpc_server == nullptr) {
-      LOG_AND_RETURN_IF_ERROR(tensorflow::errors::Internal(
-          "Currently, TFE_NewContext only supports tensorflow::GrpcServer."));
-    }
-    LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
-
-    LOG_AND_RETURN_IF_ERROR(context->StoreCollectiveOpsServer(
-        std::move(new_server), grpc_server->worker_env()->device_mgr,
-        grpc_server->worker_env()->collective_executor_mgr.get()));
-  } else {
-    LOG_AND_RETURN_IF_ERROR(grpc_server->UpdateServerDef(server_def));
-    LOG_AND_RETURN_IF_ERROR(context->StoreCollectiveOpsServer(
-        /*new_server=*/nullptr, grpc_server->worker_env()->device_mgr,
-        grpc_server->worker_env()->collective_executor_mgr.get()));
-  }
-  return tensorflow::Status::OK();
-#undef LOG_AND_RETURN_IF_ERROR
-}
-}  // namespace
-
 // Set server_def on the context, possibly updating it.
 TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
                                                    const void* proto,
@@ -552,7 +508,7 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
         "Invalid tensorflow.ServerDef protocol buffer");
     return;
   }
-  status->status = EnableCollectiveOps(server_def, ctx);
+  status->status = tensorflow::unwrap(ctx)->EnableCollectiveOps(server_def);
 }
 
 TF_CAPI_EXPORT extern void TFE_AbortCollectiveOps(TFE_Context* ctx,
@@ -701,6 +657,7 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
       c.SetInput(i, c.UnknownShape());
       continue;
     }
+    dims.reserve(input_shape.num_dims);
     for (int j = 0; j < input_shape.num_dims; ++j) {
       dims.push_back(c.MakeDim(input_shape.dims[j]));
     }
@@ -777,7 +734,10 @@ TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
     } else {
       status->status =
           env->LoadDynamicLibrary(library_filename, &lib_handle->lib_handle);
-      if (!status->status.ok()) {
+      if (status->status.ok()) {
+        TF_CHECK_OK(
+            tensorflow::RegisterPluggableDevicePlugin(lib_handle->lib_handle));
+      } else {
         delete lib_handle;
         return nullptr;
       }

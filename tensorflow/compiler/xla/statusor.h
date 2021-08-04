@@ -21,8 +21,7 @@ limitations under the License.
 namespace xla {
 
 // Use steam_executor's StatusOr so we don't duplicate code.
-template <typename T>
-using StatusOr = ::stream_executor::port::StatusOr<T>;
+using tensorflow::StatusOr;  // TENSORFLOW_STATUS_OK
 
 }  // namespace xla
 

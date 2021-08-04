@@ -172,7 +172,14 @@ message DebugOptions {
   // among different algorithms.
   bool xla_gpu_crash_on_verification_failures = 101;
 
-  // Disable GEMM and Convolution auto-tuning.
+  // 0:   Disable gemm and convolution autotuning.
+  // 1:   Enable autotuning, but disable correctness checking.
+  // 2:   Also set output buffers to random numbers during autotuning.
+  // 3:   Also reset output buffers to random numbers after autotuning each
+  //      algorithm.
+  // 4+:  Also check for correct outputs and for out-of-bounds reads/writes.
+  //
+  // Default: 4.
   int32 xla_gpu_autotune_level = 123;
 
   // Force the host platform to pretend that there are these many host
@@ -236,8 +243,8 @@ message DebugOptions {
   // If specified, will only dump modules which match this regexp.
   string xla_dump_hlo_module_re = 110;
 
-  // If this flag is specified, will also HLO before and after passes that match
-  // this regular expression.  Set to .* to dump before/after all passes.
+  // If this flag is specified, will also dump HLO before and after passes that
+  // match this regular expression.  Set to .* to dump before/after all passes.
   string xla_dump_hlo_pass_re = 111;
 
   // Specifies the format that HLO is dumped in.  Multiple of these may be
@@ -267,6 +274,9 @@ message DebugOptions {
   // Dump HloModuleMetadata as a text proto for each HLO module.
   bool xla_dump_module_metadata = 144;
 
+  // GZip-compress protos dumped via --xla_dump_hlo_as_proto.
+  bool xla_dump_compress_protos = 151;
+
   //
   // END flags controlling dumping HLO modules.
   //
@@ -277,6 +287,9 @@ message DebugOptions {
 
   // Paths to files with ptx code.
   repeated string xla_gpu_ptx_file = 127;
+
+  // Whether to dump llvm ir when compiling to ptx.
+  bool xla_gpu_dump_llvmir = 155;
 
   // Denylist for cuDNN convolutions.
   string xla_gpu_algorithm_denylist_path = 128;
@@ -302,8 +315,10 @@ message DebugOptions {
   // reached.
   int32 xla_multiheap_size_constraint_per_heap = 142;
 
-  // Enable detailed logging into vlog.
-  bool xla_detailed_logging = 143;
+  // Enable detailed logging into vlog and xla dumping. If this is disabled, no
+  // compilation summary will be printed in the end of computation and no hlo
+  // modules will be dumped.
+  bool xla_detailed_logging_and_dumping = 143;
 
   // Overrides normal multi-threaded compilation settting to use this many
   // threads. Setting to 0 (the default value) means no enforcement.
@@ -314,7 +329,21 @@ message DebugOptions {
   // Compilation errors out if these ops are encountered.
   bool xla_gpu_deterministic_ops = 148;
 
-  // Next id: 150
+  // Paths to files with LLVM code.
+  repeated string xla_gpu_llvm_ir_file = 150;
+
+  // Convert synchronous all-reduces ops into asynchronous.
+  bool xla_gpu_enable_async_all_reduce = 152;
+
+  // Disable dumping metadata in HLO dumps.
+  bool xla_dump_disable_metadata = 153;
+
+  // If this flag is specified, will only dump HLO before and after passes in
+  // the pass pipeline that matches this regular expression. Default empty value
+  // enables dumping in all pipelines.
+  string xla_dump_hlo_pipeline_re = 154;
+
+  // Next id: 156
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -378,9 +407,7 @@ message ExecutionOptions {
   // works on TPU.
   bool deduplicate_hlo = 12;
 
-  // If set, broadcast replicated parameters to all replicas, using collectives.
-  // Only applicable to TPU.
-  bool broadcast_replicated_parameters_via_collectives = 13;
+  reserved 13;  // Was broadcast_replicated_parameters_via_collectives
 }
 
 message GetDeviceHandlesRequest {

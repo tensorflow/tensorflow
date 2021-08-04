@@ -97,7 +97,7 @@ StatusOr<HloInstruction*> ComparisonExpander::ExpandInstruction(
         HloInstruction::CreateConvert(compare_shape, rhs));
   }
 
-  int64 bit_width = primitive_util::BitWidth(compare_type);
+  int64_t bit_width = primitive_util::BitWidth(compare_type);
   PrimitiveType signed_type =
       primitive_util::SignedIntegralTypeForBitWidth(bit_width);
   PrimitiveType unsigned_type =

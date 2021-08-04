@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_UTIL_H_
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -227,9 +228,9 @@ bool ContainersEqual(const Container1T& c1, const Container2T& c2,
 // source and destination. The source starting index is src_base, while the
 // destination one is dest_base.
 template <typename D, typename S>
-void StridedCopy(absl::Span<D> dest, int64 dest_base, int64 dest_stride,
-                 absl::Span<const S> src, int64 src_base, int64 src_stride,
-                 int64 count) {
+void StridedCopy(absl::Span<D> dest, int64_t dest_base, int64_t dest_stride,
+                 absl::Span<const S> src, int64_t src_base, int64_t src_stride,
+                 int64_t count) {
   for (; count > 0; --count, dest_base += dest_stride, src_base += src_stride) {
     dest[dest_base] = static_cast<D>(src[src_base]);
   }
@@ -328,41 +329,8 @@ Status ResourceExhaustedStrCat(Args&&... concat) {
 // uniformly replaced with "indentation".
 string Reindent(absl::string_view original, absl::string_view indentation);
 
-// Checks whether permutation is a permutation of the [0, rank) integer range.
-bool IsPermutation(absl::Span<const int64> permutation, int64 rank);
-
-// Applies `permutation` on `input` and returns the permuted array.
-// For each i, output[permutation[i]] = input[i].
-//
-// Precondition:
-// 1. `permutation` is a permutation of 0..permutation.size()-1.
-// 2. permutation.size() == input.size().
 template <typename Container>
-std::vector<typename Container::value_type> Permute(
-    absl::Span<const int64> permutation, const Container& input) {
-  using T = typename Container::value_type;
-  absl::Span<const T> data(input);
-  CHECK(IsPermutation(permutation, data.size()));
-  std::vector<T> output(data.size());
-  for (size_t i = 0; i < permutation.size(); ++i) {
-    output[permutation[i]] = data[i];
-  }
-  return output;
-}
-
-// Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
-std::vector<int64> InversePermutation(
-    absl::Span<const int64> input_permutation);
-
-// Composes two permutations: output[i] = p1[p2[i]].
-std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
-                                       absl::Span<const int64> p2);
-
-// Returns true iff permutation == {0, 1, 2, ...}.
-bool IsIdentityPermutation(absl::Span<const int64> permutation);
-
-template <typename Container>
-int64 PositionInContainer(const Container& container, int64 value) {
+int64 PositionInContainer(const Container& container, int64_t value) {
   return std::distance(container.begin(), absl::c_find(container, value));
 }
 
@@ -419,7 +387,7 @@ string RoundTripFpToString(float value);
 string RoundTripFpToString(double value);
 
 // Returns a PaddingConfig object that represents no padding for the given rank.
-PaddingConfig MakeNoPaddingConfig(int64 rank);
+PaddingConfig MakeNoPaddingConfig(int64_t rank);
 
 // Returns a PaddingConfig object where 'padding' contains
 // (low edge padding, high edge padding) pairs for each dimension.
@@ -479,10 +447,88 @@ inline bool IsPowerOfTwo(T x) {
   return x != 0 && (x & (x - 1)) == 0;
 }
 
-// Returns a mask with "bits" number of least significant bits set.
-inline uint32 LsbMaskU32(int bits) {
-  CHECK_GE(bits, 0);
-  return (1U << bits) - 1;
+// Returns a mask with "width" number of least significant bits set.
+template <typename T>
+inline T LsbMask(int width) {
+  static_assert(std::is_unsigned<T>::value,
+                "T should be an unsigned integer type");
+  CHECK_GE(width, 0) << "Unsupported width " << width;
+  CHECK_LE(width, std::numeric_limits<T>::digits)
+      << "Unsupported width " << width;
+  return width == 0
+             ? 0
+             : static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
+}
+
+// Returns the value with every bit except the lower 'width' bits set to zero.
+template <typename T>
+inline T ClearUpperBits(T value, int width) {
+  return value & LsbMask<T>(width);
+}
+
+template <size_t>
+struct UnsignedIntegerTypeForSize;
+
+template <>
+struct UnsignedIntegerTypeForSize<1> {
+  using type = uint8_t;
+};
+
+template <>
+struct UnsignedIntegerTypeForSize<2> {
+  using type = uint16_t;
+};
+
+template <>
+struct UnsignedIntegerTypeForSize<4> {
+  using type = uint32_t;
+};
+
+template <>
+struct UnsignedIntegerTypeForSize<8> {
+  using type = uint64_t;
+};
+
+template <typename T>
+constexpr int NanPayloadBits() {
+  // Floating point types with NaNs have payloads.
+  if (!std::numeric_limits<T>::has_quiet_NaN) {
+    return 0;
+  }
+  return std::numeric_limits<T>::digits - 1;
+}
+
+template <typename T>
+constexpr uint64_t QuietNanWithoutPayload() {
+  if (const int bits = NanPayloadBits<T>()) {
+    return uint64_t{1} << (bits - 1);
+  }
+  return 0;
+}
+
+template <typename T>
+constexpr uint64_t NanPayloadBitMask() {
+  if (const int bits = NanPayloadBits<T>()) {
+    return LsbMask<uint64_t>(bits);
+  }
+  return 0;
+}
+
+template <typename T>
+T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
+  using RepT = typename UnsignedIntegerTypeForSize<sizeof(T)>::type;
+  const T val = std::numeric_limits<T>::quiet_NaN();
+  auto rep = absl::bit_cast<RepT>(val);
+  rep &= LsbMask<RepT>(std::numeric_limits<RepT>::digits - 1);
+  rep |= uint64_t{sign} << (std::numeric_limits<RepT>::digits - 1);
+  constexpr int kPayloadBits = NanPayloadBits<T>();
+  if (kPayloadBits > 0) {
+    // Clear rep's NaN payload.
+    rep &= ~NanPayloadBitMask<T>();
+    CHECK_NE(nan_payload, 0);
+    rep |= nan_payload;
+  }
+  return absl::bit_cast<T>(rep);
 }
 
 // Utility for performing a static_cast<> on a std::unique_ptr<>.
@@ -531,12 +577,12 @@ int64 FindIndex(const C& c, Value&& value) {
 }
 
 template <typename C, typename Value>
-void InsertAt(C* c, int64 index, Value&& value) {
+void InsertAt(C* c, int64_t index, Value&& value) {
   c->insert(c->begin() + index, std::forward<Value>(value));
 }
 
 template <typename C>
-void EraseAt(C* c, int64 index) {
+void EraseAt(C* c, int64_t index) {
   c->erase(c->begin() + index);
 }
 

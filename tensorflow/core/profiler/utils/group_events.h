@@ -82,16 +82,16 @@ class EventNode {
 
   std::string GetGroupName() const;
 
-  void SetGroupId(int64 group_id);
+  void SetGroupId(int64_t group_id);
 
   // Sets group_id for this node and its descendants.
-  void PropagateGroupId(int64 group_id, GroupMetadataMap* group_metadata_map);
+  void PropagateGroupId(int64_t group_id, GroupMetadataMap* group_metadata_map);
 
   const XPlaneVisitor& GetPlaneVisitor() const { return *plane_; }
 
   const XEventVisitor& GetEventVisitor() const { return visitor_; }
 
-  absl::optional<XStatVisitor> GetContextStat(int64 stat_type) const;
+  absl::optional<XStatVisitor> GetContextStat(int64_t stat_type) const;
 
   void AddStepName(absl::string_view step_name);
 
@@ -107,7 +107,7 @@ class EventNode {
   bool IsNestedIn(EventNode* parent);
 
   // Returns the closest parent (including itself) of the given event type.
-  const EventNode* FindParent(int64 event_type) const;
+  const EventNode* FindParent(int64_t event_type) const;
 
   absl::optional<ContextInfo> GetProducerContext() const {
     return producer_context_;
@@ -117,16 +117,20 @@ class EventNode {
     return consumer_context_;
   }
 
-  void SetIsRoot(bool is_root) { is_root_ = is_root; }
+  void SetRootLevel(int root_level) { root_level_ = root_level; }
 
-  bool IsRoot() const { return is_root_; }
+  int RootLevel() const { return root_level_; }
 
   bool IsAsync() const { return is_async_; }
 
-  bool StartsBefore(const EventNode& other) const;
+  // Compare two EventNodes based on start timestamp.
+  bool operator<(const EventNode& other) const {
+    return GetEventVisitor().TimestampPs() <
+           other.GetEventVisitor().TimestampPs();
+  }
 
  private:
-  XStat* FindOrAddStatByType(int64 stat_type);
+  XStat* FindOrAddStatByType(int64_t stat_type);
 
   const XPlaneVisitor* plane_;
   XEventVisitor visitor_;
@@ -137,7 +141,10 @@ class EventNode {
   absl::optional<int64> group_id_;
   absl::optional<ContextInfo> producer_context_;
   absl::optional<ContextInfo> consumer_context_;
-  bool is_root_ = false;
+  // Root event level.
+  // By default root_level_ is set to 0, which means it is not a root event.
+  // Events with root_level_ greater than 0 are considered as root events.
+  int root_level_ = 0;
   bool is_async_ = false;
 };
 
@@ -176,7 +183,7 @@ class EventForest {
 
   void ConnectTfDataEvents();
 
-  void GroupEvents(const std::vector<int64>& root_event_types = {});
+  void GroupEvents();
 
   const EventNodeMap& GetEventNodeMap() const { return event_node_map_; }
 
@@ -198,9 +205,6 @@ class EventForest {
   void ConnectInterThread(
       const std::vector<InterThreadConnectInfo>& connect_info_list);
 
-  void ProcessLegacyRootEvents(
-      const std::vector<int64 /*EventType*/>& root_event_types);
-
   // Creates event groups and populates group_metadata_map. If a TF loop is
   // used, each TF loop iteration becomes a root. Otherwise, top root events
   // (i.e., none of their ancestors is a root event) are used as roots. A new
@@ -212,6 +216,11 @@ class EventForest {
 
   // Sets the is_eager stat to true for the eagerly executed CPU TF op events.
   void MarkEagerlyExecutedCpuTfOps();
+
+  // Populate all the step ids that associated with tf.data pipeline.
+  // Because FunctionRun is considered as root, but we want to exclude those
+  // FunctionRuns from tf.data.
+  void ProcessTfDataSteps();
 
   // Processes the TF loops and registers the first TF executor event of each
   // iteraton to `tf_loop_root_events_`.
@@ -228,10 +237,11 @@ class EventForest {
   std::vector<XPlaneVisitor> visitors_;
   // std::deque for pointer stability.
   std::deque<std::pair<XPlane*, XPlaneVisitor>> planes_;
-  EventList root_events_;
+  // The "step" id (actually it is "function" id that are associated with
+  // the tf.data pipeline.
+  absl::flat_hash_set<int64> tf_data_step_ids_;
   EventList tf_loop_root_events_;
   GroupMetadataMap group_metadata_map_;
-  int64 next_group_id_ = 0;
 };
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList();
@@ -240,6 +250,9 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList();
 // TensorFlow.
 void GroupTfEvents(XSpace* space, EventForest* event_forest);
 void GroupTfEvents(XSpace* space);
+
+// Returns true if the given space has TF's loop ops.
+bool CheckLoopOp(const XSpace& space);
 
 }  // namespace profiler
 }  // namespace tensorflow

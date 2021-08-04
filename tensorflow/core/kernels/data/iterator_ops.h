@@ -17,14 +17,14 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_DATA_ITERATOR_OPS_H_
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
 
 namespace tensorflow {

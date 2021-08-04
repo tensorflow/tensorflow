@@ -23,6 +23,8 @@ import functools
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import function
@@ -31,11 +33,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
 
 
@@ -160,6 +164,24 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     for i in range(5):
       self.assertEqual(10, counts[i])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testInputInitializations(self):
+    num_rounds = 3
+    def compute_orders(dataset):
+      orders = []
+      for _ in range(num_rounds):
+        orders.append(self.getDatasetOutput(dataset))
+      return orders
+
+    dataset = dataset_ops.Dataset.range(10).shuffle(10, seed=1)
+    first_orders = compute_orders(dataset)
+    dataset = dataset_ops.Dataset.range(10)
+
+    # Adding shuffle(1) should not change the order.
+    dataset = dataset_ops.Dataset.range(10).shuffle(10, seed=1).shuffle(1)
+    second_orders = compute_orders(dataset)
+    self.assertEqual(first_orders, second_orders)
+
   @combinations.generate(
       combinations.times(
           test_base.graph_only_combinations(),
@@ -220,6 +242,32 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
           results.append(run_results)
 
         self.assertNotEqual(results[0], results[1])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShuffleManyEmptyEpochs(self):
+    sizes = [0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0]
+    sizes_iter = iter(sizes)
+    def gen():
+      for i in range(next(sizes_iter)):
+        yield i
+
+    dataset = dataset_ops.Dataset.from_generator(
+        gen, output_signature=tensor_spec.TensorSpec((), dtypes.int64))
+    dataset = dataset.shuffle(10).repeat(len(sizes)).take(3)
+    self.assertDatasetProduces(dataset, [0, 0, 1], assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShuffleInfiniteRepeatNonemptyFollowedByEmpty(self):
+    sizes = [1, 0, 2, 10]
+    sizes_iter = iter(sizes)
+    def gen():
+      for i in range(next(sizes_iter)):
+        yield i
+
+    dataset = dataset_ops.Dataset.from_generator(
+        gen, output_signature=tensor_spec.TensorSpec((), dtypes.int64))
+    dataset = dataset.shuffle(10).repeat().take(3)
+    self.assertDatasetProduces(dataset, [0, 0, 1], assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
@@ -352,20 +400,95 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeShuffleBuffer(self):
-    # Tensor of size 100M
+    # Tensor of size 512M
     dataset = dataset_ops.Dataset.from_tensors(
-        array_ops.ones((25, 1000, 1000), dtype=dtypes.float32))
+        array_ops.ones((128, 1024, 1024), dtype=dtypes.float32))
     dataset = dataset.repeat()
-    # Shuffle 25 tensors to exceed the 2GB protocol buffer limit
-    dataset = dataset.shuffle(25)
-
+    # Set shuffle buffer size to 5 to exceed the 2GB protobuf limit.
+    dataset = dataset.shuffle(5)
     iterator = iter(dataset)
     next(iterator)  # request an element to fill the shuffle buffer
     ckpt = trackable_utils.Checkpoint(iterator=iterator)
     manager = checkpoint_management.CheckpointManager(
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
-    ckpt.restore(manager.latest_checkpoint)
+
+
+class ShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                            parameterized.TestCase):
+
+  def _build_shuffle_dataset(
+      self,
+      range_limit=10,
+      num_repeats=5,
+      buffer_size=5,
+      seed=None,
+      reshuffle_each_iteration=None,
+  ):
+    return dataset_ops.Dataset.range(range_limit).shuffle(
+        buffer_size,
+        seed=seed,
+        reshuffle_each_iteration=reshuffle_each_iteration).repeat(num_repeats)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              reshuffle_each_iteration=[True, False],
+              buffer_size=[1, 3, 5, 8, 10])))
+  def test(self, verify_fn, reshuffle_each_iteration, buffer_size):
+    seed = 55
+    range_limit = 5
+    num_repeats = 2
+    num_outputs = range_limit * num_repeats
+    # pylint: disable=g-long-lambda
+    verify_fn(
+        self, lambda: self._build_shuffle_dataset(
+            range_limit=range_limit,
+            num_repeats=num_repeats,
+            buffer_size=buffer_size,
+            seed=seed,
+            reshuffle_each_iteration=reshuffle_each_iteration), num_outputs)
+
+  @combinations.generate(
+      combinations.combine(
+          tf_api_version=1,
+          mode=["graph"],
+          reshuffle_each_iteration=[True, False],
+          buffer_size=[1, 3, 5, 8, 10]))
+  def testMultipleIterators(self, reshuffle_each_iteration, buffer_size):
+    range_limit = 5
+    num_repeats = 2
+    num_outputs = range_limit * num_repeats
+
+    def ds_fn():
+      # pylint: disable=cell-var-from-loop
+      return self._build_shuffle_dataset(
+          range_limit=range_limit,
+          num_repeats=num_repeats,
+          buffer_size=buffer_size,
+          seed=None,  # Iterator seeds are generated non-deterministically.
+          reshuffle_each_iteration=reshuffle_each_iteration)
+      # pylint: enable=cell-var-from-loop
+
+    with ops.Graph().as_default() as g:
+      ds = ds_fn()
+      iterators = [ds.make_one_shot_iterator(), ds.make_one_shot_iterator()]
+      get_next_ops = [it.get_next() for it in iterators]
+      saveables = [
+          contrib_iterator_ops.make_saveable_from_iterator(it)
+          for it in iterators
+      ]
+      for saveable in saveables:
+        ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+      saver = saver_lib.Saver(allow_empty=True)
+      with self.session(graph=g) as sess:
+        self._save(sess, saver)
+        expected = [self.evaluate(get_next_ops) for _ in range(num_outputs)]
+        self._restore(saver, sess)
+        actual = [self.evaluate(get_next_ops) for _ in range(num_outputs)]
+        self.match(expected, actual)
 
 
 if __name__ == "__main__":

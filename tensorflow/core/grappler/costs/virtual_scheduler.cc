@@ -95,9 +95,9 @@ void UpdateDeviceAnnotationState(const NodeDef* node,
                                  DeviceState* device) {
   if (node->attr().count(kOutputShapes) == 0) return;
 
-  int64 execution_count = node->attr().count(kExecutionCount) == 0
-                              ? 1
-                              : node->attr().at(kExecutionCount).i();
+  int64_t execution_count = node->attr().count(kExecutionCount) == 0
+                                ? 1
+                                : node->attr().at(kExecutionCount).i();
 
   auto& shape_annotation_stats = device->shape_annotation_stats;
   shape_annotation_stats.num_ops_annotated += 1;
@@ -865,7 +865,8 @@ void SchedulerState::GetOutputNodes(const NodeDef* node,
 }
 
 std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
-    const NodeDef* node, const Costs& node_costs, const OpContext& op_context) {
+    const NodeDef* node, const Costs& node_costs, const OpContext& op_context,
+    const std::string& override_device_name) {
   auto& node_state = node_map_[node];
   // TODO(dyoon, andiryxu): Consider to revisit node execution w.r.t. Switch and
   // Merge -- it can create a loop which may include loop-carried dependency,
@@ -898,8 +899,16 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
                        !node_costs.inaccurate);
   }
 
+  std::string device_name = node_state.device_name;
+  if (!override_device_name.empty()) {
+    // N.B. There's a chance that device_name doesn't exist in the device map
+    // (device_), but it's ok because we'll effectively create a new device the
+    // first time a new device is seen.
+    device_name = override_device_name;
+  }
+
   // Update node and device states.
-  auto& device = device_[node_state.device_name];
+  auto& device = device_[device_name];
   device.nodes_executed.push_back(node);
   // Node is scheduled when the device is available AND all the inputs are
   // ready; hence, time_scheduled is time_ready if time_ready > device curr
@@ -973,6 +982,13 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
         device.mem_usage_snapshot_at_peak = device.nodes_in_memory;
       }
     }
+  }
+
+  // Append the current temporary memory usage of the device to the memory usage
+  // trace.
+  if (track_mem_usage_snapshot_) {
+    device.temporary_memory_usage_trace.push_back(
+        {node->name(), device.memory_usage});
   }
 
   // Increment num_outputs_executed of the input nodes and maybe update memory.
@@ -1055,7 +1071,7 @@ Costs SchedulerState::Summary() const {
 
     std::map<string, int64> op_to_memory;
     // First profile only persistent memory usage.
-    int64 persistent_memory_usage = 0;
+    int64_t persistent_memory_usage = 0;
     std::set<string> persistent_ops;
     for (const auto& node_port : state.persistent_nodes) {
       const auto* node = node_port.first;
@@ -1071,7 +1087,7 @@ Costs SchedulerState::Summary() const {
       op_to_memory[node->op()] += output_size;
       persistent_ops.insert(node->op());
     }
-    int64 max_memory_usage = persistent_memory_usage + state.max_memory_usage;
+    int64_t max_memory_usage = persistent_memory_usage + state.max_memory_usage;
     critical_path_costs.estimated_max_memory_per_device[name] =
         max_memory_usage;
 
@@ -1135,7 +1151,7 @@ Costs SchedulerState::Summary() const {
         is_total_cost_accurate = false;
       }
 
-      int64 op_mem_usage = 0;
+      int64_t op_mem_usage = 0;
       auto it = op_to_memory.find(op);
       if (it != op_to_memory.end()) {
         op_mem_usage = it->second;
@@ -1264,7 +1280,7 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
       auto* mem_stats = node_stats->mutable_memory_stats();
       // SchedulerState does not specify scratch pad memory usage.
       mem_stats->set_temp_memory_size(0);
-      int64 persistent_memory_size = 0;
+      int64_t persistent_memory_size = 0;
       if (IsPersistent(*node_def)) {
         persistent_memory_size = total_output_size;
       }
@@ -1291,7 +1307,7 @@ SchedulerState::GetPersistentMemoryUsage() const {
   for (const auto& device : device_) {
     const string& name = device.first;
     const DeviceState& state = device.second;
-    int64 persistent_memory_usage = 0;
+    int64_t persistent_memory_usage = 0;
     for (const auto& node_port : state.persistent_nodes) {
       const auto* node = node_port.first;
       const auto port = node_port.second;

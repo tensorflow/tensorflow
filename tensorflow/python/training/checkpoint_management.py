@@ -174,6 +174,7 @@ def update_checkpoint_state(save_dir,
       last_preserved_timestamp=last_preserved_timestamp)
 
 
+@tf_export("__internal__.train.update_checkpoint_state", v1=[])
 def update_checkpoint_state_internal(save_dir,
                                      model_checkpoint_path,
                                      all_model_checkpoint_paths=None,

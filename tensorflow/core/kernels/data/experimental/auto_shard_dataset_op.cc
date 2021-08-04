@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/auto_shard_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/rewrite_utils.h"
+#include "tensorflow/core/data/rewrite_utils.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -44,7 +44,7 @@ AutoShardDatasetOp::AutoShardDatasetOp(OpKernelConstruction* ctx)
 
 void AutoShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                      DatasetBase** output) {
-  int64 index, num_workers, auto_shard_policy, num_replicas;
+  int64_t index, num_workers, auto_shard_policy, num_replicas;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kNumWorkers, &num_workers));
   OP_REQUIRES(
       ctx, num_workers > 0,
@@ -55,6 +55,11 @@ void AutoShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
       ctx, index >= 0 && index < num_workers,
       errors::InvalidArgument("index must be between 0 and ", num_workers - 1));
   auto_shard_policy = auto_shard_policy_;
+  if (input->options().distribute_options().auto_shard_policy() !=
+      AutoShardPolicy::AUTO) {
+    auto_shard_policy =
+        input->options().distribute_options().auto_shard_policy();
+  }
   num_replicas = num_replicas_;
 
   auto config_factory = [num_workers, index, auto_shard_policy,
@@ -70,9 +75,10 @@ void AutoShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                      /*record_fingerprint=*/false, output));
 }
 
-RewriterConfig AutoShardDatasetOp::CreateConfig(int64 num_workers, int64 index,
-                                                int64 auto_shard_policy,
-                                                int64 num_replicas) {
+RewriterConfig AutoShardDatasetOp::CreateConfig(int64_t num_workers,
+                                                int64_t index,
+                                                int64_t auto_shard_policy,
+                                                int64_t num_replicas) {
   RewriterConfig rewriter_config;
   rewriter_config.set_fail_on_optimizer_errors(true);
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);

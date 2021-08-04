@@ -118,6 +118,15 @@ struct TPUVariableRuntimeReformattingPass
     : public PassWrapper<TPUVariableRuntimeReformattingPass,
                          OperationPass<ModuleOp>> {
   void runOnOperation() override;
+
+  StringRef getArgument() const final {
+    return "tf-tpu-variable-runtime-reformatting";
+  }
+
+  StringRef getDescription() const final {
+    return "Adds device variable formatting op to allow compilation-guided "
+           "variable formatting.";
+  }
 };
 
 // Returns the earlier value of which `v` is an identity. If `skipped` is
@@ -261,8 +270,8 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
     }
   }
   // Update the metadata of the compile op.
-  compile.setAttr("metadata", StringAttr::get(metadata.SerializeAsString(),
-                                              compile.getContext()));
+  compile.setAttr("metadata", StringAttr::get(compile.getContext(),
+                                              metadata.SerializeAsString()));
   return mapping;
 }
 
@@ -546,10 +555,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass() {
   return std::make_unique<TPUVariableRuntimeReformattingPass>();
 }
 
-static PassRegistration<TPUVariableRuntimeReformattingPass> pass(
-    "tf-tpu-variable-runtime-reformatting",
-    "Adds device variable formatting op to allow compilation-guided variable "
-    "formatting.");
+static PassRegistration<TPUVariableRuntimeReformattingPass> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

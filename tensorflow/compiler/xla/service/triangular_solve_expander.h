@@ -24,13 +24,16 @@ namespace xla {
 
 class TriangularSolveExpander : public OpExpanderPass {
  public:
-  explicit TriangularSolveExpander(int64 block_size = 128);
+  explicit TriangularSolveExpander(int64_t block_size = 128);
 
   absl::string_view name() const override {
     return "triangular_solve_expander";
   }
 
  protected:
+  // Should we use direct solves for batched inputs?
+  virtual bool UseDirectSolves() const { return true; }
+
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
   StatusOr<HloInstruction*> ExpandInstruction(
@@ -55,7 +58,7 @@ class TriangularSolveExpander : public OpExpanderPass {
 
   XlaOp BuildTriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
                              bool transpose_a, bool conjugate_a,
-                             bool unit_diagonal, int64 block_size,
+                             bool unit_diagonal, int64_t block_size,
                              PrecisionConfig::Precision precision);
 
  private:

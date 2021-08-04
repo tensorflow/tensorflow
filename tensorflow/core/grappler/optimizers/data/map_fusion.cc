@@ -148,11 +148,6 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void MapFusion::Feedback(Cluster* cluster, const GrapplerItem& item,
-                         const GraphDef& optimize_output, double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(MapFusion, "map_fusion");
 
 }  // namespace grappler

@@ -164,7 +164,7 @@ class RandomGammaOp : public OpKernel {
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(vec.data(), vec.size(),
                                                       &samples_shape));
     }
-    const int64 samples_per_alpha = samples_shape.num_elements();
+    const int64_t samples_per_alpha = samples_shape.num_elements();
 
     samples_shape.AppendShape(alpha_t.shape());
     // Allocate output samples.
@@ -189,7 +189,7 @@ class RandomGammaOp : public OpKernel {
     static constexpr int kReservedSamplesPerOutput = 256;
 
     const auto alpha_flat = alpha_t.flat<T>().data();
-    const int64 num_alphas = alpha_t.NumElements();
+    const int64_t num_alphas = alpha_t.NumElements();
     OP_REQUIRES(ctx, num_alphas > 0,
                 errors::InvalidArgument(
                     "Input alpha should have non-zero element count, got: ",
@@ -202,7 +202,7 @@ class RandomGammaOp : public OpKernel {
     // avoid a couple flops which can be done on a per-alpha basis.
 
     auto DoWork = [samples_per_alpha, num_alphas, &rng, samples_flat,
-                   alpha_flat](int64 start_output, int64 limit_output) {
+                   alpha_flat](int64_t start_output, int64_t limit_output) {
       using Eigen::numext::exp;
       using Eigen::numext::log;
       using Eigen::numext::log1p;
@@ -216,9 +216,9 @@ class RandomGammaOp : public OpKernel {
       Uniform uniform;
       typename Normal::ResultType norm_result;
       typename Uniform::ResultType uniform_result;
-      for (int64 output_idx = start_output; output_idx < limit_output;
+      for (int64_t output_idx = start_output; output_idx < limit_output;
            /* output_idx incremented within inner loop below */) {
-        int64 alpha_idx = output_idx / samples_per_alpha;
+        int64_t alpha_idx = output_idx / samples_per_alpha;
 
         // Instead of +alpha_idx for each sample, we offset the pointer once.
         T* const samples_alpha_offset = samples_flat + alpha_idx;
@@ -230,14 +230,14 @@ class RandomGammaOp : public OpKernel {
         if (alpha == static_cast<double>(1.0)) {
           ENABLE_FLOAT_EQUALITY_WARNING
           // Sample from an exponential distribution.
-          for (int64 sample_idx = output_idx % samples_per_alpha;
+          for (int64_t sample_idx = output_idx % samples_per_alpha;
                sample_idx < samples_per_alpha && output_idx < limit_output;
                sample_idx++, output_idx++) {
             // As we want data stable regardless of sharding
             // (including eventually on GPU), we skip on a per-sample basis.
             PhiloxRandom gen = rng;
             gen.Skip(kReservedSamplesPerOutput * output_idx);
-            int16 uniform_remaining = 0;
+            int16_t uniform_remaining = 0;
             UNIFORM(u);
             const double res = -log1p(-u);
             samples_alpha_offset[sample_idx * num_alphas] = static_cast<T>(res);
@@ -257,7 +257,7 @@ class RandomGammaOp : public OpKernel {
           const double c = 1.0 / 3 / sqrt(d);
 
           // Compute the rest of the samples for the current alpha value.
-          for (int64 sample_idx = output_idx % samples_per_alpha;
+          for (int64_t sample_idx = output_idx % samples_per_alpha;
                sample_idx < samples_per_alpha && output_idx < limit_output;
                sample_idx++, output_idx++) {
             // Since each sample may use a variable number of normal/uniform
@@ -265,8 +265,8 @@ class RandomGammaOp : public OpKernel {
             // (including eventually on GPU), we skip on a per-sample basis.
             PhiloxRandom gen = rng;
             gen.Skip(kReservedSamplesPerOutput * output_idx);
-            int16 norm_remaining = 0;
-            int16 uniform_remaining = 0;
+            int16_t norm_remaining = 0;
+            int16_t uniform_remaining = 0;
 
             // Keep trying until we don't reject a sample. In practice, we will
             // only reject ~5% at worst, for low alpha near 1.

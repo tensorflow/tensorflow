@@ -171,7 +171,11 @@ void HloShapeMatcher::DescribeTo(std::ostream* os) const {
 bool HloShapeAndLayoutMatcher::MatchAndExplain(
     const HloInstruction* instruction,
     ::testing::MatchResultListener* listener) const {
-  if (ShapeUtil::Equal(instruction->shape(), shape_)) {
+  auto compare = Shape::Equal();
+  if (minor_to_major_only_) {
+    compare.MinorToMajorOnlyInLayout();
+  }
+  if (compare(instruction->shape(), shape_)) {
     return true;
   }
   *listener << instruction->ToString() << " has incorrect shape (expected: "
@@ -291,6 +295,25 @@ void HloAsyncCopyMatcher::DescribeTo(std::ostream* os) const {
   HloMatcher::DescribeTo(os);
   *os << " (copy from memory space " << from_space_ << " to " << to_space_
       << ")";
+}
+
+bool HloConstantMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (!HloMatcher::MatchAndExplain(instruction, listener)) {
+    return false;
+  }
+  if (instruction->literal() != literal_) {
+    *listener << " has wrong value (got " << instruction->literal().ToString()
+              << ", want " << literal_.ToString() << ")";
+    return false;
+  }
+  return true;
+}
+
+void HloConstantMatcher::DescribeTo(std::ostream* os) const {
+  HloMatcher::DescribeTo(os);
+  *os << " (has value " << literal_.ToString() << ")";
 }
 
 }  // namespace testing

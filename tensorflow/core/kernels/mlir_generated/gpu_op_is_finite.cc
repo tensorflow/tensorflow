@@ -16,15 +16,15 @@ limitations under the License.
 #include <complex>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/mlir_generated/gpu_ops_base.h"
+#include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
 
-GENERATE_UNARY_KERNEL2(IsFinite, f16, DT_BOOL, bool, Eigen::half);
-REGISTER_KERNEL(IsFinite, f16, Eigen::half);
-GENERATE_UNARY_KERNEL2(IsFinite, f32, DT_BOOL, bool, float);
-REGISTER_KERNEL(IsFinite, f32, float);
-GENERATE_UNARY_KERNEL2(IsFinite, f64, DT_BOOL, bool, double);
-REGISTER_KERNEL(IsFinite, f64, double);
+GENERATE_UNARY_GPU_KERNEL2(IsFinite, DT_HALF, DT_BOOL);
+REGISTER_GPU_KERNEL(IsFinite, DT_HALF, DT_BOOL);
+GENERATE_UNARY_GPU_KERNEL2(IsFinite, DT_FLOAT, DT_BOOL);
+REGISTER_GPU_KERNEL(IsFinite, DT_FLOAT, DT_BOOL);
+GENERATE_UNARY_GPU_KERNEL2(IsFinite, DT_DOUBLE, DT_BOOL);
+REGISTER_GPU_KERNEL(IsFinite, DT_DOUBLE, DT_BOOL);
 
 }  // namespace tensorflow

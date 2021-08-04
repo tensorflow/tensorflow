@@ -5,7 +5,7 @@ load("//tensorflow/core/platform:build_config.bzl", "if_llvm_aarch64_available",
 
 package(
     default_visibility = ["//visibility:private"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Don't depend on this directly; this is only used for the benchmark test

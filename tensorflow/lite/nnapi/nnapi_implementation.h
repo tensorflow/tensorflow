@@ -19,11 +19,18 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <memory>
+
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 
 struct NnApi {
   bool nnapi_exists;
   int32_t android_sdk_version;
+  // NNAPI feature level should be used when deciding which NNAPI feature to
+  // use, as feature levels after Android API level 31 have no association with
+  // API level because the NNAPI specification can be updated between Android
+  // API releases.
+  int64_t nnapi_runtime_feature_level;
 
   /**
    * Creates a shared memory object from a file descriptor.
@@ -1316,7 +1323,7 @@ struct NnApi {
    */
   int (*ANeuralNetworksMemoryDesc_addInputRole)(
       ANeuralNetworksMemoryDesc* desc,
-      const ANeuralNetworksCompilation* compilation, int32_t index,
+      const ANeuralNetworksCompilation* compilation, uint32_t index,
       float frequency);
 
   /**
@@ -1657,6 +1664,126 @@ struct NnApi {
       const ANeuralNetworksEvent* const* dependencies,
       uint32_t num_dependencies, uint64_t duration,
       ANeuralNetworksEvent** event);
+
+  /**
+   * Specifies whether the {@link ANeuralNetworksExecution} is able to accept
+   * padded input and output buffers and memory objects.
+   *
+   * By default, the input and output buffers and memory objects of {@link
+   * ANeuralNetworksExecution} do not allow padding.
+   *
+   * Setting the execution to accept padded input and output buffers and memory
+   * objects enables the length argument of {@link
+   * ANeuralNetworksExecution_setInput},
+   * {@link ANeuralNetworksExecution_setInputFromMemory}, {@link
+   * ANeuralNetworksExecution_setOutput}, and {@link
+   * ANeuralNetworksExecution_setOutputFromMemory} to be greater than the raw
+   * size of the operand (i.e. the size of an element multiplied by the number
+   * of elements). The extra bytes at the end of the buffer or memory region may
+   * be used by the driver to access data in chunks, for efficiency.
+   *
+   * This method must not be called after {@link
+   * ANeuralNetworksExecution_setInput},
+   * {@link ANeuralNetworksExecution_setInputFromMemory}, {@link
+   * ANeuralNetworksExecution_setOutput}, or {@link
+   * ANeuralNetworksExecution_setOutputFromMemory}.
+   *
+   * See {@link ANeuralNetworksExecution} for information on multithreaded
+   * usage.
+   *
+   * @param execution The execution to be modified.
+   * @param enable 'true' if the execution is to be able to accept padded input
+   * and output buffers and memory objects, 'false' if not.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   *         ANEURALNETWORKS_UNEXPECTED_NULL if execution is NULL.
+   *         ANEURALNETWORKS_BAD_STATE if {@link
+   * ANeuralNetworksExecution_setInput},
+   *         {@link ANeuralNetworksExecution_setInputFromMemory},
+   *         {@link ANeuralNetworksExecution_setOutput}, or
+   *         {@link ANeuralNetworksExecution_setOutputFromMemory} has been
+   * called on the execution.
+   *
+   * Available since API level 31.
+   */
+  int (*ANeuralNetworksExecution_enableInputAndOutputPadding)(
+      ANeuralNetworksExecution* execution, bool enable);
+
+  /**
+   * Specifies whether the {@link ANeuralNetworksExecution} can be reused for
+   * multiple computations.
+   *
+   * By default, the {@link ANeuralNetworksExecution} is not reusable.
+   *
+   * Setting the execution to be reusable enables multiple computations to be
+   * scheduled and evaluated on the same execution sequentially, either by means
+   * of
+   * {@link ANeuralNetworksExecution_burstCompute}, {@link
+   * ANeuralNetworksExecution_compute},
+   * {@link ANeuralNetworksExecution_startCompute} or
+   * {@link ANeuralNetworksExecution_startComputeWithDependencies}.
+   *
+   * This function may only be invoked when the execution is in the preparation
+   * state.
+   *
+   * See {@link ANeuralNetworksExecution} for information on execution states
+   * and multithreaded usage.
+   *
+   * @param execution The execution to be modified.
+   * @param reusable 'true' if the execution is to be reusable, 'false' if not.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   *         ANEURALNETWORKS_UNEXPECTED_NULL if execution is NULL.
+   *         ANEURALNETWORKS_BAD_STATE if the execution is not in the
+   * preparation state.
+   *
+   * Available since API level 31.
+   */
+  int (*ANeuralNetworksExecution_setReusable)(
+      ANeuralNetworksExecution* execution, bool reusable);
+
+  /**
+   * Get the NNAPI runtime feature level.
+   *
+   * Since API level 31 (NNAPI feature level 5), the NNAPI runtime
+   * (libneuralnetworks.so) and its API specification can be updated between
+   * Android API releases.
+   *
+   * On Android devices with API level 31 and newer, for NNAPI runtime feature
+   * discovery, the NNAPI runtime feature level must be used instead of the
+   * Android device API level.
+   *
+   * On Android devices with API level 30 and older, the Android API level of
+   * the Android device must be used for NNAPI runtime feature discovery. Enum
+   * values in
+   * {@link FeatureLevelCode} from feature level 1 to 5 have their corresponding
+   * Android API levels listed in their documentation, and each such enum value
+   * equals the corresponding API level. This allows using the Android API level
+   * as the feature level. This mapping between enum value and Android API level
+   * does not exist for feature levels after NNAPI feature level 5 and API
+   * levels after S (31).
+   *
+   * Example usage:
+   * int device_api_level = android_get_device_api_level();
+   * int64_t runtime_feature_level = (device_api_level < __ANDROID_API_S__) ?
+   *                                  device_api_level :
+   * ANeuralNetworks_getRuntimeFeatureLevel();
+   *
+   * Runtime feature level is closely related to NNAPI device feature level
+   * ({@link ANeuralNetworksDevice_getFeatureLevel}), which indicates an NNAPI
+   * device feature level (the most advanced NNAPI specification and features
+   * that the driver implements). This function expresses NNAPI runtime feature
+   * level, which indicates the most advanced NNAPI specification and features
+   * the runtime implements. An NNAPI device feature level is always less than
+   * or equal to the runtime feature level.
+   *
+   * This function returns a {@link FeatureLevelCode} enum value,
+   * which is the NNAPI specification version that this NNAPI runtime
+   * implements. It is NOT an Android API level.
+   *
+   * Available since NNAPI feature level 5.
+   */
+  int64_t (*ANeuralNetworks_getRuntimeFeatureLevel)();
 };
 
 /**
@@ -1665,5 +1792,23 @@ struct NnApi {
  * exist, a null pointer is stored.
  */
 const NnApi* NnApiImplementation();
+
+// Forward declaration for CreateNnApiFromSupportLibrary below.
+struct NnApiSLDriverImplFL5;
+
+/**
+ * Allocate a new NnApi structure instance and fill it with function pointers
+ * from NnApiSLDriverImplFL5 instance. Functions that are not present in the
+ * support library are assigned null pointers.
+ *
+ * The NN API Support Library Driver must support at least NNAPI Feature Level 5
+ * (introduced in SDK level 31), but this might point to a compatible struct
+ * that also supports a higher NNAPI Feature Level. These cases can be
+ * distinguished by examining the base.implFeatureLevel field, which should be
+ * set to the supported feature level (which must be >=
+ * ANEURALNETWORKS_FEATURE_LEVEL_5).
+ */
+std::unique_ptr<const NnApi> CreateNnApiFromSupportLibrary(
+    const NnApiSLDriverImplFL5* nnapi_support_library_driver);
 
 #endif  // TENSORFLOW_LITE_NNAPI_NNAPI_IMPLEMENTATION_H_

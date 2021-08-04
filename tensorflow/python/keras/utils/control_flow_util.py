@@ -12,15 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Utility functions for control flow.
 
 This file is copied from tensorflow/python/ops/control_flow_util.py.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module

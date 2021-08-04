@@ -46,6 +46,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/slice.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/softmax.h"
+#include "tensorflow/lite/delegates/gpu/gl/kernels/space_to_depth.h"
+#include "tensorflow/lite/delegates/gpu/gl/kernels/tile.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/transpose_conv.h"
 
 #ifndef TFLITE_GPU_BINARY_RELEASE
@@ -79,6 +81,7 @@ class Registry : public NodeShader {
     insert_op(Type::CONVOLUTION_2D, NewConvolutionNodeShader);
     insert_op(Type::CONVOLUTION_TRANSPOSED, NewConvolutionTransposedNodeShader);
     insert_op(Type::DEPTHWISE_CONVOLUTION, NewDepthwiseConvolutionNodeShader);
+    insert_op(Type::DEPTH_TO_SPACE, NewDepthToSpaceNodeShader);
     insert_op(Type::FULLY_CONNECTED, NewFullyConnectedNodeShader);
     insert_op(Type::LSTM, NewLstmNodeShader);
     insert_op(Type::MEAN, NewMeanNodeShader);
@@ -94,6 +97,8 @@ class Registry : public NodeShader {
     insert_op(Type::RESHAPE, NewReshapeNodeShader);
     insert_op(Type::SLICE, NewSliceNodeShader);
     insert_op(Type::SOFTMAX, NewSoftmaxNodeShader);
+    insert_op(Type::SPACE_TO_DEPTH, NewSpaceToDepthNodeShader);
+    insert_op(Type::TILE, NewTileNodeShader);
 
     insert_elementwise_op(Type::ABS);
     insert_elementwise_op(Type::COPY);
@@ -101,6 +106,9 @@ class Registry : public NodeShader {
     insert_elementwise_op(Type::DIV);
     insert_elementwise_op(Type::ELU);
     insert_elementwise_op(Type::EXP);
+    insert_elementwise_op(Type::FLOOR);
+    insert_elementwise_op(Type::FLOOR_DIV);
+    insert_elementwise_op(Type::FLOOR_MOD);
     insert_elementwise_op(Type::HARD_SWISH);
     insert_elementwise_op(Type::LOG);
     insert_elementwise_op(Type::NEG);

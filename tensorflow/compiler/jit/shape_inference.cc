@@ -36,7 +36,7 @@ Status ShapeHandleToTensorShape(shape_inference::InferenceContext* context,
   if (!context->RankKnown(handle)) return Status::OK();
 
   std::vector<int64> dims(context->Rank(handle));
-  for (int32 i = 0, end = dims.size(); i < end; ++i) {
+  for (int32_t i = 0, end = dims.size(); i < end; ++i) {
     dims[i] = context->Value(context->Dim(handle, i));
   }
   return PartialTensorShape::MakePartialShape(dims.data(), dims.size(), shape);
@@ -270,8 +270,8 @@ Status InferShapes(Graph* graph, const std::map<int, InferredShape>& arg_shapes,
   return StoreOutputShapes(*graph, shape_refiner, shape_info);
 }
 
-xla::StatusOr<InferredShape> MergeInferredShapes(const InferredShape& a,
-                                                 const InferredShape& b) {
+StatusOr<InferredShape> MergeInferredShapes(const InferredShape& a,
+                                            const InferredShape& b) {
   InferredShape result;
   TF_RETURN_IF_ERROR(a.shape.MergeWith(b.shape, &result.shape));
 

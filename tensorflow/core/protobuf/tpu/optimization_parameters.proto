@@ -63,6 +63,20 @@ message AdagradParameters {
   reserved 1;
 }
 
+// This optimizer combines the Adagrad and Momentum update rules.
+// accum(new) = accum(old) + grad^2
+// mom_accum(new) = momentum * mom_accum(old) + accum(new)^(-1.0 / exponent)
+// update = use_nesterov ?
+//          momentum * mom_accum(new) + accum(new)^(-1.0 / exponent) :
+//          mom_accum(new)
+// var(new) = var(old) - lr * grad * update
+// Algorithm described in https://arxiv.org/abs/2002.11803.
+message AdagradMomentumParameters {
+  float momentum = 1;
+  bool use_nesterov = 2;
+  float exponent = 3;
+}
+
 // Algorithm in http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.
 message BoundedAdagradParameters {
   // Whether to use the updated or the old value of the accumulator when
@@ -339,12 +353,14 @@ message FrequencyEstimatorParameters {
 // called on each row that needs an update and will applied elementwise.
 message UserDefinedProgramParameters {
   xla.HloModuleProto program = 1;
-  // Padding values for the parameter and the slots, see
-  // StateVariableSpecification.padding_initial_value below for more details on
-  // how this should be set. One value is needed for the weights and one for
-  // each slot.
-  repeated float padding_values = 2;
+  reserved 2;  // Was padding_values
 }
+
+// Optimizer that just sets the variable to the value of the gradient. To be
+// correct, this requires either gradient accumulation (to sum the values of a
+// computed expression across the samples) or to deduplicate IDs within a single
+// host (to assign the value from an arbitrary sample).
+message AssignParameters {}
 
 // Status of using gradient accumulation (doing two passes over the input
 // gradients: one to accumulate them into a temporary array and another to apply
@@ -411,6 +427,7 @@ message OptimizationParameters {
   // algorithm to use.
   oneof parameters {
     AdagradParameters adagrad = 3;
+    AdagradMomentumParameters adagrad_momentum = 26;
     BoundedAdagradParameters bounded_adagrad = 19;
     StochasticGradientDescentParameters stochastic_gradient_descent = 4;
     FtrlParameters ftrl = 5;
@@ -425,6 +442,7 @@ message OptimizationParameters {
     ProximalYogiParameters proximal_yogi = 21;
     FrequencyEstimatorParameters frequency_estimator = 23;
     UserDefinedProgramParameters user_defined_program = 24;
+    AssignParameters assign = 25;
   }
 
   reserved 15;  // Old use_gradient_accumulation.
@@ -440,20 +458,7 @@ message StateVariableSpecification {
   // A normal state variable that should be saved and restored in checkpoints
   // and used as an input or output to non-debug TensorFlow ops.
   message UserDefined {
-    // For padding embedding rows, this field specifies the initial value to be
-    // used. Separate initial values need to be specified for the embeddings and
-    // any extra accumulators. The initial values should be specified so as to
-    // maintain two invariants during model training:
-    // (1) The embedding vector multiplied by zero returns a vector containing
-    //     all zeros. To maintain this invariant, the embedding values should
-    //     never be NaNs or +-infinity.
-    // (2) Repeatedly applying the optimizer using a gradient vector of all
-    //     zeros does not cause the embeddings or slot variables to become NaNs
-    //     or +-infinity.
-    // The padding row is looked up when no embedding IDs are present for a
-    // feature. The semantics of embedding lookup dictate that the output must
-    // be zero under this scenario.
-    double padding_initial_value = 1;
+    reserved 1;  // Was padding_initial_value.
   }
 
   // A state variable that should be filled with a constant and normally hidden

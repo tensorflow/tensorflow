@@ -31,13 +31,14 @@ export PATH=$PATH:/usr/local/bin
 
 ./tensorflow/tools/ci_build/update_version.py --nightly
 
-# Run configure.
-export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python3.8)
-yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Build the pip package
-bazel build --config=release_cpu_macos tensorflow/tools/pip_package:build_pip_package
+bazel build \
+  --config=release_cpu_macos \
+  --repo_env=PYTHON_BIN_PATH="$PYTHON_BIN_PATH" \
+  tensorflow/tools/pip_package:build_pip_package
+
 mkdir pip_pkg
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --cpu --nightly_flag
 
@@ -57,6 +58,7 @@ for f in $(ls pip_pkg/tf_nightly*dev*macosx*.whl); do
   # Upload the PIP package if whl test passes.
   if [ ${RETVAL} -eq 0 ]; then
     echo "Basic PIP test PASSED, Uploading package: ${f}"
+    python -m pip install twine
     python -m twine upload -r pypi-warehouse "${f}"
   else
     echo "Basic PIP test FAILED, will not upload ${f} package"

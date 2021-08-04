@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -184,27 +185,28 @@ absl::Status CreateCLBuffer(cl_context context, int size_in_bytes,
   return absl::OkStatus();
 }
 
-cl_channel_type DataTypeToChannelType(DataType type, bool normalized) {
-  switch (type) {
-    case DataType::FLOAT32:
-      return CL_FLOAT;
-    case DataType::FLOAT16:
-      return CL_HALF_FLOAT;
-    case DataType::INT8:
-      return normalized ? CL_SNORM_INT8 : CL_SIGNED_INT8;
-    case DataType::UINT8:
-      return normalized ? CL_UNORM_INT8 : CL_UNSIGNED_INT8;
-    case DataType::INT16:
-      return normalized ? CL_SNORM_INT16 : CL_SIGNED_INT16;
-    case DataType::UINT16:
-      return normalized ? CL_UNORM_INT16 : CL_UNSIGNED_INT16;
-    case DataType::INT32:
-      return CL_SIGNED_INT32;
-    case DataType::UINT32:
-      return CL_UNSIGNED_INT32;
-    default:
-      return CL_FLOAT;
+absl::Status CreateCLSubBuffer(cl_context context, cl_mem parent,
+                               size_t origin_in_bytes, size_t size_in_bytes,
+                               bool read_only, cl_mem* result) {
+  cl_mem_flags flags = read_only ? CL_MEM_READ_ONLY : CL_MEM_READ_WRITE;
+
+  cl_buffer_region region{};
+  region.origin = origin_in_bytes;
+  region.size = size_in_bytes;
+
+  cl_int error_code;
+  if (!clCreateSubBuffer) {
+    return absl::InternalError("clCreateSubBuffer is not supported.");
   }
+  *result = clCreateSubBuffer(parent, flags, CL_BUFFER_CREATE_TYPE_REGION,
+                              &region, &error_code);
+
+  if (!*result) {
+    return absl::UnknownError(
+        absl::StrCat("Failed to allocate device memory (clCreateSubBuffer): ",
+                     CLErrorCodeToString(error_code)));
+  }
+  return absl::OkStatus();
 }
 
 absl::Status CreateRGBAImage2D(cl_context context, int width, int height,

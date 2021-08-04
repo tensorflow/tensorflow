@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -33,21 +32,97 @@ namespace xla {
 
 enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
 
+// Attempts to match instruction to one of the possible cases for ReductionKind.
+absl::optional<ReductionKind> MatchReductionInstruction(
+    const HloInstruction* hlo);
+
 // Attempts to match computation to one of the possible cases in ReductionKind.
 absl::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
-// Figures out which replicas are participating in the collective subgroup.
-// An empty `replica_groups` indicates that all replicas are participating.
-StatusOr<std::vector<int>> GetParticipatingReplicas(
-    int replica_id, int total_replica_count,
-    absl::Span<const ReplicaGroup> replica_groups);
+// Figures out which IDs are participating in the collective subgroup.
+// An empty `groups` indicates that all [0, total_participant_count) IDs
+// are participating. Note that for CollectiveOpGroupMode::kFlattenedID,
+// groups cannot be empty, so `total_participant_count` is an optional.
+StatusOr<std::vector<int>> GetParticipatingIDs(
+    int current_id, absl::optional<int> total_participant_count,
+    absl::Span<const ReplicaGroup> groups);
+
+// There are broadly 4 modes that collective communication ops use to describe
+// which sets of devices are participating with a given device in the operation.
+// These modes are determined by the values of channel_id (optional) and
+// use_global_device_ids (optional). The modes are as follows:
+//
+// kCrossReplica:
+//    implied by: no channel id, use_global_device_ids = false, or
+//                no channel_id, no use_global_device_ids:
+//    replica_groups contain replica_id, group contains all replicas for the
+//    current partition
+//
+// kCrossPartition:
+//    implied by: channel_id is set, no use_global_device_ids:
+//    replica_groups contain partition_id, group contains all partitions for the
+//    current replica.
+//
+// kCrossReplicaAndPartition:
+//    implied by: channel_id is set, use_global_device_ids = false:
+//    replica_groups contain replica_id, group contains all replicas for all
+//    partitions (as opposed to just current partition).
+//
+// kFlattenedID:
+//    implied by: channel_id is set, use_global_device_ids = true:
+//    replica_groups contain flattened-ids, group contains devices that are
+//    listed in the flattened-id list.
+//
+// Rest of the combinations are invalid.
+//
+// Since the actual value of channel_id does not matter, we use a bool argument
+// `has_channel_id`, and optional<bool> for use_global_device_ids.
+// Note that use_global_device_ids true requires channel_id to be set as well.
+// Additionally, if use_global_device_ids = true, replica groups cannot be
+// empty (verified in the HLO verifier).
+enum class CollectiveOpGroupMode {
+  kCrossReplica,
+  kCrossPartition,
+  kCrossReplicaAndPartition,
+  kFlattenedID,
+};
+
+absl::string_view CollectiveOpGroupModeToString(
+    CollectiveOpGroupMode group_mode);
+
+// Returns the group formation mode implied by (a) whether the operation has
+// channel_id and (b) if it has use_global_device_ids and if yes, its value.
+StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
+    bool has_channel_id, absl::optional<bool> use_global_device_ids);
+
+// Figures out subgroups of participating devices from given replica_groups and
+// group_mode.
+//
+// Returns list of participants, where each participant is a list of
+// GlobalDeviceIds.
+//
+// For example:
+//   device_assignment={{33, 34}, {44, 45}, {55, 56}}  3 replicas 2 partitions
+//   group_mode=CollectiveOpGroupMode::kCrossReplica
+//   replica_groups={{0}, {1, 2}}
+//
+//   This functions returns {{33, 34}, {44, 45, 55, 56}}
+//   There are 2 subgroups of participating devices {33, 34}, {44, 45, 55, 56}.
+StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
+                              absl::Span<const ReplicaGroup> replica_groups,
+                              CollectiveOpGroupMode group_mode);
 
 // Figures out which devices are participating in the collective subgroup.
-// An empty `replica_groups` indicates that all replicas are participating.
 StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     GlobalDeviceId device_id, const DeviceAssignment& device_assignment,
-    int total_replica_count, absl::Span<const ReplicaGroup> replica_groups);
+    absl::Span<const ReplicaGroup> replica_groups,
+    CollectiveOpGroupMode group_mode);
+
+// Returns true if the two replica group are orthogonal.
+bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
+                             absl::Span<const ReplicaGroup> second);
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
@@ -81,7 +156,7 @@ struct RendezvousKey {
   explicit RendezvousKey(const RunId& run_id,
                          std::vector<GlobalDeviceId> global_devices,
                          int num_local_participants,
-                         CollectiveOpKind collective_op_kind, int64 op_id)
+                         CollectiveOpKind collective_op_kind, int64_t op_id)
       : run_id(run_id),
         global_devices(std::move(global_devices)),
         num_local_participants(num_local_participants),
@@ -104,12 +179,21 @@ struct RendezvousKey {
     return !(a == b);
   }
 
+  absl::string_view CollectiveOpKindString() const {
+    switch (collective_op_kind) {
+      case kCrossModule:
+        return "cross_module";
+      case kCrossReplica:
+        return "cross_replica";
+    }
+  }
+
   string ToString() const {
     return absl::StrFormat(
         "RendezvousKey{run_id=%s, global_devices=[%s], "
-        "num_local_participants=%d, collective_op_kind=%d, op_id=%d}",
+        "num_local_participants=%d, collective_op_kind=%s, op_id=%d}",
         run_id.ToString(), GlobalDeviceIdsToString(global_devices),
-        num_local_participants, static_cast<int>(collective_op_kind), op_id);
+        num_local_participants, CollectiveOpKindString(), op_id);
   }
 
   RunId run_id;
@@ -139,17 +223,12 @@ void WaitAndLogIfStuck(tensorflow::BlockingCounter* counter,
 
 // Participant data for each rendezvous.
 struct ParticipantData {
-  ParticipantData(const RendezvousKey& rendezvous_key, int64 device_ordinal,
-                  se::Stream* stream)
-      : rendezvous_key(rendezvous_key),
-        device_ordinal(device_ordinal),
-        stream(stream) {}
+  explicit ParticipantData(const RendezvousKey& rendezvous_key)
+      : rendezvous_key(rendezvous_key) {}
 
   virtual ~ParticipantData() {}
 
   RendezvousKey rendezvous_key;
-  int64 device_ordinal;
-  se::Stream* stream;
 
   virtual std::string ToString() const = 0;
 };
@@ -157,8 +236,10 @@ struct ParticipantData {
 // Encapsulates parameters to Rendezvous::SubmitParticipant.
 struct AllReduceParticipantData : ParticipantData {
   AllReduceParticipantData(const RendezvousKey& rendezvous_key_p,
-                           int64 device_ordinal_p, se::Stream* stream_p)
-      : ParticipantData(rendezvous_key_p, device_ordinal_p, stream_p) {}
+                           int64_t device_ordinal_p, se::Stream* stream_p)
+      : ParticipantData(rendezvous_key_p),
+        device_ordinal(device_ordinal_p),
+        stream(stream_p) {}
 
   // TODO(b/125951860): We should vet that we're buffer allocating such that
   // source_buffer == destination_buffer if that avoids a NCCL copy (will depend
@@ -170,8 +251,9 @@ struct AllReduceParticipantData : ParticipantData {
     se::DeviceMemoryBase destination_data;
     PrimitiveType primitive_type;
   };
+  int64 device_ordinal;
+  se::Stream* stream;
   std::vector<Buffer> buffers;
-  const gpu::NcclUniqueIdCallback* nccl_unique_id_callback = nullptr;
 
   ReductionKind reduction_kind;
 
@@ -289,9 +371,9 @@ class Rendezvous {
     all_participants_present_.DecrementCount();
     WaitAndLogIfStuck(&all_participants_present_, [&] {
       return absl::StrFormat(
-          "participant for device ordinal %d, stream %p waiting for all "
-          "participants to arrive at rendezvous %s",
-          participant.device_ordinal, participant.stream, key_.ToString());
+          "participant %s waiting for all participants to arrive at rendezvous "
+          "%s",
+          participant.ToString(), key_.ToString());
     });
 
     TF_ASSIGN_OR_RETURN(O output, RunCollectiveOp(participant));

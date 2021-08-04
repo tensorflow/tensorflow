@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python import _pywrap_python_api_dispatcher
+from tensorflow.python.framework import _pywrap_python_api_dispatcher
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops

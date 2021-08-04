@@ -26,6 +26,7 @@ import re
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -43,6 +44,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
@@ -134,13 +136,19 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
   def testEagerDeepCopy(self):
     with context.eager_mode():
       init_value = np.ones((4, 4, 4))
-      variable = resource_variable_ops.ResourceVariable(init_value,
-                                                        name="init")
+      variable = resource_variable_ops.ResourceVariable(
+          init_value,
+          name="init",
+          synchronization=variables.VariableSynchronization.ON_READ,
+          aggregation=variables.VariableAggregation.SUM)
 
       copied_variable = copy.deepcopy(variable)
       self.assertEqual(variable.name, copied_variable.name)
       self.assertEqual(variable.shape, copied_variable.shape)
       self.assertEqual(variable.device, copied_variable.device)
+      self.assertEqual(variable.synchronization,
+                       copied_variable.synchronization)
+      self.assertEqual(variable.aggregation, copied_variable.aggregation)
 
       # The copied variable should have the same value as the original.
       self.assertAllEqual(variable.numpy(), copied_variable.numpy())
@@ -320,7 +328,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     c = constant_op.constant(1.)
     identity = array_ops.identity_n([c, v.handle])
     # TODO(b/137403775): Remove this.
-    custom_gradient.copy_handle_data(v.handle, identity[1])
+    handle_data_util.copy_handle_data(v.handle, identity[1])
 
     g = gradients_impl.gradients(identity[0], [c, v.handle])
     self.assertEqual(g[1].dtype, dtypes.float64)
@@ -1364,7 +1372,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     # NOTE(ebrevdo): shape_and_type lacks append() in some versions of protobuf.
     variant_shape_and_type_data.shape_and_type.extend([
         cpp_shape_inference_pb2.CppShapeInferenceResult.HandleShapeAndType(
-            shape=stored_shape, dtype=stored_dtype)])
+            shape=stored_shape,
+            dtype=stored_dtype,
+            type=full_type_pb2.FullTypeDef())
+    ])
     return variant_shape_and_type_data
 
   @def_function.function

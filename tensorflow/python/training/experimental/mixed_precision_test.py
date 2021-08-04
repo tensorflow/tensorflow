@@ -22,7 +22,6 @@ import os
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -37,14 +36,6 @@ from tensorflow.python.training import gradient_descent as gradient_descent_v1
 from tensorflow.python.training.experimental import loss_scale_optimizer as loss_scale_optimizer_v1
 from tensorflow.python.training.experimental import mixed_precision
 from tensorflow.python.training.experimental import mixed_precision_global_state
-
-
-if tf2.enabled():
-  enable_mixed_precision_graph_rewrite = (
-      mixed_precision.enable_mixed_precision_graph_rewrite)
-else:
-  enable_mixed_precision_graph_rewrite = (
-      mixed_precision.enable_mixed_precision_graph_rewrite_v1)
 
 
 class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
@@ -65,13 +56,13 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
     else:
       del os.environ[self.IGNORE_PERF_VAR]
 
-    mixed_precision.disable_mixed_precision_graph_rewrite()
+    mixed_precision.disable_mixed_precision_graph_rewrite_v1()
     super(MixedPrecisionTest, self).tearDown()
 
   @test_util.run_in_graph_and_eager_modes
   def test_wrap_optimizer(self):
     opt = gradient_descent_v1.GradientDescentOptimizer(1.0)
-    opt = enable_mixed_precision_graph_rewrite(opt, 123.)
+    opt = mixed_precision.enable_mixed_precision_graph_rewrite_v1(opt, 123.)
     self.assertIsInstance(
         opt, loss_scale_optimizer_v1.MixedPrecisionLossScaleOptimizer)
     self.assertEqual(self.evaluate(opt._loss_scale()), 123.)
@@ -79,14 +70,10 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_optimizer_errors(self):
     opt = 1
-    if tf2.enabled():
-      expected_regex = ('"opt" must be an instance of a '
-                        'tf.keras.optimizers.Optimizer, but got')
-    else:
-      expected_regex = ('"opt" must be an instance of a tf.train.Optimizer or '
-                        'a tf.keras.optimizers.Optimizer, but got')
+    expected_regex = ('"opt" must be an instance of a tf.train.Optimizer or '
+                      'a tf.keras.optimizers.Optimizer, but got')
     with self.assertRaisesRegex(ValueError, expected_regex):
-      enable_mixed_precision_graph_rewrite(opt)
+      mixed_precision.enable_mixed_precision_graph_rewrite_v1(opt)
     self.assertFalse(config.get_optimizer_experimental_options()
                      .get('auto_mixed_precision', False))
 
@@ -96,16 +83,34 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, '"opt" must not already be an instance of a '
         'MixedPrecisionLossScaleOptimizer.'):
-      enable_mixed_precision_graph_rewrite(opt)
+      mixed_precision.enable_mixed_precision_graph_rewrite_v1(opt)
     self.assertFalse(config.get_optimizer_experimental_options()
                      .get('auto_mixed_precision', False))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_register_loss_scale_wrapper(self):
+    class MyOptimizer:
+      pass
+
+    class MyLossScaleOptimizer(MyOptimizer):
+
+      def __init__(self, inner_optimizer, loss_scale):
+        self.inner_optimizer = inner_optimizer
+        self.loss_scale = loss_scale
+
+    mixed_precision.register_loss_scale_wrapper(MyOptimizer,
+                                                MyLossScaleOptimizer)
+    opt = MyOptimizer()
+    opt = mixed_precision.enable_mixed_precision_graph_rewrite_v1(opt, 123.)
+    self.assertIsInstance(opt, MyLossScaleOptimizer)
+    self.assertEqual(opt.loss_scale, 123.)
 
   @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   @test_util.disable_tfrt('Grappler rewrite doesn\'t apply to tfrt.')
   def test_grappler_pass_enabled(self):
     opt = gradient_descent_v1.GradientDescentOptimizer(1.0)
-    enable_mixed_precision_graph_rewrite(opt, 123.)
+    mixed_precision.enable_mixed_precision_graph_rewrite_v1(opt, 123.)
 
     var = variables.Variable([[1.0]])
 
@@ -121,7 +126,7 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
       self.assertAlmostEqual(overflow_in_float16().numpy(), 2 ** 20)
 
       # Test disabling mixed precision.
-      mixed_precision.disable_mixed_precision_graph_rewrite()
+      mixed_precision.disable_mixed_precision_graph_rewrite_v1()
       self.assertEqual(f().numpy(), 2 ** 20)
     else:
       with session.Session() as sess:
@@ -137,7 +142,7 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(sess.run(out), float('Inf'))
 
       # Test disabling mixed precision.
-      mixed_precision.disable_mixed_precision_graph_rewrite()
+      mixed_precision.disable_mixed_precision_graph_rewrite_v1()
       with session.Session() as sess:
         out = overflow_in_float16()
         sess.run(var.initializer)
@@ -147,10 +152,10 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_warn_if_session_already_exists(self, mock_warn):
     # Set this to False, so Sessions created in previous tests do not trigger
     # the warning.
-    mixed_precision_global_state.non_mixed_precision_session_created = False
+    mixed_precision_global_state.set_non_mixed_precision_session_created(False)
 
     with session.Session():
-      enable_mixed_precision_graph_rewrite(
+      mixed_precision.enable_mixed_precision_graph_rewrite_v1(
           gradient_descent_v1.GradientDescentOptimizer(1.0))
       mock_warn.assert_any_call(
           'You already have existing Sessions that do not use mixed precision. '
@@ -161,9 +166,9 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_do_not_warn_if_session_does_not_already_exist(self, mock_warn):
     # Set this to False, so Sessions created in previous tests do not trigger
     # the warning.
-    mixed_precision_global_state.non_mixed_precision_session_created = False
+    mixed_precision_global_state.set_non_mixed_precision_session_created(False)
 
-    enable_mixed_precision_graph_rewrite(
+    mixed_precision.enable_mixed_precision_graph_rewrite_v1(
         gradient_descent_v1.GradientDescentOptimizer(1.0))
     with session.Session():
       # Make sure the "You already have existing Sessions" warning was not

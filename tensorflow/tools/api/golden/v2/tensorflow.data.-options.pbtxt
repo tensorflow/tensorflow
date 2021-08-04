@@ -1,8 +1,12 @@
 path: "tensorflow.data.Options"
 tf_class {
-  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.Options\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.options.Options\'>"
   is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
   is_instance: "<type \'object\'>"
+  member {
+    name: "deterministic"
+    mtype: "<type \'property\'>"
+  }
   member {
     name: "experimental_deterministic"
     mtype: "<type \'property\'>"
@@ -24,11 +28,11 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "experimental_stats"
+    name: "experimental_threading"
     mtype: "<type \'property\'>"
   }
   member {
-    name: "experimental_threading"
+    name: "threading"
     mtype: "<type \'property\'>"
   }
   member_method {

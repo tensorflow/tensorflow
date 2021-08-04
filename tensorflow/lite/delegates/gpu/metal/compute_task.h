@@ -23,14 +23,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_arguments.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
@@ -49,8 +47,6 @@ class ComputeTask {
   ComputeTask(const ComputeTask&) = delete;
   ComputeTask& operator=(const ComputeTask&) = delete;
 
-  void Init(std::unique_ptr<ComputeTaskDescriptor>&& task_desc);
-
   void Init(std::unique_ptr<GPUOperation>&& operation);
 
   const OperationDef& GetDefinition() const;
@@ -61,15 +57,7 @@ class ComputeTask {
   absl::Status Compile(MetalDevice* device);
 
   // should be called after changes of inputs/outputs.
-  absl::Status UpdateParams(const GpuInfo& gpu_info,
-                            const std::vector<BHWC>& src_shapes,
-                            const std::vector<BHWC>& dst_shapes);
-
-  absl::Status UpdateTaskParams(const GpuInfo& gpu_info,
-                                const std::vector<BHWC>& src_shapes,
-                                const std::vector<BHWC>& dst_shapes);
-  // should be called after changes of inputs/outputs.
-  absl::Status UpdateOperationParams();
+  absl::Status UpdateParams();
 
   void Encode(id<MTLComputeCommandEncoder> encoder);
 
@@ -80,21 +68,13 @@ class ComputeTask {
   absl::Status Tune(TuningType tuning_type, MetalDevice* device);
 
  private:
-  absl::Status CompileTask(MetalDevice* device);
-  absl::Status CompileOperation(MetalDevice* device);
   absl::Status CompileProgram(MetalDevice* device,
                               CalculationsPrecision precision,
                               const std::string& kernel_code);
 
-  void EncodeTask(id<MTLComputeCommandEncoder> encoder);
-  void EncodeOperation(id<MTLComputeCommandEncoder> encoder);
-
-  std::unique_ptr<ComputeTaskDescriptor> task_desc_ = nullptr;
-  std::unique_ptr<GPUOperation> operation_ = nullptr;
+  std::unique_ptr<GPUOperation> operation_;
   id<MTLComputePipelineState> program_;
   MetalArguments metal_args_;
-  uint3 groups_size_;
-  uint3 groups_count_;
 };
 
 }  // namespace metal

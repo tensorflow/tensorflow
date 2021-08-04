@@ -39,10 +39,10 @@ namespace {
 using absl::nullopt;
 using ::testing::AllOf;
 namespace op = xla::testing::opcode_matchers;
-int64 kMaxCombineCount = 256;
+int64_t kMaxCombineCount = 256;
 
 int64 AllReduceCount(const HloModule& module) {
-  int64 count = 0;
+  int64_t count = 0;
   for (HloComputation* computation : module.computations()) {
     if (computation->IsFusionComputation()) {
       continue;
@@ -65,7 +65,7 @@ HloInstruction* MakeCrossReplicaReductions(
   CHECK_EQ(reductions.size(), sizes_in_kib.size());
   std::vector<HloInstruction*> all_reduces;
   for (int i = 0; i < sizes_in_kib.size(); i++) {
-    int64 size_in_kib = sizes_in_kib[i];
+    int64_t size_in_kib = sizes_in_kib[i];
     HloComputation* reduction = reductions[i];
     auto constant = b->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0(42.3)));
@@ -101,7 +101,7 @@ HloComputation* MakeReduction(const HloOpcode type, HloModule* module) {
 std::vector<ReplicaGroup> CreateReplicaGroups(
     absl::Span<const std::vector<int64>> groups) {
   std::vector<ReplicaGroup> replica_groups(groups.size());
-  for (int64 i = 0; i < groups.size(); ++i) {
+  for (int64_t i = 0; i < groups.size(); ++i) {
     *replica_groups[i].mutable_replica_ids() = {groups[i].begin(),
                                                 groups[i].end()};
   }
@@ -132,7 +132,7 @@ TEST_F(AllReduceCombinerTest, CombineAllReduces) {
   ASSERT_EQ(inputs.size(), root->operands().size());
 
   HloInstruction* combined = nullptr;
-  for (int64 i = 0; i < root->operands().size(); ++i) {
+  for (int64_t i = 0; i < root->operands().size(); ++i) {
     HloInstruction* hlo = root->mutable_operand(i);
     ASSERT_TRUE(hlo->opcode() == HloOpcode::kGetTupleElement);
     EXPECT_EQ(hlo->tuple_index(), i);
@@ -346,7 +346,7 @@ ENTRY entry {
   EXPECT_TRUE(changed);
 }
 
-TEST_F(AllReduceCombinerTest, DoNotCombineCrossShardAndCrosReplicaInSPMD) {
+TEST_F(AllReduceCombinerTest, DoNotCombineCrossShardAndCrossReplicaInSPMD) {
   const char* const hlo_string = R"(
 HloModule Module
 
@@ -415,16 +415,13 @@ ENTRY entry {
   EXPECT_EQ(AllReduceCount(*module), 2);
   EXPECT_TRUE(changed);
 
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      op::Add(op::Domain(op::GetTupleElement(
-                  AllOf(op::AllReduce(op::Parameter(0), op::Parameter(0)),
-                        op::Shape("(f32[128], f32[128])")),
-                  1)),
-              op::GetTupleElement(
-                  AllOf(op::AllReduce(op::Parameter(1), op::Parameter(1)),
-                        op::Shape("(f32[128], f32[128])")),
-                  0)));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Add(op::Domain(op::GetTupleElement(AllOf(
+                          op::AllReduce(op::Parameter(0), op::Parameter(0)),
+                          op::Shape("(f32[128], f32[128])")))),
+                      op::GetTupleElement(AllOf(
+                          op::AllReduce(op::Parameter(1), op::Parameter(1)),
+                          op::Shape("(f32[128], f32[128])")))));
 }
 
 TEST_F(AllReduceCombinerTest, CrossCombineGroupCycle) {

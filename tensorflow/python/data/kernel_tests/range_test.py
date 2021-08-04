@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -141,6 +142,22 @@ class RangeTest(test_base.DatasetTestBase, parameterized.TestCase):
         start, stop, step, dtype=output_type.as_numpy_dtype)
     self.assertDatasetProduces(dataset, expected_output=expected_output)
     self.assertEqual(output_type, dataset_ops.get_legacy_output_types(dataset))
+
+
+class RangeCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                          parameterized.TestCase):
+
+  def _build_range_dataset(self, start, stop):
+    return dataset_ops.Dataset.range(start, stop)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    start = 2
+    stop = 10
+    verify_fn(self, lambda: self._build_range_dataset(start, stop),
+              stop - start)
 
 
 if __name__ == "__main__":

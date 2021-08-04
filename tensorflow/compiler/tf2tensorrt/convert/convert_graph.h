@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -46,6 +47,7 @@ struct ConversionParams {
   int max_cached_engines = 1;
   bool use_calibration = true;
   bool use_implicit_batch = true;
+  ProfileStrategy profile_strategy = ProfileStrategy::kRange;
   bool allow_build_at_runtime = true;
 };
 

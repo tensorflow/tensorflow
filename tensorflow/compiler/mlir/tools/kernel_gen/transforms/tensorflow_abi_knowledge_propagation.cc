@@ -141,7 +141,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
           // Add the no_alias attribute to the corresponding pointer.
           kernel.setArgAttr(kernel_p + 1,
                             LLVM::LLVMDialect::getNoAliasAttrName(),
-                            b.getBoolAttr(true));
+                            b.getUnitAttr());
         }
         // Advance base, aligned, offset, strides and sizes many arguments.
         kernel_p += memref.getRank() * 2 + 3;
@@ -154,7 +154,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
     while (!worklist.empty()) {
       Value candidate = worklist.pop_back_val();
       for (auto user : candidate.getUsers()) {
-        if (isa<MemRefCastOp, MemRefReshapeOp>(user)) {
+        if (isa<memref::CastOp, memref::ReshapeOp>(user)) {
           // Reshape and Cast propagate alignment, offset and innermost stride.
           // TODO(herhut): This should be a trait.
           Value result = user->getResult(0);
@@ -170,7 +170,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
           }
           worklist.push_back(result);
         }
-        if (auto cast = dyn_cast<MemRefReinterpretCastOp>(user)) {
+        if (auto cast = dyn_cast<memref::ReinterpretCastOp>(user)) {
           // Check that we have offset 0.
           Value result = cast.result();
           if (!cast.isDynamicOffset(0) && cast.getStaticOffset(0) == 0) {

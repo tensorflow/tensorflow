@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -32,7 +33,8 @@ namespace TF {
 // Verifies if 'ref_type' is a REF type corresponding to 'type'.
 static inline LogicalResult VerifyRefTypeMatch(mlir::Type type,
                                                mlir::Type maybe_ref_type) {
-  if (auto ref_type = maybe_ref_type.dyn_cast<mlir::TF::TensorFlowRefType>())
+  if (auto ref_type =
+          maybe_ref_type.dyn_cast<mlir::tf_type::TensorFlowRefType>())
     return success(ref_type.RemoveRef().getTypeID() == type.getTypeID());
   return failure();
 }
@@ -52,12 +54,12 @@ class OperandsSameAsResultsTypeOrRef
     // Verify that the first result type is same as the rest of the results.
     // We skip the comparison against itself.
     for (auto result_type : llvm::drop_begin(op->getResultTypes(), 1)) {
-      if (!mlir::TF::HasCompatibleElementTypes(type, result_type))
+      if (!mlir::tf_type::HasCompatibleElementTypes(type, result_type))
         return op->emitOpError()
                << "requires all return types to have compatible element types";
     }
     for (auto operand_type : op->getOperandTypes()) {
-      if (!mlir::TF::HasCompatibleElementTypes(
+      if (!mlir::tf_type::HasCompatibleElementTypes(
               operand_type, type, /*may_ignore_ref_type_lhs=*/true))
         return op->emitError() << "requires all operands and results to have "
                                   "compatible element types";
@@ -71,25 +73,26 @@ inline LogicalResult verifySameOperandsAndResultElementTypeResolveRef(
     Operation* op) {
   Type element_type;
   if (op->getNumResults() > 0) {
-    element_type =
-        mlir::TF::GetElementTypeOrSelfResolveRef(op->getResult(0).getType());
+    element_type = mlir::tf_type::GetElementTypeOrSelfResolveRef(
+        op->getResult(0).getType());
   } else if (op->getNumOperands() > 0) {
-    element_type =
-        mlir::TF::GetElementTypeOrSelfResolveRef(op->getOperand(0).getType());
+    element_type = mlir::tf_type::GetElementTypeOrSelfResolveRef(
+        op->getOperand(0).getType());
   } else {
     // Nothing to check.
     return success();
   }
   // Verify that all result element types are compatible to `element_type`.
   for (const auto& result_type : op->getResultTypes()) {
-    if (mlir::TF::GetElementTypeOrSelfResolveRef(result_type) != element_type) {
+    if (mlir::tf_type::GetElementTypeOrSelfResolveRef(result_type) !=
+        element_type) {
       return op->emitOpError(
           "requires compatible element types for all operands and results");
     }
   }
   // Verify that all operand element types are compatible to `element_type`.
   for (const auto& operand_type : op->getOperandTypes()) {
-    if (mlir::TF::GetElementTypeOrSelfResolveRef(operand_type) !=
+    if (mlir::tf_type::GetElementTypeOrSelfResolveRef(operand_type) !=
         element_type) {
       return op->emitOpError(
           "requires compatible element types for all operands and results");
@@ -155,6 +158,26 @@ class CwiseBinary : public TraitBase<ConcreteType, CwiseBinary> {};
 // Coefficient-wise unary operation, for example tf.Sqrt operation.
 template <typename ConcreteType>
 class CwiseUnary : public TraitBase<ConcreteType, CwiseUnary> {};
+
+// Indicates that any returned resource is unique.
+template <typename ConcreteType>
+class UniqueResourceAllocation
+    : public TraitBase<ConcreteType, UniqueResourceAllocation> {
+ public:
+  // Implements method required for `ResourceHandleAllocatorInterface`.
+  llvm::SmallVector<mlir::TF::ResourceHandleValueAndId>
+  GetResourceHandleValueAndIdList(
+      llvm::SmallDenseMap<mlir::TF::ResourceHandle, int64_t>&
+          resource_handle_id_map,
+      int64_t& next_id) {
+    llvm::SmallVector<mlir::TF::ResourceHandleValueAndId> resource_vec;
+    for (Value resource :
+         mlir::tf_type::filter_resources(this->getOperation()->getResults())) {
+      resource_vec.push_back({resource, next_id++});
+    }
+    return resource_vec;
+  }
+};
 
 }  // namespace TF
 }  // namespace OpTrait

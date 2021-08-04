@@ -6,8 +6,11 @@ load(
 )
 
 package(
-    default_visibility = ["//tensorflow/tools/api:__subpackages__"],
-    licenses = ["notice"],  # Apache 2.0
+    default_visibility = [
+        "//tensorflow/tools/api:__subpackages__",
+        "//third_party/py/keras/api:__subpackages__",
+    ],
+    licenses = ["notice"],
 )
 
 tf_proto_library(

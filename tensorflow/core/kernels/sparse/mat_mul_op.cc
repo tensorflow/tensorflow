@@ -53,9 +53,9 @@ namespace tensorflow {
 //
 // Maximum number of shards into which to divide the computation for each CSR
 // Sparse Matrix instance.
-static constexpr int32 kMaxShards = 20;
+static constexpr int32_t kMaxShards = 20;
 // Number of shards allocated to each thread.
-static constexpr int32 kNumShardsPerThread = 3;
+static constexpr int32_t kNumShardsPerThread = 3;
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -124,9 +124,9 @@ class CSRMatMulOp : public OpKernel {
                                      batch_size, ".");
     }
     const auto& a_dense_shape = sparse_matrix_a.dense_shape().vec<int64>();
-    const int64 a_inner_dim =
+    const int64_t a_inner_dim =
         a_dense_shape(this->transpose_a_ ? *rank - 2 : *rank - 1);
-    const int64 b_inner_dim =
+    const int64_t b_inner_dim =
         dense_tensor_b.dim_size(this->transpose_b_ ? *rank - 1 : *rank - 2);
     if (a_inner_dim != b_inner_dim) {
       return errors::InvalidArgument(
@@ -172,15 +172,15 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
     const Tensor& matrix_b = ctx->input(1);
 
     int rank;
-    int64 batch_size;
+    int64_t batch_size;
     OP_REQUIRES_OK(ctx, this->ValidateInputs(*sparse_matrix_a, matrix_b, &rank,
                                              &batch_size));
 
     const auto dense_shape = sparse_matrix_a->dense_shape().vec<int64>();
-    int64 num_lhs_rows = dense_shape(rank - 2);
-    int64 num_lhs_cols = dense_shape(rank - 1);
-    int64 num_rhs_rows = matrix_b.dim_size(rank - 2);
-    int64 num_rhs_cols = matrix_b.dim_size(rank - 1);
+    int64_t num_lhs_rows = dense_shape(rank - 2);
+    int64_t num_lhs_cols = dense_shape(rank - 1);
+    int64_t num_rhs_rows = matrix_b.dim_size(rank - 2);
+    int64_t num_rhs_cols = matrix_b.dim_size(rank - 1);
 
     if (this->transpose_a_) {
       std::swap(num_lhs_rows, num_lhs_cols);
@@ -233,9 +233,9 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
   // transpose_output is True, allocates a temporary buffer with the transposed
   // output. 'matmul_result' points to either output or output_transposed, based
   // on whether transpose_output is True.
-  Status AllocateOutput(OpKernelContext* ctx, const int32 rank,
-                        const int64 batch_size, const int64 num_rows,
-                        const int64 num_cols, const bool transpose_output,
+  Status AllocateOutput(OpKernelContext* ctx, const int32_t rank,
+                        const int64_t batch_size, const int64_t num_rows,
+                        const int64_t num_cols, const bool transpose_output,
                         Tensor** output, Tensor* output_transposed,
                         Tensor** matmul_result) {
     TensorShape output_shape;
@@ -262,18 +262,18 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
   // contiguous segment of rows of the CSR Sparse Matrix.
   Eigen::Ref<const SparseMatrix> GetSparseMatrixRef(
       const CSRSparseMatrix& csr_matrix, const int batch_index,
-      const int64 row_begin, const int64 num_shard_rows,
+      const int64_t row_begin, const int64_t num_shard_rows,
       std::vector<int32>* row_ptrs) {
     // Compute the row pointers of the sparse sub-matrix.
     row_ptrs->resize(num_shard_rows + 1);
-    const int64 row_offset =
+    const int64_t row_offset =
         csr_matrix.row_pointers_vec(batch_index)(row_begin);
-    for (int64 row_idx = 0; row_idx <= num_shard_rows; ++row_idx) {
+    for (int64_t row_idx = 0; row_idx <= num_shard_rows; ++row_idx) {
       row_ptrs->at(row_idx) =
           csr_matrix.row_pointers_vec(batch_index)(row_begin + row_idx) -
           row_offset;
     }
-    const int64 num_cols =
+    const int64_t num_cols =
         csr_matrix.dense_shape().vec<int64>()(csr_matrix.dims() - 1);
     return Eigen::Map<const SparseMatrix>(
         num_shard_rows /* num_rows */, num_cols /* num_cols */,
@@ -284,28 +284,31 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
 
   // Sparse-Dense Matrix Multiplication between a CSRSparseMatrix (LHS) and a
   // dense Tensor (RHS).
-  void SparseDenseMatMulWithoutTransposedLHS(
-      OpKernelContext* ctx, const int64 batch_size, const int64 num_lhs_rows,
-      const CSRSparseMatrix& lhs, const Tensor& rhs, Tensor* output) {
+  void SparseDenseMatMulWithoutTransposedLHS(OpKernelContext* ctx,
+                                             const int64_t batch_size,
+                                             const int64_t num_lhs_rows,
+                                             const CSRSparseMatrix& lhs,
+                                             const Tensor& rhs,
+                                             Tensor* output) {
     // Parallelize matrix multiplication across batch dimensions and across
     // rows in each batch.
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
-    const int32 num_threads = worker_threads.num_threads;
-    const int64 block_size =
+    const int32_t num_threads = worker_threads.num_threads;
+    const int64_t block_size =
         num_lhs_rows / std::max(kMaxShards, kNumShardsPerThread * num_threads);
-    const int64 num_rhs_rows = rhs.dim_size(rhs.dims() - 2);
-    const int64 num_rhs_cols = rhs.dim_size(rhs.dims() - 1);
+    const int64_t num_rhs_rows = rhs.dim_size(rhs.dims() - 2);
+    const int64_t num_rhs_cols = rhs.dim_size(rhs.dims() - 1);
     worker_threads.workers->ParallelFor(
         batch_size * num_lhs_rows /* total */,
         thread::ThreadPool::SchedulingParams(
             thread::ThreadPool::SchedulingStrategy::
                 kFixedBlockSize /* strategy */,
             absl::nullopt /* cost_per_unit */, block_size),
-        [&](int64 batch_and_row_begin, int64 batch_and_row_end) {
+        [&](int64_t batch_and_row_begin, int64_t batch_and_row_end) {
           HandleBatchAndRowRange(
               num_lhs_rows, batch_and_row_begin, batch_and_row_end,
-              [&](int64 batch_idx, int64 row_begin, int64 row_end) {
-                const int64 num_shard_rows = row_end - row_begin;
+              [&](int64_t batch_idx, int64_t row_begin, int64_t row_end) {
+                const int64_t num_shard_rows = row_end - row_begin;
 
                 // Define an Eigen::SparseMatrix over the row range:
                 // [row_begin, row_end) of the CSR SparseMatrix A.
@@ -333,16 +336,16 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
   // Sparse-Dense Matrix Multiplication assuming the CSRSparseMatrix (LHS) is
   // to be transposed before the operation.
   void SparseDenseMatMulWithTransposedLHS(OpKernelContext* ctx,
-                                          const int64 batch_size,
-                                          const int64 num_lhs_rows,
-                                          const int64 num_lhs_cols,
+                                          const int64_t batch_size,
+                                          const int64_t num_lhs_rows,
+                                          const int64_t num_lhs_cols,
                                           const CSRSparseMatrix& lhs,
                                           const Tensor& rhs, Tensor* output) {
     auto device = ctx->eigen_device<CPUDevice>();
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
-    const int32 num_threads = worker_threads.num_threads;
-    const int64 num_rhs_rows = rhs.dim_size(rhs.dims() - 2);
-    const int64 num_rhs_cols = rhs.dim_size(rhs.dims() - 1);
+    const int32_t num_threads = worker_threads.num_threads;
+    const int64_t num_rhs_rows = rhs.dim_size(rhs.dims() - 2);
+    const int64_t num_rhs_cols = rhs.dim_size(rhs.dims() - 1);
     // Usually, we want to avoid transposing the sparse matrix A since it may be
     // an expensive operation. Instead, we use the identity (A^T B) = (B^T A)^T.
     // We don't actually transpose B or the output because it is more convenient
@@ -364,7 +367,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
 
     // Parallelize matrix multiplication across batch dimensions and across
     // columns of A^T in each batch. These correspond to rows of A.
-    const int64 block_size =
+    const int64_t block_size =
         num_lhs_cols / std::max(kMaxShards, kNumShardsPerThread * num_threads);
     worker_threads.workers->ParallelForWithWorkerId(
         batch_size * num_lhs_cols /* total */,
@@ -372,11 +375,11 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
             thread::ThreadPool::SchedulingStrategy::
                 kFixedBlockSize /* strategy */,
             absl::nullopt /* cost_per_unit */, block_size),
-        [&](int64 batch_and_row_begin, int64 batch_and_row_end, int tid) {
+        [&](int64_t batch_and_row_begin, int64_t batch_and_row_end, int tid) {
           HandleBatchAndRowRange(
               num_lhs_cols, batch_and_row_begin, batch_and_row_end,
-              [&](int64 batch_idx, int64 row_begin, int64 row_end) {
-                const int64 num_shard_rows = row_end - row_begin;
+              [&](int64_t batch_idx, int64_t row_begin, int64_t row_end) {
+                const int64_t num_shard_rows = row_end - row_begin;
 
                 // Define a new sparse sub-matrix from the row range
                 // [row_begin, row_end) of the sparse matrix A.
@@ -423,25 +426,25 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
   // fn(batch_idx, row_begin, row_end) for each batch index
   // and the row range [row_begin, row_end) contained in the batch.
   void HandleBatchAndRowRange(
-      const int64 num_rows, const int64 batch_and_row_begin,
-      const int64 batch_and_row_end,
-      const std::function<void(int64, int64, int64)>& fn) {
+      const int64_t num_rows, const int64_t batch_and_row_begin,
+      const int64_t batch_and_row_end,
+      const std::function<void(int64_t, int64_t, int64_t)>& fn) {
     // Obtain the batch indices overlapping with the current shard.
-    const int64 batch_begin = batch_and_row_begin / num_rows;
-    const int64 batch_end_inclusive = batch_and_row_end / num_rows;
+    const int64_t batch_begin = batch_and_row_begin / num_rows;
+    const int64_t batch_end_inclusive = batch_and_row_end / num_rows;
 
-    for (int64 batch_idx = batch_begin; batch_idx <= batch_end_inclusive;
+    for (int64_t batch_idx = batch_begin; batch_idx <= batch_end_inclusive;
          ++batch_idx) {
       // Find the contiguous set of rows which are contained in this shard as
       // well as the current batch. We intersect with interval [batch_idx *
       // num_rows, (batch_idx + 1) * num_rows) which denotes the current batch.
-      const int64 current_batch_row_begin =
+      const int64_t current_batch_row_begin =
           std::max(batch_and_row_begin, batch_idx * num_rows);
-      const int64 current_batch_row_end =
+      const int64_t current_batch_row_end =
           std::min(batch_and_row_end, (batch_idx + 1) * num_rows);
 
-      const int64 row_begin = current_batch_row_begin % num_rows;
-      const int64 num_shard_rows =
+      const int64_t row_begin = current_batch_row_begin % num_rows;
+      const int64_t num_shard_rows =
           current_batch_row_end - current_batch_row_begin;
       // Edge case for when current_batch_row_end is the first index of a new
       // row.
@@ -502,7 +505,7 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
     const Tensor& b_t = ctx->input(1);
 
     int rank;
-    int64 batch_size;
+    int64_t batch_size;
     OP_REQUIRES_OK(ctx,
                    this->ValidateInputs(*a_matrix, b_t, &rank, &batch_size));
 
@@ -513,13 +516,13 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
         ctx, TensorShapeUtils::MakeShape(a_dense_shape, &a_dense_tensor_shape));
 
     const int row_dim = (rank == 2) ? 0 : 1;
-    const int64 a_outer_dim = a_dense_tensor_shape.dim_size(
+    const int64_t a_outer_dim = a_dense_tensor_shape.dim_size(
         this->transpose_a_ ? row_dim + 1 : row_dim);
-    const int64 b_inner_dim =
+    const int64_t b_inner_dim =
         b_t.shape().dim_size(this->transpose_b_ ? row_dim + 1 : row_dim);
-    const int64 b_outer_dim =
+    const int64_t b_outer_dim =
         b_t.dim_size(this->transpose_b_ ? row_dim : row_dim + 1);
-    const int64 b_slice_size = b_inner_dim * b_outer_dim;
+    const int64_t b_slice_size = b_inner_dim * b_outer_dim;
 
     TensorShape c_shape;
     if (rank == 3) c_shape.AddDim(batch_size);
@@ -531,9 +534,9 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
       c_shape.AddDim(b_outer_dim);
     }
 
-    const int64 c_matrix_lhs = c_shape.dim_size(row_dim);
-    const int64 c_matrix_rhs = c_shape.dim_size(row_dim + 1);
-    const int64 c_slice_size = c_matrix_lhs * c_matrix_rhs;
+    const int64_t c_matrix_lhs = c_shape.dim_size(row_dim);
+    const int64_t c_matrix_rhs = c_shape.dim_size(row_dim + 1);
+    const int64_t c_slice_size = c_matrix_lhs * c_matrix_rhs;
     Tensor* c_t;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, c_shape, &c_t));
 
@@ -708,10 +711,8 @@ REGISTER_CPU(complex128)
 
 REGISTER_GPU(float)
 REGISTER_GPU(double)
-#if GOOGLE_CUDA
 REGISTER_GPU(complex64)
 REGISTER_GPU(complex128)
-#endif
 
 #undef REGISTER_GPU
 
@@ -835,7 +836,6 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       gpusparseSpMatDescr_t matA;
       gpusparseDnMatDescr_t matB, matC;
 
-      // NOTE: the following APIs are not available in ROCM
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateCsr(
           &matA, m, k, nnz, const_cast<int*>(a.row_ptr.data()),
           const_cast<int*>(a.col_ind.data()), const_cast<T*>(a.values.data()),
@@ -867,6 +867,44 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnMat(matB));
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnMat(matC));
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroySpMat(matA));
+
+#elif TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 40200
+      // Use SPMM
+      const gpusparseOperation_t transB = HIPSPARSE_OPERATION_TRANSPOSE;
+      gpusparseSpMatDescr_t matA;
+      gpusparseDnMatDescr_t matB, matC;
+
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateCsr(
+          &matA, m, k, nnz, const_cast<int*>(a.row_ptr.data()),
+          const_cast<int*>(a.col_ind.data()), const_cast<T*>(a.values.data()),
+          CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, HIPSPARSE_INDEX_BASE_ZERO,
+          GPUDataType<T>::type));
+
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateDnMat(
+          &matB, n, k, ldb, const_cast<T*>(b.data()), GPUDataType<T>::type,
+          HIPSPARSE_ORDER_COL));
+
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateDnMat(
+          &matC, m, n, ldc, c.data(), GPUDataType<T>::type,
+          HIPSPARSE_ORDER_COL));
+
+      size_t bufferSize = 0;
+      TF_RETURN_IF_ERROR(cuda_sparse.SpMMBufferSize(
+          transA, transB, &alpha, matA, matB, &beta, matC,
+          HIPSPARSE_MM_ALG_DEFAULT, &bufferSize));
+
+      Tensor buffer;
+      TF_RETURN_IF_ERROR(ctx->allocate_temp(
+          DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
+      DCHECK(buffer.flat<int8>().data() != nullptr);
+
+      TF_RETURN_IF_ERROR(cuda_sparse.SpMM(transA, transB, &alpha, matA, matB,
+                                          &beta, matC, CUSPARSE_MM_ALG_DEFAULT,
+                                          buffer.flat<int8>().data()));
+
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseDestroyDnMat(matB));
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseDestroyDnMat(matC));
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseDestroySpMat(matA));
 
 #else
 

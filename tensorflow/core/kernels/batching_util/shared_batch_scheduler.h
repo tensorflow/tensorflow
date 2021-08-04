@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/time/clock.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -345,6 +346,10 @@ class Queue {
   // currently schedulable.
   bool IsOpenBatchSchedulable() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Same as SchedulingCapacity(), but assumes the caller already holds a
+  // lock on 'mu_'.
+  size_t SchedulingCapacityInternal() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   const typename SharedBatchScheduler<TaskType>::QueueOptions options_;
 
   // The environment to use.
@@ -444,7 +449,7 @@ SharedBatchScheduler<TaskType>::~SharedBatchScheduler() {
         break;
       }
     }
-    const int64 kSleepTimeMicros = 100;
+    const int64_t kSleepTimeMicros = 100;
     options_.env->SleepForMicroseconds(kSleepTimeMicros);
   }
   // Delete the batch threads before allowing state the threads may access (e.g.
@@ -574,7 +579,8 @@ void SharedBatchScheduler<TaskType>::ThreadLogic() {
     if (batch_to_process == nullptr) {
       // We couldn't find any work to do. Wait until a new batch becomes
       // schedulable, or some time has elapsed, before checking again.
-      const int64 kTimeoutMillis = 1;  // The smallest accepted granule of time.
+      const int64_t kTimeoutMillis =
+          1;  // The smallest accepted granule of time.
       WaitForMilliseconds(&l, &schedulable_batch_cv_, kTimeoutMillis);
       return;
     }
@@ -594,6 +600,10 @@ Queue<TaskType>::Queue(
       env_(env),
       process_batch_callback_(process_batch_callback),
       schedulable_batch_callback_(schedulable_batch_callback) {
+  // Set the higher 32 bits of traceme_context_id_counter_ to be the creation
+  // time of the queue. This prevents the batches in different queues to have
+  // the same traceme_context_id_counter_.
+  traceme_context_id_counter_ = absl::GetCurrentTimeNanos() << 32;
   // Create an initial, open batch.
   batches_.emplace_back(new Batch<TaskType>);
 }
@@ -691,13 +701,7 @@ Status Queue<TaskType>::ScheduleWithSplit(std::unique_ptr<TaskType>* task) {
 
     DCHECK(!closed_);
 
-    const int num_new_batches_schedulable =
-        options_.max_enqueued_batches - batches_.size();
-    const int open_batch_capacity =
-        max_execution_batch_size - batches_.back()->size();
-    const int scheduling_capacity =
-        (num_new_batches_schedulable * max_execution_batch_size) +
-        open_batch_capacity;
+    const size_t scheduling_capacity = SchedulingCapacityInternal();
 
     // The scenario when concurrent incoming batches arrives and use up all
     // queue capacity isn't covered by unit test.
@@ -710,10 +714,10 @@ Status Queue<TaskType>::ScheduleWithSplit(std::unique_ptr<TaskType>* task) {
           "full");
     }
 
-    const int64 open_batch_remaining_slot =
+    const int64_t open_batch_remaining_slot =
         max_execution_batch_size - batches_.back()->size();
 
-    const int64 input_task_size = (*task)->size();
+    const int64_t input_task_size = (*task)->size();
 
     std::vector<std::unique_ptr<TaskType>> output_tasks;
 
@@ -770,11 +774,17 @@ size_t Queue<TaskType>::NumEnqueuedTasks() const {
 template <typename TaskType>
 size_t Queue<TaskType>::SchedulingCapacity() const {
   mutex_lock l(mu_);
-  const int num_new_batches_schedulable =
+  return SchedulingCapacityInternal();
+}
+
+template <typename TaskType>
+size_t Queue<TaskType>::SchedulingCapacityInternal() const {
+  const int64 num_new_batches_schedulable =
       options_.max_enqueued_batches - batches_.size();
-  const int open_batch_capacity =
-      max_execution_batch_size() - batches_.back()->size();
-  return (num_new_batches_schedulable * max_execution_batch_size()) +
+  const int64 execution_batch_size_limit = max_execution_batch_size();
+  const int64 open_batch_capacity =
+      execution_batch_size_limit - batches_.back()->size();
+  return (num_new_batches_schedulable * execution_batch_size_limit) +
          open_batch_capacity;
 }
 
@@ -810,7 +820,8 @@ void Queue<TaskType>::ProcessBatch(std::unique_ptr<Batch<TaskType>> batch) {
   profiler::TraceMeConsumer trace_me(
       [&] {
         return profiler::TraceMeEncode(
-            "ProcessBatch", {{"batch_size_before_padding", batch->size()}});
+            "ProcessBatch", {{"batch_size_before_padding", batch->size()},
+                             {"_r", 2} /*root_event*/});
       },
       profiler::ContextType::kSharedBatchScheduler,
       batch->traceme_context_id());

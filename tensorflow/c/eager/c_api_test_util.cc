@@ -24,6 +24,9 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/util/port.h"
 
 using tensorflow::string;
 using tensorflow::tstring;
@@ -332,6 +335,69 @@ TFE_Op* MinOp(TFE_Context* ctx, TFE_TensorHandle* input,
   return op;
 }
 
+TFE_Op* AllReduceOp(TFE_Context* ctx, TFE_TensorHandle* in, int group_size) {
+  TF_Status* status = TF_NewStatus();
+
+  TFE_Op* op = TFE_NewOp(ctx, "CollectiveReduce", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpAddInput(op, in, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+
+  TFE_OpSetAttrType(op, "T", TFE_TensorHandleDataType(in));
+  TFE_OpSetAttrInt(op, "group_size", group_size);
+  TFE_OpSetAttrInt(op, "group_key", 123);
+  TFE_OpSetAttrInt(op, "instance_key", 456);
+  TFE_OpSetAttrString(op, "merge_op", "Add", 3);
+  TFE_OpSetAttrString(op, "final_op", "Id", 2);
+  std::vector<int64_t> subdiv_offsets;
+  TFE_OpSetAttrIntList(op, "subdiv_offsets", subdiv_offsets.data(),
+                       subdiv_offsets.size());
+
+  return op;
+}
+
+TFE_Op* SendOp(TFE_Context* ctx, TFE_TensorHandle* in,
+               const std::string& op_name, const std::string& send_device,
+               const std::string& recv_device,
+               tensorflow::uint64 send_device_incarnation) {
+  TF_Status* status = TF_NewStatus();
+  TFE_Op* op = TFE_NewOp(ctx, op_name.c_str(), status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpAddInput(op, in, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+
+  TFE_OpSetAttrType(op, "T", TFE_TensorHandleDataType(in));
+  TFE_OpSetAttrString(op, "tensor_name", "dummy", 5);
+  TFE_OpSetAttrString(op, "send_device", send_device.c_str(),
+                      send_device.size());
+  TFE_OpSetAttrString(op, "recv_device", recv_device.c_str(),
+                      recv_device.size());
+  TFE_OpSetAttrInt(op, "send_device_incarnation", send_device_incarnation);
+
+  return op;
+}
+
+TFE_Op* RecvOp(TFE_Context* ctx, const std::string& op_name,
+               const std::string& send_device, const std::string& recv_device,
+               tensorflow::uint64 send_device_incarnation) {
+  TF_Status* status = TF_NewStatus();
+  TFE_Op* op = TFE_NewOp(ctx, op_name.c_str(), status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+
+  TFE_OpSetAttrType(op, "tensor_type", TF_INT32);
+  TFE_OpSetAttrString(op, "tensor_name", "dummy", 5);
+  TFE_OpSetAttrString(op, "send_device", send_device.c_str(),
+                      send_device.size());
+  TFE_OpSetAttrString(op, "recv_device", recv_device.c_str(),
+                      recv_device.size());
+  TFE_OpSetAttrInt(op, "send_device_incarnation", send_device_incarnation);
+
+  return op;
+}
+
 bool GetDeviceName(TFE_Context* ctx, string* device_name,
                    const char* device_type) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
@@ -374,4 +440,45 @@ tensorflow::ServerDef GetServerDef(const string& job_name, int num_tasks) {
 
 tensorflow::ServerDef GetServerDef(int num_tasks) {
   return GetServerDef("localhost", num_tasks);
+}
+
+tensorflow::ServerDef GetMultiClientServerDef(const std::string& job_name,
+                                              int num_tasks,
+                                              bool fetch_remote_devices,
+                                              int num_virtual_gpus) {
+  tensorflow::ServerDef server_def;
+  server_def.set_protocol("grpc");
+  server_def.set_job_name(job_name);
+  server_def.set_task_index(0);
+  tensorflow::ClusterDef* cluster_def = server_def.mutable_cluster();
+  tensorflow::JobDef* job_def = cluster_def->add_job();
+  job_def->set_name(job_name);
+  for (int i = 0; i < num_tasks; i++) {
+    int port = tensorflow::testing::PickUnusedPortOrDie();
+    job_def->mutable_tasks()->insert(
+        {i, tensorflow::strings::StrCat("localhost:", port)});
+  }
+  auto* config = server_def.mutable_default_session_config();
+  config->mutable_experimental()->set_fetch_remote_devices_in_multi_client(
+      fetch_remote_devices);
+  config->mutable_experimental()->set_collective_group_leader(
+      tensorflow::strings::StrCat("/job:", job_name, "/replica:0/task:", 0));
+  auto* rewrite_options =
+      config->mutable_graph_options()->mutable_rewrite_options();
+  rewrite_options->set_scoped_allocator_optimization(
+      tensorflow::RewriterConfig::ON);
+  rewrite_options->mutable_scoped_allocator_opts()->add_enable_op(
+      "CollectiveReduce");
+
+  if ((tensorflow::IsGoogleCudaEnabled() || tensorflow::IsBuiltWithROCm()) &&
+      num_virtual_gpus > 0) {
+    tensorflow::GPUOptions* gpu_options =
+        server_def.mutable_default_session_config()->mutable_gpu_options();
+    auto virtual_devices =
+        gpu_options->mutable_experimental()->add_virtual_devices();
+    for (int i = 0; i < num_virtual_gpus; ++i) {
+      virtual_devices->add_memory_limit_mb(200);
+    }
+  }
+  return server_def;
 }

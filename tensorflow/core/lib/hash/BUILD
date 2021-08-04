@@ -24,7 +24,7 @@ package(
         # tensorflow/core/framework:tensor depends on hash
         "//tensorflow/core/framework:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Todo(bmzhao): Remaining targets to add to this BUILD file are: all tests.

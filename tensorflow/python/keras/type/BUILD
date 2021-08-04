@@ -2,7 +2,7 @@ load("//tensorflow:tensorflow.bzl", "py_strict_library")
 
 package(
     default_visibility = ["//tensorflow/python/keras:__subpackages__"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -15,7 +15,4 @@ py_strict_library(
     name = "types",
     srcs = ["types.py"],
     srcs_version = "PY3",
-    deps = [
-        "@six_archive//:six",
-    ],
 )

@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA specific pooling ops.
 
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -65,6 +66,9 @@ class PoolingOp : public XlaOpKernel {
     }
     Padding padding;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding));
+    OP_REQUIRES(ctx, padding != EXPLICIT,
+                errors::Unimplemented(
+                    "XLA does not support pooling ops with explicit padding."));
     padding_ = (padding == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
 
     OP_REQUIRES_OK(
@@ -74,7 +78,7 @@ class PoolingOp : public XlaOpKernel {
   int num_dims() const { return num_spatial_dims_ + 2; }
 
  protected:
-  xla::StatusOr<std::vector<int64>> GetKernelSize(XlaOpKernelContext* ctx) {
+  StatusOr<std::vector<int64>> GetKernelSize(XlaOpKernelContext* ctx) {
     if (ctx->num_inputs() == 1) {
       return ksize_;
     }
@@ -98,7 +102,7 @@ class PoolingOp : public XlaOpKernel {
     return ksize;
   }
 
-  xla::StatusOr<std::vector<int64>> GetStride(XlaOpKernelContext* ctx) {
+  StatusOr<std::vector<int64>> GetStride(XlaOpKernelContext* ctx) {
     if (ctx->num_inputs() == 1) {
       return stride_;
     }
@@ -257,12 +261,7 @@ class AvgPool2DOp : public AvgPoolOp {
 };
 REGISTER_XLA_OP(Name("AvgPool"), AvgPool2DOp);
 
-class AvgPool3DOp : public AvgPoolOp {
- public:
-  explicit AvgPool3DOp(OpKernelConstruction* ctx)
-      : AvgPoolOp(ctx, /*num_spatial_dims=*/3) {}
-};
-REGISTER_XLA_OP(Name("AvgPool3D"), AvgPool3DOp);
+REGISTER_XLA_OP(Name("AvgPool3D"), MlirXlaOpKernel);
 
 // The operation to compute MaxPool gradients.
 // It takes three inputs:
@@ -279,6 +278,9 @@ class MaxPoolGradOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_));
     }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    OP_REQUIRES(ctx, padding_ != EXPLICIT,
+                errors::Unimplemented(
+                    "XLA does not support maxpoolgrad with explicit padding."));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
@@ -332,7 +334,7 @@ class MaxPoolGradOp : public XlaOpKernel {
     // whether this is a good time/space tradeoff.
     auto input = ctx->Input(0);
     auto out_backprop = ctx->Input(2);
-
+    // We ensured padding_ is not EXPLICIT in the constructor.
     xla::Padding xla_padding =
         (padding_ == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
 
@@ -386,12 +388,7 @@ REGISTER_XLA_OP(Name("MaxPoolGradV2")
                     .CompileTimeConstantInput("strides"),
                 MaxPool2DGradOp);
 
-class MaxPool3DGradOp : public MaxPoolGradOp {
- public:
-  explicit MaxPool3DGradOp(OpKernelConstruction* ctx)
-      : MaxPoolGradOp(ctx, /*num_spatial_dims=*/3) {}
-};
-REGISTER_XLA_OP(Name("MaxPool3DGrad"), MaxPool3DGradOp);
+REGISTER_XLA_OP(Name("MaxPool3DGrad"), MlirXlaOpKernel);
 
 // Average-pooling gradient
 class AvgPoolGradOp : public XlaOpKernel {
@@ -409,6 +406,9 @@ class AvgPoolGradOp : public XlaOpKernel {
                                         "specify ",
                                         num_dims(), " dimensions"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    OP_REQUIRES(ctx, padding_ != EXPLICIT,
+                errors::Unimplemented(
+                    "XLA does not support avgpoolgrad with explicit padding."));
     OP_REQUIRES(ctx, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
@@ -499,6 +499,10 @@ class MaxPoolGradGradOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_));
     }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    OP_REQUIRES(
+        ctx, padding_ != EXPLICIT,
+        errors::Unimplemented(
+            "XLA does not support maxpoolgradgrad with explicit padding."));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }

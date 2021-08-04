@@ -4,9 +4,8 @@ This page describes how to build and use the TensorFlow Lite library with
 [CMake](https://cmake.org/) tool.
 
 The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
-, TensorFlow devel docker image
-[tensorflow/tensorflow:devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/)
-and Windows 10.
+, macOS Catalina (x86_64), Windows 10 and TensorFlow devel Docker image
+[tensorflow/tensorflow:devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
 **Note:** This feature is currently experimental and available since version 2.4
 and may change.
@@ -83,9 +82,9 @@ To configure OpenCL GPU delegate support:
 cmake ../tensorflow_src/tensorflow/lite -DTFLITE_ENABLE_GPU=ON
 ```
 
-**Note:** It's experimental and available only on master(r2.5) branch. There
-could be compatbility issues. It's only verified with Android devices and NVidia
-CUDA OpenCL 1.2.
+**Note:** It's experimental and available starting from TensorFlow 2.5. There
+could be compatibility issues. It's only verified with Android devices and
+NVidia CUDA OpenCL 1.2.
 
 ### Step 5. Build TensorFlow Lite
 
@@ -102,12 +101,16 @@ CMake project. Please refer the
 ["Create a CMake project which uses TensorFlow Lite"](#create_a_cmake_project_which_uses_tensorflow_lite)
 section.
 
-### Step 6. Build TensorFlow Lite Benchmark Tool
+### Step 6. Build TensorFlow Lite Benchmark Tool and Label Image Example (Optional)
 
 In the tflite_build directory,
 
 ```sh
 cmake --build . -j -t benchmark_model
+```
+
+```sh
+cmake --build . -j -t label_image
 ```
 
 ## Available Options to build TensorFlow Lite
@@ -116,13 +119,19 @@ Here is the list of available options. You can override it with
 `-D<option_name>=[ON|OFF]`. For example, `-DTFLITE_ENABLE_XNNPACK=OFF` to
 disable XNNPACK which is enabled by default.
 
-Option Name           | Feature                                  | Default
---------------------- | ---------------------------------------- | ------------
-TFLITE_ENABLE_RUY     | Enable RUY matrix multiplication library | OFF
-TFLITE_ENABLE_NNAPI   | Enable NNAPI delegate                    | ON (Android)
-TFLITE_ENABLE_GPU     | Enable GPU delegate                      | OFF
-TFLITE_ENABLE_XNNPACK | Enable XNNPACK delegate                  | ON
-TFLITE_ENABLE_MMAP    | Enable MMAP (unsupported on Windows)     | ON
+| Option Name           | Feature        | Android | Linux | macOS | Windows |
+| --------------------- | -------------- | ------- | ----- | ----- | ------- |
+| TFLITE_ENABLE_RUY     | Enable RUY     | ON      | OFF   | OFF   | OFF     |
+:                       : matrix         :         :       :       :         :
+:                       : multiplication :         :       :       :         :
+:                       : library        :         :       :       :         :
+| TFLITE_ENABLE_NNAPI   | Enable NNAPI   | ON      | OFF   | N/A   | N/A     |
+:                       : delegate       :         :       :       :         :
+| TFLITE_ENABLE_GPU     | Enable GPU     | OFF     | OFF   | N/A   | N/A     |
+:                       : delegate       :         :       :       :         :
+| TFLITE_ENABLE_XNNPACK | Enable XNNPACK | ON      | ON    | ON    | ON      |
+:                       : delegate       :         :       :       :         :
+| TFLITE_ENABLE_MMAP    | Enable MMAP    | ON      | ON    | ON    | N/A     |
 
 ## Create a CMake project which uses TensorFlow Lite
 
@@ -148,5 +157,29 @@ add_subdirectory(
   "${CMAKE_CURRENT_BINARY_DIR}/tensorflow-lite" EXCLUDE_FROM_ALL)
 
 add_executable(minimal minimal.cc)
-target_link_libraries(minimal tensorflow-lite ${CMAKE_DL_LIBS}
+target_link_libraries(minimal tensorflow-lite)
 ```
+
+## Build TensorFlow Lite C library
+
+If you want to build TensorFlow Lite shared library for
+[C API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/README.md),
+follow [step 1](#step-1-install-cmake-tool) to
+[step 3](#step-3-create-cmake-build-directory) first. After that, run the
+following commands.
+
+```sh
+cmake ../tensorflow_src/tensorflow/lite/c
+cmake --build . -j
+```
+
+This command generates the following shared library in the current directory.
+
+Platform | Library name
+-------- | -------------------------
+Linux    | libtensorflowlite_c.so
+macOS    | libtensorflowlite_c.dylib
+Windows  | tensorflowlite_c.dll
+
+**Note:** You need necessary headers (c_api.h, c_api_experimental.h and
+common.h) to use the generated shared library.

@@ -61,7 +61,7 @@ namespace wrap {
     static const char *kName;                                             \
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
     static void *GetDsoHandle() {                                         \
-      auto s = internal::CachedDsoLoader::GetRocfftDsoHandle();           \
+      auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();           \
       return s.ValueOrDie();                                              \
     }                                                                     \
     static FuncPtrT LoadOrDie() {                                         \
@@ -163,6 +163,7 @@ port::Status ROCMFftPlan::Initialize(
     LOG(FATAL) << "Try to repeatedly initialize.";
   }
   is_initialized_ = true;
+  scratch_allocator_ = scratch_allocator;
   int elem_count_[3], input_embed_[3], output_embed_[3];
   for (int i = 0; i < rank; ++i) {
     elem_count_[i] = elem_count[i];
@@ -328,6 +329,7 @@ port::Status ROCMFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
 
 port::Status ROCMFftPlan::UpdateScratchAllocator(
     Stream *stream, ScratchAllocator *scratch_allocator) {
+  scratch_allocator_ = scratch_allocator;
   if (scratch_size_bytes_ != 0) {
     auto allocated = scratch_allocator->AllocateBytes(scratch_size_bytes_);
     if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
@@ -519,8 +521,33 @@ bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
     return false;
   }
 
-  auto ret = hipfftExec(parent_, rocm_fft_plan->GetPlan(),
-                        GpuComplex(const_cast<InputT *>(GpuMemory(input))),
+  // As per rocFFT documentation, input buffers may be overwritten during
+  // execution of the C2R / D2Z transforms, even if the transform is not
+  // in-place.
+  // see rocFFT issue #298 for more info
+  //
+  // Same seems to apply for the R2C / Z2D transforms, as reported in
+  // see ROCm TF issue # 1150
+  //
+  // Hence for all those transforms, copy the input buffer
+  DeviceMemory<InputT> input_maybe_copy = input;
+  if (input.opaque() != output->opaque() && (input.size() > 0)) {
+    auto *allocator = rocm_fft_plan->GetScratchAllocator();
+    if (allocator) {
+      auto allocated = allocator->AllocateBytes(input.size());
+      if (allocated.ok()) {
+        if (stream->ThenMemcpy(&allocated.ValueOrDie(), input, input.size())
+                .ok()) {
+          input_maybe_copy = DeviceMemory<InputT>(allocated.ValueOrDie());
+        } else {
+          LOG(ERROR) << "failed to copy input buffer for rocFFT.";
+        }
+      }
+    }
+  }
+
+  InputT *ip = const_cast<InputT *>(GpuMemory(input_maybe_copy));
+  auto ret = hipfftExec(parent_, rocm_fft_plan->GetPlan(), GpuComplex(ip),
                         GpuComplex(GpuMemoryMutable(output)));
 
   if (ret != HIPFFT_SUCCESS) {

@@ -116,7 +116,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   int64 collective_graph_key() { return collective_graph_key_; }
 
   std::unique_ptr<ProfileHandler> GetProfileHandler(uint64 step,
-                                                    int64 execution_count,
+                                                    int64_t execution_count,
                                                     const RunOptions& ropts) {
     return stats_publisher_->GetProfileHandler(step, execution_count, ropts);
   }
@@ -156,7 +156,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // Retrieve all RPC logs data accumulated for the current step, both
   // from the local WorkerCache in use by this master process and from
   // all the remote workers executing the remote partitions.
-  void RetrieveLogs(int64 step_id, StepStats* ss) {
+  void RetrieveLogs(int64_t step_id, StepStats* ss) {
     // Get the local data first, because it sets *ss without merging.
     worker_cache_->RetrieveLogs(step_id, ss);
 
@@ -201,22 +201,22 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   Status RegisterPartitions(PartitionOptions popts);
 
   // Runs one step of all partitions.
-  Status RunPartitions(const MasterEnv* env, int64 step_id,
-                       int64 execution_count, PerStepState* pss,
+  Status RunPartitions(const MasterEnv* env, int64_t step_id,
+                       int64_t execution_count, PerStepState* pss,
                        CallOptions* opts, const RunStepRequestWrapper& req,
                        MutableRunStepResponseWrapper* resp,
                        CancellationManager* cm, const bool is_last_partial_run);
-  Status RunPartitions(const MasterEnv* env, int64 step_id,
-                       int64 execution_count, PerStepState* pss,
+  Status RunPartitions(const MasterEnv* env, int64_t step_id,
+                       int64_t execution_count, PerStepState* pss,
                        CallOptions* call_opts, const RunCallableRequest& req,
                        RunCallableResponse* resp, CancellationManager* cm);
 
   // Calls workers to cleanup states for the step "step_id".  Calls
   // `done` when all cleanup RPCs have completed.
-  void CleanupPartitionsAsync(int64 step_id, StatusCallback done);
+  void CleanupPartitionsAsync(int64_t step_id, StatusCallback done);
 
   // Post-processing of any runtime statistics gathered during execution.
-  void ProcessStats(int64 step_id, PerStepState* pss, ProfileHandler* ph,
+  void ProcessStats(int64_t step_id, PerStepState* pss, ProfileHandler* ph,
                     const RunOptions& options, RunMetadata* resp);
   void ProcessDeviceStats(ProfileHandler* ph, const DeviceStepStats& ds,
                           bool is_rpc);
@@ -288,7 +288,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   std::unique_ptr<StatsPublisherInterface> stats_publisher_;
 
   string DetailText(const NodeDetails& details, const NodeExecStats& stats) {
-    int64 tot = 0;
+    int64_t tot = 0;
     for (auto& no : stats.output()) {
       tot += no.tensor_description().allocation_description().requested_bytes();
     }
@@ -320,8 +320,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
             class ClientResponseType>
   Status RunPartitionsHelper(
       const std::unordered_map<StringPiece, size_t, StringPieceHasher>& feeds,
-      const FetchListType& fetches, const MasterEnv* env, int64 step_id,
-      int64 execution_count, PerStepState* pss, CallOptions* call_opts,
+      const FetchListType& fetches, const MasterEnv* env, int64_t step_id,
+      int64_t execution_count, PerStepState* pss, CallOptions* call_opts,
       const ClientRequestType& req, ClientResponseType* resp,
       CancellationManager* cm, bool is_last_partial_run);
 
@@ -629,9 +629,6 @@ struct RunCallableResponseWrapper {
   Status AddTensorFromRunGraphResponse(
       const string& tensor_name, MutableRunGraphResponseWrapper* worker_resp,
       size_t index) {
-    // TODO(b/74355905): Add a specialized implementation that avoids
-    // copying the tensor into the RunCallableResponse when at least
-    // two of the {client, master, worker} are in the same process.
     return worker_resp->RecvValue(index, &fetch_key_to_protos[tensor_name]);
   }
 };
@@ -641,8 +638,8 @@ template <class FetchListType, class ClientRequestType,
           class ClientResponseType>
 Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
     const std::unordered_map<StringPiece, size_t, StringPieceHasher>& feeds,
-    const FetchListType& fetches, const MasterEnv* env, int64 step_id,
-    int64 execution_count, PerStepState* pss, CallOptions* call_opts,
+    const FetchListType& fetches, const MasterEnv* env, int64_t step_id,
+    int64_t execution_count, PerStepState* pss, CallOptions* call_opts,
     const ClientRequestType& req, ClientResponseType* resp,
     CancellationManager* cm, bool is_last_partial_run) {
   // Collect execution cost stats on a smoothly decreasing frequency.
@@ -721,7 +718,7 @@ Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
         if (iter == feeds.end()) {
           return errors::Internal("No feed index found for feed: ", feed);
         }
-        const int64 feed_index = iter->second;
+        const int64_t feed_index = iter->second;
         TF_RETURN_IF_ERROR(
             AddSendFromClientRequest(req, c->req.get(), feed_index, key));
       }
@@ -805,7 +802,7 @@ Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
 }
 
 Status MasterSession::ReffedClientGraph::RunPartitions(
-    const MasterEnv* env, int64 step_id, int64 execution_count,
+    const MasterEnv* env, int64_t step_id, int64_t execution_count,
     PerStepState* pss, CallOptions* call_opts, const RunStepRequestWrapper& req,
     MutableRunStepResponseWrapper* resp, CancellationManager* cm,
     const bool is_last_partial_run) {
@@ -830,7 +827,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
 }
 
 Status MasterSession::ReffedClientGraph::RunPartitions(
-    const MasterEnv* env, int64 step_id, int64 execution_count,
+    const MasterEnv* env, int64_t step_id, int64_t execution_count,
     PerStepState* pss, CallOptions* call_opts, const RunCallableRequest& req,
     RunCallableResponse* resp, CancellationManager* cm) {
   VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
@@ -855,9 +852,6 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
       call_opts, req, &wrapped_resp, cm, false /* is_last_partial_run */));
 
   // Collects fetches.
-  // TODO(b/74355905): Add a specialized implementation that avoids
-  // copying the tensor into the RunCallableResponse when at least
-  // two of the {client, master, worker} are in the same process.
   for (const string& fetch : callable_opts_.fetch()) {
     TensorProto* fetch_proto = resp->mutable_fetch()->Add();
     auto iter = wrapped_resp.fetch_key_to_protos.find(fetch);
@@ -874,7 +868,7 @@ namespace {
 
 class CleanupBroadcastHelper {
  public:
-  CleanupBroadcastHelper(int64 step_id, int num_calls, StatusCallback done)
+  CleanupBroadcastHelper(int64_t step_id, int num_calls, StatusCallback done)
       : resps_(num_calls), num_pending_(num_calls), done_(std::move(done)) {
     req_.set_step_id(step_id);
   }
@@ -924,7 +918,7 @@ class CleanupBroadcastHelper {
 }  // namespace
 
 void MasterSession::ReffedClientGraph::CleanupPartitionsAsync(
-    int64 step_id, StatusCallback done) {
+    int64_t step_id, StatusCallback done) {
   const int num = partitions_.size();
   // Helper object will be deleted when the final call completes.
   CleanupBroadcastHelper* helper =
@@ -937,7 +931,7 @@ void MasterSession::ReffedClientGraph::CleanupPartitionsAsync(
   }
 }
 
-void MasterSession::ReffedClientGraph::ProcessStats(int64 step_id,
+void MasterSession::ReffedClientGraph::ProcessStats(int64_t step_id,
                                                     PerStepState* pss,
                                                     ProfileHandler* ph,
                                                     const RunOptions& options,
@@ -1319,7 +1313,7 @@ Status MasterSession::CreateWorkerSessions(
   string local_device_name;
   DeviceNameUtils::SplitDeviceName(devices_->client_device()->name(),
                                    &task_name, &local_device_name);
-  const int64 client_device_incarnation =
+  const int64_t client_device_incarnation =
       devices_->client_device()->attributes().incarnation();
 
   Status status = Status::OK();
@@ -1567,13 +1561,13 @@ void MasterSession::ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
   rcg_map->clear();
 }
 
-uint64 MasterSession::NewStepId(int64 graph_key) {
+uint64 MasterSession::NewStepId(int64_t graph_key) {
   if (graph_key == BuildGraphOptions::kNoCollectiveGraphKey) {
     // StepId must leave the most-significant 7 bits empty for future use.
     return random::New64() & (((1uLL << 56) - 1) | (1uLL << 56));
   } else {
     uint64 step_id = env_->collective_executor_mgr->NextStepId(graph_key);
-    int32 retry_count = 0;
+    int32_t retry_count = 0;
     while (static_cast<int64>(step_id) == CollectiveExecutor::kInvalidId) {
       Notification note;
       Status status;
@@ -1587,7 +1581,7 @@ uint64 MasterSession::NewStepId(int64 graph_key) {
         LOG(ERROR) << "Bad status from "
                       "collective_executor_mgr->RefreshStepIdSequence: "
                    << status << ".  Retrying.";
-        int64 delay_micros = std::min(60000000LL, 1000000LL * ++retry_count);
+        int64_t delay_micros = std::min(60000000LL, 1000000LL * ++retry_count);
         Env::Default()->SleepForMicroseconds(delay_micros);
       } else {
         step_id = env_->collective_executor_mgr->NextStepId(graph_key);
@@ -1617,7 +1611,7 @@ Status MasterSession::PartialRunSetup(const PartialRunSetupRequest* req,
   // Prepare.
   BuildGraphOptions opts;
   BuildBuildGraphOptions(*req, &opts);
-  int64 count = 0;
+  int64_t count = 0;
   TF_RETURN_IF_ERROR(StartStep(opts, true, &rcg, &count));
 
   rcg->Ref();
@@ -1747,9 +1741,9 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     // Build the cost model every 'build_cost_model_every' steps after skipping
     // an
     // initial 'build_cost_model_after' steps.
-    const int64 build_cost_model_after =
+    const int64_t build_cost_model_after =
         session_opts_.config.graph_options().build_cost_model_after();
-    const int64 build_cost_model_every =
+    const int64_t build_cost_model_every =
         session_opts_.config.graph_options().build_cost_model();
     pss.collect_costs =
         build_cost_model_every > 0 &&
@@ -1841,7 +1835,7 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
 
 Status MasterSession::CreateDebuggerState(
     const DebugOptions& debug_options, const RunStepRequestWrapper& req,
-    int64 rcg_execution_count,
+    int64_t rcg_execution_count,
     std::unique_ptr<DebuggerStateInterface>* debugger_state) {
   TF_RETURN_IF_ERROR(
       DebuggerStateRegistry::CreateState(debug_options, debugger_state));
@@ -1872,7 +1866,7 @@ Status MasterSession::CreateDebuggerState(
 
 void MasterSession::FillPerStepState(MasterSession::ReffedClientGraph* rcg,
                                      const RunOptions& run_options,
-                                     uint64 step_id, int64 count,
+                                     uint64 step_id, int64_t count,
                                      PerStepState* out_pss,
                                      std::unique_ptr<ProfileHandler>* out_ph) {
   out_pss->collect_timeline =
@@ -1882,9 +1876,9 @@ void MasterSession::FillPerStepState(MasterSession::ReffedClientGraph* rcg,
       run_options.report_tensor_allocations_upon_oom();
   // Build the cost model every 'build_cost_model_every' steps after skipping an
   // initial 'build_cost_model_after' steps.
-  const int64 build_cost_model_after =
+  const int64_t build_cost_model_after =
       session_opts_.config.graph_options().build_cost_model_after();
-  const int64 build_cost_model_every =
+  const int64_t build_cost_model_every =
       session_opts_.config.graph_options().build_cost_model();
   out_pss->collect_costs =
       build_cost_model_every > 0 &&
@@ -1953,7 +1947,7 @@ Status MasterSession::DoRunWithLocalExecution(
   BuildGraphOptions bgopts;
   BuildBuildGraphOptions(req, session_opts_.config, &bgopts);
   ReffedClientGraph* rcg = nullptr;
-  int64 count;
+  int64_t count;
   TF_RETURN_IF_ERROR(StartStep(bgopts, false, &rcg, &count));
 
   // Unref "rcg" when out of scope.
@@ -2040,7 +2034,7 @@ Status MasterSession::DoRunCallable(CallOptions* opts, ReffedClientGraph* rcg,
   auto cleanup = gtl::MakeCleanup([this] { MarkRunCompletion(); });
 
   // Prepare.
-  int64 count = rcg->get_and_increment_execution_count();
+  int64_t count = rcg->get_and_increment_execution_count();
 
   const uint64 step_id = NewStepId(rcg->collective_graph_key());
   TRACEPRINTF("stepid %llu", step_id);
@@ -2070,7 +2064,7 @@ Status MasterSession::RunCallable(CallOptions* opts,
     if (closed_) {
       return errors::FailedPrecondition("Session is closed.");
     }
-    int64 handle = req.handle();
+    int64_t handle = req.handle();
     if (handle >= next_callable_handle_) {
       return errors::InvalidArgument("No such callable handle: ", handle);
     }
@@ -2144,7 +2138,7 @@ void MasterSession::GarbageCollect() {
 MasterSession::RunState::RunState(const std::vector<string>& input_names,
                                   const std::vector<string>& output_names,
                                   ReffedClientGraph* rcg, const uint64 step_id,
-                                  const int64 count)
+                                  const int64_t count)
     : rcg(rcg), step_id(step_id), count(count) {
   // Initially all the feeds and fetches are pending.
   for (auto& name : input_names) {

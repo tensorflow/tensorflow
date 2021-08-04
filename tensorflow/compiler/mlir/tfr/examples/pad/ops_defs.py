@@ -23,13 +23,13 @@ from __future__ import print_function
 import os
 import sys
 
+from absl import app
 import tensorflow as tf
 
 from tensorflow.compiler.mlir.tfr.python import composite
 from tensorflow.compiler.mlir.tfr.python.op_reg_gen import gen_register_op
 from tensorflow.compiler.mlir.tfr.python.tfr_gen import tfr_gen_from_module
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 
 Composite = composite.Composite

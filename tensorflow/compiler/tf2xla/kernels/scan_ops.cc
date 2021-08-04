@@ -36,8 +36,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-constexpr std::array<DataType, 5> kScanOpTypes = {
-    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_INT32}};
+constexpr std::array<DataType, 6> kScanOpTypes = {
+    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64}};
 
 class ScanOp : public XlaOpKernel {
  public:
@@ -54,7 +54,7 @@ class ScanOp : public XlaOpKernel {
                 errors::InvalidArgument("ScanOp: axis must be a scalar, not ",
                                         tensor_axis_shape.DebugString()));
 
-    int64 axis;
+    int64_t axis;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &axis));
     if (axis < 0) {
       axis += input_shape.dims();

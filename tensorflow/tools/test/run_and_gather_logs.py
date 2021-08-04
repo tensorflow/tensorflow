@@ -25,12 +25,12 @@ import shlex
 import sys
 import time
 
+from absl import app
 import six
 
 from google.protobuf import json_format
 from google.protobuf import text_format
 from tensorflow.core.util import test_log_pb2
-from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging

@@ -23,6 +23,7 @@ import argparse
 import os
 import sys
 
+from absl import app
 import six
 from six.moves import range
 
@@ -39,7 +40,6 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import app
 from tensorflow.python.training import saver as saver_lib
 
 FLAGS = None

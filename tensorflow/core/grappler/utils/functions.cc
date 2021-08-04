@@ -284,6 +284,10 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
   for (const auto& control_ret : func.control_ret()) {
     control_outputs.push_back({control_ret.first, control_ret.second});
   }
+  // Sort control outputs to keep FunctionDef output stable. The sort order of
+  // map entries in func.control_ret() are not stable.
+  // See b/174715578 for context on why stability is desired.
+  std::sort(control_outputs.begin(), control_outputs.end());
 
   std::vector<const FunctionDef::ArgAttrs*> arg_attr(inputs.size(), nullptr);
   for (const auto& attr : func.arg_attr()) {

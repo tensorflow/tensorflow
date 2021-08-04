@@ -79,8 +79,7 @@ class HloRunner : public HloRunnerInterface {
   using HloRunnerInterface::ExecuteWithExecutable;
 
   StatusOr<Literal> ExecuteWithExecutable(
-      std::unique_ptr<Executable> executable,
-      absl::Span<const Literal* const> arguments,
+      Executable* executable, absl::Span<const Literal* const> arguments,
       ExecutionProfile* profile) override;
 
   // As Execute(), but accepts and returns device buffers instead of host
@@ -97,7 +96,7 @@ class HloRunner : public HloRunnerInterface {
   // Creates an executable object given an HLO module. If run_hlo_passes is
   // true, the HLO passes will be run as part of compilation.
   StatusOr<std::unique_ptr<Executable>> CreateExecutable(
-      std::unique_ptr<HloModule> module, bool run_hlo_passes);
+      std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
 
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
@@ -127,9 +126,9 @@ class HloRunner : public HloRunnerInterface {
   // Note that this call ignores ReplicatedExecutionOptions::run_hlo_passes,
   // since we've already compiled the Executable.
   StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::function<Executable*(int64)> executable_provider,
-      std::function<int64(int64)> argument_count_provider,
-      std::function<const Literal*(int64, int64)> argument_provider,
+      std::function<Executable*(int64_t)> executable_provider,
+      std::function<int64(int64_t)> argument_count_provider,
+      std::function<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options);
 
   // If backend is not created in the constructor, creates and returns the
@@ -146,7 +145,7 @@ class HloRunner : public HloRunnerInterface {
   // will be used to configure the replication parameters. Replicated executions
   // should pass the device_assignment parameter.
   ServiceExecutableRunOptions GetServiceRunOptionsForDevice(
-      int64 device, se::Stream* stream, DeviceAssignment* device_assignment,
+      int64_t device, se::Stream* stream, DeviceAssignment* device_assignment,
       RunId run_id);
 
   // Common implementation code for ExecuteReplicated() above.
@@ -155,12 +154,14 @@ class HloRunner : public HloRunnerInterface {
           const std::vector<ServiceExecutableRunOptions>&,
           const std::vector<absl::Span<const ShapedBuffer* const>>&)>
           execution_helper,
-      std::function<int64(int64)> argument_count_provider,
-      std::function<const Literal*(int64, int64)> argument_provider,
+      std::function<int64(int64_t)> argument_count_provider,
+      std::function<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment);
 
   std::unique_ptr<Backend> backend_;
+
+  DeviceShapeRepresentationFn device_shape_representation_fn_;
 };
 
 }  // namespace xla

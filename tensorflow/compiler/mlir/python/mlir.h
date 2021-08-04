@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/tf_status.h"
 
@@ -43,6 +44,15 @@ std::string ImportFunction(const std::string &functiondef_proto,
                            const std::string &pass_pipeline,
                            bool show_debug_info, TFE_Context *context,
                            TF_Status *status);
+
+// This wrapper passes the graph_def taking names of input nodes, the shapes and
+// types of its inputs and the ouput nodes as parameters to MLIR.
+std::string ImportGraphDef(const std::string &proto,
+                           const std::string &pass_pipeline,
+                           bool show_debug_info, absl::string_view(input_names),
+                           absl::string_view(input_data_types),
+                           absl::string_view(input_data_shapes),
+                           absl::string_view(output_names), TF_Status *status);
 
 // Load a SavedModel and return a textual MLIR string corresponding to it.
 //
@@ -69,8 +79,9 @@ std::string ExperimentalConvertSavedModelToMlir(
 // Returns:
 //   A string of textual MLIR representing the raw imported SavedModel.
 std::string ExperimentalConvertSavedModelV1ToMlirLite(
-    const std::string &saved_model_path, const std::string &tags,
-    bool upgrade_legacy, bool show_debug_info, TF_Status *status);
+    const std::string &saved_model_path, const std::string &exported_names_str,
+    const std::string &tags, bool upgrade_legacy, bool show_debug_info,
+    TF_Status *status);
 
 // Load a SavedModel V1 and return a textual MLIR string corresponding to it.
 //
@@ -83,9 +94,9 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
 // Returns:
 //   A string of textual MLIR representing the raw imported SavedModel.
 std::string ExperimentalConvertSavedModelV1ToMlir(
-    const std::string &saved_model_path, const std::string &tags,
-    bool lift_variables, bool upgrade_legacy, bool show_debug_info,
-    TF_Status *status);
+    const std::string &saved_model_path, const std::string &exported_names_str,
+    const std::string &tags, bool lift_variables, bool upgrade_legacy,
+    bool show_debug_info, TF_Status *status);
 
 std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
                                         const std::string &pass_pipeline,

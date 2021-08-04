@@ -105,8 +105,8 @@ void SetInstructionMetadata(HloModule& module) {
       if (instruction->metadata().creation_pass_id() == 0) {
         instruction->set_creation_pass_id(*pass_id);
       }
-      if (instruction->metadata().op_name().empty()) {
-        instruction->set_metadata_op_name(absl::StrCat("DUMMY_", *pass_id));
+      if (instruction->metadata().logical_creation_pass_id() == 0) {
+        instruction->set_logical_creation_pass_id(*pass_id);
       }
     }
   }
@@ -142,7 +142,11 @@ Status HloPassPipeline::RunInvariantCheckers(
 
 template <typename HloT>
 StatusOr<bool> HloPassPipeline::RunPassesInternal(
-    HloT* hlo, absl::Span<HloPassInterface* const> passes) {
+    HloT* hlo, const DebugOptions& debug_options) {
+  auto passes = GetEnabledPasses(debug_options);
+  // Copy string by value since debug options could get clobbered in an hlo
+  // module group pass.
+  std::string dump_regex = debug_options.xla_dump_hlo_pass_re();
   static constexpr absl::string_view kPipelineStart = "pipeline-start";
   static constexpr absl::string_view kPipelineEnd = "pipeline-end";
   std::string pipeline_name = std::string(name());
@@ -172,15 +176,17 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
     RecordPassStartMetadata(*hlo, pass_name, pipeline_name);
     TF_ASSIGN_OR_RETURN(bool pass_changed, RunHelper(pass, hlo));
     SetInstructionMetadata(*hlo);
-    MaybeDumpHloAndSaveFilenames(*hlo,
-                                 /*after_pass_name=*/pass_name,
-                                 /*before_pass_name=*/i + 1 >= passes.size()
-                                     ? kPipelineEnd
-                                     : passes[i + 1]->name());
+    if (!dump_regex.empty() && (pass_changed || dump_regex != ".*")) {
+      MaybeDumpHloAndSaveFilenames(*hlo,
+                                   /*after_pass_name=*/pass_name,
+                                   /*before_pass_name=*/i + 1 >= passes.size()
+                                       ? kPipelineEnd
+                                       : passes[i + 1]->name());
+    }
     RecordPassEndMetadata(*hlo, pass_name, pass_changed);
     changed |= pass_changed;
     if (pass_changed) {
-      VLOG(3) << "  Pass caused changes" << pass->name();
+      VLOG(3) << "  Pass caused changes " << pass->name();
     }
     TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, pass_name));
     if (!pass->IsPassPipeline()) {
@@ -260,8 +266,7 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
   VLOG(1) << "Running HLO pass pipeline on module " << module->name() << ": "
           << name();
 
-  return RunPassesInternal(module,
-                           GetEnabledPasses(module->config().debug_options()));
+  return RunPassesInternal(module, module->config().debug_options());
 }
 
 StatusOr<bool> HloPassPipeline::RunOnModuleGroup(HloModuleGroup* module_group) {
@@ -275,9 +280,8 @@ StatusOr<bool> HloPassPipeline::RunOnModuleGroup(HloModuleGroup* module_group) {
     return false;
   }
 
-  return RunPassesInternal(
-      module_group,
-      GetEnabledPasses(module_group->module(0).config().debug_options()));
+  return RunPassesInternal(module_group,
+                           module_group->module(0).config().debug_options());
 }
 
 }  // namespace xla

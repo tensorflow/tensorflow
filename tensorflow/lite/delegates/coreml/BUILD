@@ -27,7 +27,6 @@ objc_library(
     hdrs = ["coreml_executor.h"],
     sdk_frameworks = [
         "Foundation",
-        "UIKit",
         "CoreML",
     ],
     deps = [

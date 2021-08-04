@@ -125,6 +125,14 @@ struct DeviceState {
   std::unordered_set<std::pair<const NodeDef*, int>, NodePairHash>
       mem_usage_snapshot_at_peak;
 
+  // Vector of temporary memory usage trace in execution order.
+  // Each pair represents the current node name and current (accumulated)
+  // temporary memory usage of the device when the node is scheduled.
+  // Only enabled when mem_usage_tracking is enabled.
+  // Note: CPU uses an inter-op threadpool, so the execution order on CPU may
+  // not be deterministic.
+  std::vector<std::pair<std::string, int64_t>> temporary_memory_usage_trace;
+
   Costs device_costs;
   std::map<string, Costs> op_to_cost;  // Per-op cost.
 
@@ -370,9 +378,9 @@ class SchedulerState {
   }
 
   OpContext CreateOpContext(const NodeDef* node) const;
-  std::vector<const NodeDef*> MarkNodeExecuted(const NodeDef* node,
-                                               const Costs& node_costs,
-                                               const OpContext& op_context);
+  std::vector<const NodeDef*> MarkNodeExecuted(
+      const NodeDef* node, const Costs& node_costs, const OpContext& op_context,
+      const std::string& override_device_name = "");
 
   // Some getter functions.
   const GrapplerItem* GetGrapplerItem() { return grappler_item_; }

@@ -31,8 +31,8 @@ namespace tensorflow {
 
 template <typename T>
 struct SplitOpGPULaunch {
-  void Run(const Eigen::GpuDevice& d, const T* input, int32 prefix_dim_size,
-           int32 split_dim_size, int32 suffix_dim_size,
+  void Run(const Eigen::GpuDevice& d, const T* input, int32_t prefix_dim_size,
+           int32_t split_dim_size, int32_t suffix_dim_size,
            const GpuDeviceArrayStruct<T*>& output_ptr_data);
 };
 

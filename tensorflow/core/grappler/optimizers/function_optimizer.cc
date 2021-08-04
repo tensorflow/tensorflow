@@ -182,7 +182,10 @@ struct FunctionSpecializationSignature {
     for (const auto& lhs : body_parameters) {
       auto it = other.body_parameters.find(lhs.first);
       if (it == other.body_parameters.end()) return false;
-      if (!FastAreAttrValuesEqual(lhs.second, (*it).second)) return false;
+      if (!AreAttrValuesEqual(lhs.second, (*it).second,
+                              /*allow_false_negatives=*/true)) {
+        return false;
+      }
     }
 
     return true;
@@ -1256,7 +1259,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
       } else if (n->IsCaseNode()) {
         TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), false));
       } else if (n->IsWhileNode()) {
-        TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), false));
+        TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), &flib_def, false));
       }
       continue;
     }
@@ -1388,7 +1391,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
       fake_devices.push_back(std::move(device));
     }
 
-    Placer placer(graph.get(), item.id, &device_set);
+    Placer placer(graph.get(), item.id, &flib_def, &device_set);
     TF_RETURN_IF_ERROR(placer.Run());
   }
 
@@ -1419,7 +1422,7 @@ void RestoreTensorMapping(const FunctionOptimizerContext& ctx,
 
       auto mapping = ctx.tensor_mapping().find(input_tensor);
       if (mapping != ctx.tensor_mapping().end()) {
-        node.set_input(idx, mapping->second.ToString());
+        node.set_input(idx, TensorIdToString(mapping->second));
       }
     }
   }
@@ -1512,12 +1515,6 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
   TF_RETURN_IF_ERROR(RunFunctionOptimizerPass(item, optimized_graph));
 
   return Status::OK();
-}
-
-void FunctionOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                 const GraphDef& optimized_graph,
-                                 double result) {
-  // Nothing to do for FunctionOptimizer.
 }
 
 }  // end namespace grappler

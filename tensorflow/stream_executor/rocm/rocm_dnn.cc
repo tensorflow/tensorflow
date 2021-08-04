@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "rocm/include/miopen/miopen.h"
@@ -708,7 +709,6 @@ class ScopedTensorDescriptor {
 class ScopedFilterDescriptor {
  public:
   ScopedFilterDescriptor(const FilterDescriptor& filter_descriptor,
-                         const BatchDescriptor& batch_descriptor,
                          miopenDataType_t elem_type)
       : handle_(nullptr) {
     auto status = wrap::miopenCreateTensorDescriptor(&handle_);
@@ -717,19 +717,70 @@ class ScopedFilterDescriptor {
                  << ToString(status);
     }
 
-    const int nd = batch_descriptor.ndims() + 2;
+    // We need to pass two vectors to the miopenSetTensorDescriptor routine
+    // "dims" (length == number of dims, elem value == dimension size)
+    // "strides" (length == number of dims, elem value == stride size)
+    //
+    // Irrespective of the actual filter layout, the indexing of both those
+    // vectors must be the following (coz that is what MIOpen expects)
+    // dims[0] = strides[0] = N or output
+    // dims[1] = strides[1] = C or input
+    // dims[2] = strides[2] = H or spatial dim 0
+    // dims[3] = strides[3] = W or spatial dim 1
+    //
+    // assume you have a tensor with dimensions
+    // batch descriptor name    filter descriptor name    value
+    //   N (batch size)            O (output features)    256
+    //   C (channels)              I (input features)       3
+    //   H (height)                H (height)               7
+    //   W (width)                 W (width)                5
+    //
+    // The content of "dims" will be the same irrespective of layout
+    // layout (NCHW or NHWC), and MIOpen expects it should be
+    //                           NCHW layout   NHWC layout
+    // dims[0] = size of N dim =    256           256
+    // dims[1] = size of C dim =      3             3
+    // dims[2] = size of H dim =      7             7
+    // dims[3] = size of W dim =      5             5
+    //
+    // The content of "strides" will be different based on layout
+    //                                  NCHW layout   NHWC layout
+    //  strides[0] = stride of N dim =     7x5x3       7x5x3
+    //  strides[1] = stride of C dim =     7x5         1
+    //  strides[2] = stride of H dim =     5           5x3
+    //  strides[3] = stride of W dim =     1           3
 
-    std::vector<int> dims(2 + filter_descriptor.ndims());
-    dims[0] = filter_descriptor.output_feature_map_count();
-    dims[1] = filter_descriptor.input_feature_map_count();
-    const auto& spatial_dims = filter_descriptor.input_filter_dims();
-    std::copy(spatial_dims.begin(), spatial_dims.end(), dims.begin() + 2);
+    switch (filter_descriptor.layout()) {
+      case dnn::FilterLayout::kOutputYXInput:
+      case dnn::FilterLayout::kOutputInputYX: {
+        const int nd = filter_descriptor.ndims() + 2;
 
-    status = wrap::miopenSetTensorDescriptor(handle_, elem_type, nd,
-                                             dims.data(), nullptr);
-    if (status != miopenStatusSuccess) {
-      LOG(FATAL) << "could not set miopen filter descriptor: "
-                 << ToString(status);
+        // MIOpen requires the strides and dims to be ordered as BDYX.
+        std::vector<int64> strides64 =
+            filter_descriptor.full_strides(dnn::FilterLayout::kOutputInputYX);
+        std::vector<int64> dims64 =
+            filter_descriptor.full_dims(dnn::FilterLayout::kOutputInputYX);
+
+        // MIOpen requires arrays of ints.
+        std::vector<int> strides;
+        std::vector<int> dims;
+        absl::c_transform(strides64, std::back_inserter(strides),
+                          &CheckedNarrowing<int64, int>);
+        absl::c_transform(dims64, std::back_inserter(dims),
+                          &CheckedNarrowing<int64, int>);
+        status = wrap::miopenSetTensorDescriptor(handle_, elem_type, nd,
+                                                 dims.data(), strides.data());
+
+        if (status != miopenStatusSuccess) {
+          LOG(FATAL) << "could not convert FilterDescriptor "
+                     << filter_descriptor.ToString()
+                     << " to miopen tensor descriptor: " << ToString(status);
+        }
+      } break;
+      default:
+        LOG(FATAL) << "Unsupported tensor format "
+                   << FilterLayoutString(filter_descriptor.layout());
+        break;
     }
   }
 
@@ -2578,6 +2629,7 @@ bool MIOpenSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<Eigen::half>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<Eigen::half>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2621,6 +2673,7 @@ bool MIOpenSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<float>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<float>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2663,6 +2716,7 @@ bool MIOpenSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<double>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<double>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2685,6 +2739,7 @@ bool MIOpenSupport::DoRnnBackward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<Eigen::half>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<Eigen::half>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2737,6 +2792,7 @@ bool MIOpenSupport::DoRnnBackward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<float>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<float>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2788,6 +2844,7 @@ bool MIOpenSupport::DoRnnBackward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<double>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<double>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2888,53 +2945,6 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
   return port::Status::OK();
 }
 
-// NOTE(keveman): Temporary data layout transformation until MIOpen supports
-// kBatchYXDepth for backward pass. This function allocates temporary memory,
-// lays out the source data into the temporary but in the kBatchDepthXY
-// layout, and returns the temporary memory. The caller is responsible for
-// deallocating the temporary. Since the allocation is done using Stream's
-// AllocateTemporaryMemory, a later BlockHostUntilDone could be used for
-// deallocation.
-//
-// transform_scratch is populated with a legitimate temporary allocation iff
-// the original output data needs to be transformed.
-static DeviceMemoryBase MaybeTransformLayout(
-    Stream* stream, miopenHandle_t handle_,
-    int miopen_type,  // Actually miopenDataType_t.
-    BatchDescriptor* output_descriptor, DeviceMemoryBase backward_output_data,
-    std::unique_ptr<TemporaryDeviceMemory<uint8>>* transform_scratch) {
-  if (output_descriptor->layout() == dnn::DataLayout::kBatchDepthYX) {
-    return backward_output_data;
-  }
-  CHECK(output_descriptor->layout() == dnn::DataLayout::kBatchYXDepth);
-  *transform_scratch =
-      stream->AllocateTemporaryArray<uint8>(backward_output_data.size())
-          .ConsumeValueOrDie();
-  BatchDescriptor transformed_output_descriptor;
-  transformed_output_descriptor.CloneFrom(*output_descriptor);
-  transformed_output_descriptor.set_layout(dnn::DataLayout::kBatchDepthYX);
-  ScopedTensorDescriptor orig_out_back_nd{
-      *output_descriptor, static_cast<miopenDataType_t>(miopen_type)};
-  ScopedTensorDescriptor transformed_out_back_nd{
-      transformed_output_descriptor,
-      static_cast<miopenDataType_t>(miopen_type)};
-
-  float alpha1 = 1.0f;
-  float alpha2 = 0.0f;
-  float beta = 0.0f;
-  auto status = wrap::miopenOpTensor(
-      handle_, miopenTensorOpAdd, &alpha1, orig_out_back_nd.handle(),
-      backward_output_data.opaque(), &alpha2, orig_out_back_nd.handle(),
-      backward_output_data.opaque(), &beta, transformed_out_back_nd.handle(),
-      (*transform_scratch)->mutable_device_memory()->opaque());
-
-  if (status != miopenStatusSuccess) {
-    LOG(FATAL) << "Failed to transform the data layout.";
-  }
-  output_descriptor->set_layout(dnn::DataLayout::kBatchDepthYX);
-  return (*transform_scratch)->device_memory();
-}
-
 port::Status MIOpenSupport::DoConvolve(
     dnn::ConvolutionKind kind, dnn::DataType element_type,
     dnn::DataType output_type, Stream* stream,
@@ -2950,7 +2960,7 @@ port::Status MIOpenSupport::DoConvolve(
                                   ToMIOpenDataType(element_type)};
   ScopedTensorDescriptor output_nd{output_descriptor,
                                    ToMIOpenDataType(element_type)};
-  ScopedFilterDescriptor filter{filter_descriptor, input_descriptor,
+  ScopedFilterDescriptor filter{filter_descriptor,
                                 ToMIOpenDataType(element_type)};
   ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    ToMIOpenDataType(element_type)};
@@ -2999,14 +3009,6 @@ port::Status MIOpenSupport::DoConvolve(
       break;
     }
     case dnn::ConvolutionKind::BACKWARD_DATA: {
-      // TBD: remove once MIOpen supports kBatchYXDepth for backward pass.
-      BatchDescriptor output_back_descriptor;
-      output_back_descriptor.CloneFrom(output_descriptor);
-      std::unique_ptr<TemporaryDeviceMemory<uint8>> transform_scratch;
-      output_data = MaybeTransformLayout(
-          stream, miopen.handle(), ToMIOpenDataType(element_type),
-          &output_back_descriptor, output_data, &transform_scratch);
-
       if (use_immediate_mode_) {
         status = wrap::miopenConvolutionBackwardDataImmediate(
             miopen.handle(), output_nd.handle(), output_data.opaque(),
@@ -3025,14 +3027,6 @@ port::Status MIOpenSupport::DoConvolve(
       break;
     }
     case dnn::ConvolutionKind::BACKWARD_FILTER: {
-      // TBD: remove once MIOpen supports kBatchYXDepth for backward pass.
-      BatchDescriptor output_back_descriptor;
-      output_back_descriptor.CloneFrom(output_descriptor);
-      std::unique_ptr<TemporaryDeviceMemory<uint8>> transform_scratch;
-      output_data = MaybeTransformLayout(
-          stream, miopen.handle(), ToMIOpenDataType(element_type),
-          &output_back_descriptor, output_data, &transform_scratch);
-
       if (use_immediate_mode_) {
         status = wrap::miopenConvolutionBackwardWeightsImmediate(
             miopen.handle(), output_nd.handle(), output_data.opaque(),
@@ -3081,7 +3075,7 @@ port::Status MIOpenSupport::DoConvolve(
 
 bool MIOpenSupport::GetConvolveAlgorithms(
     // ROCM TODO: refactor cc_major / cc_minor
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
@@ -3131,7 +3125,7 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsImmediateMode(
                                   ToMIOpenDataType(element_type)};
   ScopedTensorDescriptor output_nd{output_descriptor,
                                    ToMIOpenDataType(element_type)};
-  ScopedFilterDescriptor filter{filter_descriptor, input_descriptor,
+  ScopedFilterDescriptor filter{filter_descriptor,
                                 ToMIOpenDataType(element_type)};
   ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    ToMIOpenDataType(element_type)};
@@ -3340,7 +3334,7 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
                                   ToMIOpenDataType(element_type)};
   ScopedTensorDescriptor output_nd{output_descriptor,
                                    ToMIOpenDataType(element_type)};
-  ScopedFilterDescriptor filter{filter_descriptor, input_descriptor,
+  ScopedFilterDescriptor filter{filter_descriptor,
                                 ToMIOpenDataType(element_type)};
   ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    ToMIOpenDataType(element_type)};
@@ -3492,7 +3486,7 @@ bool MIOpenSupport::GetRnnAlgorithms(
 
 bool MIOpenSupport::GetConvolveBackwardDataAlgorithms(
     // ROCM TODO: refactor cc_major / cc_minor
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
@@ -3507,7 +3501,7 @@ bool MIOpenSupport::GetConvolveBackwardDataAlgorithms(
 
 bool MIOpenSupport::GetConvolveBackwardFilterAlgorithms(
     // ROCM TODO: refactor cc_major / cc_minor
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
@@ -3523,7 +3517,8 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
     const DeviceMemory<float>& estimated_mean,
     const DeviceMemory<float>& estimated_variance,
-    const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
+    const DeviceMemory<Eigen::half>& side_input,
+    const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
@@ -3565,7 +3560,7 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
     const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
     const DeviceMemory<U>& estimated_mean,
     const DeviceMemory<U>& estimated_variance,
-    const DeviceMemory<U>& side_input, const dnn::BatchDescriptor& x_desc,
+    const DeviceMemory<T>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<T>* y,
@@ -3673,65 +3668,18 @@ bool MIOpenSupport::DoBatchNormalizationBackwardImpl(
 }
 
 port::Status MIOpenSupport::DoFusedConvolve(
-    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-    const DeviceMemory<double>& conv_input_data, double conv_input_scale,
+    Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
+    dnn::DataType bias_type, dnn::DataType output_type,
+    const dnn::BatchDescriptor& conv_input_descriptor,
+    DeviceMemoryBase conv_input_data, double conv_input_scale,
     const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<double>& filter_data,
+    DeviceMemoryBase filter_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const DeviceMemory<double>& side_input_data, double side_input_scale,
-    const dnn::BatchDescriptor& bias_descriptor,
-    const DeviceMemory<double>& biases, dnn::ActivationMode activation_mode,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<double>* output_data, ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
-    dnn::ProfileResult* output_profile_result) {
-  return port::UnimplementedError("fused convolve not implemented yet");
-}
-
-port::Status MIOpenSupport::DoFusedConvolve(
-    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-    const DeviceMemory<float>& conv_input_data, float conv_input_scale,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<float>& filter_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const DeviceMemory<float>& side_input_data, float side_input_scale,
-    const dnn::BatchDescriptor& bias_descriptor,
-    const DeviceMemory<float>& biases, dnn::ActivationMode activation_mode,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
-    dnn::ProfileResult* output_profile_result) {
-  return port::UnimplementedError("fused convolve not implemented yet");
-}
-
-port::Status MIOpenSupport::DoFusedConvolve(
-    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-    const DeviceMemory<Eigen::half>& conv_input_data, float conv_input_scale,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<Eigen::half>& filter_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const DeviceMemory<Eigen::half>& side_input_data, float side_input_scale,
-    const dnn::BatchDescriptor& bias_descriptor,
-    const DeviceMemory<Eigen::half>& biases,
+    DeviceMemoryBase side_input_data, double side_input_scale,
+    const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
     dnn::ActivationMode activation_mode,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<Eigen::half>* output_data, ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
-    dnn::ProfileResult* output_profile_result) {
-  return port::UnimplementedError("fused convolve not implemented yet");
-}
-
-port::Status MIOpenSupport::DoFusedConvolve(
-    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-    const DeviceMemory<int8>& conv_input_data, float conv_input_scale,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<int8>& filter_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const DeviceMemory<int8>& side_input_data, float side_input_scale,
-    const dnn::BatchDescriptor& bias_descriptor,
-    const DeviceMemory<float>& biases, dnn::ActivationMode activation_mode,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<int8>* output_data, ScratchAllocator* scratch_allocator,
+    const dnn::BatchDescriptor& output_descriptor, DeviceMemoryBase output_data,
+    ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
   return port::UnimplementedError("fused convolve not implemented yet");
@@ -3747,65 +3695,6 @@ bool MIOpenSupport::DoTransformTensor(Stream* stream,
   // ROCM TODO implement this operation
   LOG(ERROR) << "transform tensor not implemented yet";
   return false;
-}
-
-template <class T>
-bool MIOpenSupport::DoConvolveBackwardBiasImpl(
-    Stream* stream, int miopen_type,  // Actually miopenDataType_t.
-    const dnn::BatchDescriptor& input_descriptor,
-    const DeviceMemory<T>& input_data,
-    const dnn::BatchDescriptor& bias_descriptor,
-    DeviceMemory<T>* backward_bias_data) {
-  auto miopen = miopen_->GetHandle(parent_, stream);
-
-  ScopedTensorDescriptor input_nd{input_descriptor,
-                                  static_cast<miopenDataType_t>(miopen_type)};
-  ScopedTensorDescriptor bias_nd{bias_descriptor,
-                                 static_cast<miopenDataType_t>(miopen_type)};
-
-  // Alpha is the scaling factor for input.
-  float alpha = 1.0;
-  // Beta is the scaling factor for output.
-  float beta = 0.0;
-
-  auto status = wrap::miopenConvolutionBackwardBias(
-      miopen.handle(), &alpha, input_nd.handle(), input_data.opaque(), &beta,
-      bias_nd.handle(), backward_bias_data->opaque());
-  if (status != miopenStatusSuccess) {
-    LOG(FATAL) << "failed to enqueue backward convolution on stream: "
-               << ToString(status);
-    return false;
-  }
-  return true;
-}
-
-bool MIOpenSupport::DoConvolveBackwardBias(
-    Stream* stream, const BatchDescriptor& input_descriptor,
-    const DeviceMemory<double>& input_data,
-    const BatchDescriptor& bias_descriptor,
-    DeviceMemory<double>* backward_bias_data) {
-  LOG(ERROR) << "miopen does not support double bwd bias yet";
-  return false;
-}
-
-bool MIOpenSupport::DoConvolveBackwardBias(
-    Stream* stream, const BatchDescriptor& input_descriptor,
-    const DeviceMemory<float>& input_data,
-    const BatchDescriptor& bias_descriptor,
-    DeviceMemory<float>* backward_bias_data) {
-  return DoConvolveBackwardBiasImpl(stream, miopenFloat, input_descriptor,
-                                    input_data, bias_descriptor,
-                                    backward_bias_data);
-}
-
-bool MIOpenSupport::DoConvolveBackwardBias(
-    Stream* stream, const BatchDescriptor& input_descriptor,
-    const DeviceMemory<Eigen::half>& input_data,
-    const BatchDescriptor& bias_descriptor,
-    DeviceMemory<Eigen::half>* backward_bias_data) {
-  return DoConvolveBackwardBiasImpl(stream, miopenHalf, input_descriptor,
-                                    input_data, bias_descriptor,
-                                    backward_bias_data);
 }
 
 bool MIOpenSupport::DoMatMul(Stream* stream,
@@ -3850,14 +3739,16 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
     // output=weights*input. So we only need to swap the order of
     // weights and input in the matrix product to correct for the
     // row-major versus column-major difference.
-    const float alpha = 1.0f;  // Take the matrix product without scaling it.
-    const float beta = 0.0f;   // Ignore the original values in output_data.
     const int64 m = output_dimensions.NodesAcrossFeatureMaps();
     const int64 n = input_dimensions.count();
     const int64 k = input_dimensions.NodesAcrossFeatureMaps();
-    stream->ThenBlasGemm(blas::Transpose::kNoTranspose,
-                         blas::Transpose::kNoTranspose, m, n, k, alpha, weights,
-                         m, input_data, k, beta, output_data, m);
+    if (!stream
+             ->ThenBlasGemm(blas::Transpose::kNoTranspose,
+                            blas::Transpose::kNoTranspose, m, n, k, weights, m,
+                            input_data, k, output_data, m)
+             .ok()) {
+      return false;
+    }
   } else {
     // This is a slower and more complex path that supports output
     // width() * height() > 1, though it only supports the
@@ -4586,8 +4477,7 @@ bool MIOpenSupport::DeriveOutputBatchDescriptor(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::BatchDescriptor* output_batch_descriptor) {
   ScopedTensorDescriptor input_nd{batch_descriptor, miopenFloat};
-  ScopedFilterDescriptor filter{filter_descriptor, batch_descriptor,
-                                miopenFloat};
+  ScopedFilterDescriptor filter{filter_descriptor, miopenFloat};
   ScopedConvolutionDescriptor conv{convolution_descriptor, miopenFloat};
 
   int dn = batch_descriptor.ndims() + 2;
@@ -4639,7 +4529,7 @@ bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
   ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    static_cast<miopenDataType_t>(miopen_type)};
 
-  ScopedFilterDescriptor filter{filter_descriptor, conv_input_descriptor,
+  ScopedFilterDescriptor filter{filter_descriptor,
                                 static_cast<miopenDataType_t>(miopen_type)};
 
   ScopedActivationDescriptor activation_desc{activation_mode};

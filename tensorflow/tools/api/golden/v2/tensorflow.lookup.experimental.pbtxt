@@ -1,11 +1,11 @@
 path: "tensorflow.lookup.experimental"
 tf_module {
   member {
-    name: "DatasetInitializer"
-    mtype: "<type \'type\'>"
+    name: "DenseHashTable"
+    mtype: "<class \'tensorflow.python.training.tracking.tracking.ResourceMetaclass\'>"
   }
   member {
-    name: "DenseHashTable"
-    mtype: "<type \'type\'>"
+    name: "MutableHashTable"
+    mtype: "<class \'tensorflow.python.training.tracking.tracking.ResourceMetaclass\'>"
   }
 }

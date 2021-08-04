@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
+#include "tensorflow/lite/shared_library.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibrator.h"
 #include "tensorflow/lite/tools/optimize/quantization_wrapper_utils.h"
@@ -73,6 +75,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_FLOAT64;
     case kTfLiteInt32:
       return TensorType_INT32;
+    case kTfLiteUInt32:
+      return TensorType_UINT32;
     case kTfLiteUInt8:
       return TensorType_UINT8;
     case kTfLiteInt8:
@@ -91,8 +95,37 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_COMPLEX64;
     case kTfLiteComplex128:
       return TensorType_COMPLEX128;
+    case kTfLiteResource:
+      return TensorType_RESOURCE;
+    case kTfLiteVariant:
+      return TensorType_VARIANT;
   }
   // No default to get compiler error when new type is introduced.
+}
+
+bool RegisterCustomOpByName(const char* registerer_name,
+                            tflite::MutableOpResolver* resolver) {
+  // Registerer functions take a pointer to a BuiltinOpResolver as an input
+  // parameter and return void.
+  // TODO(b/137576229): We should implement this functionality in a more
+  // principled way.
+  typedef void (*RegistererFunctionType)(tflite::MutableOpResolver*);
+
+  // Look for the Registerer function by name.
+  RegistererFunctionType registerer = reinterpret_cast<RegistererFunctionType>(
+      SharedLibrary::GetSymbol(registerer_name));
+
+  // Fail in an informative way if the function was not found.
+  if (registerer == nullptr) {
+    PyErr_Format(PyExc_ValueError,
+                 "Looking up symbol '%s' failed with error '%s'.",
+                 registerer_name, SharedLibrary::GetError());
+    return false;
+  }
+
+  // Call the registerer with the resolver.
+  registerer(resolver);
+  return true;
 }
 
 }  // namespace
@@ -321,6 +354,15 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
                                             int output_py_type,
                                             bool allow_float,
                                             int activations_py_type) {
+  return QuantizeModel(input_py_type, output_py_type, allow_float,
+                       activations_py_type, /*disable_per_channel=*/false);
+}
+
+PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
+                                            int output_py_type,
+                                            bool allow_float,
+                                            int activations_py_type,
+                                            bool disable_per_channel) {
   if (NoOpModel(*model_)) {
     return python_utils::ConvertToPyString(model_str_->data(),
                                            model_str_->size());
@@ -344,7 +386,8 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   status = tflite::optimize::QuantizeModelAllOperators(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
       TfLiteTypeToSchemaType(output_type), allow_float,
-      TfLiteTypeToSchemaType(activations_type), error_reporter_.get());
+      TfLiteTypeToSchemaType(activations_type), disable_per_channel,
+      error_reporter_.get());
 
   if (status != kTfLiteOk) {
     error_reporter_->exception();
@@ -387,7 +430,9 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
 }
 
 /*static*/ CalibrationWrapper* CalibrationWrapper::CreateWrapperCPPFromBuffer(
-    PyObject* data) {
+    PyObject* data, const std::vector<std::string>& registerers_by_name,
+    const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+    std::string* error_msg) {
   using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
@@ -395,22 +440,34 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   ::tflite::python::ImportNumpy();
 
   if (python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
+    *error_msg = "Failed to convert from python string";
     return nullptr;
   }
   std::unique_ptr<tflite::FlatBufferModel> model =
       tflite::FlatBufferModel::BuildFromBuffer(buf, length,
                                                error_reporter.get());
   if (!model) {
-    PyErr_Format(PyExc_ValueError, "Invalid model");
+    *error_msg = "Invalid model";
     return nullptr;
   }
   auto resolver = absl::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
+  for (const auto& registerer : registerers_by_name) {
+    if (!RegisterCustomOpByName(registerer.c_str(), resolver.get())) {
+      *error_msg =
+          absl::StrFormat("Looking up symbol '%s' failed with error '%s'.",
+                          registerer.c_str(), SharedLibrary::GetError());
+      return nullptr;
+    }
+  }
+  for (const auto& registerer : registerers_by_func) {
+    registerer(reinterpret_cast<uintptr_t>(resolver.get()));
+  }
   std::unique_ptr<tflite::Interpreter> interpreter;
   std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader;
   auto status = tflite::optimize::calibration::BuildLoggingInterpreter(
       *model, *resolver, &interpreter, &reader);
   if (status != kTfLiteOk) {
-    error_reporter->exception();
+    *error_msg = error_reporter->message();
     return nullptr;
   }
 

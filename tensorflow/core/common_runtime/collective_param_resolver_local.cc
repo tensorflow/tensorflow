@@ -40,11 +40,15 @@ namespace tensorflow {
 
 CollectiveParamResolverLocal::CollectiveParamResolverLocal(
     const ConfigProto& config, const DeviceMgr* dev_mgr,
-    DeviceResolverInterface* dev_resolver, const string& task_name)
+    DeviceResolverInterface* dev_resolver,
+    NcclCommunicatorInterface* nccl_communicator, const string& task_name)
     : nccl_(config.experimental().collective_nccl()),
       dev_mgr_(dev_mgr),
       dev_resolver_(dev_resolver),
-      task_name_(task_name) {}
+      nccl_communicator_(nccl_communicator),
+      task_name_(task_name),
+      gpu_ring_order_(
+          config.gpu_options().experimental().collective_ring_order()) {}
 
 void CollectiveParamResolverLocal::CompleteGroupAsync(
     const CompleteGroupRequest* request, CompleteGroupResponse* response,
@@ -59,16 +63,19 @@ namespace {
 const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
   switch (cp->instance.type) {
     case BROADCAST_COLLECTIVE:
-      return "HierarchicalTreeBroadcast";
+      return nccl ? "NcclBroadcast" : "HierarchicalTreeBroadcast";
 
     case REDUCTION_COLLECTIVE:
       return nccl ? "NcclReduce" : "RingReduce";
 
     case GATHER_COLLECTIVE:
-      return "RingGather";
+      return nccl ? "NcclGather" : "RingGather";
 
     case PERMUTE_COLLECTIVE:
       return "Permute";
+
+    case ALL_TO_ALL_COLLECTIVE:
+      return "AllToAll";
 
     default:
       return "undef";
@@ -86,10 +93,49 @@ string TaskNameFromDeviceName(const string& device_name) {
 
 void CollectiveParamResolverLocal::CompleteGroupLocal(
     const DeviceAttributes& device, CollectiveParams* cp,
-    const GroupRecCallback& done) {
+    const GroupRecCallback& done, CancellationManager* cancel_mgr) {
   VLOG(1) << "CompleteGroupLocal device=" << device.name() << " cp: " << cp
           << ": " << cp->ToString();
   std::vector<StatusCallback> to_be_called;
+  // Keep a reference to `cp` to avoid racing with deletion due to cancellation.
+  cp->Ref();
+  core::ScopedUnref cp_unref(cp);
+
+  std::function<void(const Status& s, GroupRec* gr)> done_with_cleanup;
+  if (cancel_mgr != nullptr) {
+    auto cancelled_mu = std::make_shared<mutex>();
+    // Some callers delete `cancel_mgr` as soon as `done` is called once,
+    // meaning we can't rely on it to avoid calling `done` twice if the local op
+    // is cancelled but the group succeeds.
+    auto cancelled = std::make_shared<bool>(false);
+    const CancellationToken token = cancel_mgr->get_cancellation_token();
+    const bool already_cancelled =
+        !cancel_mgr->RegisterCallback(token, [done, cancelled_mu, cancelled]() {
+          {
+            mutex_lock l(*cancelled_mu);
+            *cancelled = true;
+          }
+          done(errors::Cancelled("op cancelled"), nullptr);
+        });
+    if (already_cancelled) {
+      done(errors::Cancelled("op cancelled"), nullptr);
+      return;
+    }
+    done_with_cleanup = [cancel_mgr, done, cancelled_mu, cancelled, token](
+                            const Status& s, GroupRec* gr) {
+      {
+        mutex_lock l(*cancelled_mu);
+        if (*cancelled || !cancel_mgr->TryDeregisterCallback(token)) {
+          return;
+        }
+      }
+      // The operation was never cancelled, so we'll return a normal status.
+      done(s, gr);
+    };
+  } else {
+    done_with_cleanup = done;
+  }
+
   GroupRec* gr = nullptr;
   Status status;
   {
@@ -101,30 +147,10 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       gr->group.group_key = cp->group.group_key;
       gr->group.group_size = cp->group.group_size;
       gr->group.device_type = cp->group.device_type;
-      gr->group.gpu_ring_order = cp->group.gpu_ring_order;
-
-      // Initialize group runtime details.
-      CollectiveImplementationInterface* col_impl;
-      // Try to lookup a NCCL collective kernel.  This will return error status
-      // if `NcclReduce` kernel is not present in the registry, e.g. on an
-      // environment that does not support NCCL.
-      status = CollectiveRegistry::LookupParamResolverInstance("NcclReduce",
-                                                               &col_impl);
-      if (!status.ok()) {
-        // Fallback to non-NCCL collective.
-        status = CollectiveRegistry::LookupParamResolverInstance(
-            GetCollectiveName(cp, /*nccl=*/false), &col_impl);
+      if (nccl_communicator_ != nullptr) {
+        gr->group.runtime_details.communicator_key =
+            nccl_communicator_->GenerateCommunicatorKey();
       }
-      if (status.ok()) {
-        status = col_impl->InitializeCollectiveGroupRuntimeDetails(
-            &gr->group.runtime_details);
-      }
-
-      if (!status.ok()) {
-        done(status, gr);
-        return;
-      }
-
       // Store GroupRec in group_table_ which is shared between all devices on
       // this worker.
       group_table_[gr->group.group_key].reset(gr);
@@ -140,7 +166,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     status = status_;
   }
   if (!status.ok()) {
-    done(status, nullptr);
+    done_with_cleanup(status, nullptr);
     return;
   }
   {
@@ -169,9 +195,9 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     bool new_device = false;
     if (gr->status.ok()) {
       // Insert device if not already present.
-      auto it = gr->devices.find(device.name());
-      if (it == gr->devices.end()) {
-        if (gr->devices.size() == gr->group.group_size) {
+      auto it = gr->incarnations_by_device_name.find(device.name());
+      if (it == gr->incarnations_by_device_name.end()) {
+        if (gr->group.devices.size() == gr->group.group_size) {
           // The group is already full.
           gr->status = errors::Internal(
               "Collective Op ", cp->name, " is assigned to device ",
@@ -179,23 +205,24 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
               " but that group doesn't contain that device.");
         } else {
           // This is a new device that has not yet joined the group.
-          gr->devices[device.name()] = device;
+          gr->incarnations_by_device_name[device.name()] = device.incarnation();
+          gr->group.devices.push_back(device);
           new_device = true;
           if (VLOG_IS_ON(1)) {
             string dev_buf;
-            for (const auto& d : gr->devices) {
-              strings::StrAppend(&dev_buf, ",", d.first);
+            for (const auto& d : gr->group.devices) {
+              strings::StrAppend(&dev_buf, ",", d.name());
             }
             VLOG(1) << "CompleteGroupLocal group_key=" << gr->group.group_key
                     << " group_size=" << gr->group.group_size << " (current"
                     << " devices)=(" << dev_buf << ") (number of"
                     << " devices pending)="
-                    << (gr->group.group_size - gr->devices.size());
+                    << (gr->group.group_size - gr->group.devices.size());
           }
         }
       } else {
         // If the device already exists, check if the incarnation matches.
-        if (it->second.incarnation() != device.incarnation()) {
+        if (it->second != device.incarnation()) {
           gr->status = errors::FailedPrecondition(
               "Device ", device.name(),
               " current incarnation doesn't match with one in the group. This "
@@ -208,13 +235,14 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     if (gr->status.ok()) {
       // If the group is not yet complete, queue to wait for it.
       VLOG(2) << "group_size " << gr->group.group_size << " set size "
-              << gr->devices.size() << " gr " << gr;
+              << gr->group.devices.size() << " gr " << gr;
 
-      if (gr->devices.size() < gr->group.group_size) {
-        gr->waiting.push_back(std::bind(done, std::placeholders::_1, gr));
+      if (gr->group.devices.size() < gr->group.group_size) {
+        gr->waiting.push_back(
+            std::bind(done_with_cleanup, std::placeholders::_1, gr));
         return;
       }
-      CHECK_EQ(gr->devices.size(), gr->group.group_size);
+      CHECK_EQ(gr->group.devices.size(), gr->group.group_size);
       // We get a full group. Fill in remaining fields in gr->group.
       if (new_device) {
         FinishGroup(gr);
@@ -227,7 +255,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     }
     status = gr->status;
   }
-  done(status, gr);
+  done_with_cleanup(status, gr);
   for (int i = 0; i < to_be_called.size(); ++i) {
     to_be_called[i](status);
   }
@@ -246,20 +274,18 @@ typedef std::unordered_map<string, DevRec> TaskDeviceMap;
 typedef std::unordered_map<string, TaskDeviceMap> GlobalDeviceMap;
 
 // Create a populated GlobalDeviceMap from CollInstanceParams and localities.
-GlobalDeviceMap BuildDevRecs(const CollGroupParams& gp,
-                             const std::vector<DeviceAttributes>& attributes) {
+GlobalDeviceMap BuildDevRecs(const CollGroupParams& gp) {
   GlobalDeviceMap gdm;
-  CHECK_EQ(gp.device_names.size(), gp.task_names.size());
-  CHECK_EQ(gp.device_names.size(), attributes.size());
-  for (int i = 0; i < gp.device_names.size(); ++i) {
+  CHECK_EQ(gp.devices.size(), gp.task_names.size());
+  for (int i = 0; i < gp.devices.size(); ++i) {
     TaskDeviceMap& tdm = gdm[gp.task_names[i]];
-    DevRec* dr = &tdm[gp.device_names[i]];
+    DevRec* dr = &tdm[gp.devices[i].name()];
     dr->task = gp.task_names[i];
-    dr->device = gp.device_names[i];
+    dr->device = gp.devices[i].name();
     dr->original_rank = i;
     dr->local_rank = 0;   // Will be populated later by OrderTaskDeviceMap.
     dr->global_rank = 0;  // Will be populated later by EstablishGlobalRank.
-    dr->locality = &attributes[i].locality();
+    dr->locality = &gp.devices[i].locality();
   }
   return gdm;
 }
@@ -271,9 +297,9 @@ bool ParseRingOrder(const string& gpu_ring_order_str, TaskDeviceMap* tdm) {
 
   // gpu id -> local rank
   gtl::FlatMap<int32, int32> gpu_ranks;
-  for (int32 rank = 0;
+  for (int32_t rank = 0;
        rank < static_cast<int32>(split_gpu_ring_order_str.size()); ++rank) {
-    int32 tmp;
+    int32_t tmp;
     if (strings::safe_strto32(split_gpu_ring_order_str[rank], &tmp)) {
       gpu_ranks[tmp] = rank;
     } else {
@@ -379,14 +405,13 @@ void OrderTaskDeviceMap(const string& gpu_ring_order, TaskDeviceMap* tdm) {
 // The first time a CollGroupParams is established for a group we compute a good
 // rank order for all the devices in the group, that is appropriate for a ring
 // algorithm.
-GlobalDeviceMap EstablishGlobalRank(
-    const CollGroupParams& gp,
-    const std::vector<DeviceAttributes>& attributes) {
+GlobalDeviceMap EstablishGlobalRank(const CollGroupParams& gp,
+                                    const string& gpu_ring_order) {
   VLOG(1) << "EstablishGlobalRank";
-  GlobalDeviceMap gdm = BuildDevRecs(gp, attributes);
+  GlobalDeviceMap gdm = BuildDevRecs(gp);
   for (auto& iter : gdm) {
     TaskDeviceMap& tdm = iter.second;
-    OrderTaskDeviceMap(gp.gpu_ring_order, &tdm);
+    OrderTaskDeviceMap(gpu_ring_order, &tdm);
   }
   // Connect the global rank order by the order in which tasks first appear.
   std::set<string> ordered_tasks;
@@ -434,62 +459,27 @@ void SetDevPerTask(CollGroupParams* gp) {
     }
   }
   gp->same_num_devices_per_task = true;
-  CHECK_EQ((gp->group_size % gp->num_tasks), 0);
 }
 
-// Sort gp->device_names lexicographically, but do by first
-// computing a reordering permutation so we can keep gp->task_names
-// in corresponding order.
-void SortDevicesAndTasks(CollGroupParams* gp) {
-  VLOG(1) << "SortDevicesAndTasks " << gp << " " << gp;
-  CHECK(gp);
-  CHECK_EQ(gp->group_size, gp->device_names.size());
-  CHECK_EQ(gp->group_size, gp->task_names.size());
-  std::vector<int> perm(gp->group_size);
-  // TODO(tucker): substitute std::iota when the windows build supports it.
-  // std::iota(perm.begin(), perm.end(), 0);
-  for (int i = 0; i < perm.size(); ++i) {
-    perm[i] = i;
-  }
-  std::sort(perm.begin(), perm.end(), [gp](int a, int b) {
-    return gp->device_names[a] < gp->device_names[b];
-  });
-  std::vector<string> new_devs;
-  std::vector<string> new_tasks;
-  new_devs.reserve(gp->group_size);
-  new_tasks.reserve(gp->group_size);
-  for (int pi : perm) {
-    new_devs.push_back(gp->device_names[pi]);
-    new_tasks.push_back(gp->task_names[pi]);
-  }
-  gp->device_names = std::move(new_devs);
-  gp->task_names = std::move(new_tasks);
-  VLOG(1) << "Modified device_names on " << gp;
-  SetDevPerTask(gp);
-}
 }  // namespace
 
 void CollectiveParamResolverLocal::FinishGroup(GroupRec* gr) {
-  gr->group.device_names.reserve(gr->devices.size());
-  gr->group.task_names.reserve(gr->devices.size());
-  std::vector<DeviceAttributes> attributes;
-  // Unique tasks. It's used to calculate num_tasks.
-  std::unordered_set<string> tasks;
-  attributes.reserve(gr->devices.size());
-  for (const auto& item : gr->devices) {
-    gr->group.device_names.push_back(item.first);
-    string task_name = TaskNameFromDeviceName(item.first);
-    gr->group.task_names.push_back(task_name);
-    tasks.insert(task_name);
-    attributes.push_back(item.second);
+  // Sort devices lexicographically first.
+  std::sort(gr->group.devices.begin(), gr->group.devices.end(),
+            [](const DeviceAttributes& lhs, const DeviceAttributes& rhs) {
+              return lhs.name() < rhs.name();
+            });
+  // Build task_names, which is needed by CompleteDefaultRanking.
+  gr->group.task_names.reserve(gr->group.devices.size());
+  for (const DeviceAttributes& device : gr->group.devices) {
+    gr->group.task_names.push_back(TaskNameFromDeviceName(device.name()));
   }
-  gr->group.num_tasks = static_cast<int32>(tasks.size());
-  // Sort device_names lexicographically, keeping task_names in corresponding
-  // order. Also set number of devices per task.
-  SortDevicesAndTasks(&gr->group);
-  // Establish the final order of gp->device_names and gp->task_names by
+  // Establish the final order of gp->devices and gp->task_names by
   // considering localities of all devices.
-  CompleteDefaultRanking(attributes, &gr->group);
+  CompleteDefaultRanking(&gr->group);
+  SetDevPerTask(&gr->group);
+  gr->group.num_tasks =
+      static_cast<int32>(gr->group.num_devices_per_task.size());
 }
 
 void CollectiveParamResolverLocal::CompleteTaskIsLocal(const string& task_name,
@@ -502,9 +492,9 @@ void CollectiveParamResolverLocal::CompleteTaskIsLocal(const string& task_name,
 
 void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
                                                   CollectiveParams* cp) {
-  CHECK_EQ(cp->group.group_size, cp->group.device_names.size()) << cp;
+  CHECK_EQ(cp->group.group_size, cp->group.devices.size()) << cp->ToString();
   for (int i = 0; i < cp->group.group_size; ++i) {
-    if (cp->group.device_names[i] == device) {
+    if (cp->group.devices[i].name() == device) {
       cp->default_rank = i;
       break;
     }
@@ -513,52 +503,52 @@ void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
 
 void CollectiveParamResolverLocal::InitInstanceSharedParams(
     const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir) {
-  ir->shared.instance = cp->instance;
-  ir->shared.default_rank = -1;
+  ir->shared->instance = cp->instance;
+  ir->shared->default_rank = -1;
 
   // Set is_local and task_names in *shared prior to invoking
   // GetDeviceAttributesAsync.  In a distributed context this function can be
   // called by a derived class, some of the devices may be non-local and
   // GetDeviceAttributesAsync will use those fields to launch RPCs.
-  CompleteTaskIsLocal(task_name_, &ir->shared);
+  CompleteTaskIsLocal(task_name_, ir->shared);
 }
 
 // NOTE(ayushd): The DeviceLocality objects in attributes will have LocalLinks
 // to all devices that they are physically connected to and visible to the
 // TensorFlow runtime.  This set of devices may be a superset of the devices
 // participating in this instance of collectives.
-void CollectiveParamResolverLocal::CompleteDefaultRanking(
-    const std::vector<DeviceAttributes>& attributes, CollGroupParams* gp) {
+void CollectiveParamResolverLocal::CompleteDefaultRanking(CollGroupParams* gp) {
   // Establish an instance-specific default rank order for devices
   // based on localities.  This rank order should be a good ring
   // order, if possible.
-  GlobalDeviceMap gdm = EstablishGlobalRank(*gp, attributes);
+  GlobalDeviceMap gdm = EstablishGlobalRank(*gp, gpu_ring_order_);
   // Reflect the new global ranking on shared
-  size_t num_devices = gp->group_size;
-  std::vector<string> new_device_names(num_devices, "");
-  std::vector<string> new_task_names(num_devices, "");
+  std::vector<DeviceAttributes> new_devices(gp->group_size);
+  std::vector<string> new_task_names(gp->group_size);
   for (const auto& git : gdm) {
     const TaskDeviceMap& tdm = git.second;
     for (const auto& tit : tdm) {
       const DevRec& dr = tit.second;
-      new_device_names[dr.global_rank] = gp->device_names[dr.original_rank];
+      new_devices[dr.global_rank] = gp->devices[dr.original_rank];
       new_task_names[dr.global_rank] = gp->task_names[dr.original_rank];
     }
   }
 
-  gp->device_names = new_device_names;
-  gp->task_names = new_task_names;
   if (VLOG_IS_ON(2)) {
     string buf;
-    for (const auto& d : new_device_names) strings::StrAppend(&buf, "\n", d);
+    for (const auto& d : new_devices) strings::StrAppend(&buf, "\n", d.name());
     VLOG(2) << "Optimized device order for group " << gp->group_key << ": "
             << buf;
   }
+  gp->devices = std::move(new_devices);
+  gp->task_names = std::move(new_task_names);
 }
 
 CollectiveParamResolverLocal::InstanceRec*
 CollectiveParamResolverLocal::GetOrCreateInstanceRec(const GroupRec* gr,
-                                                     CollectiveParams* cp) {
+                                                     CollectiveParams* cp,
+                                                     bool* created) {
+  *created = false;
   InstanceRec* irec = nullptr;
   {
     mutex_lock l(instance_mu_);
@@ -572,6 +562,7 @@ CollectiveParamResolverLocal::GetOrCreateInstanceRec(const GroupRec* gr,
     if (irec == nullptr) {
       // Create new InstanceRec.
       irec = new InstanceRec;
+      *created = true;
       {
         mutex_lock il(irec->mu);
         irec->known.resize(cp->group.group_size, false);
@@ -606,7 +597,8 @@ void CollectiveParamResolverLocal::CompleteParamsAsync(
         } else {
           done(s);
         }
-      });
+      },
+      cancel_mgr);
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceAsync(
@@ -654,7 +646,21 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
     cp->group = gr->group;
   }
 
-  InstanceRec* ir = GetOrCreateInstanceRec(gr, cp);
+  bool created_irec;
+  InstanceRec* ir = GetOrCreateInstanceRec(gr, cp, &created_irec);
+  if (!created_irec) {
+    // Check that the preexisting IRec is consistent with the params passed into
+    // this invocation.
+    if (ir->shared->instance.type != cp->instance.type ||
+        ir->shared->instance.data_type != cp->instance.data_type) {
+      done(errors::Internal("Collective instance ", cp->instance.instance_key,
+                            " expected type ", ir->shared->instance.type,
+                            " and data_type ", ir->shared->instance.data_type,
+                            " but got type ", cp->instance.type,
+                            " and data_type ", cp->instance.data_type));
+      return;
+    }
+  }
   CompleteInstanceFromInitializedIRec(device, gr, cp, ir, is_source, done);
 }
 
@@ -669,7 +675,7 @@ void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
     status = ir->status;
     if (status.ok()) {
       // custom operator= does a deep copy.
-      cp->instance = ir->shared.instance;
+      cp->instance = ir->shared->instance;
     }
   }
   if (!status.ok()) {

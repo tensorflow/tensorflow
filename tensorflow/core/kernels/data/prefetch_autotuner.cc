@@ -20,8 +20,8 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-PrefetchAutotuner::PrefetchAutotuner(int64 initial_buffer_size,
-                                     int64 buffer_size_min)
+PrefetchAutotuner::PrefetchAutotuner(int64_t initial_buffer_size,
+                                     int64_t buffer_size_min)
     : buffer_limit_(initial_buffer_size) {
   if (initial_buffer_size == model::kAutotune) {
     mode_ = Mode::kUpswing;

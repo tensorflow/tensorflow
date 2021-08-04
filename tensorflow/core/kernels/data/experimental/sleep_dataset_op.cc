@@ -12,10 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -28,7 +28,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 sleep_microseconds;
+    int64_t sleep_microseconds;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "sleep_microseconds",
                                                    &sleep_microseconds));
 
@@ -42,7 +42,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            int64 sleep_microseconds)
+            int64_t sleep_microseconds)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           sleep_microseconds_(sleep_microseconds) {

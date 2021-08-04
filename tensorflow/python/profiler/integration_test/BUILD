@@ -2,7 +2,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
@@ -21,6 +21,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",
+        "no_windows",  # TODO(b/192257727)
     ],
     deps = [
         ":mnist_testing_utils",

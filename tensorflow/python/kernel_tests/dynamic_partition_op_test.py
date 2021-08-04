@@ -39,7 +39,7 @@ class DynamicPartitionTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSimpleOneDimensional(self):
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       data = constant_op.constant([0, 13, 2, 39, 4, 17], dtype=dtypes.float32)
       indices = constant_op.constant([0, 0, 2, 3, 2, 1])
       partitions = data_flow_ops.dynamic_partition(
@@ -60,7 +60,7 @@ class DynamicPartitionTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSimpleTwoDimensional(self):
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       data = constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
                                    [12, 13, 14], [15, 16, 17]],
                                   dtype=dtypes.float32)
@@ -87,7 +87,7 @@ class DynamicPartitionTest(test.TestCase):
     indices_list = [x % 2 for x in range(num)]
     part1 = [x for x in range(num) if x % 2 == 0]
     part2 = [x for x in range(num) if x % 2 == 1]
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -105,11 +105,11 @@ class DynamicPartitionTest(test.TestCase):
     for i in range(rows):
       data_list[i] = [i for _ in range(cols)]
     num_partitions = 97
-    indices_list = [(i ** 2) % num_partitions for i in range(rows)]
+    indices_list = [(i**2) % num_partitions for i in range(rows)]
     parts = [[] for _ in range(num_partitions)]
     for i in range(rows):
-      parts[(i ** 2) % num_partitions].append(data_list[i])
-    with self.session(use_gpu=True) as sess:
+      parts[(i**2) % num_partitions].append(data_list[i])
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -119,13 +119,13 @@ class DynamicPartitionTest(test.TestCase):
     self.assertEqual(num_partitions, len(partition_vals))
     for i in range(num_partitions):
       # reshape because of empty parts
-      parts_np = np.array(parts[i], dtype=np.float).reshape(-1, cols)
+      parts_np = np.array(parts[i], dtype=np.float64).reshape(-1, cols)
       self.assertAllEqual(parts_np, partition_vals[i])
 
   def testSimpleComplex(self):
     data_list = [1 + 2j, 3 + 4j, 5 + 6j, 7 + 8j]
     indices_list = [1, 0, 1, 0]
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.complex64)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -138,7 +138,7 @@ class DynamicPartitionTest(test.TestCase):
 
   def testScalarPartitions(self):
     data_list = [10, 13, 12, 11]
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float64)
       indices = 3
       partitions = data_flow_ops.dynamic_partition(
@@ -146,20 +146,20 @@ class DynamicPartitionTest(test.TestCase):
       partition_vals = self.evaluate(partitions)
 
     self.assertEqual(4, len(partition_vals))
-    self.assertAllEqual(np.array([], dtype=np.float64).reshape(-1, 4),
-                        partition_vals[0])
-    self.assertAllEqual(np.array([], dtype=np.float64).reshape(-1, 4),
-                        partition_vals[1])
-    self.assertAllEqual(np.array([], dtype=np.float64).reshape(-1, 4),
-                        partition_vals[2])
-    self.assertAllEqual(np.array([10, 13, 12, 11],
-                                 dtype=np.float64).reshape(-1, 4),
-                        partition_vals[3])
+    self.assertAllEqual(
+        np.array([], dtype=np.float64).reshape(-1, 4), partition_vals[0])
+    self.assertAllEqual(
+        np.array([], dtype=np.float64).reshape(-1, 4), partition_vals[1])
+    self.assertAllEqual(
+        np.array([], dtype=np.float64).reshape(-1, 4), partition_vals[2])
+    self.assertAllEqual(
+        np.array([10, 13, 12, 11], dtype=np.float64).reshape(-1, 4),
+        partition_vals[3])
 
   @test_util.run_deprecated_v1
   def testHigherRank(self):
     np.random.seed(7)
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       for n in 2, 3:
         for shape in (4,), (4, 5), (4, 5, 2):
           partitions = np.random.randint(n, size=np.prod(shape)).reshape(shape)
@@ -184,7 +184,7 @@ class DynamicPartitionTest(test.TestCase):
   def testEmptyParts(self):
     data_list = [1, 2, 3, 4]
     indices_list = [1, 3, 1, 3]
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -200,7 +200,7 @@ class DynamicPartitionTest(test.TestCase):
   def testEmptyDataTwoDimensional(self):
     data_list = [[], []]
     indices_list = [0, 1]
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -210,13 +210,13 @@ class DynamicPartitionTest(test.TestCase):
     self.assertEqual(3, len(partition_vals))
     self.assertAllEqual([[]], partition_vals[0])
     self.assertAllEqual([[]], partition_vals[1])
-    self.assertAllEqual(np.array([], dtype=np.float).reshape(0, 0),
-                        partition_vals[2])
+    self.assertAllEqual(
+        np.array([], dtype=np.float64).reshape(0, 0), partition_vals[2])
 
   def testEmptyPartitions(self):
     data_list = []
     indices_list = []
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -237,7 +237,7 @@ class DynamicPartitionTest(test.TestCase):
 
     data_list = [1, 2, 3, 4, 5, 6]
     indices_list = [6, 5, 4, 3, 1, 0]
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -258,7 +258,7 @@ class DynamicPartitionTest(test.TestCase):
 
     data_list = [1, 2, 3, 4, 5, 6]
     indices_list = [10, 11, 2, 12, 0, 1000]
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -282,7 +282,7 @@ class DynamicPartitionTest(test.TestCase):
 
     data_list = [1.1, 2.1, 3.1, 4.1, 5.1, 6.1]
     indices_list = [90, 70, 60, 100, 110, 40]
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -294,8 +294,9 @@ class DynamicPartitionTest(test.TestCase):
       self.assertAllEqual([], partition_vals[i])
 
   @test_util.run_deprecated_v1
+  @test_util.no_xla_auto_jit("xla doesn't raise out-of-range exceptions")
   def testErrorIndexOutOfRange(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       data = constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
                                    [12, 13, 14]])
       indices = constant_op.constant([0, 2, 99, 2, 2])
@@ -305,8 +306,10 @@ class DynamicPartitionTest(test.TestCase):
         self.evaluate(partitions)
 
   @test_util.run_deprecated_v1
+  @test_util.no_xla_auto_jit("xla doesn't raise out-of-range exceptions")
   def testScalarIndexOutOfRange(self):
-    with self.cached_session() as sess:
+    # GPU kernels don't throw exceptions.
+    with self.cached_session(use_gpu=False):
       bad = 17
       data = np.zeros(5)
       partitions = data_flow_ops.dynamic_partition(data, bad, num_partitions=7)
@@ -314,8 +317,10 @@ class DynamicPartitionTest(test.TestCase):
         self.evaluate(partitions)
 
   @test_util.run_deprecated_v1
+  @test_util.no_xla_auto_jit("xla doesn't raise out-of-range exceptions")
   def testHigherRankIndexOutOfRange(self):
-    with self.cached_session() as sess:
+    # GPU kernels don't throw exceptions.
+    with self.cached_session(use_gpu=False) as sess:
       shape = (2, 3)
       indices = array_ops.placeholder(shape=shape, dtype=np.int32)
       data = np.zeros(shape + (5,))
@@ -339,12 +344,16 @@ class DynamicPartitionTest(test.TestCase):
   #  see https://github.com/tensorflow/tensorflow/issues/17106
   def testCUBBug(self):
     x = constant_op.constant(np.random.randn(3072))
-    inds = [0]*189 + [1]*184 + [2]*184 + [3]*191 + [4]*192 + [5]*195 + [6]*195
-    inds += [7]*195 + [8]*188 + [9]*195 + [10]*188 + [11]*202 + [12]*194
-    inds += [13]*194 + [14]*194 + [15]*192
+    inds = [0] * 189 + [1] * 184 + [2] * 184 + [3] * 191 + [4] * 192 + [
+        5
+    ] * 195 + [6] * 195
+    inds += [7] * 195 + [8] * 188 + [9] * 195 + [10] * 188 + [11] * 202 + [
+        12
+    ] * 194
+    inds += [13] * 194 + [14] * 194 + [15] * 192
     self.assertEqual(len(inds), x.shape[0])
     partitioned = data_flow_ops.dynamic_partition(x, inds, 16)
-    with self.cached_session() as sess:
+    with self.cached_session():
       res = self.evaluate(partitioned)
     self.assertEqual(res[-1].shape[0], 192)
 
@@ -360,7 +369,6 @@ class DynamicPartitionTest(test.TestCase):
         results.append(self.evaluate(result))
     if device_list:
       self.assertAllEqual(results, np.zeros((len(device_list), 10, 100)))
-
 
 if __name__ == "__main__":
   test.main()

@@ -49,7 +49,7 @@ void BM_FloatToBFloat16(::testing::benchmark::State& state) {
     FloatToBFloat16(inp, out, N);
   }
 
-  const int64 tot = static_cast<int64>(state.iterations()) * N;
+  const int64_t tot = static_cast<int64>(state.iterations()) * N;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * (sizeof(float) + sizeof(bfloat16)));
 
@@ -70,7 +70,7 @@ void BM_RoundFloatToBFloat16(::testing::benchmark::State& state) {
     tensorflow::testing::DoNotOptimize(out);
   }
 
-  const int64 tot = static_cast<int64>(state.iterations()) * N;
+  const int64_t tot = static_cast<int64>(state.iterations()) * N;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * (sizeof(float) + sizeof(bfloat16)));
 
@@ -89,7 +89,7 @@ void BM_BFloat16ToFloat(::testing::benchmark::State& state) {
     BFloat16ToFloat(inp, out, N);
   }
 
-  const int64 tot = static_cast<int64>(state.iterations()) * N;
+  const int64_t tot = static_cast<int64>(state.iterations()) * N;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * (sizeof(float) + sizeof(bfloat16)));
 

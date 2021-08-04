@@ -29,8 +29,8 @@ LuDecompositionResult LuDecomposition(XlaOp a) {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int ndims = a_shape.rank();
     TF_RET_CHECK(ndims >= 2);
-    const int64 m = ShapeUtil::GetDimension(a_shape, -2);
-    const int64 n = ShapeUtil::GetDimension(a_shape, -1);
+    const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
+    const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
     const int num_batch_dims = a_shape.dimensions().size() - 2;
     const std::vector<int64> batch_dims(
         a_shape.dimensions().begin(),

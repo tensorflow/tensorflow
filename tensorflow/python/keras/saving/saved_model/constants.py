@@ -14,10 +14,6 @@
 # ==============================================================================
 """Constants for Keras SavedModel serialization."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # Namespace used to store all attributes added during serialization.
 # e.g. the list of layers can be accessed using `loaded.keras_api.layers`, in an
 # object loaded from `tf.saved_model.load()`.

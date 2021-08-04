@@ -1231,7 +1231,7 @@ TEST(BidirectionalRNNOpTest, ClosedBoxTestNoCrossLinkingRegularInputOnly) {
   rnn.SetBwRecurrentWeights(recurrent_weights);
 
   // Initialize bw inputs with zeros.
-  std::vector<float> bw_inputs(rnn.sequence_len(), 0);
+  std::vector<float> bw_inputs(rnn.input_size(), 0);
 
   // Insert the inputs in time_major format. The batch_major format is:
   // [b0t0, b0t1, ..., b0t15, b1t0, b1t1, ..., b1t15]. This is reshuffled as:
@@ -1279,7 +1279,7 @@ TEST(BidirectionalRNNOpTest, ClosedBoxTestNoCrossLinkingAuxInputOnly) {
   rnn.SetBwRecurrentWeights(recurrent_weights);
 
   // Initialize bw inputs with zeros.
-  std::vector<float> fw_inputs(rnn.sequence_len(), 0);
+  std::vector<float> fw_inputs(rnn.input_size(), 0);
 
   // Insert the inputs in time_major format. The batch_major format is:
   // [b0t0, b0t1, ..., b0t15, b1t0, b1t1, ..., b1t15]. This is reshuffled as:
@@ -1377,7 +1377,7 @@ TEST(BidirectionalRNNOpTest, ClosedBoxTestCrossLinkingAuxInputOnlyTimeMajor) {
   rnn.SetAuxFwWeights(weights);
   rnn.SetAuxBwWeights(weights);
 
-  std::vector<float> zero_input(rnn.sequence_len(), 0.f);
+  std::vector<float> zero_input(rnn.input_size(), 0.f);
 
   // Insert the inputs in time_major format. The batch_major format is:
   // [b0t0, b0t1, ..., b0t15, b1t0, b1t1, ..., b1t15]. This is reshuffled as:

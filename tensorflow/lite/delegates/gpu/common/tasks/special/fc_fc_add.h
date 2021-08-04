@@ -112,13 +112,23 @@ class FCFCAdd : public GPUOperation {
                                const OperationDef& definition,
                                const FullyConnectedAttributes& attr0,
                                const FullyConnectedAttributes& attr1);
+  friend FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info,
+                               const OperationDef& definition,
+                               const FullyConnectedInt8Attributes& attr0,
+                               const FullyConnectedInt8Attributes& attr1);
+
+  void UploadQuantizedWeights(
+      const tflite::gpu::Tensor<OHWI, DataType::INT8>& weights, float scale,
+      float zero_point, int index);
 
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                      const std::string& name, bool weights_are_buffer);
 
   std::string GetFCFCAddKernelCode(const OperationDef& op_def,
-                                   const GpuInfo& gpu_info);
+                                   const GpuInfo& gpu_info,
+                                   bool weights_are_buffer, bool quantized_0,
+                                   bool quantized_1);
 };
 
 template <DataType T>
@@ -174,6 +184,10 @@ void FCFCAdd::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
 FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
                       const FullyConnectedAttributes& attr0,
                       const FullyConnectedAttributes& attr1);
+
+FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
+                      const FullyConnectedInt8Attributes& attr0,
+                      const FullyConnectedInt8Attributes& attr1);
 
 }  // namespace gpu
 }  // namespace tflite

@@ -43,7 +43,7 @@ class StageTest(test.TestCase):
 
     G.finalize()
 
-    with self.session(use_gpu=True, graph=G) as sess:
+    with self.session(graph=G) as sess:
       sess.run(stage, feed_dict={x: -1})
       for i in range(10):
         _, yval = sess.run([stage, y], feed_dict={x: i})
@@ -63,7 +63,7 @@ class StageTest(test.TestCase):
 
     G.finalize()
 
-    with self.session(use_gpu=True, graph=G) as sess:
+    with self.session(graph=G) as sess:
       sess.run(stage, feed_dict={x: -1})
       for i in range(10):
         _, yval = sess.run([stage, y], feed_dict={x: i})
@@ -89,7 +89,7 @@ class StageTest(test.TestCase):
 
     G.finalize()
 
-    with self.session(use_gpu=True, graph=G) as sess:
+    with self.session(graph=G) as sess:
       sess.run(stage, feed_dict={x: -1})
       for i in range(10):
         _, yval = sess.run([stage, y], feed_dict={x: i})
@@ -131,7 +131,7 @@ class StageTest(test.TestCase):
 
     G.finalize()
 
-    with self.session(use_gpu=True, graph=G) as sess:
+    with self.session(graph=G) as sess:
       for i in range(10):
         sess.run(stage, feed_dict={x: i})
 
@@ -156,7 +156,7 @@ class StageTest(test.TestCase):
 
     G.finalize()
 
-    with self.session(use_gpu=True, graph=G) as sess:
+    with self.session(graph=G) as sess:
       sess.run(stage, feed_dict={x: -1})
       self.assertEqual(sess.run(size), 1)
       sess.run(stage, feed_dict={x: -1})
@@ -189,7 +189,7 @@ class StageTest(test.TestCase):
     queue = Queue.Queue()
     n = 8
 
-    with self.session(use_gpu=True, graph=G) as sess:
+    with self.session(graph=G) as sess:
       # Stage data in a separate thread which will block
       # when it hits the staging area's capacity and thus
       # not fill the queue with n tokens
@@ -254,7 +254,7 @@ class StageTest(test.TestCase):
     queue = Queue.Queue()
     n = 8
 
-    with self.session(use_gpu=True, graph=G) as sess:
+    with self.session(graph=G) as sess:
       # Stage data in a separate thread which will block
       # when it hits the staging area's capacity and thus
       # not fill the queue with n tokens

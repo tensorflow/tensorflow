@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -69,7 +70,7 @@ class HloModuleConfig {
   // ProgramShape creates a computation layout using this shape.
   // The layouts in the ProgramShape will be reset to default unless
   // ignore_layouts is set to false.
-  HloModuleConfig() = default;
+  HloModuleConfig() { debug_options_ = DefaultDebugOptionsIgnoringFlags(); }
 
   explicit HloModuleConfig(const ProgramShape& program_shape,
                            bool ignore_layouts = true);
@@ -123,21 +124,22 @@ class HloModuleConfig {
 
   int32 launch_id() const { return launch_id_; }
 
-  void set_replica_count(int64 replica_count) {
+  void set_replica_count(int64_t replica_count) {
     replica_count_ = replica_count;
   }
   int64 replica_count() const { return replica_count_; }
 
-  void set_num_partitions(int64 num_partitions) {
+  void set_num_partitions(int64_t num_partitions) {
     num_partitions_ = num_partitions;
   }
   int64 num_partitions() const { return num_partitions_; }
 
-  void set_broadcast_replicated_params(bool broadcast_replicated_params) {
-    broadcast_replicated_params_ = broadcast_replicated_params;
+  const std::vector<bool> param_requires_broadcast_via_collectives() const {
+    return param_requires_broadcast_via_collectives_;
   }
-  bool broadcast_replicated_params() const {
-    return broadcast_replicated_params_;
+  void set_param_requires_broadcast_via_collectives(
+      const std::vector<bool> require_broadcast) {
+    param_requires_broadcast_via_collectives_ = std::move(require_broadcast);
   }
 
   void set_use_spmd_partitioning(bool use_spmd_partitioning) {
@@ -150,12 +152,19 @@ class HloModuleConfig {
   void set_deduplicate_hlo(bool deduplicate_hlo) {
     deduplicate_hlo_ = deduplicate_hlo;
   }
+
+  void set_device_type(const string& device_type) {
+    device_type_ = device_type;
+  }
+
   bool deduplicate_hlo() const { return deduplicate_hlo_; }
 
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
   // executable.
   string compilation_cache_key() const;
+
+  string device_type() const { return device_type_; }
 
   const DebugOptions& debug_options() const { return debug_options_; }
 
@@ -239,6 +248,17 @@ class HloModuleConfig {
     return &layout_config_;
   }
 
+  const std::vector<std::vector<bool>>& phase_ordering_config() const {
+    return phase_ordering_config_;
+  }
+
+  std::vector<std::vector<bool>>* mutable_phase_ordering_config() {
+    return &phase_ordering_config_;
+  }
+
+  const int phase_index() const { return phase_index_; }
+  void set_phase_index(const int phase_index) { phase_index_ = phase_index; }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -256,8 +276,8 @@ class HloModuleConfig {
   // The number of partitions (model parallelism) to compile this binary for.
   int64 num_partitions_ = 1;
 
-  // Whether to use XLA collectives to broadcast params to all replicas.
-  bool broadcast_replicated_params_ = false;
+  // Whether to broadcast args across all replicas. One entry per arg.
+  std::vector<bool> param_requires_broadcast_via_collectives_;
 
   // Whether to use SPMD (true) or MPMD (false) when num_partitions_ > 0 and XLA
   // needs to partition the module.
@@ -271,6 +291,8 @@ class HloModuleConfig {
   // execution on the CPU backend.
   int64 intra_op_parallelism_threads_ = -1;
 
+  string device_type_;
+
   DebugOptions debug_options_;
 
   // Compile-time known device assignment.
@@ -280,7 +302,7 @@ class HloModuleConfig {
 
   bool alias_passthrough_params_ = false;
 
-  bool content_aware_computation_sorting_ = false;
+  bool content_aware_computation_sorting_ = true;
 
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
@@ -300,6 +322,16 @@ class HloModuleConfig {
   // Layout configuration, where layout_config_[v][i] controls the layout
   // decision i of operation v.
   std::vector<std::vector<std::vector<int64>>> layout_config_;
+
+  // Phase ordering configuration, where phase_ordering_config[v][i] controls
+  // whether a specific pass with index i (e.g. 0 = DCE, 1 = CSE, etc.) is
+  // inserted after pass v in pipeline. See tuning::PhaseOrderingConfig for
+  // details on what indices (i) correspond to which passes.
+  std::vector<std::vector<bool>> phase_ordering_config_;
+  // Index (v) corresponding to current passes being added for phase ordering.
+  // This is the variable that stores state to allow us to use the same
+  // config across functions during compilation.
+  int phase_index_ = 0;
 };
 
 }  // namespace xla

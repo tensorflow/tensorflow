@@ -57,15 +57,15 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_util
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
-
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import save_context
+from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
@@ -300,9 +300,10 @@ class _InterpolateFunctionError(object):
           func_stack.append("<unknown>")
     if g:
       message = error_interpolation.interpolate(message, g)
-      message += "\n\nFunction call stack:\n"
-      message += " -> ".join(func_stack)
-      message += "\n"
+      if len(func_stack) >= 2:
+        message += "\n\nFunction call stack:\n"
+        message += " -> ".join(func_stack)
+        message += "\n"
       exc._message = message  # pylint: disable=protected-access
     return False
 
@@ -315,11 +316,20 @@ def add_function_callback(function_callback):
 
   The callback function has the signature:
 
-    `def function_callback(function):`
+    `def function_callback(function, name, graph, inputs, outputs):`
 
-  wherein `function` is the just-created _EagerDefinedFunction.
-  The callback is invoked immediately after a new `_EagerDefinedFunction`
-  is created. The return value(s) of the callback function (if any) is ignored.
+  where:
+  - `function`: _EagerDefinedFunction being created before finalizing the graph.
+      Do not modify the function directly but instead modify the graph.
+  - `name`: name of the function.
+  - `graph`: Graph of the function.
+  - `inputs`: `tuple` of tensors used as inputs to the function.
+  - `outputs`: `tuple` of tensors used as outputs from the function.
+
+  The callback is at the top of the `_EagerDefinedFunction` construction, giving
+  callback an opportunity to make the last edits to the graph. Do not make
+  changes to `graph, inputs`, and `outputs` manually, but, instead, set the
+  `graph` as the default then define ops.
 
   Repeated registration of the same callback function is idempotent.
   After a callback is added, it can be removed with the
@@ -408,6 +418,14 @@ class _EagerDefinedFunctionDeleter(object):
       # been unloaded. Will catch other module unloads as well.
 
 
+class FunctionAlreadyGarbageCollectedError(Exception):
+
+  def __init__(self, function_name):
+    super(FunctionAlreadyGarbageCollectedError, self).__init__(
+        "{} has already been garbage collected and cannot be called.".format(
+            function_name))
+
+
 # TODO(apassos) get rid of this by splitting framework.function._DefinedFunction
 # so it doesn't have the definition-generating logic and is just a container for
 # an already-defined function.
@@ -427,9 +445,12 @@ class _EagerDefinedFunction(object):
       name: str, the name for the created function.
       graph: Graph, the graph containing the operations in the function
       inputs: the tensors in the graph to be used as inputs to the function
-      outputs: the tensors in the graph which will be outputs to the function
+      outputs: the tensors in the graph which will be outputs from the function
       attrs: dict mapping names of attributes to their AttrValue values
     """
+    for function_callback in _function_callbacks:
+      function_callback(self, name, graph, tuple(inputs), tuple(outputs))
+
     input_ops = set(arg.op for arg in inputs)
     operations = [op for op in graph.get_operations() if op not in input_ops]
 
@@ -494,9 +515,6 @@ class _EagerDefinedFunction(object):
     self.graph = graph
     self._stateful_ops = tuple(op for op in operations if op._is_stateful)  # pylint: disable=protected-access
 
-    for function_callback in _function_callbacks:
-      function_callback(self)
-
   def add_to_graph(self, g=None):
     """Add the function to the current context or a graph, if supplied.
 
@@ -542,12 +560,22 @@ class _EagerDefinedFunction(object):
 
     Raises:
       ValueError: if the number of arguments is incorrect.
+      FunctionAlreadyGarbageCollectedError: if the function is no longer
+        available to be called because it has been garbage collected.
     """
     if len(args) != len(self.signature.input_arg):
       raise ValueError(
           "Arguments and signature arguments do not match. "
           "got: %s, expected: %s " %
           (len(args), len(list(self.signature.input_arg))))
+
+    # If the `ScopedTFFunction` (accessed via `_c_func`) has already been
+    # cleaned up as a part of garbage collection, this `_EagerDefinedFunction`
+    # should also be garbage and is likely being called as part of a `__del__`
+    # elsewhere. In that case, there's nothing we can do, so we raise an
+    # exception for the caller to handle.
+    if self._c_func.has_been_garbage_collected:
+      raise FunctionAlreadyGarbageCollectedError(self.name)
 
     function_call_options = ctx.function_call_options
     if function_call_options.config_proto_serialized is None:
@@ -598,7 +626,7 @@ class _EagerDefinedFunction(object):
                 executor_type=executor_type)
 
     for i, func_graph_output in enumerate(self._func_graph_outputs):
-      custom_gradient.copy_handle_data(func_graph_output, outputs[i])
+      handle_data_util.copy_handle_data(func_graph_output, outputs[i])
     if executing_eagerly:
       return outputs
     else:
@@ -744,7 +772,7 @@ class _DelayedRewriteGradientFunctions(object):
         forward_function._output_shapes[len(op.outputs):])
     for i in range(len(op.outputs)):
       func_graph_output = forward_function._func_graph_outputs[i]
-      custom_gradient.copy_handle_data(func_graph_output, op.outputs[i])
+      handle_data_util.copy_handle_data(func_graph_output, op.outputs[i])
     # pylint: enable=protected-access
 
     capture_mapping = dict(
@@ -911,7 +939,7 @@ class _TapeGradientFunctions(object):
         gradient_shape, gradient_dtype = default_gradient.shape_and_dtype(
             output)
         gradient_placeholder = graph_placeholder(gradient_dtype, gradient_shape)
-        custom_gradient.copy_handle_data(output, gradient_placeholder)
+        handle_data_util.copy_handle_data(output, gradient_placeholder)
         gradients_wrt_outputs.append(gradient_placeholder)
       with ops.device(None):
         gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
@@ -1012,7 +1040,7 @@ class _TapeGradientFunctions(object):
           if capture is not None:
             forward_wrapper_graph.add_capture(capture, input_placeholder)
             if capture.dtype == dtypes.resource:
-              custom_gradient.copy_handle_data(capture, input_placeholder)
+              handle_data_util.copy_handle_data(capture, input_placeholder)
           else:
             forward_wrapper_graph.inputs.append(input_placeholder)
         for inp, arg in zip(forward_wrapper_graph.inputs, inference_args):
@@ -1485,12 +1513,8 @@ class _ForwardBackwardCall(object):
 _BOUND_VALUE = object()
 
 
-class ConcreteFunction(object):
-  """Callable object encapsulating a function definition and its gradient.
-
-  `ConcreteFunction` is a callable that encapsulates a function definition and
-  is differentiable under `tf.GradientTape` objects.
-  """
+class ConcreteFunction(core.ConcreteFunction):
+  """A `tf.types.experimental.ConcreteFunction` created from `tf.function`."""
 
   def __init__(self,
                func_graph,
@@ -1522,11 +1546,6 @@ class ConcreteFunction(object):
     self._func_graph = func_graph
     self._captured_inputs = self._func_graph.external_captures
     self._captured_closures = self._func_graph.deferred_external_captures
-    structured_outputs = self._func_graph.structured_outputs
-    self._ndarrays_list = (
-        isinstance(structured_outputs, (list, tuple)) and structured_outputs and
-        all(isinstance(o, np_arrays.ndarray) for o in structured_outputs))
-    self._ndarray_singleton = isinstance(structured_outputs, np_arrays.ndarray)
 
     # function_spec defines the structured signature.
     self._set_function_spec(function_spec)
@@ -1842,6 +1861,7 @@ class ConcreteFunction(object):
     arg_pieces = nest.flatten(arg, expand_composites=True)
     spec_pieces = nest.flatten(spec, expand_composites=True)
     for (arg_piece, spec_piece) in zip(arg_pieces, spec_pieces):
+      # TODO(mdan): Use consistent error messages.
       if isinstance(spec_piece, tensor_spec.DenseSpec):
         # TODO(edloper): Consider calling convert_to_tensor on non-tensor
         # values here.  That would match the behavior of
@@ -1854,12 +1874,18 @@ class ConcreteFunction(object):
               "{} expected a Tensor in {}, but got {} value {}".format(
                   self._structured_signature_summary(), name,
                   type(arg_piece).__name__, arg_piece))
-      elif arg_piece is not _BOUND_VALUE and arg_piece != spec_piece:
-        raise TypeError("ConcreteFunction {} was constructed with {} value "
-                        "{} in {}, but was called with {} value {}".format(
-                            self._structured_signature_summary(),
-                            type(spec_piece).__name__, spec_piece, name,
-                            type(arg_piece).__name__, arg_piece))
+      elif arg_piece is not _BOUND_VALUE:
+        try:
+          arg_matches_spec = bool(arg_piece == spec_piece)
+        except (ValueError, TypeError):
+          logging.vlog(1, "Error matching value with spec", exc_info=True)
+          arg_matches_spec = False
+        if not arg_matches_spec:
+          raise TypeError("ConcreteFunction {} was constructed with {} value "
+                          "{} in {}, but was called with {} value {}".format(
+                              self._structured_signature_summary(),
+                              type(spec_piece).__name__, spec_piece, name,
+                              type(arg_piece).__name__, arg_piece))
 
   def _call_flat(self, args, captured_inputs, cancellation_manager=None):
     """Executes the wrapped function.
@@ -2176,19 +2202,13 @@ class ConcreteFunction(object):
     if self._func_graph.structured_outputs is None:
       return result
 
-    if result:
-      if self._ndarrays_list:
-        return [np_arrays.tensor_to_ndarray(o) for o in result]
-      elif self._ndarray_singleton:
-        return np_arrays.tensor_to_ndarray(result[0])
-
     # Replace outputs with results, skipping over any 'None' values.
     outputs_list = nest.flatten(
         self._func_graph.structured_outputs, expand_composites=True)
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
-        custom_gradient.copy_handle_data(self.outputs[j], result[j])
+        handle_data_util.copy_handle_data(self.outputs[j], result[j])
         outputs_list[i] = result[j]
         j += 1
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
@@ -2280,16 +2300,21 @@ class ConcreteFunction(object):
     # are simply dropped from the signature.
     # TODO(b/159639913) Look into whether dropping arguments with default values
     # from the signature is the right thing to do.
-    names = names[:len(arg_specs)]
 
-    names.extend(sorted(kwarg_specs))
-    specs = list(arg_specs) + list(kwarg_specs.values())
-    # note: we can skip bound args, since we already displayed thier bound
+    # Note: we can skip bound args, since we already displayed their bound
     # value in the signature summary.
     arg_details = []
-    for (name, spec) in zip(names, specs):
+    for (name, spec) in zip(names[:len(arg_specs)], list(arg_specs)):
       if _contains_type_spec(spec):
         arg_details.append("    {}: {}".format(name, pretty_print_spec(spec)))
+
+    if kwarg_specs:
+      for kwarg in sorted(kwarg_specs):
+        spec = kwarg_specs[kwarg]
+        if _contains_type_spec(spec):
+          arg_details.append("    {}: {}".format(
+              kwarg, pretty_print_spec(spec)))
+
     if arg_details:
       lines.append("  Args:")
       lines.extend(arg_details)
@@ -2356,6 +2381,9 @@ class FunctionSpec(object):
       instance of FunctionSpec
     """
     fullargspec = tf_inspect.getfullargspec(python_function)
+    # Checks if the `fullargspec` contains self or cls as its first argument.
+    is_method = tf_inspect.isanytargetmethod(python_function)
+
     # Treat a wrapped partial function as a special case. For all arguments that
     # were overridden with keywords in the partial:
     #   - remove the corresponding arguments,
@@ -2374,7 +2402,7 @@ class FunctionSpec(object):
           #
           #   def func(a, b, c, d=5, e=7):
           #     return a, b, c, d, e
-          #   p_func = functools.partial(tf.function(func, 10, e=9))
+          #   p_func = tf.function(functools.partial(func, 10, e=9))
           #
           # Here we want to drop from the defaults the parameter `e`. If we
           # forwarded the call to the partial function with a default for `e`
@@ -2420,25 +2448,6 @@ class FunctionSpec(object):
             kwonlyargs=[],
             kwonlydefaults={},
             annotations=fullargspec.annotations)
-
-      # inspect.ismethod() and inspect.isfunction() both return False on a
-      # functools.partial-wrapped function. We set it to False to
-      # maintain consistency with prior versions.
-      is_method = False
-
-    else:
-      # Instead of using tf_inspect.ismethod() which only checks the
-      # final unwrapped target, we check if any decorated target along the chain
-      # is a method.
-      is_method = tf_inspect.isanytargetmethod(python_function)
-
-      # In the following scenario, 'python_function' is a callable object.
-      # python_function(...) is equal to python_function.__call__(self, ...)
-      if not is_method and not tf_inspect.isfunction(
-          python_function) and hasattr(
-              python_function, "__class__") and hasattr(
-                  python_function.__class__, "__call__"):
-        is_method = True
 
     # Get the function's name.  Remove functools.partial wrappers if necessary.
     while isinstance(python_function, functools.partial):
@@ -2625,6 +2634,14 @@ class FunctionSpec(object):
         kwargs[kw] = self._to_tensor_or_tensor_spec(v)
     return tuple(args), kwargs
 
+  def _validate_inputs(self, flat_inputs):
+    """Raises an error if inputs contain illegal values."""
+    for inp in flat_inputs:
+      # TODO(b/183107079): Allow these once they're handled properly.
+      if isinstance(inp, weakref.ref):
+        raise ValueError(
+            f"weakref input {inp} not supported for function {self._name}")
+
   def canonicalize_function_inputs(self, *args, **kwargs):
     """Canonicalizes `args` and `kwargs`.
 
@@ -2747,13 +2764,16 @@ class FunctionSpec(object):
     if self._input_signature is None:
       inputs, flat_inputs, filtered_flat_inputs = _convert_numpy_inputs(inputs)
       kwargs, flat_kwargs, filtered_flat_kwargs = _convert_numpy_inputs(kwargs)
-      return (inputs, kwargs, flat_inputs + flat_kwargs,
-              filtered_flat_inputs + filtered_flat_kwargs)
+      flat_inputs += flat_kwargs
+      filtered_flat_inputs += filtered_flat_kwargs
     else:
       assert not kwargs
       inputs, flat_inputs, filtered_flat_inputs = _convert_inputs_to_signature(
           inputs, self._input_signature, self._flat_input_signature)
-      return inputs, {}, flat_inputs, filtered_flat_inputs
+
+    self._validate_inputs(flat_inputs)
+
+    return inputs, kwargs, flat_inputs, filtered_flat_inputs
 
 
 def _as_ndarray(value):
@@ -2900,10 +2920,21 @@ class FunctionCache(object):
         _FunctionGarbageCollector(self.arg_relaxed_specs)]
 
   def all_values(self):
-    """A set of all `ConcreteFunction` instances held by this cache."""
-    return set(self.primary.values()) | set(self.arg_relaxed.values())
+    """A list of all `ConcreteFunction` instances held by this cache."""
+    # We need to simultaneously make sure our returned concrete functions are
+    # unique *and* make sure they are returned in a deterministic order for
+    # serialization.
+    #
+    # TODO(b/174215821): It's likely that we ultimately would just prefer to
+    # choose the most specific concrete function shape given a set of
+    # arguments. If and when that is implemented, this logic can be revisited.
+    primary_functions = set(self.primary.values())
+    return list(self.primary.values()) + [
+        v for v in self.arg_relaxed.values() if v not in primary_functions]
 
 
+# TODO(mdan): Refactor this and clarify relationship with def_function.Function.
+# Right now, def_function.Function is the higher level implementation.
 class Function(object):
   """Wrapper class for the graph functions defined for a Python function.
 
@@ -3147,7 +3178,10 @@ class Function(object):
                  include_tensor_ranks_only=False):
     """Computes the cache key given inputs and execution context."""
     if self.input_signature is None:
-      inputs = (args, kwargs) if kwargs else args
+      # We always use both args and kwargs to form input even if one is empty.
+      # This reduces ambiguity, for example, when args contains a dict and
+      # kwargs is empty.
+      inputs = (args, kwargs)
       input_signature = pywrap_tfe.TFE_Py_EncodeArg(inputs,
                                                     include_tensor_ranks_only)
       hashable_input_signature = _make_input_signature_hashable(input_signature)
@@ -3450,6 +3484,11 @@ def validate_signature(signature):
     raise TypeError("Invalid input_signature {}; input_signature must be "
                     "a possibly nested sequence of TensorSpec objects."
                     .format(signature))
+
+
+def validate_python_function(python_function):
+  if not callable(python_function):
+    raise TypeError(f"{python_function} is not a callable object.")
 
 
 def defun(func=None,

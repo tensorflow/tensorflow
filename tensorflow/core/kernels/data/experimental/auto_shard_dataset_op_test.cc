@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/auto_shard_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/kernels/data/shard_dataset_op.h"
 
 namespace tensorflow {
@@ -24,9 +24,9 @@ constexpr char kNodeName[] = "auto_shard_dataset";
 class AutoShardDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  AutoShardDatasetParams(T input_dataset_params, int64 num_workers, int64 index,
-                         int auto_shard_policy, int64 num_replicas,
-                         DataTypeVector output_dtypes,
+  AutoShardDatasetParams(T input_dataset_params, int64_t num_workers,
+                         int64_t index, int auto_shard_policy,
+                         int64_t num_replicas, DataTypeVector output_dtypes,
                          std::vector<PartialTensorShape> output_shapes,
                          string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),

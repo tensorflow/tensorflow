@@ -304,8 +304,8 @@ void PrintMismatch(int64* mismatches, const ErrorGenerator& err_generator) {
   // We send a few mismatches to gunit so they show up nicely in test logs.
   // Then we send more to LOG(ERROR).  The remainder we squelch unless we're
   // at vlog level 2.
-  constexpr int64 kMaxMismatchesLoggedToGunit = 10;
-  constexpr int64 kMaxMismatchesLoggedToErr = 1000;
+  constexpr int64_t kMaxMismatchesLoggedToGunit = 10;
+  constexpr int64_t kMaxMismatchesLoggedToErr = 1000;
 
   (*mismatches)++;
   if (*mismatches < kMaxMismatchesLoggedToGunit) {
@@ -332,7 +332,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(const InputLiterals& input_literals,
   // the total number of different cache locations are
   // kNumSubnormalSubstitutionValues raised to the num_components.
   // num_components = N for the reals, and 2*N for the complex.
-  int64 max_cache_size =
+  int64_t max_cache_size =
       pow(kNumSubnormalSubstitutionValues, N * (kIsComplex ? 2 : 1));
   pure_subnormal_cache.reserve(max_cache_size);
   for (int i = 0; i < max_cache_size; ++i) {
@@ -348,9 +348,9 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(const InputLiterals& input_literals,
 
   absl::Span<const NativeT> result_arr = result_literal.data<NativeT>();
 
-  int64 mismatches = 0;
+  int64_t mismatches = 0;
 
-  for (int64 i = 0; i < result_arr.size(); ++i) {
+  for (int64_t i = 0; i < result_arr.size(); ++i) {
     NativeInputs inputs;
     NativeRefInputs inputs_ref_ty;
 

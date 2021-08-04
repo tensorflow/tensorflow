@@ -63,7 +63,7 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
 // order of the tuple elements within the tuple shape.
 // If a shape (or a subshape of a tuple shape) has missing layout, a rank long
 // sequence of -1 values will be emitted.
-xla::StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape);
+StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape);
 
 // Given the input shape and a linearized sequence of the minor-to-major values
 // of the layouts, create the output shape by rewriting the input shape layouts.

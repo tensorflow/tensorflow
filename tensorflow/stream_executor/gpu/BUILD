@@ -22,7 +22,7 @@ package(
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Filegroup used to collect source files for the dependency check.
@@ -45,6 +45,7 @@ cc_library(
     srcs = if_gpu_is_configured(["gpu_activation.cc"]),
     hdrs = if_gpu_is_configured(["gpu_activation.h"]),
     deps = if_gpu_is_configured([
+        ":gpu_executor_header",
         ":gpu_activation_header",
         ":gpu_driver_header",
         "//tensorflow/stream_executor",
@@ -65,6 +66,11 @@ cc_library(
 cc_library(
     name = "gpu_driver_header",
     hdrs = ["gpu_driver.h"],
+    visibility = [
+        "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "//tensorflow/core/util/autotune_maps:__subpackages__",
+        "//tensorflow/stream_executor:__subpackages__",
+    ],
     deps = [
         ":gpu_types_header",
         "//tensorflow/stream_executor:device_options",
@@ -109,6 +115,7 @@ cc_library(
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:platform",
         "//tensorflow/stream_executor:stream_executor_internal",
+        "//tensorflow/stream_executor:stream_executor_pimpl_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings",
@@ -241,8 +248,10 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:cuda_libdevice_path",
+        "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",

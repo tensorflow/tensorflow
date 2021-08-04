@@ -1,9 +1,7 @@
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "experimental",
@@ -13,6 +11,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:dataset_ops",
         "//tensorflow/python/data/experimental/ops:iterator_ops",
+        "//tensorflow/python/data/experimental/ops:lookup_ops",
         "//tensorflow/python/data/experimental/service",
     ],
 )

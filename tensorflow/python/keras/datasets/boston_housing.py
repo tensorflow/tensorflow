@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Boston housing price regression dataset.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Boston housing price regression dataset."""
 
 import numpy as np
 
@@ -39,22 +35,22 @@ def load_data(path='boston_housing.npz', test_split=0.2, seed=113):
   [StatLib website](http://lib.stat.cmu.edu/datasets/boston).
 
   Args:
-      path: path where to cache the dataset locally
-          (relative to `~/.keras/datasets`).
-      test_split: fraction of the data to reserve as test set.
-      seed: Random seed for shuffling the data
-          before computing the test split.
+    path: path where to cache the dataset locally
+        (relative to `~/.keras/datasets`).
+    test_split: fraction of the data to reserve as test set.
+    seed: Random seed for shuffling the data
+        before computing the test split.
 
   Returns:
-      Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
+    Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
 
-      **x_train, x_test**: numpy arrays with shape `(num_samples, 13)`
-        containing either the training samples (for x_train),
-        or test samples (for y_train).
+  **x_train, x_test**: numpy arrays with shape `(num_samples, 13)`
+    containing either the training samples (for x_train),
+    or test samples (for y_train).
 
-      **y_train, y_test**: numpy arrays of shape `(num_samples,)` containing the
-        target scalars. The targets are float scalars typically between 10 and
-        50 that represent the home prices in k$.
+  **y_train, y_test**: numpy arrays of shape `(num_samples,)` containing the
+    target scalars. The targets are float scalars typically between 10 and
+    50 that represent the home prices in k$.
   """
   assert 0 <= test_split < 1
   origin_folder = 'https://storage.googleapis.com/tensorflow/tf-keras-datasets/'
@@ -63,7 +59,7 @@ def load_data(path='boston_housing.npz', test_split=0.2, seed=113):
       origin=origin_folder + 'boston_housing.npz',
       file_hash=
       'f553886a1f8d56431e820c5b82552d9d95cfcb96d1e678153f8839538947dff5')
-  with np.load(path, allow_pickle=True) as f:
+  with np.load(path, allow_pickle=True) as f:  # pylint: disable=unexpected-keyword-arg
     x = f['x']
     y = f['y']
 

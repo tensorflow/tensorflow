@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/sampling_dataset_op.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
@@ -40,7 +40,7 @@ namespace experimental {
 
 class SamplingDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, float rate, int64 seed, int64 seed2,
+  Dataset(OpKernelContext* ctx, float rate, int64_t seed, int64_t seed2,
           const DatasetBase* input)
       : DatasetBase(DatasetContext(ctx)),
         rate_(rate),
@@ -99,7 +99,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
  private:
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    explicit Iterator(const Params& params, int64 seed, int64 seed2)
+    explicit Iterator(const Params& params, int64_t seed, int64_t seed2)
         : DatasetIterator<Dataset>(params),
           seeds_(MaybeOverrideSeeds({seed, seed2})),
           parent_generator_(seeds_.first, seeds_.second),
@@ -176,9 +176,9 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
       // Restore the random number generators.
       TF_RETURN_IF_ERROR(reader->ReadScalar(
           this->full_name("num_random_samples"), &num_random_samples_));
-      int64 seed;
+      int64_t seed;
       TF_RETURN_IF_ERROR(reader->ReadScalar(this->full_name("seed"), &seed));
-      int64 seed2;
+      int64_t seed2;
       TF_RETURN_IF_ERROR(reader->ReadScalar(this->full_name("seed2"), &seed2));
       seeds_ = {seed, seed2};
       ResetRngs();
@@ -226,8 +226,8 @@ SamplingDatasetOp::SamplingDatasetOp(OpKernelConstruction* ctx)
 void SamplingDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                     DatasetBase** output) {
   float rate;
-  int64 seed;
-  int64 seed2;
+  int64_t seed;
+  int64_t seed2;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<float>(ctx, kRate, &rate));
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed));
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));

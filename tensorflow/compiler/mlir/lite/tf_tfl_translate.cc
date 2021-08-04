@@ -17,12 +17,16 @@ limitations under the License.
 
 #include "absl/strings/str_split.h"
 #include "llvm/ADT/None.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -149,6 +153,14 @@ int main(int argc, char **argv) {
   specs.upgrade_legacy = upgrade_legacy;
   specs.prune_unused_nodes = true;
 
+  if (!select_user_tf_ops.empty() && !emit_select_tf_ops) {
+    llvm::errs() << "You must specify `emit-select-tf-ops=true` when passing "
+                    "`select-user-tf-ops` flag.";
+    return kTrFailure;
+  }
+
+  std::unique_ptr<tensorflow::SavedModelBundle> bundle;
+
   // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
   // inside mlir is done.
   if (import_saved_model_object_graph || import_saved_model_signature_defs) {
@@ -173,14 +185,15 @@ int main(int argc, char **argv) {
     }
     std::vector<std::string> extra_opdefs(custom_opdefs.begin(),
                                           custom_opdefs.end());
-    module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
-                                          tags, extra_opdefs, exported_names,
-                                          specs, &context);
+    module = tensorflow::ImportSavedModel(
+        input_file_name, saved_model_version, tags, extra_opdefs,
+        exported_names, specs, /*enable_variable_lifting=*/true, &context,
+        &bundle);
   } else {
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
         specs, debug_info_file, input_arrays, input_dtypes, input_shapes,
-        output_arrays, &source_mgr, &context);
+        output_arrays, control_output_arrays, &source_mgr, &context);
   }
 
   // If errors occur, the library call in the above already logged the error
@@ -227,6 +240,8 @@ int main(int argc, char **argv) {
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
   pass_config.legalize_tf_while = convert_tf_while_to_tfl_while;
+  pass_config.unfold_batch_matmul = unfold_batchmatmul;
+  pass_config.unfold_large_splat_constant = unfold_large_splat_constant;
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm,
@@ -238,11 +253,21 @@ int main(int argc, char **argv) {
   }
   pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
 
+  // Read list of user select ops.
+  std::unordered_set<std::string> select_user_ops_set;
+  llvm::SmallVector<llvm::StringRef, 2> user_ops;
+  (llvm::StringRef(select_user_tf_ops))
+      .split(user_ops, ',', /*MaxSplit=*/-1,
+             /*KeepEmpty=*/false);
+  llvm::for_each(user_ops, [&select_user_ops_set](llvm::StringRef op_name) {
+    select_user_ops_set.insert(op_name.str());
+  });
+
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops,
-      /*select_user_tf_ops=*/{}, quant_specs, tags, &result, &pm);
+      emit_select_tf_ops, emit_custom_ops, allow_all_select_tf_ops,
+      select_user_ops_set, quant_specs, tags, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

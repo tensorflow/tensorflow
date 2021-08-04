@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -31,9 +30,8 @@ namespace gpu {
 // ForThunk executes 'loop_limit' invocations of 'body_thunk_sequence'.
 class ForThunk : public Thunk {
  public:
-  ForThunk(ThunkInfo thunk_info, const int64 loop_limit,
-           std::unique_ptr<ThunkSequence> body_thunk_sequence,
-           absl::optional<size_t> body_profile_index_);
+  ForThunk(ThunkInfo thunk_info, const int64_t loop_limit,
+           std::unique_ptr<ThunkSequence> body_thunk_sequence);
   ForThunk(const ForThunk&) = delete;
   ForThunk& operator=(const ForThunk&) = delete;
 
@@ -44,7 +42,6 @@ class ForThunk : public Thunk {
  private:
   const int64 loop_limit_;
   std::unique_ptr<SequentialThunk> body_thunk_sequence_;
-  const absl::optional<size_t> body_profile_index_;
 };
 
 }  // namespace gpu

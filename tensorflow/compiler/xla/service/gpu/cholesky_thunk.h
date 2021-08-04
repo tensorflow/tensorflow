@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_context.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -40,12 +39,12 @@ namespace gpu {
 // Thread-compatible.
 class CholeskyThunk : public Thunk {
  public:
-  static StatusOr<int64> ScratchBufferSize(int64 n);
+  static StatusOr<int64> ScratchBufferSize(int64_t n);
   CholeskyThunk(ThunkInfo thunk_info, const CholeskyOptions& options,
                 BufferAllocation::Slice a_buffer,
                 BufferAllocation::Slice workspace_buffer,
                 BufferAllocation::Slice info_buffer, PrimitiveType type,
-                int64 batch_size, int64 n);
+                int64_t batch_size, int64_t n);
 
   CholeskyThunk(const CholeskyThunk&) = delete;
   CholeskyThunk& operator=(const CholeskyThunk&) = delete;
@@ -63,10 +62,6 @@ class CholeskyThunk : public Thunk {
   const int64 batch_size_;
   const int64 a_batch_stride_;
   const int64 n_;
-
-  tensorflow::mutex mu_;
-  absl::flat_hash_map<se::Stream*, CusolverContext> contexts_
-      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace gpu

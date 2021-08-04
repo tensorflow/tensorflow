@@ -79,11 +79,12 @@ class VariableOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testAssign(self):
-    value = np.array([[42.0, 43.0]])
-    var = state_ops.variable_op(value.shape, dtypes.float32)
-    self.assertShapeEqual(value, var)
-    assigned = state_ops.assign(var, value)
-    self.assertShapeEqual(value, assigned)
+    for dtype in [dtypes.float32, dtypes.int64, dtypes.uint32, dtypes.uint8]:
+      value = np.array([[42, 43]])
+      var = state_ops.variable_op(value.shape, dtype)
+      self.assertShapeEqual(value, var)
+      assigned = state_ops.assign(var, value)
+      self.assertShapeEqual(value, assigned)
 
   @test_util.run_deprecated_v1
   def testAssignNoValidateShape(self):
@@ -149,16 +150,16 @@ class VariableOpTest(test.TestCase):
       self.assertEqual(tensor_shape.unknown_shape(), var.get_shape())
       self.assertEqual(
           tensor_shape.unknown_shape(),
-          state_ops.assign(
-              var, value, validate_shape=False).get_shape())
+          state_ops.assign(var, value, validate_shape=False).get_shape())
 
   @test_util.run_deprecated_v1
   def testAssignUpdate(self):
-    var = state_ops.variable_op([1, 2], dtypes.float32)
-    added = state_ops.assign_add(var, [[2.0, 3.0]])
-    self.assertEqual([1, 2], added.get_shape())
-    subbed = state_ops.assign_sub(var, [[12.0, 13.0]])
-    self.assertEqual([1, 2], subbed.get_shape())
+    for dtype in [dtypes.float32, dtypes.int64, dtypes.uint32, dtypes.uint8]:
+      var = state_ops.variable_op([1, 2], dtype)
+      added = state_ops.assign_add(var, [[2, 3]])
+      self.assertEqual([1, 2], added.get_shape())
+      subbed = state_ops.assign_sub(var, [[12, 13]])
+      self.assertEqual([1, 2], subbed.get_shape())
 
   @test_util.run_deprecated_v1
   def testAssignUpdateNoVarShape(self):
@@ -187,8 +188,9 @@ class VariableOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testTemporaryVariable(self):
     with test_util.use_gpu():
-      var = gen_state_ops.temporary_variable(
-          [1, 2], dtypes.float32, var_name="foo")
+      var = gen_state_ops.temporary_variable([1, 2],
+                                             dtypes.float32,
+                                             var_name="foo")
       var = state_ops.assign(var, [[4.0, 5.0]])
       var = state_ops.assign_add(var, [[6.0, 7.0]])
       final = gen_state_ops.destroy_temporary_variable(var, var_name="foo")
@@ -205,11 +207,13 @@ class VariableOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testDuplicateTemporaryVariable(self):
     with test_util.use_gpu():
-      var1 = gen_state_ops.temporary_variable(
-          [1, 2], dtypes.float32, var_name="dup")
+      var1 = gen_state_ops.temporary_variable([1, 2],
+                                              dtypes.float32,
+                                              var_name="dup")
       var1 = state_ops.assign(var1, [[1.0, 2.0]])
-      var2 = gen_state_ops.temporary_variable(
-          [1, 2], dtypes.float32, var_name="dup")
+      var2 = gen_state_ops.temporary_variable([1, 2],
+                                              dtypes.float32,
+                                              var_name="dup")
       var2 = state_ops.assign(var2, [[3.0, 4.0]])
       final = var1 + var2
       with self.assertRaises(errors.AlreadyExistsError):
@@ -228,18 +232,21 @@ class VariableOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testTemporaryVariableNoLeak(self):
     with test_util.use_gpu():
-      var = gen_state_ops.temporary_variable(
-          [1, 2], dtypes.float32, var_name="bar")
+      var = gen_state_ops.temporary_variable([1, 2],
+                                             dtypes.float32,
+                                             var_name="bar")
       final = array_ops.identity(var)
       self.evaluate(final)
 
   @test_util.run_deprecated_v1
   def testTwoTemporaryVariablesNoLeaks(self):
     with test_util.use_gpu():
-      var1 = gen_state_ops.temporary_variable(
-          [1, 2], dtypes.float32, var_name="var1")
-      var2 = gen_state_ops.temporary_variable(
-          [1, 2], dtypes.float32, var_name="var2")
+      var1 = gen_state_ops.temporary_variable([1, 2],
+                                              dtypes.float32,
+                                              var_name="var1")
+      var2 = gen_state_ops.temporary_variable([1, 2],
+                                              dtypes.float32,
+                                              var_name="var2")
       final = var1 + var2
       self.evaluate(final)
 

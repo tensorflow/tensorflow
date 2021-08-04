@@ -16,11 +16,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/data/captured_function.h"
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/window_dataset.h"
 #include "tensorflow/core/lib/random/random.h"
 
@@ -108,7 +108,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     }
 
     int64 Cardinality() const override {
-      int64 n = input_->Cardinality();
+      int64_t n = input_->Cardinality();
       if (n == kInfiniteCardinality) {
         return n;
       }
@@ -248,7 +248,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 return errors::InvalidArgument(
                     "`key_func` must return a scalar int64.");
               }
-              const int64 key = key_func_output[0].scalar<int64>()();
+              const int64_t key = key_func_output[0].scalar<int64>()();
 
               if (window_sizes_.find(key) == window_sizes_.end()) {
                 // Run the window size function on the key to identify its
@@ -265,7 +265,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                   return errors::InvalidArgument(
                       "`window_size_func` must return a scalar int64.");
                 }
-                const int64 window_size =
+                const int64_t window_size =
                     window_size_func_output[0].scalar<int64>()();
                 if (window_size <= 0) {
                   return errors::InvalidArgument(
@@ -275,7 +275,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 window_sizes_[key] = window_size;
               }
 
-              const int64 window_size = window_sizes_[key];
+              const int64_t window_size = window_sizes_[key];
 
               std::vector<std::vector<Tensor>>& group = groups_[key];
               group.push_back(std::move(next_input_element));
@@ -331,7 +331,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               writer->WriteScalar(full_name("groups_size"), groups_.size()));
           int idx = 0;
           for (auto it = groups_.begin(); it != groups_.end(); it++) {
-            int64 key = it->first;
+            int64_t key = it->first;
             TF_RETURN_IF_ERROR(writer->WriteScalar(
                 full_name(strings::StrCat("groups_[", idx, "]->key")), key));
             TF_RETURN_IF_ERROR(SaveGroup(
@@ -382,16 +382,16 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
         // Restoring groups_
         if (reader->Contains(full_name("groups_size"))) {
-          int64 size;
+          int64_t size;
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name("groups_size"), &size));
           for (int idx = 0; idx < size; idx++) {
-            int64 key;
+            int64_t key;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
                 full_name(strings::StrCat("groups_[", idx, "]->key")), &key));
             std::vector<std::vector<Tensor>> group;
             TF_RETURN_IF_ERROR(RestoreGroup(
-                reader, full_name(strings::StrCat("groups_[", idx, "]")),
+                ctx, reader, full_name(strings::StrCat("groups_[", idx, "]")),
                 &group));
             groups_[key] = group;
           }
@@ -399,11 +399,11 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
         // Restoring window_sizes_
         if (reader->Contains(full_name("window_sizes_size"))) {
-          int64 size;
+          int64_t size;
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name("window_sizes_size"), &size));
           for (int idx = 0; idx < size; idx++) {
-            int64 key;
+            int64_t key;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
                 full_name(strings::StrCat("window_sizes_[", idx, "]->key")),
                 &key));
@@ -450,32 +450,34 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreGroup(IteratorStateReader* reader, const string& name,
+      Status RestoreGroup(IteratorContext* ctx, IteratorStateReader* reader,
+                          const string& name,
                           std::vector<std::vector<Tensor>>* group)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        int64 group_size;
+        int64_t group_size;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(strings::StrCat(name, "_size"), &group_size));
         group->resize(group_size);
         for (int i = 0; i < group_size; i++) {
-          int64 vector_size;
+          int64_t vector_size;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
               strings::StrCat(name, "[", i, "]_size"), &vector_size));
           group->at(i).resize(vector_size);
           for (int j = 0; j < vector_size; j++) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                strings::StrCat(name, "[", i, "][", j, "]"), &group->at(i)[j]));
+                ctx->flr(), strings::StrCat(name, "[", i, "][", j, "]"),
+                &group->at(i)[j]));
           }
         }
         return Status::OK();
       }
 
-      Status StartFlushingGroup(IteratorContext* ctx, int64 key)
+      Status StartFlushingGroup(IteratorContext* ctx, int64_t key)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         DatasetBase* group_dataset;
-        TF_RETURN_IF_ERROR(NewWindowDataset(
-            groups_[key], dataset()->input_->output_dtypes(),
-            dataset()->input_->output_shapes(), &group_dataset));
+        TF_RETURN_IF_ERROR(
+            NewWindow(groups_[key], dataset()->input_->output_dtypes(),
+                      dataset()->input_->output_shapes(), &group_dataset));
 
         Tensor key_arg(DT_INT64, TensorShape({}));
         key_arg.scalar<int64>()() = key;

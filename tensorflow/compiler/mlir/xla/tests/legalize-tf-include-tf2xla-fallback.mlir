@@ -37,4 +37,23 @@ func @mirror_pad(%arg0: tensor<2x3xcomplex<f64>>) -> tensor<4x7xcomplex<f64>> {
   return %1 : tensor<4x7xcomplex<f64>>
 }
 
+// BatchMatMulV2 has native as well as fallback lowering patterns available.
+// The fallback pattern uses dot_general without broadcast on operands and then
+// transposes the output which is faster. However, the fallback pattern doesn't
+// support dynamic shaped operands like the native lowering. Verify that
+// fallback lowering is preferred for static shaped operands when available.
+
+// CHECK-LABEL: batchmatmulv2
+func @batchmatmulv2(%arg0: tensor<1x4x2xf32>, %arg1: tensor<3x2x4xf32>) -> tensor<3x4x4xf32> {
+  // NO_FALLBACK: mhlo.dynamic_broadcast_in_dim
+  // NO_FALLBACK: mhlo.dot_general
+
+  // SUPPORTED_FALLBACK_DEVICE: mhlo.reduce
+  // SUPPORTED_FALLBACK_DEVICE: mhlo.dot_general
+  // SUPPORTED_FALLBACK_DEVICE: mhlo.transpose
+
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {T = f32, adj_x = false, adj_y = false, device = ""} : (tensor<1x4x2xf32>, tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
+  return %0 : tensor<3x4x4xf32>
+}
+
 }

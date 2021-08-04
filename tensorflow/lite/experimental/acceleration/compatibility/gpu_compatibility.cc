@@ -16,10 +16,12 @@ limitations under the License.
 
 #include <cctype>
 #include <map>
+#include <memory>
 #include <string>
 
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/experimental/acceleration/compatibility/canonicalize_value.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/database_generated.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/devicedb.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility_binary.h"
@@ -29,20 +31,6 @@ namespace tflite {
 namespace acceleration {
 namespace {
 
-std::string CanonicalizeValue(absl::string_view input) {
-  // This assumes ASCII, which holds for all values we have in the list.
-  std::string output(input);
-  for (int i = 0; i < output.size(); i++) {
-    char c = output[i];
-    if (c == ' ' || c == '-') {
-      output[i] = '_';
-    } else if (isalpha(c)) {
-      output[i] = tolower(c);
-    }
-  }
-  return output;
-}
-
 void CanonicalizeValues(std::map<std::string, std::string>* variable_values) {
   for (auto& i : *variable_values) {
     i.second = CanonicalizeValue(i.second);
@@ -51,14 +39,26 @@ void CanonicalizeValues(std::map<std::string, std::string>* variable_values) {
 
 }  // namespace
 
-GPUCompatibilityList::GPUCompatibilityList()
-    : GPUCompatibilityList(g_tflite_acceleration_gpu_compatibility_binary) {}
-
 GPUCompatibilityList::GPUCompatibilityList(
     const unsigned char* compatibility_list_flatbuffer) {
   if (!compatibility_list_flatbuffer) return;
   database_ =
       flatbuffers::GetRoot<DeviceDatabase>(compatibility_list_flatbuffer);
+}
+
+std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create() {
+  return Create(g_tflite_acceleration_gpu_compatibility_binary,
+                g_tflite_acceleration_gpu_compatibility_binary_len);
+}
+
+std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create(
+    const unsigned char* compatibility_list_flatbuffer, int length) {
+  if (!compatibility_list_flatbuffer ||
+      !IsValidFlatbuffer(compatibility_list_flatbuffer, length)) {
+    return nullptr;
+  }
+  return std::unique_ptr<GPUCompatibilityList>(
+      new GPUCompatibilityList(compatibility_list_flatbuffer));
 }
 
 std::map<std::string, std::string> GPUCompatibilityList::CalculateVariables(
@@ -97,10 +97,6 @@ TfLiteGpuDelegateOptionsV2 GPUCompatibilityList::GetBestOptionsFor(
   // information about which backend to choose (OpenGL/OpenCL/Vulkan) or other
   // options.
   return TfLiteGpuDelegateOptionsV2Default();
-}
-
-bool GPUCompatibilityList::IsDatabaseLoaded() const {
-  return database_ != nullptr;
 }
 
 // static

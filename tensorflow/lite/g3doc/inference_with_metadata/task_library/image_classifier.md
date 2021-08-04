@@ -11,7 +11,7 @@ the
 for more information about image classifiers.
 
 Use the Task Library `ImageClassifier` API to deploy your custom image
-classifiers or pretrained ones into your model apps.
+classifiers or pretrained ones into your mobile apps.
 
 ## Key features of the ImageClassifier API
 
@@ -75,7 +75,7 @@ dependencies {
     // Other dependencies
 
     // Import the Task Vision Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.1.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.2.0'
 }
 ```
 
@@ -96,14 +96,10 @@ for more options to configure `ImageClassifier`.
 
 ## Run inference in C++
 
-Note: we are working on improving the usability of the C++ Task Library, such as
-providing prebuilt binaries and creating user-friendly workflows to build from
-source code. The C++ API may be subject to change.
-
 ```c++
 // Initialization
 ImageClassifierOptions options;
-options.mutable_model_file_with_metadata()->set_file_name(model_file);
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
 std::unique_ptr<ImageClassifier> image_classifier = ImageClassifier::CreateFromOptions(options).value();
 
 // Run inference
@@ -147,7 +143,9 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `ImageClassifier` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md).
+[TFLite Model Metadata](../../convert/metadata.md). See examples of creating
+metadata for image classifiers using the
+[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#image_classifiers).
 
 The compatible image classifier models should meet the following requirements:
 

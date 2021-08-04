@@ -27,12 +27,16 @@ namespace tensorflow {
 
 class TestCollectiveExecutor : public CollectiveExecutor {
  public:
-  explicit TestCollectiveExecutor(CollectiveExecutorMgrInterface* cem)
-      : CollectiveExecutor(cem) {}
+  explicit TestCollectiveExecutor(CollectiveExecutorMgrInterface* cem,
+                                  CollectiveRemoteAccess* rma = nullptr)
+      : CollectiveExecutor(cem), rma_(rma) {}
 
-  void RunClosure(std::function<void()>) override {
-    LOG(FATAL) << "Unimplemented";
-  }
+  void RunClosure(std::function<void()> fn) override { fn(); }
+
+  CollectiveRemoteAccess* remote_access() override { return rma_; }
+
+ private:
+  CollectiveRemoteAccess* rma_;
 };
 
 class TestParamResolver : public ParamResolverInterface {
@@ -61,7 +65,8 @@ class TestParamResolver : public ParamResolverInterface {
 
 class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
  public:
-  TestCollectiveExecutorMgr() {}
+  TestCollectiveExecutorMgr(CollectiveRemoteAccess* rma = nullptr)
+      : rma_(rma) {}
 
   ~TestCollectiveExecutorMgr() override {
     for (auto& iter : table_) {
@@ -69,21 +74,21 @@ class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
     }
   }
 
-  CollectiveExecutor* FindOrCreate(int64 step_id) override {
+  CollectiveExecutor* FindOrCreate(int64_t step_id) override {
     mutex_lock l(mu_);
     CollectiveExecutor* ce = nullptr;
     auto iter = table_.find(step_id);
     if (iter != table_.end()) {
       ce = iter->second;
     } else {
-      ce = new TestCollectiveExecutor(this);
+      ce = new TestCollectiveExecutor(this, rma_);
       table_[step_id] = ce;
     }
     ce->Ref();
     return ce;
   }
 
-  void Cleanup(int64 step_id) override {
+  void Cleanup(int64_t step_id) override {
     mutex_lock l(mu_);
     auto iter = table_.find(step_id);
     if (iter != table_.end()) {
@@ -111,20 +116,21 @@ class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
     done(errors::Internal("unimplemented"));
   }
 
-  void RefreshStepIdSequenceAsync(int64 graph_key,
+  void RefreshStepIdSequenceAsync(int64_t graph_key,
                                   const StatusCallback& done) override {
     done(errors::Internal("unimplemented"));
   }
 
-  int64 NextStepId(int64 graph_key) override {
+  int64 NextStepId(int64_t graph_key) override {
     return CollectiveExecutor::kInvalidId;
   }
 
-  void RetireStepId(int64 graph_key, int64 step_id) override {}
+  void RetireStepId(int64_t graph_key, int64_t step_id) override {}
 
   mutex mu_;
   gtl::FlatMap<int64, CollectiveExecutor*> table_ TF_GUARDED_BY(mu_);
   mutable TestParamResolver param_resolver_;
+  CollectiveRemoteAccess* rma_;
 };
 
 }  // namespace tensorflow

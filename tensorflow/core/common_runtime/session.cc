@@ -37,7 +37,7 @@ Session::~Session() {}
 Status Session::Run(const RunOptions& run_options,
                     const std::vector<std::pair<string, Tensor> >& inputs,
                     const std::vector<string>& output_tensor_names,
-                    const std::vector<string>& target_node_names,
+                    const std::vector<string>& target_tensor_names,
                     std::vector<Tensor>* outputs, RunMetadata* run_metadata) {
   return errors::Unimplemented(
       "Run with options is not supported for this session.");

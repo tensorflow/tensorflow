@@ -46,7 +46,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
   def testSimpleGather(self, indices_dtype):
     data = np.array([0, 1, 2, 3, 7, 5, 8, 9, 10, 11, 15, 13])
     indices = [3, 4]
-    with self.session(use_gpu=True):
+    with self.session():
       for dtype in _TEST_TYPES:
         params_np = self._buildParams(data, dtype)
         params = constant_op.constant(params_np)
@@ -62,7 +62,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
   def test2DArray(self, indices_dtype):
     data = np.array([[0, 1, 2, 3, 7, 5], [8, 9, 10, 11, 15, 13]])
     indices = [[3], [4]]
-    with self.session(use_gpu=True):
+    with self.session():
       for dtype in _TEST_TYPES:
         params_np = self._buildParams(data, dtype)
         params = constant_op.constant(params_np)
@@ -77,7 +77,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
   def testHigherRank(self):
     data = np.array([[[0, 1, 2], [3, 7, 5]], [[8, 9, 10], [11, 15, 13]]])
     indices = [[[2, 0], [1, 2]], [[2, 0], [0, 1]]]
-    with self.session(use_gpu=True):
+    with self.session():
       for dtype in _TEST_TYPES:
         params_np = self._buildParams(data, dtype)
         params = constant_op.constant(params_np)
@@ -113,7 +113,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         self.evaluate(array_ops.batch_gather(params, [7]))
 
   def testEmptySlices(self):
-    with self.session(use_gpu=True):
+    with self.session():
       for dtype in _TEST_TYPES:
         for itype in np.int32, np.int64:
           params = np.zeros((7, 0, 0), dtype=dtype.as_numpy_dtype)

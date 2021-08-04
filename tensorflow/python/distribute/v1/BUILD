@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cuda_py_test(

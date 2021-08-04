@@ -17,6 +17,9 @@ load(
 load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_disable_ptxas_warning_flags")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
@@ -37,7 +40,8 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    features = ["-layering_check"],
+    licenses = ["notice"],
 )
 
 # Export a few files for use on Android.
@@ -50,6 +54,8 @@ exports_files([
     "adjust_saturation_op.h",
     "crop_and_resize_op.cc",
     "crop_and_resize_op.h",
+    "colorspace_op.cc",
+    "colorspace_op.h",
     "extract_image_patches_op.cc",
     "extract_image_patches_op.h",
     "image_ops.h",
@@ -64,6 +70,7 @@ exports_files([
     "mirror_pad_op_cpu_impl_5.cc",
     "non_max_suppression_op.cc",
     "non_max_suppression_op.h",
+    "resize_bicubic_op.cc",
     "resize_bilinear_op.cc",
     "resize_bilinear_op.h",
     "resize_nearest_neighbor_op.cc",
@@ -187,6 +194,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "colorspace_op",
+    gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "colorspace_op",
     deps = IMAGE_DEPS,
 )
@@ -194,7 +202,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "crop_and_resize_op",
     prefix = "crop_and_resize_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core:framework_internal"],
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/util:determinism_for_kernels",
+    ],
 )
 
 tf_kernel_library(
@@ -288,13 +299,16 @@ tf_kernel_library(
 tf_kernel_library(
     name = "resize_bilinear_op",
     prefix = "resize_bilinear_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:cast_op"],
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/util:determinism_for_kernels",
+    ],
 )
 
 tf_kernel_library(
     name = "resize_nearest_neighbor_op",
     prefix = "resize_nearest_neighbor_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
 )
 
 tf_kernel_library(
@@ -440,7 +454,7 @@ build_test(
 
 # A file group which contains all operators which are known to work on mobile.
 filegroup(
-    name = "android_all_op_kernels",
+    name = "portable_all_op_kernels",
     srcs = glob(
         [
             "*.cc",
@@ -463,7 +477,7 @@ filegroup(
 )
 
 filegroup(
-    name = "android_all_ops_textual_hdrs",
+    name = "portable_all_ops_textual_hdrs",
     srcs = ["mirror_pad_op.h"],
     visibility = ["//visibility:public"],
 )

@@ -162,9 +162,9 @@ TEST_F(GpuConvRewriterTest,
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
   EXPECT_TRUE(RunPass(module.get()));
-  EXPECT_THAT(entry_computation->root_instruction(),
-              op::GetTupleElement(
-                  op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
+  EXPECT_THAT(
+      entry_computation->root_instruction(),
+      op::GetTupleElement(op::CustomCall(kCudnnConvForwardCallTarget), 0));
 }
 
 // Extracted from block35 training.
@@ -656,6 +656,25 @@ TEST_F(GpuConvRewriterTest, TestForwardInt8Convolution) {
 
   ASSERT_FALSE(GpuConvRewriter().Run(m.get()).ok());
 }
+
+TEST_F(GpuConvRewriterTest, TestBackwardFilterPattern) {
+  const string module_str = absl::StrFormat(R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = f32[8,120,256,256] parameter(0)
+      filter = f32[8,120,256,256] parameter(1)
+
+      ROOT conv = f32[120,120,3,3] convolution(input, filter), window={size=256x256 pad=1_1x1_1}, dim_labels=fb01_io01->fb01
+    })");
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  EXPECT_TRUE(RunPass(m.get()));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              op::GetTupleElement(
+                  op::CustomCall(kCudnnConvBackwardFilterCallTarget, _, _), 0));
+}
+
 }  // anonymous namespace
 }  // namespace gpu
 }  // namespace xla

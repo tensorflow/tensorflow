@@ -24,14 +24,11 @@ import time
 from absl.testing import parameterized
 import six
 
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
-from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import internal
@@ -46,68 +43,31 @@ except ImportError:
 
 class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  def assertNotIncreasingMemory(self,
-                                f,
-                                num_iters=100000,
-                                increase_threshold_absolute_mb=10):
+  def setUp(self):
+    super(MemoryCleanupTest, self).setUp()
+    self._devices = self.configureDevicesForMultiDeviceTest(3)
+
+  def assertMemoryNotIncreasing(self, f, num_iters, max_increase_mb):
     """Assert memory usage doesn't increase beyond given threshold for f."""
-    with context.eager_mode():
-      # Warm up.
+
+    # Warm up.
+    f()
+    # Wait for background threads to start up and allocate memory.
+    time.sleep(4)
+    initial = memory_profiler.memory_usage(-1)[0]
+    for _ in six.moves.range(num_iters):
       f()
-      # Wait for background threads to start up and take over memory.
-      # FIXME: The nature of this test leaves few other options. Maybe there
-      # is a better way to do this.
-      time.sleep(4)
-      initial = memory_profiler.memory_usage(-1)[0]
-      for _ in six.moves.range(num_iters):
-        f()
-      increase = memory_profiler.memory_usage(-1)[0] - initial
-      logging.info("Memory increase observed: %f MB" % increase)
-      assert increase < increase_threshold_absolute_mb, (
-          "Increase is too high. Initial memory usage: %f MB. Increase: %f MB. "
-          "Maximum allowed increase: %f") % (initial, increase,
-                                             increase_threshold_absolute_mb)
+    increase = memory_profiler.memory_usage(-1)[0] - initial
+    logging.info("Memory increase observed: %f MB" % increase)
+    assert increase < max_increase_mb, (
+        "Increase is too high. Initial memory usage: %f MB. Increase: %f MB. "
+        "Maximum allowed increase: %f") % (initial, increase, max_increase_mb)
 
-  # TODO(b/121264236): Support v2 behavior
-  @combinations.generate(combinations.combine(tf_api_version=1, mode="eager"))
-  def testEagerMemoryUsageWithReset(self):
-    if memory_profiler is None:
-      self.skipTest("memory_profiler required to run this test")
-
-    dataset = dataset_ops.Dataset.range(10)
-    multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/cpu:2"])
-
-    def f():
-      self.evaluate(multi_device_iterator.get_next())
-      multi_device_iterator._eager_reset()
-
-    self.assertNotIncreasingMemory(
-        f, num_iters=100, increase_threshold_absolute_mb=350)
-
-  # TODO(b/121264236): Support v2 behavior
-  @combinations.generate(
-      combinations.combine(tf_api_version=1, mode="eager"))
-  def testEagerMemoryUsageWithRecreation(self):
-    if memory_profiler is None:
-      self.skipTest("memory_profiler required to run this test")
-
-    dataset = dataset_ops.Dataset.range(10)
-
-    def f():
-      multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-          dataset, ["/cpu:1", "/cpu:2"])
-      self.evaluate(multi_device_iterator.get_next())
-      del multi_device_iterator
-
-    # TODO(b/123316347): Reduce threshold once bug is fixed.
-    self.assertNotIncreasingMemory(
-        f, num_iters=100, increase_threshold_absolute_mb=500)
-
-  def _testIteratorMemoryLeak(self, get_dataset):
+  def assertNoMemoryLeak(self, dataset_fn):
+    """Assert consuming elements from the dataset does not leak memory."""
 
     def run():
-      get_next = self.getNext(get_dataset())
+      get_next = self.getNext(dataset_fn())
       for _ in range(100):
         self.evaluate(get_next())
 
@@ -121,6 +81,37 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEmpty(tensors, "%d Tensors are still alive." % len(tensors))
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testEagerMemoryUsageWithReset(self):
+    if memory_profiler is None:
+      self.skipTest("memory_profiler required to run this test")
+
+    dataset = dataset_ops.Dataset.range(10)
+    multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
+        dataset, [self._devices[1], self._devices[2]])
+
+    def f():
+      self.evaluate(multi_device_iterator.get_next())
+      multi_device_iterator._eager_reset()
+
+    self.assertMemoryNotIncreasing(f, num_iters=50, max_increase_mb=250)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testEagerMemoryUsageWithRecreation(self):
+    if memory_profiler is None:
+      self.skipTest("memory_profiler required to run this test")
+
+    dataset = dataset_ops.Dataset.range(10)
+
+    def f():
+      multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
+          dataset, [self._devices[1], self._devices[2]])
+      self.evaluate(multi_device_iterator.get_next())
+      del multi_device_iterator
+
+    # TODO(b/123316347): Reduce threshold once bug is fixed.
+    self.assertMemoryNotIncreasing(f, num_iters=50, max_increase_mb=250)
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testFilter(self):
 
     def get_dataset():
@@ -130,7 +121,7 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       return dataset_ops.Dataset.range(0, 100).filter(fn)
 
-    self._testIteratorMemoryLeak(get_dataset)
+    self.assertNoMemoryLeak(get_dataset)
 
   @combinations.generate(combinations.combine(tf_api_version=1, mode="eager"))
   def testFilterLegacy(self):
@@ -142,7 +133,7 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       return dataset_ops.Dataset.range(0, 100).filter_with_legacy_function(fn)
 
-    self._testIteratorMemoryLeak(get_dataset)
+    self.assertNoMemoryLeak(get_dataset)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testFlatMap(self):
@@ -154,7 +145,7 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       return dataset_ops.Dataset.range(0, 100).flat_map(fn)
 
-    self._testIteratorMemoryLeak(get_dataset)
+    self.assertNoMemoryLeak(get_dataset)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testFromGenerator(self):
@@ -166,7 +157,7 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       return dataset_ops.Dataset.from_generator(fn, output_types=dtypes.float32)
 
-    self._testIteratorMemoryLeak(get_dataset)
+    self.assertNoMemoryLeak(get_dataset)
 
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations(),
@@ -181,7 +172,7 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset_ops.Dataset.range(0, 100).map(
           fn, num_parallel_calls=num_parallel_calls)
 
-    self._testIteratorMemoryLeak(get_dataset)
+    self.assertNoMemoryLeak(get_dataset)
 
   @combinations.generate(
       combinations.combine(
@@ -196,7 +187,7 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset_ops.Dataset.range(0, 100).map_with_legacy_function(
           fn, num_parallel_calls=num_parallel_calls)
 
-    self._testIteratorMemoryLeak(get_dataset)
+    self.assertNoMemoryLeak(get_dataset)
 
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations(),
@@ -211,10 +202,8 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset_ops.Dataset.range(0, 100).interleave(
           fn, num_parallel_calls=num_parallel_calls, cycle_length=10)
 
-    self._testIteratorMemoryLeak(get_dataset)
+    self.assertNoMemoryLeak(get_dataset)
 
 
 if __name__ == "__main__":
-  ops.enable_eager_execution(
-      config=config_pb2.ConfigProto(device_count={"CPU": 3, "GPU": 1}))
   test.main()

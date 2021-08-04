@@ -56,7 +56,7 @@ class DepthToSpaceTest(test.TestCase):
           self.evaluate(output_nhwc)
 
     if test.is_gpu_available():
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         # test NHWC (default) on GPU
         x_tf = array_ops.depth_to_space(input_nhwc, block_size)
         self.assertAllEqual(x_tf, outputs)
@@ -126,7 +126,7 @@ class DepthToSpaceTest(test.TestCase):
       self.assertAllEqual(x_tf.shape, x_out.shape)
       self.evaluate(x_tf)
     if test.is_gpu_available():
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         # test NHWC (default) on GPU
         x_tf = array_ops.depth_to_space(input_nhwc, block_size)
         self.assertAllEqual(x_tf.shape, x_out.shape)
@@ -343,7 +343,7 @@ class DepthToSpaceGradientTest(test.TestCase):
       return
 
     assert 4 == x.ndim
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       tf_x = ops.convert_to_tensor(x)
       tf_y = array_ops.depth_to_space(tf_x, block_size, data_format=data_format)
 

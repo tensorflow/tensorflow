@@ -38,7 +38,7 @@ namespace tpu {
 
 class TpuAotCompilationOptions : public xla::AotCompilationOptions {
  public:
-  explicit TpuAotCompilationOptions(int64 replica_count)
+  explicit TpuAotCompilationOptions(int64_t replica_count)
       : num_cores_(0), replica_count_(replica_count) {}
 
   // Returns the ID of the platform to which these options apply.
@@ -47,7 +47,7 @@ class TpuAotCompilationOptions : public xla::AotCompilationOptions {
     return nullptr;
   };
 
-  void set_num_cores(int64 tpu_cores) { num_cores_ = tpu_cores; }
+  void set_num_cores(int64_t tpu_cores) { num_cores_ = tpu_cores; }
   int64 replica_count() const override { return replica_count_; }
   int64 num_cores() const override { return num_cores_; }
 
@@ -125,14 +125,19 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   void set_may_modify_variables(const std::vector<bool>& may_modify_variables);
   bool may_modify_variables(int index) const override;
 
+  const std::vector<std::string>& fingerprints() const;
+  void set_fingerprints();
+
+  const std::string& fingerprint(int index) const override;
+
   const std::vector<XLA_TpuProgram*>& tpu_programs() const;
   std::vector<XLA_TpuProgram*> tpu_programs(TpuProgramShardingType type) const;
-  const XLA_TpuProgram* tpu_program(int index) const;
+  const XLA_TpuProgram* tpu_program(int index) const override;
   void set_tpu_programs(absl::Span<XLA_TpuProgram* const> tpu_programs);
 
-  const TPUExecutableInfoProto& executable_info(int index) const;
+  const TPUExecutableInfoProto& executable_info(int index) const override;
 
-  const TPUHostTransferInfoProto& host_transfer_info(int index) const;
+  const TPUHostTransferInfoProto& host_transfer_info(int index) const override;
   void set_hlo_metadatas(absl::Span<const xla::HloProto> hlo_metadatas);
   const xla::HloProto* hlo_metadata(int index) const;
   absl::Span<const xla::HloProto* const> hlo_metadatas() const override;
@@ -168,6 +173,7 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   void RefreshHloMetadatasPtrs();
 
   std::vector<bool> may_modify_variables_;
+  std::vector<std::string> tpu_program_fingerprints_;
 
   std::vector<XLA_TpuProgram*> tpu_programs_;  // Not owned.
   std::vector<TPUExecutableInfoProto> executable_infos_;

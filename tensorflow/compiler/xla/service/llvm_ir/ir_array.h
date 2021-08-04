@@ -66,6 +66,13 @@ class IrArray {
     // Precondition: "shape" has a layout.
     Index(llvm::Value* linear, const Shape& shape, llvm::IRBuilder<>* b);
 
+    // As before, but also take a multidim to reuse.  multidim.size()
+    // == shape.rank() must be true.  If some of the multidim element
+    // are null we will use the value that would be used if
+    // deliearized from linear.
+    Index(llvm::Value* linear, absl::Span<llvm::Value* const> multidim,
+          const Shape& shape, llvm::IRBuilder<>* b);
+
     // Similar to the above constructor except using "dynamic_dims" instead of
     // shape's static dimension to constructs the index.
     Index(llvm::Value* linear, const Shape& shape,
@@ -86,7 +93,7 @@ class IrArray {
           absl::Span<int64 const> dimensions, llvm::Type* index_type);
 
     // Returns an index that adds `addend` to the given `dim` of the object.
-    Index AddOffsetToDim(llvm::Value* addend, int64 dim,
+    Index AddOffsetToDim(llvm::Value* addend, int64_t dim,
                          llvm::IRBuilder<>* b) const {
       Index with_offset = *this;
       with_offset.linear_ = nullptr;
@@ -163,7 +170,7 @@ class IrArray {
 
     llvm::Type* GetType() const { return index_type_; }
 
-    llvm::Constant* GetConstantWithIndexType(int64 c) const {
+    llvm::Constant* GetConstantWithIndexType(int64_t c) const {
       // The LLVM function makes sure that the value can be represented by the
       // specified type, see ConstantInt::ConstantInt(IntegerType *Ty, const
       // APInt &V).

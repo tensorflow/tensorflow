@@ -564,10 +564,10 @@ TEST(ArrayGradTest, SliceGrad) {
 
 std::vector<Tensor> StridedSliceGrad(const Tensor& x, const Tensor& begin,
                                      const Tensor& end, const Tensor& strides,
-                                     const Tensor& dy, int32 begin_mask,
-                                     int32 end_mask, int32 ellipsis_mask,
-                                     int32 new_axis_mask,
-                                     int32 shrink_axis_mask) {
+                                     const Tensor& dy, int32_t begin_mask,
+                                     int32_t end_mask, int32_t ellipsis_mask,
+                                     int32_t new_axis_mask,
+                                     int32_t shrink_axis_mask) {
   auto T = DT_FLOAT;
   auto gdef = test::function::GDef(
       {f::NDef("x", "Placeholder", {}, {{"dtype", T}}),
@@ -607,8 +607,8 @@ std::vector<Tensor> StridedSliceGrad(const Tensor& x, const Tensor& begin,
 std::vector<Tensor> StridedSliceGradGrad(
     const Tensor& shape, const Tensor& begin, const Tensor& end,
     const Tensor& strides, const Tensor& dy, const Tensor& grad,
-    int32 begin_mask, int32 end_mask, int32 ellipsis_mask, int32 new_axis_mask,
-    int32 shrink_axis_mask) {
+    int32_t begin_mask, int32_t end_mask, int32_t ellipsis_mask,
+    int32_t new_axis_mask, int32_t shrink_axis_mask) {
   auto T = DT_FLOAT;
   auto gdef = test::function::GDef(
       {f::NDef("shape", "Placeholder", {}, {{"dtype", DT_INT32}}),

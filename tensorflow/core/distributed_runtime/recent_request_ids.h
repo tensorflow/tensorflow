@@ -57,15 +57,15 @@ class RecentRequestIds {
   // num_tracked_request_ids insertions. For backwards compatibility, this
   // always returns OK for request_id 0. The method_name and the request's
   // ShortDebugString are added to returned errors.
-  Status TrackUnique(int64 request_id, const string& method_name,
+  Status TrackUnique(int64_t request_id, const string& method_name,
                      const protobuf::Message& request);
   // Overloaded version of the above function for wrapped protos.
   template <typename RequestWrapper>
-  Status TrackUnique(int64 request_id, const string& method_name,
+  Status TrackUnique(int64_t request_id, const string& method_name,
                      const RequestWrapper* wrapper);
 
  private:
-  bool Insert(int64 request_id);
+  bool Insert(int64_t request_id);
 
   mutex mu_;
   // next_index_ indexes into circular_buffer_, and points to the next storage
@@ -79,7 +79,7 @@ class RecentRequestIds {
 // Implementation details
 
 template <typename RequestWrapper>
-Status RecentRequestIds::TrackUnique(int64 request_id,
+Status RecentRequestIds::TrackUnique(int64_t request_id,
                                      const string& method_name,
                                      const RequestWrapper* wrapper) {
   if (Insert(request_id)) {

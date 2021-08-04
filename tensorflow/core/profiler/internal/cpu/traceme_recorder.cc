@@ -399,7 +399,7 @@ TraceMeRecorder::Events TraceMeRecorder::StopRecording() {
   // IDs may be reused after 4 billion events on one thread, or 2 billion
   // threads.
   static std::atomic<int32> thread_counter(1);  // avoid kUntracedActivity
-  const thread_local static int32 thread_id =
+  const thread_local static int32_t thread_id =
       thread_counter.fetch_add(1, std::memory_order_relaxed);
   thread_local static uint32 per_thread_activity_id = 0;
   return static_cast<int64>(thread_id) << 32 | per_thread_activity_id++;

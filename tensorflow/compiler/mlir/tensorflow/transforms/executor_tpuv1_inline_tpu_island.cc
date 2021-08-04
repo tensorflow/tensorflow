@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 #define DEBUG_TYPE "tf-executor-tpu-v1-island-inlining"
@@ -40,15 +41,13 @@ namespace tf_executor {
 namespace {
 constexpr llvm::StringRef kNestedModule = "_tpu_v1_compat_outlined";
 
-// Inlining the islands calling into the nested module that was outlined.
-// This is the end of the TPU bridge in V1 compatibility mode.
-struct TPUBridgeExecutorIslandInlining
-    : public PassWrapper<TPUBridgeExecutorIslandInlining,
-                         OperationPass<ModuleOp>> {
+struct ExecutorTPUV1IslandInliningPass
+    : public TF::ExecutorTPUV1IslandInliningPassBase<
+          ExecutorTPUV1IslandInliningPass> {
   void runOnOperation() override;
 };
 
-void TPUBridgeExecutorIslandInlining::runOnOperation() {
+void ExecutorTPUV1IslandInliningPass::runOnOperation() {
   SymbolTable symbol_table(getOperation());
   Operation *nested_module = symbol_table.lookup(kNestedModule);
   if (!nested_module) return;
@@ -89,16 +88,11 @@ void TPUBridgeExecutorIslandInlining::runOnOperation() {
   nested_module->erase();
 }
 
-PassRegistration<TPUBridgeExecutorIslandInlining> tpu_pass(
-    "tf-executor-tpu-v1-island-inlining",
-    "Inline calls to the nested TPU module, this reverses the effect of the "
-    "-tf-executor-tpu-v1-island-outlining pass");
-
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandInliningPass() {
-  return std::make_unique<TPUBridgeExecutorIslandInlining>();
+  return std::make_unique<ExecutorTPUV1IslandInliningPass>();
 }
 
 }  // namespace tf_executor

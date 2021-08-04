@@ -189,6 +189,16 @@ def MatrixSetDiagV2ToV3 : Pat<(TF_MatrixSetDiagV2Op $input, $diag, $k),
                                 (GetStrAttr<"LEFT_LEFT">))>;
 
 //===----------------------------------------------------------------------===//
+// QuantizeAndDequantizeV2 op patterns.
+//===----------------------------------------------------------------------===//
+
+def QuantizeAndDequantizeV2ToQuantizeAndDequantizeV4 : Pat<
+  (TF_QuantizeAndDequantizeV2Op $inputs, $min, $max, $signed_input, $num_bits,
+    $range_given, $round_mode, $narrow_range, $axis),
+  (TF_QuantizeAndDequantizeV4Op $inputs, $min, $max, $signed_input, $num_bits,
+    $range_given, $round_mode, $narrow_range, $axis)>;
+
+//===----------------------------------------------------------------------===//
 // RealDiv op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -212,23 +222,6 @@ def RedundantReshape : Pat<(TF_ReshapeOp (TF_ReshapeOp $arg, $unused), $shape),
 def ReshapeToSelfShape : Pat<(TF_ReshapeOp:$op $x, (TF_ShapeOp $x)),
                          (replaceWithValue $x),
                          [(SingleResultAndOperandHaveSameType $x, $op)]>;
-
-//===----------------------------------------------------------------------===//
-// Select op patterns.
-//===----------------------------------------------------------------------===//
-
-def ReshapeSelectPredIfNecessary : NativeCodeCall<
-  "ReshapeSelectPredIfNecessary(&($_builder), $0.getOwner()->getLoc(), $1, "
-  "$2.getType().cast<RankedTensorType>().getRank())">;
-
-// Select supports tensor `condition` where the shape is equal to the first
-// dimension of t and e. SelectV2 op supports normal broadcasting, so in these
-// cases the condition needs to be reshaped.
-def SelectToSelectV2 : Pat<
-  (TF_SelectOp:$op StaticShapeTensorOf<[AnyType]>:$cond,
-                   StaticShapeTensorOf<[AnyType]>:$t,
-                   StaticShapeTensorOf<[AnyType]>:$e),
-  (TF_SelectV2Op (ReshapeSelectPredIfNecessary $op, $cond, $t), $t, $e)>;
 
 //===----------------------------------------------------------------------===//
 // Square op patterns.
@@ -271,3 +264,35 @@ def ReadVariableOfCast : Pat<(TF_ReadVariableOp (TF_CastOp:$output $x, BoolAttr:
 //===----------------------------------------------------------------------===//
 
 def VariableToVariableV2 : Pat<(TF_VariableOp $shape, $container, $shard_name), (TF_VariableV2Op $shape, $container, $shard_name)>;
+
+
+//===----------------------------------------------------------------------===//
+// Canonicalize tf.HashTable and its user ops to V2 versions.
+//===----------------------------------------------------------------------===//
+def HashTableAndInitializeTableToV2 :
+ Pat<
+   (TF_InitializeTableFromTextFileOp
+     (TF_HashTableOp $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype),
+     $filename, $key_index, $value_index, $vocab_size, $delimiter, $offset),
+   (TF_InitializeTableFromTextFileV2Op
+     (TF_HashTableV2Op $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype),
+     $filename, $key_index, $value_index, $vocab_size, $delimiter, $offset)
+  >;
+
+def HashTableAndLookupTableSizeToV2 :
+ Pat<
+   (TF_LookupTableSizeOp
+     (TF_HashTableOp $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype)),
+   (TF_LookupTableSizeV2Op
+     (TF_HashTableV2Op $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype))
+  >;
+
+def HashTableAndLookupTableFindToV2 :
+ Pat<
+   (TF_LookupTableFindOp
+     (TF_HashTableOp $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype),
+     $keys, $default_value),
+   (TF_LookupTableFindV2Op
+     (TF_HashTableV2Op $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype),
+     $keys, $default_value)
+ >;

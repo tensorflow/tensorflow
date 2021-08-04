@@ -17,7 +17,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 
 package(
     default_visibility = ["//tensorflow/lite:__subpackages__"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(

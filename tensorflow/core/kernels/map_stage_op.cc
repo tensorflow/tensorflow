@@ -210,9 +210,9 @@ class StagingMap : public ResourceBase {
                                    const OptionalTuple& tuple)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (tuple[index].has_value()) {
-      return Status(errors::InvalidArgument(
+      return errors::InvalidArgument(
           "The tensor for index '", index, "' for key '", key.scalar<int64>()(),
-          "' was already initialized '", dtypes_.size(), "'."));
+          "' was already initialized '", dtypes_.size(), "'.");
     }
 
     return Status::OK();
@@ -220,6 +220,10 @@ class StagingMap : public ResourceBase {
 
   // Check that the indices are strictly ordered
   Status check_index_ordering(const Tensor& indices) {
+    if (indices.NumElements() == 0) {
+      return errors::InvalidArgument("Indices are empty");
+    }
+
     auto findices = indices.flat<int>();
 
     for (std::size_t i = 0; i < findices.dimension(0) - 1; ++i) {
@@ -227,8 +231,7 @@ class StagingMap : public ResourceBase {
         continue;
       }
 
-      return Status(
-          errors::InvalidArgument("Indices are not strictly ordered"));
+      return errors::InvalidArgument("Indices are not strictly ordered");
     }
 
     return Status::OK();
@@ -238,10 +241,10 @@ class StagingMap : public ResourceBase {
   Status check_memory_limit(std::size_t bytes)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (has_memory_limit() && bytes > memory_limit_) {
-      return Status(errors::ResourceExhausted(
+      return errors::ResourceExhausted(
           "Attempted to insert tensors with combined size of '", bytes,
           "' bytes into Staging Area with a memory limit of '", memory_limit_,
-          "'."));
+          "'.");
     }
 
     return Status::OK();
@@ -494,8 +497,8 @@ Status GetStagingMap(OpKernelContext* ctx, const NodeDef& ndef,
   // Lambda for creating the Staging Area
   auto create_fn = [&ndef](StagingMap<Ordered>** ret) -> Status {
     DataTypeVector dtypes;
-    int64 capacity;
-    int64 memory_limit;
+    int64_t capacity;
+    int64_t memory_limit;
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "dtypes", &dtypes));
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "capacity", &capacity));
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "memory_limit", &memory_limit));
@@ -527,6 +530,8 @@ class MapStageOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
     OP_REQUIRES_OK(ctx, ctx->input_list("values", &values_tensor));
+    OP_REQUIRES(ctx, key_tensor->NumElements() > 0,
+                errors::InvalidArgument("key must not be empty"));
 
     // Create copy for insertion into Staging Area
     Tensor key(*key_tensor);

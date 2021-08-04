@@ -4,7 +4,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'input_saved_model_dir\', \'input_saved_model_tags\', \'input_saved_model_signature_key\', \'conversion_params\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'input_saved_model_dir\', \'input_saved_model_tags\', \'input_saved_model_signature_key\', \'use_dynamic_shape\', \'dynamic_shape_profile_strategy\', \'conversion_params\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "build"

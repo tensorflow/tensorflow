@@ -57,15 +57,17 @@ def read_saved_model(saved_model_dir):
   # Parse the SavedModel protocol buffer.
   saved_model = saved_model_pb2.SavedModel()
   if file_io.file_exists(path_to_pb):
+    with file_io.FileIO(path_to_pb, "rb") as f:
+      file_content = f.read()
     try:
-      file_content = file_io.FileIO(path_to_pb, "rb").read()
       saved_model.ParseFromString(file_content)
       return saved_model
     except message.DecodeError as e:
       raise IOError("Cannot parse file %s: %s." % (path_to_pb, str(e)))
   elif file_io.file_exists(path_to_pbtxt):
+    with file_io.FileIO(path_to_pbtxt, "rb") as f:
+      file_content = f.read()
     try:
-      file_content = file_io.FileIO(path_to_pbtxt, "rb").read()
       text_format.Merge(file_content.decode("utf-8"), saved_model)
       return saved_model
     except text_format.ParseError as e:

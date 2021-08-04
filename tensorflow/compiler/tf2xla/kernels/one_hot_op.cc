@@ -56,7 +56,7 @@ class OneHotOp : public XlaOpKernel {
     const int axis = (axis_ == -1) ? indices_dims : axis_;
 
     // The one-hot dimension.
-    int64 depth;
+    int64_t depth;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &depth));
     OP_REQUIRES(
         ctx, depth >= 0,

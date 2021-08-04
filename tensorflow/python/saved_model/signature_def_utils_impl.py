@@ -209,6 +209,7 @@ def predict_signature_def(inputs, outputs):
   return signature_def
 
 
+# LINT.IfChange
 def supervised_train_signature_def(
     inputs, loss, predictions=None, metrics=None):
   return _supervised_signature_def(
@@ -263,6 +264,7 @@ def _supervised_signature_def(
       signature_inputs, signature_outputs, method_name)
 
   return signature_def
+# LINT.ThenChange(//tensorflow/python/keras/saving/utils_v1/signature_def_utils.py)
 
 
 @tf_export(

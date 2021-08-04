@@ -77,20 +77,19 @@ bool CompareShapeDimsFromLeftToRight(const Shape& shape_a,
 std::vector<HloInstruction*> FindAndSortFusionCandidates(
     HloInstruction* consumer) {
   absl::flat_hash_set<HloInstruction*> fusion_instr_set;
-  for (auto opnd : consumer->operands()) {
+  std::vector<HloInstruction*> fusion_instrs;
+  for (HloInstruction* opnd : consumer->operands()) {
     HloInstruction* predecessor = opnd->LatestNonGteAncestor();
     // Find out the input fusion instructions whose only consumer is `consumer`.
     // This guarantees that fusing these candidates will never create cycles, as
     // there is no back edge.
-    if (IsReduceInputFusion(*predecessor) &&
+    if (IsInputFusibleReduction(*predecessor) &&
         IsConsumerTheOnlyNonRootUser(*predecessor, *consumer)) {
-      fusion_instr_set.insert(predecessor);
+      if (fusion_instr_set.insert(predecessor).second) {
+        fusion_instrs.push_back(predecessor);
+      }
     }
   }
-
-  std::vector<HloInstruction*> fusion_instrs;
-  fusion_instrs.insert(fusion_instrs.end(), fusion_instr_set.begin(),
-                       fusion_instr_set.end());
 
   std::sort(fusion_instrs.begin(), fusion_instrs.end(),
             [&](const HloInstruction* a, const HloInstruction* b) {
@@ -103,8 +102,7 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
               }
               // Sort `fusion_instrs` according to instruction counts, because
               // we'd like to fuse together computations of similar sizes.
-              return a->fused_instruction_count() <
-                     b->fused_instruction_count();
+              return GetInstrCountOfFusible(*a) < GetInstrCountOfFusible(*b);
             });
 
   return fusion_instrs;
@@ -117,10 +115,22 @@ StatusOr<bool> HorizontalInputFusionImpl::Run() {
   // Using def-to-use order is sound since we do not modify users.
   std::vector<HloInstruction*> def_to_use_order =
       computation_->MakeInstructionPostOrder();
-  for (auto consumer : def_to_use_order) {
+  for (HloInstruction* consumer : def_to_use_order) {
     auto candidates = FindAndSortFusionCandidates(consumer);
-    if (candidates.empty()) {
+    if (candidates.size() <= 1) {
       continue;
+    }
+
+    // Convert candidates into fusions if needed.
+    for (size_t j = 0; j < candidates.size(); ++j) {
+      if (candidates[j]->opcode() != HloOpcode::kFusion) {
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * fusion_instr,
+            MakeFusionInstruction(candidates[j],
+                                  HloInstruction::FusionKind::kInput));
+        candidates[j] = fusion_instr;
+        changed = true;
+      }
     }
 
     size_t fusion_anchor_id = 0;
@@ -156,7 +166,7 @@ StatusOr<bool> GpuHorizontalInputFusion::RunOnComputation(
 StatusOr<bool> GpuHorizontalInputFusion::Run(HloModule* module) {
   bool changed = false;
   VLOG(2) << "Run horizontal input fusion.";
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(changed, RunOnComputation(comp));
   }
 

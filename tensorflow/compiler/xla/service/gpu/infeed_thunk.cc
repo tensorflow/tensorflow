@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
+#include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -31,21 +31,18 @@ InfeedThunk::InfeedThunk(ThunkInfo thunk_info,
     : Thunk(Kind::kInfeed, thunk_info), dest_slices_(std::move(dest_slices)) {}
 
 Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
-  auto& stream = *params.stream;
-  auto& buffer_allocations = *params.buffer_allocations;
+  se::Stream& stream = *params.stream;
+  const BufferAllocations& buffer_allocations = *params.buffer_allocations;
 
   VLOG(2) << "Infeeding to GPU";
-
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
-  ShapeTree<InfeedBuffer> source_buffers =
-      GetOrCreateInfeedManager()->BlockingGetNextDestination();
+  ShapeTree<se::ScopedDeviceMemory<uint8>> source_buffers =
+      GetOrCreateInfeedManager(stream.parent())->BlockingGetNextDestination();
 
   size_t index = 0;
   for (auto& source : source_buffers.leaves()) {
     // Assert that the shapes are compatible.
     const ShapeIndex& shape_index = source.first;
-    InfeedBuffer& buffer = source.second;
+    se::ScopedDeviceMemory<uint8>& buffer = source.second;
     const Shape& source_shape =
         ShapeUtil::GetSubshape(source_buffers.shape(), shape_index);
     TF_RET_CHECK(ShapeUtil::Equal(dest_slices_[index].shape, source_shape))
@@ -55,7 +52,7 @@ Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
         << ShapeUtil::HumanStringWithLayout(dest_slices_[index].shape);
     se::DeviceMemoryBase dest_address =
         buffer_allocations.GetDeviceAddress(dest_slices_[index++].slice);
-    stream.ThenMemcpy(&dest_address, *buffer.device_memory(), buffer.length());
+    stream.ThenMemcpy(&dest_address, *buffer.ptr(), buffer.ptr()->size());
   }
 
   // Make sure that all dest slices have been copied into.

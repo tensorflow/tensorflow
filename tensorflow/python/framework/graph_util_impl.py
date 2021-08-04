@@ -25,12 +25,14 @@ import six
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.python import _proto_comparators
+from tensorflow.python.framework import _proto_comparators
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
+
+tf_export(v1=["GraphDef"])(graph_pb2.GraphDef)
 
 # A normal import here would generate circular dependencies.
 convert_to_constants = lazy_loader.LazyLoader(
@@ -63,6 +65,44 @@ _CONTROL_FLOW_OP_NAMES_OR_IDENTITY = [
 def _is_variable_op(op):
   """Returns true if 'op' refers to a Variable node."""
   return op in _VARIABLE_OPS
+
+# GraphDef protobuf docstring.
+graph_pb2.GraphDef.__doc__ = """\
+A protobuf containing the graph of operations.
+
+@compatibility(TF2)
+This API is not available in TensorFlow 2.x.
+
+You should not need to use `GraphDef`s directly in TF2. To load `GraphDef`s in
+TF2, use SavedModel. The SavedModel contains the `GraphDef`.
+
+Before:
+
+```python
+with tf.io.gfile.GFile('/tmp/graph.pb', 'rb') as f:
+  graph_def = tf.compat.v1.GraphDef()
+  graph_def.ParseFromString(f.read())
+```
+
+After:
+
+```python
+tf.saved_model.load('/tmp/saved_model')
+```
+
+If you would like to create a `GraphDef` in TF2, use `tf.function` and
+`get_concrete_function`.
+
+>>> @tf.function
+>>> def f(x):
+>>>   return x
+>>>
+>>> graph_def = f.get_concrete_function(1.).graph.as_graph_def()
+>>> print(graph_def)
+
+@end_compatibility
+
+"""
 
 
 @deprecation.deprecated(
@@ -168,7 +208,7 @@ def _bfs_for_reachable_nodes(target_nodes, name_to_input_name):
   """Breadth first search for reachable nodes from target nodes."""
   nodes_to_keep = set()
   # Breadth first search to find all the nodes that we should keep.
-  next_to_visit = target_nodes[:]
+  next_to_visit = list(target_nodes)
   while next_to_visit:
     node = next_to_visit[0]
     del next_to_visit[0]
@@ -190,7 +230,7 @@ def extract_sub_graph(graph_def, dest_nodes):
 
   Args:
     graph_def: A graph_pb2.GraphDef proto.
-    dest_nodes: A list of strings specifying the destination node names.
+    dest_nodes: An iterable of strings specifying the destination node names.
   Returns:
     The GraphDef of the sub-graph.
 
@@ -202,7 +242,7 @@ def extract_sub_graph(graph_def, dest_nodes):
     raise TypeError("graph_def must be a graph_pb2.GraphDef proto.")
 
   if isinstance(dest_nodes, six.string_types):
-    raise TypeError("dest_nodes must be a list.")
+    raise TypeError("dest_nodes must be an iterable of strings.")
 
   name_to_input_name, name_to_node, name_to_seq_num = _extract_graph_summary(
       graph_def)
@@ -377,6 +417,7 @@ def remove_training_nodes(input_graph, protected_nodes=None):
   return output_graph
 
 
+@tf_export("__internal__.graph_util.graph_defs_equal", v1=[])
 def graph_defs_equal(graph_def_1: graph_pb2.GraphDef,
                      graph_def_2: graph_pb2.GraphDef,
                      treat_nan_as_equal: bool = False) -> bool:
@@ -386,6 +427,25 @@ def graph_defs_equal(graph_def_1: graph_pb2.GraphDef,
   the GraphDef's function library and main graph body are identical.
   Additionally, it checks that the functions in the function library are equal
   as sets.
+
+  Example usage:
+
+  ```
+  with tf.Graph().as_default() as g1:
+    tf.constant(1)
+
+  with tf.Graph().as_default() as g2:
+    tf.constant(2)
+
+  with tf.Graph().as_default() as g3:
+    tf.constant(1)
+
+  assert tf.__internal__.graph_util.graph_defs_equal(g1.as_graph_def(),
+                                                     g3.as_graph_def())
+
+  assert not tf.__internal__.graph_util.graph_defs_equal(g1.as_graph_def(),
+                                                         g2.as_graph_def())
+  ```
 
   Args:
     graph_def_1: Instance of `graph_pb2.GraphDef` to compare.

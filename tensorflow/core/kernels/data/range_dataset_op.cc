@@ -14,11 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 
+#include <functional>
+#include <string>
+#include <utility>
+
 #include "absl/memory/memory.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
@@ -42,7 +48,7 @@ constexpr char kSplitProvider[] = "split_provider";
 // Class which produces the elements of `range(start, stop, step)`. Threadsafe.
 class RangeCounter {
  public:
-  RangeCounter(int64 start, int64 stop, int64 step)
+  RangeCounter(int64_t start, int64_t stop, int64_t step)
       : start_(start), stop_(stop), step_(step), next_(start) {}
 
   // Returns the next value for the counter. Sets `*end_of_counter` to indicate
@@ -69,7 +75,7 @@ class RangeCounter {
     next_ = start_;
   }
 
-  void SetNext(int64 value) {
+  void SetNext(int64_t value) {
     mutex_lock l(mu_);
     next_ = value;
   }
@@ -88,11 +94,11 @@ class RangeCounter {
 // The split tensors are scalars of type DT_INT64.
 class RangeDatasetOp::RangeSplitProvider : public SplitProvider {
  public:
-  RangeSplitProvider(int64 start, int64 stop, int64 step)
+  RangeSplitProvider(int64_t start, int64_t stop, int64_t step)
       : counter_(start, stop, step) {}
 
   Status GetNext(Tensor* split, bool* end_of_splits) override {
-    int64 next = counter_.GetNext(end_of_splits);
+    int64_t next = counter_.GetNext(end_of_splits);
     if (*end_of_splits) {
       return Status::OK();
     }
@@ -115,7 +121,7 @@ class RangeDatasetOp::RangeSplitProvider : public SplitProvider {
 
   Status Restore(std::function<std::string(std::string)> key_name_fn,
                  IteratorStateReader* reader) override {
-    int64 next;
+    int64_t next;
     TF_RETURN_IF_ERROR(reader->ReadScalar(key_name_fn(kNext), &next));
     counter_.SetNext(next);
     return Status::OK();
@@ -127,7 +133,7 @@ class RangeDatasetOp::RangeSplitProvider : public SplitProvider {
 
 class RangeDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 start, int64 stop, int64 step,
+  Dataset(OpKernelContext* ctx, int64_t start, int64_t stop, int64_t step,
           DataTypeVector output_dtypes)
       : DatasetBase(DatasetContext(ctx)),
         start_(start),
@@ -165,10 +171,10 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     }
   }
 
-  Status MakeSplitProvider(
-      std::unique_ptr<SplitProvider>* split_provider) const override {
-    *split_provider =
-        absl::make_unique<RangeSplitProvider>(start_, stop_, step_);
+  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                split_providers) const override {
+    split_providers->push_back(
+        absl::make_unique<RangeSplitProvider>(start_, stop_, step_));
     return Status::OK();
   }
 
@@ -200,10 +206,12 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      split_provider_ = ctx->split_provider();
-      if (!split_provider_) {
+      if (ctx->split_providers().empty()) {
         counter_ = absl::make_unique<RangeCounter>(
             dataset()->start_, dataset()->stop_, dataset()->step_);
+      } else {
+        TF_ASSIGN_OR_RETURN(split_provider_,
+                            GetSingleSplitProvider(ctx, dataset()));
       }
       return Status::OK();
     }
@@ -211,7 +219,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      int64 value;
+      int64_t value;
       if (split_provider_ != nullptr) {
         Tensor split;
         TF_RETURN_IF_ERROR(split_provider_->GetNext(&split, end_of_sequence));
@@ -274,7 +282,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
             },
             reader));
       } else {
-        int64 next;
+        int64_t next;
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNext), &next));
         counter_->SetNext(next);
       }
@@ -302,13 +310,13 @@ RangeDatasetOp::RangeDatasetOp(OpKernelConstruction* ctx)
 }
 
 void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
-  int64 start;
+  int64_t start;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kStart, &start));
 
-  int64 stop;
+  int64_t stop;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kStop, &stop));
 
-  int64 step;
+  int64_t step;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kStep, &step));
   OP_REQUIRES(ctx, step != 0,
               errors::InvalidArgument("step must be a non-zero integer."));

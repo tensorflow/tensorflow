@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -146,6 +147,34 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.assertRaisesRegex(TypeError, "have different types"):
       input_dataset.concatenate(dataset_to_concatenate)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testConcatenateWindows(self):
+    a = dataset_ops.Dataset.range(5).window(1)
+    b = dataset_ops.Dataset.range(5, 10).window(1)
+    c = a.concatenate(b).flat_map(lambda x: x)
+    self.assertDatasetProduces(c, list(range(10)))
+
+
+class ConcatenateCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                parameterized.TestCase):
+
+  def _build_concatenate_dataset(self, var_array):
+    input_components = (np.tile(np.array([[1], [2], [3], [4]]), 20),
+                        np.tile(np.array([[12], [13], [14], [15]]), 4))
+    to_concatenate_components = (np.tile(
+        np.array([[5], [6], [7], [8], [9]]), 20), var_array)
+
+    return dataset_ops.Dataset.from_tensor_slices(input_components).concatenate(
+        dataset_ops.Dataset.from_tensor_slices(to_concatenate_components))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    num_outputs = 9
+    array = np.tile(np.array([[16], [17], [18], [19], [20]]), 15)
+    verify_fn(self, lambda: self._build_concatenate_dataset(array), num_outputs)
 
 
 if __name__ == "__main__":

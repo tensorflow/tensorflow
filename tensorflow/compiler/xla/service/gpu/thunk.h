@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -61,12 +60,15 @@ class Thunk {
     kMemzero,
     kNcclAllGather,
     kNcclAllReduce,
+    kNcclAllReduceStart,
+    kNcclAllReduceDone,
+    kNcclReduceScatter,
     kNcclAllToAll,
     kOutfeed,
     kReplicaId,
+    kPartitionId,
     kSequential,
     kTriangularSolve,
-    kTuple,
     kWhile,
   };
 
@@ -86,8 +88,9 @@ class Thunk {
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
 
+  virtual std::string ToStringExtra(int indent) const { return ""; }
   Kind kind() const { return kind_; }
-  string profile_annotation() const { return profile_annotation_; }
+  std::string profile_annotation() const { return profile_annotation_; }
 
   // Prepares the thunk for execution on the given StreamExecutor.
   //
@@ -104,8 +107,8 @@ class Thunk {
   struct ExecuteParams {
     const BufferAllocations* buffer_allocations;  // never null
     se::Stream* stream;
+    se::Stream* async_comms_stream;
     RunId run_id;
-    HloExecutionProfiler* profiler;                               // never null
     const DeviceAssignment* device_assn;                          // never null
     std::vector<std::function<void()>>* deferred_host_callbacks;  // never null
     const std::vector<GlobalDeviceId>* gpu_global_device_ids;     // may be null
@@ -121,6 +124,8 @@ class Thunk {
   // Precondition: Initialize(stream->parent()) has been called.
   virtual Status ExecuteOnStream(const ExecuteParams& params) = 0;
 
+  static absl::string_view KindToString(Thunk::Kind kind);
+
  protected:
   absl::optional<int64> profile_index() const { return profile_index_; }
 
@@ -128,7 +133,7 @@ class Thunk {
   // after the copy has completed.
   template <typename T>
   void SafeH2DMemcpy(
-      se::DeviceMemory<T> dest, std::unique_ptr<T[]> buf, int64 count,
+      se::DeviceMemory<T> dest, std::unique_ptr<T[]> buf, int64_t count,
       se::Stream* stream,
       std::vector<std::function<void()>>* deferred_host_callbacks) {
     stream->ThenMemcpy(&dest, buf.get(), count * sizeof(T));
@@ -143,9 +148,13 @@ class Thunk {
 };
 
 // A sequence of thunks.
-using ThunkSequence = std::vector<std::unique_ptr<Thunk>>;
+class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
+ public:
+  std::string ToString(int indent = 0,
+                       std::function<std::string(const Thunk*)>
+                           get_thunk_annotation = nullptr) const;
+};
 
-absl::string_view ThunkKindToString(Thunk::Kind);
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 
 // A struct that defines a shaped slice, i.e., a BufferAllocation::Slice and its

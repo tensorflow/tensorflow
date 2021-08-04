@@ -236,6 +236,8 @@ TEST_F(ShapeInferenceTest, InfersShapesFromInputTensors) {
 }
 
 TEST(CAPI_EXPERIMENTAL, LibraryPluggableDeviceLoadFunctions) {
+  // TODO(penpornk): Enable this test on Windows.
+#if !defined(PLATFORM_WINDOWS)
 #if !defined(TENSORFLOW_NO_SHARED_OBJECTS)
   // Load the library.
   TF_Status* status = TF_NewStatus();
@@ -250,6 +252,7 @@ TEST(CAPI_EXPERIMENTAL, LibraryPluggableDeviceLoadFunctions) {
   ASSERT_EQ(TF_OK, code) << status_msg;
   TF_DeletePluggableDeviceLibraryHandle(lib);
 #endif  // !defined(TENSORFLOW_NO_SHARED_OBJECTS)
+#endif  // !defined(PLATFORM_WINDOWS)
 }
 
 }  // namespace

@@ -196,6 +196,7 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
 
   // Compute body nodes.
   std::vector<const Node*> control_output_nodes;
+  control_output_nodes.reserve(ncontrol_outputs);
   for (int i = 0; i < ncontrol_outputs; ++i) {
     control_output_nodes.push_back(&control_outputs[i]->node);
   }

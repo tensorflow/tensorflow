@@ -55,9 +55,9 @@ class TFRGenTensorTest(test.TestCase):
   def test_op_reg_gen(self):
     cxx_code = gen_register_op(sys.modules[__name__])
     cxx_code_exp = r"""
-      CHECK-NEXT: #include "third_party/tensorflow/core/framework/op.h"
+      CHECK: #include "tensorflow/core/framework/op.h"
       CHECK-EMPTY
-      CHECK-LABEL: namespace tensorflow {
+      CHECK: namespace tensorflow {
       CHECK-EMPTY
       CHECK-LABEL: REGISTER_OP("TestNoOp")
       CHECK-NEXT:      .Attr("T: numbertype")
@@ -72,7 +72,7 @@ class TFRGenTensorTest(test.TestCase):
       CHECK-NEXT:      .Output("o1: T")
       CHECK-NEXT:      .Output("o2: T");
       CHECK-EMPTY
-      CHECK-LABEL:  }  // namespace tensorflow
+      CHECK:  }  // namespace tensorflow
     """
     self.assertTrue(fw.check(str(cxx_code), cxx_code_exp), str(cxx_code))
 

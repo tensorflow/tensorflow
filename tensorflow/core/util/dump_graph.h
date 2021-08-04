@@ -19,6 +19,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_DUMP_GRAPH_H_
 #define TENSORFLOW_CORE_UTIL_DUMP_GRAPH_H_
 
+#include <string>
+
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -38,6 +41,10 @@ namespace tensorflow {
 // sequence number.
 string DumpGraphDefToFile(const string& name, GraphDef const& graph_def,
                           const string& dirname = "");
+
+// Similar to DumpGraphDefToFile, use CostGraphDef instead of GraphDef.
+string DumpCostGraphDefToFile(const string& name, CostGraphDef const& graph_def,
+                              const string& dirname = "");
 
 // Similar to DumpGraphDefToFile, but builds the GraphDef to dump from a 'graph'
 // and an optional function library 'flib_def'. Returns the file name chosen.

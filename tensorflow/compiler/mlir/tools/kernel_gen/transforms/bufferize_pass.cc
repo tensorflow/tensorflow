@@ -17,6 +17,7 @@ limitations under the License.
 // Currently it supports MHLO and some operations from the Standard dialect.
 
 #include <memory>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
@@ -24,6 +25,8 @@ limitations under the License.
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -41,10 +44,12 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
@@ -64,7 +69,7 @@ static Value materializeTensorLoad(OpBuilder& builder, TensorType type,
                                    ValueRange inputs, Location loc) {
   assert(inputs.size() == 1);
   assert(inputs[0].getType().isa<BaseMemRefType>());
-  return builder.create<TensorLoadOp>(loc, type, inputs[0]);
+  return builder.create<memref::TensorLoadOp>(loc, type, inputs[0]);
 }
 
 // TODO(pifon): Remove as soon as https://reviews.llvm.org/D93126 is landed.
@@ -96,42 +101,49 @@ class CustomBufferizeTypeConverter : public BufferizeTypeConverter {
         return inputs[0];
       }
       assert(inputs[0].getType().isa<TensorType>());
-      return builder.create<TensorToMemrefOp>(loc, type, inputs[0]);
+      return builder.create<memref::BufferCastOp>(loc, type, inputs[0]);
     });
   }
 };
 
-struct HloBufferizePass : public HloBufferizePassBase<HloBufferizePass> {
+struct ComputeOpAndFuncBufferizePass
+    : public ComputeOpAndFuncBufferizePassBase<ComputeOpAndFuncBufferizePass> {
   // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<lmhlo::LmhloDialect>();
+    registry.insert<lmhlo::LmhloDialect, memref::MemRefDialect>();
   }
 
  public:
   void runOnOperation() override {
-    OwningRewritePatternList patterns;
+    RewritePatternSet patterns(&getContext());
     auto& context = getContext();
     ConversionTarget target(context);
     target.addLegalDialect<complex::ComplexDialect, lmhlo::LmhloDialect,
-                           StandardOpsDialect, tensor::TensorDialect>();
+                           memref::MemRefDialect, StandardOpsDialect,
+                           tensor::TensorDialect, math::MathDialect>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
+    target.addIllegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>();
 
     CustomBufferizeTypeConverter converter;
+    mhlo::RemoveSignTypeConverter remove_sign_converter;
+
     // Configure bufferize pattern for functions and lhlo.
-    mhlo::populateDynamicHLOToLHLOConversionPattern(
-        &context, &converter, &patterns, /*insert_copy=*/false);
-    populateFuncOpTypeConversionPattern(patterns, &context, converter);
-    populateCallOpTypeConversionPattern(patterns, &context, converter);
-    populateBranchOpInterfaceAndReturnOpTypeConversionPattern(
-        patterns, &context, converter);
+    mhlo::populateHLOToMemrefConversionPattern(
+        &converter, &remove_sign_converter, &patterns,
+        /*enforce_identity_map=*/false);
+    populateFuncOpTypeConversionPattern(patterns, converter);
+    populateCallOpTypeConversionPattern(patterns, converter);
+    populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
+    populateReturnOpTypeConversionPattern(patterns, converter);
 
     // Configure legality and structural patterns.
     populateBufferizeMaterializationLegality(target);
-    linalg::populateLinalgBufferizePatterns(&context, converter, patterns);
-    populateShapeStructuralTypeConversionsAndLegality(&context, converter,
-                                                      patterns, target);
-    scf::populateSCFStructuralTypeConversionsAndLegality(&context, converter,
-                                                         patterns, target);
+    linalg::populateLinalgBufferizePatterns(converter, patterns);
+    populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
+                                                      target);
+    scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
+                                                         target);
     // TODO(herhut): Move this legality configuration to bufferize itself?
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       auto inputs = op.getType().getInputs();
@@ -152,9 +164,9 @@ struct HloBufferizePass : public HloBufferizePassBase<HloBufferizePass> {
 struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
   // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<AffineDialect, scf::SCFDialect, shape::ShapeDialect,
-                    tensor::TensorDialect, tf_framework::TFFrameworkDialect,
-                    lmhlo::LmhloDialect>();
+    registry.insert<AffineDialect, memref::MemRefDialect, scf::SCFDialect,
+                    shape::ShapeDialect, tensor::TensorDialect,
+                    tf_framework::TFFrameworkDialect, lmhlo::LmhloDialect>();
   }
 
  public:
@@ -162,33 +174,37 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     auto& context = getContext();
     ConversionTarget target(context);
     target.addLegalDialect<
-        complex::ComplexDialect, scf::SCFDialect, StandardOpsDialect,
-        tensor::TensorDialect, tf_framework::TFFrameworkDialect, AffineDialect,
-        shape::ShapeDialect, lmhlo::LmhloDialect, linalg::LinalgDialect>();
-    target.addLegalOp<FuncOp, ModuleOp, ModuleTerminatorOp>();
+        complex::ComplexDialect, memref::MemRefDialect, StandardOpsDialect,
+        scf::SCFDialect, tensor::TensorDialect,
+        tf_framework::TFFrameworkDialect, AffineDialect, shape::ShapeDialect,
+        lmhlo::LmhloDialect, linalg::LinalgDialect, math::MathDialect,
+        vector::VectorDialect>();
+    target.addLegalOp<FuncOp, ModuleOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
-                        tensor::FromElementsOp, tensor::CastOp, TensorLoadOp,
-                        TensorToMemrefOp>();
+                        tensor::FromElementsOp, tensor::CastOp, tensor::DimOp,
+                        chlo::MinimumBroadcastShapesOp, memref::TensorLoadOp,
+                        memref::BufferCastOp, linalg::TensorExpandShapeOp,
+                        linalg::TensorCollapseShapeOp>();
     BufferizeTypeConverter converter;
     auto typesAreLegal = [&converter](Operation* op) {
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());
     };
-    target.addDynamicallyLegalOp<ConstantOp, DimOp, RankOp, SelectOp>(
-        typesAreLegal);
+    target.addDynamicallyLegalOp<ConstantOp, IndexCastOp, RankOp, SelectOp,
+                                 tf_framework::JITExecuteOp>(typesAreLegal);
 
-    OwningRewritePatternList patterns;
-    populateTensorBufferizePatterns(&context, converter, patterns);
-    populateStdBufferizePatterns(&context, converter, patterns);
-    populateEliminateBufferizeMaterializationsPatterns(&context, converter,
-                                                       patterns);
-    populateExtraStdBufferizePattern(&context, &converter, &patterns);
-    populateShapeStructuralTypeConversionsAndLegality(&context, converter,
-                                                      patterns, target);
-    scf::populateSCFStructuralTypeConversionsAndLegality(&context, converter,
-                                                         patterns, target);
+    RewritePatternSet patterns(&getContext());
+    linalg::populateLinalgBufferizePatterns(converter, patterns);
+    populateTensorBufferizePatterns(converter, patterns);
+    populateStdBufferizePatterns(converter, patterns);
+    populateEliminateBufferizeMaterializationsPatterns(converter, patterns);
+    populateExtraBufferizePatterns(&getContext(), &converter, &patterns);
+    populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
+                                                      target);
+    scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
+                                                         target);
 
     auto module = getOperation();
     if (failed(applyFullConversion(module, target, std::move(patterns)))) {
@@ -199,8 +215,9 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp> > CreateHloBufferizePass() {
-  return std::make_unique<HloBufferizePass>();
+std::unique_ptr<OperationPass<ModuleOp> >
+CreateComputeOpAndFuncBufferizePass() {
+  return std::make_unique<ComputeOpAndFuncBufferizePass>();
 }
 
 std::unique_ptr<OperationPass<ModuleOp> > CreateFinalBufferizePass() {

@@ -249,7 +249,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         }
       }
       std::shared_ptr<stream> cpu_stream;
-      cpu_stream.reset(CreateStream(ctx, matmul_prim->GetEngine()));
+      MklDnnThreadPool eigen_tp(ctx);
+      cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
       // Execute fused matmul op.
       matmul_prim->Execute(src_data, weight_data, bias_data, dst_data,
                            cpu_stream);
@@ -280,6 +281,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
       } else if (post_op == "LeakyRelu") {
         params.post_op_params.push_back(
             {"leakyrelu", {1.0, leakyrelu_alpha, 0.0}});
+      } else if (post_op == "Sigmoid") {
+        params.post_op_params.push_back({"logistic", {1.0, 0.0, 0.0}});
       } else {
         OP_REQUIRES_OK(
             ctx, errors::InvalidArgument(

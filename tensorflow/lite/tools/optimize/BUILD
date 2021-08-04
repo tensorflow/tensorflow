@@ -6,12 +6,46 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(glob([
     "testdata/*.bin",
 ]))
+
+cc_library(
+    name = "reduced_precision_support",
+    srcs = [],
+    hdrs = [
+        "reduced_precision_support.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ],
+)
+
+tf_cc_test(
+    name = "reduced_precision_support_test",
+    srcs = ["reduced_precision_support_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":reduced_precision_support",
+        ":test_util",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
+        "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
 
 cc_library(
     name = "modify_model_interface",
@@ -24,6 +58,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
@@ -42,7 +77,7 @@ tf_cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/memory",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -110,7 +145,7 @@ tf_cc_test(
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -172,17 +207,14 @@ tf_cc_test(
     name = "model_utils_test",
     srcs = ["model_utils_test.cc"],
     tags = [
-        "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":model_utils",
         ":test_util",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -345,6 +377,7 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/unidirectional_sequence_lstm_calibrated.bin",
         "//tensorflow/lite/tools/optimize:testdata/unidirectional_sequence_lstm_quantized.bin",
         "//tensorflow/lite/tools/optimize:testdata/unpack.bin",
+        "//tensorflow/lite/tools/optimize:testdata/where.bin",
     ],
     tags = [
         "tflite_not_portable_android",

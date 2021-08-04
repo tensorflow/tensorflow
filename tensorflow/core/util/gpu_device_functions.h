@@ -33,7 +33,6 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuComplex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #else
 #include "rocm/include/hip/hip_complex.h"
@@ -43,8 +42,6 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_cuda_alias.h"
 
 #if GOOGLE_CUDA
-using gpuFloatComplex = cuFloatComplex;
-using gpuDoubleComplex = cuDoubleComplex;
 using gpuStream_t = cudaStream_t;
 using gpuEvent_t = cudaEvent_t;
 #define gpuEventRecord cudaEventRecord
@@ -56,8 +53,6 @@ using gpuEvent_t = cudaEvent_t;
 #define gpuDeviceSynchronize cudaDeviceSynchronize
 #define gpuFree cudaFree
 #elif TENSORFLOW_USE_ROCM
-using gpuFloatComplex = hipFloatComplex;
-using gpuDoubleComplex = hipDoubleComplex;
 using gpuStream_t = hipStream_t;
 using gpuEvent_t = hipEvent_t;
 using cudaError = int;
@@ -568,14 +563,14 @@ __global__ void SetZero(const int count, T* __restrict__ ptr) {
 }
 
 // Helper to set all tensor entries to a specific value.
-template <typename T>
-__global__ void SetToValue(const int count, T* __restrict__ ptr, T value) {
+template <typename T, typename Tvalue = T>
+__global__ void SetToValue(const int count, T* __restrict__ ptr, Tvalue value) {
   // Check that the grid is one dimensional and index doesn't overflow.
   assert(blockDim.y == 1);
   assert(blockDim.z == 1);
   assert(blockDim.x * gridDim.x / blockDim.x == gridDim.x);
   for (int i : GpuGridRangeX(count)) {
-    ptr[i] = value;
+    ptr[i] = static_cast<T>(value);
   }
 }
 
@@ -641,7 +636,6 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
   static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "Not little endian");
 #endif
-  namespace half_impl = Eigen::half_impl;
   intptr_t intptr = reinterpret_cast<intptr_t>(ptr);
   assert(!(intptr & 0x1));  // should be 2-aligned.
   if (intptr & 0x2) {
@@ -649,19 +643,23 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
     uint32* address = reinterpret_cast<uint32*>(intptr - 2);
     uint32 result = GpuAtomicCasHelper(address, [accumulate](uint32 arg) {
       unsigned short high = static_cast<unsigned short>(arg >> 16);
-      Eigen::half acc = accumulate(half_impl::raw_uint16_to_half(high));
-      return (static_cast<uint32>(acc.x) << 16) | (arg & 0xffff);
+      Eigen::half acc = accumulate(Eigen::numext::bit_cast<Eigen::half>(high));
+      return (static_cast<uint32>(Eigen::numext::bit_cast<uint16>(acc)) << 16) |
+             (arg & 0xffff);
     });
-    return half_impl::raw_uint16_to_half(static_cast<uint16>(result >> 16));
+    return Eigen::numext::bit_cast<Eigen::half>(
+        static_cast<uint16>(result >> 16));
   } else {
     // The half is in the first part of the uint32 (lower 16 bits).
     uint32* address = reinterpret_cast<uint32*>(intptr);
     uint32 result = GpuAtomicCasHelper(address, [accumulate](uint32 arg) {
       unsigned short low = static_cast<unsigned short>(arg & 0xffff);
-      Eigen::half acc = accumulate(half_impl::raw_uint16_to_half(low));
-      return (arg & 0xffff0000) | static_cast<uint32>(acc.x);
+      Eigen::half acc = accumulate(Eigen::numext::bit_cast<Eigen::half>(low));
+      return (arg & 0xffff0000) |
+             static_cast<uint32>(Eigen::numext::bit_cast<uint16>(acc));
     });
-    return half_impl::raw_uint16_to_half(static_cast<uint16>(result & 0xffff));
+    return Eigen::numext::bit_cast<Eigen::half>(
+        static_cast<uint16>(result & 0xffff));
   }
 }
 
@@ -741,8 +739,7 @@ __device__ inline double GpuAtomicAdd(double* ptr, double value) {
 // components individually. The operation as a whole is not atomic, but we can
 // safely treat the components independently for the purpose of accumulating.
 
-// ROCM TODO support GpuAtomicAdd for std::complex<>
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 __device__ inline std::complex<float> GpuAtomicAdd(std::complex<float>* ptr,
                                                    std::complex<float> value) {
   auto ptr_scalar = reinterpret_cast<float*>(ptr);
@@ -775,7 +772,7 @@ __device__ inline double GpuAtomicSub(double* ptr, double value) {
 }
 
 __device__ inline tensorflow::int64 GpuAtomicSub(tensorflow::int64* ptr,
-                                                 tensorflow::int64 value) {
+                                                 int64_t value) {
   return GpuAtomicAdd(ptr, -value);
 }
 
@@ -850,9 +847,10 @@ __device__ inline tensorflow::uint64 GpuAtomicMax(tensorflow::uint64* ptr,
       [value](tensorflow::uint64 a) { return max(a, value); });
 }
 
-__device__ inline int64 GpuAtomicMax(int64* ptr, int64 value) {
-  return detail::GpuAtomicCasHelper(detail::ToCudaSupportedPtr(ptr),
-                                    [value](int64 a) { return max(a, value); });
+__device__ inline int64 GpuAtomicMax(int64* ptr, int64_t value) {
+  return detail::GpuAtomicCasHelper(
+      detail::ToCudaSupportedPtr(ptr),
+      [value](int64_t a) { return max(a, value); });
 }
 #endif
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMax, CudaAtomicMax);
@@ -916,9 +914,10 @@ __device__ inline tensorflow::uint64 GpuAtomicMin(tensorflow::uint64* ptr,
       [value](tensorflow::uint64 a) { return min(a, value); });
 }
 
-__device__ inline int64 GpuAtomicMin(int64* ptr, int64 value) {
-  return detail::GpuAtomicCasHelper(detail::ToCudaSupportedPtr(ptr),
-                                    [value](int64 a) { return min(a, value); });
+__device__ inline int64 GpuAtomicMin(int64* ptr, int64_t value) {
+  return detail::GpuAtomicCasHelper(
+      detail::ToCudaSupportedPtr(ptr),
+      [value](int64_t a) { return min(a, value); });
 }
 #endif
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMin, CudaAtomicMin);
@@ -937,66 +936,17 @@ __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicDiv(T* ptr, U value) {
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicDiv, CudaAtomicDiv);
 
-// Operator overloads for complex numbers.
-#if GOOGLE_CUDA
-__device__ inline std::complex<float> operator+(const std::complex<float>& a,
-                                                const std::complex<float>& b) {
-  auto result = cuCaddf(make_cuComplex(a.real(), a.imag()),
-                        make_cuComplex(b.real(), b.imag()));
-  return std::complex<float>(result.x, result.y);
-}
-
-__device__ inline std::complex<float> operator-(const std::complex<float>& a,
-                                                const std::complex<float>& b) {
-  auto result = cuCsubf(make_cuComplex(a.real(), a.imag()),
-                        make_cuComplex(b.real(), b.imag()));
-  return std::complex<float>(result.x, result.y);
-}
-
-__device__ inline std::complex<float> operator*(const std::complex<float>& a,
-                                                const std::complex<float>& b) {
-  auto result = cuCmulf(make_cuComplex(a.real(), a.imag()),
-                        make_cuComplex(b.real(), b.imag()));
-  return std::complex<float>(result.x, result.y);
-}
-
-__device__ inline std::complex<float> operator/(const std::complex<float>& a,
-                                                const std::complex<float>& b) {
-  auto result = cuCdivf(make_cuComplex(a.real(), a.imag()),
-                        make_cuComplex(b.real(), b.imag()));
-  return std::complex<float>(result.x, result.y);
-}
-
-__device__ inline std::complex<double> operator+(
-    const std::complex<double>& a, const std::complex<double>& b) {
-  auto result = cuCadd(make_cuDoubleComplex(a.real(), a.imag()),
-                       make_cuDoubleComplex(b.real(), b.imag()));
-  return std::complex<double>(result.x, result.y);
-}
-
-__device__ inline std::complex<double> operator-(
-    const std::complex<double>& a, const std::complex<double>& b) {
-  auto result = cuCsub(make_cuDoubleComplex(a.real(), a.imag()),
-                       make_cuDoubleComplex(b.real(), b.imag()));
-  return std::complex<double>(result.x, result.y);
-}
-
-__device__ inline std::complex<double> operator*(
-    const std::complex<double>& a, const std::complex<double>& b) {
-  auto result = cuCmul(make_cuDoubleComplex(a.real(), a.imag()),
-                       make_cuDoubleComplex(b.real(), b.imag()));
-  return std::complex<double>(result.x, result.y);
-}
-
-__device__ inline std::complex<double> operator/(
-    const std::complex<double>& a, const std::complex<double>& b) {
-  auto result = cuCdiv(make_cuDoubleComplex(a.real(), a.imag()),
-                       make_cuDoubleComplex(b.real(), b.imag()));
-  return std::complex<double>(result.x, result.y);
-}
+// Import all specialized std::complex device operators in namespace tensorflow.
+#if GOOGLE_CUDA && defined(EIGEN_USING_STD_COMPLEX_OPERATORS)
+EIGEN_USING_STD_COMPLEX_OPERATORS
 #endif  // GOOGLE_CUDA
 
 namespace functor {
+// Import all specialized std::complex device operators in namespace functor.
+#if GOOGLE_CUDA && defined(EIGEN_USING_STD_COMPLEX_OPERATORS)
+EIGEN_USING_STD_COMPLEX_OPERATORS
+#endif  // GOOGLE_CUDA
+
 // ROCm hcc(clang) has severe difficulties dealing with std::complex directly
 // due to a header issue. This template assists in casting std::complex into the
 // corresponding internal ROCm types.

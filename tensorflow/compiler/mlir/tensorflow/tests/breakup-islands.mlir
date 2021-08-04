@@ -168,19 +168,19 @@ func @fetching_arg(%arg0: tensor<*xi32>) {
 // CHECK: }
 
 func @non_aliasing_reads_writes(
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg1: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
   %arg2: tensor<32xf32>) -> (tensor<32xf32>) {
   %graph = tf_executor.graph {
     %island:2 = tf_executor.island {
-      %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
-      "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
-      %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
-      %var_handle = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> tensor<*x!tf.resource<tensor<32xf32>>>
-      %read2 = "tf.ReadVariableOp"(%var_handle) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
-      "tf.AssignVariableOp"(%arg1, %read0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
-      "tf.AssignVariableOp"(%arg0, %read2) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
-      %read3 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %var_handle = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> tensor<*x!tf_type.resource<tensor<32xf32>>>
+      %read2 = "tf.ReadVariableOp"(%var_handle) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      "tf.AssignVariableOp"(%arg1, %read0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      "tf.AssignVariableOp"(%arg0, %read2) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      %read3 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       tf_executor.yield %read3 : tensor<32xf32>
     }
     tf_executor.fetch %island#0 : tensor<32xf32>
@@ -205,14 +205,14 @@ func @non_aliasing_reads_writes(
 func @unknown_side_effecting_op(%arg0: tensor<32xf32>) -> () {
   tf_executor.graph {
     %island = tf_executor.island {
-      %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> tensor<*x!tf.resource<tensor<32xf32>>>
-      %vh1 = "tf.VarHandleOp"() {container = "c", shared_name = "v1"} : () -> tensor<*x!tf.resource<tensor<32xf32>>>
-      %read0 = "tf.ReadVariableOp"(%vh0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
-      "tf.AssignVariableOp"(%vh1, %arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> tensor<*x!tf_type.resource<tensor<32xf32>>>
+      %vh1 = "tf.VarHandleOp"() {container = "c", shared_name = "v1"} : () -> tensor<*x!tf_type.resource<tensor<32xf32>>>
+      %read0 = "tf.ReadVariableOp"(%vh0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      "tf.AssignVariableOp"(%vh1, %arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       "tf._UnknownSideEffectingOp_"() : () -> ()
-      %read1 = "tf.ReadVariableOp"(%vh1) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
-      "tf.AssignVariableOp"(%vh0, %read1) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
-      "tf.AssignVariableOp"(%vh1, %read0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      %read1 = "tf.ReadVariableOp"(%vh1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      "tf.AssignVariableOp"(%vh0, %read1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      "tf.AssignVariableOp"(%vh1, %read0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       tf_executor.yield
     }
     tf_executor.fetch %island : !tf_executor.control
@@ -387,14 +387,14 @@ func @single_op_island_duplicate_result() -> (tensor<2048xf32>, tensor<2048xf32>
 // CHECK: [[LOAD3:%.+]] = tf_executor.island([[UNKNOWN1]]) wraps "tf.LoadTPUEmbeddingAdagradParameters"
 // CHECK: [[SINK:%.+]] = tf_executor.island([[LOAD2]], [[LOAD3]]) wraps "tf.NoOp"
 // CHECK: tf_executor.fetch [[SINK]]
-func @tpu_load_embedding_ops_sink_controls(%arg0: tensor<*x!tf.resource<tensor<8xf32>>>, %arg1: tensor<*x!tf.resource<tensor<8xf32>>>, %arg2: tensor<*x!tf.resource<tensor<8xf32>>>, %arg3: tensor<*x!tf.resource<tensor<8xf32>>>) {
+func @tpu_load_embedding_ops_sink_controls(%arg0: tensor<*x!tf_type.resource<tensor<8xf32>>>, %arg1: tensor<*x!tf_type.resource<tensor<8xf32>>>, %arg2: tensor<*x!tf_type.resource<tensor<8xf32>>>, %arg3: tensor<*x!tf_type.resource<tensor<8xf32>>>) {
  tf_executor.graph {
    %control = tf_executor.island {
-     %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
-     %1 = "tf.ReadVariableOp"(%arg1) {device = ""} : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
-     %2 = "tf.ReadVariableOp"(%arg2) {device = ""} : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
+     %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<*x!tf_type.resource<tensor<8xf32>>>) -> tensor<8xf32>
+     %1 = "tf.ReadVariableOp"(%arg1) {device = ""} : (tensor<*x!tf_type.resource<tensor<8xf32>>>) -> tensor<8xf32>
+     %2 = "tf.ReadVariableOp"(%arg2) {device = ""} : (tensor<*x!tf_type.resource<tensor<8xf32>>>) -> tensor<8xf32>
      "tf.LoadTPUEmbeddingAdagradParameters"(%0, %1) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table1"} : (tensor<8xf32>, tensor<8xf32>) -> ()
-     %3 = "tf.ReadVariableOp"(%arg3) {device = ""} : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
+     %3 = "tf.ReadVariableOp"(%arg3) {device = ""} : (tensor<*x!tf_type.resource<tensor<8xf32>>>) -> tensor<8xf32>
      "tf.LoadTPUEmbeddingAdagradParameters"(%2, %3) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table2"} : (tensor<8xf32>, tensor<8xf32>) -> ()
      "tf.UnknownOp"() : () -> ()
      "tf.UnknownOp"() : () -> ()
@@ -405,4 +405,83 @@ func @tpu_load_embedding_ops_sink_controls(%arg0: tensor<*x!tf.resource<tensor<8
    tf_executor.fetch %control : !tf_executor.control
  }
  return
+}
+
+// CHECK: func @stateful_composite_op_control
+func @stateful_composite_op_control(%arg0: tensor<i1>, %arg1: tensor<*x!tf_type.resource<tensor<i32>>>) -> tensor<i32> {
+  %0 = tf_executor.graph {
+    %output, %control = tf_executor.island {
+      // CHECK: {{%.+}}, [[IF_CONTROL:%.+]] = tf_executor.island wraps "tf.If"
+      %1 = "tf.If"(%arg0, %arg1) {device = "", else_branch = @stateful_composite_op_control_else, is_stateless = false, then_branch = @stateful_composite_op_control_then} : (tensor<i1>, tensor<*x!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+      // CHECK: [[IDENTITY_OUTPUT:%.+]], [[IDENTITY_CONTROL:%.+]] = tf_executor.island wraps "tf.Identity"
+      %2 = "tf.Identity"(%1) {device = ""} : (tensor<i32>) -> tensor<i32>
+
+      // The side effects of the If op might not be executed without an
+      // explicit control dependency on the tf.If op, due to the way the
+      // LowerFunctionalOpsPass in TF operates (b/185483669). Check that we
+      // output an explicit control dependency on the tf.If op in this case to
+      // be on the safe side.
+      // CHECK: [[SINK:%.+]] = tf_executor.island([[IF_CONTROL]], [[IDENTITY_CONTROL]]) wraps "tf.NoOp"
+      tf_executor.yield %2 : tensor<i32>
+    }
+    // CHECK: tf_executor.fetch [[IDENTITY_OUTPUT]], [[SINK]]
+    tf_executor.fetch %output : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}
+
+// CHECK: func @stateful_composite_op_control_else
+// This is a helper function for the stateful_composite_op_control test.
+func @stateful_composite_op_control_else(%arg0: tensor<*x!tf_type.resource<tensor<i32>>>) -> tensor<i32> {
+  %0 = tf_executor.graph {
+    %outputs, %control = tf_executor.island {
+      %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+      "tf.AssignVariableOp"(%arg0, %1) : (tensor<*x!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
+      tf_executor.yield %1 : tensor<i32>
+    }
+    tf_executor.fetch %outputs : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}
+
+// CHECK: func @stateful_composite_op_control_then
+// This is a helper function for the stateful_composite_op_control test.
+func @stateful_composite_op_control_then(%arg0: tensor<*x!tf_type.resource<tensor<i32>>>) -> tensor<i32> {
+  %0 = tf_executor.graph {
+    %outputs, %control = tf_executor.island {
+      %1 = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+      "tf.AssignVariableOp"(%arg0, %1) : (tensor<*x!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
+      tf_executor.yield %1 : tensor<i32>
+    }
+    tf_executor.fetch %outputs : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @generator_op
+func @generator_op(%str : tensor<!tf_type.string>, %arg0: tensor<*x!tf_type.string>, %arg1: tensor<!tf_type.string>, %arg2: tensor<*xi64>, %arg3: tensor<!tf_type.string>) {
+  tf_executor.graph {
+    tf_executor.island {
+      // CHECK: %{{.*}}, %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.GeneratorDataset"
+      %gen0 = "tf.GeneratorDataset"(%str, %arg0, %arg1, %arg2, %arg3) {
+        finalize_func = @__finalize_func_790,
+        init_func = @__init_func_530, next_func = @__next_func_680,
+        next_func.experimental_ints_on_device = true,
+        operand_segment_sizes = dense<[2, 2, 1]> : vector<3xi32>,
+        output_shapes = [#tf_type.shape<?>], output_types = [f32]} :
+         (tensor<!tf_type.string>, tensor<*x!tf_type.string>, tensor<!tf_type.string>, tensor<*xi64>, tensor<!tf_type.string>) -> tensor<*x!tf_type.variant>
+      %add1 = "tf.Add"(%str, %arg3) : (tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.string>
+      // CHECK: tf_executor.island(%[[CONTROL]]) wraps "tf.GeneratorDataset"
+      %gen1 = "tf.GeneratorDataset"(%str, %arg0, %arg1, %arg2, %arg3) {
+        finalize_func = @__finalize_func_790,
+        init_func = @__init_func_530, next_func = @__next_func_680,
+        next_func.experimental_ints_on_device = true,
+        operand_segment_sizes = dense<[2, 2, 1]> : vector<3xi32>,
+        output_shapes = [#tf_type.shape<?>], output_types = [f32]} :
+         (tensor<!tf_type.string>, tensor<*x!tf_type.string>, tensor<!tf_type.string>, tensor<*xi64>, tensor<!tf_type.string>) -> tensor<*x!tf_type.variant>
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
 }

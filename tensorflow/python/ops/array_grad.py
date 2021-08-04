@@ -77,10 +77,11 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
     # with 0's everywhere and 1 in the concat dim position.
     # Note: Can't use sparse_to_dense since it isn't GPU-capable (for now)
     mask = array_ops.concat([
-        array_ops.fill(array_ops.expand_dims(concat_dim, 0), 0), [1],
-        array_ops.fill(shape_of_shape - concat_dim - 1, 0)
+        array_ops.zeros(
+            array_ops.expand_dims(concat_dim, 0), dtype=dtypes.int32), [1],
+        array_ops.zeros(shape_of_shape - concat_dim - 1, dtype=dtypes.int32)
     ], 0)
-    begin = array_ops.fill(shape_of_shape, 0)
+    begin = array_ops.zeros(shape_of_shape, dtype=dtypes.int32)
     return mask, begin
 
   def _ExtractInputShapes(inputs):
@@ -691,9 +692,10 @@ def _GatherV2Grad(op, grad):
         inner_axes_indices
     ], 0)
     values_transpose = array_ops.transpose(values, transpose_dims)
+    params_shape_transpose = array_ops.gather(params_shape, transpose_dims)
 
-    params_grad = _BatchGatherGrad(params_shape, values_transpose, indices,
-                                   batch_dims, params_shape[axis])
+    params_grad = _BatchGatherGrad(params_shape_transpose, values_transpose,
+                                   indices, batch_dims, params_shape[axis])
 
     # Inverts the above transpose by moving dimension batch_dims back to its
     # original position.
@@ -754,6 +756,12 @@ def _CheckNumericsV2Grad(op, grad):
 @ops.RegisterGradient("Identity")
 def _IdGrad(_, grad):
   return grad
+
+
+@ops.RegisterGradient("_EagerConst")
+def _EagerConstGrad(_, grad):
+  raise AssertionError(
+      "This op should never interact with gradient APIs. Please file a bug.")
 
 
 @ops.RegisterGradient("RefIdentity")

@@ -29,7 +29,7 @@ EventPool::Handle::~Handle() {
 }
 
 EventPool::EventPool(bool allow_reuse)
-    : allow_reuse_(allow_reuse), next_sequence_number_(0) {}
+    : allow_reuse_(allow_reuse), next_sequence_number_(1) {}
 
 StatusOr<EventPool::Handle> EventPool::AllocateEvent(
     se::StreamExecutor* executor) {

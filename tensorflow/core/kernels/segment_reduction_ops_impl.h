@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/util.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -61,22 +62,18 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace internal {
-extern void SegmentReductionValidationHelper(OpKernelContext* context,
-                                             const Tensor& input,
-                                             const Tensor& segment_ids);
-extern bool SegmentReductionDoValidation(OpKernelContext* c,
-                                         const Tensor& input,
-                                         const Tensor& segment_ids);
-extern void UnsortedSegmentReductionValidation(OpKernel* op_kernel,
-                                               OpKernelContext* context,
-                                               const Tensor& data,
-                                               const Tensor& segment_ids,
-                                               const Tensor& num_segments);
-extern bool UnsortedSegmentReductionDoValidation(OpKernel* op_kernel,
-                                                 OpKernelContext* context,
-                                                 const Tensor& data,
-                                                 const Tensor& segment_ids,
-                                                 const Tensor& num_segments);
+Status ValidateSegmentReduction(OpKernelContext* c, const Tensor& input,
+                                const Tensor& segment_ids);
+Status ValidateUnsortedSegmentReduction(OpKernel* op_kernel,
+                                        OpKernelContext* context,
+                                        const Tensor& data,
+                                        const Tensor& segment_ids,
+                                        const Tensor& num_segments);
+Status ValidateSparseSegmentReduction(OpKernelContext* context,
+                                      const Tensor& input,
+                                      const Tensor& indices,
+                                      const Tensor& segment_ids,
+                                      bool has_num_segments);
 }  // namespace internal
 
 // This operator handles reducing segments along the first dimension.
@@ -92,13 +89,12 @@ class SegmentReductionOp : public OpKernel {
     const Tensor& input = context->input(0);
     const Tensor& segment_ids = context->input(1);
 
-    if (!internal::SegmentReductionDoValidation(context, input, segment_ids)) {
-      return;
-    }
+    OP_REQUIRES_OK(context, internal::ValidateSegmentReduction(context, input,
+                                                               segment_ids));
 
-    const int64 num_indices = segment_ids.NumElements();
+    const int64_t num_indices = segment_ids.NumElements();
     auto input_flat = input.flat_outer_dims<T>();
-    const int64 num_col = input_flat.dimension(1);
+    const int64_t num_col = input_flat.dimension(1);
 
     const auto segment_vec = segment_ids.vec<Index>();
     // Note that the current implementation assumes that segment_vec values are
@@ -109,6 +105,9 @@ class SegmentReductionOp : public OpKernel {
             : 0;
     OP_REQUIRES(context, output_rows >= 0,
                 errors::InvalidArgument("segment ids must be >= 0"));
+
+    OP_REQUIRES(context, input.dims() >= 1,
+                errors::InvalidArgument("Shape must be at least rank 1"));
 
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, output_rows);
@@ -206,6 +205,7 @@ class SegmentReductionOp : public OpKernel {
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 //  SegmentReductionGPUOp is a segment reduction operator implemented for GPU
 //  only.
 //  TODO: This implementation of SegmentReductionGPUOp is sometimes slower than
@@ -236,7 +236,11 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
         context, TensorShapeUtils::IsVector(segment_ids.shape()),
         errors::InvalidArgument("segment_ids should be a vector."), done);
 
-    const int64 num_indices = segment_ids.NumElements();
+    OP_REQUIRES_ASYNC(context, input.dims() >= 1,
+                      errors::InvalidArgument("Shape must be at least rank 1"),
+                      done);
+
+    const int64_t num_indices = segment_ids.NumElements();
     OP_REQUIRES_ASYNC(
         context, num_indices == input.dim_size(0),
         errors::InvalidArgument(
@@ -292,6 +296,20 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       OP_REQUIRES_OK_ASYNC(
           context, context->allocate_output(0, output_shape, &output), done);
 
+      // The determinism check is here, rather than inside the functor (as it is
+      // for the unsorted segment reduction ops) because the done callback
+      // (required for OP_REQUIRES_ASYNC) is not available inside the functor.
+      bool determinism_requirement_met =
+          SegmentReductionFunctor::atomic_reduction_is_associative ||
+          !OpDeterminismRequired() ||
+          DisableSegmentReductionOpDeterminismExceptions();
+      OP_REQUIRES_ASYNC(
+          context, determinism_requirement_met,
+          errors::Unimplemented(
+              "Deterministic GPU implementation of sorted segment reduction op"
+              " not available."),
+          done);
+
       auto output_flat = output->flat_outer_dims<T>();
       auto data_ptr = input.template flat<T>().data();
       auto segment_flat = segment_ids.flat<Index>();
@@ -325,10 +343,10 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
     if (data.size() == 0) {
       return;
     }
-    const int64 N = segment_ids.dimension(0);
-    const int64 num_segments = output.dimension(0);
+    const int64_t N = segment_ids.dimension(0);
+    const int64_t num_segments = output.dimension(0);
     ReductionF reduction;
-    for (int64 i = 0; i < N; ++i) {
+    for (int64_t i = 0; i < N; ++i) {
       Index j = internal::SubtleMustCopy(segment_ids(i));
       if (j < 0) {
         continue;
@@ -393,12 +411,11 @@ class UnsortedSegmentReductionOp : public OpKernel {
     const Tensor& data = context->input(0);
     const Tensor& segment_ids = context->input(1);
     const Tensor& num_segments = context->input(2);
-    if (!internal::UnsortedSegmentReductionDoValidation(
-            this, context, data, segment_ids, num_segments)) {
-      return;
-    }
+    OP_REQUIRES_OK(context,
+                   internal::ValidateUnsortedSegmentReduction(
+                       this, context, data, segment_ids, num_segments));
     const auto segment_flat = segment_ids.flat<Index>();
-    const int64 output_rows = internal::SubtleMustCopy(static_cast<int64>(
+    const int64_t output_rows = internal::SubtleMustCopy(static_cast<int64>(
         num_segments.dtype() == DT_INT32 ? num_segments.scalar<int32>()()
                                          : num_segments.scalar<int64>()()));
     OP_REQUIRES(context, output_rows >= 0,
@@ -450,31 +467,21 @@ class SparseSegmentReductionOpBase : public OpKernel {
     const Tensor& indices = context->input(1);
     const Tensor& segment_ids = context->input(2);
 
+    OP_REQUIRES_OK(
+        context, internal::ValidateSparseSegmentReduction(
+                     context, input, indices, segment_ids, has_num_segments_));
+
     Index output_rows = -1;
     if (has_num_segments_) {
       const Tensor& num_segments = context->input(3);
-
-      OP_REQUIRES(
-          context, num_segments.shape().dims() == 0,
-          errors::InvalidArgument("num_segments should be a scalar, not shape ",
-                                  num_segments.shape().DebugString()));
+      // Note that there is a Tnumsegments parameter on the op, but it is not
+      // plumbed through to here and so always takes its default value of int32.
       output_rows = internal::SubtleMustCopy(num_segments.scalar<int32>()());
-      OP_REQUIRES(context, output_rows >= 0,
-                  errors::InvalidArgument("segment ids must be >= 0"));
     }
-
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(indices.shape()),
-                errors::InvalidArgument("indices should be a vector."));
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
-                errors::InvalidArgument("segment_ids should be a vector."));
-
-    const int64 num_indices = indices.NumElements();
-    OP_REQUIRES(context, num_indices == segment_ids.NumElements(),
-                errors::InvalidArgument(
-                    "segment_ids and indices should have same size."));
+    const int64_t num_indices = indices.NumElements();
 
     auto input_flat = input.flat_outer_dims<T>();
-    const int64 num_col = input_flat.dimension(1);
+    const int64_t num_col = input_flat.dimension(1);
     const auto indices_vec = indices.vec<Index>();
     const auto segment_vec = segment_ids.vec<SegmentId>();
     // Note that the current implementation assumes that segment_vec values are
@@ -511,12 +518,12 @@ class SparseSegmentReductionOpBase : public OpKernel {
     auto output_flat = output->flat_outer_dims<T>();
 
     Tensor temp;
-    if (input.dtype() == DT_BFLOAT16) {
+    if (input.dtype() == DT_BFLOAT16 || input.dtype() == DT_HALF) {
       temp = tensorflow::Tensor(DT_FLOAT, output_shape);
     }
     auto temp_flat = temp.flat_outer_dims<float>();
 
-    int64 start = 0, end = 1;
+    int64_t start = 0, end = 1;
     // Index from which the output is not initialized.
     SegmentId uninitialized_index = 0;
     SegmentId out_index = internal::SubtleMustCopy(segment_vec(start));
@@ -582,26 +589,30 @@ class SparseSegmentReductionOpBase : public OpKernel {
 
  private:
   template <typename Tin>
-  using EnableIfBfloat16 =
-      typename std::enable_if<std::is_same<Tin, bfloat16>::value, int>::type;
+  using EnableIfBfloat16OrHalf =
+      typename std::enable_if<std::is_same<Tin, bfloat16>::value ||
+                                  std::is_same<Tin, Eigen::half>::value,
+                              int>::type;
   template <typename Tin>
-  using EnableIfNotBfloat16 =
-      typename std::enable_if<!std::is_same<Tin, bfloat16>::value, int>::type;
+  using EnableIfNotBfloat16OrHalf =
+      typename std::enable_if<!std::is_same<Tin, bfloat16>::value &&
+                                  !std::is_same<Tin, Eigen::half>::value,
+                              int>::type;
 
-  template <typename Tin, typename Tindex, EnableIfNotBfloat16<Tin> = 0>
+  template <typename Tin, typename Tindex, EnableIfNotBfloat16OrHalf<Tin> = 0>
   EIGEN_ALWAYS_INLINE auto fetch_val(
       const typename TTypes<Tin>::ConstMatrix& input_flat, Tindex index) {
     return input_flat.template chip<0>(index);
   }
 
-  template <typename Tin, typename Tindex, EnableIfBfloat16<Tin> = 0>
+  template <typename Tin, typename Tindex, EnableIfBfloat16OrHalf<Tin> = 0>
   EIGEN_ALWAYS_INLINE auto fetch_val(
       const typename TTypes<Tin>::ConstMatrix& input_flat, Tindex index) {
     return input_flat.template chip<0>(index).template cast<float>();
   }
 
   template <typename Tout>
-  EIGEN_ALWAYS_INLINE Tout get_scaling_factor(int64 num) {
+  EIGEN_ALWAYS_INLINE Tout get_scaling_factor(int64_t num) {
     Tout m(1);
     if (is_mean_ && (num < 10)) {
       m = Tout(num);
@@ -612,34 +623,35 @@ class SparseSegmentReductionOpBase : public OpKernel {
     return Tout(1) / m;
   }
 
-  template <typename Tin, typename Tindex, EnableIfNotBfloat16<Tin> = 0>
+  template <typename Tin, typename Tindex, EnableIfNotBfloat16OrHalf<Tin> = 0>
   int64 Reduce(
       const typename TTypes<Tin>::ConstMatrix& input_flat,
-      const typename TTypes<Tindex>::ConstVec& indices_vec, int64 start,
-      int64 num, Eigen::TensorChippingOp<0, typename TTypes<Tin>::Matrix> out,
+      const typename TTypes<Tindex>::ConstVec& indices_vec, int64_t start,
+      int64_t num, Eigen::TensorChippingOp<0, typename TTypes<Tin>::Matrix> out,
       Eigen::TensorChippingOp<0, typename TTypes<float>::Matrix> temp) {
     return ReduceImpl<Tin, Tindex, Tin>(input_flat, indices_vec, start, num,
                                         out, get_scaling_factor<Tin>(num));
   }
 
-  template <typename Tin, typename Tindex, EnableIfBfloat16<Tin> = 0>
+  template <typename Tin, typename Tindex, EnableIfBfloat16OrHalf<Tin> = 0>
   int64 Reduce(
       const typename TTypes<Tin>::ConstMatrix& input_flat,
-      const typename TTypes<Tindex>::ConstVec& indices_vec, int64 start,
-      int64 num, Eigen::TensorChippingOp<0, typename TTypes<Tin>::Matrix> out,
+      const typename TTypes<Tindex>::ConstVec& indices_vec, int64_t start,
+      int64_t num, Eigen::TensorChippingOp<0, typename TTypes<Tin>::Matrix> out,
       Eigen::TensorChippingOp<0, typename TTypes<float>::Matrix> temp) {
-    int64 res =
+    int64_t res =
         ReduceImpl<Tin, Tindex, float>(input_flat, indices_vec, start, num,
                                        temp, get_scaling_factor<float>(num));
-    out = temp.template cast<bfloat16>();
+    out = temp.template cast<Tin>();
     return res;
   }
 
   template <typename Tin, typename Tindex, typename Tout>
   int64 ReduceImpl(
       const typename TTypes<Tin>::ConstMatrix& input_flat,
-      const typename TTypes<Tindex>::ConstVec& indices_vec, int64 start,
-      int64 num, Eigen::TensorChippingOp<0, typename TTypes<Tout>::Matrix> out,
+      const typename TTypes<Tindex>::ConstVec& indices_vec, int64_t start,
+      int64_t num,
+      Eigen::TensorChippingOp<0, typename TTypes<Tout>::Matrix> out,
       const Tout scaling_factor) {
 #define INDEX(n, i)                               \
   const auto index##n = indices_vec(start + (i)); \
@@ -651,7 +663,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
       INDEX(0, 0);
       out = L(0);
     } else {
-      int64 r = num & 7;
+      int64_t r = num & 7;
       switch (r) {
         case 2: {
           INDEX(0, 0);
@@ -765,6 +777,110 @@ class SparseSegmentReductionOpBase : public OpKernel {
   const T default_value_;
 };
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+// Specialization for GPU. Must be Async because may need to wait for a host to
+// device memcpy before allocating output.
+template <class T, typename Index, typename SegmentId>
+class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
+    : public AsyncOpKernel {
+ public:
+  explicit SparseSegmentReductionOpBase(OpKernelConstruction* context,
+                                        bool is_mean, bool is_sqrtn,
+                                        bool has_num_segments, T default_value)
+      : AsyncOpKernel(context),
+        is_mean_(is_mean),
+        is_sqrtn_(is_sqrtn),
+        has_num_segments_(has_num_segments),
+        default_value_(default_value) {}
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    const Tensor& input = context->input(0);
+    const Tensor& indices = context->input(1);
+    const Tensor& segment_ids = context->input(2);
+
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        internal::ValidateSparseSegmentReduction(
+            context, input, indices, segment_ids, has_num_segments_),
+        done);
+
+    ScratchSpace<SegmentId> last_segment_id_host(context, 1, /*on_host=*/true);
+
+    auto create_and_check_output = [this, context, input, indices, segment_ids,
+                                    last_segment_id_host, done]() {
+      // Ensure that within the callback, the proper GPU settings are
+      // configured.
+      auto stream = context->op_device_context()->stream();
+      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+
+      SegmentId last_segment_id = *last_segment_id_host.data();
+      SegmentId output_rows = last_segment_id + 1;
+      OP_REQUIRES_ASYNC(context, output_rows > 0,
+                        errors::InvalidArgument("segment ids must be >= 0"),
+                        done);
+
+      TensorShape output_shape = input.shape();
+      output_shape.set_dim(0, output_rows);
+
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, output_shape, &output), done);
+
+      auto input_flat = input.flat_outer_dims<T>();
+      const auto indices_vec = indices.vec<Index>();
+      const auto segment_ids_vec = segment_ids.vec<SegmentId>();
+      auto output_flat = output->flat_outer_dims<T>();
+
+      functor::SparseSegmentReductionFunctor<T, Index, SegmentId> functor;
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          functor(context, is_mean_, is_sqrtn_, default_value_, input_flat,
+                  indices_vec, segment_ids_vec, output_flat),
+          done);
+      done();
+    };
+
+    if (has_num_segments_) {
+      // No need to do any device to host memcpy, just compute synchronously.
+      const Tensor& num_segments_t = context->input(3);
+      SegmentId num_segments =
+          internal::SubtleMustCopy(num_segments_t.dtype() == DT_INT32
+                                       ? num_segments_t.scalar<int32>()()
+                                       : num_segments_t.scalar<int64>()());
+      *last_segment_id_host.mutable_data() = num_segments - 1;
+      create_and_check_output();
+    } else {
+      const int64_t num_indices = indices.NumElements();
+      // Need to copy last element of segment_ids from device to host, and then
+      // asynchronously allocate the output and finish the computation.
+      se::DeviceMemoryBase last_segment_id_device(
+          const_cast<Tensor&>(segment_ids).template flat<SegmentId>().data() +
+          (num_indices - 1));
+      auto stream = context->op_device_context()->stream();
+      OP_REQUIRES_ASYNC(
+          context,
+          stream
+              ->ThenMemcpy(last_segment_id_host.mutable_data(),
+                           last_segment_id_device, sizeof(SegmentId))
+              .ok(),
+          errors::Internal(type_string() +
+                           ": failed to copy last_segment_id from device"),
+          done);
+      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+          stream, create_and_check_output);
+    }
+  }
+
+ private:
+  const bool is_mean_;
+  const bool is_sqrtn_;
+  const bool has_num_segments_;
+  const T default_value_;
+};
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 template <typename Device, class T, typename Index, typename SegmentId>
 class SparseSegmentReductionMeanOp
     : public SparseSegmentReductionOpBase<Device, T, Index, SegmentId> {
@@ -828,80 +944,66 @@ class SparseSegmentReductionSumWithNumSegmentsOp
             true /* has_num_segments */, T(0) /* default_value */) {}
 };
 
-// Implements the common logic for the gradients of SparseSegmentReduction
-// kernels.
-//
-// The template parameters are:
-// * Device: An Eigen device object, on which the kernel will execute.
-// * T: The value type.
-// * Index: The element type of the indices tensor (int32 or int64).
-// * SegmentId: The element type of the segment_ids tensor (int32 or int64).
-template <class T, typename Index, typename SegmentId>
-class SparseSegmentGradOpBase : public OpKernel {
- public:
-  explicit SparseSegmentGradOpBase(OpKernelConstruction* context, bool is_sqrtn)
-      : OpKernel(context), is_sqrtn_(is_sqrtn) {}
+namespace functor {
 
-  void Compute(OpKernelContext* context) override {
-    const Tensor& input = context->input(0);
-    const Tensor& indices = context->input(1);
-    const Tensor& segment_ids = context->input(2);
-    const Tensor& output_dim0 = context->input(3);
-
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(indices.shape()),
-                errors::InvalidArgument("indices should be a vector."));
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
-                errors::InvalidArgument("segment_ids should be a vector."));
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(output_dim0.shape()),
-                errors::InvalidArgument("output_dim0 should be a scalar."));
-
-    const int64 N = indices.NumElements();
-    OP_REQUIRES(context, N == segment_ids.NumElements(),
-                errors::InvalidArgument(
-                    "segment_ids and indices should have same size."));
-    const SegmentId M = internal::SubtleMustCopy(output_dim0.scalar<int32>()());
-
-    auto input_flat = input.flat_outer_dims<T>();
-    const auto indices_vec = indices.vec<Index>();
-    const auto segment_vec = segment_ids.vec<SegmentId>();
-
-    TensorShape output_shape = input.shape();
-    output_shape.set_dim(0, M);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    if (M == 0 || N == 0) return;
+template <typename T, typename Index, typename SegmentId>
+struct SparseSegmentGradFunctor<CPUDevice, T, Index, SegmentId> {
+  void operator()(OpKernelContext* context,
+                  SparseSegmentReductionOperation operation,
+                  typename TTypes<T>::ConstMatrix input_flat,
+                  typename TTypes<Index>::ConstVec indices_vec,
+                  typename TTypes<SegmentId>::ConstVec segment_vec,
+                  typename TTypes<T>::Matrix output_flat) {
+    const int64_t N = indices_vec.size();
+    const SegmentId M = output_flat.dimension(0);
 
     // Note that similar to SparseSegmentMean, we assume that segment_vec is
     // already sorted and has non-negative values.
-    const SegmentId num_segments = input.dim_size(0);
+    const SegmentId num_segments = input_flat.dimension(0);
     const SegmentId last_segment_id_plus_one =
         internal::SubtleMustCopy(segment_vec(N - 1)) + 1;
     OP_REQUIRES(context, last_segment_id_plus_one <= num_segments,
                 errors::InvalidArgument("Invalid number of segments"));
 
     // Compute scaling factors for input.
-    std::vector<double> scaling(num_segments, 0.0);
-    for (int64 i = 0; i < N; ++i) {
-      const SegmentId idx = internal::SubtleMustCopy(segment_vec(i));
-      OP_REQUIRES(
-          context, FastBoundsCheck(idx, num_segments),
-          errors::InvalidArgument("Segment id ", idx, " out of range [0, ",
-                                  num_segments, ")."));
-      scaling[idx] += 1;
-    }
-    for (size_t i = 0; i < scaling.size(); ++i) {
-      if (is_sqrtn_) {
-        scaling[i] = 1.0 / sqrt(std::max(scaling[i], 1.0));
-      } else {
-        scaling[i] = 1.0 / std::max(scaling[i], 1.0);
+    std::vector<double> scaling(
+        (operation == SparseSegmentReductionOperation::kSum ? 0 : num_segments),
+        0.0);
+    if (operation != SparseSegmentReductionOperation::kSum) {
+      for (int64_t i = 0; i < N; ++i) {
+        const SegmentId idx = internal::SubtleMustCopy(segment_vec(i));
+        OP_REQUIRES(
+            context, FastBoundsCheck(idx, num_segments),
+            errors::InvalidArgument("Segment id ", idx, " out of range [0, ",
+                                    num_segments, ")."));
+        scaling[idx] += 1;
+      }
+      for (size_t i = 0; i < scaling.size(); ++i) {
+        switch (operation) {
+          case SparseSegmentReductionOperation::kSum: {
+            OP_REQUIRES(
+                context, false,
+                errors::Internal(
+                    "Should not happen: sum inside SparseSegmentReductionOp "
+                    "scaling generation."));
+          }
+          case SparseSegmentReductionOperation::kMean: {
+            scaling[i] = 1.0 / std::max(scaling[i], 1.0);
+            break;
+          }
+          case SparseSegmentReductionOperation::kSqrtN: {
+            scaling[i] = 1.0 / sqrt(std::max(scaling[i], 1.0));
+            break;
+          }
+            // No default to get compiler warnings for missing cases.
+        }
       }
     }
 
-    auto output_flat = output->flat_outer_dims<T>();
     output_flat.setZero();
     std::vector<bool> is_modified(M, false);
 
-    for (int64 i = 0; i < N; ++i) {
+    for (int64_t i = 0; i < N; ++i) {
       const Index output_idx = internal::SubtleMustCopy(indices_vec(i));
       OP_REQUIRES(context, FastBoundsCheck(output_idx, M),
                   errors::InvalidArgument("Index ", output_idx,
@@ -913,7 +1015,9 @@ class SparseSegmentGradOpBase : public OpKernel {
           errors::InvalidArgument("Segment id ", idx, " out of range [0, ",
                                   num_segments, ")."));
 
-      const T scale = static_cast<T>(scaling[idx]);
+      const T scale = (operation == SparseSegmentReductionOperation::kSum
+                           ? static_cast<T>(1)
+                           : static_cast<T>(scaling[idx]));
       if (is_modified[output_idx]) {
         if (scale == 1.0) {
           output_flat.template chip<0>(output_idx) +=
@@ -934,27 +1038,88 @@ class SparseSegmentGradOpBase : public OpKernel {
       is_modified[output_idx] = true;
     }
   }
+};
+
+}  // namespace functor
+
+// Implements the common logic for the gradients of SparseSegmentReduction
+// kernels.
+//
+// The template parameters are:
+// * Device: An Eigen device object, on which the kernel will execute.
+// * T: The value type.
+// * Index: The element type of the indices tensor (int32 or int64).
+// * SegmentId: The element type of the segment_ids tensor (int32 or int64).
+template <typename Device, class T, typename Index, typename SegmentId>
+class SparseSegmentGradOpBase : public OpKernel {
+ public:
+  explicit SparseSegmentGradOpBase(OpKernelConstruction* context,
+                                   SparseSegmentReductionOperation operation)
+      : OpKernel(context), operation_(operation) {}
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& input = context->input(0);
+    const Tensor& indices = context->input(1);
+    const Tensor& segment_ids = context->input(2);
+    const Tensor& output_dim0 = context->input(3);
+
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(indices.shape()),
+                errors::InvalidArgument("indices should be a vector."));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
+                errors::InvalidArgument("segment_ids should be a vector."));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(output_dim0.shape()),
+                errors::InvalidArgument("output_dim0 should be a scalar."));
+
+    const int64_t N = indices.NumElements();
+    OP_REQUIRES(context, N == segment_ids.NumElements(),
+                errors::InvalidArgument(
+                    "segment_ids and indices should have same size."));
+    const SegmentId M = internal::SubtleMustCopy(output_dim0.scalar<int32>()());
+
+    auto input_flat = input.flat_outer_dims<T>();
+    const auto indices_vec = indices.vec<Index>();
+    const auto segment_vec = segment_ids.vec<SegmentId>();
+
+    TensorShape output_shape = input.shape();
+    output_shape.set_dim(0, M);
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+    if (M == 0 || N == 0) return;
+
+    auto output_flat = output->flat_outer_dims<T>();
+    functor::SparseSegmentGradFunctor<Device, T, Index, SegmentId>()(
+        context, operation_, input_flat, indices_vec, segment_vec, output_flat);
+  }
 
  private:
-  const bool is_sqrtn_;
+  const SparseSegmentReductionOperation operation_;
 };
 
-template <class T, typename Index, typename SegmentId>
+template <typename Device, class T, typename Index, typename SegmentId>
+class SparseSegmentSumGradOp
+    : public SparseSegmentGradOpBase<Device, T, Index, SegmentId> {
+ public:
+  explicit SparseSegmentSumGradOp(OpKernelConstruction* context)
+      : SparseSegmentGradOpBase<Device, T, Index, SegmentId>(
+            context, SparseSegmentReductionOperation::kSum) {}
+};
+
+template <typename Device, class T, typename Index, typename SegmentId>
 class SparseSegmentMeanGradOp
-    : public SparseSegmentGradOpBase<T, Index, SegmentId> {
+    : public SparseSegmentGradOpBase<Device, T, Index, SegmentId> {
  public:
   explicit SparseSegmentMeanGradOp(OpKernelConstruction* context)
-      : SparseSegmentGradOpBase<T, Index, SegmentId>(context,
-                                                     false /*is_sqrtn*/) {}
+      : SparseSegmentGradOpBase<Device, T, Index, SegmentId>(
+            context, SparseSegmentReductionOperation::kMean) {}
 };
 
-template <class T, typename Index, typename SegmentId>
+template <typename Device, class T, typename Index, typename SegmentId>
 class SparseSegmentSqrtNGradOp
-    : public SparseSegmentGradOpBase<T, Index, SegmentId> {
+    : public SparseSegmentGradOpBase<Device, T, Index, SegmentId> {
  public:
   explicit SparseSegmentSqrtNGradOp(OpKernelConstruction* context)
-      : SparseSegmentGradOpBase<T, Index, SegmentId>(context,
-                                                     true /*is_sqrtn*/) {}
+      : SparseSegmentGradOpBase<Device, T, Index, SegmentId>(
+            context, SparseSegmentReductionOperation::kSqrtN) {}
 };
 
 }  // namespace tensorflow

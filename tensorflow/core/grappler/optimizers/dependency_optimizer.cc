@@ -68,6 +68,12 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) const {
     // The output values of this node may be needed.
     return false;
   }
+
+  if (node.input_size() < 1) {
+    // Node lacks input, is invalid
+    return false;
+  }
+
   const NodeDef* input = node_map_->GetNode(NodeName(node.input(0)));
   CHECK(input != nullptr) << "node = " << node.name()
                           << " input = " << node.input(0);
@@ -413,14 +419,14 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
               if (old_input.index() == i) {
                 // Regular input
                 new_input = input_to_forward;
-                node_map_->UpdateInput(consumer->name(), old_input.ToString(),
-                                       new_input);
+                node_map_->UpdateInput(consumer->name(),
+                                       string(old_input.node()), new_input);
                 consumer->set_input(j, new_input);
               } else if (old_input.index() == -1) {
                 // Control dependency
                 new_input = AsControlDependency(NodeName(input_to_forward));
-                node_map_->UpdateInput(consumer->name(), old_input.ToString(),
-                                       new_input);
+                node_map_->UpdateInput(consumer->name(),
+                                       string(old_input.node()), new_input);
                 consumer->set_input(j, new_input);
               }
             }
@@ -779,13 +785,6 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   return Status::OK();
-}
-
-void DependencyOptimizer::Feedback(Cluster* /*cluster*/,
-                                   const GrapplerItem& /*item*/,
-                                   const GraphDef& /*optimized_graph*/,
-                                   double /*result*/) {
-  // Nothing to do for DependencyOptimizer.
 }
 
 }  // end namespace grappler

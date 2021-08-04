@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
@@ -41,6 +42,12 @@ class ClOperation;
 namespace metal {
 class ComputeTask;
 struct ComputeTaskDescriptor;
+}
+namespace gl {
+class GlOperation;
+}
+namespace vulkan {
+class VulkanOperation;
 }
 
 // kCustom: default value
@@ -126,6 +133,8 @@ class GPUOperation {
                     const TensorDescriptor& desc);
   void AddSrcBuffer(const std::string& buffer_name,
                     const BufferDescriptor& desc);
+  void AddSrcTexture2D(const std::string& texture_name,
+                       const Texture2DDescriptor& desc);
   void AddDstTensor(const std::string& tensor_name,
                     const TensorDescriptor& desc);
 
@@ -149,8 +158,10 @@ class GPUOperation {
 
  protected:
   friend class cl::ClOperation;
+  friend class gl::GlOperation;
   friend class metal::ComputeTask;
   friend struct metal::ComputeTaskDescriptor;
+  friend class vulkan::VulkanOperation;
   friend flatbuffers::Offset<tflite::gpu::data::GPUOperation> Encode(
       const GPUOperation& op, flatbuffers::FlatBufferBuilder* builder);
   friend absl::Status Decode(const tflite::gpu::data::GPUOperation* fb_op,

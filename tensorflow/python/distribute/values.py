@@ -30,10 +30,12 @@ from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import save_context
@@ -48,29 +50,77 @@ def _on_write_update_replica(var, update_fn, value, **kwargs):
   if var.aggregation == vs.VariableAggregation.NONE:
     return update_fn(var._get_on_device_or_primary(), value, **kwargs)  # pylint: disable=protected-access
 
-  def merge_fn(strategy, value, **kwargs):
-    """Aggregate values and update all variables in cross replica context."""
+  if not ds_context.get_strategy().extended._use_merge_call():  # pylint: disable=protected-access
     # Don't allow MEAN with non float dtype, since it may cause unexpected
     # precision loss. Python3 and NumPy automatically upcast integers to
     # float in division, but we should always preserve the type.
-    #
-    # Note that to be backward compatible we allow the case when the value
-    # is *always* the same on each replica. I.E. value is not a
-    # PerReplica. Refer to regroup() to see how values are grouped.
     if var.aggregation == vs.VariableAggregation.MEAN and (
-        not var.dtype.is_floating) and isinstance(value, PerReplica):
+        not var.dtype.is_floating) and tensor_util.is_tf_type(value):
       raise ValueError(
           "Cannot update non-float variables with "
           "tf.VariableAggregation.MEAN aggregation in replica context. "
           "Either change the variable dtype to float or update it in "
           "cross-replica context.")
 
-    assert strategy == var.distribute_strategy
-    v = values_util.apply_aggregation(strategy, value, var.aggregation, var)
-    return var._update_cross_replica(update_fn, v, **kwargs)  # pylint: disable=protected-access
+    aggregated_value = apply_aggregation_replica_context(value, var.aggregation,
+                                                         var)
+    values_util.mark_as_unsaveable()
 
-  return ds_context.get_replica_context().merge_call(
-      merge_fn, args=(value,), kwargs=kwargs)
+    return ds_context.get_replica_context()._update(  # pylint: disable=protected-access
+        var,
+        update_fn,
+        args=(aggregated_value,),
+        kwargs=kwargs, group=True)
+
+  else:
+    def merge_fn(strategy, value, **kwargs):
+      """Aggregate values and update all variables in cross replica context."""
+      # Don't allow MEAN with non float dtype, since it may cause unexpected
+      # precision loss. Python3 and NumPy automatically upcast integers to
+      # float in division, but we should always preserve the type.
+      #
+      # Note that to be backward compatible we allow the case when the value
+      # is *always* the same on each replica. I.E. value is not a
+      # PerReplica. Refer to regroup() to see how values are grouped.
+      if var.aggregation == vs.VariableAggregation.MEAN and (
+          not var.dtype.is_floating) and isinstance(value, PerReplica):
+        raise ValueError(
+            "Cannot update non-float variables with "
+            "tf.VariableAggregation.MEAN aggregation in replica context. "
+            "Either change the variable dtype to float or update it in "
+            "cross-replica context.")
+
+      assert strategy == var.distribute_strategy
+      v = values_util.apply_aggregation(strategy, value, var.aggregation, var)
+      return var._update_cross_replica(update_fn, v, **kwargs)  # pylint: disable=protected-access
+
+    return ds_context.get_replica_context().merge_call(
+        merge_fn, args=(value,), kwargs=kwargs)
+
+
+def apply_aggregation_replica_context(value, aggregation, destinations):
+  """Aggregate `value` to `destinations` as specified by `aggregation`."""
+  # if it is a python literal, return without aggregation
+  if isinstance(value, DistributedValues):
+    raise ValueError("Do not use a DistributedValues update variable in replica"
+                     " context.")
+  if not tensor_util.is_tf_type(value):
+    return value
+
+  if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+    # Switch to cross-replica context to broadcast
+    def merge_fn(strategy, value):
+      return strategy.extended.broadcast_to(
+          strategy.experimental_local_results(value)[0],
+          destinations=destinations)
+
+    return ds_context.get_replica_context().merge_call(merge_fn, args=(value,))
+
+  else:
+    reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
+    aggregated_value = ds_context.get_strategy(  # pylint: disable=protected-access
+    ).extended._replica_ctx_all_reduce(reduce_op, value)
+    return aggregated_value
 
 
 @tf_export("distribute.DistributedValues", v1=[])
@@ -980,11 +1030,11 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
         will be a `SavedVariable` instance.
       options: A `SaveOptions` instance.
     """
+    resource_variable_ops.write_object_proto_for_resource_variable(
+        self, proto, options)
     if self._policy:
       if self._policy._is_mirrored():  # pylint: disable=protected-access
         self._policy._write_object_proto(self, proto, options)  # pylint: disable=protected-access
-    else:
-      self._write_object_proto(proto, options)
 
 
 # We extend from `saveable_object.SaveableObject` instead of
@@ -1104,6 +1154,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
         will be a `SavedVariable` instance.
       options: A `SaveOptions` instance.
     """
+    super(MirroredVariable, self)._write_object_proto(proto, options)
     values_util.write_object_proto(self, proto, options)
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
@@ -1230,6 +1281,10 @@ class SyncOnReadVariable(DistributedVariable):
     self._scatter_not_implemented("scatter_update")
 
   def value(self):
+    if ds_context.in_variable_sync_on_read_context():
+      raise NotImplementedError(
+          "call `variable.value()` inside variable_sync_on_read_context is not "
+          "supported")
     if values_util.is_saving_non_distributed():
       return self._primary.value()
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
@@ -1241,6 +1296,13 @@ class SyncOnReadVariable(DistributedVariable):
       else:
         # _get_on_device_or_primary() returns a Variable.
         return self._get_on_device_or_primary().value()
+
+  def read_value(self):
+    if ds_context.in_variable_sync_on_read_context():
+      raise NotImplementedError(
+          "call `variable.read_value()` inside variable_sync_on_read_context is"
+          " not supported")
+    return super().read_value()
 
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
@@ -1279,25 +1341,31 @@ class SyncOnReadVariable(DistributedVariable):
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
-  def _write_object_proto(self, proto, options):
-    """Update a SavedObject proto for the caller.
+  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
+    """Converts a SyncOnReadVariable to a tensor."""
+    if values_util.is_saving_non_distributed():
+      return ops.convert_to_tensor(
+          self._primary, dtype=dtype, name=name, as_ref=as_ref)
+    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+      replica_context = ds_context.get_replica_context()
+      if (replica_context is not None and
+          ds_context.in_variable_sync_on_read_context()):
+        if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+          return ops.convert_to_tensor(
+              self._get_replica(0), dtype=dtype, name=name, as_ref=as_ref)
+        if self._aggregation == vs.VariableAggregation.SUM:
+          values_util.mark_as_unsaveable()
+        # pylint: disable=protected-access
+        reduced = (
+            replica_context.strategy.extended._replica_ctx_all_reduce(
+                reduce_util.ReduceOp.from_variable_aggregation(
+                    self._aggregation),
+                self._get().read_value()))
+        return ops.convert_to_tensor(
+            reduced, dtype=dtype, name=name, as_ref=as_ref)
 
-    If a DistributedVariable object supports this method, it will be called when
-    saving with a pre-built `SavedObject` proto representing the object, plus an
-    instance of `SaveOptions`. This method is then free to modify that proto
-    instance.
-
-    `DistributedVariable` with `AUTO` or `ON_WRITE` synchronization optionally
-    write out information about their components to the
-    `experimental_distributed_variable_components` field of a
-    `SavedVariable` (depending on the `SaveOptions` variable policy).
-
-    Args:
-      proto: A pre-built `SavedObject` proto for this object. It is assumed this
-        will be a `SavedVariable` instance.
-      options: A `SaveOptions` instance.
-    """
-    pass
+      return ops.convert_to_tensor(
+          self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
 # Register a conversion functions which reads the value of the variable,
@@ -1499,13 +1567,13 @@ class OnReadPolicy(VariablePolicy):
     return values_util.get_on_read_restore_ops(var, tensor, self._aggregation)
 
 
-class AutoPolicy(VariablePolicy):
-  """Policy defined for `tf.VariableSynchronization.AUTO` synchronization.
+class OnWritePolicy(VariablePolicy):
+  """Policy defined for `tf.VariableSynchronization.ON_WRITE` synchronization.
 
-  This policy is created when `synchronization` is set to
-  `tf.VariableSynchronization.AUTO` and `aggregation` is set to
-  `tf.VariableAggregation.NONE` when creating a `tf.Variable` in `tf.distribute`
-  scope.
+  This policy is created when the following `synchronization` and `aggregation`
+  parameters are specified when creating a `tf.Variable` in `tf.distribute`
+  scope and `synchronization` is equal to `tf.VariableSynchronization.ON_WRITE`
+  or `tf.VariableSynchronization.AUTO`.
   """
 
   def _is_mirrored(self):
@@ -1523,7 +1591,9 @@ class AutoPolicy(VariablePolicy):
     return array_ops.identity(var._get_on_device_or_primary())  # pylint: disable=protected-access
 
   def _update_replica(self, var, update_fn, value, **kwargs):
-    return update_fn(var._get_on_device_or_primary(), value, **kwargs)  # pylint: disable=protected-access
+    if var.aggregation == variables_lib.VariableAggregation.NONE:
+      return update_fn(var._get_on_device_or_primary(), value, **kwargs)  # pylint: disable=protected-access
+    return _on_write_update_replica(var, update_fn, value, **kwargs)
 
   def assign(self, var, value, use_locking=False, name=None, read_value=True):
     return values_util.on_write_assign(var, value, use_locking=use_locking,
@@ -1609,19 +1679,29 @@ class AutoPolicy(VariablePolicy):
     values_util.write_object_proto(var, proto, options)
 
 
-class OnWritePolicy(AutoPolicy):
-  """Policy defined for `tf.VariableSynchronization.ON_WRITE` synchronization.
+class PerWorkerResource():
+  """A per-worker CachableResource class for non-ParameterServer strategy.
 
-  This policy is created when the following `synchronization` and
-  `aggregation` parameters are specified when creating a `tf.Variable` in
-  `tf.distribute` scope:
-  * `synchronization` is equal to `tf.VariableSynchronization.AUTO` and
-  aggregation can be any of the following `tf.VariableAggregation` enum
-  values such as `SUM`, `MEAN` or `ONLY_FIRST_REPLICA`.
-  * `synchronization` is equal to `tf.VariableSynchronization.ON_WRITE` and
-  aggregation can be any of the following `tf.VariableAggregation` enum
-  values such as `NONE`, `SUM`, `MEAN` or `ONLY_FIRST_REPLICA`.
+  Resources that populate `host_to_resources` should be instances of classes
+  subclassing CachableResource, although currently it's only used and tested for
+  StaticHashTable with TPUStrategy.
   """
 
-  def _update_replica(self, var, update_fn, value, **kwargs):
-    return _on_write_update_replica(var, update_fn, value, **kwargs)
+  def __init__(self, strategy, host_to_resources):
+    self._strategy = strategy
+    self._host_to_resources = host_to_resources
+
+  def __getattribute__(self, name):
+    if name not in ("__init__", "__getattribute__", "_host_to_resources",
+                    "_strategy", "local_resource"):
+      return getattr(self.local_resource(), name)
+    return super(PerWorkerResource, self).__getattribute__(name)
+
+  def local_resource(self):
+    """Returns the resource on the local worker."""
+    current_device = device_util.canonicalize(device_util.current())
+    host_device = device_util.canonicalize(
+        device_util.get_host_for_device(current_device))
+    return self._host_to_resources.get(
+        host_device,
+        self._host_to_resources[next(iter(self._host_to_resources))])

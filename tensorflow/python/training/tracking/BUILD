@@ -11,10 +11,8 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "base",
@@ -111,6 +109,7 @@ py_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python/training:optimizer",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
     ],
@@ -250,4 +249,13 @@ tf_py_test(
 tf_py_logged_benchmark(
     name = "benchmarks",
     target = "//tensorflow/python/training/tracking:benchmarks_test",
+)
+
+tf_py_test(
+    name = "checkpoint_metrics_test",
+    srcs = ["checkpoint_metrics_test.py"],
+    deps = [
+        ":util",
+        "//tensorflow/python:platform_test",
+    ],
 )

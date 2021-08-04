@@ -21,6 +21,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.td"
@@ -44,8 +45,13 @@ def I32Buffer : MemRefOf<[I32]>;
 // calls generate or consume standard deviation, whereas LHLO ops generate or
 // consume variance (= std-dev ^ 2).
 
-def LHLOGPU_BatchNormGradOp : LHLOGPU_Op<"batch_norm_grad">,
-    BASE_HLO_BatchNormGradOp {
+def LHLOGPU_BatchNormGradOp : LHLOGPU_Op<"batch_norm_grad"> {
+  let summary = "Batch Normalization Gradient";
+  let description = [{
+    Calculates gradients of batch norm.
+
+    See https://www.tensorflow.org/xla/operation_semantics#batchnormgrad
+  }];
   let arguments = (ins
     Arg<LHLO_FpBuffer, "", [MemRead]>:$operand,
     Arg<LHLO_FpBuffer,      "", [MemRead]>:$scale,
@@ -60,8 +66,13 @@ def LHLOGPU_BatchNormGradOp : LHLOGPU_Op<"batch_norm_grad">,
   );
 }
 
-def LHLOGPU_BatchNormInferenceOp : LHLOGPU_Op<"batch_norm_inference">,
-    BASE_HLO_BatchNormInferenceOp {
+def LHLOGPU_BatchNormInferenceOp : LHLOGPU_Op<"batch_norm_inference"> {
+  let summary = "Batch Normalization for Inference";
+  let description = [{
+    Normalizes an array across batch and spatial dimensions.
+
+    See https://www.tensorflow.org/xla/operation_semantics#batchnorminference
+  }];
   let arguments = (ins
     Arg<LHLO_FpBuffer, "", [MemRead]>:$operand,
     Arg<LHLO_FpBuffer,      "", [MemRead]>:$scale,
@@ -73,8 +84,13 @@ def LHLOGPU_BatchNormInferenceOp : LHLOGPU_Op<"batch_norm_inference">,
     I64Attr:$feature_index);
 }
 
-def LHLOGPU_BatchNormTrainingOp : LHLOGPU_Op<"batch_norm_training">,
-    BASE_HLO_BatchNormTrainingOp {
+def LHLOGPU_BatchNormTrainingOp : LHLOGPU_Op<"batch_norm_training"> {
+  let summary = "Batch Normalization for Training";
+  let description = [{
+    Normalizes an array across batch and spatial dimensions.
+
+    See https://www.tensorflow.org/xla/operation_semantics#batchnormtraining
+  }];
 
   let arguments = (ins
     Arg<LHLO_FpBuffer, "", [MemRead]>:$operand,
@@ -100,7 +116,19 @@ class GpuConvolutionAttributes<dag extraAttribs> {
     (ins ConvolutionBackendConfigAttr:$backend_config));
 }
 
-def LHLOGPU_ConvForwardOp : LHLOGPU_Op<"conv_forward"> {
+// Provide a custom assembly format for all LHLO_GPU convolution operations.
+class LHLOGPU_ConvBaseOp<string mnemonic> : LHLOGPU_Op<mnemonic> {
+ let assemblyFormat = [{
+    `(`operands`)`
+       `dim_numbers` `=` custom<ConvolutionDimensions>($dimension_numbers) `,`
+       `window` `=` `{` custom<WindowAttributes>($window_strides, $padding,
+                                                 $lhs_dilation, $rhs_dilation,
+                                                 $window_reversal) `}`
+       attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def LHLOGPU_ConvForwardOp : LHLOGPU_ConvBaseOp<"conv_forward"> {
   let arguments = !con(
     (ins
        Arg<LHLO_Buffer, "", [MemRead]>:$input,
@@ -110,7 +138,7 @@ def LHLOGPU_ConvForwardOp : LHLOGPU_Op<"conv_forward"> {
      GpuConvolutionAttributes<(ins)>.attributes);
 }
 
-def LHLOGPU_ConvBackwardInputOp : LHLOGPU_Op<"conv_backwardinput"> {
+def LHLOGPU_ConvBackwardInputOp : LHLOGPU_ConvBaseOp<"conv_backwardinput"> {
   let arguments = !con(
     (ins
        Arg<LHLO_Buffer, "", [MemRead]>:$d_output,
@@ -120,7 +148,7 @@ def LHLOGPU_ConvBackwardInputOp : LHLOGPU_Op<"conv_backwardinput"> {
      GpuConvolutionAttributes<(ins)>.attributes);
 }
 
-def LHLOGPU_ConvBackwardFilterOp : LHLOGPU_Op<"conv_backwardfilter"> {
+def LHLOGPU_ConvBackwardFilterOp : LHLOGPU_ConvBaseOp<"conv_backwardfilter"> {
   let arguments = !con(
     (ins
        Arg<LHLO_Buffer, "", [MemRead]>:$input,
@@ -131,7 +159,7 @@ def LHLOGPU_ConvBackwardFilterOp : LHLOGPU_Op<"conv_backwardfilter"> {
 }
 
 // output = activation(result_scale * conv(input, filter) + bias)
-def LHLOGPU_ConvForwardFusedOp : LHLOGPU_Op<"conv_forward_fused"> {
+def LHLOGPU_ConvForwardFusedOp : LHLOGPU_ConvBaseOp<"conv_forward_fused"> {
   let arguments = !con(
     (ins
        Arg<LHLO_Buffer, "", [MemRead]>:$input,
@@ -146,7 +174,8 @@ def LHLOGPU_ConvForwardFusedOp : LHLOGPU_Op<"conv_forward_fused"> {
 // output = activation(result_scale * conv(input, filter) +
 //                     side_input * side_input_scale +
 //                     bias)
-def LHLOGPU_ConvForwardFusedSideInputOp : LHLOGPU_Op<"conv_forward_fused_with_side_input"> {
+def LHLOGPU_ConvForwardFusedSideInputOp :
+      LHLOGPU_ConvBaseOp<"conv_forward_fused_with_side_input"> {
   let arguments = !con(
     (ins
        Arg<LHLO_Buffer, "", [MemRead]>:$input,
@@ -175,6 +204,8 @@ def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
     F64Attr:$alpha_real,
     F64Attr:$alpha_imag,
     I64Attr:$batch_size,
+    I64Attr:$lhs_stride,
+    I64Attr:$rhs_stride,
     OptionalAttr<I64Attr>:$algorithm);
 }
 
@@ -190,6 +221,8 @@ def LHLOGPU_GEMM_BiasOp : LHLOGPU_Op<"gemm_bias"> {
     F64Attr:$alpha_imag,
     F64Attr:$beta,
     I64Attr:$batch_size,
+    I64Attr:$lhs_stride,
+    I64Attr:$rhs_stride,
     OptionalAttr<I64Attr>:$algorithm);
 }
 
@@ -200,6 +233,35 @@ def LHLOGPU_CholeskyOp : LHLOGPU_Op<"cholesky"> {
     Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
     Arg<I32Buffer, "", [MemWrite]>:$info,
     BoolAttr:$is_lower);
+}
+
+def LHLOGPU_AllReduceStartOp :
+  LHLOGPU_Op<"all_reduce_start", [SameOperandsElementType, SameVariadicOperandSize]> {
+  let summary = "AllReduceStart operator";
+  let description = [{
+    Performs an asynchronous custom reduction across replicas.
+  }];
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results,
+    I64ElementsAttr:$replica_groups,
+    DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
+    OptionalAttr<ChannelHandle>:$channel_id,
+    DefaultValuedAttr<BoolAttr, "false">:$use_global_device_ids
+  );
+  let results = (outs HLO_Token:$token);
+  let regions = (region SizedRegion<1>:$computation);
+  let verifier = [{ return Verify(*this); }];
+}
+
+def LHLOGPU_AllReduceDoneOp:
+  LHLOGPU_Op<"all_reduce_done", [SameVariadicOperandSize]> {
+  let summary = "AllReduceDone operator";
+  let arguments = (ins
+    HLO_Token:$token,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results
+  );
 }
 
 #endif // LHLO_GPU_OPS

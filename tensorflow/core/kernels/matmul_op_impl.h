@@ -95,9 +95,9 @@ struct ParallelMatMulKernel {
     const auto& x_batch_indices = bcast.x_batch_indices();
     const auto& y_batch_indices = bcast.y_batch_indices();
     // TODO(rmlarsen): Consider launching these contractions asynchronously.
-    for (int64 i = 0; i < batch_size; ++i) {
-      const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
-      const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
+    for (int64_t i = 0; i < batch_size; ++i) {
+      const int64_t x_batch_index = should_bcast ? x_batch_indices[i] : i;
+      const int64_t y_batch_index = should_bcast ? y_batch_indices[i] : i;
 
       auto x = Tx.template chip<0>(x_batch_index);
       auto z = Tz.template chip<0>(i);
@@ -139,9 +139,9 @@ struct ParallelMatMulKernel<Scalar, false> {
       const auto& x_batch_indices = bcast.x_batch_indices();
       const auto& y_batch_indices = bcast.y_batch_indices();
       // TODO(rmlarsen): Consider launching these contractions asynchronously.
-      for (int64 i = 0; i < batch_size; ++i) {
-        const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
-        const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
+      for (int64_t i = 0; i < batch_size; ++i) {
+        const int64_t x_batch_index = should_bcast ? x_batch_indices[i] : i;
+        const int64_t y_batch_index = should_bcast ? y_batch_indices[i] : i;
         auto x = Tx.template chip<0>(x_batch_index);
         auto y = Ty.template chip<0>(y_batch_index);
         auto z = Tz.template chip<0>(i);
@@ -181,9 +181,9 @@ struct SequentialMatMulKernel {
     const bool should_bcast = bcast.IsBroadcastingRequired();
     const auto& x_batch_indices = bcast.x_batch_indices();
     const auto& y_batch_indices = bcast.y_batch_indices();
-    for (int64 i = start; i < limit; ++i) {
-      const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
-      const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
+    for (int64_t i = start; i < limit; ++i) {
+      const int64_t x_batch_index = should_bcast ? x_batch_indices[i] : i;
+      const int64_t y_batch_index = should_bcast ? y_batch_indices[i] : i;
       auto x = ConstTensorSliceToEigenMatrix(in_x, x_batch_index);
       auto y = ConstTensorSliceToEigenMatrix(in_y, y_batch_index);
       auto z = TensorSliceToEigenMatrix(out, i);
@@ -233,14 +233,14 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
     bool conjugate_result = false;
 
     // Number of matrix multiplies i.e. size of the batch.
-    const int64 batch_size = bcast.output_batch_size();
-    const int64 cost_per_unit =
+    const int64_t batch_size = bcast.output_batch_size();
+    const int64_t cost_per_unit =
         in_x.dim_size(1) * in_x.dim_size(2) * out->dim_size(2);
-    const int64 small_dim = std::min(
+    const int64_t small_dim = std::min(
         std::min(in_x.dim_size(1), in_x.dim_size(2)), out->dim_size(2));
     // NOTE(nikhilsarda): This heuristic is optimal in benchmarks as of
     // Jan 21, 2020.
-    const int64 kMaxCostOuterParallelism = 128 * 128;  // heuristic.
+    const int64_t kMaxCostOuterParallelism = 128 * 128;  // heuristic.
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     // TODO(rmlarsen): Reconsider the heuristics now that we have asynchronous
     // evaluation in Eigen Tensor.
@@ -295,7 +295,7 @@ class BlasScratchAllocator : public se::ScratchAllocator {
   int64 GetMemoryLimitInBytes() override { return -1; }
 
   se::port::StatusOr<DeviceMemoryBytes> AllocateBytes(
-      int64 byte_size) override {
+      int64_t byte_size) override {
     Tensor temporary_memory;
 
     Status allocation_status(context_->allocate_temp(
@@ -330,7 +330,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     const uint64 m = in_x.dim_size(adj_x || trans_x ? 2 : 1);
     const uint64 k = in_x.dim_size(adj_x || trans_x ? 1 : 2);
     const uint64 n = in_y.dim_size(adj_y || trans_y ? 1 : 2);
-    const int64 batch_size = bcast.output_batch_size();
+    const int64_t batch_size = bcast.output_batch_size();
     auto blas_transpose_a = trans[adj_x ? 2 : (trans_x ? 1 : 0)];
     auto blas_transpose_b = trans[adj_y ? 2 : (trans_y ? 1 : 0)];
 
@@ -373,7 +373,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
       b_ptrs.push_back(&b_device_memory.back());
       c_ptrs.push_back(&c_device_memory.back());
     } else if (!bcast.IsBroadcastingRequired()) {
-      for (int64 i = 0; i < batch_size; ++i) {
+      for (int64_t i = 0; i < batch_size; ++i) {
         a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
         b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
         c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
@@ -384,13 +384,13 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     } else {
       const std::vector<int64>& a_batch_indices = bcast.x_batch_indices();
       const std::vector<int64>& b_batch_indices = bcast.y_batch_indices();
-      for (int64 i = 0; i < bcast.x_batch_size(); ++i) {
+      for (int64_t i = 0; i < bcast.x_batch_size(); ++i) {
         a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
       }
-      for (int64 i = 0; i < bcast.y_batch_size(); ++i) {
+      for (int64_t i = 0; i < bcast.y_batch_size(); ++i) {
         b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
       }
-      for (int64 i = 0; i < batch_size; ++i) {
+      for (int64_t i = 0; i < batch_size; ++i) {
         c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
         a_ptrs.push_back(&a_device_memory[a_batch_indices[i]]);
         b_ptrs.push_back(&b_device_memory[b_batch_indices[i]]);
@@ -435,39 +435,20 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
               ", k=", k));
         }
       } else {
-        bool blas_launch_status =
-            stream
-                ->ThenBlasGemm(blas_transpose_b, blas_transpose_a, n, m, k,
-                               static_cast<Coefficient>(1.0), *(b_ptrs[0]),
-                               adj_y || trans_y ? k : n, *(a_ptrs[0]),
-                               adj_x || trans_x ? m : k,
-                               static_cast<Coefficient>(0.0), c_ptrs[0], n)
-                .ok();
-        if (!blas_launch_status) {
-          context->SetStatus(errors::Internal(
-              "Blas xGEMM launch failed : a.shape=", in_x.shape().DebugString(),
-              ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
-              ", k=", k));
-        }
+        OP_REQUIRES_OK(context,
+                       stream->ThenBlasGemm(
+                           blas_transpose_b, blas_transpose_a, n, m, k,
+                           *(b_ptrs[0]), adj_y || trans_y ? k : n, *(a_ptrs[0]),
+                           adj_x || trans_x ? m : k, c_ptrs[0], n));
       }
     } else if (use_strided_batched) {
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemmStridedBatched(
-                  blas_transpose_b, blas_transpose_a, n, m, k,
-                  static_cast<Coefficient>(1.0), *b_ptrs[0],
-                  adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
-                  adj_x || trans_x ? m : k, a_stride,
-                  static_cast<Coefficient>(0.0), c_ptrs[0], n, c_stride,
-                  batch_size)
-              .ok();
-      if (!blas_launch_status) {
-        context->SetStatus(errors::Internal(
-            "Blas xGEMMStridedBatched launch failed : a.shape=",
-            in_x.shape().DebugString(),
-            ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
-            ", k=", k, ", batch_size=", batch_size));
-      }
+      OP_REQUIRES_OK(context, stream->ThenBlasGemmStridedBatched(
+                                  blas_transpose_b, blas_transpose_a, n, m, k,
+                                  static_cast<Coefficient>(1.0), *b_ptrs[0],
+                                  adj_y || trans_y ? k : n, b_stride,
+                                  *a_ptrs[0], adj_x || trans_x ? m : k,
+                                  a_stride, static_cast<Coefficient>(0.0),
+                                  c_ptrs[0], n, c_stride, batch_size));
     } else {
       BlasScratchAllocator scratch_allocator(context);
       bool blas_launch_status =
@@ -546,7 +527,7 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
       b_ptrs.push_back(&b_device_memory.back());
       c_ptrs.push_back(&c_device_memory.back());
     } else if (!bcast.IsBroadcastingRequired()) {
-      for (int64 i = 0; i < batch_size; ++i) {
+      for (int64_t i = 0; i < batch_size; ++i) {
         a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
         b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
         c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
@@ -557,13 +538,13 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
     } else {
       const std::vector<int64>& a_batch_indices = bcast.x_batch_indices();
       const std::vector<int64>& b_batch_indices = bcast.y_batch_indices();
-      for (int64 i = 0; i < bcast.x_batch_size(); ++i) {
+      for (int64_t i = 0; i < bcast.x_batch_size(); ++i) {
         a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
       }
-      for (int64 i = 0; i < bcast.y_batch_size(); ++i) {
+      for (int64_t i = 0; i < bcast.y_batch_size(); ++i) {
         b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
       }
-      for (int64 i = 0; i < batch_size; ++i) {
+      for (int64_t i = 0; i < batch_size; ++i) {
         c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
         a_ptrs.push_back(&a_device_memory[a_batch_indices[i]]);
         b_ptrs.push_back(&b_device_memory[b_batch_indices[i]]);
@@ -583,20 +564,11 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
       // This is a regular matrix*matrix or matrix*vector multiply. Avoid the
       // overhead of the scratch allocator and the batch interface.
       // TODO(benbarsdell): Use fp16 Gemv if it becomes supported by CUBLAS
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(blas_transpose_b, blas_transpose_a, n, m, k,
-                             static_cast<Coefficient>(1.0), *(b_ptrs[0]),
-                             adj_y || trans_y ? k : n, *(a_ptrs[0]),
-                             adj_x || trans_x ? m : k,
-                             static_cast<Coefficient>(0.0), c_ptrs[0], n)
-              .ok();
-      if (!blas_launch_status) {
-        context->SetStatus(errors::Internal(
-            "Blas xGEMM launch failed : a.shape=", in_x.shape().DebugString(),
-            ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
-            ", k=", k));
-      }
+      OP_REQUIRES_OK(context,
+                     stream->ThenBlasGemm(
+                         blas_transpose_b, blas_transpose_a, n, m, k,
+                         *(b_ptrs[0]), adj_y || trans_y ? k : n, *(a_ptrs[0]),
+                         adj_x || trans_x ? m : k, c_ptrs[0], n));
     } else if (use_strided_batched) {
       bool blas_launch_status =
           stream
@@ -639,8 +611,7 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-
-template <typename Device, typename Scalar>
+template <typename Device, typename Ta, typename Tb, typename Tout>
 class BaseBatchMatMulOp : public OpKernel {
  public:
   explicit BaseBatchMatMulOp(OpKernelConstruction* context,
@@ -712,8 +683,8 @@ class BaseBatchMatMulOp : public OpKernel {
       return;
     }
     if (in0.NumElements() == 0 || in1.NumElements() == 0) {
-      functor::SetZeroFunctor<Device, Scalar> f;
-      f(ctx->eigen_device<Device>(), out->flat<Scalar>());
+      functor::SetZeroFunctor<Device, Tout> f;
+      f(ctx->eigen_device<Device>(), out->flat<Tout>());
       return;
     }
     Tensor out_reshaped;
@@ -721,7 +692,8 @@ class BaseBatchMatMulOp : public OpKernel {
                 out_reshaped.CopyFrom(*out, TensorShape({batch_size, d0, d3})),
                 errors::Internal("Failed to reshape output from ",
                                  out->shape().DebugString()));
-    if (std::is_same<Scalar, bfloat16>::value) {
+    if (std::is_same<Ta, bfloat16>::value &&
+        std::is_same<Tb, bfloat16>::value) {
       bool is_cpu = std::is_same<Device, CPUDevice>::value;
       OP_REQUIRES(ctx, is_cpu,
                   errors::Internal("bfloat16 matmul is not supported by GPU"));
@@ -747,9 +719,17 @@ class BaseBatchMatMulOp : public OpKernel {
       FloatToBFloat16(out_reshaped_float.flat<float>().data(),
                       out_reshaped.flat<bfloat16>().data(), out->NumElements());
     } else {
-      LaunchBatchMatMul<Device, Scalar>::Launch(ctx, in0_reshaped, in1_reshaped,
-                                                adj_x_, adj_y_, trans_x_,
-                                                trans_y_, bcast, &out_reshaped);
+      // Cast tensor to desired type to reuse Eigen.
+      // TODO(b/178749687): remove this cast if Eigen supports this natively.
+      if (!std::is_same<Ta, Tout>::value) {
+        in0_reshaped = CastTensor<Ta, Tout>(in0_reshaped);
+      }
+      if (!std::is_same<Tb, Tout>::value) {
+        in1_reshaped = CastTensor<Tb, Tout>(in1_reshaped);
+      }
+      LaunchBatchMatMul<Device, Tout>::Launch(ctx, in0_reshaped, in1_reshaped,
+                                              adj_x_, adj_y_, trans_x_,
+                                              trans_y_, bcast, &out_reshaped);
     }
   }
 
@@ -759,18 +739,27 @@ class BaseBatchMatMulOp : public OpKernel {
 
  private:
   // TODO(171979567) Make the ops take both adj and transpose attributes.
-  bool adj_x_;
-  bool adj_y_;
-  bool trans_x_;
-  bool trans_y_;
+  bool adj_x_ = false;
+  bool adj_y_ = false;
+  bool trans_x_ = false;
+  bool trans_y_ = false;
+
+  // Cast `t` from `SrcT` to `DstT`.
+  template <typename SrcT, typename DstT>
+  Tensor CastTensor(const Tensor& t) {
+    Tensor res = Tensor(DataTypeToEnum<DstT>::v(), t.shape());
+    res.flat<DstT>() = t.flat<SrcT>().template cast<DstT>();
+    return res;
+  }
 };
 
 // BatchMatMul Op implementation which disallows broadcasting.
-template <typename Device, typename Scalar, bool is_legacy_matmul = false>
-class BatchMatMulOp : public BaseBatchMatMulOp<Device, Scalar> {
+template <typename Device, typename Ta, typename Tb, typename Tout,
+          bool is_legacy_matmul = false>
+class BatchMatMulOp : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
  public:
   explicit BatchMatMulOp(OpKernelConstruction* context)
-      : BaseBatchMatMulOp<Device, Scalar>(context, is_legacy_matmul) {}
+      : BaseBatchMatMulOp<Device, Ta, Tb, Tout>(context, is_legacy_matmul) {}
 
   ~BatchMatMulOp() override {}
 
@@ -809,12 +798,13 @@ class BatchMatMulOp : public BaseBatchMatMulOp<Device, Scalar> {
 };
 
 // BatchMatMul Op implementation with broadcasting support.
-template <typename Device, typename Scalar>
-class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Scalar> {
+template <typename Device, typename Ta, typename Tb, typename Tout>
+class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
  public:
   explicit BatchMatMulV2Op(OpKernelConstruction* context)
-      : BaseBatchMatMulOp<Device, Scalar>(context,
-                                          /* is_legacy_matmul= */ false) {}
+      : BaseBatchMatMulOp<Device, Ta, Tb, Tout>(context,
+                                                /* is_legacy_matmul= */ false) {
+  }
 
   ~BatchMatMulV2Op() override {}
 
@@ -833,27 +823,45 @@ class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Scalar> {
   }
 };
 
+// Register for MatMul, BatchMatMul, BatchMatMulv2 where Tin = Tout.
 #define REGISTER_BATCH_MATMUL_CPU(TYPE)                                   \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("BatchMatMul").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),   \
-      BatchMatMulOp<CPUDevice, TYPE>);                                    \
+      BatchMatMulOp<CPUDevice, TYPE, TYPE, TYPE>);                        \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("BatchMatMulV2").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
-      BatchMatMulV2Op<CPUDevice, TYPE>);                                  \
+      BatchMatMulV2Op<CPUDevice, TYPE, TYPE, TYPE>);                      \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("MatMul").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),        \
-      BatchMatMulOp<CPUDevice, TYPE, /* is_legacy_matmul=*/true>)
+      BatchMatMulOp<CPUDevice, TYPE, TYPE, TYPE, /* is_legacy_matmul=*/true>)
 
 #define REGISTER_BATCH_MATMUL_GPU(TYPE)                                   \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("BatchMatMul").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"),   \
-      BatchMatMulOp<GPUDevice, TYPE>);                                    \
+      BatchMatMulOp<GPUDevice, TYPE, TYPE, TYPE>);                        \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("BatchMatMulV2").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
-      BatchMatMulV2Op<GPUDevice, TYPE>);                                  \
+      BatchMatMulV2Op<GPUDevice, TYPE, TYPE, TYPE>);                      \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("MatMul").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"),        \
-      BatchMatMulOp<GPUDevice, TYPE, /* is_legacy_matmul=*/true>)
+      BatchMatMulOp<GPUDevice, TYPE, TYPE, TYPE, /* is_legacy_matmul=*/true>)
+
+// Register for BatchMatMulv3 where Ta, Tb and Tout are not the same.
+#define REGISTER_BATCH_MATMUL_TOUT_CPU(Ta, Tb, Tout)         \
+  REGISTER_KERNEL_BUILDER(Name("BatchMatMulV3")              \
+                              .Device(DEVICE_CPU)            \
+                              .TypeConstraint<Ta>("Ta")      \
+                              .TypeConstraint<Tb>("Tb")      \
+                              .TypeConstraint<Tout>("Tout"), \
+                          BatchMatMulV2Op<CPUDevice, Ta, Tb, Tout>)
+
+#define REGISTER_BATCH_MATMUL_TOUT_GPU(Ta, Tb, Tout)         \
+  REGISTER_KERNEL_BUILDER(Name("BatchMatMulV3")              \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<Ta>("Ta")      \
+                              .TypeConstraint<Tb>("Tb")      \
+                              .TypeConstraint<Tout>("Tout"), \
+                          BatchMatMulV2Op<GPUDevice, Ta, Tb, Tout>)
 
 }  // namespace tensorflow
 

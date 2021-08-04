@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -26,10 +29,12 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
+std::string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
   switch (alg) {
     case OptimizationAlgorithm::kAdagrad:
       return "Adagrad";
+    case OptimizationAlgorithm::kAdagradMomentum:
+      return "AdagradMomentum";
     case OptimizationAlgorithm::kBoundedAdagrad:
       return "BoundedAdagrad";
     case OptimizationAlgorithm::kStochasticGradientDescent:
@@ -58,16 +63,20 @@ string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
       return "FrequencyEstimator";
     case OptimizationAlgorithm::kUserDefinedProgram:
       return "UserDefinedProgram";
+    case OptimizationAlgorithm::kAssign:
+      return "Assign";
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return "*** Not set ***";
   }
   return "*** Not set ***";
 }
 
-string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
+std::string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
   switch (alg) {
     case OptimizationAlgorithm::kAdagrad:
       return "Adagrad";
+    case OptimizationAlgorithm::kAdagradMomentum:
+      return "Adagrad with Momentum";
     case OptimizationAlgorithm::kBoundedAdagrad:
       return "Bounded Adagrad";
     case OptimizationAlgorithm::kStochasticGradientDescent:
@@ -96,6 +105,8 @@ string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
       return "frequency estimator";
     case OptimizationAlgorithm::kUserDefinedProgram:
       return "UserDefinedProgram";
+    case OptimizationAlgorithm::kAssign:
+      return "Assign";
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return "unknown (not specified)";
   }
@@ -110,6 +121,9 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
   switch (params.parameters_case()) {
     case OptimizationAlgorithm::kAdagrad:
       *count = 1;
+      return Status::OK();
+    case OptimizationAlgorithm::kAdagradMomentum:
+      *count = 2;
       return Status::OK();
     case OptimizationAlgorithm::kBoundedAdagrad:
       *count = 1;
@@ -170,6 +184,9 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
 
       return Status::OK();
     }
+    case OptimizationAlgorithm::kAssign:
+      *count = 0;
+      return Status::OK();
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return errors::InvalidArgument("No optimization algorithm specified");
   }
@@ -187,135 +204,173 @@ Status GetGradientAccumulationSupport(const OptimizationParameters& params,
   return Status::OK();
 }
 
-namespace {
-// Make a normal state variable specification. Please refer to
-// //tensorflow/core/protobuf/tpu/optimization_parameters.proto
-// (StateVariableSpecification message) for instructions on how to set the
-// padding_initial_value field.
-StateVariableSpecification MakeStandardStateVariableSpecification(
-    const string& name, double padding_initial_value) {
-  StateVariableSpecification result;
-  result.set_name(name);
-  result.mutable_user_defined()->set_padding_initial_value(
-      padding_initial_value);
-  return result;
+Status UseGradientAccumulation(const OptimizationParameters& params,
+                               bool* use_gradient_accumulation) {
+  GradientAccumulationSupport support;
+  TF_RETURN_IF_ERROR(GetGradientAccumulationSupport(params, &support));
+  bool raw_gradient_accumulation_status = false;
+  switch (params.gradient_accumulation_status()) {
+    case GradientAccumulationStatus::UNSPECIFIED: {
+      // Default is now to turn gradient accumulation on by default.
+      raw_gradient_accumulation_status = true;
+      break;
+    }
+    case GradientAccumulationStatus::DISABLED: {
+      raw_gradient_accumulation_status = false;
+      break;
+    }
+    case GradientAccumulationStatus::ENABLED: {
+      raw_gradient_accumulation_status = true;
+      break;
+    }
+    default:
+      return errors::Internal(
+          absl::StrCat("Unsupported gradient accumulation status ",
+                       GradientAccumulationStatus_Status_Name(
+                           params.gradient_accumulation_status())));
+  }
+  switch (support) {
+    case GradientAccumulationSupport::kSupported: {
+      *use_gradient_accumulation = raw_gradient_accumulation_status;
+      break;
+    }
+    case GradientAccumulationSupport::kNotSupported: {
+      if (raw_gradient_accumulation_status) {
+        return errors::InvalidArgument(strings::Printf(
+            "Optimization algorithm %s does not support gradient accumulation "
+            "but parameters specify it.",
+            GetOptimizationAlgorithmName(params.parameters_case()).c_str()));
+      }
+      *use_gradient_accumulation = false;
+      break;
+    }
+  }
+  return Status::OK();
 }
-}  // namespace
 
 Status GetOptimizationAlgorithmStateVariables(
-    const OptimizationParameters& params, bool use_gradient_accumulation,
+    const OptimizationParameters& params,
     std::vector<StateVariableSpecification>* state_variables) {
-  // The order of the returned parameters needs to match the offsets used by
-  // the algorithm implementations in test_util.cc and
-  // address_handler_program_creator.cc.
-  // The first parameter set is always the weights themselves.
-  auto add_state_variable = [&](const std::string& name, float value) {
-    state_variables->push_back(
-        MakeStandardStateVariableSpecification(name, value));
+  // The parameter set for the weights themselves is required to be named
+  // "parameters". The rest should stay stable for compatibility. There is an
+  // internal function, GetOptimizationAlgorithmStateVariableInternalIndices,
+  // that needs to be updated along with this one.
+  bool use_gradient_accumulation;
+  TF_RETURN_IF_ERROR(
+      UseGradientAccumulation(params, &use_gradient_accumulation));
+
+  auto add_state_variable = [&](const std::string& name) {
+    StateVariableSpecification spec;
+    spec.set_name(name);
+    (void)spec.mutable_user_defined();
+    state_variables->push_back(spec);
   };
+
   switch (params.parameters_case()) {
     case OptimizationAlgorithm::kAdagrad: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("accumulators", 0.1);
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
+      break;
+    }
+    case OptimizationAlgorithm::kAdagradMomentum: {
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
+      add_state_variable("momenta");
       break;
     }
     case OptimizationAlgorithm::kBoundedAdagrad: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("accumulators", 0.1);
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
       break;
     }
     case OptimizationAlgorithm::kStochasticGradientDescent: {
-      add_state_variable("parameters", 0.0);
+      add_state_variable("parameters");
       break;
     }
     case OptimizationAlgorithm::kFtrl: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("accumulators", 0.1);
-      add_state_variable("linears", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
+      add_state_variable("linears");
       break;
     }
     case OptimizationAlgorithm::kAdam: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("momenta", 0.0);
-      add_state_variable("velocities", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("momenta");
+      add_state_variable("velocities");
       break;
     }
     case OptimizationAlgorithm::kMomentum: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("momenta", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("momenta");
       break;
     }
     case OptimizationAlgorithm::kRmsProp: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("ms", 1.0);
-      add_state_variable("mom", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("ms");
+      add_state_variable("mom");
       break;
     }
     case OptimizationAlgorithm::kCenteredRmsProp: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("ms", 1.0);
-      add_state_variable("mom", 0.0);
-      add_state_variable("mg", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("ms");
+      add_state_variable("mom");
+      add_state_variable("mg");
       break;
     }
     case OptimizationAlgorithm::kMdlAdagradLight: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("accumulators", 0.1);
-      add_state_variable("weights", 0.0);
-      add_state_variable("benefits", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
+      add_state_variable("weights");
+      add_state_variable("benefits");
       break;
     }
     case OptimizationAlgorithm::kAdadelta: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("accumulators", 0.0);
-      add_state_variable("updates", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
+      add_state_variable("updates");
       break;
     }
     case OptimizationAlgorithm::kProximalAdagrad: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("accumulators", 0.1);
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
       break;
     }
     case OptimizationAlgorithm::kOnlineYogi: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("vs", 0.1);
-      add_state_variable("linears", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("vs");
+      add_state_variable("linears");
       break;
     }
     case OptimizationAlgorithm::kProximalYogi: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("v", 0.1);
-      add_state_variable("m", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("v");
+      add_state_variable("m");
       break;
     }
     case OptimizationAlgorithm::kFrequencyEstimator: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("last_hit_step", 0);
+      add_state_variable("parameters");
+      add_state_variable("last_hit_step");
       break;
     }
     case OptimizationAlgorithm::kUserDefinedProgram: {
-      add_state_variable("parameters",
-                         params.user_defined_program().padding_values(0));
+      add_state_variable("parameters");
       int num_slots = -1;
       TF_RETURN_IF_ERROR(GetBaseAuxiliaryParameterCount(params, &num_slots));
-      if (num_slots + 1 !=
-          params.user_defined_program().padding_values_size()) {
-        return errors::InvalidArgument(
-            "Number of slots does not agree with the number of padding values "
-            "specified.");
-      }
       for (int i = 0; i < num_slots; ++i) {
-        add_state_variable(absl::StrCat("Slot_", i),
-                           params.user_defined_program().padding_values(i + 1));
+        add_state_variable(absl::StrCat("Slot_", i));
       }
+      break;
+    }
+    case OptimizationAlgorithm::kAssign: {
+      add_state_variable("parameters");
       break;
     }
     case OptimizationAlgorithm::PARAMETERS_NOT_SET: {
       return errors::InvalidArgument("No optimization algorithm specified");
     }
   }
-  // This needs to be last so that the save/restore ops do not need to know
-  // about gradient accumulation.
+
+  // This needs to be last for compatibility.
   if (use_gradient_accumulation) {
     StateVariableSpecification gradient_acc;
     gradient_acc.set_name("gradient_accumulators");
@@ -323,6 +378,7 @@ Status GetOptimizationAlgorithmStateVariables(
         GradientAccumulatorInitialValue());
     state_variables->push_back(std::move(gradient_acc));
   }
+
   if (state_variables->size() > kMaxAuxiliaryParameterCount + 1) {
     return errors::InvalidArgument(
         "Optimization algorithm",
@@ -331,11 +387,12 @@ Status GetOptimizationAlgorithmStateVariables(
         "already has too many other accumulators");
   }
   return Status::OK();
-}  // namespace tpu
+}
 
 std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
   return {
       OptimizationAlgorithm::kAdagrad,
+      OptimizationAlgorithm::kAdagradMomentum,
       OptimizationAlgorithm::kBoundedAdagrad,
       OptimizationAlgorithm::kStochasticGradientDescent,
       OptimizationAlgorithm::kFtrl,
@@ -350,6 +407,7 @@ std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
       OptimizationAlgorithm::kProximalYogi,
       OptimizationAlgorithm::kFrequencyEstimator,
       OptimizationAlgorithm::kUserDefinedProgram,
+      OptimizationAlgorithm::kAssign,
   };
 }
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/StringSwitch.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -177,7 +178,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
 
 namespace {
 struct LegalizeToStandardPass
-    : public PassWrapper<LegalizeToStandardPass, FunctionPass> {
+    : public LegalizeToStandardPassBase<LegalizeToStandardPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<StandardOpsDialect>();
   }
@@ -193,15 +194,15 @@ std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> createLegalizeToStdPass() {
 
 void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
                                mlir::MLIRContext *ctx) {
-  mlir::populateWithGenerated(ctx, *patterns);
+  mlir::populateWithGenerated(*patterns);
   patterns->insert<CompareFConvert, CompareIConvert, ConvertIotaOp>(ctx);
 }
 
 /// Perform the lowering to standard dialect.
 void LegalizeToStandardPass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   mlir::mhlo::PopulateMhloToStdPatterns(&patterns, &getContext());
-  applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
 }
 
 }  // end namespace mhlo

@@ -497,7 +497,7 @@ class DenseCollector {
     // Only for repeated fields do we advance the next_repeat_index_ past 1.
     // TODO(nix): to handle oneof we must also zero out any previous values
     //  seen on the wire.
-    int32 index = 0;
+    int32_t index = 0;
     if (field.is_repeated) {
       index = next_repeat_index_;
     }
@@ -868,7 +868,7 @@ class DecodeProtoOp : public OpKernel {
     // Update the size tensor and max repeat size for each field.
     auto sizes = sizes_tensor->flat_inner_dims<int32>();
     for (int fi = 0; fi < field_count; fi++) {
-      int32 size = field_sizes[fi];
+      int32_t size = field_sizes[fi];
       sizes(message_index, fields_[fi]->output_index) = size;
       if ((*max_sizes)[fi] < size) {
         (*max_sizes)[fi] = size;

@@ -11,8 +11,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/cache_dataset_ops.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include <string>
+#include <utility>
+
+#include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/platform/path.h"
 
 namespace tensorflow {

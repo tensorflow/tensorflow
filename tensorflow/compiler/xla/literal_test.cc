@@ -157,6 +157,15 @@ TEST_F(LiteralUtilTest, R2DynamicToString) {
   { 3, 4 }
 })";
   EXPECT_EQ(expected, literal.ToString());
+
+  // A Less trivial case where the memory layout is not consecutive.
+  auto literal2 = LiteralUtil::CreateR2({{1, 2, 3}, {4, 5, 6}});
+  literal2.SetDynamicSize(1, {}, 2);
+  const string expected2 = R"(s32[2,<=3](2,2) {
+  { 1, 2 },
+  { 4, 5 }
+})";
+  EXPECT_EQ(expected2, literal2.ToString());
 }
 
 TEST_F(LiteralUtilTest, R3ToString) {
@@ -1520,8 +1529,8 @@ void SetDefaultLayoutOnProto(ShapeProto* shape_proto) {
   auto* minor_to_major =
       shape_proto->mutable_layout()->mutable_minor_to_major();
   minor_to_major->Resize(shape_proto->dimensions_size(), 0);
-  const int64 size = minor_to_major->size();
-  for (int64 i = 0; i < size; ++i) {
+  const int64_t size = minor_to_major->size();
+  for (int64_t i = 0; i < size; ++i) {
     minor_to_major->Set(i, size - 1 - i);
   }
 }

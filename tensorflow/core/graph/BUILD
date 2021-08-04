@@ -9,7 +9,7 @@ package(
     default_visibility = [
         "//tensorflow/core:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # TODO(bmzhao): This target a holdover from tensorflow/core/BUILD. We
@@ -201,6 +201,7 @@ exports_files(
     srcs = [
         "algorithm_test.cc",
         "control_flow_test.cc",
+        "costmodel_test.cc",
         "edgeset_test.cc",
         "graph_def_builder_test.cc",
         "graph_partition_test.cc",

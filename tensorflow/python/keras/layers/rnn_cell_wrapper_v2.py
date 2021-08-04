@@ -20,10 +20,6 @@
 # probably be deprecated and removed in future since similar API is available in
 # existing Keras RNN API.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers.legacy_rnn import rnn_cell_wrapper_impl

@@ -40,6 +40,10 @@ XlaCaseOp::XlaCaseOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kPropagateCompileTimeConsts,
                                      &propagate_compile_time_consts_));
   }
+  if (!ctx->GetAttr(kXlaOriginalOutsideCompilationNodeName,
+                    &original_node_name_)
+           .ok())
+    original_node_name_ = name();
 }
 
 std::pair<std::vector<NameAttrList>, xla::XlaOp>
@@ -52,7 +56,7 @@ XlaCaseOp::GetPrunedBranchesAndIndex(XlaOpKernelContext* ctx) {
     return {unpruned_branches_, ctx->Input(0)};
   }
 
-  int32 branch_index = branch_index_literal.Get<int32>({});
+  int32_t branch_index = branch_index_literal.Get<int32>({});
   if (branch_index < 0 || branch_index >= unpruned_branches_.size()) {
     branch_index = unpruned_branches_.size() - 1;
   }
@@ -341,7 +345,8 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
                 errors::FailedPrecondition(
                     "Token output is not token type: ",
                     xla::ShapeUtil::HumanString(shape_or.ValueOrDie())));
-    OP_REQUIRES_OK(ctx, compiler->SetNodeToken(name(), token_output));
+    OP_REQUIRES_OK(ctx,
+                   compiler->SetNodeToken(original_node_name_, token_output));
   }
 
   // Updates the values of any resource variables modified by the conditional

@@ -71,9 +71,9 @@ namespace tensorflow {
 // size and padding of each spatial dimension can be computed by calling
 // GetWindowedOutputSize separately for each dimension.
 //
-Status GetWindowedOutputSize(int64 input_size, int64 filter_size, int64 stride,
-                             Padding padding_type, int64* output_size,
-                             int64* padding_size);
+Status GetWindowedOutputSize(int64_t input_size, int64_t filter_size,
+                             int64_t stride, Padding padding_type,
+                             int64* output_size, int64* padding_size);
 
 // The V2 version computes the same outputs with arbitrary dilation_rate.
 // The output dimensions are computed as follows:
@@ -99,8 +99,8 @@ Status GetWindowedOutputSize(int64 input_size, int64 filter_size, int64 stride,
 // called instead
 //
 // TODO(b/67112639): Merge V2 versions and the original versions eventually.
-Status GetWindowedOutputSizeV2(int64 input_size, int64 filter_size,
-                               int64 dilation_rate, int64 stride,
+Status GetWindowedOutputSizeV2(int64_t input_size, int64_t filter_size,
+                               int64_t dilation_rate, int64_t stride,
                                Padding padding_type, int64* output_size,
                                int64* padding_size);
 
@@ -111,15 +111,15 @@ Status GetWindowedOutputSizeV2(int64 input_size, int64 filter_size,
 // *padding_before and *padding_after are set by this function, and any
 // excess padding (caused by an odd padding size value) is added to the
 // 'padding_after' dimension.
-Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
-                                    int64 stride, Padding padding_type,
+Status GetWindowedOutputSizeVerbose(int64_t input_size, int64_t filter_size,
+                                    int64_t stride, Padding padding_type,
                                     int64* output_size, int64* padding_before,
                                     int64* padding_after);
 
 // The V2 version computes the same outputs with arbitrary dilation_rate. For
 // detailed equations, refer to the comments for GetWindowedOutputSizeV2().
-Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
-                                      int64 dilation_rate, int64 stride,
+Status GetWindowedOutputSizeVerboseV2(int64_t input_size, int64_t filter_size,
+                                      int64_t dilation_rate, int64_t stride,
                                       Padding padding_type, int64* output_size,
                                       int64* padding_before,
                                       int64* padding_after);

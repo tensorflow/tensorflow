@@ -6,7 +6,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", 
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(

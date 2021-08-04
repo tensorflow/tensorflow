@@ -405,6 +405,32 @@ TEST_F(XlaBuilderTest, AllGatherR2) {
       ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 64})));
 }
 
+TEST_F(XlaBuilderTest, ReduceScatter) {
+  XlaBuilder b(TestName());
+  XlaComputation to_apply;
+  {
+    auto sub_builder = b.CreateSubBuilder("add");
+    auto arg0 =
+        Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32), "x");
+    auto arg1 =
+        Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32), "y");
+    Add(arg0, arg1);
+    TF_ASSERT_OK_AND_ASSIGN(to_apply, sub_builder->Build());
+  }
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
+  ReplicaGroup group;
+  group.add_replica_ids(0);
+  group.add_replica_ids(1);
+  ReduceScatter(x, to_apply, /*scatter_dimension=*/1, /*shard_count=*/2,
+                /*replica_groups=*/{group});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(root->opcode(), HloOpcode::kReduceScatter);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 8})));
+}
+
 TEST_F(XlaBuilderTest, AllToAll) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
@@ -414,10 +440,25 @@ TEST_F(XlaBuilderTest, AllToAll) {
   auto root = module->entry_computation()->root_instruction();
 
   // AllToAll is decomposed into slices -> all-to-all -> gte -> concat.
-  EXPECT_EQ(root->opcode(), HloOpcode::kConcatenate);
-  EXPECT_EQ(root->operand(0)->operand(0)->opcode(), HloOpcode::kAllToAll);
+  EXPECT_EQ(root->opcode(), HloOpcode::kReshape);
+  EXPECT_EQ(root->operand(0)->operand(0)->operand(0)->opcode(),
+            HloOpcode::kAllToAll);
   EXPECT_TRUE(
       ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {8, 8})));
+}
+
+TEST_F(XlaBuilderTest, AllToAllSpecial) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16, 8}), "x");
+  AllToAll(x, /*split_dimension=*/0, /*concat_dimension=*/0,
+           /*split_count=*/2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  // AllToAll is converted into a single all-to-all HloInstruction.
+  EXPECT_EQ(root->opcode(), HloOpcode::kAllToAll);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 16, 8})));
 }
 
 TEST_F(XlaBuilderTest, CollectivePermute) {
@@ -569,7 +610,7 @@ TEST_F(XlaBuilderTest, SetDimensionSize) {
   EXPECT_TRUE(root_shape.is_dynamic_dimension(0));
 }
 
-TEST_F(XlaBuilderTest, RemoveDimensionSize) {
+TEST_F(XlaBuilderTest, RemoveDynamicDimension) {
   XlaBuilder b(TestName());
   auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {10}), "p0");
   auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}), "p1");
@@ -581,6 +622,23 @@ TEST_F(XlaBuilderTest, RemoveDimensionSize) {
       module->entry_computation()->root_instruction()->shape();
   // Dynamic dimension has been removed.
   EXPECT_FALSE(root_shape.is_dynamic_dimension(0));
+}
+
+TEST_F(XlaBuilderTest, RemoveDynamicDimensionMultiDims) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {10, 10}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}), "p1");
+  auto set_dim_size = SetDimensionSize(p0, p1, 0);
+  set_dim_size = SetDimensionSize(set_dim_size, p1, 1);
+  auto remove_dim_size = RemoveDynamicDimension(set_dim_size, 0);
+  remove_dim_size = RemoveDynamicDimension(remove_dim_size, 1);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          BuildHloModule(&b, /*root=*/remove_dim_size));
+  const Shape& root_shape =
+      module->entry_computation()->root_instruction()->shape();
+  // Dynamic dimensions are removed.
+  EXPECT_FALSE(root_shape.is_dynamic_dimension(0));
+  EXPECT_FALSE(root_shape.is_dynamic_dimension(1));
 }
 
 TEST_F(XlaBuilderTest, DynamicUnary) {

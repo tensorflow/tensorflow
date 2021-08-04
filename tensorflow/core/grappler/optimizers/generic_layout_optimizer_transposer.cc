@@ -2027,6 +2027,7 @@ bool IsDefaultLayoutAgnosticOp(const NodeDef& node) {
                                             "PreventGradient",
                                             "QuantizeAndDequantizeV2",
                                             "QuantizeAndDequantizeV3",
+                                            "QuantizeAndDequantizeV4",
                                             "Real",
                                             "Reciprocal",
                                             "Relu",

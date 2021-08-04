@@ -66,8 +66,8 @@ typedef std::tuple<int32, int32> OutputAndControlEdges;
 
 OutputAndControlEdges CountOutputEdges(const Node* n) {
   DCHECK_LE(n->out_edges().size(), kint32max);
-  int32 num_output_edges = 0;
-  int32 num_output_control_edges = 0;
+  int32_t num_output_edges = 0;
+  int32_t num_output_control_edges = 0;
   for (auto e : n->out_edges()) {
     if (IsSink(e->dst())) continue;
     if (e->IsControlEdge()) {
@@ -81,8 +81,8 @@ OutputAndControlEdges CountOutputEdges(const Node* n) {
 }  // namespace
 
 size_t GraphView::NodeItemBytes(const Node* n) {
-  int32 num_output_edges;
-  int32 num_output_control_edges;
+  int32_t num_output_edges;
+  int32_t num_output_control_edges;
   std::tie(num_output_edges, num_output_control_edges) = CountOutputEdges(n);
   const int num_inputs = n->num_inputs();
   const int num_outputs = n->num_outputs();
@@ -138,8 +138,8 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   node_offsets_[id] = offset;
   ptr += bytes;
 
-  int32 num_output_edges;
-  int32 num_output_control_edges;
+  int32_t num_output_edges;
+  int32_t num_output_control_edges;
   std::tie(num_output_edges, num_output_control_edges) = CountOutputEdges(n);
   const int num_inputs = n->num_inputs();
   const int num_outputs = n->num_outputs();

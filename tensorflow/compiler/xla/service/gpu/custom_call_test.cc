@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <sstream>
+
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
@@ -165,5 +167,114 @@ TEST_F(CustomCallTest, SubBuffers) {
   EXPECT_THAT(result.data<float>({1, 1}), ::testing::Each(2));
   EXPECT_THAT(result.data<float>({2}), ::testing::Each(3));
 }
+
+// The test case for custom call with tokens encodes the arguments and result
+// type using a string with A(=Array), T(=Token) and {} for Tuples. It also
+// encodes the check that the callback has to do in terms of a string of A and T
+// where all the As need to be non-null and all the Ts need to be null. This is
+// passed to the custom call as its opaque data.
+//
+// As an example, "ATTA" for an input encodes 4 inputs to custom call,
+// "{A{A}T}" for output encodes a custom call with return type containing a
+// single tuple, with another tuple as the 2nd element. For outputs, it is
+// either a single element or a tuple. Note, no error checking is performed.
+
+struct TokenTestCase {
+  std::string input;
+  std::string output;
+  std::string opaque;
+};
+
+std::ostream& operator<<(std::ostream& s, const TokenTestCase& tc) {
+  s << tc.input << "x" << tc.output << "x" << tc.opaque;
+  return s;
+}
+
+void Callback_Tokens(se::gpu::GpuStreamHandle stream, void** buffers,
+                     const char* opaque, size_t opaque_len) {
+  for (int i = 0; i < opaque_len; ++i) {
+    char c = opaque[i];
+    ASSERT_TRUE(c == 'A' || c == 'T');
+    if (c == 'A') {
+      ASSERT_NE(buffers[i], nullptr);
+    } else {
+      ASSERT_EQ(buffers[i], nullptr);
+    }
+  }
+}
+
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Tokens, PLATFORM);
+
+std::vector<TokenTestCase> GetTokenTestCases() {
+  return {{"{AT}{AT}", "{A{AT}A}", "ATATAATA"},  // tokens in input and output
+          {"{A}", "T", "AT"},                    // single token as output
+          {"{{T}}", "A", "TA"},                  // single token as input
+          {"AA", "{TA}", "AATA"},
+          {"TA{TA{TA}}", "{AA}", "TATATAAA"}};
+}
+
+class CustomCallTokensTest
+    : public ::testing::WithParamInterface<TokenTestCase>,
+      public ClientLibraryTestBase {
+ public:
+  static std::vector<XlaOp> BuildInputs(XlaBuilder& b,
+                                        std::istringstream& str) {
+    std::vector<XlaOp> values;
+    while (!str.eof()) {
+      int ch = str.get();
+      if (ch == 'A') {
+        values.push_back(Broadcast(ConstantR0WithType(&b, F32, 1), {128}));
+      } else if (ch == 'T') {
+        values.push_back(CreateToken(&b));
+      } else if (ch == '{') {
+        // build a tuple of values. This will eat the } as well.
+        std::vector<XlaOp> tuple_elements = BuildInputs(b, str);
+        values.push_back(Tuple(&b, tuple_elements));
+      } else if (ch == '}') {
+        break;
+      }
+    }
+    return values;
+  }
+
+  static std::vector<Shape> BuildOutputType(std::istringstream& str) {
+    std::vector<Shape> shapes;
+    while (!str.eof()) {
+      int ch = str.get();
+      if (ch == 'A') {
+        shapes.push_back(ShapeUtil::MakeShape(F32, {8}));
+      } else if (ch == 'T') {
+        shapes.push_back(ShapeUtil::MakeTokenShape());
+      } else if (ch == '{') {
+        // build a tuple shape. This will eat the } as well.
+        std::vector<Shape> tuple_elements = BuildOutputType(str);
+        shapes.push_back(ShapeUtil::MakeTupleShape(tuple_elements));
+      } else if (ch == '}') {
+        break;
+      }
+    }
+    return shapes;
+  }
+};
+
+TEST_P(CustomCallTokensTest, TokensTest) {
+  const TokenTestCase& tc = GetParam();
+
+  XlaBuilder b("CustomCallTokens");
+
+  std::istringstream input(tc.input);
+  std::istringstream output(tc.output);
+  std::vector<XlaOp> call_inputs = BuildInputs(b, input);
+  std::vector<Shape> call_output = BuildOutputType(output);
+  ASSERT_EQ(call_output.size(), 1);
+
+  CustomCall(&b, "Callback_Tokens", call_inputs, call_output.front(),
+             tc.opaque);
+  TF_ASSERT_OK(Execute(&b, {}).status());
+}
+
+INSTANTIATE_TEST_CASE_P(CustomCallTokens, CustomCallTokensTest,
+                        ::testing::ValuesIn(GetTokenTestCases()));
+
 }  // anonymous namespace
 }  // namespace xla

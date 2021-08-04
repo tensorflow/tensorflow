@@ -20,8 +20,16 @@ limitations under the License.
 
 namespace xla {
 
-// For matrix a with shape [..., n, n], return log(det(a)) with shape[...].
-// Only hermitian positive definite matrices are supported.
+// Computes the sign and logarithm of the absolute value of the determinant
+// of a batch of square matrices with shape [..., n, n].
+struct SignAndLogDet {
+  XlaOp sign;    // Either 1, 0, or -1, depending on the determinant's sign.
+  XlaOp logdet;  // log(abs(det(a)).
+};
+SignAndLogDet SLogDet(XlaOp a);
+
+// For a batch of matrices with shape [..., n, n], return log(det(a)).
+// Returns NaN if a matrix has a negative determinant.
 XlaOp LogDet(XlaOp a);
 
 }  // namespace xla

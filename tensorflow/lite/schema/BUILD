@@ -20,7 +20,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_binary(
@@ -78,8 +78,8 @@ py_test(
 #     ],
 #     python_version = "PY3",
 #     deps = [
-#         "//pyglib",
 #         "//testing/pybase",
+#         "@absl_py//absl/flags",
 #     ],
 # )
 # copybara:uncomment_end
@@ -91,6 +91,7 @@ exports_files([
     "schema_v2.fbs",
     "schema_v3.fbs",
     "schema_v3a.fbs",
+    "schema_v3b.fbs",
 ])
 
 flatbuffer_cc_library(
@@ -133,7 +134,7 @@ cc_test(
     srcs = ["flatbuffer_compatibility_test.cc"],
     data = [
         "schema.fbs",
-        "schema_v3a.fbs",
+        "schema_v3b.fbs",
     ],
     tags = [
         "no_oss",
@@ -142,7 +143,7 @@ cc_test(
     ],
     deps = [
         "//tensorflow/core/platform",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers//:flatc_library",
     ],
 )

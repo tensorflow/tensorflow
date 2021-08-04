@@ -54,7 +54,7 @@ Status RunModel(Model model, AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle*> outputs, bool use_function) {
   if (use_function) {
     const char* fn_name = "test_fn";
-    std::unique_ptr<AbstractFunction> scoped_func;
+    core::RefCountPtr<AbstractFunction> scoped_func;
     // Returning null tensors from a tf.function is not supported, so we keep
     // track of indices in the model's outputs are nullptr in this set.
     // The FunctionDef only outputs the non-null tensors. We later pad the
@@ -127,49 +127,6 @@ Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx) {
   *ctx = unwrap(TF_NewEagerExecutionContext(opts, status.get()));
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
   TFE_DeleteContextOptions(opts);
-  return Status::OK();
-}
-
-Status TestScalarTensorHandle(AbstractContext* ctx, float value,
-                              AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager = TestScalarTensorHandle(eager_ctx, value);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float* data,
-                                     int64_t* dims, int num_dims,
-                                     AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager =
-      TestTensorHandleWithDimsFloat(eager_ctx, data, dims, num_dims);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-Status TestTensorHandleWithDimsInt(AbstractContext* ctx, int* data,
-                                   int64_t* dims, int num_dims,
-                                   AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager =
-      TestTensorHandleWithDimsInt(eager_ctx, data, dims, num_dims);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
   return Status::OK();
 }
 

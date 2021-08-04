@@ -1,37 +1,53 @@
 // RUN: mlir-hlo-opt --mhlo-test-infer-shaped-type-methods --allow-unregistered-dialect --split-input-file %s | FileCheck %s
 
-// -----
 // CHECK-LABEL: @select
-// CHECK-SAME: (%[[PRED:.*]]: tensor<2x?xi1>,
-func @select(%pred : tensor<2x?xi1>, %a : tensor<2x?xf32>, %b : tensor<2x?xf32>)
-    -> tensor<2xi64> {
-  // CHECK: %[[C2:.*]] = constant 2 : i64
-  // CHECK: %[[C1:.*]] = constant 1 : index
-  // CHECK: %[[DIM_AS_INDEX:.*]] = dim %[[PRED]], %[[C1]] : tensor<2x?xi1>
-  // CHECK: %[[DIM:.*]] = index_cast %[[DIM_AS_INDEX]] : index to i64
-  // CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[C2]], %[[DIM]] : tensor<2xi64>
-  // CHECK: return %[[SHAPE]] : tensor<2xi64>
+// CHECK-SAME: (%{{.*}}: tensor<i1>, %[[SHAPED_ARG:.*]]: tensor<2x?xf32>, %{{.*}}: tensor<2x?xf32>
+func @select(%pred : tensor<i1>, %a : tensor<2x?xf32>, %b : tensor<2x?xf32>)
+    -> tensor<2xindex> {
+  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[SHAPED_ARG]] : tensor<2x?xf32> -> tensor<2xindex>
+  // CHECK: return %[[SHAPE]] : tensor<2xindex>
   %0 = "mhlo.select"(%pred, %a, %b)
-      : (tensor<2x?xi1>, tensor<2x?xf32>, tensor<2x?xf32>) -> tensor<2x?xf32>
+      : (tensor<i1>, tensor<2x?xf32>, tensor<2x?xf32>) -> tensor<2x?xf32>
   %1 = "mhlo_test.reify_return_type_shapes"(%0)
-      : (tensor<2x?xf32>) -> tensor<2xi64>
-  return %1 : tensor<2xi64>
+      : (tensor<2x?xf32>) -> tensor<2xindex>
+  return %1 : tensor<2xindex>
 }
 
 // -----
+
 // CHECK-LABEL: @compare
 // CHECK-SAME: (%[[A:.*]]: tensor<2x?xf32>,
-func @compare(%a : tensor<2x?xf32>, %b : tensor<2x?xf32>) -> tensor<2xi64> {
-  // CHECK: %[[C2:.*]] = constant 2 : i64
-  // CHECK: %[[C1:.*]] = constant 1 : index
-  // CHECK: %[[DIM_AS_INDEX:.*]] = dim %[[A]], %[[C1]] : tensor<2x?xf32>
-  // CHECK: %[[DIM:.*]] = index_cast %[[DIM_AS_INDEX]] : index to i64
-  // CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[C2]], %[[DIM]] : tensor<2xi64>
-  // CHECK: return %[[SHAPE]] : tensor<2xi64>
+func @compare(%a : tensor<2x?xf32>, %b : tensor<2x?xf32>) -> tensor<2xindex> {
+  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[A]] : tensor<2x?xf32> -> tensor<2xindex>
+  // CHECK: return %[[SHAPE]] : tensor<2xindex>
   %0 = "mhlo.compare"(%a, %b) {comparison_direction = "NE"}
       : (tensor<2x?xf32>, tensor<2x?xf32>) -> tensor<2x?xi1>
   %1 = "mhlo_test.reify_return_type_shapes"(%0)
-      : (tensor<2x?xi1>) -> tensor<2xi64>
-  return %1 : tensor<2xi64>
+      : (tensor<2x?xi1>) -> tensor<2xindex>
+  return %1 : tensor<2xindex>
 }
 
+// -----
+
+// CHECK-LABEL: @select
+func @select(%pred : tensor<i1>, %a : tensor<2x2xf32>, %b : tensor<2x2xf32>)
+    -> tensor<2x2xindex> {
+  %0 = "mhlo.select"(%pred, %a, %b)
+      : (tensor<i1>, tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<2x2xf32>) -> tensor<2x2xindex>
+// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [2, 2], element_type0 = f32} : (tensor<2x2xf32>) -> tensor<2x2xindex>
+  return %1 : tensor<2x2xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @compare
+func @compare(%a : tensor<2x2xf32>, %b : tensor<2x2xf32>) -> tensor<2x2xindex> {
+  %0 = "mhlo.compare"(%a, %b) {comparison_direction = "NE"}
+      : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<2x2xi1>) -> tensor<2x2xindex>
+// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [2, 2], element_type0 = i1} : (tensor<2x2xi1>) -> tensor<2x2xindex>
+  return %1 : tensor<2x2xindex>
+}

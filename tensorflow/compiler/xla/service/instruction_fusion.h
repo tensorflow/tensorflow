@@ -59,6 +59,9 @@ class InstructionFusion : public HloModulePass {
   static bool IsExpensive(const HloInstruction& instruction);
 
  protected:
+  // Returns a list of computations on which Fusion is performed.
+  virtual std::vector<HloComputation*> GetFusionComputations(HloModule* module);
+
   // Returns a FusionQueue that implements custom order of instructions being
   // fused. The default implementation processes consumers in reverse post
   // order.
@@ -76,13 +79,13 @@ class InstructionFusion : public HloModulePass {
   // the operand is 'producer' and the instruction is 'consumer')
   //
   // Subtypes can override this with target-specific heuristics.
-  virtual bool ShouldFuse(HloInstruction* consumer, int64 operand_index);
+  virtual bool ShouldFuse(HloInstruction* consumer, int64_t operand_index);
 
   // Returns whether multi-output fusion can be applied to fuse `producer` into
   // `consumer`. In contrast to "regular" fusion, the `producer` is not
   // duplicated by multi-output fusion.
   virtual bool ShouldFuseIntoMultiOutput(HloInstruction* consumer,
-                                         int64 operand_index) {
+                                         int64_t operand_index) {
     return false;
   }
 
@@ -142,12 +145,17 @@ class InstructionFusion : public HloModulePass {
   // Returns whether 'consumer' may reuse elements of its `operand_index`th
   // operand.
   bool ReusesOperandElements(const HloInstruction* consumer,
-                             int64 operand_index);
+                             int64_t operand_index);
 
- private:
   // The set of producers whose consumers we cannot fuse into.
   using HloInstructionSet = std::unordered_set<HloInstruction*>;
 
+  // Computes the set of nodes that we do not want to fuse into any of their
+  // consumers based on a global analysis of the HLO graph.
+  virtual HloInstructionSet ComputeGloballyUnfusible(
+      absl::Span<HloInstruction* const> post_order);
+
+ private:
   HloInstruction* AddFusionInstruction(HloInstruction* producer,
                                        HloInstruction* consumer);
 
@@ -162,11 +170,6 @@ class InstructionFusion : public HloModulePass {
       const HloInstructionSet& do_not_fuse,
       absl::flat_hash_map<std::pair<HloInstruction*, HloInstruction*>, bool>*
           result_cache);
-
-  // Computes the set of nodes that we do not want to fuse into any of their
-  // consumers based on a global analysis of the HLO graph.
-  HloInstructionSet ComputeGloballyUnfusible(
-      absl::Span<HloInstruction* const> post_order);
 
   // Used to determine if an HLO is expensive. Expensive operations will not be
   // duplicated.

@@ -57,6 +57,10 @@ extern const char* const kColocationAttrName;
 // String prefix applied to the operation name for colocation constraints.
 extern const char* const kColocationGroupPrefix;
 
+// Constants for host CPU staging op for TPUExecute.
+extern const char* const kTpuExecuteStagingOp;
+extern const char* const kTpuExecuteStagingNodeName;
+
 // Produce a human-readable version of a Node or NodeDef that is more concise
 // than a text-format proto.
 //
@@ -84,8 +88,8 @@ void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, AttrValue&& value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, StringPiece value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, const char* value, NodeDef* node_def);
-void AddNodeAttr(StringPiece name, int32 value, NodeDef* node_def);
-void AddNodeAttr(StringPiece name, int64 value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, int32_t value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, int64_t value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, float value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, double value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, bool value, NodeDef* node_def);
@@ -397,6 +401,12 @@ Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
 // in `to_match`.
 Status MaybeAddPrefixToColocationConstraints(
     const std::unordered_set<string>& match, StringPiece prefix,
+    NodeDef* node_def);
+
+// Updates the colocation constraint name with the one provided in the map (if
+// it exists in the map) for node_def.
+Status MaybeUpdateColocationConstraintsWithMap(
+    const std::map<absl::string_view, absl::string_view>& node_name_map,
     NodeDef* node_def);
 
 }  // namespace tensorflow

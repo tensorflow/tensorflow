@@ -83,7 +83,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
   CpuAotCompilationResult(
       ObjectFileData object_file_data,
       std::vector<cpu_function_runtime::BufferInfo> buffer_infos,
-      int64 result_buffer_index,
+      int64_t result_buffer_index,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
   ~CpuAotCompilationResult();
 
@@ -125,12 +125,10 @@ class CpuCompiler : public LLVMCompiler {
   CpuCompiler();
   ~CpuCompiler() override {}
 
-  // Bring in
-  // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-  //     std::vector<std::unique_ptr<HloModule>> modules,
-  //     std::vector<std::vector<se::StreamExecutor*>>
-  //        stream_execs)
-  using LLVMCompiler::Compile;
+  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+      std::unique_ptr<HloModuleGroup> module_group,
+      std::vector<std::vector<se::StreamExecutor*>> stream_execs,
+      const CompileOptions& options) override;
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,

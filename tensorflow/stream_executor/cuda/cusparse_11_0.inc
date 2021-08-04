@@ -118,6 +118,14 @@ cusparseStatus_t CUSPARSEAPI cusparseSetMatType(cusparseMatDescr_t descrA,
   return func_ptr(descrA, type);
 }
 
+cusparseMatrixType_t CUSPARSEAPI
+cusparseGetMatType(const cusparseMatDescr_t descrA) {
+  using FuncPtr = cusparseMatrixType_t(CUSPARSEAPI *)(const cusparseMatDescr_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseGetMatType");
+  if (!func_ptr) return cusparseMatrixType_t(-1);
+  return func_ptr(descrA);
+}
+
 cusparseStatus_t CUSPARSEAPI
 cusparseSetMatFillMode(cusparseMatDescr_t descrA, cusparseFillMode_t fillMode) {
   using FuncPtr =
@@ -125,6 +133,14 @@ cusparseSetMatFillMode(cusparseMatDescr_t descrA, cusparseFillMode_t fillMode) {
   static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSetMatFillMode");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(descrA, fillMode);
+}
+
+cusparseFillMode_t CUSPARSEAPI
+cusparseGetMatFillMode(const cusparseMatDescr_t descrA) {
+  using FuncPtr = cusparseFillMode_t(CUSPARSEAPI *)(const cusparseMatDescr_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseGetMatFillMode");
+  if (!func_ptr) return cusparseFillMode_t(-1);
+  return func_ptr(descrA);
 }
 
 cusparseStatus_t CUSPARSEAPI
@@ -136,6 +152,14 @@ cusparseSetMatDiagType(cusparseMatDescr_t descrA, cusparseDiagType_t diagType) {
   return func_ptr(descrA, diagType);
 }
 
+cusparseDiagType_t CUSPARSEAPI
+cusparseGetMatDiagType(const cusparseMatDescr_t descrA) {
+  using FuncPtr = cusparseDiagType_t(CUSPARSEAPI *)(const cusparseMatDescr_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseGetMatDiagType");
+  if (!func_ptr) return cusparseDiagType_t(-1);
+  return func_ptr(descrA);
+}
+
 cusparseStatus_t CUSPARSEAPI cusparseSetMatIndexBase(cusparseMatDescr_t descrA,
                                                      cusparseIndexBase_t base) {
   using FuncPtr =
@@ -145,6 +169,15 @@ cusparseStatus_t CUSPARSEAPI cusparseSetMatIndexBase(cusparseMatDescr_t descrA,
   return func_ptr(descrA, base);
 }
 
+cusparseIndexBase_t CUSPARSEAPI
+cusparseGetMatIndexBase(const cusparseMatDescr_t descrA) {
+  using FuncPtr = cusparseIndexBase_t(CUSPARSEAPI *)(const cusparseMatDescr_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseGetMatIndexBase");
+  if (!func_ptr) return cusparseIndexBase_t(-1);
+  return func_ptr(descrA);
+}
+
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseCreateCsrsv2Info(csrsv2Info_t *info) {
   using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(csrsv2Info_t *);
   static auto func_ptr = LoadSymbol<FuncPtr>("cusparseCreateCsrsv2Info");
@@ -152,6 +185,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCreateCsrsv2Info(csrsv2Info_t *info) {
   return func_ptr(info);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseDestroyCsrsv2Info(csrsv2Info_t info) {
   using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(csrsv2Info_t);
   static auto func_ptr = LoadSymbol<FuncPtr>("cusparseDestroyCsrsv2Info");
@@ -305,6 +339,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDestroyPruneInfo(pruneInfo_t info) {
   return func_ptr(info);
 }
 
+CUSPARSE_DEPRECATED(cusparseAxpby)
 cusparseStatus_t CUSPARSEAPI cusparseSaxpyi(cusparseHandle_t handle, int nnz,
                                             const float *alpha,
                                             const float *xVal, const int *xInd,
@@ -318,6 +353,7 @@ cusparseStatus_t CUSPARSEAPI cusparseSaxpyi(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, alpha, xVal, xInd, y, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseAxpby)
 cusparseStatus_t CUSPARSEAPI cusparseDaxpyi(cusparseHandle_t handle, int nnz,
                                             const double *alpha,
                                             const double *xVal, const int *xInd,
@@ -331,6 +367,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDaxpyi(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, alpha, xVal, xInd, y, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseAxpby)
 cusparseStatus_t CUSPARSEAPI cusparseCaxpyi(cusparseHandle_t handle, int nnz,
                                             const cuComplex *alpha,
                                             const cuComplex *xVal,
@@ -344,6 +381,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCaxpyi(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, alpha, xVal, xInd, y, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseAxpby)
 cusparseStatus_t CUSPARSEAPI cusparseZaxpyi(cusparseHandle_t handle, int nnz,
                                             const cuDoubleComplex *alpha,
                                             const cuDoubleComplex *xVal,
@@ -357,6 +395,7 @@ cusparseStatus_t CUSPARSEAPI cusparseZaxpyi(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, alpha, xVal, xInd, y, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseGather)
 cusparseStatus_t CUSPARSEAPI cusparseSgthr(cusparseHandle_t handle, int nnz,
                                            const float *y, float *xVal,
                                            const int *xInd,
@@ -369,6 +408,7 @@ cusparseStatus_t CUSPARSEAPI cusparseSgthr(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, y, xVal, xInd, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseGather)
 cusparseStatus_t CUSPARSEAPI cusparseDgthr(cusparseHandle_t handle, int nnz,
                                            const double *y, double *xVal,
                                            const int *xInd,
@@ -381,6 +421,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDgthr(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, y, xVal, xInd, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseGather)
 cusparseStatus_t CUSPARSEAPI cusparseCgthr(cusparseHandle_t handle, int nnz,
                                            const cuComplex *y, cuComplex *xVal,
                                            const int *xInd,
@@ -393,6 +434,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCgthr(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, y, xVal, xInd, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseGather)
 cusparseStatus_t CUSPARSEAPI cusparseZgthr(cusparseHandle_t handle, int nnz,
                                            const cuDoubleComplex *y,
                                            cuDoubleComplex *xVal,
@@ -406,6 +448,7 @@ cusparseStatus_t CUSPARSEAPI cusparseZgthr(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, y, xVal, xInd, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseGather)
 cusparseStatus_t CUSPARSEAPI cusparseSgthrz(cusparseHandle_t handle, int nnz,
                                             float *y, float *xVal,
                                             const int *xInd,
@@ -418,6 +461,7 @@ cusparseStatus_t CUSPARSEAPI cusparseSgthrz(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, y, xVal, xInd, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseGather)
 cusparseStatus_t CUSPARSEAPI cusparseDgthrz(cusparseHandle_t handle, int nnz,
                                             double *y, double *xVal,
                                             const int *xInd,
@@ -430,6 +474,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDgthrz(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, y, xVal, xInd, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseGather)
 cusparseStatus_t CUSPARSEAPI cusparseCgthrz(cusparseHandle_t handle, int nnz,
                                             cuComplex *y, cuComplex *xVal,
                                             const int *xInd,
@@ -442,6 +487,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCgthrz(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, y, xVal, xInd, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseGather)
 cusparseStatus_t CUSPARSEAPI cusparseZgthrz(cusparseHandle_t handle, int nnz,
                                             cuDoubleComplex *y,
                                             cuDoubleComplex *xVal,
@@ -455,6 +501,7 @@ cusparseStatus_t CUSPARSEAPI cusparseZgthrz(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, y, xVal, xInd, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseScatter)
 cusparseStatus_t CUSPARSEAPI cusparseSsctr(cusparseHandle_t handle, int nnz,
                                            const float *xVal, const int *xInd,
                                            float *y,
@@ -467,6 +514,7 @@ cusparseStatus_t CUSPARSEAPI cusparseSsctr(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, xVal, xInd, y, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseScatter)
 cusparseStatus_t CUSPARSEAPI cusparseDsctr(cusparseHandle_t handle, int nnz,
                                            const double *xVal, const int *xInd,
                                            double *y,
@@ -479,6 +527,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDsctr(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, xVal, xInd, y, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseScatter)
 cusparseStatus_t CUSPARSEAPI cusparseCsctr(cusparseHandle_t handle, int nnz,
                                            const cuComplex *xVal,
                                            const int *xInd, cuComplex *y,
@@ -491,6 +540,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCsctr(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, xVal, xInd, y, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseScatter)
 cusparseStatus_t CUSPARSEAPI cusparseZsctr(cusparseHandle_t handle, int nnz,
                                            const cuDoubleComplex *xVal,
                                            const int *xInd, cuDoubleComplex *y,
@@ -503,6 +553,7 @@ cusparseStatus_t CUSPARSEAPI cusparseZsctr(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, xVal, xInd, y, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseRot)
 cusparseStatus_t CUSPARSEAPI cusparseSroti(cusparseHandle_t handle, int nnz,
                                            float *xVal, const int *xInd,
                                            float *y, const float *c,
@@ -516,6 +567,7 @@ cusparseStatus_t CUSPARSEAPI cusparseSroti(cusparseHandle_t handle, int nnz,
   return func_ptr(handle, nnz, xVal, xInd, y, c, s, idxBase);
 }
 
+CUSPARSE_DEPRECATED(cusparseRot)
 cusparseStatus_t CUSPARSEAPI cusparseDroti(cusparseHandle_t handle, int nnz,
                                            double *xVal, const int *xInd,
                                            double *y, const double *c,
@@ -629,6 +681,7 @@ cusparseZgemvi_bufferSize(cusparseHandle_t handle, cusparseOperation_t transA,
   return func_ptr(handle, transA, m, n, nnz, pBufferSize);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpMV)
 cusparseStatus_t CUSPARSEAPI cusparseCsrmvEx_bufferSize(
     cusparseHandle_t handle, cusparseAlgMode_t alg, cusparseOperation_t transA,
     int m, int n, int nnz, const void *alpha, cudaDataType alphatype,
@@ -649,6 +702,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCsrmvEx_bufferSize(
                   betatype, y, ytype, executiontype, bufferSizeInBytes);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpMV)
 cusparseStatus_t CUSPARSEAPI cusparseCsrmvEx(
     cusparseHandle_t handle, cusparseAlgMode_t alg, cusparseOperation_t transA,
     int m, int n, int nnz, const void *alpha, cudaDataType alphatype,
@@ -821,6 +875,7 @@ cusparseStatus_t CUSPARSEAPI cusparseZbsrxmv(
                   bsrSortedEndPtrA, bsrSortedColIndA, blockDim, x, beta, y);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseXcsrsv2_zeroPivot(cusparseHandle_t handle,
                                                        csrsv2Info_t info,
                                                        int *position) {
@@ -831,6 +886,7 @@ cusparseStatus_t CUSPARSEAPI cusparseXcsrsv2_zeroPivot(cusparseHandle_t handle,
   return func_ptr(handle, info, position);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseScsrsv2_bufferSize(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const cusparseMatDescr_t descrA, float *csrSortedValA,
@@ -845,6 +901,7 @@ cusparseStatus_t CUSPARSEAPI cusparseScsrsv2_bufferSize(
                   csrSortedRowPtrA, csrSortedColIndA, info, pBufferSizeInBytes);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseDcsrsv2_bufferSize(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const cusparseMatDescr_t descrA, double *csrSortedValA,
@@ -859,6 +916,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDcsrsv2_bufferSize(
                   csrSortedRowPtrA, csrSortedColIndA, info, pBufferSizeInBytes);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseCcsrsv2_bufferSize(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const cusparseMatDescr_t descrA, cuComplex *csrSortedValA,
@@ -873,6 +931,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCcsrsv2_bufferSize(
                   csrSortedRowPtrA, csrSortedColIndA, info, pBufferSizeInBytes);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseZcsrsv2_bufferSize(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const cusparseMatDescr_t descrA, cuDoubleComplex *csrSortedValA,
@@ -887,6 +946,7 @@ cusparseStatus_t CUSPARSEAPI cusparseZcsrsv2_bufferSize(
                   csrSortedRowPtrA, csrSortedColIndA, info, pBufferSizeInBytes);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseScsrsv2_bufferSizeExt(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const cusparseMatDescr_t descrA, float *csrSortedValA,
@@ -901,6 +961,7 @@ cusparseStatus_t CUSPARSEAPI cusparseScsrsv2_bufferSizeExt(
                   csrSortedRowPtrA, csrSortedColIndA, info, pBufferSize);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseDcsrsv2_bufferSizeExt(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const cusparseMatDescr_t descrA, double *csrSortedValA,
@@ -915,6 +976,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDcsrsv2_bufferSizeExt(
                   csrSortedRowPtrA, csrSortedColIndA, info, pBufferSize);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseCcsrsv2_bufferSizeExt(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const cusparseMatDescr_t descrA, cuComplex *csrSortedValA,
@@ -929,6 +991,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCcsrsv2_bufferSizeExt(
                   csrSortedRowPtrA, csrSortedColIndA, info, pBufferSize);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseZcsrsv2_bufferSizeExt(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const cusparseMatDescr_t descrA, cuDoubleComplex *csrSortedValA,
@@ -943,6 +1006,7 @@ cusparseStatus_t CUSPARSEAPI cusparseZcsrsv2_bufferSizeExt(
                   csrSortedRowPtrA, csrSortedColIndA, info, pBufferSize);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseScsrsv2_analysis(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const cusparseMatDescr_t descrA, const float *csrSortedValA,
@@ -958,6 +1022,7 @@ cusparseStatus_t CUSPARSEAPI cusparseScsrsv2_analysis(
                   csrSortedRowPtrA, csrSortedColIndA, info, policy, pBuffer);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseDcsrsv2_analysis(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const cusparseMatDescr_t descrA, const double *csrSortedValA,
@@ -973,6 +1038,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDcsrsv2_analysis(
                   csrSortedRowPtrA, csrSortedColIndA, info, policy, pBuffer);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseCcsrsv2_analysis(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const cusparseMatDescr_t descrA, const cuComplex *csrSortedValA,
@@ -988,6 +1054,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCcsrsv2_analysis(
                   csrSortedRowPtrA, csrSortedColIndA, info, policy, pBuffer);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseZcsrsv2_analysis(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const cusparseMatDescr_t descrA, const cuDoubleComplex *csrSortedValA,
@@ -1003,6 +1070,7 @@ cusparseStatus_t CUSPARSEAPI cusparseZcsrsv2_analysis(
                   csrSortedRowPtrA, csrSortedColIndA, info, policy, pBuffer);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseScsrsv2_solve(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const float *alpha, const cusparseMatDescr_t descrA,
@@ -1020,6 +1088,7 @@ cusparseStatus_t CUSPARSEAPI cusparseScsrsv2_solve(
                   pBuffer);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseDcsrsv2_solve(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const double *alpha, const cusparseMatDescr_t descrA,
@@ -1037,6 +1106,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDcsrsv2_solve(
                   pBuffer);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseCcsrsv2_solve(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const cuComplex *alpha, const cusparseMatDescr_t descrA,
@@ -1055,6 +1125,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCcsrsv2_solve(
                   pBuffer);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpSV)
 cusparseStatus_t CUSPARSEAPI cusparseZcsrsv2_solve(
     cusparseHandle_t handle, cusparseOperation_t transA, int m, int nnz,
     const cuDoubleComplex *alpha, const cusparseMatDescr_t descrA,
@@ -1443,6 +1514,7 @@ cusparseStatus_t CUSPARSEAPI cusparseZbsrmm(
                   B, ldb, beta, C, ldc);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpMM)
 cusparseStatus_t CUSPARSEAPI cusparseSgemmi(
     cusparseHandle_t handle, int m, int n, int k, int nnz, const float *alpha,
     const float *A, int lda, const float *cscValB, const int *cscColPtrB,
@@ -1456,6 +1528,7 @@ cusparseStatus_t CUSPARSEAPI cusparseSgemmi(
                   cscRowIndB, beta, C, ldc);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpMM)
 cusparseStatus_t CUSPARSEAPI cusparseDgemmi(
     cusparseHandle_t handle, int m, int n, int k, int nnz, const double *alpha,
     const double *A, int lda, const double *cscValB, const int *cscColPtrB,
@@ -1469,6 +1542,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDgemmi(
                   cscRowIndB, beta, C, ldc);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpMM)
 cusparseStatus_t CUSPARSEAPI cusparseCgemmi(
     cusparseHandle_t handle, int m, int n, int k, int nnz,
     const cuComplex *alpha, const cuComplex *A, int lda,
@@ -1484,6 +1558,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCgemmi(
                   cscRowIndB, beta, C, ldc);
 }
 
+CUSPARSE_DEPRECATED(cusparseSpMM)
 cusparseStatus_t CUSPARSEAPI
 cusparseZgemmi(cusparseHandle_t handle, int m, int n, int k, int nnz,
                const cuDoubleComplex *alpha, const cuDoubleComplex *A, int lda,
@@ -4270,6 +4345,7 @@ cusparseStatus_t CUSPARSEAPI cusparseZcsr2csr_compress(
                   csrSortedColIndC, csrSortedRowPtrC, tol);
 }
 
+CUSPARSE_DEPRECATED(cusparseDenseToSparse)
 cusparseStatus_t CUSPARSEAPI cusparseSdense2csr(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const float *A, int lda, const int *nnzPerRow, float *csrSortedValA,
@@ -4283,6 +4359,7 @@ cusparseStatus_t CUSPARSEAPI cusparseSdense2csr(
                   csrSortedRowPtrA, csrSortedColIndA);
 }
 
+CUSPARSE_DEPRECATED(cusparseDenseToSparse)
 cusparseStatus_t CUSPARSEAPI cusparseDdense2csr(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const double *A, int lda, const int *nnzPerRow, double *csrSortedValA,
@@ -4296,6 +4373,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDdense2csr(
                   csrSortedRowPtrA, csrSortedColIndA);
 }
 
+CUSPARSE_DEPRECATED(cusparseDenseToSparse)
 cusparseStatus_t CUSPARSEAPI cusparseCdense2csr(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const cuComplex *A, int lda, const int *nnzPerRow, cuComplex *csrSortedValA,
@@ -4309,6 +4387,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCdense2csr(
                   csrSortedRowPtrA, csrSortedColIndA);
 }
 
+CUSPARSE_DEPRECATED(cusparseDenseToSparse)
 cusparseStatus_t CUSPARSEAPI cusparseZdense2csr(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const cuDoubleComplex *A, int lda, const int *nnzPerRow,
@@ -4324,6 +4403,7 @@ cusparseStatus_t CUSPARSEAPI cusparseZdense2csr(
                   csrSortedRowPtrA, csrSortedColIndA);
 }
 
+CUSPARSE_DEPRECATED(cusparseSparseToDense)
 cusparseStatus_t CUSPARSEAPI cusparseScsr2dense(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const float *csrSortedValA, const int *csrSortedRowPtrA,
@@ -4337,6 +4417,7 @@ cusparseStatus_t CUSPARSEAPI cusparseScsr2dense(
                   csrSortedColIndA, A, lda);
 }
 
+CUSPARSE_DEPRECATED(cusparseSparseToDense)
 cusparseStatus_t CUSPARSEAPI cusparseDcsr2dense(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const double *csrSortedValA, const int *csrSortedRowPtrA,
@@ -4350,6 +4431,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDcsr2dense(
                   csrSortedColIndA, A, lda);
 }
 
+CUSPARSE_DEPRECATED(cusparseSparseToDense)
 cusparseStatus_t CUSPARSEAPI cusparseCcsr2dense(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const cuComplex *csrSortedValA, const int *csrSortedRowPtrA,
@@ -4363,6 +4445,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCcsr2dense(
                   csrSortedColIndA, A, lda);
 }
 
+CUSPARSE_DEPRECATED(cusparseSparseToDense)
 cusparseStatus_t CUSPARSEAPI cusparseZcsr2dense(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const cuDoubleComplex *csrSortedValA, const int *csrSortedRowPtrA,
@@ -4377,6 +4460,7 @@ cusparseStatus_t CUSPARSEAPI cusparseZcsr2dense(
                   csrSortedColIndA, A, lda);
 }
 
+CUSPARSE_DEPRECATED(cusparseDenseToSparse)
 cusparseStatus_t CUSPARSEAPI cusparseSdense2csc(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const float *A, int lda, const int *nnzPerCol, float *cscSortedValA,
@@ -4390,6 +4474,7 @@ cusparseStatus_t CUSPARSEAPI cusparseSdense2csc(
                   cscSortedRowIndA, cscSortedColPtrA);
 }
 
+CUSPARSE_DEPRECATED(cusparseDenseToSparse)
 cusparseStatus_t CUSPARSEAPI cusparseDdense2csc(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const double *A, int lda, const int *nnzPerCol, double *cscSortedValA,
@@ -4403,6 +4488,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDdense2csc(
                   cscSortedRowIndA, cscSortedColPtrA);
 }
 
+CUSPARSE_DEPRECATED(cusparseDenseToSparse)
 cusparseStatus_t CUSPARSEAPI cusparseCdense2csc(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const cuComplex *A, int lda, const int *nnzPerCol, cuComplex *cscSortedValA,
@@ -4416,6 +4502,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCdense2csc(
                   cscSortedRowIndA, cscSortedColPtrA);
 }
 
+CUSPARSE_DEPRECATED(cusparseDenseToSparse)
 cusparseStatus_t CUSPARSEAPI cusparseZdense2csc(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const cuDoubleComplex *A, int lda, const int *nnzPerCol,
@@ -4431,6 +4518,7 @@ cusparseStatus_t CUSPARSEAPI cusparseZdense2csc(
                   cscSortedRowIndA, cscSortedColPtrA);
 }
 
+CUSPARSE_DEPRECATED(cusparseSparseToDense)
 cusparseStatus_t CUSPARSEAPI cusparseScsc2dense(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const float *cscSortedValA, const int *cscSortedRowIndA,
@@ -4444,6 +4532,7 @@ cusparseStatus_t CUSPARSEAPI cusparseScsc2dense(
                   cscSortedColPtrA, A, lda);
 }
 
+CUSPARSE_DEPRECATED(cusparseSparseToDense)
 cusparseStatus_t CUSPARSEAPI cusparseDcsc2dense(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const double *cscSortedValA, const int *cscSortedRowIndA,
@@ -4457,6 +4546,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDcsc2dense(
                   cscSortedColPtrA, A, lda);
 }
 
+CUSPARSE_DEPRECATED(cusparseSparseToDense)
 cusparseStatus_t CUSPARSEAPI cusparseCcsc2dense(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const cuComplex *cscSortedValA, const int *cscSortedRowIndA,
@@ -4470,6 +4560,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCcsc2dense(
                   cscSortedColPtrA, A, lda);
 }
 
+CUSPARSE_DEPRECATED(cusparseSparseToDense)
 cusparseStatus_t CUSPARSEAPI cusparseZcsc2dense(
     cusparseHandle_t handle, int m, int n, const cusparseMatDescr_t descrA,
     const cuDoubleComplex *cscSortedValA, const int *cscSortedRowIndA,
@@ -6229,6 +6320,50 @@ cusparseSpMatGetStridedBatch(cusparseSpMatDescr_t spMatDescr, int *batchCount) {
   return func_ptr(spMatDescr, batchCount);
 }
 
+cusparseStatus_t CUSPARSEAPI cusparseCooSetStridedBatch(
+    cusparseSpMatDescr_t spMatDescr, int batchCount, int64_t batchStride) {
+  using FuncPtr =
+      cusparseStatus_t(CUSPARSEAPI *)(cusparseSpMatDescr_t, int, int64_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseCooSetStridedBatch");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(spMatDescr, batchCount, batchStride);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseCsrSetStridedBatch(
+    cusparseSpMatDescr_t spMatDescr, int batchCount, int64_t offsetsBatchStride,
+    int64_t columnsValuesBatchStride) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(cusparseSpMatDescr_t, int,
+                                                  int64_t, int64_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseCsrSetStridedBatch");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(spMatDescr, batchCount, offsetsBatchStride,
+                  columnsValuesBatchStride);
+}
+
+#if CUDA_VERSION >= 11030
+
+cusparseStatus_t CUSPARSEAPI cusparseSpMatGetAttribute(
+    cusparseSpMatDescr_t spMatDescr, cusparseSpMatAttribute_t attribute,
+    void *data, size_t dataSize) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseSpMatDescr_t, cusparseSpMatAttribute_t, void *, size_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSpMatGetAttribute");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(spMatDescr, attribute, data, dataSize);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseSpMatSetAttribute(
+    cusparseSpMatDescr_t spMatDescr, cusparseSpMatAttribute_t attribute,
+    void *data, size_t dataSize) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseSpMatDescr_t, cusparseSpMatAttribute_t, void *, size_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSpMatSetAttribute");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(spMatDescr, attribute, data, dataSize);
+}
+
+#endif  // CUDA_VERSION >= 11030
+
 cusparseStatus_t CUSPARSEAPI cusparseCreateCsr(
     cusparseSpMatDescr_t *spMatDescr, int64_t rows, int64_t cols, int64_t nnz,
     void *csrRowOffsets, void *csrColInd, void *csrValues,
@@ -6242,6 +6377,22 @@ cusparseStatus_t CUSPARSEAPI cusparseCreateCsr(
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(spMatDescr, rows, cols, nnz, csrRowOffsets, csrColInd,
                   csrValues, csrRowOffsetsType, csrColIndType, idxBase,
+                  valueType);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseCreateCsc(
+    cusparseSpMatDescr_t *spMatDescr, int64_t rows, int64_t cols, int64_t nnz,
+    void *cscColOffsets, void *cscRowInd, void *cscValues,
+    cusparseIndexType_t cscColOffsetsType, cusparseIndexType_t cscRowIndType,
+    cusparseIndexBase_t idxBase, cudaDataType valueType) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseSpMatDescr_t *, int64_t, int64_t, int64_t, void *, void *, void *,
+      cusparseIndexType_t, cusparseIndexType_t, cusparseIndexBase_t,
+      cudaDataType);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseCreateCsc");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(spMatDescr, rows, cols, nnz, cscColOffsets, cscRowInd,
+                  cscValues, cscColOffsetsType, cscRowIndType, idxBase,
                   valueType);
 }
 
@@ -6271,6 +6422,16 @@ cusparseCsrSetPointers(cusparseSpMatDescr_t spMatDescr, void *csrRowOffsets,
   return func_ptr(spMatDescr, csrRowOffsets, csrColInd, csrValues);
 }
 
+cusparseStatus_t CUSPARSEAPI
+cusparseCscSetPointers(cusparseSpMatDescr_t spMatDescr, void *cscColOffsets,
+                       void *cscRowInd, void *cscValues) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(cusparseSpMatDescr_t, void *,
+                                                  void *, void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseCscSetPointers");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(spMatDescr, cscColOffsets, cscRowInd, cscValues);
+}
+
 cusparseStatus_t CUSPARSEAPI cusparseCreateCoo(cusparseSpMatDescr_t *spMatDescr,
                                                int64_t rows, int64_t cols,
                                                int64_t nnz, void *cooRowInd,
@@ -6287,6 +6448,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCreateCoo(cusparseSpMatDescr_t *spMatDescr,
                   cooIdxType, idxBase, valueType);
 }
 
+CUSPARSE_DEPRECATED(cusparseCreateCoo)
 cusparseStatus_t CUSPARSEAPI cusparseCreateCooAoS(
     cusparseSpMatDescr_t *spMatDescr, int64_t rows, int64_t cols, int64_t nnz,
     void *cooInd, void *cooValues, cusparseIndexType_t cooIdxType,
@@ -6316,6 +6478,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCooGet(
                   idxType, idxBase, valueType);
 }
 
+CUSPARSE_DEPRECATED(cusparseCooGet)
 cusparseStatus_t CUSPARSEAPI cusparseCooAoSGet(cusparseSpMatDescr_t spMatDescr,
                                                int64_t *rows, int64_t *cols,
                                                int64_t *nnz,
@@ -6331,6 +6494,44 @@ cusparseStatus_t CUSPARSEAPI cusparseCooAoSGet(cusparseSpMatDescr_t spMatDescr,
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(spMatDescr, rows, cols, nnz, cooInd, cooValues, idxType,
                   idxBase, valueType);
+}
+
+cusparseStatus_t CUSPARSEAPI
+cusparseCooSetPointers(cusparseSpMatDescr_t spMatDescr, void *cooRows,
+                       void *cooColumns, void *cooValues) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(cusparseSpMatDescr_t, void *,
+                                                  void *, void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseCooSetPointers");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(spMatDescr, cooRows, cooColumns, cooValues);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseCreateBlockedEll(
+    cusparseSpMatDescr_t *spMatDescr, int64_t rows, int64_t cols,
+    int64_t ellBlockSize, int64_t ellCols, void *ellColInd, void *ellValue,
+    cusparseIndexType_t ellIdxType, cusparseIndexBase_t idxBase,
+    cudaDataType valueType) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseSpMatDescr_t *, int64_t, int64_t, int64_t, int64_t, void *,
+      void *, cusparseIndexType_t, cusparseIndexBase_t, cudaDataType);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseCreateBlockedEll");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(spMatDescr, rows, cols, ellBlockSize, ellCols, ellColInd,
+                  ellValue, ellIdxType, idxBase, valueType);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseBlockedEllGet(
+    cusparseSpMatDescr_t spMatDescr, int64_t *rows, int64_t *cols,
+    int64_t *ellBlockSize, int64_t *ellCols, void **ellColInd, void **ellValue,
+    cusparseIndexType_t *ellIdxType, cusparseIndexBase_t *idxBase,
+    cudaDataType *valueType) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseSpMatDescr_t, int64_t *, int64_t *, int64_t *, int64_t *, void **,
+      void **, cusparseIndexType_t *, cusparseIndexBase_t *, cudaDataType *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseBlockedEllGet");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(spMatDescr, rows, cols, ellBlockSize, ellCols, ellColInd,
+                  ellValue, ellIdxType, idxBase, valueType);
 }
 
 cusparseStatus_t CUSPARSEAPI cusparseCreateDnMat(
@@ -6400,6 +6601,52 @@ cusparseStatus_t CUSPARSEAPI cusparseDnMatGetStridedBatch(
   return func_ptr(dnMatDescr, batchCount, batchStride);
 }
 
+cusparseStatus_t CUSPARSEAPI cusparseAxpby(cusparseHandle_t handle,
+                                           const void *alpha,
+                                           cusparseSpVecDescr_t vecX,
+                                           const void *beta,
+                                           cusparseDnVecDescr_t vecY) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, const void *, cusparseSpVecDescr_t, const void *,
+      cusparseDnVecDescr_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseAxpby");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, alpha, vecX, beta, vecY);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseGather(cusparseHandle_t handle,
+                                            cusparseDnVecDescr_t vecY,
+                                            cusparseSpVecDescr_t vecX) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseDnVecDescr_t, cusparseSpVecDescr_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseGather");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, vecY, vecX);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseScatter(cusparseHandle_t handle,
+                                             cusparseSpVecDescr_t vecX,
+                                             cusparseDnVecDescr_t vecY) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseSpVecDescr_t, cusparseDnVecDescr_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseScatter");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, vecX, vecY);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseRot(cusparseHandle_t handle,
+                                         const void *c_coeff,
+                                         const void *s_coeff,
+                                         cusparseSpVecDescr_t vecX,
+                                         cusparseDnVecDescr_t vecY) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, const void *, const void *, cusparseSpVecDescr_t,
+      cusparseDnVecDescr_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseRot");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, c_coeff, s_coeff, vecX, vecY);
+}
+
 cusparseStatus_t CUSPARSEAPI cusparseSpVV_bufferSize(
     cusparseHandle_t handle, cusparseOperation_t opX, cusparseSpVecDescr_t vecX,
     cusparseDnVecDescr_t vecY, const void *result, cudaDataType computeType,
@@ -6423,6 +6670,69 @@ cusparseSpVV(cusparseHandle_t handle, cusparseOperation_t opX,
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(handle, opX, vecX, vecY, result, computeType, externalBuffer);
 }
+
+#if CUSPARSE_VERSION >= 11300
+
+cusparseStatus_t CUSPARSEAPI cusparseSparseToDense_bufferSize(
+    cusparseHandle_t handle, cusparseSpMatDescr_t matA,
+    cusparseDnMatDescr_t matB, cusparseSparseToDenseAlg_t alg,
+    size_t *bufferSize) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseSpMatDescr_t, cusparseDnMatDescr_t,
+      cusparseSparseToDenseAlg_t, size_t *);
+  static auto func_ptr =
+      LoadSymbol<FuncPtr>("cusparseSparseToDense_bufferSize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, matA, matB, alg, bufferSize);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseSparseToDense(
+    cusparseHandle_t handle, cusparseSpMatDescr_t matA,
+    cusparseDnMatDescr_t matB, cusparseSparseToDenseAlg_t alg, void *buffer) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseSpMatDescr_t, cusparseDnMatDescr_t,
+      cusparseSparseToDenseAlg_t, void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSparseToDense");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, matA, matB, alg, buffer);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseDenseToSparse_bufferSize(
+    cusparseHandle_t handle, cusparseDnMatDescr_t matA,
+    cusparseSpMatDescr_t matB, cusparseDenseToSparseAlg_t alg,
+    size_t *bufferSize) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseDnMatDescr_t, cusparseSpMatDescr_t,
+      cusparseDenseToSparseAlg_t, size_t *);
+  static auto func_ptr =
+      LoadSymbol<FuncPtr>("cusparseDenseToSparse_bufferSize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, matA, matB, alg, bufferSize);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseDenseToSparse_analysis(
+    cusparseHandle_t handle, cusparseDnMatDescr_t matA,
+    cusparseSpMatDescr_t matB, cusparseDenseToSparseAlg_t alg, void *buffer) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseDnMatDescr_t, cusparseSpMatDescr_t,
+      cusparseDenseToSparseAlg_t, void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseDenseToSparse_analysis");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, matA, matB, alg, buffer);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseDenseToSparse_convert(
+    cusparseHandle_t handle, cusparseDnMatDescr_t matA,
+    cusparseSpMatDescr_t matB, cusparseDenseToSparseAlg_t alg, void *buffer) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseDnMatDescr_t, cusparseSpMatDescr_t,
+      cusparseDenseToSparseAlg_t, void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseDenseToSparse_convert");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, matA, matB, alg, buffer);
+}
+
+#endif  // CUSPARSE_VERSION >= 11300
 
 cusparseStatus_t CUSPARSEAPI cusparseSpMV(
     cusparseHandle_t handle, cusparseOperation_t opA, const void *alpha,
@@ -6454,20 +6764,70 @@ cusparseStatus_t CUSPARSEAPI cusparseSpMV_bufferSize(
                   bufferSize);
 }
 
-cusparseStatus_t CUSPARSEAPI cusparseSpMM(
-    cusparseHandle_t handle, cusparseOperation_t opA, cusparseOperation_t opB,
-    const void *alpha, cusparseSpMatDescr_t matA, cusparseDnMatDescr_t matB,
-    const void *beta, cusparseDnMatDescr_t matC, cudaDataType computeType,
-    cusparseSpMMAlg_t alg, void *externalBuffer) {
-  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
-      cusparseHandle_t, cusparseOperation_t, cusparseOperation_t, const void *,
-      cusparseSpMatDescr_t, cusparseDnMatDescr_t, const void *,
-      cusparseDnMatDescr_t, cudaDataType, cusparseSpMMAlg_t, void *);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSpMM");
+#if CUDA_VERSION >= 11030
+
+cusparseStatus_t CUSPARSEAPI
+cusparseSpSV_createDescr(cusparseSpSVDescr_t *descr) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(cusparseSpSVDescr_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSpSV_createDescr");
   if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(handle, opA, opB, alpha, matA, matB, beta, matC, computeType,
-                  alg, externalBuffer);
+  return func_ptr(descr);
 }
+
+cusparseStatus_t CUSPARSEAPI
+cusparseSpSV_destroyDescr(cusparseSpSVDescr_t descr) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(cusparseSpSVDescr_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSpSV_destroyDescr");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(descr);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseSpSV_bufferSize(
+    cusparseHandle_t handle, cusparseOperation_t opA, const void *alpha,
+    cusparseSpMatDescr_t matA, cusparseDnVecDescr_t vecX,
+    cusparseDnVecDescr_t vecY, cudaDataType computeType, cusparseSpSVAlg_t alg,
+    cusparseSpSVDescr_t spsvDescr, size_t *bufferSize) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseOperation_t, const void *, cusparseSpMatDescr_t,
+      cusparseDnVecDescr_t, cusparseDnVecDescr_t, cudaDataType,
+      cusparseSpSVAlg_t, cusparseSpSVDescr_t, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSpSV_bufferSize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, opA, alpha, matA, vecX, vecY, computeType, alg,
+                  spsvDescr, bufferSize);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseSpSV_analysis(
+    cusparseHandle_t handle, cusparseOperation_t opA, const void *alpha,
+    cusparseSpMatDescr_t matA, cusparseDnVecDescr_t vecX,
+    cusparseDnVecDescr_t vecY, cudaDataType computeType, cusparseSpSVAlg_t alg,
+    cusparseSpSVDescr_t spsvDescr, void *externalBuffer) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseOperation_t, const void *, cusparseSpMatDescr_t,
+      cusparseDnVecDescr_t, cusparseDnVecDescr_t, cudaDataType,
+      cusparseSpSVAlg_t, cusparseSpSVDescr_t, void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSpSV_analysis");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, opA, alpha, matA, vecX, vecY, computeType, alg,
+                  spsvDescr, externalBuffer);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseSpSV_solve(
+    cusparseHandle_t handle, cusparseOperation_t opA, const void *alpha,
+    cusparseSpMatDescr_t matA, cusparseDnVecDescr_t vecX,
+    cusparseDnVecDescr_t vecY, cudaDataType computeType, cusparseSpSVAlg_t alg,
+    cusparseSpSVDescr_t spsvDescr) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseOperation_t, const void *, cusparseSpMatDescr_t,
+      cusparseDnVecDescr_t, cusparseDnVecDescr_t, cudaDataType,
+      cusparseSpSVAlg_t, cusparseSpSVDescr_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSpSV_solve");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, opA, alpha, matA, vecX, vecY, computeType, alg,
+                  spsvDescr);
+}
+
+#endif  // CUDA_VERSION >= 11030
 
 cusparseStatus_t CUSPARSEAPI cusparseSpMM_bufferSize(
     cusparseHandle_t handle, cusparseOperation_t opA, cusparseOperation_t opB,
@@ -6482,6 +6842,36 @@ cusparseStatus_t CUSPARSEAPI cusparseSpMM_bufferSize(
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(handle, opA, opB, alpha, matA, matB, beta, matC, computeType,
                   alg, bufferSize);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseSpMM_preprocess(
+    cusparseHandle_t handle, cusparseOperation_t opA, cusparseOperation_t opB,
+    const void *alpha, cusparseSpMatDescr_t matA, cusparseDnMatDescr_t matB,
+    const void *beta, cusparseDnMatDescr_t matC, cudaDataType computeType,
+    cusparseSpMMAlg_t alg, void *externalBuffer) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseOperation_t, cusparseOperation_t, const void *,
+      cusparseSpMatDescr_t, cusparseDnMatDescr_t, const void *,
+      cusparseDnMatDescr_t, cudaDataType, cusparseSpMMAlg_t, void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSpMM_preprocess");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, opA, opB, alpha, matA, matB, beta, matC, computeType,
+                  alg, externalBuffer);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseSpMM(
+    cusparseHandle_t handle, cusparseOperation_t opA, cusparseOperation_t opB,
+    const void *alpha, cusparseSpMatDescr_t matA, cusparseDnMatDescr_t matB,
+    const void *beta, cusparseDnMatDescr_t matC, cudaDataType computeType,
+    cusparseSpMMAlg_t alg, void *externalBuffer) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseOperation_t, cusparseOperation_t, const void *,
+      cusparseSpMatDescr_t, cusparseDnMatDescr_t, const void *,
+      cusparseDnMatDescr_t, cudaDataType, cusparseSpMMAlg_t, void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSpMM");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, opA, opB, alpha, matA, matB, beta, matC, computeType,
+                  alg, externalBuffer);
 }
 
 cusparseStatus_t CUSPARSEAPI
@@ -6550,6 +6940,7 @@ cusparseStatus_t CUSPARSEAPI cusparseSpGEMM_copy(
                   alg, spgemmDescr);
 }
 
+CUSPARSE_DEPRECATED(cusparseSDDMM)
 cusparseStatus_t CUSPARSEAPI cusparseConstrainedGeMM(
     cusparseHandle_t handle, cusparseOperation_t opA, cusparseOperation_t opB,
     const void *alpha, cusparseDnMatDescr_t matA, cusparseDnMatDescr_t matB,
@@ -6565,6 +6956,7 @@ cusparseStatus_t CUSPARSEAPI cusparseConstrainedGeMM(
                   externalBuffer);
 }
 
+CUSPARSE_DEPRECATED(cusparseSDDMM)
 cusparseStatus_t CUSPARSEAPI cusparseConstrainedGeMM_bufferSize(
     cusparseHandle_t handle, cusparseOperation_t opA, cusparseOperation_t opB,
     const void *alpha, cusparseDnMatDescr_t matA, cusparseDnMatDescr_t matB,
@@ -6580,5 +6972,54 @@ cusparseStatus_t CUSPARSEAPI cusparseConstrainedGeMM_bufferSize(
   return func_ptr(handle, opA, opB, alpha, matA, matB, beta, matC, computeType,
                   bufferSize);
 }
+
+#if CUSPARSE_VERSION >= 11400
+
+cusparseStatus_t CUSPARSEAPI cusparseSDDMM_bufferSize(
+    cusparseHandle_t handle, cusparseOperation_t opA, cusparseOperation_t opB,
+    const void *alpha, cusparseDnMatDescr_t matA, cusparseDnMatDescr_t matB,
+    const void *beta, cusparseSpMatDescr_t matC, cudaDataType computeType,
+    cusparseSDDMMAlg_t alg, size_t *bufferSize) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseOperation_t, cusparseOperation_t, const void *,
+      cusparseDnMatDescr_t, cusparseDnMatDescr_t, const void *,
+      cusparseSpMatDescr_t, cudaDataType, cusparseSDDMMAlg_t, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSDDMM_bufferSize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, opA, opB, alpha, matA, matB, beta, matC, computeType,
+                  alg, bufferSize);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseSDDMM_preprocess(
+    cusparseHandle_t handle, cusparseOperation_t opA, cusparseOperation_t opB,
+    const void *alpha, cusparseDnMatDescr_t matA, cusparseDnMatDescr_t matB,
+    const void *beta, cusparseSpMatDescr_t matC, cudaDataType computeType,
+    cusparseSDDMMAlg_t alg, void *externalBuffer) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseOperation_t, cusparseOperation_t, const void *,
+      cusparseDnMatDescr_t, cusparseDnMatDescr_t, const void *,
+      cusparseSpMatDescr_t, cudaDataType, cusparseSDDMMAlg_t, void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSDDMM_preprocess");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, opA, opB, alpha, matA, matB, beta, matC, computeType,
+                  alg, externalBuffer);
+}
+
+cusparseStatus_t CUSPARSEAPI cusparseSDDMM(
+    cusparseHandle_t handle, cusparseOperation_t opA, cusparseOperation_t opB,
+    const void *alpha, cusparseDnMatDescr_t matA, cusparseDnMatDescr_t matB,
+    const void *beta, cusparseSpMatDescr_t matC, cudaDataType computeType,
+    cusparseSDDMMAlg_t alg, void *externalBuffer) {
+  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
+      cusparseHandle_t, cusparseOperation_t, cusparseOperation_t, const void *,
+      cusparseDnMatDescr_t, cusparseDnMatDescr_t, const void *,
+      cusparseSpMatDescr_t, cudaDataType, cusparseSDDMMAlg_t, void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseSDDMM");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, opA, opB, alpha, matA, matB, beta, matC, computeType,
+                  alg, externalBuffer);
+}
+
+#endif  // CUSPARSE_VERSION >= 11400
 
 }  // extern "C"

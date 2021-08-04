@@ -164,6 +164,18 @@ TEST(BasicFlatBufferModel, TestMultipleSubgraphs) {
   EXPECT_EQ(interpreter->subgraphs_size(), 2);
 }
 
+TEST(BasicFlatBufferModel, TestSubgraphName) {
+  auto m = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/"
+      "2_subgraphs_dont_delegate_name.bin");
+  ASSERT_TRUE(m);
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(InterpreterBuilder(*m, TrivialResolver())(&interpreter), kTfLiteOk);
+  EXPECT_EQ(interpreter->subgraphs_size(), 2);
+  EXPECT_EQ(interpreter->subgraph(0)->GetName(), "");
+  EXPECT_EQ(interpreter->subgraph(1)->GetName(), "VALIDATION:main");
+}
+
 // Test what happens if we cannot bind any of the ops.
 TEST(BasicFlatBufferModel, TestModelWithoutNullRegistrations) {
   auto model = FlatBufferModel::BuildFromFile(
@@ -253,6 +265,74 @@ TEST(BasicFlatBufferModel, TestModelInInterpreter) {
     TfLiteIntArrayFree(desired_outputs);
     ASSERT_EQ(reg1, dummy_reg);
   }
+}
+
+TEST(BasicFlatBufferModel, TestWithNumThreads) {
+  TestErrorReporter reporter;
+  auto model = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_model.bin", &reporter);
+  ASSERT_TRUE(model);
+  TrivialResolver resolver(&dummy_reg);
+  InterpreterBuilder builder(*model, resolver);
+
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(builder(&interpreter, /*num_threads=*/42), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(interpreter->subgraph(0)->context()->recommended_num_threads, 42);
+
+  interpreter.reset();
+  ASSERT_EQ(builder(&interpreter, 0), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(interpreter->subgraph(0)->context()->recommended_num_threads, 1);
+
+  interpreter.reset();
+  ASSERT_EQ(builder(&interpreter, -1), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(interpreter->subgraph(0)->context()->recommended_num_threads, -1);
+
+  ASSERT_EQ(reporter.num_calls(), 0);
+  interpreter.reset(new Interpreter);
+  ASSERT_EQ(builder(&interpreter, -2), kTfLiteError);
+  ASSERT_EQ(interpreter, nullptr);
+  ASSERT_EQ(reporter.num_calls(), 1);
+  ASSERT_PRED_FORMAT2(testing::IsSubstring,
+                      "num_threads should be >= 0 or just -1",
+                      reporter.error_messages());
+}
+
+TEST(BasicFlatBufferModel, TestSetNumThreads) {
+  TestErrorReporter reporter;
+  auto model = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_model.bin", &reporter);
+  ASSERT_TRUE(model);
+  std::unique_ptr<Interpreter> interpreter;
+  TrivialResolver resolver(&dummy_reg);
+  InterpreterBuilder builder(*model, resolver);
+
+  ASSERT_EQ(builder.SetNumThreads(42), kTfLiteOk);
+  interpreter.reset();
+  ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  ASSERT_EQ(builder.SetNumThreads(0), kTfLiteOk);
+  interpreter.reset();
+  ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  ASSERT_EQ(builder.SetNumThreads(-1), kTfLiteOk);
+  interpreter.reset();
+  ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  ASSERT_EQ(reporter.num_calls(), 0);
+  ASSERT_EQ(builder.SetNumThreads(-2), kTfLiteError);
+  interpreter.reset();
+  ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(reporter.num_calls(), 1);
+  ASSERT_PRED_FORMAT2(testing::IsSubstring,
+                      "num_threads should be >= 0 or just -1",
+                      reporter.error_messages());
 }
 
 // Test that loading a model with TensorFlow ops fails when the flex delegate is
@@ -372,6 +452,43 @@ TEST(BasicFlatBufferModel, TestBuildFromModel) {
   ASSERT_NE(interpreter, nullptr);
 }
 
+// Test that loading model directly from an Allocation works.
+TEST(BasicFlatBufferModel, TestBuildFromAllocation) {
+  TestErrorReporter reporter;
+  std::unique_ptr<Allocation> model_allocation(new FileCopyAllocation(
+      "tensorflow/lite/testdata/test_model.bin", &reporter));
+  ASSERT_TRUE(model_allocation->valid());
+
+  auto model =
+      FlatBufferModel::BuildFromAllocation(std::move(model_allocation));
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(
+      InterpreterBuilder(*model, TrivialResolver(&dummy_reg))(&interpreter),
+      kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+}
+
+TEST(BasicFlatBufferModel, TestBuildFromNullAllocation) {
+  TestErrorReporter reporter;
+  std::unique_ptr<Allocation> model_allocation;
+
+  auto model =
+      FlatBufferModel::BuildFromAllocation(std::move(model_allocation));
+  ASSERT_FALSE(model);
+}
+
+TEST(BasicFlatBufferModel, TestBuildFromInvalidAllocation) {
+  TestErrorReporter reporter;
+  std::unique_ptr<Allocation> model_allocation(
+      new MemoryAllocation(nullptr, 0, nullptr));
+
+  auto model =
+      FlatBufferModel::BuildFromAllocation(std::move(model_allocation));
+  ASSERT_FALSE(model);
+}
+
 // Test reading the minimum runtime string from metadata in a Model flatbuffer.
 TEST(BasicFlatBufferModel, TestReadRuntimeVersionFromModel) {
   // First read a model that doesn't have the runtime string.
@@ -386,6 +503,62 @@ TEST(BasicFlatBufferModel, TestReadRuntimeVersionFromModel) {
   ASSERT_TRUE(model2);
   // Check that we have read the runtime string correctly.
   ASSERT_EQ(model2->GetMinimumRuntime(), "1.5.0");
+}
+
+// Test reading all metadata from the model
+TEST(BasicFlatBufferModel, TestReadMetadataFromModel) {
+  // First read a model that doesn't have the runtime string.
+  auto model1 = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_model.bin");
+  ASSERT_TRUE(model1);
+  std::map<std::string, std::string> metadata = model1->ReadAllMetadata();
+  ASSERT_EQ(metadata.size(), 0);
+
+  // Read a model that has reduced precision support mask populated
+  auto model2 = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_model_redux_precision.bin");
+  ASSERT_TRUE(model2);
+  // Check that we have read the runtime string correctly.
+  metadata = model2->ReadAllMetadata();
+  ASSERT_EQ(metadata["reduced_precision_support"], "fp16bf16accfp32");
+}
+
+TEST(BasicFlatBufferModel, TestReadMetadataFromContext) {
+  const std::string reduced_precision_meta_key = "reduced_precision_support";
+  // First read a model that doesn't have any metadata.
+  auto model1 = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_model.bin");
+  ASSERT_TRUE(model1);
+  std::unique_ptr<Interpreter> interpreter;
+  TrivialResolver resolver(&dummy_reg);
+  InterpreterBuilder builder1(*model1, resolver);
+  interpreter.reset();
+  ASSERT_EQ(builder1(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  const char* ptr = nullptr;
+  size_t bytes;
+  auto* context = interpreter->subgraph(0)->context();
+  ASSERT_EQ(context->GetModelMetadata(
+                context, reduced_precision_meta_key.c_str(), &ptr, &bytes),
+            kTfLiteError);
+
+  // This model has metadata mapped to kTfLiteReducedPrecisionKey.
+  auto model2 = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_model_redux_precision.bin");
+  ASSERT_TRUE(model2);
+  InterpreterBuilder builder2(*model2, resolver);
+  interpreter.reset();
+  ASSERT_EQ(builder2(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  context = interpreter->subgraph(0)->context();
+  ASSERT_EQ(context->GetModelMetadata(
+                context, reduced_precision_meta_key.c_str(), &ptr, &bytes),
+            kTfLiteOk);
+  ASSERT_EQ(std::string(ptr, bytes), "fp16bf16accfp32");
+  ASSERT_EQ(context->GetModelMetadata(context, "unknown_key", &ptr, &bytes),
+            kTfLiteError);
 }
 
 // The test model has the following tensor encoded in the TACO format:
@@ -599,9 +772,3 @@ TEST(BasicFlatBufferModel, TestHandleModelWithWhileOpContainsForwardingInput) {
 // not here.
 
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

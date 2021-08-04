@@ -5,7 +5,7 @@ package(
         "//tensorflow/lite:__subpackages__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 config_setting(
@@ -59,6 +59,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/python:saved_model_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
         "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
+        "//tensorflow/compiler/mlir/lite/metrics:error_collector",
         "//tensorflow/lite/toco:types_proto_cc",
     ] + select({
         # This is required when running `tflite_convert` from `bazel`.
@@ -95,6 +96,7 @@ py_binary(
         "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
+        "@absl_py//absl:app",
     ],
 )
 

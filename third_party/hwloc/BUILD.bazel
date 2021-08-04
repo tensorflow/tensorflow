@@ -262,6 +262,10 @@ cc_library(
             "hwloc/topology-x86.c",
             "include/private/cpuid-x86.h",
         ],
+        "@org_tensorflow//tensorflow:linux_aarch64": [
+            "hwloc/topology-linux.c",
+            "include/hwloc/linux.h",
+        ],
         "@org_tensorflow//tensorflow:linux_ppc64le": [
             "hwloc/topology-linux.c",
             "include/hwloc/linux.h",

@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -52,7 +53,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
-#include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
@@ -66,7 +66,6 @@ static llvm::cl::opt<bool> tpu_compile_metadata_debug(
 
 constexpr char kNumReplicasAttr[] = "num_replicas";
 constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
-constexpr char kPaddingMapAttr[] = "padding_map";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kDevicesAttr[] = "devices";
 constexpr char kVersionsAttr[] = "tf.versions";
@@ -170,33 +169,6 @@ LogicalResult SetMetadataProtoStepMarkerLocation(
   return success();
 }
 
-// Populates a TPUCompileMetadataProto with PaddingMap from a
-// `tf_device::ClusterFuncOp`.
-LogicalResult SetMetadataProtoPaddingMap(
-    tf_device::ClusterFuncOp op,
-    tensorflow::tpu::TPUCompileMetadataProto* metadata) {
-  auto padding_map = op->getAttrOfType<ArrayAttr>(kPaddingMapAttr);
-  if (!padding_map)
-    return op.emitOpError(CreateMissingAttributeMsg(kPaddingMapAttr));
-
-  for (const auto& padding_and_idx : llvm::enumerate(padding_map)) {
-    auto& padding_attr = padding_and_idx.value();
-    auto padding_attr_str = padding_attr.dyn_cast<StringAttr>();
-    if (!padding_attr_str)
-      return op.emitOpError(llvm::formatv(
-          kBadStringArrayElementMsg, kPaddingMapAttr, padding_and_idx.index()));
-
-    tensorflow::tpu::PaddingMap* padding =
-        metadata->mutable_padding_maps()->Add();
-    if (!padding->ParseFromString(std::string(padding_attr_str.getValue())))
-      return op.emitOpError(llvm::formatv(
-          kBadArrayElementMsg, kPaddingMapAttr, padding_and_idx.index(),
-          padding_attr_str.getValue(), "tpu::PaddingMap"));
-  }
-
-  return success();
-}
-
 // Parses a xla::OpSharding from a string attribute.
 LogicalResult SetOpSharding(Operation* op, Attribute attr, llvm::StringRef name,
                             int index, xla::OpSharding* sharding) {
@@ -230,6 +202,8 @@ LogicalResult SetMetadataProtoArgs(
                       op.getNumOperands(), input_shardings.size()));
 
   // Set args metadata in proto.
+  mlir::Identifier replication_attr_name = mlir::Identifier::get(
+      "mhlo.is_same_data_across_replicas", op.getContext());
   for (auto operand_type_and_idx : llvm::enumerate(op.getOperandTypes())) {
     Type operand_type = operand_type_and_idx.value();
     int index = operand_type_and_idx.index();
@@ -263,6 +237,13 @@ LogicalResult SetMetadataProtoArgs(
                              tensorflow::kInputShardingAttr, index,
                              arg->mutable_sharding())))
       return failure();
+
+    // Populate set_is_same_data_across_replicas
+    // Note: this information is duplicated and can be removed from the proto
+    // and here once MLIR bridge phase 2 doesn't fallback to the old bridge.
+    mlir::UnitAttr attr = op.getFunc().getArgAttrOfType<mlir::UnitAttr>(
+        index, replication_attr_name);
+    arg->set_is_same_data_across_replicas(attr != nullptr);
   }
 
   return success();
@@ -308,8 +289,6 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
 
   if (failed(SetMetadataProtoStepMarkerLocation(op, metadata)))
     return failure();
-
-  if (failed(SetMetadataProtoPaddingMap(op, metadata))) return failure();
 
   if (xla_device_assignment.hasValue())
     *metadata->mutable_device_assignment() =
@@ -556,16 +535,18 @@ tf_device::LaunchOp AssignDevicesToReplicatedExecute(
 // Creates a `tf.TPUCompileSucceededAssert` operation that parses compilation
 // status of `compile_op` to check whether compilation is successful.
 void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
+                                      Operation* result_id,
                                       llvm::StringRef compilation_device,
                                       OpBuilder* builder) {
   auto assert_op = builder->create<TF::TPUCompileSucceededAssertOp>(
-      compile_op->getLoc(), compile_op->getResult(0));
+      compile_op->getLoc(), result_id->getResult(0));
   WrapOpInLaunch(builder, compile_op->getLoc(), assert_op, compilation_device);
 }
 
 LogicalResult Rewrite(
     tf_device::ClusterFuncOp cluster_func,
     llvm::ArrayRef<tensorflow::DeviceNameUtils::ParsedName> devices,
+    ArrayRef<TF::TPUCompilationResultOp> compilation_result,
     OpBuilder* builder) {
   // Collect `num_replicas` and `num_cores_per_replica` attributes.
   int num_replicas = 1;
@@ -645,16 +626,35 @@ LogicalResult Rewrite(
     });
   }
 
-  // After rewrite, find if there is a TPUCompilationResultOp in the block with
-  // the same _tpu_replicate attribute and replace it with the result of the
-  // compile op. This op is used as a placeholder to hook during graph creation
-  // the other ops that are intended to consume the compile result.
-  Block* block = cluster_func.getOperation()->getBlock();
-  for (auto compile_result_op : block->getOps<TF::TPUCompilationResultOp>())
-    compile_result_op.output().replaceAllUsesWith(compile_op->getResult(0));
+  // After rewrite, if there is a TPUCompilationResultOp from the same cluster,
+  // replace it with the result of the compile op. The TPUCompilationResultOp is
+  // used as a placeholder to hook during graph creation the other ops that are
+  // intended to consume the compile result.
+  Operation* result_id = compile_op;
+  // TODO(jpienaar): Remove this later.
+  auto compile_device_op = compile_op->getAttr("device");
+  for (auto res : compilation_result) {
+    // Build identity op with the same location/name as the original compilation
+    // result op.
+    result_id = builder->create<TF::IdentityOp>(
+        res.getLoc(), compile_op->getResult(0).getType(),
+        result_id->getResult(0));
+    // Assign to same device as result is currently set, unless unset and then
+    // assign to the device on which compilation will happen.
+    // TODO(jpienaar): Remove this later.
+    if (auto device = res->getAttrOfType<StringAttr>("device")) {
+      if (!device.getValue().empty())
+        result_id->setAttr("device", device);
+      else
+        result_id->setAttr("device", compile_device_op);
+    } else if (compile_device_op) {
+      result_id->setAttr("device", compile_device_op);
+    }
+    res.output().replaceAllUsesWith(compile_op->getResult(0));
+  }
 
   BuildTPUCompileSucceededAssertOp(
-      compile_op, tpu_device_assignment.compilation_device, builder);
+      compile_op, result_id, tpu_device_assignment.compilation_device, builder);
 
   AssignDevicesToReplicate(replicate, tpu_device_assignment.tpu_devices,
                            builder);
@@ -733,26 +733,50 @@ void TPURewritePass::runOnOperation() {
   if (failed(tensorflow::GetDevicesFromOp(getOperation(), &devices)))
     return signalPassFailure();
 
+  // Collect compilation results.
+  llvm::DenseMap<Attribute, SmallVector<TF::TPUCompilationResultOp, 1>>
+      compilation_results;
+  auto result_init = getOperation().walk([&](TF::TPUCompilationResultOp op) {
+    auto cluster_id = op->getAttrOfType<StringAttr>("_tpu_compilation_status");
+    if (!cluster_id) {
+      op->emitOpError("missing '_tpu_compilation_status'");
+      return WalkResult::interrupt();
+    }
+    compilation_results[cluster_id].push_back(op);
+    return WalkResult::advance();
+  });
+  if (result_init.wasInterrupted()) return signalPassFailure();
+
   llvm::SmallVector<tf_device::ClusterFuncOp> to_be_erased;
   OpBuilder builder(&getContext());
   auto result = getOperation().walk([&](tf_device::ClusterFuncOp op) {
     // Skip non-tpu device cluster_func.
-    auto replicate_attr = op->getAttrOfType<StringAttr>("_tpu_replicate");
-    if (!replicate_attr) return WalkResult::advance();
+    auto cluster_id = op->getAttrOfType<StringAttr>("_tpu_replicate");
+    if (!cluster_id) return WalkResult::advance();
 
-    if (failed(Rewrite(op, devices.device_names(), &builder)))
+    if (failed(Rewrite(op, devices.device_names(),
+                       compilation_results[cluster_id], &builder)))
       return WalkResult::interrupt();
 
     to_be_erased.push_back(op);
     return WalkResult::advance();
   });
-
   if (result.wasInterrupted()) return signalPassFailure();
 
   EraseClusterFuncs(to_be_erased);
 
   // Eliminate TPUCompilationResultOp now that the rewrite is complete.
-  getOperation().walk([&](TF::TPUCompilationResultOp op) { op.erase(); });
+  for (auto& it : compilation_results) {
+    for (auto op : it.second) {
+      if (!op.use_empty()) {
+        mlir::InFlightDiagnostic err = op.emitError("uses remain post rewrite");
+        for (auto user : op->getUsers())
+          err.attachNote(user->getLoc()) << "remaining user";
+        return signalPassFailure();
+      }
+      op.erase();
+    }
+  }
 
   // TODO(b/139377366): Remove functions that are no longer needed.
 }

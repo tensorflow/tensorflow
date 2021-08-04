@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
-const int64 kDefaultRefreshRateSecs = 60;
+const int64_t kDefaultRefreshRateSecs = 60;
 
 // DnsCache is a userspace DNS cache specialized for the GCS filesystem.
 //
@@ -36,10 +36,10 @@ class GcsDnsCache {
   GcsDnsCache() : GcsDnsCache(kDefaultRefreshRateSecs) {}
 
   // Constructs a GcsDnsCache with the specified refresh rate.
-  GcsDnsCache(int64 refresh_rate_secs)
+  GcsDnsCache(int64_t refresh_rate_secs)
       : GcsDnsCache(Env::Default(), refresh_rate_secs) {}
 
-  GcsDnsCache(Env* env, int64 refresh_rate_secs);
+  GcsDnsCache(Env* env, int64_t refresh_rate_secs);
 
   ~GcsDnsCache() {
     mutex_lock l(mu_);

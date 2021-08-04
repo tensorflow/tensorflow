@@ -1,4 +1,3 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -7,7 +6,7 @@ load(
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -30,7 +29,6 @@ cc_library(
         "utils.h",
     ],
     deps = [
-        "@llvm-project//llvm:AMDGPUCodeGen",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -60,6 +58,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
     ] + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
+        "@llvm-project//llvm:AMDGPUCodeGen",
     ]),
 )
 

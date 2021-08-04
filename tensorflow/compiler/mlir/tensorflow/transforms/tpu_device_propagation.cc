@@ -190,7 +190,7 @@ void PropagateDevicesInGraph(
       if (new_device.empty()) continue;
 
       auto new_device_attr =
-          mlir::StringAttr::get(new_device, op_to_update->getContext());
+          mlir::StringAttr::get(op_to_update->getContext(), new_device);
       op_to_update->setAttr(kDeviceAttr, new_device_attr);
       PopulateDeviceForOpResults(*op_to_update, new_device_attr.getValue(),
                                  value_to_device);
@@ -219,7 +219,7 @@ void PropagateDevicesToResults(
           operand.getOperandNumber(), kFuncDeviceAttr);
       if (device_attr && !device_attr.getValue().empty()) continue;
       func.setResultAttr(operand.getOperandNumber(), kFuncDeviceAttr,
-                         StringAttr::get(it->getSecond(), func.getContext()));
+                         StringAttr::get(func.getContext(), it->getSecond()));
     }
   }
 }
@@ -227,6 +227,15 @@ void PropagateDevicesToResults(
 struct TPUDevicePropagation
     : public PassWrapper<TPUDevicePropagation, FunctionPass> {
   void runOnFunction() override;
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-tpu-device-propagation";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Propagates TPU devices from ops to users";
+  }
 };
 
 void TPUDevicePropagation::runOnFunction() {
@@ -246,8 +255,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUDevicePropagationPass() {
   return std::make_unique<TPUDevicePropagation>();
 }
 
-static PassRegistration<TPUDevicePropagation> pass(
-    "tf-tpu-device-propagation", "Propagates TPU devices from ops to users");
+static PassRegistration<TPUDevicePropagation> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

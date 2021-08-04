@@ -30,7 +30,7 @@ class SparseSplitOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    const int64 axis_input = context->input(0).scalar<int64>()();
+    const int64_t axis_input = context->input(0).scalar<int64>()();
     const Tensor& input_indices = context->input(1);
     const Tensor& input_values = context->input(2);
     const Tensor& input_shape = context->input(3);
@@ -48,8 +48,9 @@ class SparseSplitOp : public OpKernel {
                     "Input shape should be a vector but received shape ",
                     input_shape.shape().DebugString()));
 
-    const int64 input_rank = input_shape.vec<int64>().size();
-    const int64 axis = (axis_input < 0) ? input_rank + axis_input : axis_input;
+    const int64_t input_rank = input_shape.vec<int64>().size();
+    const int64_t axis =
+        (axis_input < 0) ? input_rank + axis_input : axis_input;
 
     OP_REQUIRES(
         context, axis >= 0 && axis < input_rank,
@@ -63,11 +64,18 @@ class SparseSplitOp : public OpKernel {
                                         input_shape.vec<int64>()(axis),
                                         "), got ", num_split_));
 
+    // Prevent overflow by constructing the dense shape separately
+    TensorShape dense_shape;
+    const auto input_shape_flat = input_shape.flat<int64>();
+    for (int i = 0; i < input_shape.NumElements(); i++) {
+      OP_REQUIRES_OK(context,
+                     dense_shape.AddDimWithStatus(input_shape_flat(i)));
+    }
+
     sparse::SparseTensor sparse_tensor;
     OP_REQUIRES_OK(context,
-                   sparse::SparseTensor::Create(
-                       input_indices, input_values,
-                       TensorShape(input_shape.vec<int64>()), &sparse_tensor));
+                   sparse::SparseTensor::Create(input_indices, input_values,
+                                                dense_shape, &sparse_tensor));
 
     std::vector<sparse::SparseTensor> outputs;
     OP_REQUIRES_OK(context, sparse::SparseTensor::Split<T>(

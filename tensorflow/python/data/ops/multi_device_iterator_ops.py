@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -199,12 +200,6 @@ def _create_device_dataset(prototype_ds, incarnation_id, prefetch_buffer_size,
       ds = dataset_ops.PrefetchDataset(ds, prefetch_buffer_size, slack_period=1)
     else:
       ds = ds.prefetch(prefetch_buffer_size)
-  # TODO(jsimsa): Enable auto-tuning and optimizations when supported for
-  # non-CPU devices.
-  options = dataset_ops.Options()
-  options.experimental_optimization.apply_default_optimizations = False
-  options.experimental_optimization.autotune = False
-  ds = ds.with_options(options)
   return ds
 
 
@@ -229,10 +224,10 @@ class MultiDeviceIterator(object):
         prevent deadlocks, if the prefetch_buffer_size is greater than the
         max_buffer_size, we set the max_buffer_size to prefetch_buffer_size.
     """
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.num_devices = len(devices)
     dataset = dataset.with_options(options)
-    self._dataset = dataset._apply_options()  # pylint: disable=protected-access
+    self._dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
     self._experimental_slack = dataset.options().experimental_slack
     self._devices = devices
     self._source_device = source_device
@@ -311,12 +306,6 @@ class MultiDeviceIterator(object):
             ds, self._prefetch_buffer_size, slack_period=1)
       else:
         ds = ds.prefetch(self._prefetch_buffer_size)
-    # TODO(jsimsa): Enable auto-tuning and optimizations when supported for
-    # non-CPU devices.
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.autotune = False
-    ds = ds.with_options(options)
     return ds
 
   def get_next(self, device=None):
@@ -487,7 +476,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
         prevent deadlocks, if the prefetch_buffer_size is greater than the
         max_buffer_size, we set the max_buffer_size to prefetch_buffer_size.
       components: Tensor components to construct the MultiDeviceIterator from.
-      element_spec: A nested structure of `TypeSpec` objects that
+      element_spec: A (nested) structure of `tf.TypeSpec` objects that
         represents the type specification of elements of the iterator.
 
     Raises:
@@ -517,10 +506,10 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
     else:
       if (components is not None or element_spec is not None):
         raise ValueError(error_message)
-      options = dataset_ops.Options()
+      options = options_lib.Options()
       options.experimental_distribute.num_devices = len(devices)
       dataset = dataset.with_options(options)
-      dataset = dataset._apply_options()  # pylint: disable=protected-access
+      dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
       self._element_spec = dataset.element_spec
       experimental_slack = dataset.options().experimental_slack
       self._devices = devices

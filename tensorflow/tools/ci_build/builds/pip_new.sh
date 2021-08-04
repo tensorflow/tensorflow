@@ -295,9 +295,11 @@ if [[ "$IN_VENV" == "1" ]]; then
   deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
 fi
 
-# Configure python. Obtain the path to python binary.
-source tools/python_bin_path.sh
-# Assume PYTHON_BIN_PATH is exported by the script above.
+# Obtain the path to python binary as written by ./configure if it was run.
+if [[ -e tools/python_bin_path.sh ]]; then
+  source tools/python_bin_path.sh
+fi
+# Assume PYTHON_BIN_PATH is exported by the script above or the caller.
 if [[ -z "$PYTHON_BIN_PATH" ]]; then
   die "PYTHON_BIN_PATH was not provided. Did you run configure?"
 fi
@@ -309,8 +311,11 @@ bazel clean
 # Clean up and update bazel flags
 update_bazel_flags
 # Build. This outputs the file `build_pip_package`.
-bazel build ${TF_BUILD_FLAGS} ${PIP_BUILD_TARGET} || \
-  die "Error: Bazel build failed for target: '${PIP_BUILD_TARGET}'"
+bazel build \
+  --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
+  ${TF_BUILD_FLAGS} \
+  ${PIP_BUILD_TARGET} \
+  || die "Error: Bazel build failed for target: '${PIP_BUILD_TARGET}'"
 
 ###########################################################################
 # Test function(s)
@@ -415,6 +420,7 @@ create_activate_virtualenv() {
   # to create the virtualenv directory for testing. Use the -p flag to specify
   # the python version inside the to-be-created virtualenv directory.
   ${PYTHON_BIN_PATH_INIT} -m virtualenv -p ${PYTHON_BIN_PATH_INIT} ${VIRTUALENV_FLAGS} ${VIRTUALENV_DIR} || \
+    ${PYTHON_BIN_PATH_INIT} -m venv ${VIRTUALENV_DIR} || \
     die "FAILED: Unable to create virtualenv"
 
   source "${VIRTUALENV_DIR}/bin/activate" || \
@@ -505,7 +511,7 @@ run_test_with_bazel() {
 
   # Figure out how many concurrent tests we can run and do run the tests.
   BAZEL_PARALLEL_TEST_FLAGS=""
-  if [[ $CONTAINER_TYPE == "gpu" ]]; then
+  if [[ $CONTAINER_TYPE == "gpu" ]] || [[ $CONTAINER_TYPE == "rocm" ]]; then
     # Number of test threads is the number of GPU cards available.
     if [[ $OS_TYPE == "macos" ]]; then
       BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=1"
@@ -620,6 +626,18 @@ if [[ ${CONTAINER_TYPE} == "gpu" ]]; then
   fi
 fi
 
+if [[ ${CONTAINER_TYPE} == "rocm" ]]; then
+  GPU_FLAG="--rocm"
+  if ! [[ $PROJECT_NAME == *"rocm"* ]]; then
+    # Only update PROJECT_NAME if TF_PROJECT_NAME is not set
+    if [[ -z "${TF_PROJECT_NAME}" ]]; then
+      echo "WARNING: ROCM is specified but requested project name (PROJECT_NAME=${PROJECT_NAME}) \
+      does not include 'rocm'. Appending '_rocm' to the project name."
+      PROJECT_NAME="${PROJECT_NAME}_rocm"
+    fi
+  fi
+fi
+
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${PROJECT_NAME} || die "build_pip_package FAILED"
 
 PY_DOTLESS_MAJOR_MINOR_VER=$(echo $PY_MAJOR_MINOR_VER | tr -d '.')
@@ -681,7 +699,8 @@ fi
 run_all_tests
 
 
-if [[ ${OS_TYPE} == "ubuntu" ]]; then
+if [[ ${OS_TYPE} == "ubuntu" ]] && \
+   ! [[ ${CONTAINER_TYPE} == "rocm" ]] ; then
   # Avoid Python3.6 abnormality by installing auditwheel here.
   set +e
   pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel

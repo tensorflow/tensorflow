@@ -19,32 +19,21 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 source tensorflow/tools/ci_build/ctpu/ctpu.sh
 
-install_ubuntu_16_python_pip_deps python3.7
+install_ubuntu_16_python_pip_deps python3.9
 install_bazelisk
-install_ctpu pip3.7
+install_ctpu pip3.9
 
-# Run configure.
-export TF_NEED_GCP=1
-export TF_NEED_HDFS=1
-export TF_NEED_S3=1
-export TF_NEED_CUDA=0
-export TF_NEED_TENSORRT=0
-export CC_OPT_FLAGS='-mavx'
-export PYTHON_BIN_PATH=$(which python3.7)
-export TF2_BEHAVIOR=1
-
-yes "" | "$PYTHON_BIN_PATH" configure.py
+# The remote bazel config assume python is at /usr/local/bin/python3.9 but the
+# local VM has it at /usr/bin/python3.9.
+sudo ln /usr/bin/python3.9 /usr/local/bin/python3.9
 
 test_patterns=(//tensorflow/... -//tensorflow/compiler/... -//tensorflow/lite/...)
 tag_filters="tpu,-tpu_pod,-no_tpu,-notpu,-no_oss,-no_oss_py37"
 
 bazel_args=(
-  --config=opt \
-  --config=short_logs \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
-  --linkopt=-lrt \
-  --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
-  --noincompatible_strict_action_env \
+  --config=rbe_cpu_linux \
+  --config=rbe_linux_py3 \
+  --config=tensorflow_testing_rbe_linux \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" \
   --test_output=errors --verbose_failures=true --keep_going

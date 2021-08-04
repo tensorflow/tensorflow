@@ -29,7 +29,7 @@ RandomAccessInputStream::~RandomAccessInputStream() {
   }
 }
 
-Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
+Status RandomAccessInputStream::ReadNBytes(int64_t bytes_to_read,
                                            tstring* result) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Cannot read negative number of bytes");
@@ -50,12 +50,12 @@ Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
 }
 
 #if defined(TF_CORD_SUPPORT)
-Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
+Status RandomAccessInputStream::ReadNBytes(int64_t bytes_to_read,
                                            absl::Cord* result) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Cannot read negative number of bytes");
   }
-  int64 current_size = result->size();
+  int64_t current_size = result->size();
   Status s = file_->Read(pos_, bytes_to_read, result);
   if (s.ok() || errors::IsOutOfRange(s)) {
     pos_ += result->size() - current_size;
@@ -66,9 +66,9 @@ Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
 
 // To limit memory usage, the default implementation of SkipNBytes() only reads
 // 8MB at a time.
-static constexpr int64 kMaxSkipSize = 8 * 1024 * 1024;
+static constexpr int64_t kMaxSkipSize = 8 * 1024 * 1024;
 
-Status RandomAccessInputStream::SkipNBytes(int64 bytes_to_skip) {
+Status RandomAccessInputStream::SkipNBytes(int64_t bytes_to_skip) {
   if (bytes_to_skip < 0) {
     return errors::InvalidArgument("Can't skip a negative number of bytes");
   }
@@ -85,7 +85,7 @@ Status RandomAccessInputStream::SkipNBytes(int64 bytes_to_skip) {
   }
   // Read kDefaultSkipSize at a time till bytes_to_skip.
   while (bytes_to_skip > 0) {
-    int64 bytes_to_read = std::min<int64>(kMaxSkipSize, bytes_to_skip);
+    int64_t bytes_to_read = std::min<int64>(kMaxSkipSize, bytes_to_skip);
     StringPiece data;
     Status s = file_->Read(pos_, bytes_to_read, &data, scratch.get());
     if (s.ok() || errors::IsOutOfRange(s)) {

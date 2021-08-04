@@ -43,8 +43,8 @@ std::vector<DataType> GetXlaConvTypes();
 // convolution.
 struct ConvOpAttrs {
   // Constructs a ConvOpAttrs, reading most of the attributes from `ctx`.
-  static xla::StatusOr<ConvOpAttrs> Create(int num_spatial_dims, bool depthwise,
-                                           OpKernelConstruction* ctx);
+  static StatusOr<ConvOpAttrs> Create(int num_spatial_dims, bool depthwise,
+                                      OpKernelConstruction* ctx);
 
   bool depthwise;
   int num_spatial_dims;
@@ -57,16 +57,16 @@ struct ConvOpAttrs {
 
 // Creates a new XLA forward or backward convolution with the given inputs and
 // attributes.
-xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
+StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
     StringPiece type_string, xla::XlaOp conv_input, xla::XlaOp filter,
     const ConvOpAttrs& attrs,
     const xla::PrecisionConfig* precision_config = nullptr);
-xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
+StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
     StringPiece type_string, const xla::Shape& input_shape, xla::XlaOp filter,
     xla::XlaOp out_backprop, const ConvOpAttrs& attrs,
     const xla::PrecisionConfig* precision_config = nullptr,
     xla::XlaOp* input_sizes = nullptr);
-xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
+StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
     StringPiece type_string, xla::XlaOp activations,
     const xla::Shape& filter_shape, xla::XlaOp gradients,
     const ConvOpAttrs& attrs,

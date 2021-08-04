@@ -38,7 +38,8 @@ constexpr int kThreadIdTfOp = kThreadIdDerivedMin + 3;
 constexpr int kThreadIdHloModule = kThreadIdDerivedMin + 4;
 constexpr int kThreadIdHloOp = kThreadIdDerivedMin + 5;
 constexpr int kThreadIdOverhead = kThreadIdDerivedMin + 6;
-constexpr int kThreadIdDerivedMax = kThreadIdOverhead;
+constexpr int kThreadIdSource = kThreadIdDerivedMin + 7;
+constexpr int kThreadIdDerivedMax = kThreadIdSource;
 
 static inline bool IsDerivedThreadId(int thread_id) {
   return thread_id >= kThreadIdDerivedMin && thread_id <= kThreadIdDerivedMax;

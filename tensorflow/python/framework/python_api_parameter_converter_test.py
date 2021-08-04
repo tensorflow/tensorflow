@@ -23,15 +23,15 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
-from tensorflow.python import _pywrap_python_api_info
-from tensorflow.python._pywrap_python_api_parameter_converter import Convert
-from tensorflow.python._pywrap_python_tensor_converter import PythonTensorConverter
 from tensorflow.python.eager import context
+from tensorflow.python.framework import _pywrap_python_api_info
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework._pywrap_python_api_parameter_converter import Convert
+from tensorflow.python.framework._pywrap_python_tensor_converter import PythonTensorConverter
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import nest
 

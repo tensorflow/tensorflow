@@ -274,26 +274,6 @@ class CollectiveOpGPUTest(test.TestCase):
       for result in results:
         self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
-  def testCollectiveGroupSizeOne(self):
-    self._setup_context()
-
-    group_size = 1
-    group_key = 100
-    instance_key = 100
-    in_value = [1., 2., 3., 4.]
-    in_tensor = constant_op.constant(in_value)
-
-    with ops.device('/GPU:0'):
-      reduced_tensor = collective_ops.all_reduce(
-          in_tensor, group_size, group_key, instance_key, 'Add', 'Id',
-          communication_hint='nccl')
-    self.assertAllEqual(in_value, reduced_tensor.numpy())
-
-    with ops.device('/GPU:0'):
-      gathered_tensor = collective_ops.all_gather(
-          in_tensor, group_size, group_key, instance_key)
-    self.assertAllEqual(in_value, gathered_tensor.numpy())
-
   def testNcclStress(self):
     self._setup_context(num_gpus=1)
 

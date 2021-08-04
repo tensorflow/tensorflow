@@ -27,7 +27,6 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -61,7 +60,8 @@ def flags(*args):
 
 
 def _tfconst(array):
-  return constant_op.constant(array, dtypes.float64)
+  if array is not None:
+    return constant_op.constant(array, dtypes.float64)
 
 
 def _tf_ones(shape):
@@ -77,7 +77,7 @@ class TridiagonalSolveOpTest(test.TestCase):
             diags_format="compact",
             transpose_rhs=False,
             conjugate_rhs=False):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       pivoting = True
       if hasattr(self, "pivoting"):
         pivoting = self.pivoting
@@ -91,12 +91,17 @@ class TridiagonalSolveOpTest(test.TestCase):
           transpose_rhs,
           conjugate_rhs,
           partial_pivoting=pivoting)
-      self.assertAllClose(self.evaluate(result), expected)
+      result = self.evaluate(result)
+      if expected is None:
+        self.assertAllEqual(
+            np.zeros_like(result, dtype=np.bool_), np.isfinite(result))
+      else:
+        self.assertAllClose(result, expected)
 
   def _testWithLists(self,
                      diags,
                      rhs,
-                     expected,
+                     expected=None,
                      diags_format="compact",
                      transpose_rhs=False,
                      conjugate_rhs=False):
@@ -177,16 +182,13 @@ class TridiagonalSolveOpTest(test.TestCase):
     if test_util.is_xla_enabled():
       # XLA implementation does not check invertibility.
       return
-    with self.assertRaises(errors_impl.InvalidArgumentError):
-      self._testWithLists(diags=[[0], [0], [0]], rhs=[[6, 9, 12]], expected=[])
+    self._testWithLists(diags=[[0], [0], [0]], rhs=[[6, 9, 12]])
 
   def test2x2NotInvertible(self):
     if test_util.is_xla_enabled():
       # XLA implementation does not check invertibility.
       return
-    with self.assertRaises(errors_impl.InvalidArgumentError):
-      self._testWithLists(
-          diags=[[3, 0], [1, 3], [0, 1]], rhs=[1, 4], expected=[])
+    self._testWithLists(diags=[[3, 0], [1, 3], [0, 1]], rhs=[1, 4])
 
   # Other edge cases
 
@@ -206,15 +208,10 @@ class TridiagonalSolveOpTest(test.TestCase):
         expected=[5, -2, -5, 3])
 
   def testNotInvertible(self):
-    if test.is_gpu_available(cuda_only=True) or test_util.is_xla_enabled():
-      # CuSparse gtsv routines don't raise errors for non-invertible
-      # matrices.
+    if test_util.is_xla_enabled():
       return
-    with self.assertRaises(errors_impl.InvalidArgumentError):
-      self._testWithLists(
-          diags=[[2, -1, 1, 0], [1, 4, 1, -1], [0, 2, 0, 3]],
-          rhs=[1, 2, 3, 4],
-          expected=[8, -3.5, 0, -4])
+    self._testWithLists(
+        diags=[[2, -1, 1, 0], [1, 4, 1, -1], [0, 2, 0, 3]], rhs=[1, 2, 3, 4])
 
   def testDiagonal(self):
     self._testWithLists(
@@ -412,7 +409,7 @@ class TridiagonalSolveOpTest(test.TestCase):
             transpose_rhs=transpose_rhs,
             conjugate_rhs=conjugate_rhs)
         res = math_ops.reduce_sum(x * y)
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       actual_grad_diags = sess.run(
           tape_diags.gradient(res, diags), feed_dict=feed_dict)
       actual_rhs_diags = sess.run(
@@ -563,7 +560,7 @@ class TridiagonalSolveOpTest(test.TestCase):
       return
     x = linalg_impl.tridiagonal_solve(
         diags, rhs, diags_format, partial_pivoting=self.pivoting)
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       result = sess.run(x, feed_dict={diags: diags_feed, rhs: rhs_feed})
       self.assertAllClose(result, expected)
 
@@ -648,7 +645,7 @@ class TridiagonalSolveOpTest(test.TestCase):
                                       rhs,
                                       diagonals_format="sequence",
                                       partial_pivoting=self.pivoting)
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       result = sess.run(
           x,
           feed_dict={

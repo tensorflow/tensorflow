@@ -67,7 +67,8 @@ class TFShow {
   bool ReAccount(ShowNode* node, const Options& opts);
 
   string FormatNode(ShowNode* node, const Options& opts) const;
-  string FormatNodeMemory(ShowNode* node, int64 bytes, int64 total_bytes) const;
+  string FormatNodeMemory(ShowNode* node, int64_t bytes,
+                          int64_t total_bytes) const;
 
   string FormatLegend(const Options& opts) const;
 

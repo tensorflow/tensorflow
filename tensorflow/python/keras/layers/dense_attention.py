@@ -18,14 +18,10 @@ This file follows the terminology of https://arxiv.org/abs/1706.03762 Figure 2.
 Attention is formed by three tensors: Query, Key and Value.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
@@ -132,7 +128,7 @@ class BaseDenseAttention(Layer):
       else:
         scores -= 1.e9 * math_ops.cast(padding_mask, dtype=scores.dtype)
     if training is None:
-      training = K.learning_phase()
+      training = backend.learning_phase()
     weights = nn.softmax(scores)
 
     def dropped_weights():

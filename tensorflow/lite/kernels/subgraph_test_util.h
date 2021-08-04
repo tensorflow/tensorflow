@@ -32,9 +32,6 @@ limitations under the License.
 namespace tflite {
 namespace subgraph_test_util {
 
-// TODO(ycling): This file should be renamed as
-// `control_flow_test_util` to avoid confusion. I'll do it immediately
-// in a separated change.
 class SubgraphBuilder {
  public:
   ~SubgraphBuilder();
@@ -92,6 +89,10 @@ class SubgraphBuilder {
   // Build a subgraph with CallOnce op and ReadVariable op.
   // No input and 1 output.
   void BuildCallOnceAndReadVariableSubgraph(Subgraph* graph);
+
+  // Build a subgraph with CallOnce op, ReadVariable op and Add op.
+  // No input and 1 output.
+  void BuildCallOnceAndReadVariablePlusOneSubgraph(Subgraph* graph);
 
   // Build a subgraph with a single Less op.
   // The subgraph is used as the condition subgraph for testing `While` op.

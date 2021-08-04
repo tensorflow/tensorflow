@@ -7,7 +7,7 @@ load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
 
 package(
     default_visibility = ["//visibility:private"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # See README.md for details about building and executing the benchmark in APK
@@ -29,6 +29,7 @@ APK_VARIANTS = [
     ]),
     custom_package = "org.tensorflow.lite.benchmark",
     manifest = "AndroidManifest.xml",
+    multidex = "native",
     # In some platforms we don't have an Android SDK/NDK and this target
     # can't be built. We need to prevent the build system from trying to
     # use the target in that case.

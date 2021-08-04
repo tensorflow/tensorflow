@@ -56,11 +56,18 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters &params,
 Status GetGradientAccumulationSupport(const OptimizationParameters &params,
                                       GradientAccumulationSupport *support);
 
+// Returns whether both the given set of optimization parameters has gradient
+// accumulation turned on and that the algorithm used supports it or should
+// ignore that setting. Returns an error if gradient accumulation is enabled and
+// the algorithm does not support it.
+Status UseGradientAccumulation(const OptimizationParameters &params,
+                               bool *use_gradient_accumulation);
+
 // Returns the parameter specifications for the optimization algorithm (the main
 // parameters first, followed by any auxiliary parameters such as Adagrad
 // accumulators).
 Status GetOptimizationAlgorithmStateVariables(
-    const OptimizationParameters &params, bool use_gradient_accumulation,
+    const OptimizationParameters &params,
     std::vector<StateVariableSpecification> *state_variables);
 
 // Maximum value of auxiliar_parameter_count for any optimization algorithm.

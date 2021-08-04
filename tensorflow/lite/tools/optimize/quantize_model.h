@@ -69,6 +69,16 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
 // could be TensorType_INT16 or TensorType_INT8.
 //
 // Note: This is a private API, subject to change.
+TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
+                           ModelT* model, const TensorType& input_type,
+                           const TensorType& output_type, bool allow_float,
+                           const std::unordered_set<string>& operator_names,
+                           const TensorType& activations_type,
+                           ErrorReporter* error_reporter);
+
+// Same as above, but all operators supporting quantization are quantized.
+//
+// Note: This is a private API, subject to change.
 TfLiteStatus QuantizeModelAllOperators(flatbuffers::FlatBufferBuilder* builder,
                                        ModelT* model,
                                        const TensorType& input_type,
@@ -77,14 +87,26 @@ TfLiteStatus QuantizeModelAllOperators(flatbuffers::FlatBufferBuilder* builder,
                                        const TensorType& activations_type,
                                        ErrorReporter* error_reporter);
 
+// Same as above, but allows disabling per channel quantization.
+//
+// Note: This is a private API, subject to change.
+TfLiteStatus QuantizeModelAllOperators(
+    flatbuffers::FlatBufferBuilder* builder, ModelT* model,
+    const TensorType& input_type, const TensorType& output_type,
+    bool allow_float, const TensorType& activations_type,
+    bool disable_per_channel, ErrorReporter* error_reporter);
+
 // Quantizes input_model and populates the provided builder with the new model
-// with all possible input parameters.
+// with all possible input parameters including disabling per_channel
+// quantization.
+//
 // All functions above call this function underneath.
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ModelT* model, const TensorType& input_type,
                            const TensorType& output_type, bool allow_float,
                            const std::unordered_set<string>& operator_names,
                            const TensorType& activations_type,
+                           bool disable_per_channel,
                            ErrorReporter* error_reporter);
 
 }  // namespace optimize

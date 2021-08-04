@@ -11,7 +11,7 @@ load(
 load("//tensorflow:tensorflow.bzl", "filegroup")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -60,7 +60,10 @@ cc_library(
         "stream_executor.h",
         "stream_executor_internal.h",
     ],
-    visibility = ["//tensorflow/c:__subpackages__"],
+    visibility = [
+        "//tensorflow/c:__subpackages__",
+        "//tensorflow/core/common_runtime/pluggable_device:__subpackages__",
+    ],
     deps = [
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c:tf_status",
@@ -76,11 +79,23 @@ tf_cc_test(
     deps = [
         ":stream_executor",
         ":stream_executor_internal",
+        ":stream_executor_test_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/stream_executor:multi_platform_manager",
         "//tensorflow/stream_executor:stream",
         "//tensorflow/stream_executor:stream_executor_pimpl",
+    ],
+)
+
+cc_library(
+    name = "stream_executor_test_util",
+    srcs = ["stream_executor_test_util.cc"],
+    hdrs = ["stream_executor_test_util.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":stream_executor_hdrs",
+        "//tensorflow/c:tf_status",
     ],
 )

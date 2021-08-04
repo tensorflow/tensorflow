@@ -62,21 +62,16 @@ bool ModelTransformer::Apply(const std::string& name,
       continue;
     }
     auto result = transformation->ApplyToNode(node, graph_);
+    last_transformation_message_ = result.message;
     if (result.status == TransformStatus::INVALID) {
       return false;
     }
-    if (reporter_) {
-      if (result.status == TransformStatus::APPLIED) {
-        reporter_->AppliedTransformation(name, std::to_string(node_id),
-                                         result.message);
-      }
-      if (result.status == TransformStatus::DECLINED) {
-        reporter_->DeclinedTransformation(name, std::to_string(node_id),
-                                          result.message);
-      }
-    }
   }
   return true;
+}
+
+const std::string& ModelTransformer::last_transformation_message() const {
+  return last_transformation_message_;
 }
 
 bool ModelTransformer::ApplyStartingWithNode(
@@ -109,20 +104,12 @@ bool ModelTransformer::ApplyStartingWithNode(
       auto preceding_node =
           graph_->FindProducer(graph_->FindInputs(first_in_sequence)[0]->id);
       auto result = transformation->ApplyToNodesSequence(nodes, graph_);
+      last_transformation_message_ = result.message;
       if (result.status == TransformStatus::INVALID) {
         // graph is broken now.
         return false;
       }
-      if (result.status == TransformStatus::DECLINED) {
-        if (reporter_) {
-          reporter_->DeclinedTransformation(name, absl::StrJoin(sequence, "+"),
-                                            result.message);
-        }
-      } else if (result.status == TransformStatus::APPLIED) {
-        if (reporter_) {
-          reporter_->AppliedTransformation(name, absl::StrJoin(sequence, "+"),
-                                           result.message);
-        }
+      if (result.status == TransformStatus::APPLIED) {
         // Also remove first node of a sequence from a set of processed node.
         // Out of all nodes in a sequence only first one may have been added
         // to "processed" set because other nodes do not have more than one

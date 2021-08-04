@@ -201,18 +201,14 @@ TEST(ReplicatePerReplicaNodesTest, MultipleCompositeDevices) {
       ReplicatePerReplicaNodesInFunctionGraph(composite_devices, &graph));
 
   {
-    // _Arg(TPU:0, TPU:1, TPU:2, TPU:3) -> ReadVariableOp(TPU:0, TPU:1, TPU:2,
-    // TPU:3) -> Identity(TPU:1, TPU:3) -> Add(TPU:0)-> _Retval(CPU:0)
-    EXPECT_EQ(graph.num_op_nodes(), 12);
+    // _Arg(TPU:0, TPU:3) -> ReadVariableOp(TPU:1, TPU:3) -> Identity(TPU:1,
+    // TPU:3) -> Add(TPU:0)-> _Retval(CPU:0)
+    EXPECT_EQ(graph.num_op_nodes(), 8);
     GraphHelper helper(graph);
-    helper.CheckArgNum(4);
-    helper.CheckAssignedDevice("arg0/R0", "TPU:0");
+    helper.CheckArgNum(2);
     helper.CheckAssignedDevice("arg0/R1", "TPU:1");
-    helper.CheckAssignedDevice("arg1/R0", "TPU:2");
     helper.CheckAssignedDevice("arg1/R1", "TPU:3");
-    helper.CheckAssignedDevice("read0/R0", "TPU:0");
     helper.CheckAssignedDevice("read0/R1", "TPU:1");
-    helper.CheckAssignedDevice("read1/R0", "TPU:2");
     helper.CheckAssignedDevice("read1/R1", "TPU:3");
     helper.CheckAssignedDevice("identity0", "TPU:1");
     helper.CheckAssignedDevice("identity1", "TPU:3");

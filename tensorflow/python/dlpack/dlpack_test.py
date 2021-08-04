@@ -22,6 +22,7 @@ import numpy as np
 
 
 from tensorflow.python.dlpack import dlpack
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -91,6 +92,13 @@ class DLPackTest(parameterized.TestCase, test.TestCase):
     self.assertRaisesRegex(Exception,
                            ".*a DLPack tensor may be consumed at most once.*",
                            ConsumeDLPackTensor)
+
+  def testDLPackFromWithoutContextInitialization(self):
+    tf_tensor = constant_op.constant(1)
+    dlcapsule = dlpack.to_dlpack(tf_tensor)
+    # Resetting the context doesn't cause an error.
+    context._reset_context()
+    _ = dlpack.from_dlpack(dlcapsule)
 
   def testUnsupportedTypeToDLPack(self):
 

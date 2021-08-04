@@ -206,7 +206,7 @@ Status DetermineArgumentLayoutsFromCompileOptions(
   return Status::OK();
 }
 
-StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
+StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
     const HloModule& module, bool tuple_inputs) {
   HloComputation* computation = module.entry_computation();
   int number_of_parameters = [&]() -> int {
@@ -222,7 +222,8 @@ StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
   }();
   // If any buffer in a parameter is aliased we will donate the entire input
   // parameter.
-  absl::flat_hash_set<int> parameters_to_donate;
+  std::vector<int> parameters_to_donate;
+  parameters_to_donate.reserve(computation->num_parameters());
   const HloInputOutputAliasConfig& config = module.input_output_alias_config();
   TF_RETURN_IF_ERROR(config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
@@ -243,7 +244,7 @@ StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
                   "inputs and %d parameters",
                   index.ToString(), number_of_parameters);
             }
-            parameters_to_donate.insert(this_parameter);
+            parameters_to_donate.push_back(this_parameter);
           }
         } else {
           int this_parameter = alias.parameter_number;
@@ -253,11 +254,45 @@ StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
                 "inputs and %d parameters",
                 this_parameter, number_of_parameters);
           }
-          parameters_to_donate.insert(this_parameter);
+          parameters_to_donate.push_back(this_parameter);
         }
         return Status::OK();
       }));
+  absl::c_sort(parameters_to_donate);
   return parameters_to_donate;
+}
+
+int DefaultThreadPoolSize() {
+  // Google's CI system exposes an environment variable NPROC that describes
+  // a CPU reservation for tests.
+  // TODO(phawkins): expose a better thought-out set of knobs to control
+  // parallelism.
+  const char* nproc_str = std::getenv("NPROC");
+  int nproc = 0;
+  if (nproc_str && absl::SimpleAtoi(nproc_str, &nproc)) {
+    return std::max(0, nproc);
+  }
+  return tensorflow::port::MaxParallelism();
+}
+
+bool HasMajorToMinorLayout(PrimitiveType type, absl::Span<int64_t const> dims,
+                           absl::Span<int64_t const> byte_strides) {
+  CHECK_EQ(dims.size(), byte_strides.size());
+  // If the array is size 0, the strides are irrelevant.
+  if (absl::c_find(dims, 0) != dims.end()) {
+    return true;
+  }
+  int64_t stride = primitive_util::ByteWidth(type);
+  for (int i = static_cast<int>(dims.size()) - 1; i >= 0; --i) {
+    // If a dimension is of size 1, its stride is irrelevant.
+    if (dims[i] != 1) {
+      if (byte_strides[i] != stride) {
+        return false;
+      }
+      stride *= dims[i];
+    }
+  }
+  return true;
 }
 
 }  // namespace xla

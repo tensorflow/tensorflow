@@ -30,8 +30,7 @@ TfLiteStatus GetRegistrationFromOpCode(
   auto builtin_code = GetBuiltinCode(opcode);
   int version = opcode->version();
 
-  if (builtin_code > BuiltinOperator_MAX ||
-      builtin_code < BuiltinOperator_MIN) {
+  if (builtin_code > BuiltinOperator_MAX) {
     TF_LITE_REPORT_ERROR(
         error_reporter,
         "Op builtin_code out of range: %d. Are you using old TFLite binary "

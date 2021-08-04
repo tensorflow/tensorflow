@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
@@ -101,11 +102,14 @@ StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphToMlirImport(
 // Converts a TensorFlow V1 SavedModel stored in the directory with the given
 // `saved_model_dir` into a MLIR module. Creates MLIR entities into the
 // given MLIR `context`.
+// 'saved_model_bundle' if not null, will be initialized with the model bundle.
 StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    MLIRImportOptions options);
+    MLIRImportOptions options, bool lift_variables = true,
+    std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle =
+        nullptr);
 
 // Converts a TensorFlow V1 SavedModel stored in the directory with the given
 // `saved_model_dir` into a MLIR module. Creates MLIR entities into the

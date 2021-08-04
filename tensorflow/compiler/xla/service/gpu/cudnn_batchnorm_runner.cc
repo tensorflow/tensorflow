@@ -68,11 +68,11 @@ struct DnnBatchDescriptors {
 };
 
 DnnBatchDescriptors MakeBatchNormDescriptors(const Shape& shape,
-                                             int64 feature_index) {
+                                             int64_t feature_index) {
   std::vector<int64> logical_to_physical =
       LayoutUtil::MakeLogicalToPhysical(shape.layout());
 
-  auto physical_dim_size = [&](int64 physical_dim) {
+  auto physical_dim_size = [&](int64_t physical_dim) {
     return shape.dimensions(LayoutUtil::Major(shape.layout(), physical_dim));
   };
 
@@ -81,9 +81,9 @@ DnnBatchDescriptors MakeBatchNormDescriptors(const Shape& shape,
   // cudnn layout for any XLA shape+layout, even XLA shapes that don't have
   // exactly 4 dimensions: We put everything that comes before the feature dim
   // into "batch", and everything that comes after the feature dim into "Y".
-  int64 batch_size = 1;
-  int64 y_size = 1;
-  int64 physical_dim;
+  int64_t batch_size = 1;
+  int64_t y_size = 1;
+  int64_t physical_dim;
   for (physical_dim = 0; physical_dim != logical_to_physical[feature_index];
        ++physical_dim) {
     CHECK_LT(physical_dim, shape.dimensions_size());
@@ -132,7 +132,7 @@ void AssignCommonParams(const CudnnBatchNormConfig& config,
 template <typename ElemType>
 void RunCudnnBatchNormForwardInferenceImpl(
     CudnnBatchNormForwardInferenceParams* params, se::Stream* stream) {
-  se::DeviceMemory<float> null_device_ptr(nullptr);
+  se::DeviceMemory<ElemType> null_device_ptr(nullptr);
   auto output_buf = se::DeviceMemory<ElemType>(params->output);
   stream->ThenBatchNormalizationForward(
       se::DeviceMemory<ElemType>(params->common.operand),
@@ -161,6 +161,7 @@ template <typename ElemType>
 void RunCudnnBatchNormForwardTrainingImpl(
     CudnnBatchNormForwardTrainingParams* params, se::Stream* stream) {
   se::DeviceMemory<float> null_device_ptr(nullptr);
+  se::DeviceMemory<ElemType> null_elem_device_ptr(nullptr);
   auto output_data = se::DeviceMemory<ElemType>(params->output_data);
   stream->ThenBatchNormalizationForward(
       se::DeviceMemory<ElemType>(params->common.operand),
@@ -168,7 +169,7 @@ void RunCudnnBatchNormForwardTrainingImpl(
       params->offset,                          //
       /*estimated_mean=*/null_device_ptr,      //
       /*estimated_variance=*/null_device_ptr,  //
-      /*side_input=*/null_device_ptr,          //
+      /*side_input=*/null_elem_device_ptr,     //
       params->common.operand_desc,             //
       params->common.scale_offset_desc,        //
       params->common.epsilon,                  //
@@ -211,7 +212,7 @@ void RunCudnnBatchNormBackwardImpl(CudnnBatchNormBackwardParams* params,
 
 CudnnBatchNormConfig GetCudnnBatchNormConfig(const HloInstruction* instr,
                                              float epsilon,
-                                             int64 feature_index) {
+                                             int64_t feature_index) {
   CudnnBatchNormConfig config;
 
   config.output_shape = instr->shape().IsTuple()

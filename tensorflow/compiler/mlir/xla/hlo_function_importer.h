@@ -62,13 +62,25 @@ class HloFunctionImporter {
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
       mlir::OpBuilder* builder);
 
-  static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape);
+  static StatusOr<mlir::Operation*> ImportInstruction(
+      const xla::HloInstruction* instr,
+      const llvm::SmallVectorImpl<mlir::Value>& operands,
+      mlir::OpBuilder* builder);
 
+  static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape,
+                               llvm::StringRef attr_name = "minor_to_major");
+
+  // TODO(b/179166199): move this to attribute_importer.h.
+  // Converts XLA instruction source target pairs to MLIR attribute.
+  static mlir::NamedAttribute ConvertSourceTargetPairs(
+      const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
+          source_target_pairs,
+      mlir::Builder* builder);
+
+  // TODO(b/179166199): move this to attribute_importer.h.
   // Converts replica groups to attribute
-  //
-  // TODO(timshen): move this to attribute_importer.h.
   static mlir::NamedAttribute ConvertReplicaGroups(
-      const std::vector<ReplicaGroup>& replica_groups, mlir::Builder builder);
+      absl::Span<const ReplicaGroup> replica_groups, mlir::Builder* builder);
 
  private:
   HloFunctionImporter(mlir::ModuleOp module,
@@ -101,20 +113,27 @@ class HloFunctionImporter {
       mlir::OpBuilder* builder);
 
   // Imports an instruction.
-  StatusOr<mlir::Operation*> ImportInstruction(xla::HloInstruction* instruction,
-                                               mlir::OpBuilder* func_builder);
+  StatusOr<mlir::Operation*> ImportInstructionWithLayout(
+      const xla::HloInstruction* instruction,
+      const llvm::SmallVectorImpl<mlir::Value>& operands,
+      mlir::OpBuilder* func_builder);
   StatusOr<mlir::Operation*> ImportInstructionImpl(
-      HloInstruction* instruction, mlir::OpBuilder* func_builder);
+      const HloInstruction* instruction,
+      const llvm::SmallVectorImpl<mlir::Value>& operands,
+      mlir::OpBuilder* func_builder);
 
   // Gets the MLIR operand values from an HLO Instruction.
   StatusOr<llvm::SmallVector<mlir::Value, 4>> GetOperands(
-      xla::HloInstruction* instruction);
+      const xla::HloInstruction* instruction);
 
   // Converts xla Tensor type to the corresponding MLIR type.
   StatusOr<mlir::RankedTensorType> ConvertTensorType(const xla::Shape& shape);
 
+  // Converts an XLA shape/layout to the corresponding MLIR layout
+  StatusOr<mlir::Attribute> ConvertShapeToMlirLayout(const xla::Shape& shape);
+
   // Returns the output type of an HloInstruction.
-  StatusOr<mlir::Type> GetReturnType(xla::HloInstruction* instruction);
+  StatusOr<mlir::Type> GetReturnType(const xla::HloInstruction* instruction);
 
   // Takes a list of HloInstructions and generates the list of types used for
   // input, bypassing tuples to subsets.
@@ -122,7 +141,7 @@ class HloFunctionImporter {
                       llvm::SmallVectorImpl<mlir::Type>* types);
 
   // Returns the Mlir Value for the corresponding HloInstruction.
-  StatusOr<mlir::Value> GetMlirValue(xla::HloInstruction* instruction);
+  StatusOr<mlir::Value> GetMlirValue(const xla::HloInstruction* instruction);
 
   // Converts an XLA ComparisonDirection to the corresponding MLIR attribute.
   mlir::NamedAttribute ConvertComparisonDirection(
@@ -149,11 +168,6 @@ class HloFunctionImporter {
   // Converts channel handle to attribute
   mlir::NamedAttribute ConvertChannelHandle(const xla::ChannelHandle& channel);
 
-  // Converts XLA instruction source target pairs to MLIR attribute.
-  mlir::NamedAttribute ConvertSourceTargetPairs(
-      const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
-          source_target_pairs);
-
   mlir::MLIRContext* context_;
   mlir::ModuleOp module_;
   mlir::Builder* builder_;
@@ -162,7 +176,8 @@ class HloFunctionImporter {
   std::unordered_map<const xla::HloComputation*, mlir::FuncOp>* function_map_;
 
   // Mapping from HloInstructions to the associative MLIR values.
-  std::unordered_map<xla::HloInstruction*, mlir::Value> instruction_value_map_;
+  std::unordered_map<const xla::HloInstruction*, mlir::Value>
+      instruction_value_map_;
 };
 
 }  // namespace xla

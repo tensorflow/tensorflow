@@ -1,0 +1,13 @@
+op {
+  graph_op_name: "TPUReshardVariables"
+  visibility: HIDDEN
+  summary: "Op that reshards on-device TPU variables to specified state."
+  description: <<END
+Op that reshards on-device TPU variables to specified state. Internal use only.
+
+The sharding state is represented as the key of the compilation that generated
+the sharding/unsharding programs along with the main program. new_format_key
+specifies the desired state, and format_state_var is the current state of the
+variables.
+END
+}

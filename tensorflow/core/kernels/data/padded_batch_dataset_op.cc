@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/padded_batch_dataset_op.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -48,7 +49,7 @@ constexpr char kExhausted[] = "exhausted";
 
 class PaddedBatchDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 batch_size, bool drop_remainder,
+  Dataset(OpKernelContext* ctx, int64_t batch_size, bool drop_remainder,
           bool parallel_copy, std::vector<PartialTensorShape> padded_shapes,
           std::vector<Tensor> padding_values, const DatasetBase* input,
           int op_version)
@@ -63,7 +64,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         traceme_metadata_(
             {{"batch_size",
               strings::Printf("%lld", static_cast<long long>(batch_size))},
-             {"drop_remainder", drop_remainder ? "true" : "false"}}) {
+             {"drop_remainder", drop_remainder ? "true" : "false"},
+             {"parallel_copy", parallel_copy ? "true" : "false"}}) {
     input_->Ref();
 
     // NOTE(mrry): Currently we implement "batch up to" semantics. If we could
@@ -112,7 +114,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+    int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -229,16 +231,59 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
 
-      // Copy the retrieved batch elements into one output tensor per tuple
-      // component.
-      //
-      // NOTE(mrry): If the input or output sizes are statically known, we
-      // could potentially read the input values in-place into their
-      // respective slice locations. This would require a different GetNext()
-      // overload that supports zero-copy, and might make sense in an
-      // optimization pass.
+      TF_RETURN_IF_ERROR(CopyBatch(ctx, batch_elements, out_tensors));
+      *end_of_sequence = false;
+      return Status::OK();
+    }
+
+   protected:
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeKnownRatioNode(std::move(args), dataset()->batch_size_);
+    }
+
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      mutex_lock l(mu_);
+      if (input_impl_)
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
+      else
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kExhausted), ""));
+      return Status::OK();
+    }
+
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      mutex_lock l(mu_);
+      if (reader->Contains(full_name(kExhausted))) {
+        input_impl_.reset();
+      } else {
+        TF_RETURN_IF_ERROR(
+            dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+      }
+      return Status::OK();
+    }
+
+    TraceMeMetadata GetTraceMeMetadata() const override {
+      return dataset()->traceme_metadata_;
+    }
+
+   private:
+    // Copies the retrieved batch elements into one output tensor per tuple
+    // component.
+    //
+    // NOTE(mrry): If the input or output sizes are statically known, we could
+    // potentially read the input values in-place into their respective slice
+    // locations. This would require a different GetNext() overload that
+    // supports zero-copy, and might make sense in an optimization pass.
+    Status CopyBatch(IteratorContext* ctx,
+                     const std::vector<std::vector<Tensor>>& batch_elements,
+                     std::vector<Tensor>* out_tensors) {
+      static bool in_experiment =
+          GetExperiments().contains("parallelize_batch_copy");
       const size_t num_tuple_components = batch_elements[0].size();
-      const int64 num_batch_elements = batch_elements.size();
+      const int64_t num_batch_elements = batch_elements.size();
       for (size_t component_index = 0; component_index < num_tuple_components;
            ++component_index) {
         // 1. Determine the shape of the padded tensor.
@@ -254,7 +299,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
           }
         }
 
-        for (int64 i = 0; i < num_batch_elements; ++i) {
+        for (int64_t i = 0; i < num_batch_elements; ++i) {
           const TensorShape& element_shape =
               batch_elements[i][component_index].shape();
           // TODO(mrry): Perform this check in the shape function if
@@ -295,8 +340,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(batch_util::SetElementZero(
             &batch_component, dataset()->padding_values_[component_index]));
 
-        // Build the output tuple component by copying one slice
-        // from each input element in the batch.
+        // Build the output tuple component by copying one slice from each input
+        // element in the batch.
         TensorShape component_shape({});
         for (int i = 1; i < batch_component_shape.dims(); ++i) {
           component_shape.AddDim(batch_component_shape.dim_size(i));
@@ -316,66 +361,46 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
           }
           return Status::OK();
         };
-        BlockingCounter counter(num_batch_elements);
-        Status status;
-        mutex status_mu;
-        for (size_t i = 0; i < num_batch_elements; ++i) {
-          if (TF_PREDICT_FALSE(dataset()->parallel_copy_)) {
-            (*ctx->runner())(
-                [i, &status, &status_mu, &counter, &copy_element_fn]() {
-                  Status s = copy_element_fn(i);
-                  {
-                    mutex_lock l(status_mu);
-                    status.Update(s);
-                  }
-                  counter.DecrementCount();
-                });
-          } else {
-            status.Update(copy_element_fn(i));
-            counter.DecrementCount();
+
+        if (dataset()->parallel_copy_ ||
+            (in_experiment && (batch_component.AllocatedBytes() /
+                               num_batch_elements) >= (1 << 15))) {
+          BlockingCounter counter(num_batch_elements);
+          Status status;
+          mutex status_mu;
+          const auto num_threads = ctx->runner_threadpool_size();
+          const auto slice_size = num_batch_elements / num_threads;
+          int64_t offset = 0;
+          for (size_t i = 0; i < num_threads; ++i) {
+            int64_t length = slice_size;
+            // When the number of threads does not divide the number of elements
+            // evenly, the size of some slices is incremented to guarantee their
+            // sizes add up to the total number of elements.
+            if (i < num_batch_elements % num_threads) ++length;
+            (*ctx->runner())([offset, length, &status, &status_mu, &counter,
+                              &copy_element_fn]() {
+              for (size_t j = offset; j < offset + length; ++j) {
+                {
+                  Status s = copy_element_fn(j);
+                  mutex_lock l(status_mu);
+                  status.Update(s);
+                }
+                counter.DecrementCount();
+              }
+            });
+            offset += length;
+          }
+          counter.Wait();
+          TF_RETURN_IF_ERROR(status);
+        } else {
+          for (size_t i = 0; i < num_batch_elements; ++i) {
+            TF_RETURN_IF_ERROR(copy_element_fn(i));
           }
         }
-        counter.Wait();
-        TF_RETURN_IF_ERROR(status);
-      }
-      *end_of_sequence = false;
-      return Status::OK();
-    }
-
-   protected:
-    std::shared_ptr<model::Node> CreateNode(
-        IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeKnownRatioNode(std::move(args), dataset()->batch_size_);
-    }
-
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
-      mutex_lock l(mu_);
-      if (input_impl_)
-        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      else
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kExhausted), ""));
-      return Status::OK();
-    }
-
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
-      mutex_lock l(mu_);
-      if (reader->Contains(full_name(kExhausted))) {
-        input_impl_.reset();
-      } else {
-        TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       }
       return Status::OK();
     }
 
-    TraceMeMetadata GetTraceMeMetadata() const override {
-      return dataset()->traceme_metadata_;
-    }
-
-   private:
     mutex mu_;
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
   };
@@ -401,7 +426,7 @@ PaddedBatchDatasetOp::PaddedBatchDatasetOp(OpKernelConstruction* ctx)
 
 void PaddedBatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                        DatasetBase** output) {
-  int64 batch_size;
+  int64_t batch_size;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kBatchSize, &batch_size));
   OP_REQUIRES(ctx, batch_size > 0,
               errors::InvalidArgument("Batch size must be greater than zero."));

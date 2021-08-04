@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/mkl_layout_pass.h"
 
 #include <algorithm>
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -175,7 +176,6 @@ REGISTER_OP("QInt8Input").Output("o: qint8").SetIsStateful();
 REGISTER_OP("QUInt8Input").Output("o: quint8").SetIsStateful();
 REGISTER_OP("QInt32Input").Output("o: qint32").SetIsStateful();
 
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
 REGISTER_OP("BFloat16Input").Output("o: bfloat16").SetIsStateful();
 REGISTER_OP("BFloat16InputList")
     .Output("o: N * bfloat16")
@@ -185,7 +185,6 @@ REGISTER_OP("BFloat16Output2")
     .Input("i: bfloat16")
     .Input("i1: bfloat16")
     .SetIsStateful();
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
 
 /////////////////////////////////////////////////////////////////////
 //  Unit tests related to node merge optimization
@@ -797,11 +796,9 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithConv2D_Common_Input);
   }
 REGISTER_TEST(NodeMerge_PadWithConv2D_Common_InOutput, DT_FLOAT, Float32Input,
               Float32Output2);
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
 // TODO(nhasabni): Enable bfloat16 test when we enable the operator.
 REGISTER_TEST(NodeMerge_PadWithConv2D_Common_InOutput, DT_BFLOAT16,
               BFloat16Input, BFloat16Output2);
-#endif
 #undef REGISTER_TEST
 
 // Pad + Conv2D; padding is SAME
@@ -2451,11 +2448,9 @@ REGISTER_TEST_ALL_TYPES(Output_ControlEdge_PadWithFusedConv2D_Positive);
   }
 REGISTER_TEST(NodeMerge_PadWithFusedConv2D_Common_InOutput, DT_FLOAT,
               Float32Input, Float32Output2);
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
 // TODO(nhasabni): Enable bfloat16 test when we enable the operator.
 REGISTER_TEST(NodeMerge_PadWithFusedConv2D_Common_InOutput, DT_BFLOAT16,
               BFloat16Input, BFloat16Output2);
-#endif
 #undef REGISTER_TEST
 
 #define REGISTER_TEST(NAME, T, INPUT)                                                \
@@ -5160,8 +5155,23 @@ TEST_F(MklLayoutPassTest, BatchMatMulV2_Positive) {
             "A(Input);B(Input);C(_MklBatchMatMulV2)|A->C;B->C:1");
 }
 
-static void BM_MklLayoutRewritePass(int iters, int op_nodes) {
-  testing::StopTiming();
+TEST_F(MklLayoutPassTest, Einsum_Positive) {
+  InitGraph(
+      "node { name: 'B' op: 'Float32InputList'"
+      " attr { key: 'N'                value { i: 2 } }}"
+      "node { name: 'C' op: 'Einsum'"
+      " attr { key: 'equation'         value { s: '->' }}"
+      " attr { key: 'N'                value { i: 2 } }"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['B:0', 'B:1']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "B(Float32InputList);C(_MklEinsum)"
+            "|B->C;B:1->C:1");
+}
+
+static void BM_MklLayoutRewritePass(::testing::benchmark::State& state) {
+  int op_nodes = state.range(0);
+
   string s;
   for (int in = 0; in < 10; in++) {
     s += strings::Printf("node { name: 'in%04d' op: 'Input'}", in);
@@ -5176,22 +5186,20 @@ static void BM_MklLayoutRewritePass(int iters, int op_nodes) {
   }
 
   bool first = true;
-  while (iters > 0) {
+  const int N = graph->num_node_ids();
+  while (state.KeepRunningBatch(N)) {
+    state.PauseTiming();
     std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
     InitGraph(s, graph.get());
-    int N = graph->num_node_ids();
     if (first) {
-      testing::SetLabel(strings::StrCat("Per graph node.  Nodes: ", N));
+      state.SetLabel(strings::StrCat("Per graph node.  Nodes: ", N));
       first = false;
     }
     {
-      testing::StartTiming();
+      state.ResumeTiming();
       std::unique_ptr<Graph> ug(graph.get());
       RunMklLayoutRewritePass(&ug);
-      testing::StopTiming();
     }
-    iters -= N;  // Our benchmark units are individual graph nodes,
-                 // not whole graphs
   }
 }
 BENCHMARK(BM_MklLayoutRewritePass)->Arg(1000)->Arg(10000);

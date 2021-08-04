@@ -1,7 +1,7 @@
 path: "tensorflow.optimizers.Ftrl"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.optimizer_v2.ftrl.Ftrl\'>"
-  is_instance: "<class \'tensorflow.python.keras.optimizer_v2.optimizer_v2.OptimizerV2\'>"
+  is_instance: "<class \'keras.optimizer_v2.ftrl.Ftrl\'>"
+  is_instance: "<class \'keras.optimizer_v2.optimizer_v2.OptimizerV2\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -34,7 +34,7 @@ tf_class {
   }
   member_method {
     name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'trainable\', \'synchronization\', \'aggregation\'], varargs=None, keywords=None, defaults=[\'None\', \'zeros\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'trainable\', \'synchronization\', \'aggregation\'], varargs=None, keywords=None, defaults=[\'None\', \'zeros\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregationV2.NONE\'], "
   }
   member_method {
     name: "apply_gradients"

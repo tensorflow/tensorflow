@@ -36,7 +36,7 @@ xla::XlaOp PrependZerosInMajorDims(xla::XlaOp x,
 // Returns a integer scalar constant of 'type' with 'value'.
 // If 'type' is complex, returns a real value with zero imaginary component.
 xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
-                          int64 value);
+                          int64_t value);
 
 // Returns the concatenation of `xs` and `ys`.
 std::vector<int64> ConcatVectors(absl::Span<const int64> xs,

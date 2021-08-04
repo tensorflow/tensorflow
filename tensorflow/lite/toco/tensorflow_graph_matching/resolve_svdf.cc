@@ -66,11 +66,11 @@ void FilterPartitionedConstNodes(
       }
     }
   }
-  sort(const_node_parts->begin(), const_node_parts->end(),
-       [](const NodeDef* a, const NodeDef* b) {
-         return (a->name().compare(b->name()) < 0 &&
-                 (a->name().size() < b->name().size()));
-       });
+  std::sort(const_node_parts->begin(), const_node_parts->end(),
+            [](const NodeDef* a, const NodeDef* b) {
+              return (a->name().compare(b->name()) < 0 &&
+                      (a->name().size() < b->name().size()));
+            });
 }
 
 }  // namespace

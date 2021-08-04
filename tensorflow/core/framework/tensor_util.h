@@ -143,15 +143,14 @@ struct CopyHelper<Eigen::half> {
   template <typename SrcIter>
   static void ToArray(SrcIter begin, SrcIter end, Eigen::half* dst) {
     std::transform(begin, end, dst, [](int x) -> Eigen::half {
-      Eigen::half h;
-      h.x = static_cast<uint16>(x);
-      return h;
+      return Eigen::numext::bit_cast<Eigen::half>(static_cast<uint16>(x));
     });
   }
   template <typename SrcIter, typename DstIter>
   static void FromArray(SrcIter begin, SrcIter end, DstIter dst) {
-    std::transform(begin, end, dst,
-                   [](Eigen::half h) -> int { return static_cast<int>(h.x); });
+    std::transform(begin, end, dst, [](Eigen::half h) -> int {
+      return static_cast<int>(Eigen::numext::bit_cast<uint16>(h));
+    });
   }
 };
 
@@ -160,15 +159,13 @@ struct CopyHelper<bfloat16> {
   template <typename SrcIter>
   static void ToArray(SrcIter begin, SrcIter end, bfloat16* dst) {
     std::transform(begin, end, dst, [](int x) -> bfloat16 {
-      bfloat16 bf16;
-      bf16.value = static_cast<uint16>(x);
-      return bf16;
+      return Eigen::numext::bit_cast<bfloat16>(static_cast<uint16>(x));
     });
   }
   template <typename SrcIter, typename DstIter>
   static void FromArray(SrcIter begin, SrcIter end, DstIter dst) {
     std::transform(begin, end, dst, [](bfloat16 bf16) -> int {
-      return static_cast<int>(bf16.value);
+      return static_cast<int>(Eigen::numext::bit_cast<uint16>(bf16));
     });
   }
 };
@@ -314,12 +311,12 @@ CreateTensorProto(const std::vector<Type>& values,
 // most the size of the original tensor proto divided by min_compression_ratio.
 //
 // Returns true if the tensor was compressed.
-bool CompressTensorProtoInPlace(int64 min_num_elements,
+bool CompressTensorProtoInPlace(int64_t min_num_elements,
                                 float min_compression_ratio,
                                 TensorProto* tensor);
 
 inline bool CompressTensorProtoInPlace(TensorProto* tensor) {
-  static const int64 kDefaultMinNumElements = 64;
+  static const int64_t kDefaultMinNumElements = 64;
   static const float kDefaultMinCompressionRatio = 2.0f;
   return CompressTensorProtoInPlace(kDefaultMinNumElements,
                                     kDefaultMinCompressionRatio, tensor);

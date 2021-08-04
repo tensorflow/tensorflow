@@ -618,6 +618,67 @@ def dynamic_rnn(cell,
   Raises:
     TypeError: If `cell` is not an instance of RNNCell.
     ValueError: If inputs is None or an empty list.
+
+  @compatibility(TF2)
+  `tf.compat.v1.nn.dynamic_rnn` is not compatible with eager execution and
+  `tf.function`. Please use `tf.keras.layers.RNN` instead for TF2 migration.
+  Take LSTM as an example, you can instantiate a `tf.keras.layers.RNN` layer
+  with `tf.keras.layers.LSTMCell`, or directly via `tf.keras.layers.LSTM`. Once
+  the keras layer is created, you can get the output and states by calling
+  the layer with input and states. Please refer to [this
+  guide](https://www.tensorflow.org/guide/keras/rnn) for more details about
+  Keras RNN. You can also find more details about the difference and comparison
+  between Keras RNN and TF compat v1 rnn in [this
+  document](https://github.com/tensorflow/community/blob/master/rfcs/20180920-unify-rnn-interface.md)
+
+  #### Structural Mapping to Native TF2
+
+  Before:
+
+  ```python
+  # create 2 LSTMCells
+  rnn_layers = [tf.compat.v1.nn.rnn_cell.LSTMCell(size) for size in [128, 256]]
+
+  # create a RNN cell composed sequentially of a number of RNNCells
+  multi_rnn_cell = tf.compat.v1.nn.rnn_cell.MultiRNNCell(rnn_layers)
+
+  # 'outputs' is a tensor of shape [batch_size, max_time, 256]
+  # 'state' is a N-tuple where N is the number of LSTMCells containing a
+  # tf.nn.rnn_cell.LSTMStateTuple for each cell
+  outputs, state = tf.compat.v1.nn.dynamic_rnn(cell=multi_rnn_cell,
+                                               inputs=data,
+                                               dtype=tf.float32)
+  ```
+
+  After:
+
+  ```python
+  # RNN layer can take a list of cells, which will then stack them together.
+  # By default, keras RNN will only return the last timestep output and will not
+  # return states. If you need whole time sequence output as well as the states,
+  # you can set `return_sequences` and `return_state` to True.
+  rnn_layer = tf.keras.layers.RNN([tf.keras.layers.LSTMCell(128),
+                                   tf.keras.layers.LSTMCell(256)],
+                                  return_sequences=True,
+                                  return_state=True)
+  outputs, output_states = rnn_layer(inputs, states)
+  ```
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name          | TF2 Arg Name    | Note                             |
+  | :-------------------- | :-------------- | :------------------------------- |
+  | `cell`                | `cell`          | In the RNN layer constructor     |
+  | `inputs`              | `inputs`        | In the RNN layer `__call__`      |
+  | `sequence_length`     | Not used        | Adding masking layer before RNN  :
+  :                       :                 : to achieve the same result.      :
+  | `initial_state`       | `initial_state` | In the RNN layer `__call__`      |
+  | `dtype`               | `dtype`         | In the RNN layer constructor     |
+  | `parallel_iterations` | Not supported   |                                  |
+  | `swap_memory`         | Not supported   |                                  |
+  | `time_major`          | `time_major`    | In the RNN layer constructor     |
+  | `scope`               | Not supported   |                                  |
+  @end_compatibility
   """
   rnn_cell_impl.assert_like_rnncell("cell", cell)
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
+#include "tensorflow/c/eager/graph_function.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -320,27 +321,6 @@ class GraphOperation : public TracingOperation {
   string device_name_;
 };
 
-// GraphFunction is a thin wrapper over a TF_Function.
-struct GraphFunction : public AbstractFunction {
-  TF_Function* func = nullptr;
-  GraphFunction() : AbstractFunction(kGraph) {}
-  explicit GraphFunction(TF_Function* func)
-      : AbstractFunction(kGraph), func(func) {}
-  ~GraphFunction() override {
-    if (func) TF_DeleteFunction(func);
-  }
-
-  Status GetFunctionDef(FunctionDef** fdef) override {
-    *fdef = &func->fdef;
-    return Status::OK();
-  }
-
-  // For LLVM style RTTI.
-  static bool classof(const AbstractFunction* ptr) {
-    return ptr->getKind() == kGraph;
-  }
-};
-
 // GraphContext wraps a TF_Graph modeling a single function and manages the
 // "execution" of operation, i.e. adding them to the function.
 class GraphContext : public TracingContext {
@@ -387,7 +367,6 @@ class GraphContext : public TracingContext {
   }
 
   Status Finalize(OutputList* outputs, AbstractFunction** f) override {
-    std::unique_ptr<GraphFunction> func(new GraphFunction);
     std::vector<TF_Output> graph_outputs;
     graph_outputs.reserve(outputs->outputs.size());
     for (auto* abstract_output : outputs->outputs) {
@@ -401,13 +380,14 @@ class GraphContext : public TracingContext {
     }
 
     auto s = TF_NewStatus();
-    func->func = TF_GraphToFunction(graph_.get(), name_.data(), 0, -1, nullptr,
-                                    inputs_.size(), inputs_.data(),
-                                    graph_outputs.size(), graph_outputs.data(),
-                                    nullptr, nullptr, name_.data(), s);
+    auto func = TF_GraphToFunction(graph_.get(), name_.data(), 0, -1, nullptr,
+                                   inputs_.size(), inputs_.data(),
+                                   graph_outputs.size(), graph_outputs.data(),
+                                   nullptr, nullptr, name_.data(), s);
+    *f = new GraphFunction(std::move(func->fdef));
+    TF_DeleteFunction(func);
     TF_RETURN_IF_ERROR(StatusFromTF_Status(s));
     TF_DeleteStatus(s);
-    *f = func.release();
     return Status::OK();
   }
 

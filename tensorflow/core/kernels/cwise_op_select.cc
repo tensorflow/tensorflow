@@ -254,6 +254,8 @@ TF_CALL_ALL_TYPES(REGISTER_SELECT);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
 // Registration of the GPU implementations.
 #define REGISTER_SELECT_GPU(type)                                    \
   REGISTER_KERNEL_BUILDER(                                           \
@@ -273,6 +275,25 @@ REGISTER_SELECT_GPU(complex64);
 REGISTER_SELECT_GPU(complex128);
 
 #undef REGISTER_SELECT_GPU
+
+#else
+
+#define REGISTER_SELECT_GPU(type)                                  \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("Select").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      SelectOp<GPUDevice, type>);
+
+REGISTER_SELECT_GPU(bool);
+REGISTER_SELECT_GPU(Eigen::half);
+REGISTER_SELECT_GPU(float);
+REGISTER_SELECT_GPU(double);
+REGISTER_SELECT_GPU(int32);
+REGISTER_SELECT_GPU(int64);
+REGISTER_SELECT_GPU(complex64);
+REGISTER_SELECT_GPU(complex128);
+
+#undef REGISTER_SELECT_GPU
+#endif
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -369,7 +390,7 @@ struct BatchSelectFunctor<CPUDevice, T> {
     const T* t = then_flat_outer_dims.data();
     const T* e = else_flat_outer_dims.data();
 
-    auto work = [batch_size, output, c, t, e](int64 start, int64 end) {
+    auto work = [batch_size, output, c, t, e](int64_t start, int64_t end) {
       for (size_t i = start; i < end; ++i) {
         size_t offset = i * batch_size;
         port::prefetch<port::PREFETCH_HINT_NTA>(

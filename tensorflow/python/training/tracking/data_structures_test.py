@@ -58,7 +58,7 @@ class ListTests(test.TestCase):
 
   def testCallNotImplemented(self):
     with self.assertRaisesRegex(TypeError, "not callable"):
-      data_structures.List()(1.)
+      data_structures.List()(1.)  # pylint: disable=not-callable
 
   def testNoPop(self):
     with self.assertRaises(AttributeError):
@@ -257,7 +257,7 @@ class ListWrapperTest(test.TestCase):
 
   def testNotHashable(self):
     with self.assertRaises(TypeError):
-      hash(data_structures.ListWrapper())
+      hash(data_structures.ListWrapper())  # pylint: disable=no-value-for-parameter
 
   def testDelItem(self):
     l = data_structures.ListWrapper([1, 2, 3, [4]])
@@ -347,7 +347,7 @@ class MappingTests(test.TestCase):
       mapping["a"] = data_structures.List()
     self.assertIs(original, mapping["a"])
     with self.assertRaises(AttributeError):
-      del mapping["a"]
+      del mapping["a"]  # pylint: disable=unsupported-delete-operation
     mapping.update(b=data_structures.Mapping())
     with self.assertRaises(ValueError):
       mapping.update({"b": data_structures.Mapping()})
@@ -613,6 +613,14 @@ class TupleTests(test.TestCase, parameterized.TestCase):
     self.assertIs(
         v, m._checkpoint_dependencies[0].ref._checkpoint_dependencies[0].ref)
     self.assertEqual(2, m.nt.y)
+
+  def testNamedTupleConflictingAttributes(self):
+    named = collections.namedtuple("Named", ("x", "weights"))
+    v = variables.Variable(2)
+    nt = named(x=v, weights=3)
+    m = module.Module()
+    m.nt = nt
+    self.assertEqual(3, m.nt.weights)
 
   def testNamedSubclassing(self):
     named = collections.namedtuple("Named", ("x", "y"))

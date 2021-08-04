@@ -10,6 +10,7 @@ load(
 load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 def tflite_copts():
     """Defines common compile time flags for TFLite libraries."""
@@ -62,9 +63,6 @@ def tflite_copts_warnings():
         ],
         "//conditions:default": [
             "-Wall",
-            # TensorFlow is C++14 at the moment. This flag ensures that we warn
-            # on any code that isn't C++14. Not supported by MSVC.
-            "-Wc++14-compat",
         ],
     })
 
@@ -85,6 +83,7 @@ def tflite_linkopts_unstripped():
     # negligible, and created potential compatibility problems.
     return select({
         clean_dep("//tensorflow:android"): [
+            "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.
             "-Wl,--no-export-dynamic",  # Only inc syms referenced by dynamic obj.
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
@@ -106,6 +105,7 @@ def tflite_jni_linkopts_unstripped():
     # negligible, and created potential compatibility problems.
     return select({
         clean_dep("//tensorflow:android"): [
+            "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
@@ -115,12 +115,8 @@ def tflite_jni_linkopts_unstripped():
 def tflite_symbol_opts():
     """Defines linker flags whether to include symbols or not."""
     return select({
-        clean_dep("//tensorflow:android"): [
-            "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.
-        ],
-        "//conditions:default": [],
-    }) + select({
         clean_dep("//tensorflow:debug"): [],
+        clean_dep("//tensorflow/lite:tflite_keep_symbols"): [],
         "//conditions:default": [
             "-s",  # Omit symbol table, for all non debug builds
         ],
@@ -145,7 +141,8 @@ def tflite_jni_binary(
         testonly = 0,
         deps = [],
         tags = [],
-        srcs = []):
+        srcs = [],
+        visibility = None):  # 'None' means use the default visibility.
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + select({
         clean_dep("//tensorflow:macos"): [
@@ -168,6 +165,7 @@ def tflite_jni_binary(
         tags = tags,
         linkopts = linkopts,
         testonly = testonly,
+        visibility = visibility,
     )
 
 def tflite_cc_shared_object(
@@ -289,7 +287,7 @@ def json_to_tflite(name, src, out):
 
 # This is the master list of generated examples that will be made into tests. A
 # function called make_XXX_tests() must also appear in generate_examples.py.
-# Disable a test by adding it to the blacklists specified in
+# Disable a test by adding it to the denylists specified in
 # generated_test_models_failing().
 def generated_test_models():
     return [
@@ -408,8 +406,6 @@ def generated_test_models():
         "transpose",
         "transpose_conv",
         "unfused_gru",
-        "unidirectional_sequence_lstm",
-        "unidirectional_sequence_rnn",
         "unique",
         "unpack",
         "unroll_batch_matmul",
@@ -430,8 +426,12 @@ def generated_test_models_failing(conversion_mode):
       List of failing test models for the conversion mode.
     """
     if conversion_mode == "toco-flex":
+        # These tests mean to fuse multiple TF ops to TFLite fused RNN & LSTM
+        # ops (e.g. LSTM, UnidirectionalSequentceLSTM) with some semantic
+        # changes (becoming stateful). We have no intention to make these
+        # work in Flex.
         return [
-            "lstm",  # TODO(b/117510976): Restore when lstm flex conversion works.
+            "lstm",
             "unidirectional_sequence_lstm",
             "unidirectional_sequence_rnn",
         ]
@@ -489,6 +489,11 @@ def common_test_tags_for_generated_models(conversion_mode, failing):
       tags for the failing generated model tests.
     """
     tags = []
+
+    # Forward-compat coverage testing is largely redundant, and contributes
+    # to coverage test bloat.
+    if conversion_mode == "forward-compat":
+        tags.append("nozapfhahn")
 
     if failing:
         return ["notap", "manual"]
@@ -833,7 +838,6 @@ def tflite_custom_cc_library(
         name = name,
         srcs = real_srcs,
         hdrs = [
-            # TODO(b/161323860) replace this by generated header.
             "//tensorflow/lite:create_op_resolver.h",
         ],
         copts = tflite_copts(),
@@ -854,7 +858,9 @@ def tflite_custom_android_library(
         srcs = [],
         deps = [],
         custom_package = "org.tensorflow.lite",
-        visibility = ["//visibility:private"]):
+        visibility = ["//visibility:private"],
+        include_xnnpack_delegate = True,
+        include_nnapi_delegate = True):
     """Generates a tflite Android library, stripping off unused operators.
 
     Note that due to a limitation in the JNI Java wrapper, the compiled TfLite shared binary
@@ -871,8 +877,16 @@ def tflite_custom_android_library(
         custom_package: Name of the Java package. It is required by android_library in case
             the Java source file can't be inferred from the directory where this rule is used.
         visibility: Visibility setting for the generated target. Default to private.
+        include_xnnpack_delegate: Whether to include the XNNPACK delegate or not.
+        include_nnapi_delegate: Whether to include the NNAPI delegate or not.
     """
     tflite_custom_cc_library(name = "%s_cc" % name, models = models, srcs = srcs, deps = deps, visibility = visibility)
+
+    delegate_deps = []
+    if include_nnapi_delegate:
+        delegate_deps.append("//tensorflow/lite/delegates/nnapi/java/src/main/native")
+    if include_xnnpack_delegate:
+        delegate_deps.append("//tensorflow/lite/delegates/xnnpack:xnnpack_delegate")
 
     # JNI wrapper expects a binary file called `libtensorflowlite_jni.so` in java path.
     tflite_jni_binary(
@@ -882,7 +896,7 @@ def tflite_custom_android_library(
         deps = [
             "//tensorflow/lite/java/src/main/native:native_framework_only",
             ":%s_cc" % name,
-        ],
+        ] + delegate_deps,
     )
 
     native.cc_library(
@@ -894,9 +908,9 @@ def tflite_custom_android_library(
     android_library(
         name = name,
         manifest = "//tensorflow/lite/java:AndroidManifest.xml",
+        srcs = ["//tensorflow/lite/java:java_srcs"],
         deps = [
             ":%s_jni" % name,
-            "//tensorflow/lite/java:tensorflowlite_java",
             "@org_checkerframework_qual",
         ],
         custom_package = custom_package,
@@ -965,3 +979,67 @@ def tflite_custom_c_library(
         ],
         **kwargs
     )
+
+def tflite_combine_cc_tests(
+        name,
+        deps_conditions,
+        extra_cc_test_tags = [],
+        extra_build_test_tags = [],
+        **kwargs):
+    """Combine all certain cc_tests into a single cc_test and a build_test.
+
+    Args:
+      name: the name of the combined cc_test.
+      deps_conditions: the list of deps that those cc_tests need to have in
+          order to be combined.
+      extra_cc_test_tags: the list of extra tags appended to the created
+          combined cc_test.
+      extra_build_test_tags: the list of extra tags appended to the created
+          corresponding build_test for the combined cc_test.
+      **kwargs: kwargs to pass to the cc_test rule of the test suite.
+    """
+    combined_test_srcs = {}
+    combined_test_deps = {}
+    for r in native.existing_rules().values():
+        # We only include cc_test.
+        if not r["kind"] == "cc_test":
+            continue
+
+        # Tests with data, args or special build option are not counted.
+        if r["data"] or r["args"] or r["copts"] or r["defines"] or \
+           r["includes"] or r["linkopts"] or r["additional_linker_inputs"]:
+            continue
+
+        # We only consider a single-src-file unit test.
+        if len(r["srcs"]) > 1:
+            continue
+
+        dep_attr = r["deps"]
+        if type(dep_attr) != type(()) and type(dep_attr) != type([]):
+            # Attributes based on select() is not supported for simplicity.
+            continue
+
+        # The test has to depend on :test_main
+        if not any([v in deps_conditions for v in dep_attr]):
+            continue
+
+        combined_test_srcs.update({s: True for s in r["srcs"]})
+        combined_test_deps.update({d: True for d in r["deps"]})
+
+    if combined_test_srcs:
+        native.cc_test(
+            name = name,
+            size = "large",
+            srcs = list(combined_test_srcs),
+            tags = ["manual", "notap"] + extra_cc_test_tags,
+            deps = list(combined_test_deps),
+            **kwargs
+        )
+        build_test(
+            name = "%s_build_test" % name,
+            targets = [":%s" % name],
+            tags = [
+                "manual",
+                "tflite_portable_build_test",
+            ] + extra_build_test_tags,
+        )

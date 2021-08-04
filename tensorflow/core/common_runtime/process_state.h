@@ -81,6 +81,7 @@ class ProcessState : public ProcessStateInterface {
   ProcessState();
   virtual ~ProcessState() {}
   friend class GPUProcessState;
+  friend class PluggableDeviceProcessState;
 
   // If these flags need to be runtime configurable consider adding
   // them to ConfigProto.
@@ -145,7 +146,7 @@ class RecordingAllocator : public Allocator {
     return a_->AllocatedSize(p);
   }
   absl::optional<AllocatorStats> GetStats() override { return a_->GetStats(); }
-  void ClearStats() override { a_->ClearStats(); }
+  bool ClearStats() override { return a_->ClearStats(); }
   ProcessState::MDMap* mm_;  // not owned
   Allocator* a_;             // not owned
   ProcessState::MemDesc md_;

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
@@ -34,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 
@@ -125,7 +128,7 @@ static OwningModuleRef FlatBufferFileToMlirTrans(
       source_mgr->getMemoryBuffer(source_mgr->getMainFileID());
   std::string error;
   auto loc =
-      mlir::FileLineColLoc::get(input->getBufferIdentifier(), 0, 0, context);
+      mlir::FileLineColLoc::get(context, input->getBufferIdentifier(), 0, 0);
 
   // Parses input/output names from command line options.
   std::vector<std::string> inputs;
@@ -158,9 +161,13 @@ static LogicalResult MlirToFlatBufferFileTranslateFunction(
     op_or_arg_name_mapper =
         std::make_unique<tensorflow::OpOrArgLocNameMapper>();
   }
-  if (tflite::MlirToFlatBufferTranslateFunction(
-          module, &serialized_flatbuffer, emit_builtin_tflite_ops,
-          emit_select_tf_ops, emit_custom_ops, op_or_arg_name_mapper.get()))
+  tflite::FlatbufferExportOptions options;
+  options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+  options.emit_custom_ops = emit_custom_ops;
+  options.emit_select_tf_ops = emit_select_tf_ops;
+  options.op_or_arg_name_mapper = op_or_arg_name_mapper.get();
+  if (!tflite::MlirToFlatBufferTranslateFunction(module, options,
+                                                 &serialized_flatbuffer))
     return mlir::failure();
 
   output << serialized_flatbuffer;
@@ -180,7 +187,7 @@ static TranslateFromMLIRRegistration MLIRToFlatBufferTranslate(
     "mlir-to-tflite-flatbuffer", MlirToFlatBufferFileTranslateFunction,
     [](DialectRegistry& registry) {
       registry.insert<quant::QuantizationDialect>();
-      registry.insert<TF::TensorFlowDialect>();
+      mlir::RegisterAllTensorFlowDialects(registry);
       registry.insert<TFL::TensorFlowLiteDialect>();
       registry.insert<StandardOpsDialect>();
     });

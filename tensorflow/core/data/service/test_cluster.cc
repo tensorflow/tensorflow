@@ -15,27 +15,23 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/test_cluster.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/data/service/server_lib.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
-
 namespace {
-const char kProtocol[] = "grpc+local";
-
-// Parse the address from a string in the form "<protocol>://<address>".
-Status AddressFromTarget(absl::string_view target, std::string* address) {
-  std::vector<std::string> parts = absl::StrSplit(target, "://");
-  if (parts.size() != 2) {
-    return errors::InvalidArgument("target ", target, " split into ",
-                                   parts.size(), " parts, not 2");
-  }
-  *address = parts[1];
-  return Status::OK();
-}
+const char kProtocol[] = "grpc";
 }  // namespace
 
 TestCluster::TestCluster(int num_workers) : num_workers_(num_workers) {}
@@ -47,7 +43,6 @@ Status TestCluster::Initialize() {
   }
   initialized_ = true;
   experimental::DispatcherConfig config;
-  config.set_port(0);
   config.set_protocol(kProtocol);
   TF_RETURN_IF_ERROR(NewDispatchServer(config, dispatcher_));
   TF_RETURN_IF_ERROR(dispatcher_->Start());
@@ -63,7 +58,6 @@ Status TestCluster::Initialize() {
 Status TestCluster::AddWorker() {
   std::unique_ptr<WorkerGrpcDataServer> worker;
   experimental::WorkerConfig config;
-  config.set_port(0);
   config.set_protocol(kProtocol);
   config.set_dispatcher_address(dispatcher_address_);
   config.set_worker_address("localhost:%port%");
@@ -74,12 +68,26 @@ Status TestCluster::AddWorker() {
   return Status::OK();
 }
 
-std::string TestCluster::DispatcherAddress() { return dispatcher_address_; }
+std::string TestCluster::DispatcherAddress() const {
+  return dispatcher_address_;
+}
 
-std::string TestCluster::WorkerAddress(int index) {
+std::string TestCluster::WorkerAddress(int index) const {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, num_workers_);
+  DCHECK_LT(index, worker_addresses_.size());
   return worker_addresses_[index];
+}
+
+void TestCluster::StopWorker(size_t index) {
+  DCHECK_GE(index, 0);
+  DCHECK_LT(index, worker_addresses_.size());
+  workers_[index]->Stop();
+}
+
+void TestCluster::StopWorkers() {
+  for (std::unique_ptr<WorkerGrpcDataServer>& worker : workers_) {
+    worker->Stop();
+  }
 }
 
 }  // namespace data

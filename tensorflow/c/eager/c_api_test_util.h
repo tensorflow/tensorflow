@@ -16,6 +16,9 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_
 
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
@@ -53,6 +56,27 @@ TFE_TensorHandle* TestTensorHandleWithDimsFloat(TFE_Context* ctx, float data[],
 TFE_TensorHandle* TestTensorHandleWithDimsInt(TFE_Context* ctx, int data[],
                                               int64_t dims[], int num_dims);
 
+// Return a tensor handle with given type, values and dimensions.
+template <class T, TF_DataType datatype>
+TFE_TensorHandle* TestTensorHandleWithDims(TFE_Context* ctx, const T* data,
+                                           const int64_t* dims, int num_dims) {
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* t = TFE_AllocateHostTensor(ctx, datatype, dims, num_dims, status);
+  memcpy(TF_TensorData(t), data, TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
+// Return a scalar tensor handle with given values.
+template <class T, TF_DataType datatype>
+TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, const T value) {
+  T data[] = {value};
+  return TestTensorHandleWithDims<T, datatype>(ctx, data, nullptr, 0);
+}
+
 // Return a tensor handle containing a 100x100 matrix of floats
 TFE_TensorHandle* TestMatrixTensorHandle100x100(TFE_Context* ctx);
 
@@ -79,6 +103,22 @@ TFE_Op* IdentityOp(TFE_Context* ctx, TFE_TensorHandle* a);
 // Return a shape op fetching the shape of `a`.
 TFE_Op* ShapeOp(TFE_Context* ctx, TFE_TensorHandle* a);
 
+// Return an allreduce op adding up input tensor `in` from `group_size` workers.
+TFE_Op* AllReduceOp(TFE_Context* ctx, TFE_TensorHandle* in, int group_size);
+
+// Return a SendOp op `op_name` with send input tensor `in` and attributes
+// `send_device`, `recv_device`, and `send_device_incarnation` set.
+TFE_Op* SendOp(TFE_Context* ctx, TFE_TensorHandle* in,
+               const std::string& op_name, const std::string& send_device,
+               const std::string& recv_device,
+               tensorflow::uint64 send_device_incarnation);
+
+// Return a RecvOp op `op_name` with the attributes `send_device`,
+// `recv_device`, and `send_device_incarnation` set.
+TFE_Op* RecvOp(TFE_Context* ctx, const std::string& op_name,
+               const std::string& send_device, const std::string& recv_device,
+               tensorflow::uint64 send_device_incarnation);
+
 // Return an 1-D INT32 tensor containing a single value 1.
 TFE_TensorHandle* TestAxisTensorHandle(TFE_Context* ctx);
 
@@ -98,5 +138,13 @@ tensorflow::ServerDef GetServerDef(const tensorflow::string& job_name,
 
 // Create a ServerDef with job name "localhost" and add `num_tasks` tasks in it.
 tensorflow::ServerDef GetServerDef(int num_tasks);
+
+// Create a multi-client ServerDef with the given `job_name`, add `num_tasks`
+// tasks and `num_virtual_gpus` virtual GPUs in it. Enable fetching of remote
+// devices during startup based on `fetch_remote_devices`.
+tensorflow::ServerDef GetMultiClientServerDef(const std::string& job_name,
+                                              int num_tasks,
+                                              bool fetch_remote_devices = false,
+                                              int num_virtual_gpus = 0);
 
 #endif  // TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_

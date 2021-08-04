@@ -59,6 +59,7 @@ class GrpcDataServerBase {
   // Starts the service. This will be called after building the service, so
   // bound_port() will return the actual bound port.
   virtual Status StartServiceInternal() = 0;
+  virtual void StopServiceInternal() {}
 
   int bound_port() { return bound_port_; }
 
@@ -105,6 +106,7 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
  protected:
   void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) override;
   Status StartServiceInternal() override;
+  void StopServiceInternal() override;
 
  private:
   const experimental::WorkerConfig config_;

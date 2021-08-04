@@ -20,6 +20,7 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -243,12 +244,15 @@ class TransferManager {
   virtual StatusOr<Shape> ChooseCompactLayoutForShape(
       const Shape& host_shape) const;
 
+  typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
+
   // Allocates a ScopedShapedBuffer which can hold data with the given on-host
   // shape. The on-device shape may be different as indicated by
   // HostShapeToDeviceShape.
   StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
       const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
-      int device_ordinal);
+      int device_ordinal,
+      DeviceShapeRepresentationFn shape_representation_fn = nullptr);
 
   // The given ShapedBuffer holds a handle to allocated memory, but it is not
   // in the general case legal to immediately copy or access that allocated
@@ -309,13 +313,13 @@ class TransferManager {
   // size is the size to transfer to destination in bytes.
   virtual Status TransferBufferFromDevice(se::Stream* stream,
                                           const se::DeviceMemoryBase& source,
-                                          int64 size, void* destination);
+                                          int64_t size, void* destination);
 
   // Transfer a memory block of the given size from 'source' buffer to the given
   // destination of the device.
   //
   // size is the size to transfer from source in bytes.
-  virtual Status TransferBufferToDevice(se::Stream* stream, int64 size,
+  virtual Status TransferBufferToDevice(se::Stream* stream, int64_t size,
                                         const void* source,
                                         se::DeviceMemoryBase* destination);
 
@@ -332,7 +336,8 @@ class TransferManager {
   };
 
   // Map from platform kind to transfer manager singleton.
-  static std::map<se::Platform::Id, State>* GetPlatformTransferManagers();
+  static absl::flat_hash_map<se::Platform::Id, State>*
+  GetPlatformTransferManagers();
 };
 
 }  // namespace xla

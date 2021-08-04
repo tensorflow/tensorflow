@@ -13,15 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <map>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #if GOOGLE_CUDA
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime.h"
+#include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
 #endif  // GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/direct_session.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -36,8 +40,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
@@ -46,10 +50,13 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
+// TODO(b/186367334)
+#define CUPTI_NVBUG_3299481_WAR (10000 <= CUDA_VERSION && CUDA_VERSION < 11000)
+
 namespace tensorflow {
 namespace profiler {
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 extern std::unique_ptr<ProfilerInterface> CreateGpuTracer(
     const ProfileOptions& options);
 std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
@@ -134,17 +141,17 @@ TEST_F(DeviceTracerTest, StopBeforeStart) {
 TEST_F(DeviceTracerTest, CollectBeforeStart) {
   auto tracer = CreateGpuTracer();
   if (!tracer) return;
-  RunMetadata run_metadata;
-  TF_EXPECT_OK(tracer->CollectData(&run_metadata));
-  EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 0);
+  XSpace space;
+  TF_EXPECT_OK(tracer->CollectData(&space));
+  EXPECT_EQ(space.planes_size(), 0);
 }
 
 TEST_F(DeviceTracerTest, CollectBeforeStop) {
   auto tracer = CreateGpuTracer();
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Start());
-  RunMetadata run_metadata;
-  Status status = tracer->CollectData(&run_metadata);
+  XSpace space;
+  Status status = tracer->CollectData(&space);
   ExpectFailure(status, tensorflow::error::FAILED_PRECONDITION);
   TF_EXPECT_OK(tracer->Stop());
 }
@@ -190,34 +197,6 @@ TEST_F(DeviceTracerTest, RunWithTracer) {
   EXPECT_FLOAT_EQ(5.0, mat(0, 0));
 }
 
-TEST_F(DeviceTracerTest, TraceToStepStatsCollector) {
-  auto tracer = CreateGpuTracer();
-  if (!tracer) return;
-
-  Initialize({3, 2, -1, 0});
-  auto session = CreateSession();
-  ASSERT_TRUE(session != nullptr);
-  TF_ASSERT_OK(session->Create(def_));
-  std::vector<std::pair<string, Tensor>> inputs;
-
-  // Request two targets: one fetch output and one non-fetched output.
-  std::vector<string> output_names = {y_ + ":0"};
-  std::vector<string> target_nodes = {y_neg_};
-  std::vector<Tensor> outputs;
-
-  TF_ASSERT_OK(tracer->Start());
-  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
-  TF_ASSERT_OK(s);
-
-  TF_ASSERT_OK(tracer->Stop());
-  RunMetadata run_metadata;
-  TF_ASSERT_OK(tracer->CollectData(&run_metadata));
-  // Depending on whether this runs on CPU or GPU, we will have a
-  // different number of devices.
-  EXPECT_GE(run_metadata.step_stats().dev_stats_size(), 1)
-      << "Saw stats: " << run_metadata.DebugString();
-}
-
 TEST_F(DeviceTracerTest, RunWithTraceOption) {
   Initialize({3, 2, -1, 0});
   auto session = CreateSession();
@@ -243,6 +222,56 @@ TEST_F(DeviceTracerTest, RunWithTraceOption) {
   EXPECT_GE(run_metadata.step_stats().dev_stats_size(), 1);
 }
 
+#if TENSORFLOW_USE_ROCM
+TEST_F(DeviceTracerTest, TraceToXSpace) {
+  auto tracer = CreateGpuTracer();
+  if (!tracer) return;
+
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<string> target_nodes = {y_neg_};
+  std::vector<Tensor> outputs;
+
+  TF_ASSERT_OK(tracer->Start());
+  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  TF_ASSERT_OK(s);
+
+  TF_ASSERT_OK(tracer->Stop());
+  XSpace space;
+  TF_ASSERT_OK(tracer->CollectData(&space));
+  // At least one gpu plane and one host plane for launching events.
+  const XPlane* host_plane = FindPlaneWithName(space, kRoctracerApiPlaneName);
+  ASSERT_NE(host_plane, nullptr);
+
+  const XPlane* device_plane = FindPlaneWithName(space, GpuPlaneName(0));
+  ASSERT_NE(device_plane, nullptr);  // Check if device plane is serialized.
+  // The device plane should have at least five events: one for MemcpyH2D, one
+  // for MemcpyD2H, two for Matmul (one from Eigen, one from cudnn), one for
+  // memset.
+  EXPECT_GE(device_plane->event_metadata_size(), 5);
+  // Check if device capacity is serialized.
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
+
+  // Check if the device events timestamps are set.
+  int total_events = 0;
+  plane.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
+    line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
+      EXPECT_GT(event.TimestampNs(), 0);
+      EXPECT_GT(event.DurationNs(), 0);
+      ++total_events;
+    });
+  });
+  EXPECT_GE(total_events, 5);
+}
+#endif  // TENSORFLOW_USE_ROCM
+
+#if GOOGLE_CUDA
 TEST_F(DeviceTracerTest, TraceToXSpace) {
   auto tracer = CreateGpuTracer();
   if (!tracer) return;
@@ -269,12 +298,12 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   const XPlane* host_plane = FindPlaneWithName(space, kCuptiDriverApiPlaneName);
   ASSERT_NE(host_plane, nullptr);
 
-  const XPlane* device_plane =
-      FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
+  const XPlane* device_plane = FindPlaneWithName(space, GpuPlaneName(0));
   ASSERT_NE(device_plane, nullptr);  // Check if device plane is serialized.
-  // one for MemcpyH2D, one for MemcpyD2H, two for Matmul (one from Eigen, one
-  // from cudnn), one for memset.
-  EXPECT_EQ(device_plane->event_metadata_size(), 5);
+  // The device plane should have at least five events: one for MemcpyH2D, one
+  // for MemcpyD2H, two for Matmul (one from Eigen, one from cudnn), one for
+  // memset.
+  EXPECT_GE(device_plane->event_metadata_size(), 5);
   // Check if device capacity is serialized.
   XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
   EXPECT_TRUE(plane.GetStat(kDevCapClockRateKHz).has_value());
@@ -296,28 +325,31 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   EXPECT_GE(total_events, 5);
 }
 
-#if GOOGLE_CUDA
 TEST_F(DeviceTracerTest, CudaRuntimeResource) {
   auto tracer = CreateGpuTracer();
   if (!tracer) return;
   const size_t size_in_bytes = 8;
   const int8_t test_value = 7;
   TF_EXPECT_OK(tracer->Start());
+  void* hostptr = 0;
   void* devptr = 0;
-  // These four CUDA API calls will create 4 XEvents.
+
+  // These six CUDA API calls will create 4 CUDA API and 4 device XEvents.
+  ASSERT_EQ(cudaSuccess,
+            cudaHostAlloc(&hostptr, size_in_bytes, cudaHostAllocPortable));
   ASSERT_EQ(cudaSuccess, cudaMalloc(&devptr, size_in_bytes));
   VLOG(3) << "Allocated device memory, addr: " << devptr;
   ASSERT_EQ(cudaSuccess, cudaMemset(devptr, test_value, size_in_bytes));
-  int8_t buffer[size_in_bytes];
   ASSERT_EQ(cudaSuccess,
-            cudaMemcpy(buffer, devptr, size_in_bytes, cudaMemcpyDeviceToHost));
+            cudaMemcpy(hostptr, devptr, size_in_bytes, cudaMemcpyDeviceToHost));
   VLOG(3) << "Free device memory, addr: " << devptr;
-  ASSERT_EQ(cudaSuccess, cudaFree(devptr));
-  TF_EXPECT_OK(tracer->Stop());
-  for (int8_t value_from_device : buffer) {
-    EXPECT_EQ(value_from_device, test_value);
+  auto* value_from_device = static_cast<uint8_t*>(hostptr);
+  for (size_t idx = 0; idx < size_in_bytes; ++idx) {
+    ASSERT_EQ(value_from_device[idx], test_value);
   }
-
+  ASSERT_EQ(cudaSuccess, cudaFree(devptr));
+  ASSERT_EQ(cudaSuccess, cudaFreeHost(hostptr));
+  TF_EXPECT_OK(tracer->Stop());
   XSpace space;
   TF_EXPECT_OK(tracer->CollectData(&space));
   const XPlane* cupti_host_plane =
@@ -325,10 +357,12 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
   ASSERT_NE(cupti_host_plane, nullptr);
 
   XPlaneVisitor host_plane = CreateTfXPlaneVisitor(cupti_host_plane);
-  EXPECT_EQ(host_plane.NumLines(), 1);
+  // Expect at least one XLine for CUPTI activity events. There may be an
+  // additional line for CuptiTracerEventType Overhead.
+  EXPECT_GE(host_plane.NumLines(), 1);
 
   // These follow the order in which they were invoked above.
-  const StatType expected_stat_type[] = {
+  const std::array<StatType, 4> expected_event_stat_type = {
       kMemallocDetails,
       kMemsetDetails,
       kMemcpyDetails,
@@ -341,65 +375,140 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
     VLOG(3) << "Line " << line.Id() << "\n";
     line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
       VLOG(3) << " Event " << *event.Type() << "\n";
+
       absl::optional<XStatVisitor> stat =
-          event.GetStat(expected_stat_type[event_idx]);
-      EXPECT_TRUE(stat.has_value());
-      VLOG(3) << "  Stat name=" << stat->Name() << " type=" << *stat->Type()
-              << " " << stat->ToString() << "\n";
-      event_idx += 1;
+          event.GetStat(expected_event_stat_type[event_idx]);
+      // The stat may not exist if we're looking at the wrong line.
+      if (stat.has_value()) {
+        event_idx += 1;
+        VLOG(3) << "  Stat name=" << stat->Name() << " type=" << *stat->Type()
+                << " " << stat->ToString() << "\n";
+      }
     });
   });
 
-  // One host side event for each API call.
-  EXPECT_EQ(event_idx, 4);
+  // Expect that all stats show up. One host side event for each API call.
+  EXPECT_EQ(event_idx, expected_event_stat_type.size());
 
   const XPlane* cupti_device_plane = FindPlaneWithName(space, GpuPlaneName(0));
   ASSERT_NE(cupti_device_plane, nullptr);
   XPlaneVisitor device_plane = CreateTfXPlaneVisitor(cupti_device_plane);
 
-  bool found_activity_memory = false;
+  bool found_activity_memory_host = false;
+  bool found_activity_memory_device = false;
   bool found_activity_memset = false;
   bool found_activity_memcpy = false;
 
   device_plane.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
     line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
       event.ForEachStat([&](XStatVisitor stat) {
+        VLOG(3) << "  Stat name=" << stat.Name() << " type=" << *stat.Type()
+                << " " << stat.ToString() << "\n";
+        // These are the attributes set in cupti_collector::CreateXEvent.
+        auto space_delimited_stats = absl::StrSplit(stat.StrOrRefValue(), " ");
+
         if (stat.Type() == StatType::kMemoryResidencyDetails) {
           size_t num_bytes = 0;
           size_t addr = 0;
-          // These are the attributes set in cupti_collector::CreateXEvent.
-          auto details = absl::StrSplit(stat.StrOrRefValue(), " ");
-          for (const auto& detail : details) {
+          absl::string_view kind;
+          for (const auto& detail : space_delimited_stats) {
             std::vector<absl::string_view> name_value =
                 absl::StrSplit(detail, ":");
+            // We allocated 8 bytes of device memory with cudaMalloc/Free.
             if (absl::StartsWith(detail, "num_bytes:")) {
               (void)absl::SimpleAtoi(name_value[1], &num_bytes);
             } else if (absl::StartsWith(detail, "addr:")) {
-              (void)absl::SimpleAtoi(name_value[1], &addr);
+              std::stringstream hex_string;
+              hex_string << std::hex << name_value[1];
+              hex_string >> addr;
+            } else if (absl::StartsWith(detail, "kind:")) {
+              kind = name_value[1];
             }
           }
 
           if (addr == reinterpret_cast<size_t>(devptr) &&
               num_bytes == size_in_bytes) {
-            found_activity_memory = true;
+            found_activity_memory_device = true;
+            EXPECT_EQ(kind,
+                      GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
+          } else if (addr == reinterpret_cast<size_t>(hostptr) &&
+                     num_bytes == size_in_bytes) {
+            found_activity_memory_host = true;
+            EXPECT_EQ(kind,
+                      GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_PINNED));
           }
         } else if (stat.Type() == StatType::kMemsetDetails) {
           CHECK(!found_activity_memset);
           found_activity_memset = true;
+          for (const auto& detail : space_delimited_stats) {
+            std::vector<absl::string_view> name_value =
+                absl::StrSplit(detail, ":");
+            // We set 8 bytes of device memory with cudaMemset.
+            if (absl::StartsWith(detail, "num_bytes:")) {
+              size_t num_bytes = 0;
+              (void)absl::SimpleAtoi(name_value[1], &num_bytes);
+              EXPECT_EQ(num_bytes, 8);
+            } else if (absl::StartsWith(detail, "kind:")) {
+              EXPECT_EQ(name_value[1],
+                        GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
+            }
+          }
         } else if (stat.Type() == StatType::kMemcpyDetails) {
           CHECK(!found_activity_memcpy);
           found_activity_memcpy = true;
+          for (const auto& detail : space_delimited_stats) {
+            std::vector<absl::string_view> name_value =
+                absl::StrSplit(detail, ":");
+            // We copied 8 bytes from device memory to pinned host memory.
+            if (absl::StartsWith(detail, "num_bytes:")) {
+              size_t num_bytes = 0;
+              (void)absl::SimpleAtoi(name_value[1], &num_bytes);
+              EXPECT_EQ(num_bytes, 8);
+            } else if (absl::StartsWith(detail, "kind_src:")) {
+              EXPECT_EQ(name_value[1],
+                        GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
+            } else if (absl::StartsWith(detail, "kind_dst:")) {
+              EXPECT_EQ(name_value[1],
+                        GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_PINNED));
+            }
+          }
         }
       });
     });
   });
 
-  // Expect these CUDA device activities to be found.
-  EXPECT_TRUE(found_activity_memory);
+  // Expect these CUDA API activities to be found.
   EXPECT_TRUE(found_activity_memset);
   EXPECT_TRUE(found_activity_memcpy);
-}
+
+  EXPECT_FALSE(found_activity_memory_device);
+#if CUPTI_NVBUG_3299481_WAR
+  EXPECT_FALSE(found_activity_memory_host);
 #endif
+}
+
+void BM_CuptiTracer_ActivityBufferOverhead(::testing::benchmark::State& state) {
+  auto tracer = CreateGpuTracer();
+  CHECK_NOTNULL(tracer);
+
+  TF_EXPECT_OK(tracer->Start());
+  for (auto s : state) {
+    cudaFree(nullptr);
+  }
+  TF_EXPECT_OK(tracer->Stop());
+}
+
+BENCHMARK(BM_CuptiTracer_ActivityBufferOverhead);
+
+void BM_CudaFree(::testing::benchmark::State& state) {
+  for (auto s : state) {
+    cudaFree(nullptr);
+  }
+}
+
+BENCHMARK(BM_CudaFree);
+
+#endif  // GOOGLE_CUDA
 
 }  // namespace
 }  // namespace profiler

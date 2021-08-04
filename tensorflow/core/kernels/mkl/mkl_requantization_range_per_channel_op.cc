@@ -57,6 +57,20 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
         ctx, input_max.dim_size(0) == depth,
         errors::InvalidArgument("input_max has incorrect size, expected ",
                                 depth, " was ", input_max.dim_size(0)));
+    OP_REQUIRES(
+        ctx, input_min.NumElements() == depth,
+        errors::InvalidArgument("input_min must have the same number of "
+                                "elements as input_max, got ",
+                                input_min.NumElements(), " and ", depth));
+    OP_REQUIRES(ctx, input.NumElements() > 0,
+                errors::InvalidArgument("input must not be empty"));
+    OP_REQUIRES(ctx, input.dims() == 4,
+                errors::InvalidArgument("input must be in NHWC format"));
+    OP_REQUIRES(
+        ctx, input.dim_size(3) == depth,
+        errors::InvalidArgument(
+            "input must have same number of channels as length of input_min: ",
+            input.dim_size(3), " vs ", depth));
 
     const float* input_min_data = input_min.flat<float>().data();
     const float* input_max_data = input_max.flat<float>().data();
@@ -76,13 +90,13 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
     // Find the ranges of each channel in parallel.
     float out_min_max = std::numeric_limits<float>::min();
 
-#ifndef ENABLE_MKLDNN_THREADPOOL
+#ifdef ENABLE_ONEDNN_OPENMP
 #ifdef _MSC_VER
 #pragma omp parallel for
 #else
 #pragma omp parallel for reduction(max : out_min_max)
 #endif
-#endif  // !ENABLE_MKLDNN_THREADPOOL
+#endif  // ENABLE_ONEDNN_OPENMP
     // TODO: Add eigen parallel_for
     for (int64_t i = 0; i < depth; ++i) {
       Eigen::Tensor<qint32, 0, Eigen::RowMajor> min =

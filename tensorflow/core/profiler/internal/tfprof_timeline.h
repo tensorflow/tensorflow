@@ -35,21 +35,22 @@ class ChromeTraceFormatter {
   // The following methods creates timeline nodes. See chrome tracing format
   // document for details.
   Json::Value CreateEvent(const string& ph, const string& category,
-                          const string& name, int64 pid, int64 tid, int64 ts);
+                          const string& name, int64_t pid, int64_t tid,
+                          int64_t ts);
 
-  void EmitPID(const string& name, int64 pid);
+  void EmitPID(const string& name, int64_t pid);
 
-  void EmitRegion(int64 ts, int64 duration, int64 pid, int64 tid,
+  void EmitRegion(int64_t ts, int64_t duration, int64_t pid, int64_t tid,
                   const string& category, const string& name, Json::Value args);
 
-  void EmitFlowStart(const string& name, int64 ts, int64 pid, int64 tid,
-                     int64 flow_id);
+  void EmitFlowStart(const string& name, int64_t ts, int64_t pid, int64_t tid,
+                     int64_t flow_id);
 
-  void EmitFlowEnd(const string& name, int64 ts, int64 pid, int64 tid,
-                   int64 flow_id);
+  void EmitFlowEnd(const string& name, int64_t ts, int64_t pid, int64_t tid,
+                   int64_t flow_id);
 
-  void EmitCounter(const string& category, const string& name, int64 pid,
-                   int64 ts, const string& device, int64 bytes,
+  void EmitCounter(const string& category, const string& name, int64_t pid,
+                   int64_t ts, const string& device, int64_t bytes,
                    const std::map<int64, std::vector<string>>& tensor_mem);
 
   string Format();
@@ -63,7 +64,7 @@ class ChromeTraceFormatter {
 // A process (time series of events) in the timeline.
 class Process {
  public:
-  Process(const string& device, int64 pid) : device(device), pid(pid) {}
+  Process(const string& device, int64_t pid) : device(device), pid(pid) {}
 
   // Each lane is a map from start_time to end_time.
   std::vector<std::map<int64, int64>> lanes;
@@ -75,8 +76,8 @@ class Process {
 
 class TimeNode {
  public:
-  TimeNode(Process* process, GraphNode* node, int64 start_micros,
-           int64 exec_micros)
+  TimeNode(Process* process, GraphNode* node, int64_t start_micros,
+           int64_t exec_micros)
       : process(process),
         node(node),
         start_micros(start_micros),
@@ -111,7 +112,7 @@ class MemoryTracker {
     std::map<int64, int64> tracked_allocations;
   };
 
-  void TrackNode(int64 step, const GraphNode* node);
+  void TrackNode(int64_t step, const GraphNode* node);
 
   const std::map<string, Device>& devices() const { return devices_; }
 
@@ -121,12 +122,12 @@ class MemoryTracker {
 
 class Timeline {
  public:
-  Timeline(int64 step, const string& outfile)
+  Timeline(int64_t step, const string& outfile)
       : step_(step), outfile_(outfile) {}
   ~Timeline() {}
 
   int64 step() const { return step_; }
-  void SetStep(int64 step) { step_ = step; }
+  void SetStep(int64_t step) { step_ = step; }
 
   void GenerateGraphTimeline(const std::vector<GraphNode*>& gnodes);
 
@@ -140,8 +141,8 @@ class Timeline {
   void OutputTimeline();
 
   template <typename Node>
-  void EmitTreeNode(const Node* node, int64 start_time, int64 duration,
-                    int64 depth, std::set<int64>* visited_depth) {
+  void EmitTreeNode(const Node* node, int64_t start_time, int64_t duration,
+                    int64_t depth, std::set<int64>* visited_depth) {
     if (visited_depth->find(depth) == visited_depth->end()) {
       chrome_formatter_.EmitPID(absl::StrCat("Scope:", depth), depth);
       visited_depth->insert(depth);
@@ -153,10 +154,10 @@ class Timeline {
     chrome_formatter_.EmitRegion(start_time, duration, depth, 0, "Op",
                                  node->name(), args);
 
-    int64 total_micros = 0;
-    int64 c_start_time = start_time;
+    int64_t total_micros = 0;
+    int64_t c_start_time = start_time;
     for (const Node* child : node->show_children) {
-      int64 total_exec_micros = child->proto().total_exec_micros();
+      int64_t total_exec_micros = child->proto().total_exec_micros();
       if (total_exec_micros <= 0) {
         continue;
       }

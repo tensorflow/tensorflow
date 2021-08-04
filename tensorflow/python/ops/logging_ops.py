@@ -82,6 +82,17 @@ def Print(input_, data, message=None, first_n=None, summarize=None, name=None):
     with jupyter notebook (printing to the notebook *server's* output, not into
     the notebook).
 
+  @compatibility(TF2)
+  This API is deprecated. Use `tf.print` instead. `tf.print` does not need the
+  `input_` argument.
+
+  `tf.print` works in TF2 when executing eagerly and inside a `tf.function`.
+
+  In TF1-styled sessions, an explicit control dependency declaration is needed
+  to execute the `tf.print` operation. Refer to the documentation of
+  `tf.print` for more details.
+  @end_compatibility
+
   Args:
     input_: A tensor passed through this op.
     data: A list of tensors to print out when op is evaluated.
@@ -185,26 +196,27 @@ def print_v2(*inputs, **kwargs):
 
     (This prints "[0 1 2 ... 7 8 9]" to sys.stderr)
 
-  @compatibility(TF 1.x Graphs and Sessions)
-  In graphs manually created outside of `tf.function`, this method returns
-  the created TF operator that prints the data. To make sure the
-  operator runs, users need to pass the produced op to
-  `tf.compat.v1.Session`'s run method, or to use the op as a control
-  dependency for executed ops by specifying
-  `with tf.compat.v1.control_dependencies([print_op])`.
-  @end_compatibility
+  *Compatibility usage in TF 1.x graphs*:
 
-    Compatibility usage in TF 1.x graphs:
+    In graphs manually created outside of `tf.function`, this method returns
+    the created TF operator that prints the data. To make sure the
+    operator runs, users need to pass the produced op to
+    `tf.compat.v1.Session`'s run method, or to use the op as a control
+    dependency for executed ops by specifying
+    `with tf.compat.v1.control_dependencies([print_op])`.
 
     ```python
+    tf.compat.v1.disable_v2_behavior()  # for TF1 compatibility only
+
     sess = tf.compat.v1.Session()
     with sess.as_default():
-        tensor = tf.range(10)
-        print_op = tf.print("tensors:", tensor, {2: tensor * 2},
-                            output_stream=sys.stdout)
-        with tf.control_dependencies([print_op]):
-          tripled_tensor = tensor * 3
-        sess.run(tripled_tensor)
+      tensor = tf.range(10)
+      print_op = tf.print("tensors:", tensor, {2: tensor * 2},
+                          output_stream=sys.stdout)
+      with tf.control_dependencies([print_op]):
+        tripled_tensor = tensor * 3
+
+      sess.run(tripled_tensor)
     ```
 
     (This prints "tensors: [0 1 2 ... 7 8 9] {2: [0 2 4 ... 14 16 18]}" to
@@ -230,8 +242,8 @@ def print_v2(*inputs, **kwargs):
       elements of each dimension are printed for each tensor. If set to -1, it
       will print all elements of every tensor.
     sep: The string to use to separate the inputs. Defaults to " ".
-    end: End character that is appended at the end the printed string.
-      Defaults to the newline character.
+    end: End character that is appended at the end the printed string. Defaults
+      to the newline character.
     name: A name for the operation (optional).
 
   Returns:
@@ -379,6 +391,7 @@ def print_v2(*inputs, **kwargs):
 
   return gen_logging_ops.print_v2(
       formatted_string, output_stream=output_stream_string, name=name, end=end)
+
 
 # pylint: enable=g-doc-args
 

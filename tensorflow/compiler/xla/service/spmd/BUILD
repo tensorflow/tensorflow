@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -19,6 +19,7 @@ cc_library(
     name = "spmd_partitioner",
     srcs = [
         "convolution_handler.cc",
+        "custom_call_handler.cc",
         "dot_handler.cc",
         "fft_handler.cc",
         "gather_scatter_handler.cc",
@@ -27,6 +28,7 @@ cc_library(
     ],
     hdrs = [
         "convolution_handler.h",
+        "custom_call_handler.h",
         "spmd_partitioner.h",
         "spmd_partitioner_util.h",
     ],
@@ -39,6 +41,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/service:dot_as_convolution_util",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
@@ -46,6 +49,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_cse",
         "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:hlo_lexer",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_query",
@@ -72,7 +76,27 @@ tf_cc_test(
     srcs = ["spmd_partitioner_test.cc"],
     deps = [
         ":spmd_partitioner",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+tf_cc_test(
+    name = "canonicalize_all_gather_for_cse_test",
+    srcs = ["canonicalize_all_gather_for_cse_test.cc"],
+    deps = [
+        ":canonicalize_all_gather_for_cse",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
@@ -84,9 +108,38 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "schedule_aware_all_gather_cse",
-    srcs = ["schedule_aware_all_gather_cse.cc"],
-    hdrs = ["schedule_aware_all_gather_cse.h"],
+    name = "canonicalize_all_gather_for_cse",
+    srcs = ["canonicalize_all_gather_for_cse.cc"],
+    hdrs = ["canonicalize_all_gather_for_cse.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_query",
+    ],
+)
+
+tf_cc_test(
+    name = "schedule_aware_collective_ops_cse_test",
+    srcs = ["schedule_aware_collective_ops_cse_test.cc"],
+    deps = [
+        ":schedule_aware_collective_ops_cse",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "schedule_aware_collective_ops_cse",
+    srcs = ["schedule_aware_collective_ops_cse.cc"],
+    hdrs = ["schedule_aware_collective_ops_cse.h"],
     deps = [
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",

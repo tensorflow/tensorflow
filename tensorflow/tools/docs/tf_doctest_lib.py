@@ -114,9 +114,16 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
     self.float_size_good = None
 
   _ADDRESS_RE = re.compile(r'\bat 0x[0-9a-f]*?>')
+  # TODO(yashkatariya): Add other tensor's string substitutions too.
+  # tf.RaggedTensor doesn't need one.
+  _NUMPY_OUTPUT_RE = re.compile(r'<tf.Tensor.*?numpy=(.*?)>', re.DOTALL)
 
   def _allclose(self, want, got, rtol=1e-3, atol=1e-3):
     return np.allclose(want, got, rtol=rtol, atol=atol)
+
+  def _tf_tensor_numpy_output(self, string):
+    modified_string = self._NUMPY_OUTPUT_RE.sub(r'\1', string)
+    return modified_string, modified_string != string
 
   def check_output(self, want, got, optionflags):
     """Compares the docstring output to the output gotten by running the code.
@@ -155,6 +162,11 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
     # Replace python's addresses with ellipsis (`...`) since it can change on
     # each execution.
     want = self._ADDRESS_RE.sub('at ...>', want)
+
+    # Replace tf.Tensor strings with only their numpy field values.
+    want, want_changed = self._tf_tensor_numpy_output(want)
+    if want_changed:
+      got, _ = self._tf_tensor_numpy_output(got)
 
     # Separate out the floats, and replace `want` with the wild-card version
     # "result=7.0" => "result=..."

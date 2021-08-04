@@ -39,7 +39,7 @@ class LoggingWrapper {
     ERROR = 2,
     FATAL = 3,
   };
-  LoggingWrapper(LogSeverity severity)
+  explicit LoggingWrapper(LogSeverity severity)
       : severity_(severity), should_log_(true) {}
   LoggingWrapper(LogSeverity severity, bool log)
       : severity_(severity), should_log_(log) {}

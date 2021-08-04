@@ -21,6 +21,7 @@ limitations under the License.
 #include <map>
 
 #include "absl/base/call_once.h"
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/str_util.h"
@@ -192,6 +193,13 @@ string Status::ToString() const {
     string result(error_name(code()));
     result += ": ";
     result += state_->msg;
+
+    for (const std::pair<const std::string, std::string>& element :
+         state_->payloads) {
+      absl::StrAppend(&result, " [", element.first, "='",
+                      absl::CHexEscape(element.second), "']");
+    }
+
     return result;
   }
 }
@@ -220,6 +228,19 @@ bool Status::ErasePayload(tensorflow::StringPiece type_url) {
   if (payload_iter == state_->payloads.end()) return false;
   state_->payloads.erase(payload_iter);
   return true;
+}
+
+const std::unordered_map<std::string, std::string> Status::GetAllPayloads()
+    const {
+  if (ok()) return {};
+  return state_->payloads;
+}
+
+void Status::ReplaceAllPayloads(
+    const std::unordered_map<std::string, std::string>& payloads) {
+  if (ok() || payloads.empty()) return;
+  if (state_ == nullptr) state_ = std::make_unique<State>();
+  state_->payloads = payloads;
 }
 
 std::ostream& operator<<(std::ostream& os, const Status& x) {

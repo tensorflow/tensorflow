@@ -12,12 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras initializers for TF 2.
-"""
+"""Keras initializers for TF 2."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import math
 
@@ -391,7 +387,7 @@ class TruncatedNormal(Initializer):
     mean: a python scalar or a scalar tensor. Mean of the random values
       to generate.
     stddev: a python scalar or a scalar tensor. Standard deviation of the
-      random values to generate.
+      random values to generate before truncation.
     seed: A Python integer. An initializer created with a given seed will
       always produce the same random tensor for a given shape and dtype.
   """

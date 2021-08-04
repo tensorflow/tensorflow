@@ -83,7 +83,7 @@ class FuzzScatterNd : public FuzzSession {
     size_t num_indices = 1;
     for (i = 0; i < indices_rank; i++) {
       // Modulo kMaxDim to not request too much memory
-      int64 dim = data[data_ix++] % kMaxDim;
+      int64_t dim = data[data_ix++] % kMaxDim;
       num_indices *= dim;
       indices_dims.push_back(dim);
     }
@@ -106,7 +106,7 @@ class FuzzScatterNd : public FuzzSession {
       updates_dims.push_back(indices_dims[i]);
       num_indices *= indices_dims[i];
     }
-    int64 last = indices_dims[indices_rank - 1];
+    int64_t last = indices_dims[indices_rank - 1];
     for (i = last; i < shape_dims; i++) {
       updates_dims.push_back(flat_shape(i));
       num_indices *= flat_shape(i);

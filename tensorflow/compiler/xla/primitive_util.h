@@ -152,13 +152,122 @@ bool IsArrayType(PrimitiveType primitive_type);
 // Returns the number of bits in the representation for a given type.
 int BitWidth(PrimitiveType type);
 
-PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth);
+// Returns the number of bytes in the representation for a given type.
+int ByteWidth(PrimitiveType type);
 
-PrimitiveType SignedIntegralTypeForBitWidth(int64 src_bitwidth);
+PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth);
+
+PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth);
 
 // Returns the real, imag component type underlying the given complex type.
 // LOG(FATAL)'s if complex_type is not complex.
 PrimitiveType ComplexComponentType(PrimitiveType complex_type);
+
+// Returns the higher-precision element type if a and b are both floating
+// point types; otherwise, checks that they have the same element type
+// and returns it.
+inline PrimitiveType HigherPrecisionType(PrimitiveType a, PrimitiveType b) {
+  // Returns a tuple where the elements are lexicographically ordered in terms
+  // of importance.
+  auto type_properties = [](PrimitiveType type) {
+    return std::make_tuple(
+        // Prefer floating point types with more range over other
+        // floating-point types or non-floating point types.
+        IsFloatingPointType(type) ? OverflowExponent(type) : -1,
+        // Prefer floating point types with more precision over less precise
+        // types.
+        IsFloatingPointType(type) ? SignificandWidth(type) : -1,
+        // Prefer wider types over narrower types.
+        BitWidth(type),
+        // Prefer signed integer types over unsigned integer types.
+        IsSignedIntegralType(type));
+  };
+  auto a_properties = type_properties(a);
+  auto b_properties = type_properties(b);
+  if (a_properties > b_properties) {
+    return a;
+  }
+  if (b_properties > a_properties) {
+    return b;
+  }
+  CHECK_EQ(a, b);
+  return a;
+}
+
+// Returns true if a convert from from_type to to_type looses no precision.
+inline bool CastPreservesValues(PrimitiveType from_type,
+                                PrimitiveType to_type) {
+  if (from_type == to_type) {
+    return true;
+  }
+  switch (to_type) {
+    case C128:
+      if (from_type == F64) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case F64:
+      if (from_type == S32 || from_type == U32 || from_type == F32) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case C64:
+      if (from_type == F32) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case F32:
+      if (from_type == F16 || from_type == BF16 || from_type == S16 ||
+          from_type == U16) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case F16:
+    case BF16:
+      return from_type == U8 || from_type == S8 || from_type == PRED;
+    case S64:
+      if (from_type == S32 || from_type == U32) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case S32:
+      if (from_type == S16 || from_type == U16) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case S16:
+      if (from_type == S8 || from_type == U8) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case S8:
+      if (from_type == PRED) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case PRED:
+      return false;
+    case U64:
+      if (from_type == U32) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case U32:
+      if (from_type == U16) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case U16:
+      if (from_type == U8) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case U8:
+      return from_type == PRED;
+    default:
+      return false;
+  }
+}
 
 // Returns the native type (eg, float) corresponding to the given template
 // parameter XLA primitive type (eg, F32).

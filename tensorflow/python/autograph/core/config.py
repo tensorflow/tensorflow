@@ -59,4 +59,6 @@ CONVERSION_RULES = (
 
     # TODO(b/133842282): Remove.
     DoNotConvert('tensorflow_datasets.core'),
+
+    DoNotConvert('keras'),
 )

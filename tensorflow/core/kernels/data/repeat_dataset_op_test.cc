@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/repeat_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include <string>
+#include <utility>
+
+#include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -26,7 +30,7 @@ constexpr char kNodeName[] = "repeat_dataset";
 class RepeatDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  RepeatDatasetParams(T input_dataset_params, int64 count,
+  RepeatDatasetParams(T input_dataset_params, int64_t count,
                       DataTypeVector output_dtypes,
                       std::vector<PartialTensorShape> output_shapes,
                       string node_name)

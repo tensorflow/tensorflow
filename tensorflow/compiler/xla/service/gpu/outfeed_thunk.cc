@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -31,14 +30,12 @@ OutfeedThunk::OutfeedThunk(ThunkInfo thunk_info,
       source_slices_(std::move(source_slices)) {}
 
 Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
-  auto& stream = *params.stream;
-  auto& buffer_allocations = *params.buffer_allocations;
+  se::Stream& stream = *params.stream;
+  const BufferAllocations& buffer_allocations = *params.buffer_allocations;
 
   VLOG(2) << "Outfeeding from GPU";
 
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
-  OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager();
+  OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager(stream.parent());
   ShapeTree<std::unique_ptr<OutfeedBuffer>>* output_buffers =
       outfeed_manager->BlockingGetNextDestination();
 
@@ -49,13 +46,13 @@ Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
     return Status::OK();
   }
 
-  const int64 leaf_count = output_buffers->leaf_count();
+  const int64_t leaf_count = output_buffers->leaf_count();
   TF_RET_CHECK(source_slices_.size() == leaf_count)
       << "Mismatch between number of outfeed inputs (" << source_slices_.size()
       << ") and outputs (" << leaf_count << ")";
 
   auto output_leaf_it = output_buffers->leaf_begin();
-  for (int64 index = 0; index < leaf_count; ++index) {
+  for (int64_t index = 0; index < leaf_count; ++index) {
     // Assert that the shapes are compatible.
     const ShapeIndex& shape_index = output_leaf_it->first;
     std::unique_ptr<OutfeedBuffer>& buffer = output_leaf_it->second;

@@ -17,7 +17,7 @@ package(
         "//tensorflow/core/default:__pkg__",
         "//tensorflow/core/platform:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(srcs = [

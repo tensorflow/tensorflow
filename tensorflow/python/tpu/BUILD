@@ -16,7 +16,7 @@ package(
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(["tpu_test_wrapper.py"])
@@ -42,15 +42,9 @@ py_test(
     ],
 )
 
-pytype_library(
+alias(
     name = "tpu_ops",
-    srcs = ["ops/tpu_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":tpu_function",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:tpu_ops_gen",
-    ],
+    actual = "//tensorflow/python/tpu/ops",
 )
 
 pytype_library(
@@ -65,12 +59,12 @@ pytype_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/summary",
     ],
 )
 
@@ -79,6 +73,7 @@ tpu_py_test(
     size = "medium",
     srcs = ["async_checkpoint_test.py"],
     disable_experimental = True,
+    disable_mlir_bridge = False,
     deps = [
         ":async_checkpoint",
         ":tpu_estimator",
@@ -93,6 +88,9 @@ tpu_py_test(
 pytype_library(
     name = "device_assignment",
     srcs = ["device_assignment.py"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
     deps = [
         ":topology",
         "//tensorflow/python:platform",
@@ -141,13 +139,13 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/estimator:util",
+        "//tensorflow/python/summary",
         "@six_archive//:six",
     ],
 )
@@ -229,7 +227,6 @@ pytype_library(
         ":topology",
         ":tpu_feed",
         ":tpu_function",
-        ":tpu_ops",
         ":tpu_sharding",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/compiler/xla/python_api:xla_shape",
@@ -257,6 +254,7 @@ pytype_library(
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/tpu:tensor_tracer_proto_py",
+        "//tensorflow/python/tpu/ops",
         "//tensorflow/python/tpu/profiler",
         "@six_archive//:six",
     ],
@@ -270,7 +268,6 @@ pytype_library(
         ":tpu_feed",
         ":tpu_function",
         ":tpu_name_util",
-        ":tpu_ops",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
         "//tensorflow/python:array_ops",
@@ -292,6 +289,7 @@ pytype_library(
         "//tensorflow/python/compiler/xla",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/tpu/ops",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
@@ -305,13 +303,13 @@ pytype_library(
     srcs = ["tpu_feed.py"],
     deps = [
         ":tpu_name_util",
-        ":tpu_ops",
         ":tpu_sharding",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/tpu/ops",
+        "//tensorflow/python/user_ops:ops",
     ],
 )
 
@@ -461,6 +459,14 @@ pytype_library(
 pytype_library(
     name = "tpu_strategy_util",
     srcs = ["tpu_strategy_util.py"],
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//learning/deepmind:__subpackages__",
+        "//learning/serving:__subpackages__",
+        "//research/graph:__subpackages__",
+        "//tensorflow:__subpackages__",
+        "//third_party/py/tensorflow_numerics/extensions:__pkg__",
+    ],
     deps = [
         ":tpu_lib",
         "//tensorflow/python:dtypes",
@@ -563,7 +569,7 @@ pytype_library(
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/tpu:tpu_lib",
-        "//tensorflow/python/tpu:tpu_ops",
+        "//tensorflow/python/tpu/ops",
         "//tensorflow/python/training/saving:saveable_hook",
         "@six_archive//:six",
     ],
@@ -575,13 +581,13 @@ pytype_library(
     srcs_version = "PY3",
     deps = [
         ":tpu_embedding_v2_utils",
+        ":tpu_lib",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute:tpu_strategy",
-        "//tensorflow/python/tpu:tpu_lib",
-        "//tensorflow/python/tpu:tpu_ops",
+        "//tensorflow/python/tpu/ops",
         "//tensorflow/python/training/saving:saveable_hook",
         "@six_archive//:six",
     ],
@@ -594,6 +600,7 @@ tpu_py_test(
     ],
     disable_experimental = True,
     disable_mlir_bridge = False,
+    disable_tfrt = True,  # TODO(b/192605977)
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",
@@ -626,6 +633,7 @@ tpu_py_test(
     ],
     disable_experimental = True,
     disable_mlir_bridge = False,
+    disable_tfrt = True,  # TODO(b/192605977)
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",

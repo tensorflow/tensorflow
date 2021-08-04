@@ -221,7 +221,7 @@ StatusOr<std::unique_ptr<HloInstruction>> TryRewriteToCudnnForwardRelu(
     auto zero = computation->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::Zero(conv_output_type)));
 
-    int64 num_output_feature = conv->shape().tuple_shapes(0).dimensions(
+    int64_t num_output_feature = conv->shape().tuple_shapes(0).dimensions(
         conv->convolution_dimension_numbers().output_feature_dimension());
     bias = computation->AddInstruction(HloInstruction::CreateBroadcast(
         ShapeUtil::MakeShapeWithDescendingLayout(conv_output_type,

@@ -49,6 +49,8 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuExecutor_BlockUntilDoneOrFailed);
   TFTPU_SET_FN(executor_fn, TpuExecutor_SyncAndForgetFailedStreams);
   TFTPU_SET_FN(executor_fn, TpuExecutor_SynchronizeAllActivity);
+  TFTPU_SET_FN(executor_fn, TpuExecutor_UnloadAllPrograms);
+  TFTPU_SET_FN(executor_fn, TpuExecutor_EnqueueCompactionOnStreamForHbm);
 
   TFTPU_SET_FN(executor_fn, TpuStream_New);
   TFTPU_SET_FN(executor_fn, TpuStream_Free);
@@ -105,6 +107,7 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuTransferManager_TransferBuffersToInfeed);
   TFTPU_SET_FN(executor_fn, TpuTransferManager_TransferLiteralFromOutfeed);
   TFTPU_SET_FN(executor_fn, TpuTransferManager_ResetDevices);
+  TFTPU_SET_FN(executor_fn, TpuTransferManager_ReadDynamicShapes);
 
   TFTPU_SET_FN(executor_fn, TpuComputationPlacer_New);
   TFTPU_SET_FN(executor_fn, TpuComputationPlacer_Free);
@@ -119,6 +122,7 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuTopology_ChipBounds_Y);
   TFTPU_SET_FN(executor_fn, TpuTopology_ChipBounds_Z);
   TFTPU_SET_FN(executor_fn, TpuTopology_HasChip);
+  TFTPU_SET_FN(executor_fn, TpuTopology_CoreForId);
   TFTPU_SET_FN(executor_fn, TpuTopology_Core);
   TFTPU_SET_FN(executor_fn, TpuTopology_NumCores);
   TFTPU_SET_FN(executor_fn, TpuTopology_Cores);
@@ -145,6 +149,11 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuExecutable_FreeXlaShapeIndexArray);
   TFTPU_SET_FN(executor_fn, TpuExecutable_FreeMaybeOwningDeviceMemoryArray);
   TFTPU_SET_FN(executor_fn, TpuExecutable_Fingerprint);
+  TFTPU_SET_FN(executor_fn, TpuExecutable_Serialize);
+  TFTPU_SET_FN(executor_fn, TpuExecutableSerialize_GetByteSize);
+  TFTPU_SET_FN(executor_fn, TpuExecutableSerialize_WriteToArray);
+  TFTPU_SET_FN(executor_fn, TpuExecutableSerialize_FreeHandle);
+  TFTPU_SET_FN(executor_fn, TpuExecutable_Deserialize);
   TFTPU_SET_FN(executor_fn, TpuExecutable_HloModule);
   TFTPU_SET_FN(executor_fn, TpuExecutable_Free);
 

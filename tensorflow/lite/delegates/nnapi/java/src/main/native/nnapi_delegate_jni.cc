@@ -59,11 +59,11 @@ Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
   }
 
   if (options.cache_dir) {
-    env->ReleaseStringUTFChars(cache_dir, options.accelerator_name);
+    env->ReleaseStringUTFChars(cache_dir, options.cache_dir);
   }
 
   if (options.model_token) {
-    env->ReleaseStringUTFChars(model_token, options.accelerator_name);
+    env->ReleaseStringUTFChars(model_token, options.model_token);
   }
 
   return reinterpret_cast<jlong>(delegate);

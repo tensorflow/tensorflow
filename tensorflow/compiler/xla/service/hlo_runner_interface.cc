@@ -102,7 +102,7 @@ StatusOr<Literal> HloRunnerInterface::Execute(
 }
 
 StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
-    std::unique_ptr<Executable> executable, absl::Span<const Literal> arguments,
+    Executable* executable, absl::Span<const Literal> arguments,
     ExecutionProfile* profile) {
   // Construct a vector of plain pointers for the arguments.
   std::vector<const Literal*> argument_pointers;
@@ -110,8 +110,23 @@ StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
   for (const auto& argument : arguments) {
     argument_pointers.push_back(&argument);
   }
-  return ExecuteWithExecutable(std::move(executable), argument_pointers,
-                               nullptr);
+  return ExecuteWithExecutable(executable, argument_pointers, nullptr);
+}
+
+void HloRunnerInterface::UpdateEntryComputationLayout(
+    HloModule* module, DeviceShapeRepresentationFn shape_representation_fn) {
+  CHECK(shape_representation_fn != nullptr);
+  // Make sure entry computation shapes are in device representation.
+  for (int i = 0; i < module->entry_computation_layout().parameter_count();
+       i++) {
+    Shape shape =
+        module->entry_computation_layout().parameter_layout(i).shape();
+    *module->mutable_entry_computation_layout()->mutable_parameter_layout(i) =
+        ShapeLayout(shape_representation_fn(shape));
+  }
+  *module->mutable_entry_computation_layout()->mutable_result_layout() =
+      ShapeLayout(shape_representation_fn(
+          module->entry_computation_layout().result_layout().shape()));
 }
 
 }  // namespace xla

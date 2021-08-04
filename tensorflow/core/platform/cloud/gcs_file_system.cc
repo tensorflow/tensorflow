@@ -74,7 +74,7 @@ constexpr uint64 HTTP_CODE_PRECONDITION_FAILED = 412;
 ABSL_DEPRECATED("Use GCS_READ_CACHE_BLOCK_SIZE_MB instead.")
 constexpr char kReadaheadBufferSize[] = "GCS_READAHEAD_BUFFER_SIZE_BYTES";
 // The environment variable that overrides the maximum age of entries in the
-// Stat cache. A value of 0 (the default) means nothing is cached.
+// Stat cache. A value of 0 means nothing is cached.
 constexpr char kStatCacheMaxAge[] = "GCS_STAT_CACHE_MAX_AGE";
 constexpr uint64 kStatCacheDefaultMaxAge = 5;
 // The environment variable that overrides the maximum number of entries in the
@@ -645,7 +645,7 @@ class GcsWritableFile : public WritableFile {
     const string append_object_path = GetGcsPathWithObject(append_object);
     VLOG(3) << "AppendObject: " << append_object_path << " to " << GetGcsPath();
 
-    int64 generation = 0;
+    int64_t generation = 0;
     TF_RETURN_IF_ERROR(
         generation_getter_(GetGcsPath(), bucket_, object_, &generation));
 
@@ -770,6 +770,7 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache) {
   uint64 value;
   block_size_ = kDefaultBlockSize;
   size_t max_bytes = kDefaultMaxCacheSize;
+
   uint64 max_staleness = kDefaultMaxStaleness;
 
   http_request_factory_ = std::make_shared<CurlHttpRequest::Factory>();
@@ -834,7 +835,7 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache) {
   bucket_location_cache_.reset(new ExpiringLRUCache<string>(
       kCacheNeverExpire, kBucketLocationCacheMaxEntries));
 
-  int64 resolve_frequency_secs;
+  int64_t resolve_frequency_secs;
   if (GetEnvVar(kResolveCacheSecs, strings::safe_strto64,
                 &resolve_frequency_secs)) {
     dns_cache_.reset(new GcsDnsCache(resolve_frequency_secs));
@@ -894,7 +895,7 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache) {
     timeouts_.write = timeout_value;
   }
 
-  int64 token_value;
+  int64_t token_value;
   if (GetEnvVar(kThrottleRate, strings::safe_strto64, &token_value)) {
     GcsThrottleConfig config;
     config.enabled = true;
@@ -959,12 +960,7 @@ Status GcsFileSystem::NewRandomAccessFile(
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   TF_RETURN_IF_ERROR(CheckBucketLocationConstraint(bucket));
-  bool cache_enabled;
-  {
-    mutex_lock l(block_cache_lock_);
-    cache_enabled = file_block_cache_->IsCacheEnabled();
-  }
-  if (cache_enabled) {
+  if (cache_enabled_) {
     result->reset(new GcsRandomAccessFile(fname, [this, bucket, object](
                                                      const string& fname,
                                                      uint64 offset, size_t n,
@@ -1037,6 +1033,9 @@ std::unique_ptr<FileBlockCache> GcsFileSystem::MakeFileBlockCache(
         return LoadBufferFromGCS(filename, offset, n, buffer,
                                  bytes_transferred);
       }));
+
+  // Check if cache is enabled here to avoid unnecessary mutex contention.
+  cache_enabled_ = file_block_cache->IsCacheEnabled();
   return file_block_cache;
 }
 
@@ -1202,7 +1201,7 @@ Status GcsFileSystem::RequestUploadSessionStatus(const string& session_uri,
 
     std::vector<int64> range_parts;
     for (const std::string& range_str : range_strs) {
-      int64 tmp;
+      int64_t tmp;
       if (strings::safe_strto64(range_str, &tmp)) {
         range_parts.push_back(tmp);
       } else {
@@ -2135,4 +2134,4 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
 // system is a child of gcs file system with TPU-pod on GCS optimizations.
 // This option is set ON/OFF in the GCP TPU tensorflow config.
 // Initialize gcs_file_system
-REGISTER_FILE_SYSTEM("gs", ::tensorflow::RetryingGcsFileSystem);
+REGISTER_LEGACY_FILE_SYSTEM("gs", ::tensorflow::RetryingGcsFileSystem);

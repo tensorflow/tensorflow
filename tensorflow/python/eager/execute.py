@@ -63,7 +63,7 @@ def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
       message = e.message + " name: " + name
     else:
       message = e.message
-    six.raise_from(core._status_to_exception(e.code, message), None)
+    raise core._status_to_exception(e.code, message) from None
   except TypeError as e:
     keras_symbolic_tensors = [
         x for x in inputs if ops._is_keras_symbolic_tensor(x)
@@ -119,7 +119,7 @@ def execute_with_cancellation(op_name,
       message = e.message + " name: " + name
     else:
       message = e.message
-    six.raise_from(core._status_to_exception(e.code, message), None)
+    raise core._status_to_exception(e.code, message) from None
   except TypeError as e:
     keras_symbolic_tensors = [
         x for x in inputs if ops._is_keras_symbolic_tensor(x)
@@ -151,7 +151,7 @@ def must_record_gradient():
 
 
 def record_gradient(unused_op_name, unused_inputs, unused_attrs,
-                    unused_results):
+                    unused_outputs):
   """Import backprop if you want gradients recorded."""
   pass
 
@@ -302,7 +302,7 @@ def args_to_mixed_eager_tensors(lists, ctx):
   assert len(lists) > 1
 
   # Generate an error if len(lists[i]) is not the same for all i.
-  lists_ret = []
+  lists_ret = [[]]
   for l in lists[1:]:
     if len(l) != len(lists[0]):
       raise ValueError(

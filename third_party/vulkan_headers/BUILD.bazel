@@ -46,11 +46,29 @@ cc_library(
     textual_hdrs = VULKAN_TEXTUAL_HDRS,
 )
 
-# Provides a C++-ish interface to Vulkan.
+# Provides a C++-ish interface to Vulkan. A rational set of defines are also
+# set and transitively applied to any callers, as well as providing the
+# necessary storage as the set of defines leaves symbols undefined otherwise.
 cc_library(
     name = "vulkan_hpp",
+    srcs =
+        select({
+            "@org_tensorflow//tensorflow:macos": [],
+            "@org_tensorflow//tensorflow:ios": [],
+            "//conditions:default": ["tensorflow/vulkan_hpp_dispatch_loader_dynamic.cc"],
+        }),
     hdrs = ["include/vulkan/vulkan.hpp"],
-    defines = ["VULKAN_HPP_NO_EXCEPTIONS"],
+    defines = [
+        "VULKAN_HPP_ASSERT=",
+        "VULKAN_HPP_DISABLE_IMPLICIT_RESULT_VALUE_CAST",
+        "VULKAN_HPP_NO_EXCEPTIONS",
+        "VULKAN_HPP_TYPESAFE_CONVERSION",
+        "VULKAN_HPP_TYPESAFE_EXPLICIT",
+    ] + select({
+        "@org_tensorflow//tensorflow:macos": [],
+        "@org_tensorflow//tensorflow:ios": [],
+        "//conditions:default": ["VULKAN_HPP_DISPATCH_LOADER_DYNAMIC"],
+    }),
     includes = ["include"],
     deps = [":vulkan_headers"],
 )

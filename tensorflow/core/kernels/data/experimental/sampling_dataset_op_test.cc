@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/sampling_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -19,8 +19,8 @@ namespace experimental {
 namespace {
 
 constexpr char kNodeName[] = "sampling_dataset";
-constexpr int64 kRandomSeed = 42;
-constexpr int64 kRandomSeed2 = 7;
+constexpr int64_t kRandomSeed = 42;
+constexpr int64_t kRandomSeed2 = 7;
 
 class SamplingDatasetParams : public DatasetParams {
  public:

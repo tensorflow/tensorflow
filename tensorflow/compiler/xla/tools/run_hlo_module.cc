@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
 #include "tensorflow/compiler/xla/tools/prepare_reference_module.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -136,6 +137,13 @@ Status RunAndCompare(
       LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
                          options.input_format, config_modifier_hook)
           .ValueOrDie();
+
+  if (options.flatten_control_flow) {
+    HloControlFlowFlattening control_flow_flattening(
+        /*while_execution_count=*/1);
+    TF_RETURN_IF_ERROR(control_flow_flattening.Run(test_module.get()).status());
+  }
+
   const HloModuleProto test_module_proto = test_module->ToProto();
 
   std::vector<Literal> args = MakeFakeArguments(test_module.get(), engine,

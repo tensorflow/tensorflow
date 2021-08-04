@@ -43,7 +43,7 @@ namespace tensorflow {
 // reference count, and deletes itself once the last call has been
 // received and the high watermark has been retrieved.
 struct AllocRecord {
-  AllocRecord(int64 a_btyes, int64 a_micros)
+  AllocRecord(int64_t a_btyes, int64_t a_micros)
       : alloc_bytes(a_btyes), alloc_micros(a_micros) {}
   AllocRecord() : AllocRecord(0, 0) {}
 
@@ -66,7 +66,7 @@ class TrackingAllocator : public Allocator {
   size_t AllocatedSize(const void* ptr) const override;
   int64 AllocationId(const void* ptr) const override;
   absl::optional<AllocatorStats> GetStats() override;
-  void ClearStats() override;
+  bool ClearStats() override;
 
   // If the underlying allocator tracks allocation sizes, this returns
   // a tuple where the first value is the total number of bytes

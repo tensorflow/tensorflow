@@ -17,8 +17,5 @@
 
 Everything has been moved to keras/saving/. This file will be deleted soon.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.keras.saving import *  # pylint: disable=wildcard-import

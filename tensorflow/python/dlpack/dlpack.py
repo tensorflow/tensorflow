@@ -63,4 +63,5 @@ def from_dlpack(dlcapsule):
   Returns:
     A Tensorflow eager tensor
   """
-  return pywrap_tfe.TFE_FromDlpackCapsule(dlcapsule, context.context()._handle)
+  context.context().ensure_initialized()
+  return pywrap_tfe.TFE_FromDlpackCapsule(dlcapsule, context.context()._handle)  # pylint: disable=protected-access

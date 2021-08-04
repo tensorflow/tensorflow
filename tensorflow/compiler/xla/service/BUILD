@@ -7,6 +7,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
+load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_test")
 
 # buildifier: disable=same-origin-load
@@ -28,7 +29,7 @@ load(
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -36,7 +37,6 @@ package_group(
     includes = [
         "//tensorflow/compiler/xla:friends",
     ],
-    packages = ["//learning/brain/experimental/tf_runtime/..."],
 )
 
 tf_proto_library(
@@ -67,6 +67,79 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
+)
+
+cc_library(
+    name = "reduce_scatter_utils",
+    srcs = ["reduce_scatter_utils.cc"],
+    hdrs = ["reduce_scatter_utils.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+    ],
+)
+
+cc_library(
+    name = "async_collective_creator",
+    srcs = ["async_collective_creator.cc"],
+    hdrs = ["async_collective_creator.h"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_pass",
+        ":shape_inference",
+    ],
+)
+
+tf_cc_test(
+    name = "async_collective_creator_test",
+    srcs = ["async_collective_creator_test.cc"],
+    deps = [
+        ":async_collective_creator",
+        ":hlo",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "all_reduce_key",
+    srcs = ["all_reduce_key.cc"],
+    hdrs = ["all_reduce_key.h"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_domain_map",
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
+cc_library(
+    name = "all_reduce_reassociate",
+    srcs = ["all_reduce_reassociate.cc"],
+    hdrs = ["all_reduce_reassociate.h"],
+    deps = [
+        ":all_reduce_key",
+        ":collective_ops_utils",
+        ":hlo",
+        ":hlo_domain_map",
+        ":hlo_pass",
+        ":hlo_query",
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "all_reduce_reassociate_test",
+    srcs = ["all_reduce_reassociate_test.cc"],
+    deps = [
+        ":all_reduce_reassociate",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
 )
 
 cc_library(
@@ -204,6 +277,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/strings",
     ],
@@ -215,6 +289,7 @@ cc_library(
     hdrs = ["shape_inference.h"],
     deps = [
         ":hlo",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -302,7 +377,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
         "//tensorflow/core:lib",
-        "//third_party/eigen3",
+        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
@@ -329,15 +404,11 @@ cc_library(
         ":hlo_buffer",
         ":hlo_dataflow_analysis",
         ":hlo_ordering",
-        ":logical_buffer",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
+        ":hlo_value",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -381,6 +452,7 @@ tf_cc_test(
         ":hlo_element_type_converter",
         ":hlo_evaluator",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -517,6 +589,7 @@ cc_library(
     deps = [
         ":dot_as_convolution_util",
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_graph_dumper",
         ":hlo_pass",
         ":hlo_sharding_util",
@@ -553,6 +626,40 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "sharding_remover",
+    srcs = [
+        "sharding_remover.cc",
+    ],
+    hdrs = [
+        "sharding_remover.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "sharding_remover_test",
+    size = "small",
+    srcs = [
+        "sharding_remover_test.cc",
+    ],
+    deps = [
+        ":sharding_remover",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 
@@ -703,6 +810,7 @@ tf_cc_test(
     name = "hlo_reachability_test",
     srcs = ["hlo_reachability_test.cc"],
     deps = [
+        ":computation_placer",
         ":hlo",
         ":hlo_reachability",
         "//tensorflow/compiler/xla:test",
@@ -940,6 +1048,7 @@ cc_library(
         ":computation_placer",
         ":dump",
         ":dynamic_dimension_inference",
+        ":dynamic_padder",
         ":executable",
         ":execution_tracker",
         ":hlo",
@@ -1048,7 +1157,8 @@ cc_library(
 )
 
 cc_library(
-    name = "gpu_plugin",
+    name = "gpu_plugin_impl",
+    compatible_with = [],
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
@@ -1061,6 +1171,15 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler",
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
     ]) + internal_cuda_deps(),
+)
+
+cc_library(
+    name = "gpu_plugin_stub",
+)
+
+alias(
+    name = "gpu_plugin",
+    actual = if_libtpu("gpu_plugin_stub", "gpu_plugin_impl"),
 )
 
 cc_library(
@@ -1207,6 +1326,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -1315,6 +1435,7 @@ cc_library(
         ":hlo_dataflow_analysis",
         ":hlo_live_range",
         ":hlo_proto_cc",
+        ":hlo_value",
         ":logical_buffer",
         ":memory_space_assignment",
         ":tuple_points_to_analysis",
@@ -1962,6 +2083,71 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/client/lib:qr",
+        "//tensorflow/compiler/xla/client/lib:slicing",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "real_imag_expander",
+    srcs = ["real_imag_expander.cc"],
+    hdrs = ["real_imag_expander.h"],
+    deps = [
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+    ],
+)
+
+tf_cc_test(
+    name = "real_imag_expander_test",
+    size = "small",
+    srcs = ["real_imag_expander_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_parser",
+        ":hlo_pass",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        ":real_imag_expander",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "eigh_expander",
+    srcs = ["eigh_expander.cc"],
+    hdrs = ["eigh_expander.h"],
+    deps = [
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:comparators",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:loops",
+        "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -2036,6 +2222,7 @@ cc_library(
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:types",
@@ -2187,10 +2374,170 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "collectives_schedule_linearizer",
+    srcs = ["collectives_schedule_linearizer.cc"],
+    hdrs = ["collectives_schedule_linearizer.h"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_domain_map",
+        ":hlo_pass",
+        ":hlo_query",
+        ":hlo_reachability",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "collectives_schedule_linearizer_test",
+    srcs = ["collectives_schedule_linearizer_test.cc"],
+    deps = [
+        ":collectives_schedule_linearizer",
+        ":hlo",
+        ":hlo_graph_dumper",
+        ":hlo_matchers",
+        ":hlo_runner",
+        ":pattern_matcher",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "collective_combiner_utils",
+    hdrs = ["collective_combiner_utils.h"],
+    deps = [
+        ":hlo",
+        ":hlo_domain_map",
+        ":hlo_reachability",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:tflite_portable_logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+cc_library(
+    name = "collective_decomposer_utils",
+    srcs = ["collective_decomposer_utils.cc"],
+    hdrs = ["collective_decomposer_utils.h"],
+    deps = [
+        ":collective_ops_utils",
+        ":hlo",
+        ":hlo_module_config",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "all_gather_broadcast_reorder",
+    srcs = ["all_gather_broadcast_reorder.cc"],
+    hdrs = ["all_gather_broadcast_reorder.h"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_pass",
+        ":hlo_query",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "all_gather_broadcast_reorder_test",
+    srcs = ["all_gather_broadcast_reorder_test.cc"],
+    deps = [
+        ":all_gather_broadcast_reorder",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "all_gather_combiner",
+    srcs = ["all_gather_combiner.cc"],
+    hdrs = ["all_gather_combiner.h"],
+    deps = [
+        ":collective_combiner_utils",
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_domain_map",
+        ":hlo_pass",
+        ":hlo_query",
+        ":hlo_reachability",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "all_gather_combiner_test",
+    srcs = ["all_gather_combiner_test.cc"],
+    deps = [
+        ":all_gather_combiner",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
     name = "all_reduce_combiner",
     srcs = ["all_reduce_combiner.cc"],
     hdrs = ["all_reduce_combiner.h"],
     deps = [
+        ":all_reduce_key",
+        ":collective_combiner_utils",
         ":hlo",
         ":hlo_casting_utils",
         ":hlo_domain_map",
@@ -2218,6 +2565,55 @@ tf_cc_test(
         ":all_reduce_combiner",
         ":hlo",
         ":hlo_matchers",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "reduce_scatter_combiner",
+    srcs = ["reduce_scatter_combiner.cc"],
+    hdrs = ["reduce_scatter_combiner.h"],
+    deps = [
+        ":all_reduce_key",
+        ":collective_combiner_utils",
+        ":collective_ops_utils",
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_domain_map",
+        ":hlo_pass",
+        ":hlo_query",
+        ":hlo_reachability",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "reduce_scatter_combiner_test",
+    srcs = ["reduce_scatter_combiner_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":reduce_scatter_combiner",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -2267,6 +2663,46 @@ tf_cc_test(
         "//tensorflow/core:test",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "reduce_scatter_decomposer",
+    srcs = ["reduce_scatter_decomposer.cc"],
+    hdrs = ["reduce_scatter_decomposer.h"],
+    deps = [
+        ":collective_decomposer_utils",
+        ":collective_ops_utils",
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_creation_utils",
+        ":hlo_module_config",
+        ":hlo_pass",
+        ":hlo_query",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "reduce_scatter_decomposer_test",
+    srcs = ["reduce_scatter_decomposer_test.cc"],
+    deps = [
+        ":collective_ops_utils",
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_parser",
+        ":reduce_scatter_decomposer",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
     ],
 )
 
@@ -2456,10 +2892,12 @@ cc_library(
         ":hlo_pass",
         ":pattern_matcher",
         ":shape_inference",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -2627,6 +3065,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_pass",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:types",
@@ -2650,10 +3089,33 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "all_to_all_decomposer",
+    srcs = ["all_to_all_decomposer.cc"],
+    hdrs = ["all_to_all_decomposer.h"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_pass",
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
     name = "all_gather_decomposer",
     srcs = ["all_gather_decomposer.cc"],
     hdrs = ["all_gather_decomposer.h"],
     deps = [
+        ":collective_decomposer_utils",
+        ":collective_ops_utils",
         ":hlo",
         ":hlo_casting_utils",
         ":hlo_pass",
@@ -2723,6 +3185,7 @@ cc_library(
     deps = [
         ":hlo_pass",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -2774,6 +3237,47 @@ cc_library(
 )
 
 cc_library(
+    name = "dynamic_dimension_simplifier",
+    srcs = ["dynamic_dimension_simplifier.cc"],
+    hdrs = ["dynamic_dimension_simplifier.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
+    ],
+)
+
+tf_cc_test(
+    name = "dynamic_dimension_simplifier_test",
+    srcs = ["dynamic_dimension_simplifier_test.cc"],
+    deps = [
+        ":dynamic_dimension_simplifier",
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_creation_utils",
+        ":hlo_parser",
+        ":hlo_pass",
+        ":hlo_pass_pipeline",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "dynamic_padder",
     srcs = ["dynamic_padder.cc"],
     hdrs = ["dynamic_padder.h"],
@@ -2814,6 +3318,7 @@ xla_test(
         ":hlo_dce",
         ":hlo_matchers",
         ":hlo_parser",
+        ":tuple_simplifier",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -3512,6 +4017,7 @@ cc_library(
         ":logical_buffer",
         ":tuple_points_to_analysis",
         ":tuple_simplifier",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -3552,7 +4058,9 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
     ],
 )
 
@@ -3686,6 +4194,7 @@ tf_cc_test(
         ":hlo",
         ":hlo_matchers",
         ":memory_space_assignment",
+        ":memory_space_assignment_utils",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -3759,17 +4268,20 @@ cc_library(
     srcs = ["hlo_verifier.cc"],
     hdrs = ["hlo_verifier.h"],
     deps = [
+        ":collective_ops_utils",
         ":hlo",
         ":hlo_casting_utils",
         ":hlo_pass",
         ":shape_inference",
         "//tensorflow/compiler/xla:comparison_util",
-        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -3933,6 +4445,7 @@ tf_cc_test(
     deps = [
         ":algebraic_simplifier",
         ":computation_layout",
+        ":dynamic_padder",
         ":hlo",
         ":hlo_parser",
         ":layout_assignment",
@@ -4025,6 +4538,7 @@ cc_library(
     hdrs = ["hlo_cse.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_domain_map",
         ":hlo_pass",
         "//tensorflow/compiler/xla:literal",
@@ -4089,6 +4603,7 @@ tf_cc_test(
         ":pattern_matcher",
         ":pattern_matcher_gmock",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
@@ -4274,6 +4789,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
     ],
 )
@@ -4307,6 +4823,7 @@ cc_library(
     deps = [
         ":computation_layout",
         ":computation_placer",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -4766,11 +5283,60 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "while_loop_concat_code_motion",
+    srcs = ["while_loop_concat_code_motion.cc"],
+    hdrs = ["while_loop_concat_code_motion.h"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_dce",
+        ":hlo_pass",
+        ":hlo_pass_pipeline",
+        ":tuple_simplifier",
+        ":while_loop_simplifier",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "while_loop_concat_code_motion_test",
+    srcs = ["while_loop_concat_code_motion_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_matchers",
+        ":hlo_verifier",
+        ":while_loop_concat_code_motion",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "while_loop_invariant_code_motion",
     srcs = ["while_loop_invariant_code_motion.cc"],
     hdrs = ["while_loop_invariant_code_motion.h"],
     deps = [
         ":hlo",
+        ":hlo_dce",
         ":hlo_pass",
         ":tuple_util",
         ":while_loop_analysis",
@@ -4792,6 +5358,40 @@ tf_cc_test(
         ":hlo_matchers",
         ":hlo_parser",
         ":while_loop_invariant_code_motion",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "while_loop_expensive_invariant_code_motion",
+    srcs = ["while_loop_expensive_invariant_code_motion.cc"],
+    hdrs = ["while_loop_expensive_invariant_code_motion.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        ":tuple_util",
+        ":while_loop_analysis",
+        ":while_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+    ],
+)
+
+tf_cc_test(
+    name = "while_loop_expensive_invariant_code_motion_test",
+    srcs = ["while_loop_expensive_invariant_code_motion_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":hlo_parser",
+        ":while_loop_expensive_invariant_code_motion",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -4907,6 +5507,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -5189,6 +5790,63 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+# Exposes the public interface only and hides internal details. Suitable for
+# linking into a static library or binary.
+cc_library(
+    name = "custom_call_status",
+    srcs = [
+        "custom_call_status.cc",
+        "custom_call_status_internal.h",
+    ],
+    hdrs = ["custom_call_status.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+# Internal version that exposes internal details and private interfaces. For
+# use by other XLA code only.
+cc_library(
+    name = "custom_call_status_internal",
+    hdrs = [
+        "custom_call_status_internal.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":custom_call_status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+# Public headers only, suitable for inclusion in a shared library of CustomCall
+# target functions.
+cc_library(
+    name = "custom_call_status_public_headers",
+    hdrs = ["custom_call_status.h"],
+    visibility = ["//visibility:public"],
+)
+
+tf_cc_test(
+    name = "custom_call_status_test",
+    srcs = ["custom_call_status_test.cc"],
+    deps = [
+        ":custom_call_status_internal",
+        ":custom_call_status_test_c_caller",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "custom_call_status_test_c_caller",
+    testonly = True,
+    srcs = ["custom_call_status_test_c_caller.c"],
+    hdrs = ["custom_call_status_test_c_caller.h"],
+    deps = [":custom_call_status"],
+)
+
 tf_cc_test(
     name = "slice_sinker_test",
     srcs = ["slice_sinker_test.cc"],
@@ -5273,8 +5931,9 @@ cc_library(
         ":pattern_matcher",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib_internal",  # fixdeps: keep
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -5288,6 +5947,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -5347,6 +6008,30 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "result_caster",
+    srcs = ["result_caster.cc"],
+    hdrs = ["result_caster.h"],
+    deps = [
+        ":hlo",
+        ":op_expander_pass",
+        ":shape_inference",
+    ],
+)
+
+tf_cc_test(
+    name = "result_caster_test",
+    srcs = ["result_caster_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":result_caster",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "global_device_id",
     srcs = ["global_device_id.cc"],
     hdrs = ["global_device_id.h"],
@@ -5365,6 +6050,9 @@ cc_library(
     deps = [
         ":hlo",
         ":op_expander_pass",
+        "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -5381,10 +6069,37 @@ tf_cc_test(
     ],
 )
 
-# copybara:uncomment_begin(google-only)
-# py_proto_library(
-#     name = "hlo_pb2",
-#     api_version = 2,
-#     deps = [":hlo_proto"],
-# )
-# copybara:uncomment_end
+cc_library(
+    name = "xla_debug_info_manager",
+    srcs = [
+        "xla_debug_info_manager.cc",
+    ],
+    hdrs = [
+        "xla_debug_info_manager.h",
+    ],
+    deps = [
+        ":hlo",
+        ":hlo_proto_cc",
+        ":hlo_proto_util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_debug_info_manager_test",
+    srcs = ["xla_debug_info_manager_test.cc"],
+    deps = [
+        ":hlo_proto_cc",
+        ":xla_debug_info_manager",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+xla_py_proto_library(
+    name = "hlo_pb2",
+    api_version = 2,
+    visibility = ["//visibility:public"],
+    deps = [":hlo_proto"],
+)

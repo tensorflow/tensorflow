@@ -36,6 +36,16 @@ namespace {
 struct OptimizeFunctionalOpsPass
     : public PassWrapper<OptimizeFunctionalOpsPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-optimize-functional-ops";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Optimize TensorFlow functional ops";
+  }
 };
 
 // Updates function return type of the given functions to match the terminator
@@ -59,7 +69,7 @@ bool IsSideEffectFree(FuncOp func) {
   return !func.getBody()
               .walk([&](Operation* op) {
                 if (!MemoryEffectOpInterface::hasNoEffect(op) &&
-                    !op->isKnownTerminator())
+                    !op->hasTrait<OpTrait::IsTerminator>())
                   return WalkResult::interrupt();
                 return WalkResult::advance();
               })
@@ -123,7 +133,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     for (auto& op_to_inline : func.front()) {
       // If this is a terminator, identify the values to use to replace the
       // original If op.
-      if (op_to_inline.isKnownTerminator()) {
+      if (op_to_inline.hasTrait<OpTrait::IsTerminator>()) {
         updated_results.reserve(op_to_inline.getNumOperands());
         for (Value operand : op_to_inline.getOperands())
           updated_results.push_back(mapper.lookup(operand));
@@ -145,16 +155,15 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
 };
 
 void OptimizeFunctionalOpsPass::runOnOperation() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
 
   patterns.insert<FoldIfOp>(&getContext());
 
   ModuleOp module = getOperation();
-  applyPatternsAndFoldGreedily(module, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
 }
 
-PassRegistration<OptimizeFunctionalOpsPass> pass(
-    "tfl-optimize-functional-ops", "Optimize TensorFlow functional ops");
+PassRegistration<OptimizeFunctionalOpsPass> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass() {

@@ -107,11 +107,14 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   EagerKernelArgs args(1);
   Device* d = ctx_->CanonicalDevice(absl::get<Device*>(op->Device()));
   TF_RETURN_IF_ERROR(src_->TensorValue(d, args.MutableInput(0)));
+  CoordinationServiceAgent* coord_agent = nullptr;
+  if (ctx_->GetDistributedManager() != nullptr)
+    coord_agent = ctx_->GetDistributedManager()->GetCoordinationServiceAgent();
 
   return kernel->Run(/*step_container=*/nullptr, args, /*outputs=*/nullptr,
                      /*cancellation_manager=*/nullptr,
                      /*remote_func_params=*/absl::nullopt,
-                     /*stack_trace=*/absl::nullopt);
+                     /*stack_trace=*/absl::nullopt, coord_agent);
 }
 
 void RemoteCopyNode::StartSend() {
@@ -194,10 +197,13 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
 
   EagerKernelArgs args;
   std::vector<EagerKernelRet> rets;
+  CoordinationServiceAgent* coord_agent = nullptr;
+  if (ctx_->GetDistributedManager() != nullptr)
+    coord_agent = ctx_->GetDistributedManager()->GetCoordinationServiceAgent();
   TF_RETURN_IF_ERROR(kernel->Run(/*step_container*/ nullptr, args, &rets,
                                  captured_state_->recv_cancellation(),
                                  /*remote_func_params=*/absl::nullopt,
-                                 /*stack_trace=*/absl::nullopt));
+                                 /*stack_trace=*/absl::nullopt, coord_agent));
   outputs->clear();
   for (const auto& ret : rets) {
     if (ret.index() == 0) {
@@ -425,8 +431,6 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
 
   // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence
   // copy it to the CPU before copying it out.
-  // TODO(b/110044833): this is currently slow, but can be fixed by making
-  // tensor handles aware of more than one device.
   // TODO(fishx): Make CopyToDevice asynchronous.
   Tensor tensor;
   s = src_->CopyToDevice(*ctx_, ctx_->HostCPU(), &tensor);

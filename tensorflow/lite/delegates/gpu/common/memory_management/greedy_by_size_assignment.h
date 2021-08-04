@@ -42,7 +42,7 @@ namespace gpu {
 // corresponding offset to current tensor and the tensor becomes assigned.
 absl::Status GreedyBySizeAssignment(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
-    OffsetsAssignment* assignment);
+    size_t base_addr_align_bytes, OffsetsAssignment* assignment);
 
 // Assigns given tensors to shared objects, using the following greedy
 // algorithm:

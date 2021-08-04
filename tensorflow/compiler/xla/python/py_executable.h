@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PY_EXECUTABLE_H_
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -33,7 +34,7 @@ namespace xla {
 // Python wrapper around PjRtExecutable. We use a wrapper class:
 // a) to keep the PyClient alive via a std::shared_ptr<>
 // b) to add Python-specific functionality.
-class PyExecutable {
+class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
  public:
   PyExecutable(std::shared_ptr<PyClient> client,
                std::unique_ptr<PjRtExecutable> executable,
@@ -56,21 +57,33 @@ class PyExecutable {
 
   void Delete() { return executable_->Delete(); }
 
-  StatusOr<std::vector<std::unique_ptr<PyBuffer>>> Execute(
-      absl::Span<PyBuffer* const> args);
+  bool is_deleted() { return executable_->IsDeleted(); }
 
-  // Same as above, but take as inputs `PjRtBuffer*`. Only targets C++ code.
-  StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PjRtExecute(
-      const std::vector<PjRtBuffer*>& args);
+  StatusOr<std::vector<PyBuffer::object>> Execute(
+      absl::Span<PyBuffer::object const> args);
 
-  StatusOr<std::vector<std::vector<std::unique_ptr<PyBuffer>>>>
-  ExecuteOnLocalDevices(absl::Span<const std::vector<PyBuffer*>> args);
+  // Takes args indexed by argid then deviceid, transposes them, and passes to
+  // PjRtExecutable::Execute. The result is similarly transposed back into the
+  // argid,deviceid format.
+  // args is [num_args x num_devices].
+  StatusOr<std::vector<std::vector<PyBuffer::object>>>
+  ExecuteShardedOnLocalDevices(
+      absl::Span<const std::vector<PyBuffer::object>> args);
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 
   Traceback* traceback() { return traceback_.get(); }
 
   const PjRtExecutable& pjrt_executable() const { return *executable_; }
+
+  PjRtExecutable* mutable_pjrt_executable() const { return executable_.get(); }
+  const ExecuteOptions& options() const { return options_; }
+  const absl::optional<std::string>& fingerprint() const {
+    return fingerprint_;
+  }
+
+  // Keep `obj` alive as long as PyExecutable.
+  void KeepAlive(pybind11::object obj);
 
  private:
   friend class PyClient;
@@ -86,6 +99,9 @@ class PyExecutable {
 
   // The options to pass to `executable_.Execute`.
   ExecuteOptions options_;
+
+  // Python objects to keep alive as requested by user.
+  std::vector<pybind11::object> keepalives_;
 
   // Doubly-linked list of all executables known to the client. Protected by the
   // GIL.

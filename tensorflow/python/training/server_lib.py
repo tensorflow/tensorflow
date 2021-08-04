@@ -293,7 +293,7 @@ class ClusterSpec(object):
         if isinstance(tasks, (list, tuple)):
           job_tasks = {i: task for i, task in enumerate(tasks)}
         elif isinstance(tasks, dict):
-          job_tasks = {i: task for i, task in tasks.items()}
+          job_tasks = {int(i): task for i, task in tasks.items()}
         else:
           raise TypeError("The tasks for job %r must be a list or a dictionary "
                           "from integers to strings." % job_name)

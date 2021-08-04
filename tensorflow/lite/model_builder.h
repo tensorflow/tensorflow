@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <map>
 #include <memory>
 #include <string>
 
@@ -42,7 +43,11 @@ namespace tflite {
 ///
 /// NOTE: The current API requires that a FlatBufferModel instance be kept alive
 /// by the client as long as it is in use by any dependent Interpreter
-/// instances.
+/// instances. As the FlatBufferModel instance is effectively immutable after
+/// creation, the client may safely use a single model with multiple dependent
+/// Interpreter instances, even across multiple threads (though note that each
+/// Interpreter instance is *not* thread-safe).
+///
 /// <pre><code>
 /// using namespace tflite;
 /// StderrReporter error_reporter;
@@ -110,6 +115,30 @@ class FlatBufferModel {
       TfLiteVerifier* extra_verifier = nullptr,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
+  /// Builds a model directly from an allocation.
+  /// Ownership of the allocation is passed to the model, but the caller
+  /// retains ownership of `error_reporter` and must ensure its lifetime is
+  /// longer than the FlatBufferModel instance.
+  /// Returns a nullptr in case of failure (e.g., the allocation is invalid).
+  static std::unique_ptr<FlatBufferModel> BuildFromAllocation(
+      std::unique_ptr<Allocation> allocation,
+      ErrorReporter* error_reporter = DefaultErrorReporter());
+
+  /// Verifies whether the content of the allocation is legit, then builds a
+  /// model based on the provided allocation.
+  /// The extra_verifier argument is an additional optional verifier for the
+  /// buffer. By default, we always check with tflite::VerifyModelBuffer. If
+  /// extra_verifier is supplied, the buffer is checked against the
+  /// extra_verifier after the check against tflite::VerifyModelBuilder.
+  /// Ownership of the allocation is passed to the model, but the caller
+  /// retains ownership of `error_reporter` and must ensure its lifetime is
+  /// longer than the FlatBufferModel instance.
+  /// Returns a nullptr in case of failure.
+  static std::unique_ptr<FlatBufferModel> VerifyAndBuildFromAllocation(
+      std::unique_ptr<Allocation> allocation,
+      TfLiteVerifier* extra_verifier = nullptr,
+      ErrorReporter* error_reporter = DefaultErrorReporter());
+
   /// Builds a model directly from a flatbuffer pointer
   /// Caller retains ownership of the buffer and should keep it alive until the
   /// returned object is destroyed. Caller retains ownership of `error_reporter`
@@ -141,6 +170,10 @@ class FlatBufferModel {
   // in which case the actual required runtime might be greater than the
   // reported minimum.
   std::string GetMinimumRuntime() const;
+
+  // Return model metadata as a mapping of name & buffer strings.
+  // See Metadata table in TFLite schema.
+  std::map<std::string, std::string> ReadAllMetadata() const;
 
   /// Returns true if the model identifier is correct (otherwise false and
   /// reports an error).

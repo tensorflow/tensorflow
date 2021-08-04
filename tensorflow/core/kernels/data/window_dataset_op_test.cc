@@ -11,8 +11,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/window_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include <string>
+#include <utility>
+
+#include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -23,8 +27,8 @@ constexpr char kNodeName[] = "window_dataset";
 class WindowDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  WindowDatasetParams(T input_dataset_params, int64 size, int64 shift,
-                      int64 stride, bool drop_remainder,
+  WindowDatasetParams(T input_dataset_params, int64_t size, int64_t shift,
+                      int64_t stride, bool drop_remainder,
                       DataTypeVector output_dtypes,
                       std::vector<PartialTensorShape> output_shapes,
                       string node_name)

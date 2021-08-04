@@ -49,6 +49,11 @@ bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs);
 bool MergeSharding(const HloSharding& old, HloSharding* to_merge,
                    bool may_combine_partial_sharding);
 
+// Merges `to_merge` into `dst` only if they are compatible, and the merged
+// sharding has >= minimum_tiles tiles. Returns if merging happened.
+bool MergeShardingIfCompatible(const HloSharding& to_merge,
+                               int64_t minimum_tiles, HloSharding* dst);
+
 // Given a map<device, occurrence_count>, selects the device with higher
 // occurrence count (if any). If top_count in not nullptr, it will receive the
 // count of the dominant device returned.
@@ -58,7 +63,7 @@ absl::optional<int64> SelectDominantDevice(
 // Assigns all the instructions of a computation, to a given device.
 // This API does not recurse into called computations, and does not assign
 // instructions which already have sharding.
-Status AssignComputationDevice(HloComputation* computation, int64 device);
+Status AssignComputationDevice(HloComputation* computation, int64_t device);
 
 // Given an instruction container, returns the device which is most commonly
 // occurring among the instructions.
@@ -100,7 +105,7 @@ HloSharding ReverseSharding(const HloSharding& sharding,
 // assignment of the sharding argument. Only dimensions in the dims span
 // argument are considered for reshaping, the others are ignored.
 // Assumptions: sharding is tile sharded, and dim must be included in dims.
-HloSharding ReshapeToTileDimension(const HloSharding& sharding, int64 dim,
+HloSharding ReshapeToTileDimension(const HloSharding& sharding, int64_t dim,
                                    absl::Span<const int64> dims);
 
 // Returns true if the provided module includes one or more instructions with
@@ -189,6 +194,11 @@ std::vector<int64> DevicesForSharding(
 HloSharding PartiallyReplicateTiledShardingOnDims(
     const HloSharding& sharding, absl::Span<const int64> dims_to_replicate);
 
+// Returns a sharding that replicates data across devices along all dimensions
+// but the given ones to keep in the original sharding.
+HloSharding PartiallyReplicateTiledShardingOnAllDimsExcept(
+    const HloSharding& sharding, absl::Span<const int64> dims_to_keep);
+
 // Returns a sharding the removes given tile dimensions.
 //
 // Precondition: if not tile maximal, the size of each tile dimension must be 1.
@@ -201,6 +211,10 @@ HloSharding RemoveShapeDimensions(const HloSharding& sharding,
 absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
     const HloSharding& source, absl::Span<int64 const> src_to_tgt,
     absl::Span<int64 const> tgt_to_src);
+
+// Returns the iota dimension if maybe_iota is an kIota instruction or
+// equivalent to kIota.
+absl::optional<int64> GetDimensionForIota(const HloInstruction* maybe_iota);
 
 // Returns identified parallel dimensions for Gather.
 absl::optional<GatherParallelDims> GetGatherBatchParallelDims(

@@ -4,7 +4,7 @@ load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # EXPERIMENTAL: Native target that runs inference on the Hexagon backend.

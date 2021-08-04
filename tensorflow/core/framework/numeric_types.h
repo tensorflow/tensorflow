@@ -75,22 +75,4 @@ struct NumTraits<tensorflow::tstring> : GenericNumTraits<tensorflow::tstring> {
 
 }  // namespace Eigen
 
-#if defined(_MSC_VER) && !defined(__clang__)
-namespace std {
-template <>
-struct hash<Eigen::half> {
-  std::size_t operator()(const Eigen::half& a) const {
-    return static_cast<std::size_t>(a.x);
-  }
-};
-
-template <>
-struct hash<Eigen::bfloat16> {
-  std::size_t operator()(const Eigen::bfloat16& a) const {
-    return hash<float>()(static_cast<float>(a));
-  }
-};
-}  // namespace std
-#endif  // _MSC_VER
-
 #endif  // TENSORFLOW_CORE_FRAMEWORK_NUMERIC_TYPES_H_

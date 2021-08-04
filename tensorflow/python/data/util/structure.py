@@ -465,6 +465,13 @@ def type_spec_from_value(element, use_fallback=True):
     # `element` is not a namedtuple
     return tuple([type_spec_from_value(v) for v in element])
 
+  if hasattr(element.__class__, "__attrs_attrs__"):
+    # `element` is an `attr.s` decorated class
+    attrs = getattr(element.__class__, "__attrs_attrs__")
+    return type(element)(*[
+        type_spec_from_value(getattr(element, a.name)) for a in attrs
+    ])
+
   if use_fallback:
     # As a fallback try converting the element to a tensor.
     try:

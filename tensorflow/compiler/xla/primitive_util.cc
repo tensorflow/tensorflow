@@ -133,7 +133,9 @@ int BitWidth(PrimitiveType type) {
   }
 }
 
-xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth) {
+int ByteWidth(PrimitiveType type) { return CeilOfRatio(BitWidth(type), 8); }
+
+xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
     case 8:
       return xla::U8;
@@ -148,7 +150,7 @@ xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth) {
   }
 }
 
-xla::PrimitiveType SignedIntegralTypeForBitWidth(int64 src_bitwidth) {
+xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
     case 8:
       return xla::S8;

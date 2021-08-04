@@ -48,6 +48,11 @@ void UncompressElementOp::Compute(OpKernelContext* ctx) {
   Tensor tensor = ctx->input(0);
   const Variant& variant = tensor.scalar<Variant>()();
   const CompressedElement* compressed = variant.get<CompressedElement>();
+  OP_REQUIRES(
+      ctx, compressed != nullptr,
+      errors::InvalidArgument(
+          "Input does not contain a compressed element. Instead got tensor ",
+          tensor.DebugString()));
 
   std::vector<Tensor> components;
   OP_REQUIRES_OK(ctx, UncompressElement(*compressed, &components));

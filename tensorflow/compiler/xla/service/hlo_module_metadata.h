@@ -54,10 +54,10 @@ class HloModuleMetadata {
   void set_module_group_name(const std::string& name) {
     module_metadata_.set_module_group_name(name);
   }
-  void set_canonical_module_id(int64 id) {
+  void set_canonical_module_id(int64_t id) {
     module_metadata_.set_canonical_module_id(id);
   }
-  void add_partitioned_module_id(int64 id) {
+  void add_partitioned_module_id(int64_t id) {
     module_metadata_.add_partitioned_module_ids(id);
   }
 
@@ -92,13 +92,13 @@ class HloModuleMetadata {
           pass_metadata->set_module_changed(module_changed);
         });
   }
-  Status set_current_pass_module_id(int64 module_id) {
+  Status set_current_pass_module_id(int64_t module_id) {
     return MutateCurrentHloPassMetadata(
         [&module_id](HloPassMetadata* pass_metadata) {
           pass_metadata->set_module_id(module_id);
         });
   }
-  Status add_current_pass_module_group_module_id(int64 module_id) {
+  Status add_current_pass_module_group_module_id(int64_t module_id) {
     return MutateCurrentHloPassMetadata(
         [&module_id](HloPassMetadata* pass_metadata) {
           pass_metadata->add_module_group_module_ids(module_id);

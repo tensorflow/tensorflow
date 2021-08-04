@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <dirent.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <fnmatch.h>
@@ -69,7 +70,8 @@ class PThread : public Thread {
     }
     int ret = pthread_create(&thread_, &attributes, &ThreadFn, params);
     // There is no mechanism for the thread creation API to fail, so we CHECK.
-    CHECK_EQ(ret, 0) << "Thread creation via pthread_create() failed.";
+    CHECK_EQ(ret, 0) << "Thread " << name
+                     << " creation via pthread_create() failed.";
     pthread_attr_destroy(&attributes);
   }
 
@@ -248,6 +250,7 @@ class PosixEnv : public Env {
 REGISTER_FILE_SYSTEM("", PosixFileSystem);
 REGISTER_FILE_SYSTEM("file", LocalPosixFileSystem);
 REGISTER_FILE_SYSTEM("ram", RamFileSystem);
+
 
 Env* Env::Default() {
   static Env* default_env = new PosixEnv;

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -32,8 +33,6 @@ limitations under the License.
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -45,8 +44,7 @@ namespace tensorflow {
 // A ResourceMgr instance keeps track of named and typed resources
 // grouped into containers.
 //
-// Each resource must be represented as a sub-class of ResourceBase,
-// which is reference counted explicitly.  Each named resource is
+// Each named resource is
 // registered with ResourceMgr under a named "container" name. At any
 // time, there is at most one instance of a resource given the container
 // name, the resource type and the resource name.
@@ -76,14 +74,6 @@ namespace tensorflow {
 //   }
 //   my_var->Unref();   // Or use ScopedUnref().
 //   ctx->SetStatus(s);
-class ResourceBase : public core::RefCounted {
- public:
-  // Returns a debug string for *this.
-  virtual std::string DebugString() const = 0;
-
-  // Returns memory used by this resource.
-  virtual int64 MemoryUsed() const { return 0; }
-};
 
 // Container used for per-step resources.
 class ScopedStepContainer {
@@ -92,14 +82,14 @@ class ScopedStepContainer {
   // has to be unique.
   // cleanup: callback to delete a container of this name.
   // prefix: optional string prefix to disambiguate step containers.
-  ScopedStepContainer(const int64 step_id,
+  ScopedStepContainer(const int64_t step_id,
                       std::function<void(const string&)> cleanup)
       : step_id_(step_id),
         container_(strings::StrCat("__per_step_", step_id)),
         cleanup_(cleanup),
         dirty_(false) {}
 
-  ScopedStepContainer(const int64 step_id,
+  ScopedStepContainer(const int64_t step_id,
                       std::function<void(const string&)> cleanup,
                       const std::string& prefix)
       : step_id_(step_id),
@@ -181,6 +171,13 @@ class ResourceMgr {
   Status Lookup(const std::string& container, const std::string& name,
                 T** resource) const TF_MUST_USE_RESULT;
 
+  // If the resource manager has a resource matching "handle", returns it in
+  // "*resource" and the caller takes the ownership of one ref on "*resource".
+  //
+  // REQUIRES: resource != nullptr
+  Status Lookup(const ResourceHandle& handle,
+                ResourceBase** resource) const TF_MUST_USE_RESULT;
+
   // Similar to Lookup, but looks up multiple resources at once, with only a
   // single lock acquisition.  If containers_and_names[i] is uninitialized
   // then this function does not modify resources[i].
@@ -260,6 +257,9 @@ class ResourceMgr {
   Status LookupInternal(const std::string& container, const std::string& name,
                         T** resource) const
       TF_SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+  Status LookupInternal(const std::string& container, uint64 type_hash_code,
+                        const std::string& name, ResourceBase** resource) const
+      TF_SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
 
   Status DoCreate(const std::string& container, TypeIndex type,
                   const std::string& name, ResourceBase* resource)
@@ -267,6 +267,11 @@ class ResourceMgr {
 
   Status DoLookup(const std::string& container, TypeIndex type,
                   const std::string& name, ResourceBase** resource) const
+      TF_SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+  Status DoLookup(const std::string& container, uint64 type_hash_code,
+                  const std::string& type_name,
+                  const std::string& resource_name,
+                  ResourceBase** resource) const
       TF_SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
 
   Status DoDelete(const std::string& container, uint64 type_hash_code,
@@ -722,23 +727,23 @@ Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p);
 template <typename T>
 Status ValidateDeviceAndType(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
-  auto type_index = TypeIndex::Make<T>();
-  if (type_index.hash_code() != p.hash_code()) {
-    return errors::InvalidArgument(
-        "Trying to access resource using the wrong type. Expected ",
-        p.maybe_type_name(), " got ", type_index.name());
-  }
+  TF_RETURN_IF_ERROR(p.ValidateType<T>());
   return Status::OK();
 }
 
 }  // namespace internal
 
+// Creates the resource pointed at by "p". The caller transfers the ownership of
+// one ref on "*value" to the resource manager in "ctx", regardless of whether
+// this operation succeeds or fails.
 template <typename T>
 Status CreateResource(OpKernelContext* ctx, const ResourceHandle& p, T* value) {
   TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
   return ctx->resource_manager()->Create(p.container(), p.name(), value);
 }
 
+// If the resource manager in "ctx" has a resource matching "p", returns it in
+// "*value" and the caller takes the ownership of one ref on "*value"
 template <typename T, bool use_dynamic_cast>
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
                       T** value) {
@@ -747,6 +752,13 @@ Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
                                                               p.name(), value);
 }
 
+// If the resource manager in "ctx" has a resource matching "p", returns it in
+// "*value" and the caller takes the ownership of one ref on "*value"
+Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
+                      ResourceBase** value);
+
+// If the resource manager in "ctx" has a resource matching "p", returns it in
+// "*value".
 template <typename T>
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
                       core::RefCountPtr<T>* value) {
@@ -757,6 +769,8 @@ Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
   return Status::OK();
 }
 
+// Similar to Lookup, but looks up multiple resources at once, with only a
+// single lock acquisition.
 template <typename T>
 Status LookupResources(OpKernelContext* ctx,
                        absl::Span<ResourceHandle const* const> p,
@@ -770,6 +784,13 @@ Status LookupResources(OpKernelContext* ctx,
   return ctx->resource_manager()->LookupMany(containers_and_names, values);
 }
 
+// If the resource manager in "ctx" has a resource pointed at by "p", returns
+// it in "*value". Otherwise, invokes creator() to create the resource.
+// The caller takes the ownership of one ref on "*value".
+//
+// WARNING: creator() must not call any methods on the resource manager during
+// its execution, because a non-reentrant lock is held during the creator() call
+// in order to guarantee atomicity of LookupOrCreateResource().
 template <typename T>
 Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
                               T** value, std::function<Status(T**)> creator) {
@@ -778,6 +799,12 @@ Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
                                                  creator);
 }
 
+// If the resource manager in "ctx" has a resource pointed at by "p", returns
+// it in "*value". Otherwise, invokes creator() to create the resource.
+//
+// WARNING: creator() must not call any methods on the resource manager during
+// its execution, because a non-reentrant lock is held during the creator() call
+// in order to guarantee atomicity of LookupOrCreateResource().
 template <typename T>
 Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
                               core::RefCountPtr<T>* value,
@@ -789,12 +816,14 @@ Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
   return Status::OK();
 }
 
+// Deletes the resource pointed by "p", using the resource manager in "ctx".
 template <typename T>
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
   return ctx->resource_manager()->Delete<T>(p.container(), p.name());
 }
 
+// Deletes the resource pointed by "p", using the resource manager in "ctx".
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p);
 
 template <typename T>

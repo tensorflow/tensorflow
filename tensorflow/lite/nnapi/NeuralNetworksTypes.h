@@ -42,8 +42,9 @@ enum {
   ANEURALNETWORKS_TENSOR_INT32 = 4,
   ANEURALNETWORKS_TENSOR_QUANT8_ASYMM = 5,
   ANEURALNETWORKS_BOOL = 6,
-  ANEURALNETWORKS_TENSOR_BOOL8 = 9,
   ANEURALNETWORKS_TENSOR_QUANT16_SYMM = 7,
+  ANEURALNETWORKS_TENSOR_FLOAT16 = 8,
+  ANEURALNETWORKS_TENSOR_BOOL8 = 9,
   ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL = 11,
   ANEURALNETWORKS_TENSOR_QUANT8_SYMM = 13,
   ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED = 14,
@@ -227,6 +228,35 @@ enum {
   ANEURALNETWORKS_PRIORITY_HIGH = 110,
   ANEURALNETWORKS_PRIORITY_DEFAULT = ANEURALNETWORKS_PRIORITY_MEDIUM,
 };
+
+/**
+ * NNAPI feature levels.
+ *
+ * Each update of the NNAPI specification yields a new NNAPI feature level enum
+ * value. NNAPI feature level corrseponds to an NNAPI specification version that
+ * a driver and/or the NNAPI runtime can implement.
+ */
+enum {
+  /** NNAPI specification available in Android O-MR1, Android NNAPI feature
+     level 1 */
+  ANEURALNETWORKS_FEATURE_LEVEL_1 = 27,
+  /** NNAPI specification available in Android P, Android NNAPI feature level 2
+   */
+  ANEURALNETWORKS_FEATURE_LEVEL_2 = 28,
+  /** NNAPI specification available in Android Q, Android NNAPI feature level 3
+   */
+  ANEURALNETWORKS_FEATURE_LEVEL_3 = 29,
+  /** NNAPI specification available in Android R, Android NNAPI feature level 4
+   */
+  ANEURALNETWORKS_FEATURE_LEVEL_4 = 30,
+  /**
+   * NNAPI specification available in Android S, Android NNAPI feature level 5.
+   * After Android S, the NNAPI specification can be updated between Android
+   * API releases.
+   */
+  ANEURALNETWORKS_FEATURE_LEVEL_5 = 31,
+};
+
 /**
  * ANeuralNetworksMemoryDesc is an opaque type that represents a memory
  * descriptor.
@@ -677,7 +707,7 @@ typedef void (*ANeuralNetworksMemoryDesc_free_fn)(
 
 typedef int (*ANeuralNetworksMemoryDesc_addInputRole_fn)(
     ANeuralNetworksMemoryDesc* desc,
-    const ANeuralNetworksCompilation* compilation, int32_t index,
+    const ANeuralNetworksCompilation* compilation, uint32_t index,
     float frequency);
 
 typedef int (*ANeuralNetworksMemoryDesc_addOutputRole_fn)(
@@ -708,4 +738,11 @@ typedef int (*ANeuralNetworksExecution_startComputeWithDependencies_fn)(
     const ANeuralNetworksEvent* const* dependencies, uint32_t num_dependencies,
     uint64_t duration, ANeuralNetworksEvent** event);
 
+typedef int (*ANeuralNetworksExecution_enableInputAndOutputPadding_fn)(
+    ANeuralNetworksExecution* execution, bool enable);
+
+typedef int (*ANeuralNetworksExecution_setReusable_fn)(
+    ANeuralNetworksExecution* execution, bool reusable);
+
+typedef int64_t (*ANeuralNetworks_getRuntimeFeatureLevel_fn)();
 #endif  // TENSORFLOW_LITE_NNAPI_NEURALNETWORKSTYPES_H_

@@ -32,7 +32,7 @@ namespace tensorflow {
 template <typename SubQueue>
 class TypedQueue : public QueueBase {
  public:
-  TypedQueue(const int32 capacity, const DataTypeVector& component_dtypes,
+  TypedQueue(const int32_t capacity, const DataTypeVector& component_dtypes,
              const std::vector<TensorShape>& component_shapes,
              const string& name);
 
@@ -46,7 +46,7 @@ class TypedQueue : public QueueBase {
 
 template <typename SubQueue>
 TypedQueue<SubQueue>::TypedQueue(
-    int32 capacity, const DataTypeVector& component_dtypes,
+    int32_t capacity, const DataTypeVector& component_dtypes,
     const std::vector<TensorShape>& component_shapes, const string& name)
     : QueueBase(capacity, component_dtypes, component_shapes, name) {}
 
@@ -71,16 +71,14 @@ Status TypedQueue<SubQueue>::Initialize() {
   return Status::OK();
 }
 
-namespace {
-
 template <typename SubQueue>
-int64 SizeOf(const SubQueue& sq) {
+inline int64 SizeOf(const SubQueue& sq) {
   static_assert(sizeof(SubQueue) != sizeof(SubQueue), "SubQueue size unknown.");
   return 0;
 }
 
 template <>
-int64 SizeOf(const std::deque<PersistentTensor>& sq) {
+inline int64 SizeOf(const std::deque<Tensor>& sq) {
   if (sq.empty()) {
     return 0;
   }
@@ -88,14 +86,14 @@ int64 SizeOf(const std::deque<PersistentTensor>& sq) {
 }
 
 template <>
-int64 SizeOf(const std::vector<PersistentTensor>& sq) {
+inline int64 SizeOf(const std::vector<Tensor>& sq) {
   if (sq.empty()) {
     return 0;
   }
   return sq.size() * sq.front().AllocatedBytes();
 }
 
-using TensorPair = std::pair<int64, PersistentTensor>;
+using TensorPair = std::pair<int64, Tensor>;
 
 template <typename U, typename V>
 int64 SizeOf(const std::priority_queue<TensorPair, U, V>& sq) {
@@ -105,10 +103,8 @@ int64 SizeOf(const std::priority_queue<TensorPair, U, V>& sq) {
   return sq.size() * (sizeof(TensorPair) + sq.top().second.AllocatedBytes());
 }
 
-}  // namespace
-
 template <typename SubQueue>
-int64 TypedQueue<SubQueue>::MemoryUsed() const {
+inline int64 TypedQueue<SubQueue>::MemoryUsed() const {
   int memory_size = 0;
   mutex_lock l(mu_);
   for (const auto& sq : queues_) {

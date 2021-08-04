@@ -26,7 +26,7 @@ from google.protobuf import text_format
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import types_pb2
-from tensorflow.python import _op_def_util
+from tensorflow.python.framework import _op_def_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util

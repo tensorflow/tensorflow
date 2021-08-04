@@ -34,19 +34,19 @@ module attributes {tf.versions = {producer = 888 : i32}} {
 module attributes {tf.versions = {producer = 888 : i32}} {
   // CHECK-LABEL: func @annotate_mirrored_variable
   func @annotate_mirrored_variable(
-    %arg0: tensor<!tf.resource<tensor<?xi32>>>,
-    %arg1: tensor<!tf.resource<tensor<?xi32>>>,
-    %arg2: tensor<!tf.resource<tensor<?xi32>>>,
-    %arg3: tensor<!tf.resource<tensor<?xi32>>>,
-    %arg4: tensor<!tf.resource<tensor<?xi32>>>,
-    %arg5: tensor<!tf.resource<tensor<?xi32>>>) -> tensor<?xi32> {
+    %arg0: tensor<!tf_type.resource<tensor<?xi32>>>,
+    %arg1: tensor<!tf_type.resource<tensor<?xi32>>>,
+    %arg2: tensor<!tf_type.resource<tensor<?xi32>>>,
+    %arg3: tensor<!tf_type.resource<tensor<?xi32>>>,
+    %arg4: tensor<!tf_type.resource<tensor<?xi32>>>,
+    %arg5: tensor<!tf_type.resource<tensor<?xi32>>>) -> tensor<?xi32> {
     %3:2 = tf_device.replicate(
-      [%arg0, %arg1] as %ri_0: tensor<!tf.resource<tensor<?xi32>>>,
-      [%arg2, %arg3] as %ri_1: tensor<!tf.resource<tensor<?xi32>>>,
-      [%arg4, %arg5] as %ri_2: tensor<!tf.resource<tensor<?xi32>>>) {_mirrored_variable_indices = [0, 2], n = 2 : i32} {
-      %0 = "tf.ReadVariableOp"(%ri_0): (tensor<!tf.resource<tensor<?xi32>>>) -> tensor<?xi32>
-      %1 = "tf.ReadVariableOp"(%ri_1): (tensor<!tf.resource<tensor<?xi32>>>) -> tensor<?xi32>
-      %2 = "tf_device.cluster_func"(%0, %1, %ri_2) {func = @_func, device = ""} : (tensor<?xi32>, tensor<?xi32>, tensor<!tf.resource<tensor<?xi32>>>) -> tensor<?xi32>
+      [%arg0, %arg1] as %ri_0: tensor<!tf_type.resource<tensor<?xi32>>>,
+      [%arg2, %arg3] as %ri_1: tensor<!tf_type.resource<tensor<?xi32>>>,
+      [%arg4, %arg5] as %ri_2: tensor<!tf_type.resource<tensor<?xi32>>>) {_mirrored_variable_indices = [0, 2], n = 2 : i32} {
+      %0 = "tf.ReadVariableOp"(%ri_0): (tensor<!tf_type.resource<tensor<?xi32>>>) -> tensor<?xi32>
+      %1 = "tf.ReadVariableOp"(%ri_1): (tensor<!tf_type.resource<tensor<?xi32>>>) -> tensor<?xi32>
+      %2 = "tf_device.cluster_func"(%0, %1, %ri_2) {func = @_func, device = ""} : (tensor<?xi32>, tensor<?xi32>, tensor<!tf_type.resource<tensor<?xi32>>>) -> tensor<?xi32>
       tf_device.return %2 : tensor<?xi32>
     }
     %4 = "tf._C"(%3#1) : (tensor<?xi32>) -> tensor<?xi32>
@@ -56,8 +56,8 @@ module attributes {tf.versions = {producer = 888 : i32}} {
   // CHECK-LABEL: func @_func
   // CHECK-SAME: %[[ARG0:.*]]: tensor<?xi32> {mhlo.is_same_data_across_replicas},
   // CHECK-SAME: %[[ARG1:.*]]: tensor<?xi32>,
-  // CHECK-SAME: %[[ARG2:.*]]: tensor<!tf.resource<tensor<?xi32>>> {mhlo.is_same_data_across_replicas}
-  func @_func(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>, %arg2: tensor<!tf.resource<tensor<?xi32>>>) -> tensor<?xi32> {
+  // CHECK-SAME: %[[ARG2:.*]]: tensor<!tf_type.resource<tensor<?xi32>>> {mhlo.is_same_data_across_replicas}
+  func @_func(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>, %arg2: tensor<!tf_type.resource<tensor<?xi32>>>) -> tensor<?xi32> {
     %0 = "tf._D"(%arg0, %arg1) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
     return %0 : tensor<?xi32>
   }

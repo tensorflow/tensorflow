@@ -27,8 +27,6 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-const char kAnonymousRandomSeedGenerator[] = "AnonymousRandomSeedGenerator";
-const char kNumRandomSamples[] = "num_random_samples";
 const char kSeedGenerator[] = "SeedGenerator";
 const char kSeed[] = "seed";
 const char kSeed2[] = "seed2";
@@ -67,9 +65,9 @@ AnonymousSeedGeneratorHandleOp::AnonymousSeedGeneratorHandleOp(
     : AnonymousResourceOp<SeedGeneratorManager>(ctx) {}
 
 void AnonymousSeedGeneratorHandleOp::Compute(OpKernelContext* ctx) {
-  int64 seed;
+  int64_t seed;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed));
-  int64 seed2;
+  int64_t seed2;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));
   // Seeds will be consumed by `CreateResource`, which is called via `Compute`.
   mutex_lock l(mu_);

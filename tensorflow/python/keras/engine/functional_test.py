@@ -14,14 +14,9 @@
 #,============================================================================
 """Tests for layer graphs construction & handling."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import warnings
 
 import numpy as np
-
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -51,11 +46,6 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking.util import Checkpoint
-
-try:
-  import yaml  # pylint:disable=g-import-not-at-top
-except ImportError:
-  yaml = None
 
 
 class NetworkConstructionTest(keras_parameterized.TestCase):
@@ -631,10 +621,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       model.summary()
       json_str = model.to_json()
       models.model_from_json(json_str)
-
-      if yaml is not None:
-        yaml_str = model.to_yaml()
-        models.model_from_yaml(yaml_str)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_invalid_graphs(self):
@@ -1365,10 +1351,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
     json_str = model.to_json()
     models.model_from_json(json_str)
-
-    if yaml is not None:
-      yaml_str = model.to_yaml()
-      models.model_from_yaml(yaml_str)
 
   def test_subclassed_error_if_init_not_called(self):
 
@@ -2451,6 +2433,7 @@ class InputsOutputsErrorTest(keras_parameterized.TestCase):
 class FunctionalSubclassModel(training_lib.Model):
 
   def __init__(self, *args, **kwargs):
+    self.foo = {'foo': 'bar'}  # Make sure users can assign dict attributes
     my_input = input_layer_lib.Input(shape=(16,))
     dense = layers.Dense(32, activation='relu')
     output = dense(my_input)

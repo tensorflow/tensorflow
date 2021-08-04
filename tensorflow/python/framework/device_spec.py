@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.util.tf_export import tf_export
-
+from tensorflow.python import pywrap_tfe
 
 # EPU represents for TPU embedding for now. Subject to change in future.
 _VALID_DEVICE_TYPES = frozenset({"CPU", "GPU", "TPU", "CUSTOM", "EPU"})
@@ -303,6 +303,15 @@ class DeviceSpecV2(object):
     )
 
   @staticmethod
+  def _get_valid_device_types():
+    valid_device_types = set({})
+    physical_devices = pywrap_tfe.TF_ListPluggablePhysicalDevices()
+    for device in physical_devices:
+      valid_device_types.add(device.decode().split(":")[1])
+    valid_device_types = valid_device_types | _VALID_DEVICE_TYPES
+    return valid_device_types
+
+  @staticmethod
   def _string_to_components(spec=None):
     """Stateless portion of device spec string parsing.
 
@@ -323,6 +332,7 @@ class DeviceSpecV2(object):
 
     spec = spec or ""
     splits = [x.split(":") for x in spec.split("/")]
+    valid_device_types = DeviceSpecV2._get_valid_device_types()
     for y in splits:
       ly = len(y)
       if y:
@@ -333,7 +343,7 @@ class DeviceSpecV2(object):
           replica = y[1]
         elif ly == 2 and y[0] == "task":
           task = y[1]
-        elif ((ly == 1 or ly == 2) and (y[0].upper() in _VALID_DEVICE_TYPES)):
+        elif ((ly == 1 or ly == 2) and (y[0].upper() in valid_device_types)):
           if device_type is not None:
             raise ValueError("Cannot specify multiple device types: %s" % spec)
           device_type = y[0].upper()

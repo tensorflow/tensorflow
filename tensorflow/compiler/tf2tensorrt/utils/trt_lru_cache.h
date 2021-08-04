@@ -120,36 +120,39 @@ class LRUCache {
 
 struct EngineContext {
   EngineContext() {}  // Creates an empty context.
-  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
-                ExecutionContext&& input_execution_context)
-      : cuda_engine(std::move(input_cuda_engine)) {
-    execution_context.push_back(std::move(input_execution_context));
+  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& cuda_engine,
+                ExecutionContext&& execution_context)
+      : cuda_engine(std::move(cuda_engine)) {
+    execution_contexts.push_back(std::move(execution_context));
   }
-  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
-                std::vector<ExecutionContext>&& input_execution_context)
-      : cuda_engine(std::move(input_cuda_engine)),
-        execution_context(std::move(input_execution_context)) {}
+  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& cuda_engine,
+                std::vector<ExecutionContext>&& execution_contexts)
+      : cuda_engine(std::move(cuda_engine)),
+        execution_contexts(std::move(execution_contexts)) {}
 
   mutex mu;
   TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine;
 
   Status GetExecutionContext(int idx, nvinfer1::IExecutionContext** exec_ctx)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
-    if (idx >= execution_context.size()) {
+    if (idx >= execution_contexts.size()) {
       return errors::Internal("Requested engine context with index ", idx,
-                              ", but only ", execution_context.size(),
+                              ", but only ", execution_contexts.size(),
                               "contexts are present.");
     }
-    *exec_ctx = execution_context[idx];
+    *exec_ctx = execution_contexts[idx].get();
     return Status::OK();
+  }
+
+  int GetNumContexts() {
+    mutex_lock lock(mu);
+    return execution_contexts.size();
   }
 
   // In explicit batch mode, we maintain a vector of contexts for each engine,
   // where each context is created for a specific profile. This is because it is
   // either not possible or non-trivial to change the profile of a context for
   // the following reasons:
-  // - In TRT 6 it is not possible to switch a profile after it is set
-  //   https://docs.nvidia.com/deeplearning/tensorrt/archives/tensorrt-601/tensorrt-api/c_api/classnvinfer1_1_1_i_execution_context.html#aba0731b9fbc926c477010df818650b0a
   // - To switch profiles (from TRT 7), one must first ensure that all inference
   //   calls in that context are finished. This would require an additional
   //   synchronization before we call setOptimizationProfile. To avoid this
@@ -159,7 +162,7 @@ struct EngineContext {
   // https://docs.nvidia.com/deeplearning/sdk/tensorrt-best-practices/index.html#thread-safety
   // Additional discussion about execution context management and thread safety
   // at https://github.com/tensorflow/tensorflow/issues/36959
-  std::vector<ExecutionContext> execution_context TF_GUARDED_BY(mu);
+  std::vector<ExecutionContext> execution_contexts TF_GUARDED_BY(mu);
 };
 
 // Contains the context required to build the calibration data.
@@ -171,7 +174,7 @@ class CalibrationContext {
   std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
 
   // Temporary staging areas for calibration inputs.
-  std::vector<PersistentTensor> device_tensors_;
+  std::vector<Tensor> device_tensors_;
 
   std::unique_ptr<TRTInt8Calibrator> calibrator_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;

@@ -95,8 +95,10 @@ std::ostream& operator<<(std::ostream& os, ComputationType ty) {
   return os << ComputationTypeString(ty);
 }
 
-string DataTypeString(DataType ty) {
+std::string DataTypeString(DataType ty) {
   switch (ty) {
+    case DataType::kBF16:
+      return "bf16";
     case DataType::kHalf:
       return "f16";
     case DataType::kFloat:

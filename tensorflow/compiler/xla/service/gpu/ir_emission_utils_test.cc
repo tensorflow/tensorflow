@@ -27,8 +27,9 @@ namespace xla {
 namespace gpu {
 
 TEST(IrEmissionUtilsTest, TestOperandPartitionNoAlias) {
-  mlir::MLIRContext context;
-  mlir::mhlo::registerAllMhloDialects(context.getDialectRegistry());
+  mlir::DialectRegistry registry;
+  mlir::mhlo::registerAllMhloDialects(registry);
+  mlir::MLIRContext context(registry);
 
   auto module = mlir::parseSourceString(R"(
     func @foo(%arg0 : memref<f32>, %arg1 : memref<f32>, %arg2 : memref<f32>) {
@@ -43,8 +44,9 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionNoAlias) {
 }
 
 TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias0) {
-  mlir::MLIRContext context;
-  mlir::mhlo::registerAllMhloDialects(context.getDialectRegistry());
+  mlir::DialectRegistry registry;
+  mlir::mhlo::registerAllMhloDialects(registry);
+  mlir::MLIRContext context(registry);
 
   auto module = mlir::parseSourceString(R"(
     func @foo(%arg0 : memref<f32>, %arg1 : memref<f32>, %arg2 : memref<f32>) {
@@ -59,8 +61,9 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias0) {
 }
 
 TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias1) {
-  mlir::MLIRContext context;
-  mlir::mhlo::registerAllMhloDialects(context.getDialectRegistry());
+  mlir::DialectRegistry registry;
+  mlir::mhlo::registerAllMhloDialects(registry);
+  mlir::MLIRContext context(registry);
 
   auto module = mlir::parseSourceString(R"(
     func @foo(%arg0 : memref<f32>, %arg1 : memref<f32>, %arg2 : memref<f32>) {

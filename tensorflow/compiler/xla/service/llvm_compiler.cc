@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
+
 #include "tensorflow/core/platform/denormal.h"
 
 #ifdef __FAST_MATH__
@@ -41,11 +42,6 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
   std::vector<std::unique_ptr<HloModule>> modules =
       module_group->ConsumeModules();
   for (size_t i = 0; i < modules.size(); i++) {
-    if (stream_execs[i].size() != 1) {
-      return Unimplemented(
-          "Model partitioning not implemented for the CPU/GPU compilers!");
-    }
-
     TF_ASSIGN_OR_RETURN(modules[i],
                         RunHloPasses(std::move(modules[i]), stream_execs[i][0],
                                      options.device_allocator));

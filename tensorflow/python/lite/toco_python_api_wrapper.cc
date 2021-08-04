@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <vector>
+
 #include "pybind11/pybind11.h"
 #include "tensorflow/lite/toco/python/toco_python_api.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
@@ -47,24 +50,25 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
       TOCO conversion.
     )pbdoc");
   m.def(
-      "TocoGetPotentiallySupportedOps",
-      []() {
-        return tensorflow::PyoOrThrow(toco::TocoGetPotentiallySupportedOps());
-      },
-      R"pbdoc(
-      Returns a list of names of all ops potentially supported by tflite.
-    )pbdoc");
-  m.def(
       "ExperimentalMlirQuantizeModel",
       [](py::object input_contents_txt_raw, bool disable_per_channel,
-         bool fully_quantize, int inference_type, bool enable_numeric_verify) {
+         bool fully_quantize, int inference_type, int input_data_type,
+         int output_data_type, bool enable_numeric_verify,
+         bool enable_whole_model_verify, py::object op_blocklist,
+         py::object node_blocklist) {
         return tensorflow::PyoOrThrow(toco::MlirQuantizeModel(
             input_contents_txt_raw.ptr(), disable_per_channel, fully_quantize,
-            inference_type, enable_numeric_verify));
+            inference_type, input_data_type, output_data_type,
+            enable_numeric_verify, enable_whole_model_verify,
+            op_blocklist.ptr(), node_blocklist.ptr()));
       },
       py::arg("input_contents_txt_raw"), py::arg("disable_per_channel") = false,
       py::arg("fully_quantize") = true, py::arg("inference_type") = 9,
+      py::arg("input_data_type") = 0, py::arg("output_data_type") = 0,
       py::arg("enable_numeric_verify") = false,
+      py::arg("enable_whole_model_verify") = false,
+      py::arg("op_blocklist") = py::none(),
+      py::arg("node_blocklist") = py::none(),
       R"pbdoc(
       Returns a quantized model.
     )pbdoc");
@@ -87,5 +91,20 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
       py::arg("custom_opdefs_txt_raw"),
       R"pbdoc(
       Registers the given custom opdefs to the TensorFlow global op registry.
+    )pbdoc");
+  m.def(
+      "RetrieveCollectedErrors",
+      []() {
+        std::vector<std::string> collected_errors =
+            toco::RetrieveCollectedErrors();
+        pybind11::list serialized_message_list(collected_errors.size());
+        int i = 0;
+        for (const auto& error_data : collected_errors) {
+          serialized_message_list[i++] = pybind11::bytes(error_data);
+        }
+        return serialized_message_list;
+      },
+      R"pbdoc(
+      Returns and clears the list of collected errors in ErrorCollector.
     )pbdoc");
 }

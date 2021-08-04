@@ -29,7 +29,7 @@ class BFloat16Support {
   // Returns whether the backend supports BF16 operand for the HLO instruction
   // at the given index.
   virtual bool SupportsBF16Operand(const HloInstruction& hlo,
-                                   int64 operand_index) const;
+                                   int64_t operand_index) const;
 
   // Returns whether the backend supports BF16 output for the HLO instruction.
   virtual bool SupportsBF16Output(const HloInstruction& hlo) const;
@@ -47,12 +47,12 @@ class BFloat16Support {
   // output. This typically includes HLOs that pass elements from the operand to
   // the output without arithmetic operations.
   static bool EffectiveOperandPrecisionIsOutputPrecision(
-      const HloInstruction& hlo, int64 operand_index);
+      const HloInstruction& hlo, int64_t operand_index);
 
   // Returns if the backend only uses BF16 precision for the operand at the
   // specified index, even if the operand is F32.
   virtual bool EffectiveOperandPrecisionIsBF16(const HloInstruction& hlo,
-                                               int64 operand_index) const;
+                                               int64_t operand_index) const;
 };
 
 }  // namespace xla

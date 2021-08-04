@@ -68,7 +68,7 @@ samples) of the training or validation data. Refer to the
 <pre>
 def representative_dataset():
   for data in tf.data.Dataset.from_tensor_slices((images)).batch(1).take(100):
-    yield [data.astype(tf.float32)]
+    yield [tf.dtypes.cast(data, tf.float32)]
 </pre>
 
 For testing purposes, you can use a dummy dataset as follows:

@@ -127,6 +127,11 @@ TfLiteRegistration* RegisterMaxUnpooling2D() {
   return &reg;
 }
 
+// Alias for selective build.
+TfLiteRegistration* Register_MAX_UNPOOLING2D() {
+  return RegisterMaxUnpooling2D();
+}
+
 }  // namespace custom
 }  // namespace ops
 }  // namespace tflite

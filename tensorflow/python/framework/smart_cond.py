@@ -22,8 +22,10 @@ from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("__internal__.smart_cond.smart_cond", v1=[])
 def smart_cond(pred, true_fn=None, false_fn=None, name=None):
   """Return either `true_fn()` if predicate `pred` is true else `false_fn()`.
 

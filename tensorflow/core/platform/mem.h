@@ -64,10 +64,18 @@ struct MemoryInfo {
   int64 free = 0;
 };
 
+struct MemoryBandwidthInfo {
+  int64 bw_used = 0;  // memory bandwidth used across all CPU (in MBs/second)
+};
+
 // Retrieves the host memory information. If any of the fields in the returned
 // MemoryInfo structure is INT64_MAX, it means such information is not
 // available.
 MemoryInfo GetMemoryInfo();
+
+// Retrieves the host memory bandwidth information. If any field in the returned
+// structure is INT64_MAX, it means such information is not available.
+MemoryBandwidthInfo GetMemoryBandwidthInfo();
 
 // Returns the amount of RAM available in bytes, or INT64_MAX if unknown.
 static inline int64 AvailableRam() { return GetMemoryInfo().free; }

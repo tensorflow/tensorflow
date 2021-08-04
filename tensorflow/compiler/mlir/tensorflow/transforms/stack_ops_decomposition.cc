@@ -85,6 +85,13 @@ namespace cutil = TF::collection_ops_util;
 // The pass also works across control flow and functional calls.
 struct StackOpsDecompositionPass
     : public PassWrapper<StackOpsDecompositionPass, OperationPass<ModuleOp>> {
+  StringRef getArgument() const final { return "tf-stack-ops-decomposition"; }
+
+  StringRef getDescription() const final {
+    return "Decompose stack operations into local variable operations. Needs "
+           "static shapes.";
+  }
+
   void runOnOperation() override;
 };
 
@@ -204,7 +211,7 @@ LogicalResult HandleWhileOp(
   }
   auto new_while =
       builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
-                                  new_while_operands, while_op.getAttrs());
+                                  new_while_operands, while_op->getAttrs());
   for (int64_t i = 0; i < while_op.getNumResults(); ++i) {
     if (!getElementTypeOrSelf(while_op.getOperand(i).getType())
              .isa<TF::ResourceType>()) {
@@ -257,7 +264,7 @@ LogicalResult HandleIfOp(
   }
   auto new_if = OpBuilder(if_op).create<TF::IfOp>(
       if_op.getLoc(), then_func.getType().getResults(), new_if_operands,
-      if_op.getAttrs());
+      if_op->getAttrs());
   for (auto result : if_op.getResults()) {
     if (!getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>()) {
       continue;
@@ -306,7 +313,7 @@ LogicalResult HandlePartitionedCallOp(
     OpBuilder builder(call);
     auto new_call = builder.create<CallOp>(
         call.getLoc(), info.decomposed_callee.getType().getResults(),
-        new_operands, call.getAttrs());
+        new_operands, call->getAttrs());
     new_call->setAttr(
         "f", builder.getSymbolRefAttr(
                  const_cast<FuncOp&>(info.decomposed_callee).getName()));
@@ -582,10 +589,7 @@ void StackOpsDecompositionPass::runOnOperation() {
   }
 }
 
-static PassRegistration<StackOpsDecompositionPass> pass(
-    "tf-stack-ops-decomposition",
-    "Decompose stack operations into local variable operations. Needs static "
-    "shapes.");
+static PassRegistration<StackOpsDecompositionPass> pass;
 
 }  // namespace
 

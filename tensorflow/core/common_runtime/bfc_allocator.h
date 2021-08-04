@@ -75,7 +75,7 @@ class BFCAllocator : public Allocator {
 
   absl::optional<AllocatorStats> GetStats() override;
 
-  void ClearStats() override;
+  bool ClearStats() override;
 
   void SetTimingCounter(SharedCounter* sc) { timing_counter_ = sc; }
 
@@ -84,6 +84,14 @@ class BFCAllocator : public Allocator {
   bool ShouldRecordOpName() const { return true; }
 
   MemoryDump RecordMemoryMap();
+
+ protected:
+  // This setting controls when a chunk should be split, if its size exceeds the
+  // requested allocation size. It is not expected to be changed after
+  // initialization.
+  void SetInternalFragmentationFraction(double fraction) {
+    internal_fragmentation_fraction_ = fraction;
+  }
 
  private:
   struct Bin;
@@ -127,7 +135,7 @@ class BFCAllocator : public Allocator {
 
   // Overloaded AddTraceMe function with chunk information.
   void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr,
-                  int64 req_bytes, int64 alloc_bytes)
+                  int64_t req_bytes, int64_t alloc_bytes)
       TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
@@ -576,6 +584,8 @@ class BFCAllocator : public Allocator {
   SharedCounter* timing_counter_ = nullptr;
   std::deque<ChunkHandle> timestamped_chunks_;
 
+  double internal_fragmentation_fraction_ = {0.0};
+
   std::atomic<uint64> safe_frontier_ = {0};
 
   // Structures mutable after construction
@@ -594,12 +604,13 @@ class BFCAllocator : public Allocator {
   // Stats.
   AllocatorStats stats_ TF_GUARDED_BY(lock_);
 #ifdef TENSORFLOW_MEM_DEBUG
-  int64 action_counter_ TF_GUARDED_BY(lock_);
+  int64 action_counter_ = 0 TF_GUARDED_BY(lock_);
 #define MEM_DEBUG_SIZE_HISTORY_SIZE 4096
   int64 size_history_[MEM_DEBUG_SIZE_HISTORY_SIZE];
 #endif
 
   friend class GPUBFCAllocatorPrivateMethodsTest;
+  friend class GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific;
   TF_DISALLOW_COPY_AND_ASSIGN(BFCAllocator);
 };
 

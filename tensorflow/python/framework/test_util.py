@@ -43,6 +43,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
@@ -87,6 +88,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
@@ -120,6 +122,26 @@ except ImportError:
     pass
 
 
+def is_asan_enabled():
+  """Check if ASAN is enabled."""
+  return pywrap_sanitizers.is_asan_enabled()
+
+
+def is_msan_enabled():
+  """Check if MSAN is enabled."""
+  return pywrap_sanitizers.is_msan_enabled()
+
+
+def is_tsan_enabled():
+  """Check if TSAN is enabled."""
+  return pywrap_sanitizers.is_tsan_enabled()
+
+
+def is_ubsan_enabled():
+  """Check if UBSAN is enabled."""
+  return pywrap_sanitizers.is_ubsan_enabled()
+
+
 def _get_object_count_by_type(exclude=()):
   return (
       collections.Counter([type(obj).__name__ for obj in gc.get_objects()]) -
@@ -128,7 +150,20 @@ def _get_object_count_by_type(exclude=()):
 
 @tf_export("test.gpu_device_name")
 def gpu_device_name():
-  """Returns the name of a GPU device if available or the empty string."""
+  """Returns the name of a GPU device if available or a empty string.
+
+  This method should only be used in tests written with `tf.test.TestCase`.
+
+  >>> class MyTest(tf.test.TestCase):
+  ...
+  ...   def test_add_on_gpu(self):
+  ...     if not tf.test.is_built_with_gpu_support():
+  ...       self.skipTest("test is only applicable on GPU")
+  ...
+  ...     with tf.device(tf.test.gpu_device_name()):
+  ...       self.assertEqual(tf.math.add(1.0, 2.0), 3.0)
+
+  """
   for x in device_lib.list_local_devices():
     if x.device_type == "GPU":
       return compat.as_str(x.name)
@@ -325,7 +360,8 @@ def GpuSupportsHalfMatMulAndConv():
 
 
 def IsMklEnabled():
-  return _pywrap_util_port.IsMklEnabled()
+  return (_pywrap_util_port.IsMklEnabled() or
+          os.getenv("TF_ENABLE_ONEDNN_OPTS", "False").lower() in ["true", "1"])
 
 
 def InstallStackTraceHandler():
@@ -933,6 +969,13 @@ def assert_no_garbage_created(f):
     gc.collect()
     new_garbage = len(gc.garbage)
     if new_garbage > previous_garbage:
+
+      for i, obj in enumerate(gc.garbage[previous_garbage:]):
+        # Known false positive for ast.fix_missing_locations.
+        if getattr(obj, "__module__", "") == "ast":
+          new_garbage -= 3
+
+    if new_garbage > previous_garbage:
       logging.error(
           "The decorated test created work for Python's garbage collector, "
           "likely due to a reference cycle. New objects in cycle(s):")
@@ -1506,6 +1549,42 @@ def run_cuda_only(func=None):
   return decorator
 
 
+def run_gpu_or_tpu(func=None):
+  """Execute the decorated test only if a physical GPU or TPU is available.
+
+  This function is intended to be applied to tests that require the presence
+  of a physical GPU or TPU. It complies with the following rules:
+  - If a GPU is available, the test will run on the GPU.
+  - If a GPU is absent and a TPU is available, the test will run on the TPU.
+  - If both GPU and TPU are absent, the test will be skipped.
+
+  Args:
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+
+  Returns:
+    Returns a decorator that will conditionally skip the decorated test method.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError("`run_gpu_or_tpu` only supports test methods.")
+
+    def decorated(self, *args, **kwargs):
+      if config.list_physical_devices("GPU"):
+        return f(self, "GPU", *args, **kwargs)
+
+      if config.list_physical_devices("TPU"):
+        return f(self, "TPU", *args, **kwargs)
+
+      self.skipTest("Test requires GPU or TPU")
+
+    return decorated
+
+  return decorator if func is None else decorator(func)
+
+
 def with_forward_compatibility_horizons(*horizons):
   """Executes the decorated test with the specified forward-compat horizons.
 
@@ -1810,7 +1889,7 @@ def _disable_test(execute_func):
         if execute_func:
           return func(self, *args, **kwargs)
 
-      return decorated
+      return tf_decorator.make_decorator(func, decorated)
 
     if func is not None:
       return decorator(func)
@@ -1831,6 +1910,34 @@ def disable_xla(description):  # pylint: disable=unused-argument
 def disable_mlir_bridge(description):  # pylint: disable=unused-argument
   """Execute the test method only if MLIR bridge is not enabled."""
   execute_func = not is_mlir_bridge_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_asan(description):  # pylint: disable=unused-argument
+  """Execute the test method only if ASAN is not enabled."""
+  execute_func = not is_asan_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_msan(description):  # pylint: disable=unused-argument
+  """Execute the test method only if MSAN is not enabled."""
+  execute_func = not is_msan_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_tsan(description):  # pylint: disable=unused-argument
+  """Execute the test method only if TSAN is not enabled."""
+  execute_func = not is_tsan_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_ubsan(description):  # pylint: disable=unused-argument
+  """Execute the test method only if UBSAN is not enabled."""
+  execute_func = not is_ubsan_enabled()
   return _disable_test(execute_func)
 
 
@@ -2023,6 +2130,8 @@ class TensorFlowTestCase(googletest.TestCase):
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
+    # Make sure we get unfiltered stack traces during the test
+    traceback_utils.disable_traceback_filtering()
     if is_xla_enabled():
       pywrap_tf_session.TF_SetXlaAutoJitMode("2")
       pywrap_tf_session.TF_SetXlaMinClusterSize(1)
@@ -2273,7 +2382,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
-  def session(self, graph=None, config=None, use_gpu=False, force_gpu=False):
+  def session(self, graph=None, config=None, use_gpu=True, force_gpu=False):
     """A context manager for a TensorFlow Session for use in executing tests.
 
     Note that this will set this session and the graph as global defaults.
@@ -2289,7 +2398,7 @@ class TensorFlowTestCase(googletest.TestCase):
     ``` python
     class MyOperatorTest(test_util.TensorFlowTestCase):
       def testMyOperator(self):
-        with self.session(use_gpu=True):
+        with self.session():
           valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
           result = MyOperator(valid_input).eval()
           self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
@@ -2320,7 +2429,7 @@ class TensorFlowTestCase(googletest.TestCase):
   def cached_session(self,
                      graph=None,
                      config=None,
-                     use_gpu=False,
+                     use_gpu=True,
                      force_gpu=False):
     """Returns a TensorFlow Session for use in executing tests.
 
@@ -2339,7 +2448,7 @@ class TensorFlowTestCase(googletest.TestCase):
     ```python
     class MyOperatorTest(test_util.TensorFlowTestCase):
       def testMyOperator(self):
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
           result = MyOperator(valid_input).eval()
           self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
@@ -2374,7 +2483,7 @@ class TensorFlowTestCase(googletest.TestCase):
   def test_session(self,
                    graph=None,
                    config=None,
-                   use_gpu=False,
+                   use_gpu=True,
                    force_gpu=False):
     """Use cached_session instead."""
     if self.id().endswith(".test_session"):
@@ -2566,7 +2675,16 @@ class TensorFlowTestCase(googletest.TestCase):
       return np.array(a)
     return a
 
+  def evaluate_if_both_tensors(self, a, b):
+    if (tensor_util.is_tf_type(a) and tensor_util.is_tf_type(b) and
+        not isinstance(a, ops._EagerTensorBase) and
+        not isinstance(b, ops._EagerTensorBase)):
+      return self.evaluate((a, b))
+    else:
+      return (a, b)
+
   def _assertArrayLikeAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
+    (a, b) = self.evaluate_if_both_tensors(a, b)
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
     # When the array rank is small, print its contents. Numpy array printing is
@@ -2652,6 +2770,7 @@ class TensorFlowTestCase(googletest.TestCase):
       # Try to directly compare a, b as ndarrays; if not work, then traverse
       # through the sequence, which is more expensive.
       try:
+        (a, b) = self.evaluate_if_both_tensors(a, b)
         a_as_ndarray = self._GetNdArray(a)
         b_as_ndarray = self._GetNdArray(b)
         self._assertArrayLikeAllClose(
@@ -2753,6 +2872,7 @@ class TensorFlowTestCase(googletest.TestCase):
       bfloat16_atol: absolute tolerance for bfloat16.
       msg: Optional message to report on failure.
     """
+    (a, b) = self.evaluate_if_both_tensors(a, b)
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
     # types with lower tol are put later to overwrite previous ones.
@@ -2789,7 +2909,7 @@ class TensorFlowTestCase(googletest.TestCase):
       AssertionError: If `a` and `b` are unexpectedly close at all elements.
     """
     try:
-      self.assertAllClose(a, b,  rtol=rtol, atol=atol, msg=msg)
+      self.assertAllClose(a, b, rtol=rtol, atol=atol, msg=msg)
     except AssertionError:
       return
     msg = msg or ""
@@ -2807,6 +2927,7 @@ class TensorFlowTestCase(googletest.TestCase):
     if (ragged_tensor.is_ragged(a) or ragged_tensor.is_ragged(b)):
       return self._assertRaggedEqual(a, b, msg)
     msg = msg if msg else ""
+    (a, b) = self.evaluate_if_both_tensors(a, b)
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
     # Arbitrary bounds so that we don't print giant tensors.
@@ -2884,6 +3005,7 @@ class TensorFlowTestCase(googletest.TestCase):
         `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
+    (a, comparison_target) = self.evaluate_if_both_tensors(a, comparison_target)
     a = self._GetNdArray(a)
     self.assertGreater(np.min(a), comparison_target)
 
@@ -2896,6 +3018,7 @@ class TensorFlowTestCase(googletest.TestCase):
         `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
+    (a, comparison_target) = self.evaluate_if_both_tensors(a, comparison_target)
     a = self._GetNdArray(a)
     self.assertLess(np.max(a), comparison_target)
 
@@ -2908,6 +3031,7 @@ class TensorFlowTestCase(googletest.TestCase):
         `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
+    (a, comparison_target) = self.evaluate_if_both_tensors(a, comparison_target)
     a = self._GetNdArray(a)
     self.assertGreaterEqual(np.min(a), comparison_target)
 
@@ -2920,6 +3044,7 @@ class TensorFlowTestCase(googletest.TestCase):
         `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
+    (a, comparison_target) = self.evaluate_if_both_tensors(a, comparison_target)
     a = self._GetNdArray(a)
     self.assertLessEqual(np.max(a), comparison_target)
 
@@ -3099,6 +3224,12 @@ class TensorFlowTestCase(googletest.TestCase):
   def assertRaisesOpError(self, expected_err_re_or_predicate):
     return self.assertRaisesWithPredicateMatch(errors.OpError,
                                                expected_err_re_or_predicate)
+
+  def assertRaisesIncompatibleShapesError(
+      self, exception_type=errors.InvalidArgumentError):
+    return self.assertRaisesWithPredicateMatch(
+        exception_type, r"Incompatible shapes|Dimensions must be equal|"
+        r"required broadcastable shapes")
 
   def assertShapeEqual(self, np_array, tf_tensor, msg=None):
     """Asserts that a Numpy ndarray and a TensorFlow tensor have the same shape.

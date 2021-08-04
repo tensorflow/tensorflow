@@ -28,6 +28,7 @@ import os
 import re
 import sys
 
+from absl import app  # pylint: disable=unused-import
 import numpy as np
 import six
 
@@ -41,7 +42,6 @@ from tensorflow.python.framework import meta_graph as meta_graph_lib
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.platform import app  # pylint: disable=unused-import
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
@@ -660,7 +660,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
-    data = np.load(file_io.FileIO(filename, mode='rb'), allow_pickle=True)
+    data = np.load(file_io.FileIO(filename, mode='rb'), allow_pickle=True)  # pylint: disable=unexpected-keyword-arg
 
     # When a variable_name key is specified for the input file
     if variable_name:

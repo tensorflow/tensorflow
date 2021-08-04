@@ -47,6 +47,15 @@ class EdgeSet {
   void clear();
   std::pair<iterator, bool> insert(value_type value);
   size_type erase(key_type key);
+  void reserve(size_type new_size) {
+    if (new_size > kInline) {
+      auto s = new gtl::FlatSet<const Edge*>(new_size);
+      s->insert(reinterpret_cast<const Edge**>(std::begin(ptrs_)),
+                reinterpret_cast<const Edge**>(&ptrs_[0] + size()));
+      ptrs_[0] = this;
+      ptrs_[1] = s;
+    }
+  }
 
   // Caller is not allowed to mutate the EdgeSet while iterating.
   const_iterator begin() const;

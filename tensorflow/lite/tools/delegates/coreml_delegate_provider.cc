@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string>
+#include <utility>
 
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 #if defined(__APPLE__)
 #include "TargetConditionals.h"
-#if TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
-// Only enable metal delegate when using a real iPhone device.
+#if (TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR) || \
+    (TARGET_OS_OSX && TARGET_CPU_ARM64)
+// Only enable coreml delegate when using a real iPhone device or Apple Silicon.
 #define REAL_IPHONE_DEVICE
 #include "tensorflow/lite/delegates/coreml/coreml_delegate.h"
 #endif
@@ -41,6 +43,8 @@ class CoreMlDelegateProvider : public DelegateProvider {
   void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
+  std::pair<TfLiteDelegatePtr, int> CreateRankedTfLiteDelegate(
+      const ToolParams& params) const final;
 
   std::string GetName() const final { return "COREML"; }
 };
@@ -93,6 +97,17 @@ TfLiteDelegatePtr CoreMlDelegateProvider::CreateTfLiteDelegate(
 #endif
 
   return delegate;
+}
+
+std::pair<TfLiteDelegatePtr, int>
+CoreMlDelegateProvider::CreateRankedTfLiteDelegate(
+    const ToolParams& params) const {
+  auto ptr = CreateTfLiteDelegate(params);
+  int rank = 0;
+#if defined(REAL_IPHONE_DEVICE)
+  rank = params.GetPosition<bool>("use_coreml");
+#endif
+  return std::make_pair(std::move(ptr), rank);
 }
 
 }  // namespace tools

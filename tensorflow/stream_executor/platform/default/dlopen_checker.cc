@@ -45,7 +45,7 @@ port::Status TryDlopenCUDALibraries() {
 port::Status TryDlopenROCmLibraries() {
   auto rocblas_status = GetRocblasDsoHandle();
   auto miopen_status = GetMiopenDsoHandle();
-  auto rocfft_status = GetRocfftDsoHandle();
+  auto rocfft_status = GetHipfftDsoHandle();
   auto rocrand_status = GetRocrandDsoHandle();
   if (!rocblas_status.status().ok() || !miopen_status.status().ok() ||
       !rocfft_status.status().ok() || !rocrand_status.status().ok()) {

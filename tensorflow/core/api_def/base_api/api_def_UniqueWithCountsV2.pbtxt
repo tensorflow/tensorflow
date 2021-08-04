@@ -48,33 +48,33 @@ In other words, for an `1-D` tensor `x` with `axis = None:
 For example:
 
 ```
-# tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
-y, idx, count = unique_with_counts(x)
+x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
+y, idx, count = UniqueWithCountsV2(x, axis = [0])
 y ==> [1, 2, 4, 7, 8]
 idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 count ==> [2, 1, 3, 1, 2]
 ```
 
-For an `2-D` tensor `x` with `axis = 0`:
+For a `2-D` tensor `x` with `axis = 0`:
 
 ```
-# tensor 'x' is [[1, 0, 0],
-#                [1, 0, 0],
-#                [2, 0, 0]]
-y, idx, count = unique_with_counts(x, axis=0)
+x = tf.constant([[1, 0, 0],
+                [1, 0, 0],
+                [2, 0, 0]])
+y, idx, count = UniqueWithCountsV2(x, axis=[0])
 y ==> [[1, 0, 0],
        [2, 0, 0]]
 idx ==> [0, 0, 1]
 count ==> [2, 1]
 ```
 
-For an `2-D` tensor `x` with `axis = 1`:
+For a `2-D` tensor `x` with `axis = 1`:
 
 ```
-# tensor 'x' is [[1, 0, 0],
-#                [1, 0, 0],
-#                [2, 0, 0]]
-y, idx, count = unique_with_counts(x, axis=1)
+x = tf.constant([[1, 0, 0],
+                [1, 0, 0],
+                [2, 0, 0]])
+y, idx, count = UniqueWithCountsV2(x, axis=[1])
 y ==> [[1, 0],
        [1, 0],
        [2, 0]]

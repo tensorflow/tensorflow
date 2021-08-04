@@ -113,13 +113,6 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
   return Status::OK();
 }
 
-void DisableIntraOpParallelism::Feedback(Cluster* cluster,
-                                         const GrapplerItem& item,
-                                         const GraphDef& optimize_output,
-                                         double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(DisableIntraOpParallelism,
                             "disable_intra_op_parallelism");
 

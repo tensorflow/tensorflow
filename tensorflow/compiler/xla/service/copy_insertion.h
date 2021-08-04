@@ -46,6 +46,7 @@ namespace xla {
 class CopyInsertion : public HloModulePass {
  public:
   absl::string_view name() const override { return "copy-insertion"; }
+  static constexpr int64_t kUseRegionAnalysisLimit = 0;
 
   // backend specific function that decides whether an instruction
   // can share buffer with its operand.
@@ -53,8 +54,11 @@ class CopyInsertion : public HloModulePass {
   // TODO(b/80315712): Find a better way to tell whether a fusion can share
   // buffer.
   explicit CopyInsertion(
-      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr)
-      : can_share_buffer_(can_share_buffer) {}
+      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr,
+      int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit)
+      : can_share_buffer_(can_share_buffer),
+        use_region_based_live_range_analysis_(
+            use_region_based_live_range_analysis) {}
 
   // Run the pass on the given module. Returns whether the module was changed
   // (copies were inserted).
@@ -63,8 +67,10 @@ class CopyInsertion : public HloModulePass {
   // Try to remove as many copies from the module as possible without
   // introducing live range interference. Only copy instructions that are
   // eligible for copy elision are considered for removal.
-  Status RemoveUnnecessaryCopies(const HloOrdering& ordering,
-                                 HloModule* module);
+  // If check_live_range_ordering is true, check that live ranges are ordered
+  // in all the existing aliased buffers.
+  Status RemoveUnnecessaryCopies(HloOrdering* ordering, HloModule* module,
+                                 bool check_live_range_ordering = false);
 
   // Add copies to address special constraints on the roots of computations not
   // related to live range interference:
@@ -83,12 +89,20 @@ class CopyInsertion : public HloModulePass {
   virtual Status AddSpecialCaseCopies(const CallGraph& call_graph,
                                       HloModule* module);
 
+  // Add copies for conditional instructions.
+  virtual Status AddCopiesForConditional(const HloAliasAnalysis& alias_analysis,
+                                         HloInstruction* conditional);
+
   // Backend specific function that decides whether an instruction can share
   // buffer with its operand.
   HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
 
  private:
   Status AddCopiesToResolveInterference(HloModule* module);
+  // TODO(b/189898980): the region based live range analysis currently
+  // does not enforce a strict ordering of the merged live ranges. This may
+  // cause problems for parallel workloads (e.g., in SPMD).
+  int64_t use_region_based_live_range_analysis_;
 };
 
 }  // namespace xla

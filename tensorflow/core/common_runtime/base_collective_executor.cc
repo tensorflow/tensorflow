@@ -52,10 +52,10 @@ bool IsCancelled(CancellationManager* cancel_mgr) {
 }  // namespace
 
 /*static*/
-int64 CollectiveAdapter::AlignedChunkElts(int64 elt_bytes, int64 total_elts,
-                                          int64 num_chunks) {
+int64 CollectiveAdapter::AlignedChunkElts(int64_t elt_bytes, int64_t total_elts,
+                                          int64_t num_chunks) {
   DCHECK_GT(num_chunks, 0);
-  int64 base_chunk_elts = (total_elts + (num_chunks - 1)) / num_chunks;
+  int64_t base_chunk_elts = (total_elts + (num_chunks - 1)) / num_chunks;
   if (EIGEN_MAX_ALIGN_BYTES == 0) return base_chunk_elts;
   if (EIGEN_MAX_ALIGN_BYTES <= elt_bytes) {
     // Tolerate weird small values of EIGEN_MAX_ALIGN_BYTES
@@ -69,8 +69,8 @@ int64 CollectiveAdapter::AlignedChunkElts(int64 elt_bytes, int64 total_elts,
       << " EIGEN_MAX_ALIGN_BYTES=" << EIGEN_MAX_ALIGN_BYTES
       << " elt_bytes=" << elt_bytes;
   // Round bytes per chunk up to the next multiple of EIGEN_MAX_ALIGN_BYTES.
-  int64 chunk_bytes = base_chunk_elts * elt_bytes;
-  int64 diff =
+  int64_t chunk_bytes = base_chunk_elts * elt_bytes;
+  int64_t diff =
       (chunk_bytes < EIGEN_MAX_ALIGN_BYTES)
           ? (EIGEN_MAX_ALIGN_BYTES - chunk_bytes)
           : (EIGEN_MAX_ALIGN_BYTES - (chunk_bytes % EIGEN_MAX_ALIGN_BYTES));
@@ -89,8 +89,8 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
  public:
   // Takes ownership of output and prepares to properly alias its chunks.
   // Ownership is taken because the shape may temporarily change.
-  CollectiveAdapterImpl(Tensor* output, int64 num_chunks, Allocator* allocator,
-                        bool align_chunks)
+  CollectiveAdapterImpl(Tensor* output, int64_t num_chunks,
+                        Allocator* allocator, bool align_chunks)
       : output_(std::move(*output)),
         dt_(output_.dtype()),
         old_shape_(output_.shape()),
@@ -140,8 +140,8 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
 
   // Returns a new Tensor that aliases the required chunk.
   Tensor ChunkAlias(int i) override {
-    int64 start = chunk_elts_ * i;
-    int64 num_elts = ChunkElts(i);
+    int64_t start = chunk_elts_ * i;
+    int64_t num_elts = ChunkElts(i);
     // If this chunk is empty the prior chunk might also be short
     // so always take an empty slice from the front of the tensor
     // to avoid an illegal offset check failure somewhere.
@@ -165,7 +165,7 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
   }
 
   string TBounds(const Tensor& t) const override {
-    int64 base_addr = reinterpret_cast<int64>(DMAHelper::base(&t));
+    int64_t base_addr = reinterpret_cast<int64>(DMAHelper::base(&t));
     return strings::StrCat("(", base_addr, ", ", (base_addr + t.TotalBytes()),
                            ")");
   }
@@ -194,6 +194,10 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
                                          Allocator* allocator,
                                          bool align_chunks) {
   switch (output->dtype()) {
+    case DT_BFLOAT16:
+      return new CollectiveAdapterImpl<Eigen::bfloat16>(
+          output, num_chunks, allocator, align_chunks);
+      break;
     case DT_HALF:
       return new CollectiveAdapterImpl<Eigen::half>(output, num_chunks,
                                                     allocator, align_chunks);
@@ -264,7 +268,7 @@ Status BaseCollectiveExecutor::GetStatus(const Status& s) {
 }
 
 void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
-                                          const CollectiveParams& col_params,
+                                          const CollectiveParams* col_params,
                                           const string& exec_key,
                                           StatusCallback done) {
   // See CompleteParamsAsync() how done() and the timeout callback interacts.
@@ -281,7 +285,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
     }
   };
   auto timeout_microseconds = static_cast<int64>(
-      col_params.instance.impl_details.timeout_seconds * 1'000'000);
+      col_params->instance.impl_details.timeout_seconds * 1'000'000);
   if (timeout_microseconds > 0) {
     // TODO(xldrx): Share the timeout watchdog thread among collectives.
     SchedNonBlockingClosureAfter(
@@ -297,15 +301,16 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   }
 
   Tensor* output = ctx->mutable_output(0);
-  const Tensor* input = (col_params.instance.type == REDUCTION_COLLECTIVE ||
-                         col_params.instance.type == GATHER_COLLECTIVE ||
-                         col_params.instance.type == PERMUTE_COLLECTIVE ||
-                         (col_params.instance.type == BROADCAST_COLLECTIVE &&
-                          col_params.is_source))
+  const Tensor* input = (col_params->instance.type == REDUCTION_COLLECTIVE ||
+                         col_params->instance.type == GATHER_COLLECTIVE ||
+                         col_params->instance.type == PERMUTE_COLLECTIVE ||
+                         col_params->instance.type == ALL_TO_ALL_COLLECTIVE ||
+                         (col_params->instance.type == BROADCAST_COLLECTIVE &&
+                          col_params->is_source))
                             ? &ctx->input(0)
                             : nullptr;
   CollectiveImplementationInterface* col_impl = nullptr;
-  Status status = CreateCollective(col_params, &col_impl);
+  Status status = CreateCollective(*col_params, &col_impl);
   if (!status.ok()) {
     done_safe(status);
     DCHECK_EQ(nullptr, col_impl);
@@ -346,7 +351,6 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
 void BaseCollectiveExecutor::CompleteParamsAsync(
     const DeviceAttributes& device, CollectiveParams* cp,
     CancellationManager* cancel_mgr, StatusCallback done) {
-  cp->group.gpu_ring_order = *gpu_ring_order_;
   // We need to make sure that when the timeout callback executes,
   // CollectiveExecutor and CollectiveExecutorMgr are both alive. After done()
   // is called, CollectiveExecutorMgr may be destructed and we don't have a way
@@ -416,6 +420,16 @@ Status BaseCollectiveExecutor::CreateCollective(
         return CollectiveRegistry::Lookup(
             col_params.instance.impl_details.collective_name, col_impl);
       }
+    case DT_BFLOAT16:
+      if (col_params.group.device_type == DEVICE_GPU &&
+          col_params.instance.type == REDUCTION_COLLECTIVE) {
+        return errors::Internal(
+            "Collective all-reduce does not support datatype DT_BFLOAT16 on "
+            "DEVICE_GPU");
+      } else {
+        return CollectiveRegistry::Lookup(
+            col_params.instance.impl_details.collective_name, col_impl);
+      }
     case DT_HALF:
     case DT_FLOAT:
     case DT_DOUBLE:
@@ -432,7 +446,7 @@ Status BaseCollectiveExecutor::CreateCollective(
 
 bool BaseCollectiveExecutor::CheckDependencies(
     const CollectiveParams& col_params) {
-  for (int32 instance : col_params.instance.impl_details.dependencies) {
+  for (int32_t instance : col_params.instance.impl_details.dependencies) {
     auto find_iter = launched_.find(instance);
     if (find_iter == launched_.end() || find_iter->second != 0) {
       VLOG(1) << "Collective " << col_params.ToString()
@@ -458,7 +472,7 @@ void BaseCollectiveExecutor::UnblockDependencies(
   if (launched_.find(col_params.instance.instance_key) == launched_.end()) {
     const string& task_name =
         col_params.group.task_names[col_params.default_rank];
-    const int32 num_devices =
+    const int32_t num_devices =
         col_params.group.num_devices_per_task.at(task_name);
     launched_[col_params.instance.instance_key] = num_devices;
   }

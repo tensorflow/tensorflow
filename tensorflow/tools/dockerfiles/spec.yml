@@ -94,6 +94,8 @@ slice_sets:
     ubuntu:
         - add_to_name: ""
           dockerfile_exclusive_name: "cpu"
+          args:
+              - TF_PACKAGE=tensorflow-cpu
           partials:
               - ubuntu/version
               - ubuntu/cpu
@@ -103,7 +105,7 @@ slice_sets:
         - add_to_name: "-gpu"
           dockerfile_exclusive_name: "gpu"
           args:
-              - TF_PACKAGE=tensorflow-gpu
+              - TF_PACKAGE=tensorflow
           partials:
               - ubuntu/version
               - ubuntu/nvidia
@@ -164,7 +166,7 @@ slice_sets:
           partials:
               - onednn/ubuntu/version
               - onednn/ubuntu/cpu
-              - onednn/ubuntu/python
+              - onednn/ubuntu/python3
               - tensorflow
               - shell
           tests:
@@ -172,6 +174,7 @@ slice_sets:
           args:
               - TF_PACKAGE=intel-tensorflow
               - UBUNTU_VERSION=16.04
+              - PYTHON=python3.6
         - add_to_name: "-18.04"
           dockerfile_exclusive_name: "ubuntu-18.04"
           dockerfile_subdirectory: "onednn"
@@ -186,13 +189,14 @@ slice_sets:
           args:
               - TF_PACKAGE=intel-tensorflow
               - UBUNTU_VERSION=18.04
+              - PYTHON=python3
         - add_to_name: "-20.04"
           dockerfile_exclusive_name: "ubuntu-20.04"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
               - onednn/ubuntu/cpu
-              - onednn/ubuntu/python3
+              - onednn/ubuntu/python
               - tensorflow
               - shell
           tests:
@@ -200,7 +204,24 @@ slice_sets:
           args:
               - TF_PACKAGE=intel-tensorflow
               - UBUNTU_VERSION=20.04
-              - PYTHON=python3.7
+              - PYTHON=python3
+        - add_to_name: "-7"
+          dockerfile_exclusive_name: "centos-7"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/centos/version
+              - onednn/centos/cpu
+              - onednn/centos/python
+              - onednn/centos/yum-py2
+              - tensorflow
+              - shell
+          tests:
+              - import-onednn.sh
+          args:
+              - TF_PACKAGE=intel-tensorflow
+              - CENTOS_VERSION=7
+              - PYTHON=python3
+              - HOROVOD_VERSION=v0.21.1
         - add_to_name: "-8"
           dockerfile_exclusive_name: "centos-8"
           dockerfile_subdirectory: "onednn"
@@ -216,6 +237,7 @@ slice_sets:
               - TF_PACKAGE=intel-tensorflow
               - CENTOS_VERSION=8
               - PYTHON=python3
+              - HOROVOD_VERSION=v0.21.1
 
     devel-onednn:
         - add_to_name: "-16.04-devel"
@@ -224,7 +246,7 @@ slice_sets:
           partials:
               - onednn/ubuntu/version
               - onednn/ubuntu/devel
-              - onednn/ubuntu/python
+              - onednn/ubuntu/python3
               - onednn/ubuntu/bazel
               - shell
           tests:
@@ -233,6 +255,7 @@ slice_sets:
               - UBUNTU_VERSION=16.04
               - CHECKOUT_TF_SRC=1
               - TF_BRANCH=master
+              - PYTHON=python3.6
         - add_to_name: "-18.04-devel"
           dockerfile_exclusive_name: "ubuntu-18.04-devel"
           dockerfile_subdirectory: "onednn"
@@ -248,27 +271,48 @@ slice_sets:
               - UBUNTU_VERSION=18.04
               - CHECKOUT_TF_SRC=1
               - TF_BRANCH=master
+              - PYTHON=python3
         - add_to_name: "-20.04-devel"
           dockerfile_exclusive_name: "ubuntu-20.04-devel"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
               - onednn/ubuntu/devel
-              - onednn/ubuntu/python3
+              - onednn/ubuntu/python
               - onednn/ubuntu/bazel
               - shell
           tests:
               - ""
           args:
               - UBUNTU_VERSION=20.04
-              - PYTHON=python3.7
               - CHECKOUT_TF_SRC=1
               - TF_BRANCH=master
+              - PYTHON=python3
+        - add_to_name: "-7-devel"
+          dockerfile_exclusive_name: "centos-7-devel"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/centos/version
+              - onednn/centos/devel-7
+              - onednn/centos/devel
+              - onednn/centos/python
+              - onednn/centos/yum-py2
+              - onednn/centos/bazel
+              - shell
+          tests:
+              - ""
+          args:
+              - CENTOS_VERSION=7
+              - CHECKOUT_TF_SRC=1
+              - TF_BRANCH=master
+              - PYTHON=python3
+              - HOROVOD_VERSION=v0.21.1
         - add_to_name: "-8-devel"
           dockerfile_exclusive_name: "centos-8-devel"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/centos/version
+              - onednn/centos/devel-8
               - onednn/centos/devel
               - onednn/centos/python
               - onednn/centos/bazel
@@ -280,7 +324,7 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - TF_BRANCH=master
               - PYTHON=python3
-
+              - HOROVOD_VERSION=v0.21.1
 
     onednn-mpi-horovod:
         - add_to_name: "-16.04-mpi-horovod"
@@ -289,7 +333,7 @@ slice_sets:
           partials:
               - onednn/ubuntu/version
               - onednn/ubuntu/cpu
-              - onednn/ubuntu/python
+              - onednn/ubuntu/python3
               - tensorflow
               - onednn/ubuntu/mpi
               - onednn/ubuntu/1604-horovod
@@ -300,6 +344,7 @@ slice_sets:
               - UBUNTU_VERSION=16.04
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
+              - PYTHON=python3.6
         - add_to_name: "-18.04-mpi-horovod"
           dockerfile_exclusive_name: "ubuntu-18.04-mpi-horovod"
           dockerfile_subdirectory: "onednn"
@@ -317,13 +362,14 @@ slice_sets:
               - UBUNTU_VERSION=18.04
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
+              - PYTHON=python3
         - add_to_name: "-20.04-mpi-horovod"
           dockerfile_exclusive_name: "ubuntu-20.04-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
               - onednn/ubuntu/cpu
-              - onednn/ubuntu/python3
+              - onednn/ubuntu/python
               - tensorflow
               - onednn/ubuntu/mpi
               - onednn/ubuntu/2004-horovod
@@ -332,9 +378,28 @@ slice_sets:
               - import-onednn-horovod.sh
           args:
               - UBUNTU_VERSION=20.04
-              - PYTHON=python3.7
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
+              - PYTHON=python3
+        - add_to_name: "-7-mpi-horovod"
+          dockerfile_exclusive_name: "centos-7-mpi-horovod"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/centos/version
+              - onednn/centos/cpu
+              - onednn/centos/python
+              - onednn/centos/yum-py2
+              - tensorflow
+              - onednn/centos/mpi
+              - onednn/centos/horovod-7
+              - shell
+          tests:
+              - import-onednn-horovod.sh
+          args:
+              - CENTOS_VERSION=7
+              - PYTHON=python3
+              - TF_PACKAGE=intel-tensorflow
+              - HOROVOD_VERSION=v0.21.1
         - add_to_name: "-8-mpi-horovod"
           dockerfile_exclusive_name: "centos-8-mpi-horovod"
           dockerfile_subdirectory: "onednn"
@@ -352,7 +417,7 @@ slice_sets:
               - CENTOS_VERSION=8
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
-
+              - HOROVOD_VERSION=v0.21.1
     devel-onednn-mpi-horovod:
         - add_to_name: "-16.04-devel-mpi-horovod"
           dockerfile_exclusive_name: "ubuntu-16.04-devel-mpi-horovod"
@@ -360,7 +425,7 @@ slice_sets:
           partials:
               - onednn/ubuntu/version
               - onednn/ubuntu/devel
-              - onednn/ubuntu/python
+              - onednn/ubuntu/python3
               - onednn/ubuntu/bazel
               - onednn/ubuntu/mpi
               - onednn/ubuntu/devel-horovod
@@ -372,6 +437,7 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
+              - PYTHON=python3.6
         - add_to_name: "-18.04-devel-mpi-horovod"
           dockerfile_exclusive_name: "ubuntu-18.04-devel-mpi-horovod"
           dockerfile_subdirectory: "onednn"
@@ -390,13 +456,14 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
+              - PYTHON=python3
         - add_to_name: "-20.04-devel-mpi-horovod"
           dockerfile_exclusive_name: "ubuntu-20.04-devel-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
               - onednn/ubuntu/devel
-              - onednn/ubuntu/python3
+              - onednn/ubuntu/python
               - onednn/ubuntu/bazel
               - onednn/ubuntu/mpi
               - onednn/ubuntu/devel-horovod
@@ -405,15 +472,38 @@ slice_sets:
               - ""
           args:
               - UBUNTU_VERSION=20.04
-              - PYTHON=python3.7
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
+              - PYTHON=python3
+        - add_to_name: "-7-devel-mpi-horovod"
+          dockerfile_exclusive_name: "centos-7-devel-mpi-horovod"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/centos/version
+              - onednn/centos/devel-7
+              - onednn/centos/devel
+              - onednn/centos/python
+              - onednn/centos/yum-py2
+              - onednn/centos/bazel
+              - onednn/centos/mpi
+              - onednn/centos/devel-horovod
+              - shell
+          tests:
+              - ""
+          args:
+              - CENTOS_VERSION=7
+              - PYTHON=python3
+              - CHECKOUT_TF_SRC=1
+              - CHECKOUT_HOROVOD_SRC=1
+              - HOROVOD_BRANCH=master
+
         - add_to_name: "-8-devel-mpi-horovod"
           dockerfile_exclusive_name: "centos-8-devel-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/centos/version
+              - onednn/centos/devel-8
               - onednn/centos/devel
               - onednn/centos/python
               - onednn/centos/bazel
@@ -436,7 +526,7 @@ slice_sets:
           partials:
               - onednn/ubuntu/version
               - onednn/ubuntu/cpu
-              - onednn/ubuntu/python
+              - onednn/ubuntu/python3
               - tensorflow
               - onednn/ubuntu/1604-mpich
               - onednn/ubuntu/1604-horovod
@@ -447,6 +537,7 @@ slice_sets:
               - UBUNTU_VERSION=16.04
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
+              - PYTHON=python3.6
         - add_to_name: "-18.04-mpich-horovod"
           dockerfile_exclusive_name: "ubuntu-18.04-mpich-horovod"
           dockerfile_subdirectory: "onednn"
@@ -464,13 +555,14 @@ slice_sets:
               - UBUNTU_VERSION=18.04
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
+              - PYTHON=python3
         - add_to_name: "-20.04-mpich-horovod"
           dockerfile_exclusive_name: "ubuntu-20.04-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
               - onednn/ubuntu/cpu
-              - onednn/ubuntu/python3
+              - onednn/ubuntu/python
               - tensorflow
               - onednn/ubuntu/mpich
               - onednn/ubuntu/2004-horovod
@@ -479,9 +571,28 @@ slice_sets:
               - import-onednn-horovod.sh
           args:
               - UBUNTU_VERSION=20.04
-              - PYTHON=python3.7
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
+              - PYTHON=python3
+        - add_to_name: "-7-mpich-horovod"
+          dockerfile_exclusive_name: "centos-7-mpich-horovod"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/centos/version
+              - onednn/centos/cpu
+              - onednn/centos/python
+              - onednn/centos/yum-py2
+              - tensorflow
+              - onednn/centos/mpich
+              - onednn/centos/horovod-7
+              - shell
+          tests:
+              - import-onednn-horovod.sh
+          args:
+              - CENTOS_VERSION=7
+              - PYTHON=python3
+              - TF_PACKAGE=intel-tensorflow
+              - HOROVOD_VERSION=v0.21.1
         - add_to_name: "-8-mpich-horovod"
           dockerfile_exclusive_name: "centos-8-mpich-horovod"
           dockerfile_subdirectory: "onednn"
@@ -499,6 +610,7 @@ slice_sets:
               - CENTOS_VERSION=8
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
+              - HOROVOD_VERSION=v0.21.1
 
     devel-onednn-mpich-horovod:
         - add_to_name: "-16.04-devel-mpich-horovod"
@@ -507,7 +619,7 @@ slice_sets:
           partials:
               - onednn/ubuntu/version
               - onednn/ubuntu/devel
-              - onednn/ubuntu/python
+              - onednn/ubuntu/python3
               - onednn/ubuntu/bazel
               - onednn/ubuntu/1604-mpich
               - onednn/ubuntu/devel-horovod
@@ -519,6 +631,7 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
+              - PYTHON=python3.6
         - add_to_name: "-18.04-devel-mpich-horovod"
           dockerfile_exclusive_name: "ubuntu-18.04-devel-mpich-horovod"
           dockerfile_subdirectory: "onednn"
@@ -537,13 +650,14 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
+              - PYTHON=python3
         - add_to_name: "-20.04-devel-mpich-horovod"
           dockerfile_exclusive_name: "ubuntu-20.04-devel-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
               - onednn/ubuntu/devel
-              - onednn/ubuntu/python3
+              - onednn/ubuntu/python
               - onednn/ubuntu/bazel
               - onednn/ubuntu/mpich
               - onednn/ubuntu/devel-horovod
@@ -552,7 +666,28 @@ slice_sets:
               - ""
           args:
               - UBUNTU_VERSION=20.04
-              - PYTHON=python3.7
+              - CHECKOUT_TF_SRC=1
+              - CHECKOUT_HOROVOD_SRC=1
+              - HOROVOD_BRANCH=master
+              - PYTHON=python3
+        - add_to_name: "-7-devel-mpich-horovod"
+          dockerfile_exclusive_name: "centos-7-devel-mpich-horovod"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/centos/version
+              - onednn/centos/devel-7
+              - onednn/centos/devel
+              - onednn/centos/python
+              - onednn/centos/yum-py2
+              - onednn/centos/bazel
+              - onednn/centos/mpich
+              - onednn/centos/devel-horovod
+              - shell
+          tests:
+              - ""
+          args:
+              - CENTOS_VERSION=7
+              - PYTHON=python3
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
@@ -561,6 +696,7 @@ slice_sets:
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/centos/version
+              - onednn/centos/devel-8
               - onednn/centos/devel
               - onednn/centos/python
               - onednn/centos/bazel
@@ -595,7 +731,7 @@ slice_sets:
               - UBUNTU_VERSION=18.04
               - ARCH=ppc64le
               - CUDA=10.0
-              - TF_PACKAGE=tensorflow-gpu
+              - TF_PACKAGE=tensorflow
           partials:
               - ubuntu/version
               - ubuntu/nvidia
@@ -649,7 +785,7 @@ slice_sets:
               - tensorflow
               - shell
           args:
-              - TF_PACKAGE=tf-nightly
+              - TF_PACKAGE=tf-nightly-cpu
           tests:
               - import.sh
         - add_to_name: "nightly-gpu"
@@ -663,4 +799,4 @@ slice_sets:
           tests:
               - import-gpu.sh
           args:
-              - TF_PACKAGE=tf-nightly-gpu
+              - TF_PACKAGE=tf-nightly

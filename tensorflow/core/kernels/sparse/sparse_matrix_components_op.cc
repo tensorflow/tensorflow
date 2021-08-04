@@ -57,7 +57,7 @@ class CSRSparseMatrixComponentsOp : public OpKernel {
     OP_REQUIRES(c, index_t.dims() == 0,
                 errors::InvalidArgument("index should be a scalar, but saw: ",
                                         index_t.DebugString()));
-    int32 index = index_t.scalar<int32>()();
+    int32_t index = index_t.scalar<int32>()();
     OP_REQUIRES(c, index >= 0 && index < csr_sparse_matrix->batch_size(),
                 errors::InvalidArgument("index (", index, ") not in [0, ",
                                         csr_sparse_matrix->batch_size(), ")"));
@@ -69,7 +69,7 @@ class CSRSparseMatrixComponentsOp : public OpKernel {
     } else {
       auto batch_ptrs = csr_sparse_matrix->batch_pointers().vec<int32>();
       auto dense_shape = csr_sparse_matrix->dense_shape().vec<int64>();
-      int64 rows = dense_shape(1);
+      int64_t rows = dense_shape(1);
       int nnz = batch_ptrs(index + 1) - batch_ptrs(index);
       Tensor* row_ptrs_t;
       Tensor* col_inds_t;

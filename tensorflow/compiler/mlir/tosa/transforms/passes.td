@@ -15,22 +15,26 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def TosaLegalizeTFPass : Pass<"tosa-legalize-tf", "FuncOp"> {
+def TosaLegalizeTFPass : FunctionPass<"tosa-legalize-tf"> {
   let summary = "Legalize from TensorFlow to TOSA";
   let constructor = "createLegalizeTFPass()";
+  let dependentDialects = ["TosaDialect", "quant::QuantizationDialect"];
 }
 
-def TosaLegalizeTFLPass : Pass<"tosa-legalize-tfl", "FuncOp"> {
+def TosaLegalizeTFLPass : FunctionPass<"tosa-legalize-tfl"> {
   let summary = "Legalize from TensorFlow Lite to TOSA";
   let constructor = "createLegalizeTFLPass()";
+  let dependentDialects = ["TosaDialect"];
 }
 
-def TosaFusebiasTFPass : Pass<"tosa-fuse-bias-tf", "FuncOp"> {
+def TosaFusebiasTFPass : FunctionPass<"tosa-fuse-bias-tf"> {
   let summary = "Fuse tf.Op + tf.BiasAdd and legalized to TOSA";
   let constructor = "createFuseBiasTFPass()";
+  let dependentDialects = ["TosaDialect"];
 }
 
-def TosaConvertTFLUint8Pass : Pass<"tosa-convert-tfl-uint8", "FuncOp"> {
+def TosaConvertTFLUint8Pass : FunctionPass<"tosa-convert-tfl-uint8"> {
   let summary = "Convert uint8 graph to int8 graph";
   let constructor = "createConvertTFLUint8Pass()";
+  let dependentDialects = ["TosaDialect"];
 }

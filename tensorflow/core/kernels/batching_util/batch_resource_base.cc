@@ -20,8 +20,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/percentile_sampler.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/util/incremental_barrier.h"
@@ -30,8 +32,8 @@ namespace tensorflow {
 namespace serving {
 namespace {
 
-void RecordPaddingSize(int32 padding_size, const string& model_name,
-                       int32 execution_batch_size, const string& op_name) {
+void RecordPaddingSize(int32_t padding_size, const string& model_name,
+                       int32_t execution_batch_size, const string& op_name) {
   static auto* cell = tensorflow::monitoring::PercentileSampler<3>::New(
       {"/tensorflow/serving/batching/padding_size",
        "Tracks the padding size distribution on batches by model_name (if "
@@ -43,7 +45,8 @@ void RecordPaddingSize(int32 padding_size, const string& model_name,
       ->Add(static_cast<double>(padding_size));
 }
 
-void RecordInputBatchSize(int32 batch_size, const string& model_name,
+// TODO(b/181883417): Replace with RecordInputBatchSizeV2.
+void RecordInputBatchSize(int32_t batch_size, const string& model_name,
                           const string& op_name) {
   static auto* cell = tensorflow::monitoring::PercentileSampler<2>::New(
       {"/tensorflow/serving/batching/input_batch_size",
@@ -55,7 +58,20 @@ void RecordInputBatchSize(int32 batch_size, const string& model_name,
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
 }
 
-void RecordProcessedBatchSize(int32 batch_size, const string& model_name,
+void RecordInputBatchSizeV2(int32_t batch_size, const string& model_name,
+                            const string& op_name) {
+  static auto* cell = tensorflow::monitoring::Sampler<2>::New(
+      {"/tensorflow/serving/batching/input_batch_size_v2",
+       "Tracks the batch size distribution on the inputs by model_name (if "
+       "available).",
+       "model_name", "op_name"},
+      // It's 14 buckets with the last bucket being 2^13 to DBL_MAX;
+      // so the limits are [1, 2, 4, 8, ..., 8 * 1024, DBL_MAX].
+      monitoring::Buckets::Exponential(1, 2, 14));
+  cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
+}
+
+void RecordProcessedBatchSize(int32_t batch_size, const string& model_name,
                               const string& op_name) {
   static auto* cell = tensorflow::monitoring::PercentileSampler<2>::New(
       {"/tensorflow/serving/batching/processed_batch_size",
@@ -67,7 +83,19 @@ void RecordProcessedBatchSize(int32 batch_size, const string& model_name,
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
 }
 
-void RecordBatchDelayUs(int64 batch_delay_us, const string& model_name,
+// Export the exact number instead of the distribution of processed batch size.
+void RecordProcessedBatchSizeV2(int32_t batch_size, const string& model_name,
+                                const string& op_name) {
+  static auto* cell = monitoring::Counter<3>::New(
+      "/tensorflow/serving/batching/processed_batch_size_v2",
+      "Tracks the batch size on processing by model_name and op name (if "
+      "available).",
+      "model_name", "op_name", "batch_size");
+  cell->GetCell(model_name, op_name, std::to_string(batch_size))
+      ->IncrementBy(1);
+}
+
+void RecordBatchDelayUs(int64_t batch_delay_us, const string& model_name,
                         const string& op_name) {
   static auto* cell = monitoring::PercentileSampler<2>::New(
       {"/tensorflow/serving/batching/batch_delay_us",
@@ -79,7 +107,7 @@ void RecordBatchDelayUs(int64 batch_delay_us, const string& model_name,
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_delay_us));
 }
 
-void RecordBatchParamBatchTimeoutMicros(int64 batch_timeout_micros,
+void RecordBatchParamBatchTimeoutMicros(int64_t batch_timeout_micros,
                                         const string& model_name,
                                         const string& op_name) {
   static auto* cell = monitoring::Gauge<int64, 2>::New(
@@ -89,7 +117,7 @@ void RecordBatchParamBatchTimeoutMicros(int64 batch_timeout_micros,
   cell->GetCell(model_name, op_name)->Set(batch_timeout_micros);
 }
 
-void RecordBatchParamMaxBatchSize(int64 max_batch_size,
+void RecordBatchParamMaxBatchSize(int64_t max_batch_size,
                                   const string& model_name,
                                   const string& op_name) {
   static auto* cell = monitoring::Gauge<int64, 2>::New(
@@ -98,7 +126,7 @@ void RecordBatchParamMaxBatchSize(int64 max_batch_size,
   cell->GetCell(model_name, op_name)->Set(max_batch_size);
 }
 
-void RecordBatchParamMaxEnqueuedBatches(int64 max_enqueued_batches,
+void RecordBatchParamMaxEnqueuedBatches(int64_t max_enqueued_batches,
                                         const string& model_name,
                                         const string& op_name) {
   static auto* cell = monitoring::Gauge<int64, 2>::New(
@@ -152,7 +180,7 @@ using ::tensorflow::concat_split_util::Split;
 using TensorMatrix = std::vector<std::vector<Tensor>>;
 
 Status BatchResourceBase::RegisterInput(
-    int64 guid, OpKernelContext* context, const string& batcher_queue_name,
+    int64_t guid, OpKernelContext* context, const string& batcher_queue_name,
     AsyncOpKernel::DoneCallback done_callback) {
   std::unique_ptr<BatchTask> batch_components;
   TF_RETURN_IF_ERROR(CreateBatchTask(context, &batch_components));
@@ -177,6 +205,8 @@ Status BatchResourceBase::RegisterInput(
   }
   RecordInputBatchSize(tensors[0].shape().dim_size(0), GetModelName(context),
                        context->op_kernel().name_view().data());
+  RecordInputBatchSizeV2(tensors[0].shape().dim_size(0), GetModelName(context),
+                         context->op_kernel().name());
   RecordBatchParamBatchTimeoutMicros(
       batcher_queue_options_.batch_timeout_micros, GetModelName(context),
       context->op_kernel().name_view().data());
@@ -225,8 +255,9 @@ Status BatchResourceBase::RegisterInput(
 
 /*static*/ BatchResourceBase::BatcherT::QueueOptions
 BatchResourceBase::GetBatcherQueueOptions(
-    int32 num_batch_threads, int32 max_batch_size, int32 batch_timeout_micros,
-    int32 max_enqueued_batches, const std::vector<int32>& allowed_batch_sizes,
+    int32_t num_batch_threads, int32_t max_batch_size,
+    int32_t batch_timeout_micros, int32_t max_enqueued_batches,
+    const std::vector<int32>& allowed_batch_sizes,
     bool enable_large_batch_splitting) {
   BatcherT::QueueOptions batcher_queue_options;
   batcher_queue_options.input_batch_size_limit = max_batch_size;
@@ -256,8 +287,8 @@ BatchResourceBase::GetBatcherQueueOptions(
 
 /*static*/ BatchResourceBase::AdaptiveBatcherT::QueueOptions
 BatchResourceBase::GetAdaptiveBatcherQueueOptions(
-    int32 max_batch_size, int32 batch_timeout_micros,
-    int32 max_enqueued_batches, bool enable_large_batch_splitting,
+    int32_t max_batch_size, int32_t batch_timeout_micros,
+    int32_t max_enqueued_batches, bool enable_large_batch_splitting,
     const std::vector<int32>& allowed_batch_sizes) {
   AdaptiveBatcherT::QueueOptions batcher_queue_options;
   batcher_queue_options.max_input_task_size =
@@ -332,6 +363,8 @@ Status BatchResourceBase::ConcatInputTensors(
                     context->op_kernel().name_view().data());
   RecordProcessedBatchSize(padded_batch_size, GetModelName(context),
                            context->op_kernel().name_view().data());
+  RecordProcessedBatchSizeV2(padded_batch_size, GetModelName(context),
+                             string(context->op_kernel().name_view()));
 
   // All tasks should have the same number of input edges.
   const int num_inputs = batch.task(0).inputs.size();
@@ -380,7 +413,7 @@ Status BatchResourceBase::ConcatInputTensors(
     std::unique_ptr<BatchTask>* input_task_ptr, int open_batch_remaining_slot,
     int max_batch_size, std::vector<std::unique_ptr<BatchTask>>* output_tasks) {
   BatchTask& input_task = *(*input_task_ptr);
-  const int64 input_task_size = input_task.size();
+  const int64_t input_task_size = input_task.size();
 
   DCHECK_GT(input_task_size, open_batch_remaining_slot);
 

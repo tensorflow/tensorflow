@@ -21,7 +21,11 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    default_visibility = [
+        "//tensorflow/cc/experimental/libtf:__pkg__",
+        "//tensorflow/cc/experimental/libtf:__subpackages__",
+    ],
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -137,6 +141,8 @@ cc_library(
     copts = tf_copts(),
     visibility = [
         "//tensorflow/c/experimental/saved_model/public:__pkg__",
+        "//tensorflow/cc/experimental/libtf:__pkg__",
+        "//tensorflow/cc/experimental/libtf:__subpackages__",
     ],
     deps = [
         ":concrete_function",
@@ -162,6 +168,10 @@ cc_library(
     name = "saved_model_api_type",
     hdrs = [
         "saved_model_api_type.h",
+    ],
+    visibility = [
+        "//tensorflow/cc/experimental/libtf:__pkg__",
+        "//tensorflow/cc/experimental/libtf:__subpackages__",
     ],
     deps = [
         "//tensorflow/c:conversion_macros",
@@ -349,6 +359,9 @@ tf_cc_test(
     data = [
         "//tensorflow/c/experimental/saved_model/internal/testdata:saved_models",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
+    tags = [
+        "no_windows",  # b/190030638
     ],
     deps = [
         ":saved_model_api_type",

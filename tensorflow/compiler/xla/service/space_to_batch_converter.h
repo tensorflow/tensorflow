@@ -22,22 +22,34 @@ limitations under the License.
 
 namespace xla {
 
+// Controller of various knobs.
+struct SpaceToBatchController {
+  bool enable_propagations_on_base_dilations;
+  bool enable_propagations_on_window_dilations;
+  bool enable_propagations_on_trivial_window_dilations;
+  bool disable_starting_on_small_chains;
+  int64 limit_on_batch_size;
+  int64 dimension_from_end_to_convert = 1;
+  // We choose the new batch size to be number_of_splits times that of the old
+  // batch so that space-to-batch propagation through several convolutional
+  // layers is consistent.
+  int64 number_of_splits = 8;
+};
+
 // A pass which rewrites convolutions such that space dimension is turned into
 // batch.
-class ConvolutionSpaceToBatchConverter : public HloModulePass {
+class SpaceToBatchConverter : public HloModulePass {
  public:
-  explicit ConvolutionSpaceToBatchConverter(int64 limit_on_batch_size = 1)
-      : limit_on_batch_size_(limit_on_batch_size) {}
+  explicit SpaceToBatchConverter(SpaceToBatchController ctrl) : ctrl_(ctrl) {}
 
-  absl::string_view name() const override {
-    return "convolution-space-to-batch-converter";
-  }
+  absl::string_view name() const override { return "space-to-batch-converter"; }
 
   // Run convolution rewriting on the given computation. Returns whether the
   // computation was changed.
   StatusOr<bool> Run(HloModule* module) override;
 
-  int64 limit_on_batch_size_;
+  // Controller for various knobs.
+  SpaceToBatchController ctrl_;
 };
 
 }  // namespace xla

@@ -717,8 +717,10 @@ TfLiteStatus PrepareParseExample(TfLiteContext* context, TfLiteNode* node) {
       data->sparse_size = nodedef.attr().at("num_sparse").i();
     }
     auto dense_shapes = nodedef.attr().at("dense_shapes").list();
-    for (int i = 0; i < dense_shapes.shape_size(); ++i) {
-      data->dense_shapes.push_back(dense_shapes.shape(i));
+    if (data->dense_shapes.empty()) {
+      for (int i = 0; i < dense_shapes.shape_size(); ++i) {
+        data->dense_shapes.push_back(dense_shapes.shape(i));
+      }
     }
   } else {
     const flexbuffers::Map& m =
@@ -760,10 +762,13 @@ TfLiteStatus PrepareParseExample(TfLiteContext* context, TfLiteNode* node) {
         GetOutput(context, node, data->sparse_size * 3 + i);
     TfLiteIntArray* output_size = TfLiteIntArrayCopy(dense_key_tensor->dims);
     if (missing_shape_info) {
-      RuntimeShape runtime_shape = GetTensorShape(dense_key_tensor);
       data->dense_shapes.push_back(TfLiteToTfShape(output_size));
     }
-    output_size->data[0] = batch_size * output_size->data[0];
+    // use original tflite tensor size if inputs are resized.
+    const int original_size = data->dense_shapes[i].dims() > 0
+                                  ? data->dense_shapes[i].dim_size(0)
+                                  : 1;
+    output_size->data[0] = batch_size * original_size;
     context->ResizeTensor(context, dense_key_tensor, output_size);
   }
 

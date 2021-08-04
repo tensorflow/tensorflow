@@ -39,6 +39,10 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 
 
+def _is_gpu_device(device):
+  return tf_device.DeviceSpec.from_string(device).device_type == "GPU"
+
+
 def call_for_each_replica(strategy, fn, args=None, kwargs=None):
   """Call `fn` on each worker devices(replica).
 
@@ -60,6 +64,13 @@ def call_for_each_replica(strategy, fn, args=None, kwargs=None):
     kwargs = {}
 
   if isinstance(fn, def_function.Function):
+    # Don't lift up the tf.function decoration if `fn` is compiled with XLA
+    # and all devices are GPU. In this case we will use collectives to do
+    # cross-device communication, thus no merge_call is in the path.
+    if fn._jit_compile and all(  # pylint: disable=protected-access
+        [_is_gpu_device(d) for d in strategy.extended.worker_devices]):
+      return _call_for_each_replica(strategy, fn, args, kwargs)
+
     if strategy not in _cfer_fn_cache:
       _cfer_fn_cache[strategy] = weakref.WeakKeyDictionary()
     wrapped = _cfer_fn_cache[strategy].get(fn)
@@ -155,10 +166,11 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
   for index in range(len(devices)):
     variable_creator_fn = shared_variable_creator.make_fn(
         shared_variable_store, index)
-    t = _MirroredReplicaThread(
-        distribution, coord, index, devices, variable_creator_fn, fn,
-        distribute_utils.select_replica(index, args),
-        distribute_utils.select_replica(index, kwargs))
+    t = _MirroredReplicaThread(distribution, coord, index, devices,
+                               variable_creator_fn, fn,
+                               distribute_utils.caching_scope_local,
+                               distribute_utils.select_replica(index, args),
+                               distribute_utils.select_replica(index, kwargs))
     threads.append(t)
 
   for t in threads:
@@ -239,8 +251,8 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
 class _MirroredReplicaThread(threading.Thread):
   """A thread that runs() a function on a device."""
 
-  def __init__(self, dist, coord, replica_id, devices, variable_creator_fn,
-               fn, args, kwargs):
+  def __init__(self, dist, coord, replica_id, devices, variable_creator_fn, fn,
+               caching_scope, args, kwargs):
     super(_MirroredReplicaThread, self).__init__()
     self.coord = coord
     self.distribution = dist
@@ -264,6 +276,13 @@ class _MirroredReplicaThread(threading.Thread):
     self.merge_result = None
     self.captured_name_scope = None
     self.captured_var_scope = None
+    try:
+      self.caching_scope_entered = caching_scope.new_cache_scope_count
+      self.caching_scope_exited = caching_scope.cache_scope_exited_count
+    except AttributeError:
+      self.caching_scope_entered = None
+      self.caching_scope_exited = None
+
     # We use a thread.Event for the main thread to signal when this
     # thread should start running (`should_run`), and another for
     # this thread to transfer control back to the main thread
@@ -307,6 +326,10 @@ class _MirroredReplicaThread(threading.Thread):
         return
       self.restore_thread_local_summary_state()
       self.restore_thread_local_eager_context_state()
+      if (self.caching_scope_entered is not None and
+          self.caching_scope_exited is not None):
+        distribute_utils.caching_scope_local.new_cache_scope_count = self.caching_scope_entered
+        distribute_utils.caching_scope_local.cache_scope_exited_count = self.caching_scope_exited
       # TODO(josh11b): Use current logical device instead of 0 here.
       with self.coord.stop_on_exception(), \
           _enter_graph(self._init_graph, self._init_in_eager), \
@@ -440,7 +463,9 @@ class _MirroredReplicaContext(distribute_lib.ReplicaContext):
           " please avoid nested `tf.function`s or control flow statements that"
           " may potentially cross a synchronization boundary, for example,"
           " wrap the `fn` passed to `strategy.run` or the entire `strategy.run`"
-          " inside a `tf.function` or move the control flow out of `fn`")
+          " inside a `tf.function` or move the control flow out of `fn`. If"
+          " you are subclassing a `tf.keras.Model`, please avoid decorating"
+          " overridden methods `test_step` and `train_step` in `tf.function`.")
 
     t.has_paused.set()
     t.should_run.wait()

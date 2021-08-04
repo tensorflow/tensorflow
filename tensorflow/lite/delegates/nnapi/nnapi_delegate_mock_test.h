@@ -42,6 +42,7 @@ class NnApiMock : public ::tflite::nnapi::NnApiHandler {
       : ::tflite::nnapi::NnApiHandler(nnapi) {
     nnapi_->nnapi_exists = true;
     nnapi_->android_sdk_version = android_sdk_version;
+    nnapi_->nnapi_runtime_feature_level = android_sdk_version;
 
     nnapi_->ANeuralNetworksCompilation_free =
         [](ANeuralNetworksCompilation* compilation) {};

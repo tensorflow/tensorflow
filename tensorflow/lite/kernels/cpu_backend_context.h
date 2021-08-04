@@ -55,13 +55,13 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
 
   void ClearCaches() override { ruy_context_->ClearPrepackedCache(); }
 
-  bool HasAvxOrAbove();
-
   // Gemmlowp on x86 is a deprecated path but some clients may still use
   // this path based on link time dependencies.
   bool PreferGemmlowpOnX86();
 
  private:
+  bool RuyHasAvxOrAbove();
+
   // Copy the wrapper class for cpuinfo from Ruy.
   class CpuInfo final {
    public:

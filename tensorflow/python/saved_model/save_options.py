@@ -101,14 +101,16 @@ class SaveOptions(object):
 
   # Define object attributes in __slots__ for improved memory and performance.
   __slots__ = ("namespace_whitelist", "save_debug_info", "function_aliases",
-               "experimental_io_device", "experimental_variable_policy")
+               "experimental_io_device", "experimental_variable_policy",
+               "experimental_custom_gradients")
 
   def __init__(self,
                namespace_whitelist=None,
                save_debug_info=False,
                function_aliases=None,
                experimental_io_device=None,
-               experimental_variable_policy=None):
+               experimental_variable_policy=None,
+               experimental_custom_gradients=False):
     """Creates an object that stores options for SavedModel saving.
 
     Args:
@@ -156,11 +158,15 @@ class SaveOptions(object):
         instance or one of its value strings (case is not important). See that
         enum documentation for details. A value of `None` corresponds to the
         default policy.
+      experimental_custom_gradients: Boolean. When True, will save traced
+        gradient functions for the functions decorated by `tf.custom_gradient`.
+        Defaults to `False`.
     """
     self.namespace_whitelist = _validate_namespace_whitelist(
         namespace_whitelist)
     self.save_debug_info = save_debug_info
     self.function_aliases = function_aliases if function_aliases else dict()
+    self.experimental_custom_gradients = experimental_custom_gradients
     self.experimental_io_device = experimental_io_device
     self.experimental_variable_policy = (
         VariablePolicy.from_obj(experimental_variable_policy))

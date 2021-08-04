@@ -86,9 +86,9 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
     OP_REQUIRES(context, l2_regularizer >= 0,
                 errors::InvalidArgument("l2_regularizer must be >= 0."));
 
-    const int64 rows = matrix.rows();
-    const int64 cols = matrix.cols();
-    if (rows == 0 || cols == 0) {
+    const int64_t rows = matrix.rows();
+    const int64_t cols = matrix.cols();
+    if (rows == 0 || cols == 0 || rhs.rows() == 0 || rhs.cols() == 0) {
       // The result is the empty matrix.
       return;
     }
@@ -99,7 +99,7 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
       //   1 / cond(matrix) > sqrt(std::numeric_limits<Scalar>::epsilon()).
       // This branch solves over- or underdetermined least-squares problems
       // via the normal equations and Cholesky decomposition.
-      if (matrix.rows() >= matrix.cols()) {
+      if (rows >= cols) {
         // Overdetermined case (rows >= cols): Solves the ordinary (possibly
         // regularized) least-squares problem
         //   min || A * X - RHS ||_F^2 + l2_regularizer ||X||_F^2

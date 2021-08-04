@@ -36,7 +36,7 @@ string HumanReadableProfileBuilder::ToString() const {
                   computation_name_,
                   HumanReadableElapsedTime(CyclesToSeconds(total_cycles_)));
 
-  int64 cumulative_cycles = 0;
+  int64_t cumulative_cycles = 0;
   auto print_op = [&](const OpInfo& op, bool is_total = false) {
     // Skip ops with 0 optimal seconds and 0 actual cycles.  These are ops that
     // were expected to be free and are actually free -- things like (on most
@@ -100,9 +100,9 @@ string HumanReadableProfileBuilder::ToString() const {
   };
 
   double optimal_seconds_sum = 0;
-  int64 total_flops = 0.;
-  int64 total_transcendentals = 0.;
-  int64 total_bytes = 0;
+  int64_t total_flops = 0.;
+  int64_t total_transcendentals = 0.;
+  int64_t total_bytes = 0;
   for (const auto& op : op_infos_) {
     if (op.optimal_seconds > 0) {
       // An op can run faster than the estimated optimum. For example, we might

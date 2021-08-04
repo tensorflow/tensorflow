@@ -141,8 +141,9 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(absl::StrContains(
-        s.ToString(), "Invalid argument: Shape must be rank 2 but is rank 1"));
+    EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "Shape must be rank 2 but is rank 1"));
   }
 
   {
@@ -161,9 +162,9 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {S({2, 5}), S({3, 4})}, {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(absl::StrContains(
-        s.ToString(),
-        "Invalid argument: Dimensions must be equal, but are 5 and 3"));
+    EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "Dimensions must be equal, but are 5 and 3"));
   }
 
   {
@@ -171,9 +172,9 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
     InferenceContext c(TF_GRAPH_DEF_VERSION, def, op_def,
                        {S({2, 5, 3}), S({3, 5, 4})}, {}, {}, {});
     auto s = MatMulShape(&c);
-    EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(absl::StrContains(
-        s.ToString(), "Invalid argument: Shape must be rank 2 but is rank 3"));
+    EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "Shape must be rank 2 but is rank 3"));
   }
 
   {
@@ -704,23 +705,27 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   // Tests for NCHW_VECT_C
   // 1x1 filter
   set_op({{1, 1, 1, 1}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
-  INFER_OK(op, "[1,1,2,2,4];[4,1,1,1,4]", "[d0_0,1,2,2,4]");
+  INFER_OK(op, "[1,1,2,2,4];[4,1,1,1,4]", "[d0_0,1,2,2,d0_4]");
 
   // 2x2 filter
   set_op({{1, 1, 1, 1}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
-  INFER_OK(op, "[1,1,2,2,4];[4,1,2,2,4]", "[d0_0,1,1,1,4]");
+  INFER_OK(op, "[1,1,2,2,4];[4,1,2,2,4]", "[d0_0,1,1,1,d0_4]");
 
   // 3x3 input, 1x1 filter, 2x2 stride
   set_op({{1, 1, 2, 2}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
-  INFER_OK(op, "[1,1,3,3,4];[8,1,1,1,4]", "[d0_0,2,2,2,4]");
+  INFER_OK(op, "[1,1,3,3,4];[8,1,1,1,4]", "[d0_0,2,2,2,d0_4]");
 
   // 3x3 input, 1x1 filter, 2x1 stride
   set_op({{1, 1, 2, 1}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
-  INFER_OK(op, "[1,1,3,3,4];[4,1,1,1,4]", "[d0_0,1,2,3,4]");
+  INFER_OK(op, "[1,1,3,3,4];[4,1,1,1,4]", "[d0_0,1,2,3,d0_4]");
 
   // 4x4 input, 2x1 filter, 1x2 stride
   set_op({{1, 1, 1, 2}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
-  INFER_OK(op, "[1,1,4,4,4];[4,1,2,1,4]", "[d0_0,1,3,2,4]");
+  INFER_OK(op, "[1,1,4,4,4];[4,1,2,1,4]", "[d0_0,1,3,2,d0_4]");
+
+  // int8x32 input.
+  set_op({{1, 1, 1, 2}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
+  INFER_OK(op, "[1,1,4,4,32];[32,1,2,1,32]", "[d0_0,1,3,2,d0_4]");
 
   // Some tests for "SAME" padding
 
@@ -1154,7 +1159,7 @@ TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
   INFER_OK(op, "[2,3,5,7,4]", "[d0_0,d0_1,4,6,4]");
   INFER_OK(op, "[5,7,?,?,4]", "[d0_0,d0_1,?,?,4]");
   INFER_OK(op, "[?,?,?,?,4]", "[d0_0,d0_1,?,?,4]");
-  INFER_ERROR("Dimension must be 4 but is 3", op, "[2,5,7,11,3]");
+  INFER_ERROR("must be 4 or 32, but is 3", op, "[2,5,7,11,3]");
 
   // Invalid rank for input
   INFER_ERROR("Shape must be rank", op, "[4,4]");
@@ -1191,7 +1196,7 @@ TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
   INFER_OK(op, "[2,3,5,7,4]", "[d0_0,d0_1,d0_2,d0_3,4]");
   INFER_OK(op, "[5,7,?,?,4]", "[d0_0,d0_1,d0_2,d0_3,4]");
   INFER_OK(op, "[?,?,?,?,4]", "[d0_0,d0_1,d0_2,d0_3,4]");
-  INFER_ERROR("Dimension must be 4 but is 8", op, "[2,3,5,7,8]");
+  INFER_ERROR("must be 4 or 32, but is 8", op, "[2,3,5,7,8]");
 }
 
 TEST(CommonShapeFnsTest, MaxPoolV22DShapeTest) {
@@ -1233,7 +1238,7 @@ TEST(CommonShapeFnsTest, MaxPoolV22DShapeTest) {
   INFER_OK(op, "[2,3,5,7,4];[4];[4]", "[d0_0,d0_1,d0_2,d0_3,4]");
   INFER_OK(op, "[5,7,?,?,4];[4];[4]", "[d0_0,d0_1,d0_2,d0_3,4]");
   INFER_OK(op, "[?,?,?,?,4];[4];[4]", "[d0_0,d0_1,d0_2,d0_3,4]");
-  INFER_ERROR("Dimension must be 4 but is 8", op, "[2,3,5,7,8];[4];[4]");
+  INFER_ERROR("must be 4 or 32, but is 8", op, "[2,3,5,7,8];[4];[4]");
 }
 
 TEST(CommonShapeFnsTest, Pool3DShapeTest) {

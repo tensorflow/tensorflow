@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -41,7 +40,7 @@ struct MemcpyDetails {
   bool async;
   // This contains CUpti_ActivityMemcpyKind for activity event (on device).
   // For events from other CuptiTracerEventSource, it is always 0.
-  int8 kind;
+  int8 copy_kind;
   // CUpti_ActivityMemoryKind of source.
   int8 src_mem_kind;
   // CUpti_ActivityMemoryKind of destination.
@@ -52,7 +51,7 @@ struct MemAllocDetails {
   // Size of memory to be written over in bytes.
   size_t num_bytes;
   // The CUpti_ActivityMemoryKind value for this activity event.
-  int8 kind;
+  int8 mem_kind;
   // The virtual address of allocation. 0 if it is a free operation.
   uint64 address;
 };
@@ -69,7 +68,7 @@ struct MemsetDetails {
   // Size of memory to be written over in bytes.
   size_t num_bytes;
   // The CUpti_ActivityMemoryKind value for this activity event.
-  int8 kind;
+  int8 mem_kind;
   // Whether or not the memset is asynchronous.
   bool async;
 };
@@ -108,7 +107,7 @@ inline std::string ToXStat(const KernelDetails& kernel_info,
 }
 
 // Gets the name of the CUpti_ActivityMemoryKind value.
-absl::string_view GetMemoryKindName(int8 kind);
+absl::string_view GetMemoryKindName(int8_t memory_kind);
 
 enum class CuptiTracerEventType {
   Unsupported = 0,
@@ -236,7 +235,6 @@ class CuptiTraceCollector {
   virtual void Flush() = 0;
 
   // Consumer side functions (i.e. called by GPU tracer);
-  virtual void Export(StepStats* step_stats) {}
   virtual bool Export(XSpace* space, uint64 end_gpu_ns) { return true; }
   virtual std::string ReportNumEventsIfDropped() { return ""; }
 

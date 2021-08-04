@@ -40,7 +40,7 @@ Status RemapVectorToMap(const TTypes<const int64>::Vec& remapping,
   id_present->clear();
   id_present->resize(remapping.size(), false);
   for (int i = 0; i < remapping.size(); ++i) {
-    const int64 old_id = remapping(i);
+    const int64_t old_id = remapping(i);
     if (old_id < 0) continue;
     (*id_present)[i] = true;
     if (!gtl::InsertIfNotPresent(old_id_to_new_id, old_id, i)) {
@@ -84,8 +84,8 @@ class LoadAndRemapMatrixOp : public OpKernel {
 
     // Calculates the min/max old row ID that we need to read, to save us from
     // reading some unnecessary slices of the old tensor.
-    int64 min_old_row = -1;
-    int64 max_old_row = -1;
+    int64_t min_old_row = -1;
+    int64_t max_old_row = -1;
     for (int i = 0; i < row_remapping.size(); ++i) {
       if (min_old_row < 0 ||
           (row_remapping(i) >= 0 && row_remapping(i) < min_old_row)) {
@@ -123,6 +123,11 @@ class LoadAndRemapMatrixOp : public OpKernel {
     // Processes the checkpoint source and the provided Tensor name.
     const Tensor* ckpt_path_t;
     OP_REQUIRES_OK(context, context->input("ckpt_path", &ckpt_path_t));
+    OP_REQUIRES(
+        context, ckpt_path_t->NumElements() == 1,
+        errors::InvalidArgument("The `ckpt_path` tensor must have exactly one "
+                                "element, got tensor of shape ",
+                                ckpt_path_t->shape().DebugString()));
     const string& ckpt_path = ckpt_path_t->scalar<tstring>()();
     const Tensor* old_tensor_name_t;
     OP_REQUIRES_OK(context,
@@ -168,13 +173,13 @@ class LoadAndRemapMatrixOp : public OpKernel {
     std::vector<TensorSlice> tensor_slices;
     TensorSlice slice(tensor_shape.dims());
     if (min_old_row >= 0 && max_old_row >= 0) {
-      int64 row_start = min_old_row;
+      int64_t row_start = min_old_row;
       // TODO(weiho): Given the list of old row IDs of interest (the keys of
       // old_row_to_new_row_map), we could also try something smarter to
       // find some minimal set of covering ranges for the list of old row IDs
       // such that the size of each range is less than max_rows_in_memory_.
       while (row_start <= max_old_row) {
-        const int64 slice_length =
+        const int64_t slice_length =
             max_rows_in_memory_ <= 0
                 // If max_rows_in_memory_ <= 0, we just load the entire chunk.
                 ? max_old_row - row_start + 1
@@ -196,8 +201,8 @@ class LoadAndRemapMatrixOp : public OpKernel {
 
     // Iterates through tensor slices and copies over values from the old tensor
     // to the output matrix.
-    int64 row_index = min_old_row;
-    int64 rows_copied = 0;
+    int64_t row_index = min_old_row;
+    int64_t rows_copied = 0;
     Tensor loaded_tensor_t;
     for (const TensorSlice& tensor_slice : tensor_slices) {
       LOG(INFO) << "Loading slice " << tensor_slice.DebugString();
@@ -226,14 +231,14 @@ class LoadAndRemapMatrixOp : public OpKernel {
           continue;
         }
         ++rows_copied;
-        const int64 new_row = *new_row_ptr;
+        const int64_t new_row = *new_row_ptr;
 
         // Copies over the row element-by-element, in case remapping is needed
         // along the column axis.
         const auto& loaded_tensor = loaded_tensor_t.matrix<float>();
         for (int old_col = 0; old_col < loaded_tensor_t.dim_size(1);
              ++old_col) {
-          int64 new_col = old_col;
+          int64_t new_col = old_col;
           if (remap_cols) {
             const int64* new_col_ptr =
                 gtl::FindOrNull(old_col_to_new_col_map, old_col);
@@ -271,7 +276,7 @@ class LoadAndRemapMatrixOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->input("initializing_values", &initializing_values_t));
     const auto initializing_values = initializing_values_t->flat<float>();
-    int64 initializing_values_index = 0;
+    int64_t initializing_values_index = 0;
     for (int i = 0; i < num_rows_; ++i) {
       for (int j = 0; j < num_cols_; ++j) {
         if (row_id_present[i] && col_id_present[j]) continue;

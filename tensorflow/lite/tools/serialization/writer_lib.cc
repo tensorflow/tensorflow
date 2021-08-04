@@ -232,14 +232,21 @@ SubgraphWriter::ExportTensors(flatbuffers::FlatBufferBuilder* fbb) {
       }
 
       // Shape
-      TfLiteIntArrayView shape_view(tensor->dims);
-      std::vector<int> shape =
-          std::vector<int>(shape_view.begin(), shape_view.end());
+      // TODO(b/188460235) Avoid generating the weird null dimension tensors.
+      if (tensor->dims) {
+        TfLiteIntArrayView shape_view(tensor->dims);
+        std::vector<int> shape =
+            std::vector<int>(shape_view.begin(), shape_view.end());
 
-      tensors.push_back(CreateTensor(*fbb, ExportVector<int32_t>(fbb, shape),
-                                     type, buffer_index,
-                                     fbb->CreateString(tensor->name),
-                                     quantization_params, tensor->is_variable));
+        Offset<flatbuffers::String> tensor_name_offset = 0;
+        if (tensor->name != nullptr) {
+          tensor_name_offset = fbb->CreateString(tensor->name);
+        }
+
+        tensors.push_back(CreateTensor(
+            *fbb, ExportVector<int32_t>(fbb, shape), type, buffer_index,
+            tensor_name_offset, quantization_params, tensor->is_variable));
+      }
     }
   }
   return fbb->template CreateVector<flatbuffers::Offset<Tensor>>(tensors);
@@ -277,7 +284,8 @@ TfLiteStatus SubgraphWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
   if (!out || !size) return kTfLiteError;
   flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs_as_vector;
-  subgraphs_as_vector.push_back(PopulateAndGetOffset(&builder));
+  subgraphs_as_vector.push_back(
+      PopulateAndGetOffset(&builder, subgraph_->GetName()));
 
   flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>>
       buffers = ExportBuffers(&builder);
@@ -297,7 +305,7 @@ TfLiteStatus SubgraphWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
 }
 
 flatbuffers::Offset<SubGraph> SubgraphWriter::PopulateAndGetOffset(
-    flatbuffers::FlatBufferBuilder* builder) {
+    flatbuffers::FlatBufferBuilder* builder, const std::string& subgraph_name) {
   auto tensors = ExportTensors(builder);
   std::vector<int> written_inputs = RemapTensorIndicesToWritten(inputs_);
   std::vector<int> written_outputs = RemapTensorIndicesToWritten(outputs_);
@@ -305,7 +313,8 @@ flatbuffers::Offset<SubGraph> SubgraphWriter::PopulateAndGetOffset(
   auto outputs = ExportVector<int32_t>(builder, written_outputs);
 
   auto ops = ExportOperators(builder);
-  return CreateSubGraph(*builder, tensors, inputs, outputs, ops, /* name */ 0);
+  auto name = builder->CreateString(subgraph_name);
+  return CreateSubGraph(*builder, tensors, inputs, outputs, ops, name);
 }
 
 TfLiteStatus SubgraphWriter::Write(const std::string& filename) {
@@ -393,6 +402,33 @@ TfLiteStatus SubgraphWriter::SetCustomInputOutput(
   return kTfLiteOk;
 }
 
+ModelWriter::ModelWriter(Interpreter* interpreter) {
+  std::vector<Subgraph*> subgraphs;
+
+  // Retrieves the list of the subgraphs from the interpreter for constructing
+  // a list of SubgraphWriters.
+  subgraphs.reserve(interpreter->subgraphs_size());
+  for (int i = 0; i < interpreter->subgraphs_size(); ++i) {
+    subgraphs.push_back(interpreter->subgraph(i));
+  }
+
+  Init(subgraphs);
+}
+
+ModelWriter::ModelWriter(const std::vector<Subgraph*>& subgraphs) {
+  Init(subgraphs);
+}
+
+void ModelWriter::Init(const std::vector<Subgraph*>& subgraphs) {
+  buffers_.push_back(std::make_pair(nullptr, 0));
+  subgraph_writers_.reserve(subgraphs.size());
+  for (auto* subgraph : subgraphs) {
+    SubgraphWriter writer(subgraph, &buffers_, &opcodes_,
+                          &builtin_op_to_opcode_);
+    subgraph_writers_.push_back(writer);
+  }
+}
+
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>>
 ModelWriter::ExportBuffers(flatbuffers::FlatBufferBuilder* fbb) {
   return ExportBuffersImpl(fbb, &buffers_);
@@ -409,10 +445,9 @@ TfLiteStatus ModelWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
   flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
 
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs_as_vector;
-  for (int i = 0; i < interpreter_->subgraphs_size(); ++i) {
-    SubgraphWriter writer(interpreter_->subgraph(i), &buffers_, &opcodes_,
-                          &builtin_op_to_opcode_);
-    subgraphs_as_vector.push_back(writer.PopulateAndGetOffset(&builder));
+  for (auto& subgraph_writer : subgraph_writers_) {
+    subgraphs_as_vector.push_back(subgraph_writer.PopulateAndGetOffset(
+        &builder, subgraph_writer.subgraph_->GetName()));
   }
 
   flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>>
@@ -437,6 +472,18 @@ TfLiteStatus ModelWriter::Write(const std::string& filename) {
   size_t size;
   TF_LITE_ENSURE_STATUS(GetBuffer(&buffer, &size));
   return WriteImpl(filename, buffer.get(), size);
+}
+
+void ModelWriter::SetUnusedTensors(int subgraph_index,
+                                   const std::set<int>& unused_tensors) {
+  subgraph_writers_[subgraph_index].SetUnusedTensors(unused_tensors);
+}
+
+TfLiteStatus ModelWriter::SetCustomInputOutput(
+    int subgraph_index, const std::vector<int>& inputs,
+    const std::vector<int>& outputs, const std::vector<int>& execution_plan) {
+  return subgraph_writers_[subgraph_index].SetCustomInputOutput(inputs, outputs,
+                                                                execution_plan);
 }
 
 }  // namespace tflite

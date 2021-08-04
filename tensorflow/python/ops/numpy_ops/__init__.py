@@ -148,7 +148,7 @@ tf_var.assign_add(tnp.square(tf_var))
 Here is a non-exhaustive list of differences:
 
 *   Not all dtypes are currently supported. e.g. `np.float96`, `np.float128`.
-    `np.object`, `np.str`, `np.recarray` types are not supported.
+    `np.object_`, `np.str_`, `np.recarray` types are not supported.
 *   `ndarray` storage is in C order only. Fortran order, views, `stride_tricks`
     are not supported.
 *   Only a subset of functions and modules are supported. This set will be
@@ -173,10 +173,11 @@ from tensorflow.python.ops.array_ops import newaxis
 from tensorflow.python.ops.numpy_ops import np_random as random
 from tensorflow.python.ops.numpy_ops import np_utils
 # pylint: disable=wildcard-import
-from tensorflow.python.ops.numpy_ops.np_array_ops import *
+from tensorflow.python.ops.numpy_ops.np_array_ops import *  # pylint: disable=redefined-builtin
 from tensorflow.python.ops.numpy_ops.np_arrays import ndarray
+from tensorflow.python.ops.numpy_ops.np_config import *
 from tensorflow.python.ops.numpy_ops.np_dtypes import *
-from tensorflow.python.ops.numpy_ops.np_math_ops import *
+from tensorflow.python.ops.numpy_ops.np_math_ops import *  # pylint: disable=redefined-builtin
 # pylint: enable=wildcard-import
 from tensorflow.python.ops.numpy_ops.np_utils import finfo
 from tensorflow.python.ops.numpy_ops.np_utils import promote_types
@@ -184,12 +185,12 @@ from tensorflow.python.ops.numpy_ops.np_utils import result_type
 
 
 # pylint: disable=redefined-builtin,undefined-variable
-@np_utils.np_doc("max", link=np_utils.AliasOf("maximum"))
+@np_utils.np_doc("max", link=np_utils.AliasOf("amax"))
 def max(a, axis=None, keepdims=None):
   return amax(a, axis=axis, keepdims=keepdims)
 
 
-@np_utils.np_doc("min", link=np_utils.AliasOf("minimum"))
+@np_utils.np_doc("min", link=np_utils.AliasOf("amin"))
 def min(a, axis=None, keepdims=None):
   return amin(a, axis=axis, keepdims=keepdims)
 

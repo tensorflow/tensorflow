@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/data/captured_function.h"
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -27,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/utils/traversal.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -52,7 +52,7 @@ DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx)
     : OpKernel(ctx), op_version_(ctx->def().op() == kDatasetToGraph ? 1 : 2) {
   if (op_version_ == 2) {
     if (ctx->HasAttr(kExternalStatePolicy)) {
-      int64 state_change_option;
+      int64_t state_change_option;
       OP_REQUIRES_OK(ctx,
                      ctx->GetAttr(kExternalStatePolicy, &state_change_option));
       external_state_policy_ =
@@ -81,7 +81,29 @@ DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx)
 void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
-  SerializationContext::Params params;
+  if (dataset->options().optional_external_state_policy_case() ==
+      Options::kExternalStatePolicy) {
+    switch (dataset->options().external_state_policy()) {
+      case ExternalStatePolicy::POLICY_WARN:
+        external_state_policy_ =
+            SerializationContext::ExternalStatePolicy::kWarn;
+        break;
+      case ExternalStatePolicy::POLICY_IGNORE:
+        external_state_policy_ =
+            SerializationContext::ExternalStatePolicy::kIgnore;
+        break;
+      case ExternalStatePolicy::POLICY_FAIL:
+        external_state_policy_ =
+            SerializationContext::ExternalStatePolicy::kFail;
+        break;
+      default: {
+        LOG(ERROR) << "Dataset " << dataset->type_string()
+                   << " has an unknown external_state_policy enum value: "
+                   << dataset->options().external_state_policy();
+      }
+    }
+  }
+  SerializationContext::Params params(ctx);
   params.external_state_policy = external_state_policy_;
 
   GraphDef graph_def;
@@ -119,8 +141,7 @@ void DatasetCardinalityOp::Compute(OpKernelContext* ctx) {
 
 void DatasetFromGraphOp::Compute(OpKernelContext* ctx) {
   tstring graph_def_string;
-  OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument(ctx, kGraphDef, &graph_def_string));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kGraphDef, &graph_def_string));
   GraphDef graph_def;
   OP_REQUIRES(ctx, graph_def.ParseFromString(graph_def_string),
               errors::InvalidArgument("Could not parse GraphDef"));

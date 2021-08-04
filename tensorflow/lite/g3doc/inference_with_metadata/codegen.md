@@ -188,6 +188,10 @@ aaptOptions {
 }
 ```
 
+Note: starting from version 4.1 of the Android Gradle plugin, .tflite will be
+added to the noCompress list by default and the aaptOptions above is not needed
+anymore.
+
 Under the dependencies section, add the following:
 
 ```build
@@ -255,3 +259,7 @@ aaptOptions {
    noCompress "tflite"
 }
 ```
+
+Note: starting from version 4.1 of the Android Gradle plugin, .tflite will be
+added to the noCompress list by default and the aaptOptions above is not needed
+anymore.

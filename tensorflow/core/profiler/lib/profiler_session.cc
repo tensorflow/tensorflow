@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 
 #include <memory>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/platform/errors.h"
@@ -51,7 +52,7 @@ ProfileOptions GetOptions(const ProfileOptions& opts) {
 
 /*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
     const ProfileOptions& options) {
-  return absl::WrapUnique(new ProfilerSession(GetOptions(options)));
+  return absl::WrapUnique(new ProfilerSession(options));
 }
 
 tensorflow::Status ProfilerSession::Status() {
@@ -59,7 +60,7 @@ tensorflow::Status ProfilerSession::Status() {
   return status_;
 }
 
-Status ProfilerSession::CollectData(profiler::XSpace* space) {
+Status ProfilerSession::CollectDataInternal(profiler::XSpace* space) {
   mutex_lock l(mutex_);
   TF_RETURN_IF_ERROR(status_);
 #if !defined(IS_MOBILE_PLATFORM)
@@ -77,36 +78,19 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
     profiler::ReleaseProfilerLock();
     active_ = false;
   }
+#endif
+  return Status::OK();
+}
 
+Status ProfilerSession::CollectData(profiler::XSpace* space) {
+#if !defined(IS_MOBILE_PLATFORM)
+  TF_RETURN_IF_ERROR(CollectDataInternal(space));
   PostProcessSingleHostXSpace(space, start_time_ns_);
 #endif
-
   return Status::OK();
 }
 
-Status ProfilerSession::CollectData(RunMetadata* run_metadata) {
-  mutex_lock l(mutex_);
-  TF_RETURN_IF_ERROR(status_);
-#if !defined(IS_MOBILE_PLATFORM)
-  for (auto& profiler : profilers_) {
-    profiler->Stop().IgnoreError();
-  }
-
-  for (auto& profiler : profilers_) {
-    profiler->CollectData(run_metadata).IgnoreError();
-  }
-
-  if (active_) {
-    // Allow another session to start.
-    profiler::ReleaseProfilerLock();
-    active_ = false;
-  }
-#endif
-
-  return Status::OK();
-}
-
-ProfilerSession::ProfilerSession(ProfileOptions options)
+ProfilerSession::ProfilerSession(const ProfileOptions& options)
 #if defined(IS_MOBILE_PLATFORM)
     : active_(false),
       status_(tensorflow::Status(
@@ -115,10 +99,10 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
 #else
     : active_(profiler::AcquireProfilerLock()),
 #endif
-      options_(std::move(options)) {
+      options_(GetOptions(options)) {
 #if !defined(IS_MOBILE_PLATFORM)
   if (!active_) {
-    status_ = tensorflow::Status(error::UNAVAILABLE,
+    status_ = tensorflow::Status(error::ALREADY_EXISTS,
                                  "Another profiler session is active.");
     return;
   }
@@ -126,7 +110,7 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
   LOG(INFO) << "Profiler session initializing.";
   // Sleep until it is time to start profiling.
   if (options_.start_timestamp_ns() > 0) {
-    int64 sleep_duration_ns =
+    int64_t sleep_duration_ns =
         options_.start_timestamp_ns() - profiler::GetCurrentTimeNanos();
     if (sleep_duration_ns < 0) {
       LOG(WARNING) << "Profiling is late by " << -sleep_duration_ns
@@ -144,6 +128,7 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
   status_ = Status::OK();
 
   for (auto& profiler : profilers_) {
+    DCHECK(profiler != nullptr);
     auto start_status = profiler->Start();
     if (!start_status.ok()) {
       LOG(WARNING) << "Encountered error while starting profiler: "
@@ -166,4 +151,5 @@ ProfilerSession::~ProfilerSession() {
   }
 #endif
 }
+
 }  // namespace tensorflow

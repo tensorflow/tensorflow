@@ -111,8 +111,6 @@ struct OperatorProperty {
   // Use same min of min and max of max for each group.
   // Incompatible with restrict_same_input_output_scale and restricted_value.
   // Currently it only supports scale pair of {input_index, output_index}.
-  // TODO(b/174534943): make it compatible with other restrictions when there
-  // is a use case.
   std::vector<std::vector<int>> restrict_scale = {};
 
   // Op version.
@@ -127,7 +125,6 @@ struct OperatorProperty {
 };
 
 // The op as well as it variants.
-// TODO(b/174283888): extend it to support ops that has multiple variants.
 struct OpVariant {
   BuiltinOperator op_code;
   bool use_layer_norm = false;

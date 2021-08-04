@@ -66,7 +66,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   Status Init(int device_ordinal,
               ::stream_executor::DeviceOptions device_options) override;
 
-  DeviceMemoryBase Allocate(uint64 size, int64 memory_space) override;
+  DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) override;
 
   Status AllocateEvent(Event* event) override;
 
@@ -95,10 +95,11 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   bool DeviceMemoryUsage(int64* free, int64* total) const override;
 
-  void DequeueOutfeed(int32 outfeed_queue_index, absl::Span<uint8> bytes,
+  void DequeueOutfeed(int32_t outfeed_queue_index, absl::Span<uint8> bytes,
                       StatusCallback done);
 
-  Status EnqueueInfeed(int32 infeed_queue_index, absl::Span<const uint8> bytes);
+  Status EnqueueInfeed(int32_t infeed_queue_index,
+                       absl::Span<const uint8> bytes);
 
   absl::optional<stream_executor::AllocatorStats> GetAllocatorStats() override;
 
@@ -151,9 +152,13 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   bool StartTimer(Stream* stream, ::stream_executor::Timer* timer) override;
   bool StopTimer(Stream* stream, ::stream_executor::Timer* timer) override;
 
-  Status WaitForInfeedReady(int32 infeed_queue_index);
+  Status WaitForInfeedReady(int32_t infeed_queue_index);
 
-  Status WaitForOutfeedReady(int32 outfeed_queue_index);
+  Status WaitForOutfeedReady(int32_t outfeed_queue_index);
+
+  Status UnloadAllPrograms() override;
+
+  Status EnqueueCompactionOnStreamForHbm(Stream* compaction_stream) override;
 
   const ::tensorflow::tpu::TpuPlatformInterface& platform() const override {
     return *platform_;
@@ -167,8 +172,8 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   // to TpuExecutorInterface.
   StatusOr<std::unique_ptr<
       tensorflow::tpu::TpuExecutorInterface::TemporaryDeviceMemory>>
-  CreateTemporaryDeviceMemory(int64 memory_space, int64 byte_offset,
-                              int64 size) override {
+  CreateTemporaryDeviceMemory(int64_t memory_space, int64_t byte_offset,
+                              int64_t size) override {
     LOG(FATAL) << "Unimplemented.";
   }
 

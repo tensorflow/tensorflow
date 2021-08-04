@@ -56,20 +56,25 @@ static Graph* ConstructSpaceToBatchGraph(
 
 // The BM_Expand macro is needed for this to build with VC++.
 #define BM_Expand(x) x
+// Macro is already longer than 80 chars.
+// NOLINTBEGIN
 #define BM_SpaceToBatchDev(OP, DEVICE, DTYPE, B, H, W, D, BS, P00, P01, P10,                            \
                            P11)                                                                         \
   static void                                                                                           \
       BM_##OP##_##DEVICE##_##DTYPE##_##B##_##H##_##W##_##D##_bs##BS##_pad##P00##_##P01##_##P10##_##P11( \
-          int iters) {                                                                                  \
-    testing::ItemsProcessed(static_cast<int64>(iters) * B * (H + P00 + P01) *                           \
+          ::testing::benchmark::State& state) {                                                         \
+    test::Benchmark(                                                                                    \
+        #DEVICE,                                                                                        \
+        ConstructSpaceToBatchGraph(#OP, TensorShape({B, H, W, D}), BS, DTYPE,                           \
+                                   {{P00, P01}, {P10, P11}}),                                           \
+        /*old_benchmark_api*/ false)                                                                    \
+        .Run(state);                                                                                    \
+    state.SetItemsProcessed(state.iterations() * B * (H + P00 + P01) *                                  \
                             (W + P10 + P11) * D);                                                       \
-    test::Benchmark(#DEVICE, ConstructSpaceToBatchGraph(                                                \
-                                 #OP, TensorShape({B, H, W, D}), BS, DTYPE,                             \
-                                 {{P00, P01}, {P10, P11}}))                                             \
-        .Run(iters);                                                                                    \
   }                                                                                                     \
   BENCHMARK(                                                                                            \
       BM_##OP##_##DEVICE##_##DTYPE##_##B##_##H##_##W##_##D##_bs##BS##_pad##P00##_##P01##_##P10##_##P11);
+// NOLINTEND
 #define BM_SpaceToBatch(OP, ...)                                 \
   BM_Expand(BM_SpaceToBatchDev(OP, cpu, DT_FLOAT, __VA_ARGS__)); \
   BM_Expand(BM_SpaceToBatchDev(OP, gpu, DT_FLOAT, __VA_ARGS__)); \

@@ -17,7 +17,7 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(["quantile_ops.cc"])

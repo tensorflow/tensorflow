@@ -20,8 +20,9 @@ corresponding list of parameters that each supports to create a particular
 TFLite delegate.
 
 ### Common parameters
-*   `num_threads`: `int` (default=1) \
-    The number of threads to use for running the inference on CPU.
+*   `num_threads`: `int` (default=-1) \
+    The number of threads to use for running the inference on CPU. By default,
+    this is set to the platform default value -1.
 *   `max_delegated_partitions`: `int` (default=0, i.e. no limit) \
     The maximum number of partitions that will be delegated. \
     Currently supported by the GPU, Hexagon, CoreML and NNAPI delegate.
@@ -30,10 +31,22 @@ TFLite delegate.
     reached to be delegated. A negative value or 0 means to use the default
     choice of each delegate. \
     This option is currently supported by the Hexagon and CoreML delegate.
+*   `delegate_serialize_dir`: `string` (default="") \
+    Directory to be used by delegates for serializing any model data.
+    This allows the delegate to save data into this directory to reduce init
+    time after the first run. Currently supported by NNAPI delegate with
+    specific backends on Android. Note that delegate_serialize_token is also
+    required to enable this feature.
+*   `delegate_serialize_token`: `string` (default="") \
+    Model-specific token acting as a namespace for delegate serialization.
+    Unique tokens ensure that the delegate doesn't read inapplicable/invalid
+    data. Note that delegate_serialize_dir is also required to enable this
+    feature.
 
 ### GPU delegate provider
 
-Only Android and iOS devices support GPU delegate.
+The GPU deleagte is supported on Android and iOS devices, or platforms where
+the delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
 
 #### Common options
 *   `use_gpu`: `bool` (default=false) \
@@ -45,6 +58,10 @@ Only Android and iOS devices support GPU delegate.
     will increase.
 *   `gpu_experimental_enable_quant`: `bool` (default=true) \
     Whether to allow the GPU delegate to run a 8-bit quantized model or not.
+*   `gpu_inference_for_sustained_speed`: `bool` (default=false) \
+    Whether to prefer maximizing the throughput. This mode will help when the
+    same delegate will be used repeatedly on multiple inputs. This is supported
+    on non-iOS platforms.
 
 #### Android options
 *  `gpu_backend`: `string` (default="") \
@@ -85,6 +102,19 @@ Only Android and iOS devices support GPU delegate.
     option is ignored if `nnapi_accelerator_name` is specified.
 *   `nnapi_allow_fp16`: `bool` (default=false) \
     Whether to allow FP32 computation to be run in FP16.
+*   `nnapi_allow_dynamic_dimensions`: `bool` (default=false) \
+    Whether to allow dynamic dimension sizes without re-compilation. This
+    requires Android 9+.
+*   `nnapi_use_burst_mode`: `bool` (default=false) \
+    use NNAPI Burst mode if supported. Burst mode allows accelerators to
+    efficiently manage resources, which would significantly reduce overhead
+    especially if the same delegate instance is to be used for multiple
+    inferences.
+*   `nnapi_support_library_path`: `string` (default=""),
+    Path from which NNAPI support library will be loaded to construct the
+    delegate. In order to use NNAPI delegate with support library,
+    --nnapi_accelerator_name must be specified and must be equal to one of the
+    devices provided by the support library.
 
 ### Hexagon delegate provider
 *   `use_hexagon`: `bool` (default=false) \

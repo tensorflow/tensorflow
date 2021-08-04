@@ -4,7 +4,7 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
@@ -31,7 +31,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:functional_ops",
-        "//tensorflow/python:gradients",
+        "//tensorflow/python:handle_data_util",
         "//tensorflow/python:map_fn",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
@@ -42,6 +42,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/framework:smart_cond",
         "//tensorflow/python/ops/signal",
         "@absl_py//absl/flags",
     ],
@@ -60,6 +61,7 @@ py_library(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:manip_ops",
         "//tensorflow/python:map_fn",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",

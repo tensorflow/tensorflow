@@ -38,9 +38,9 @@ TEST(Array3dTest, FillCtor) {
   EXPECT_EQ(fullof7.n2(), 3);
   EXPECT_EQ(fullof7.n3(), 4);
 
-  for (int64 n1 = 0; n1 < fullof7.n1(); ++n1) {
-    for (int64 n2 = 0; n2 < fullof7.n2(); ++n2) {
-      for (int64 n3 = 0; n3 < fullof7.n3(); ++n3) {
+  for (int64_t n1 = 0; n1 < fullof7.n1(); ++n1) {
+    for (int64_t n2 = 0; n2 < fullof7.n2(); ++n2) {
+      for (int64_t n3 = 0; n3 < fullof7.n3(); ++n3) {
         EXPECT_EQ(fullof7(n1, n2, n3), 7);
       }
     }
@@ -94,18 +94,18 @@ TEST(Array3dTest, InitializerListCtorHalf) {
 
 TEST(Array3dTest, Fill) {
   Array3D<int> fullof7(2, 3, 4, 7);
-  for (int64 n1 = 0; n1 < fullof7.n1(); ++n1) {
-    for (int64 n2 = 0; n2 < fullof7.n2(); ++n2) {
-      for (int64 n3 = 0; n3 < fullof7.n3(); ++n3) {
+  for (int64_t n1 = 0; n1 < fullof7.n1(); ++n1) {
+    for (int64_t n2 = 0; n2 < fullof7.n2(); ++n2) {
+      for (int64_t n3 = 0; n3 < fullof7.n3(); ++n3) {
         EXPECT_EQ(fullof7(n1, n2, n3), 7);
       }
     }
   }
 
   fullof7.Fill(11);
-  for (int64 n1 = 0; n1 < fullof7.n1(); ++n1) {
-    for (int64 n2 = 0; n2 < fullof7.n2(); ++n2) {
-      for (int64 n3 = 0; n3 < fullof7.n3(); ++n3) {
+  for (int64_t n1 = 0; n1 < fullof7.n1(); ++n1) {
+    for (int64_t n2 = 0; n2 < fullof7.n2(); ++n2) {
+      for (int64_t n3 = 0; n3 < fullof7.n3(); ++n3) {
         EXPECT_EQ(fullof7(n1, n2, n3), 11);
       }
     }

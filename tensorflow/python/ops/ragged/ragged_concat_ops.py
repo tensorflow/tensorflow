@@ -23,7 +23,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
@@ -107,7 +106,9 @@ def stack(values, axis=0, name=None):
     name: A name prefix for the returned tensor (optional).
 
   Returns:
-    A `RaggedTensor` with rank `R+1`.
+    A `RaggedTensor` with rank `R+1` (if `R>0`).
+    If `R==0`, then the result will be returned as a 1D `Tensor`, since
+    `RaggedTensor` can only be used when `rank>1`.
     `result.ragged_rank=1+max(axis, max(rt.ragged_rank for rt in values]))`.
 
   Raises:
@@ -148,11 +149,8 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
   rt_inputs = list(rt_inputs)
 
   # Special case: if there's only one input, then return it as-is.
-  if len(rt_inputs) == 1:
-    if stack_values:
-      return ragged_array_ops.expand_dims(rt_inputs[0], axis=axis)
-    else:
-      return rt_inputs[0]
+  if len(rt_inputs) == 1 and not stack_values:
+    return rt_inputs[0]
 
   # Check the rank (number of dimensions) of the input tensors.
   ndims = None

@@ -16,19 +16,21 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/root_dataset.h"
+#include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
-#include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -75,7 +77,7 @@ class MultiDeviceIterator : public ResourceBase {
                            " devices");
   }
 
-  Status Init(std::unique_ptr<IteratorBase> iterator, int64 max_buffer_size,
+  Status Init(std::unique_ptr<IteratorBase> iterator, int64_t max_buffer_size,
               int64* incarnation_id) {
     if (iterator) {
       TF_RETURN_IF_ERROR(
@@ -99,7 +101,7 @@ class MultiDeviceIterator : public ResourceBase {
   }
 
   Status GetNextFromShard(OpKernelContext* ctx, int shard_num,
-                          int64 incarnation_id,
+                          int64_t incarnation_id,
                           MultiDeviceIteratorCallback callback) {
     tf_shared_lock l(mu_);
     IteratorContext::Params params(ctx);
@@ -151,7 +153,8 @@ class MultiDeviceIterator : public ResourceBase {
   // full.
   class MultiDeviceBuffer {
    public:
-    MultiDeviceBuffer(size_t size, int64 max_buffer_size, int64 incarnation_id,
+    MultiDeviceBuffer(size_t size, int64_t max_buffer_size,
+                      int64_t incarnation_id,
                       std::unique_ptr<IteratorBase> host_iterator,
                       MultiDeviceIterator* parent)
         : buffer_(size),
@@ -189,7 +192,7 @@ class MultiDeviceIterator : public ResourceBase {
     }
 
     void GetNextFromShard(IteratorContext* ctx, int shard_num,
-                          int64 incarnation_id,
+                          int64_t incarnation_id,
                           MultiDeviceIteratorCallback callback) {
       HostBufferElement elem;
       if (incarnation_id_ != incarnation_id) {
@@ -225,6 +228,7 @@ class MultiDeviceIterator : public ResourceBase {
             elem.end_of_sequence = true;
           } else {
             buffer_[shard_num].callbacks.push_back(std::move(callback));
+            buffer_[shard_num].cond_var.notify_all();
             callback = nullptr;
           }
         }
@@ -297,7 +301,8 @@ class MultiDeviceIterator : public ResourceBase {
         {
           mutex_lock l(mu_);
           while (!cancelled_ &&
-                 buffer_[shard_to_fetch].data.size() >= max_buffer_size_) {
+                 buffer_[shard_to_fetch].data.size() >= max_buffer_size_ &&
+                 buffer_[shard_to_fetch].callbacks.empty()) {
             buffer_[shard_to_fetch].cond_var.wait(l);
           }
 
@@ -549,7 +554,7 @@ class MultiDeviceIteratorInitOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* tensor_max_buffer_size;
     OP_REQUIRES_OK(ctx, ctx->input("max_buffer_size", &tensor_max_buffer_size));
-    int64 max_buffer_size = tensor_max_buffer_size->scalar<int64>()();
+    int64_t max_buffer_size = tensor_max_buffer_size->scalar<int64>()();
 
     DatasetBase* dataset;
     OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
@@ -557,7 +562,6 @@ class MultiDeviceIteratorInitOp : public OpKernel {
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 1), &resource));
 
-    std::unique_ptr<IteratorBase> iterator;
     IteratorContext::Params params(ctx);
     params.flr = resource->flr();
     params.function_handle_cache = resource->function_handle_cache();
@@ -570,12 +574,16 @@ class MultiDeviceIteratorInitOp : public OpKernel {
                  [cm = params.cancellation_manager]() { cm->StartCancel(); },
                  &deregister_fn));
     auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
-
     IteratorContext iter_ctx(std::move(params));
-    OP_REQUIRES_OK(
-        ctx, dataset->MakeIterator(std::move(iter_ctx), /*parent=*/nullptr,
-                                   "Iterator", &iterator));
-    int64 incarnation_id;
+
+    std::unique_ptr<IteratorBase> iterator;
+    DatasetBase* finalized_dataset;
+    OP_REQUIRES_OK(ctx, FinalizeDataset(ctx, dataset, &finalized_dataset));
+    OP_REQUIRES_OK(ctx, finalized_dataset->MakeIterator(std::move(iter_ctx),
+                                                        /*parent=*/nullptr,
+                                                        "Iterator", &iterator));
+    core::ScopedUnref unref(finalized_dataset);
+    int64_t incarnation_id;
     OP_REQUIRES_OK(ctx, resource->Init(std::move(iterator), max_buffer_size,
                                        &incarnation_id));
     Tensor tensor_incarnation_id(DT_INT64, TensorShape({}));
@@ -599,12 +607,12 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     const Tensor* tensor_shard_num;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input("shard_num", &tensor_shard_num), done);
-    int32 shard_num = tensor_shard_num->scalar<int32>()();
+    int32_t shard_num = tensor_shard_num->scalar<int32>()();
 
     const Tensor* tensor_incarnation_id;
     OP_REQUIRES_OK_ASYNC(
         ctx, ctx->input("incarnation_id", &tensor_incarnation_id), done);
-    int64 incarnation_id = tensor_incarnation_id->scalar<int64>()();
+    int64_t incarnation_id = tensor_incarnation_id->scalar<int64>()();
 
     MultiDeviceIterator* iterator;
     OP_REQUIRES_OK_ASYNC(

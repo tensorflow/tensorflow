@@ -39,7 +39,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
@@ -103,7 +103,8 @@ def convert_structure_to_signature(structure, arg_names=None):
       return arg._type_spec  # pylint: disable=protected-access
     if isinstance(arg, resource_variable_ops.BaseResourceVariable):
       name = "/".join(str(p) for p in path)
-      return resource_variable_ops.VariableSpec(arg.shape, arg.dtype, name)
+      return resource_variable_ops.VariableSpec(arg.shape, arg.dtype, name,
+                                                trainable=arg.trainable)
     if isinstance(arg, (
         int,
         float,
@@ -191,7 +192,7 @@ class FuncGraph(ops.Graph):
     self.inputs = []
     self.outputs = []
     self.control_outputs = []
-    self.control_captures = set()
+    self.control_captures = object_identity.ObjectIdentitySet()
     self.structured_input_signature = None
     self.structured_outputs = None
     self._weak_variables = []
@@ -810,6 +811,7 @@ class FuncGraph(ops.Graph):
     self._scope_exit_callbacks.append(fn)
 
 
+# TODO(mdan): Too many threaded arguments. Accept an ACD ctx manager instead.
 def func_graph_from_py_func(name,
                             python_func,
                             args,
@@ -823,7 +825,8 @@ def func_graph_from_py_func(name,
                             op_return_value=None,
                             collections=None,
                             capture_by_value=None,
-                            override_flat_arg_shapes=None):
+                            override_flat_arg_shapes=None,
+                            acd_record_initial_resource_uses=False):
   """Returns a `FuncGraph` generated from `python_func`.
 
   Args:
@@ -868,6 +871,11 @@ def func_graph_from_py_func(name,
       containing value `None` must match entries in flattened arguments
       containing non-tensors, while entries containing a `TensorShape` must
       match entries in the flattened arguments containing tensors.
+    acd_record_initial_resource_uses: If `True` and `add_control_dependencies`
+      is enabled, the results (those marked with
+      AutomaticControlDependencies.mark_result) will be annotated with a private
+      attribute, "_res_first_used_by", which points to the first nodes which
+      used the any of the resources that the result op is using.
 
   Returns:
     A FuncGraph.
@@ -885,13 +893,14 @@ def func_graph_from_py_func(name,
                            capture_by_value=capture_by_value)
   assert isinstance(func_graph, FuncGraph)
   if add_control_dependencies:
-    deps_control_manager = auto_control_deps.AutomaticControlDependencies()
+    deps_control_manager = auto_control_deps.AutomaticControlDependencies(
+        record_initial_resource_uses=acd_record_initial_resource_uses)
   else:
     deps_control_manager = ops.NullContextmanager()
 
   with func_graph.as_default(), deps_control_manager as deps_ctx:
     current_scope = variable_scope.get_variable_scope()
-    default_use_recource = current_scope.use_resource
+    default_use_resource = current_scope.use_resource
     current_scope.set_use_resource(True)
 
     if signature is not None and override_flat_arg_shapes is not None:
@@ -967,7 +976,7 @@ def func_graph_from_py_func(name,
         from tensorflow.python import autograph  # pylint: disable=g-import-not-at-top
         _, original_func = tf_decorator.unwrap(python_func)
 
-        def wrapper(*args, **kwargs):
+        def autograph_handler(*args, **kwargs):
           """Calls a converted version of original_func."""
           # TODO(mdan): Push this block higher in tf.function's call stack.
           try:
@@ -988,7 +997,8 @@ def func_graph_from_py_func(name,
 
         # Wrapping around a decorator allows checks like tf_inspect.getargspec
         # to be accurate.
-        converted_func = tf_decorator.make_decorator(original_func, wrapper)
+        converted_func = tf_decorator.make_decorator(
+            original_func, autograph_handler)
         python_func = tf_decorator.rewrap(python_func, original_func,
                                           converted_func)
 
@@ -1005,7 +1015,7 @@ def func_graph_from_py_func(name,
       check_mutation(func_args_before, func_args, original_func)
       check_mutation(func_kwargs_before, func_kwargs, original_func)
     finally:
-      current_scope.set_use_resource(default_use_recource)
+      current_scope.set_use_resource(default_use_resource)
 
     # Variables in `func_args`, `func_kwargs` should be explicit inputs
     # to the function, not captured inputs.
@@ -1141,7 +1151,7 @@ def _create_substitute_placeholder(value, name=None, dtype=None, shape=None):
   with ops.control_dependencies(None):
     placeholder = graph_placeholder(
         dtype=dtype or value.dtype, shape=shape, name=name)
-  custom_gradient.copy_handle_data(value, placeholder)
+  handle_data_util.copy_handle_data(value, placeholder)
   return placeholder
 
 
@@ -1228,7 +1238,7 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
           # unnamed placeholders.
           placeholder = graph_placeholder(arg.dtype, placeholder_shape)
         if not arg_is_spec:
-          custom_gradient.copy_handle_data(arg, placeholder)
+          handle_data_util.copy_handle_data(arg, placeholder)
         if name is not None:
           # Record the requested/user-specified name in case it's different than
           # the uniquified name, for validation when exporting signatures.
@@ -1249,7 +1259,8 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
                 shape=arg.shape,
                 dtype=arg.dtype,
                 handle=placeholder,
-                handle_name=name)
+                handle_name=name,
+                trainable=arg.trainable)
         # Capture arg variables to create placeholders for them. These will be
         # removed as captures after the function is traced (since otherwise we'd
         # just add it back with a new placeholder when the variable was

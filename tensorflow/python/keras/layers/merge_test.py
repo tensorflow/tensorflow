@@ -14,16 +14,12 @@
 # ==============================================================================
 """Tests for merge layers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -58,9 +54,9 @@ class MergeLayersTest(keras_parameterized.TestCase):
         add_layer.compute_mask([i1, i2, i3], [None, None, None]), None)
     self.assertTrue(
         np.all(
-            K.eval(
+            backend.eval(
                 add_layer.compute_mask(
-                    [i1, i2], [K.variable(x1), K.variable(x2)]))))
+                    [i1, i2], [backend.variable(x1), backend.variable(x2)]))))
 
     with self.assertRaisesRegex(ValueError, '`mask` should be a list.'):
       add_layer.compute_mask([i1, i2, i3], x1)
@@ -89,9 +85,9 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertEqual(subtract_layer.compute_mask([i1, i2], [None, None]), None)
     self.assertTrue(
         np.all(
-            K.eval(
+            backend.eval(
                 subtract_layer.compute_mask(
-                    [i1, i2], [K.variable(x1), K.variable(x2)]))))
+                    [i1, i2], [backend.variable(x1), backend.variable(x2)]))))
 
     with self.assertRaisesRegex(ValueError, '`mask` should be a list.'):
       subtract_layer.compute_mask([i1, i2], x1)
@@ -180,9 +176,9 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertEqual(concat_layer.compute_mask([i1, i2], [None, None]), None)
     self.assertTrue(
         np.all(
-            K.eval(
+            backend.eval(
                 concat_layer.compute_mask(
-                    [i1, i2], [K.variable(x1), K.variable(x2)]))))
+                    [i1, i2], [backend.variable(x1), backend.variable(x2)]))))
 
     # Should work with unit-length input.
     unit_length_o = concat_layer([i1])

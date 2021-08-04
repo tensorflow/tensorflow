@@ -65,6 +65,13 @@ class LegalizeTFCommunication
   }
 
  public:
+  StringRef getArgument() const final {
+    return "xla-legalize-tf-communication";
+  }
+  StringRef getDescription() const final {
+    return "Legalize TF/XLA communication ops (TensorFlow dialect) to the HLO "
+           "dialect";
+  }
   void runOnOperation() override;
 };
 
@@ -215,7 +222,7 @@ void SetOpSharding(Operation* op, int64_t tpu_core) {
   std::string sharding_serialized =
       ::xla::sharding_builder::AssignDevice(tpu_core).SerializeAsString();
   op->setAttr(kShardingAttr,
-              StringAttr::get(sharding_serialized, op->getContext()));
+              StringAttr::get(op->getContext(), sharding_serialized));
 }
 
 // Assigns frontend attributes holding information about data type and
@@ -229,7 +236,7 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
       device_to_host ? llvm::formatv("{0}_dtoh_{1}", key, index).str()
                      : llvm::formatv("{0}_htod_{1}", key, index).str();
 
-  auto rendezvous_name = StringAttr::get(formatted_key, context);
+  auto rendezvous_name = StringAttr::get(context, formatted_key);
   auto rendezvous_name_attr = NamedAttribute(
       Identifier::get(kXlaHostTransferRendezvousNameAttr, context),
       rendezvous_name);
@@ -238,14 +245,14 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
   auto xla_element_type = ::xla::TypeToPrimitiveType(element_type);
   const std::string& xla_element_type_str =
       ::xla::primitive_util::LowercasePrimitiveTypeName(xla_element_type);
-  auto original_type = StringAttr::get(xla_element_type_str, context);
+  auto original_type = StringAttr::get(context, xla_element_type_str);
   auto original_type_attr =
       NamedAttribute(Identifier::get(kXlaHostTransferOriginalTypeAttr, context),
                      original_type);
 
   auto frontend_attributes = DictionaryAttr::get(
-      ArrayRef<NamedAttribute>{rendezvous_name_attr, original_type_attr},
-      context);
+      context,
+      ArrayRef<NamedAttribute>{rendezvous_name_attr, original_type_attr});
   op->setAttr(kFrontendAttributesAttr, frontend_attributes);
 }
 
@@ -647,10 +654,11 @@ void RewriteRegionWhileOp(OpBuilder& builder, WhileOp region_while,
   llvm::SmallDenseMap<Value, Value> rewritten_operands;
 
   // Rewrite region operand to have an extra operand `token`.
-  Value new_val_operand =
-      GetValueWithToken(builder, region_while.val(), token, rewritten_operands);
+  // TODO(jpienaar): Support multi-operand while op.
+  Value new_val_operand = GetValueWithToken(builder, region_while.arg()[0],
+                                            token, rewritten_operands);
 
-  auto new_result_type = GetTypeWithToken(builder, region_while.getType());
+  auto new_result_type = GetTypeWithToken(builder, region_while.getType(0));
 
   // Create new `mhlo.while` op with extra token operand and result.
   auto new_while = builder.create<WhileOp>(region_while.getLoc(),
@@ -662,12 +670,13 @@ void RewriteRegionWhileOp(OpBuilder& builder, WhileOp region_while,
 
   // Forward result from old `mhlo.while` with replacement, and unpack result
   // when necessary.
-  ReplaceWithTupleResult(builder, region_while.getResult(),
-                         new_while.getResult());
+  // TODO(jpienaar): Support multi-operand while op.
+  ReplaceWithTupleResult(builder, region_while.getResult(0),
+                         new_while.getResult(0));
 
   auto new_token = builder.create<GetTupleElementOp>(
-      new_while.getLoc(), new_while.getResult(),
-      new_while.getResult().getType().cast<TupleType>().size() - 1);
+      new_while.getLoc(), new_while.getResult(0),
+      new_while.getType(0).cast<TupleType>().size() - 1);
 
   region_while.erase();
 
@@ -697,8 +706,9 @@ bool ProcessRegionWhileOp(
   }
 
   if (*region_idx < region_while.getNumRegions()) {
+    // TODO(jpienaar): Support multi-operand while op.
     RewriteControlFlowOpRegion(builder, region_while, *region_idx,
-                               region_while.val().getType(), ops_to_visit,
+                               region_while.arg()[0].getType(), ops_to_visit,
                                control_flow_blocks, token);
     return true;
   }
@@ -882,10 +892,7 @@ void LegalizeTFCommunication::runOnOperation() {
   }
 }
 
-static PassRegistration<LegalizeTFCommunication> pass(
-    "xla-legalize-tf-communication",
-    "Legalize TF/XLA communication ops (TensorFlow dialect) to the HLO "
-    "dialect");
+static PassRegistration<LegalizeTFCommunication> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass() {
