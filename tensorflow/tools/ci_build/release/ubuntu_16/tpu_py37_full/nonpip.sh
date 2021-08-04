@@ -23,35 +23,29 @@ install_ubuntu_16_python_pip_deps python3.9
 install_bazelisk
 install_ctpu pip3.9
 
-# Setup bazel from x20, should read local bazel in production
-echo KOKORO_BAZEL_AUTH_CREDENTIAL: "${KOKORO_BAZEL_AUTH_CREDENTIAL}"
-echo KOKORO_BAZEL_TLS_CREDENTIAL: "${KOKORO_BAZEL_TLS_CREDENTIAL}"
-echo KOKORO_BES_BACKEND_ADDRESS: "${KOKORO_BES_BACKEND_ADDRESS}"
-echo KOKORO_BES_PROJECT_ID: "${KOKORO_BES_PROJECT_ID}"
-echo KOKORO_FOUNDRY_BACKEND_ADDRESS: "${KOKORO_FOUNDRY_BACKEND_ADDRESS}"
-
-# The remote bazel config assume python is at /usr/local/bin/python3.9 but the
-# local VM has it at /usr/bin/python3.9.
-sudo ln /usr/bin/python3.9 /usr/local/bin/python3.9
-
 test_patterns=(//tensorflow/... -//tensorflow/compiler/... -//tensorflow/lite/...)
 tag_filters="tpu,-tpu_pod,-no_tpu,-notpu,-no_oss,-no_oss_py37"
 
+bazel_args=(
+  --config=release_cpu_linux \
+  --repo_env=PYTHON_BIN_PATH="$(which python3.9)" \
+  --build_tag_filters="${tag_filters}" \
+  --test_tag_filters="${tag_filters}" \
+  --test_output=errors --verbose_failures=true --keep_going
+)
+
+bazel build "${bazel_args[@]}" -- "${test_patterns[@]}"
+
 ctpu_up -s v2-8 -p tensorflow-testing-tpu
 
-set +e
-bazel \
-  test \
-  --test_tag_filters="${tag_filters}" \
-  --config=rbe_cpu_linux \
-  --config=rbe_linux_py3 \
-  --config=tensorflow_testing_rbe_linux \
+test_args=(
   --test_timeout=120,600,-1,-1 \
-  --test_arg=--project="${TPU_PROJECT}" \
   --test_arg=--tpu="${TPU_NAME}" \
   --test_arg=--zone="${TPU_ZONE}" \
-  --test_arg=--test_dir_base="gs://kokoro-tpu-testing/tempdir/" \
-  --local_test_jobs=1 \
-  -- $test_patterns
+  --test_arg=--test_dir_base=gs://kokoro-tpu-testing/tempdir/ \
+  --local_test_jobs=1
+)
 
+set +e
+bazel test "${bazel_args[@]}" "${test_args[@]}" -- "${test_patterns[@]}"
 test_xml_summary_exit
