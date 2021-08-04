@@ -381,7 +381,7 @@ void TrtShapeOptimizationProfile::SetShapeTensorMask(
     const ITensorProxyPtr input = network->getInput(i);
     is_shape_tensor_[i] = input->isShapeTensor();
     if (is_shape_tensor_[i]) {
-      VLOG(2) << "Found shape tensor " << input->getName() << ' at ' << i;
+      VLOG(2) << "Found shape tensor " << input->getName() << " at " << i;
     }
   }
   has_shape_tensor_ =
