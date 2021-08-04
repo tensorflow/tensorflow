@@ -58,15 +58,21 @@ class RaggedGatherOpBase : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     // Get the input Tensors.
+
     OpInputList params_nested_splits_in;
     OP_REQUIRES_OK(context, context->input_list("params_nested_splits",
                                                 &params_nested_splits_in));
+    OP_REQUIRES(
+        context, params_nested_splits_in.size() > 0,
+        errors::InvalidArgument("params_nested_splits must be non empty"));
+
     const Tensor& params_dense_values_in =
         context->input(params_nested_splits_in.size());
     const Tensor& indices_in =
         context->input(params_nested_splits_in.size() + 1);
 
-    DCHECK_GT(params_nested_splits_in.size(), 0);  // Enforced by REGISTER_OP.
+    OP_REQUIRES(context, params_nested_splits_in[0].dims() > 0,
+                errors::InvalidArgument("Split tensors must not be scalars"));
     SPLITS_TYPE num_params = params_nested_splits_in[0].dim_size(0) - 1;
     OP_REQUIRES_OK(context, ValidateIndices(indices_in, num_params));
 
