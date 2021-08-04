@@ -187,15 +187,17 @@ class ParamResolverInterface {
                                    CancellationManager* cancel_mgr,
                                    const StatusCallback& done) = 0;
 
-  // Used within a distributed implementation to discover/verify
-  // data shared across a device group.
-  virtual void CompleteGroupAsync(const CompleteGroupRequest* request,
-                                  CompleteGroupResponse* response,
+  // Completes group_params with data gathered from all devices in the group.
+  // This blocks until all devices are there.
+  virtual void CompleteGroupAsync(const DeviceAttributes& device,
+                                  CollGroupParams* group_params,
                                   CancellationManager* cancel_mgr,
                                   const StatusCallback& done) = 0;
 
   // Used within a distributed implementation to discover/verify data
   // shared across an instance group.
+  // Note: this works differently from CompleteGroupAsync as a refactor is in
+  // progress.
   virtual void CompleteInstanceAsync(const CompleteInstanceRequest* request,
                                      CompleteInstanceResponse* response,
                                      CancellationManager* cancel_mgr,

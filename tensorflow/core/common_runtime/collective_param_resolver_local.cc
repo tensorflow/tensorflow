@@ -51,12 +51,9 @@ CollectiveParamResolverLocal::CollectiveParamResolverLocal(
           config.gpu_options().experimental().collective_ring_order()) {}
 
 void CollectiveParamResolverLocal::CompleteGroupAsync(
-    const CompleteGroupRequest* request, CompleteGroupResponse* response,
+    const DeviceAttributes& device, CollGroupParams* group_params,
     CancellationManager* cancel_mgr, const StatusCallback& done) {
-  done(
-      errors::Internal("CompleteGroup is not implemented by "
-                       "CollectiveParamResolverLocal which is "
-                       "intended only for non-distributed deployment."));
+  CompleteGroupLocal(device, group_params, cancel_mgr, done);
 }
 
 namespace {
@@ -92,61 +89,23 @@ string TaskNameFromDeviceName(const string& device_name) {
 }  // namespace
 
 void CollectiveParamResolverLocal::CompleteGroupLocal(
-    const DeviceAttributes& device, CollectiveParams* cp,
-    const GroupRecCallback& done, CancellationManager* cancel_mgr) {
-  VLOG(1) << "CompleteGroupLocal device=" << device.name() << " cp: " << cp
-          << ": " << cp->ToString();
+    const DeviceAttributes& device, CollGroupParams* group_params,
+    CancellationManager* cancel_mgr, StatusCallback done) {
+  VLOG(1) << "CompleteGroup device=" << device.name() << ": "
+          << group_params->ToString();
   std::vector<StatusCallback> to_be_called;
-  // Keep a reference to `cp` to avoid racing with deletion due to cancellation.
-  cp->Ref();
-  core::ScopedUnref cp_unref(cp);
-
-  std::function<void(const Status& s, GroupRec* gr)> done_with_cleanup;
-  if (cancel_mgr != nullptr) {
-    auto cancelled_mu = std::make_shared<mutex>();
-    // Some callers delete `cancel_mgr` as soon as `done` is called once,
-    // meaning we can't rely on it to avoid calling `done` twice if the local op
-    // is cancelled but the group succeeds.
-    auto cancelled = std::make_shared<bool>(false);
-    const CancellationToken token = cancel_mgr->get_cancellation_token();
-    const bool already_cancelled =
-        !cancel_mgr->RegisterCallback(token, [done, cancelled_mu, cancelled]() {
-          {
-            mutex_lock l(*cancelled_mu);
-            *cancelled = true;
-          }
-          done(errors::Cancelled("op cancelled"), nullptr);
-        });
-    if (already_cancelled) {
-      done(errors::Cancelled("op cancelled"), nullptr);
-      return;
-    }
-    done_with_cleanup = [cancel_mgr, done, cancelled_mu, cancelled, token](
-                            const Status& s, GroupRec* gr) {
-      {
-        mutex_lock l(*cancelled_mu);
-        if (*cancelled || !cancel_mgr->TryDeregisterCallback(token)) {
-          return;
-        }
-      }
-      // The operation was never cancelled, so we'll return a normal status.
-      done(s, gr);
-    };
-  } else {
-    done_with_cleanup = done;
-  }
 
   GroupRec* gr = nullptr;
   Status status;
   {
     mutex_lock l(group_mu_);
-    auto it = group_table_.find(cp->group.group_key);
+    auto it = group_table_.find(group_params->group_key);
     if (it == group_table_.end()) {
       gr = new GroupRec;
       mutex_lock grl(gr->mu);
-      gr->group.group_key = cp->group.group_key;
-      gr->group.group_size = cp->group.group_size;
-      gr->group.device_type = cp->group.device_type;
+      gr->group.group_key = group_params->group_key;
+      gr->group.group_size = group_params->group_size;
+      gr->group.device_type = group_params->device_type;
       if (nccl_communicator_ != nullptr) {
         gr->group.runtime_details.communicator_key =
             nccl_communicator_->GenerateCommunicatorKey();
@@ -166,30 +125,47 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     status = status_;
   }
   if (!status.ok()) {
-    done_with_cleanup(status, nullptr);
+    done(status);
     return;
   }
+
+  if (cancel_mgr != nullptr) {
+    CancellationToken token = cancel_mgr->get_cancellation_token();
+    bool is_cancelled = !cancel_mgr->RegisterCallback(
+        token, std::bind(&CollectiveParamResolverLocal::CancelGroup, this,
+                         group_params->group_key));
+    if (is_cancelled) {
+      done(errors::Cancelled("CompleteGroup is cancelled before it starts"));
+      return;
+    }
+    done = [cancel_mgr, token,
+            original_done = std::move(done)](const Status& status) {
+      cancel_mgr->TryDeregisterCallback(token);
+      original_done(status);
+    };
+  }
+
   {
     mutex_lock gr_lock(gr->mu);
     // If there is ever an error associated with a group key, we store the error
     // status and invoke all waiting and future callbacks with this error
     // status.
     VLOG(2) << "gr device_type=" << gr->group.device_type
-            << " cp device_type=" << cp->group.device_type
+            << " cp device_type=" << group_params->device_type
             << " current device=" << device.name();
     if (gr->status.ok()) {
       // Check for consistency with existing GroupRec.
-      if (cp->group.device_type != gr->group.device_type) {
+      if (group_params->device_type != gr->group.device_type) {
         gr->status = errors::Internal(
-            "Collective Op ", cp->name, " is assigned to device ",
-            device.name(), " with type ", cp->group.device_type.type_string(),
-            " and group_key ", cp->group.group_key, " but that group has type ",
-            gr->group.device_type.type_string());
-      } else if (cp->group.group_size != gr->group.group_size) {
+            "Device ", device.name(),
+            " is joining a group with incompatible device type",
+            gr->group.device_type.type_string(),
+            " (group_key=", gr->group.group_key, ")");
+      } else if (group_params->group_size != gr->group.group_size) {
         gr->status = errors::Internal(
-            "Collective Op ", cp->name, " has group_size ",
-            cp->group.group_size, " and group_key ", cp->group.group_key,
-            " but that group has size ", gr->group.group_size);
+            "Device ", device.name(), " is joining a group with size",
+            group_params->group_size, ", but that group has size ",
+            gr->group.group_size, " (group_key=", gr->group.group_key, ")");
       }
     }
     bool new_device = false;
@@ -199,10 +175,10 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       if (it == gr->incarnations_by_device_name.end()) {
         if (gr->group.devices.size() == gr->group.group_size) {
           // The group is already full.
-          gr->status = errors::Internal(
-              "Collective Op ", cp->name, " is assigned to device ",
-              device.name(), " and group_key ", cp->group.group_key,
-              " but that group doesn't contain that device.");
+          gr->status =
+              errors::Internal("Device ", device.name(),
+                               " is joining a group that is already full",
+                               " (group_key=", gr->group.group_key, ")");
         } else {
           // This is a new device that has not yet joined the group.
           gr->incarnations_by_device_name[device.name()] = device.incarnation();
@@ -238,8 +214,8 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
               << gr->group.devices.size() << " gr " << gr;
 
       if (gr->group.devices.size() < gr->group.group_size) {
-        gr->waiting.push_back(
-            std::bind(done_with_cleanup, std::placeholders::_1, gr));
+        gr->pending_done.push_back(std::move(done));
+        gr->pending_params.push_back(group_params);
         return;
       }
       CHECK_EQ(gr->group.devices.size(), gr->group.group_size);
@@ -247,15 +223,19 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       if (new_device) {
         FinishGroup(gr);
       }
+      // Copy to all pending CollGroupParams;
+      *group_params = gr->group;
+      for (auto* params : gr->pending_params) {
+        *params = gr->group;
+      }
     }
     // At this point, we either have a full group, or an error status.  Ensure
     // that all callbacks are invoked with the appropriate status.
-    if (!gr->waiting.empty()) {
-      std::swap(to_be_called, gr->waiting);
-    }
+    to_be_called.swap(gr->pending_done);
+    gr->pending_params.clear();
     status = gr->status;
   }
-  done_with_cleanup(status, gr);
+  done(status);
   for (int i = 0; i < to_be_called.size(); ++i) {
     to_be_called[i](status);
   }
@@ -482,6 +462,32 @@ void CollectiveParamResolverLocal::FinishGroup(GroupRec* gr) {
       static_cast<int32>(gr->group.num_devices_per_task.size());
 }
 
+void CollectiveParamResolverLocal::CancelGroup(int32 group_key) {
+  std::vector<StatusCallback> pending_done;
+  GroupRec* gr = nullptr;
+  {
+    mutex_lock l(group_mu_);
+    auto it = group_table_.find(group_key);
+    if (it == group_table_.end()) {
+      return;
+    }
+    gr = it->second.get();
+  }
+  {
+    mutex_lock l(gr->mu);
+    if (gr->group.devices.size() == gr->group.group_size) {
+      // The group is already complete. There's no need to cancel.
+      return;
+    }
+    gr->status = errors::Cancelled("group is cancelled");
+    pending_done.swap(gr->pending_done);
+    gr->pending_params.clear();
+  }
+  for (const StatusCallback& done : pending_done) {
+    done(errors::Cancelled("group is cancelled"));
+  }
+}
+
 void CollectiveParamResolverLocal::CompleteTaskIsLocal(const string& task_name,
                                                        CollectiveParams* cp) {
   cp->task.is_local.resize(cp->group.group_size, false);
@@ -502,7 +508,7 @@ void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
 }
 
 void CollectiveParamResolverLocal::InitInstanceSharedParams(
-    const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir) {
+    const CollectiveParams* cp, InstanceRec* ir) {
   ir->shared->instance = cp->instance;
   ir->shared->default_rank = -1;
 
@@ -545,14 +551,13 @@ void CollectiveParamResolverLocal::CompleteDefaultRanking(CollGroupParams* gp) {
 }
 
 CollectiveParamResolverLocal::InstanceRec*
-CollectiveParamResolverLocal::GetOrCreateInstanceRec(const GroupRec* gr,
-                                                     CollectiveParams* cp,
+CollectiveParamResolverLocal::GetOrCreateInstanceRec(CollectiveParams* cp,
                                                      bool* created) {
   *created = false;
   InstanceRec* irec = nullptr;
   {
     mutex_lock l(instance_mu_);
-    auto group_it = instance_table_.find(gr->group.group_key);
+    auto group_it = instance_table_.find(cp->group.group_key);
     if (group_it != instance_table_.end()) {
       auto instance_it = group_it->second.find(cp->instance.instance_key);
       if (instance_it != group_it->second.end()) {
@@ -567,8 +572,8 @@ CollectiveParamResolverLocal::GetOrCreateInstanceRec(const GroupRec* gr,
         mutex_lock il(irec->mu);
         irec->known.resize(cp->group.group_size, false);
       }
-      InitInstanceSharedParams(gr, cp, irec);
-      instance_table_[gr->group.group_key][cp->instance.instance_key].reset(
+      InitInstanceSharedParams(cp, irec);
+      instance_table_[cp->group.group_key][cp->instance.instance_key].reset(
           irec);
     }
   }
@@ -589,16 +594,14 @@ void CollectiveParamResolverLocal::CompleteParamsAsync(
     CancellationManager* cancel_mgr, const StatusCallback& done) {
   VLOG(1) << "CompleteParams local " << device.name() << " for " << cp << ": "
           << cp->ToString();
-  CompleteGroupLocal(
-      device, cp,
-      [this, device, cp, done](const Status& s, const GroupRec* gr) {
-        if (s.ok()) {
-          CompleteInstanceLocal(device.name(), gr, cp, cp->is_source, done);
-        } else {
-          done(s);
-        }
-      },
-      cancel_mgr);
+  CompleteGroupLocal(device, &cp->group, cancel_mgr,
+                     [this, device, cp, done](const Status& s) {
+                       if (s.ok()) {
+                         CompleteInstanceLocal(device.name(), cp, done);
+                       } else {
+                         done(s);
+                       }
+                     });
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceAsync(
@@ -631,23 +634,13 @@ void CollectiveParamResolverLocal::AssignCollectiveType(CollectiveParams* cp) {
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceLocal(
-    const string& device, const GroupRec* gr, CollectiveParams* cp,
-    bool is_source, const StatusCallback& done) {
+    const string& device, CollectiveParams* cp, const StatusCallback& done) {
   VLOG(1) << "CompleteInstanceLocal " << device
-          << " instance_key: " << cp->instance.instance_key << " gr " << gr;
-
-  // Populate the group portion of *cp from *gr.  Most of it should already
-  // match.
-  {
-    mutex_lock l(gr->mu);
-    DCHECK_EQ(cp->group.group_key, gr->group.group_key);
-    DCHECK_EQ(cp->group.group_size, gr->group.group_size);
-    DCHECK_EQ(cp->group.device_type, gr->group.device_type);
-    cp->group = gr->group;
-  }
+          << " instance_key: " << cp->instance.instance_key << " group_key "
+          << cp->group.group_key;
 
   bool created_irec;
-  InstanceRec* ir = GetOrCreateInstanceRec(gr, cp, &created_irec);
+  InstanceRec* ir = GetOrCreateInstanceRec(cp, &created_irec);
   if (!created_irec) {
     // Check that the preexisting IRec is consistent with the params passed into
     // this invocation.
@@ -661,12 +654,12 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
       return;
     }
   }
-  CompleteInstanceFromInitializedIRec(device, gr, cp, ir, is_source, done);
+  CompleteInstanceFromInitializedIRec(device, cp, ir, done);
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
-    const string& device, const GroupRec* gr, CollectiveParams* cp,
-    InstanceRec* ir, bool is_source, const StatusCallback& done) {
+    const string& device, CollectiveParams* cp, InstanceRec* ir,
+    const StatusCallback& done) {
   auto expected_shape = cp->instance.shape;
   Status status;
   // Populate the fields common across instance.
@@ -708,22 +701,21 @@ void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
   //  We may need to wait for the group, if this is a broadcast, for source
   //  discovery.
   if (cp->instance.type == BROADCAST_COLLECTIVE) {
-    WaitForGroup(ir, cp, is_source,
-                 [col_impl, ir, device, cp, done](InstanceRec* irec) {
-                   Status s;
-                   if (ir != irec) {
-                     s = errors::Internal("Expected ir ", ir, " and irec ",
-                                          irec, " to be equal");
-                   } else {
-                     mutex_lock l(irec->mu);
-                     s = irec->status;
-                     cp->source_rank = irec->source_rank;
-                   }
-                   if (s.ok()) {
-                     s = col_impl->InitializeCollectiveParams(cp);
-                   }
-                   done(s);
-                 });
+    WaitForGroup(ir, cp, [col_impl, ir, device, cp, done](InstanceRec* irec) {
+      Status s;
+      if (ir != irec) {
+        s = errors::Internal("Expected ir ", ir, " and irec ", irec,
+                             " to be equal");
+      } else {
+        mutex_lock l(irec->mu);
+        s = irec->status;
+        cp->source_rank = irec->source_rank;
+      }
+      if (s.ok()) {
+        s = col_impl->InitializeCollectiveParams(cp);
+      }
+      done(s);
+    });
   } else {
     done(col_impl->InitializeCollectiveParams(cp));
   }
@@ -731,7 +723,6 @@ void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
 
 void CollectiveParamResolverLocal::WaitForGroup(InstanceRec* ir,
                                                 CollectiveParams* cp,
-                                                bool is_source,
                                                 const IRConsumer& f) {
   std::vector<IRConsumer> ready_waiters;
   do {
@@ -744,7 +735,7 @@ void CollectiveParamResolverLocal::WaitForGroup(InstanceRec* ir,
     if (!ir->known[cp->default_rank]) {
       ir->known[cp->default_rank] = true;
       ++ir->known_count;
-      if (is_source) {
+      if (cp->is_source) {
         // Initialize source rank.
         if (ir->source_rank >= 0) {
           ir->status = errors::Internal("Instance ", cp->instance.instance_key,
@@ -796,20 +787,24 @@ void CollectiveParamResolverLocal::StartAbort(const Status& s) {
 }
 
 void CollectiveParamResolverLocal::StartAbortLocal(const Status& s) {
+  std::vector<StatusCallback> pending_done;
   {
     mutex_lock l(group_mu_);
     for (const auto& item : group_table_) {
       GroupRec* gr = item.second.get();
-      std::vector<StatusCallback> waiting;
       {
         mutex_lock gl(gr->mu);
         gr->status = s;
-        waiting.swap(gr->waiting);
-      }
-      for (const StatusCallback& done : waiting) {
-        done(s);
+        for (auto& done : gr->pending_done) {
+          pending_done.push_back(std::move(done));
+        }
+        gr->pending_done.clear();
+        gr->pending_params.clear();
       }
     }
+  }
+  for (const StatusCallback& done : pending_done) {
+    done(s);
   }
   std::vector<InstanceRec*> instances;
   {
