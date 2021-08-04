@@ -797,6 +797,7 @@ cc_library(
         "tensor_utils.cc",
     ],
     hdrs = [
+        "portable_tensor_utils.h",
         "tensor_utils.h",
         "tensor_utils_common.h",
     ],
