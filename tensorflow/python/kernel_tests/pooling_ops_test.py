@@ -187,9 +187,6 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   def _isMaxPool(self, func):
     return func in (nn_ops.max_pool, nn_ops.max_pool_v2)
 
-  @test_util.xla_allow_fallback(
-      "Allow VECT_* data formats on newer hardware versions which XLA does not"
-      " handle.")
   def _VerifyOneType(self, pool_func, input_sizes, ksize, strides, padding,
                      data_format, data_type, expected, use_gpu, v2,
                      use_negative_input=False):
@@ -569,6 +566,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
+  @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
   @test_util.run_deprecated_v1
   def testMaxPoolZeroExplicitPadding(self, **kwargs):
     self._VerifyOneType(
@@ -581,6 +579,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
+  @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
   @test_util.run_deprecated_v1
   def testMaxPoolNegativeInputExpPadding(self, **kwargs):
     self._VerifyOneType(
@@ -594,6 +593,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
+  @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
   @test_util.run_deprecated_v1
   def testMaxPoolExplicitPadding(self, **kwargs):
     expected_output = [9.0, 9.0]
@@ -607,6 +607,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
+  @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
   @test_util.run_deprecated_v1
   def testMaxPoolExplicitPaddingAdvanced(self, **kwargs):
     expected_output = [7, 9, 11, 12, 19, 21, 23, 24, 31, 33, 35, 36, 31, 33,
@@ -637,6 +638,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
+  @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
   @test_util.run_deprecated_v1
   def testMaxPoolExplicitPadding2_(self, **kwargs):
     expected_output = [9.0, 9.0]
@@ -651,6 +653,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(
       GetTestConfigsDicts(
           nn_ops.max_pool1d, nn_ops.max_pool_v2, one_dimensional=True))
+  @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
   @test_util.run_deprecated_v1
   def testMaxPoolExplicitPadding_1D(self, **kwargs):
     self._VerifyOneType(
