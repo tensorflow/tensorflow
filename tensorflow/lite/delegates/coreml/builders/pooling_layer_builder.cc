@@ -51,6 +51,7 @@ CoreML::Specification::NeuralNetworkLayer* PoolingLayerBuilder::Build() {
   auto* pooling_params = layer_->mutable_pooling();
 
   if (pooling_type_ == kTfLiteBuiltinMean) {
+    pooling_params->mutable_same();
     pooling_params->set_type(
         CoreML::Specification::PoolingLayerParams::AVERAGE);
     pooling_params->set_globalpooling(true);
