@@ -2218,51 +2218,6 @@ cc_library(
     ],
 )
 
-# gentbl_cc_library(
-#    name = "xla_thunks_ops_inc_gen",
-#    tbl_outs = [
-#        (
-#            ["-gen-op-decls"],
-#            "ir/xla_thunks_ops.h.inc",
-#        ),
-#        (
-#            ["-gen-op-defs"],
-#            "ir/xla_thunks_ops.cc.inc",
-#        ),
-#        (
-#            ["-gen-struct-attr-decls"],
-#            "ir/xla_thunks_structs.h.inc",
-#        ),
-#        (
-#            ["-gen-struct-attr-defs"],
-#            "ir/xla_thunks_structs.cc.inc",
-#        ),
-#    ],
-#    tblgen = "@llvm-project//mlir:mlir-tblgen",
-#    td_file = "ir/xla_thunks_ops.td",
-#    deps = [
-#        "@llvm-project//mlir:LLVMOpsTdFiles",
-#    ],
-#)
-
-# cc_library(
-#     name = "xla_thunks_ops",
-#     srcs = [
-#         "ir/xla_thunks_ops.cc",
-#         "ir/xla_thunks_ops.cc.inc",
-#         "ir/xla_thunks_ops.h.inc",
-#     ],
-#     hdrs = [
-#         "ir/xla_thunks_ops.h",
-#     ],
-#     deps = [
-#         ":xla_thunks_ops_inc_gen",
-#         "@llvm-project//mlir:IR",
-#         "@llvm-project//mlir:LLVMDialect",
-#         "//tensorflow/compiler/mlir/hlo",
-#     ],
-# )
-
 cc_library(
     name = "gemm_broadcast_folding_rewriter",
     srcs = ["gemm_broadcast_folding_rewriter.cc"],
