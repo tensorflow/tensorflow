@@ -378,6 +378,16 @@ TEST(ArrayOpsTest, GatherV2_ShapeFn) {
   INFER_OK(op, "[1,2,3];[5,6];[]", "[d0_0,d1_0,d1_1,d0_2]");
   axis_dim_t = test::AsScalar(-1);
   INFER_OK(op, "[1,2,3];[5,6];[]", "[d0_0,d0_1,d1_0,d1_1]");
+
+  // Batch dimensions > 0
+  // Create another node since we can't overwrite the original batch dims.
+  ShapeInferenceTestOp batch_op("GatherV2");
+  AddNodeAttr("batch_dims", 1, &batch_op.node_def);
+  INFER_OK(batch_op, "[1,4800,8];[1,28400];[]", "[?,?,?]");
+
+  ShapeInferenceTestOp batch_op_2("GatherV2");
+  AddNodeAttr("batch_dims", 2, &batch_op_2.node_def);
+  INFER_OK(batch_op_2, "[1,2,3,4,5];[1,2,3];[]", "[?,?,?,?,?]");
 }
 
 TEST(ArrayOpsTest, GatherNd_ShapeFn) {

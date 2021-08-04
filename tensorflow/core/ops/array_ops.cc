@@ -1205,8 +1205,11 @@ REGISTER_OP("GatherV2")
       // indices_rank - 1.
       if (axis_t == nullptr) {
         if (c->RankKnown(params_shape) && c->RankKnown(indices_shape)) {
+          int32_t batch_dims;
+          TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
           c->set_output(0, c->UnknownShapeOfRank(c->Rank(params_shape) +
-                                                 c->Rank(indices_shape) - 1));
+                                                 c->Rank(indices_shape) - 1 -
+                                                 batch_dims));
         } else {
           c->set_output(0, c->UnknownShape());
         }
