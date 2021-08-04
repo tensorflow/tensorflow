@@ -38,6 +38,9 @@ void UseCharPointer(char const volatile*);
 }
 
 inline void RunBenchmarks() { benchmark::RunSpecifiedBenchmarks(); }
+inline void InitializeBenchmarks(int* argc, char** argv) {
+  benchmark::Initialize(argc, argv);
+}
 
 template <class T>
 void DoNotOptimize(const T& var) {
