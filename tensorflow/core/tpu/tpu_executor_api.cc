@@ -23,6 +23,19 @@ TfTpu_ExecutorApiFn* ExecutorApiFn() {
   return &executor_api_fn;
 }
 
+bool IsStreamExecutorEnabled(TfTpu_ExecutorApiFn* executor_api_fn) {
+  if (!IsInitialized(executor_api_fn)) {
+    return false;
+  }
+  bool is_se_enabled = false;
+  auto* tpu_platform = executor_api_fn->TpuPlatform_NewFn();
+  if (tpu_platform != nullptr) {
+    is_se_enabled = true;
+    executor_api_fn->TpuPlatform_FreeFn(tpu_platform);
+  }
+  return is_se_enabled;
+}
+
 bool IsInitialized(TfTpu_ExecutorApiFn* executor_api_fn) {
   // Check if an arbitrary function pointer is initialized. We could check more
   // functions or add an explicit 'initialized' field to TfTpu_ExecutorApiFn,
