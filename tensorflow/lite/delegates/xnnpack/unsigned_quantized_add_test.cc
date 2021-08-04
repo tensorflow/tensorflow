@@ -1056,7 +1056,8 @@ TEST(UnsignedQuantizedAdd, Relu6Activation) {
       .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
 }
 
-TEST(UnsignedQuantizedAdd, ReluMinus1To1Activation) {
+// TODO(b/195554527): Re-enable this test
+TEST(UnsignedQuantizedAdd, DISABLED_ReluMinus1To1Activation) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
