@@ -77,7 +77,7 @@ inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
 // settles is O(threshold ^ 2). So we recommend that number of warmup runs
 // for any benchmarks.
 template <typename Parameters, typename Config>
-class AutoTuneMap {
+class AutotuneMap {
  public:
   bool Find(const Parameters& params, Config* config) const {
     mutex_lock lock(mu_);
@@ -146,7 +146,7 @@ class AutoTuneMap {
   }
 
  private:
-  AutoTuneMap(const std::string& name) : name_(name) {
+  AutotuneMap(const std::string& name) : name_(name) {
     min_score_threshold_ = 1;
     int min_warmup_iterations = 10;
     const char* threshold_str = getenv("TF_AUTOTUNE_THRESHOLD");
@@ -167,7 +167,7 @@ class AutoTuneMap {
   }
 
   template <class Group, class Params, class Cfg>
-  friend class AutoTuneSingleton;
+  friend class AutotuneSingleton;
 
   struct Hasher {
     std::size_t operator()(const Parameters& parameter) const {
@@ -196,7 +196,7 @@ class AutoTuneMap {
   int32 max_autotune_global_count_;
   int32 autotune_global_count_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AutoTuneMap);
+  TF_DISALLOW_COPY_AND_ASSIGN(AutotuneMap);
 };
 
 // A Singleton helper that manages the global autotune results by groups.
@@ -204,11 +204,11 @@ class AutoTuneMap {
 // different autotune results, even if their Parameters and Configs are the
 // same.
 template <class Group, typename Parameters, typename Config>
-class AutoTuneSingleton {
+class AutotuneSingleton {
  public:
-  typedef AutoTuneMap<Parameters, Config> AutoTuneType;
-  static AutoTuneType* GetInstance() {
-    static AutoTuneType* instance = new AutoTuneType(Group::name());
+  typedef AutotuneMap<Parameters, Config> AutotuneType;
+  static AutotuneType* GetInstance() {
+    static AutotuneType* instance = new AutotuneType(Group::name());
     return instance;
   }
 };

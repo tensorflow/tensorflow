@@ -41,12 +41,12 @@ namespace tensorflow {
 // FusedConvBiasActivation.
 
 // A dummy type to group forward convolution autotune results together.
-struct ConvBiasActivationAutoTuneGroup {
+struct ConvBiasActivationAutotuneGroup {
   static string name() { return "ConvBiasActivation"; }
 };
-typedef AutoTuneSingleton<ConvBiasActivationAutoTuneGroup, ConvParameters,
+typedef AutotuneSingleton<ConvBiasActivationAutotuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
-    AutoTuneConvBiasActivation;
+    AutotuneConvBiasActivation;
 
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

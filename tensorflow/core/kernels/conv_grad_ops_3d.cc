@@ -1192,14 +1192,14 @@ DECLARE_GPU_SPEC(double);
 }  // namespace functor
 
 // A dummy type to group backward data autotune results together.
-struct Conv3dBackwardDataAutoTuneGroup {
+struct Conv3dBackwardDataAutotuneGroup {
   static string name() { return "Conv3dBwdData"; }
 };
 
-typedef AutoTuneSingleton<Conv3dBackwardDataAutoTuneGroup, ConvParameters,
+typedef AutotuneSingleton<Conv3dBackwardDataAutotuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
 
-    AutoTuneConv3dBwdData;
+    AutotuneConv3dBwdData;
 template <typename T>
 class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
  public:
@@ -1512,7 +1512,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 #endif
     AlgorithmConfig algorithm_config;
 
-    if (cudnn_use_autotune_ && !AutoTuneConv3dBwdData::GetInstance()->Find(
+    if (cudnn_use_autotune_ && !AutotuneConv3dBwdData::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
       profiler::ScopedAnnotation trace("cudnn_autotuning");
       std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
@@ -1662,7 +1662,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         OP_REQUIRES_OK(context, BestCudnnConvAlgorithm(results, nullptr,
                                                        &algorithm_config));
       }
-      AutoTuneConv3dBwdData::GetInstance()->Insert(conv_parameters,
+      AutotuneConv3dBwdData::GetInstance()->Insert(conv_parameters,
                                                    algorithm_config);
     }
 
@@ -1674,7 +1674,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         VLOG(4) << "Conv3DBackpropInput Execution Plan: "
                 << algorithm_config.algorithm()->exec_plan_id();
       } else {
-        VLOG(4) << "Convolution AutoTune has been turned off";
+        VLOG(4) << "Convolution Autotune has been turned off";
       }
       cudnn_launch_status = stream->ConvolveBackwardDataWithExecutionPlan(
           filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
@@ -1735,13 +1735,13 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 };
 
 // A dummy type to group backward filter autotune results together.
-struct Conv3dBackwardFilterAutoTuneGroup {
+struct Conv3dBackwardFilterAutotuneGroup {
   static string name() { return "Conv3dBwdFilter"; }
 };
 
-typedef AutoTuneSingleton<Conv3dBackwardFilterAutoTuneGroup, ConvParameters,
+typedef AutotuneSingleton<Conv3dBackwardFilterAutotuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
-    AutoTuneConv3dBwdFilter;
+    AutotuneConv3dBwdFilter;
 
 template <typename T>
 class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
@@ -2072,7 +2072,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
 
     AlgorithmConfig algorithm_config;
 
-    if (cudnn_use_autotune_ && !AutoTuneConv3dBwdFilter::GetInstance()->Find(
+    if (cudnn_use_autotune_ && !AutotuneConv3dBwdFilter::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
       std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
@@ -2217,7 +2217,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
 #endif
         OP_REQUIRES_OK(context, s);
       }
-      AutoTuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
+      AutotuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
                                                      algorithm_config);
     }
 
@@ -2229,7 +2229,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         VLOG(4) << "Conv3DBackpropFilter Execution Plan: "
                 << algorithm_config.algorithm()->exec_plan_id();
       } else {
-        VLOG(4) << "Convolution AutoTune has been turned off";
+        VLOG(4) << "Convolution Autotune has been turned off";
       }
       cudnn_launch_status = stream->ConvolveBackwardFilterWithExecutionPlan(
           input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,

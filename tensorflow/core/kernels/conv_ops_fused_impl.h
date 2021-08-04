@@ -305,12 +305,12 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
 #if GOOGLE_CUDA
 
 // A dummy type to group forward convolution autotune results together.
-struct FusedConvAutoTuneGroup {
+struct FusedConvAutotuneGroup {
   static string name() { return "FusedConv"; }
 };
 
-using AutoTuneFusedConv =
-    AutoTuneSingleton<FusedConvAutoTuneGroup, ConvParameters,
+using AutotuneFusedConv =
+    AutotuneSingleton<FusedConvAutotuneGroup, ConvParameters,
                       se::dnn::AlgorithmConfig>;
 
 inline int64 ConvolveScratchSize() {
@@ -337,7 +337,7 @@ Status FindBestConvolveAlgorithm(
     se::Stream* stream, se::DeviceMemory<T> output_ptr, const LogFunc& log,
     se::dnn::AlgorithmConfig* algorithm_config) {
   // Check if we already have an algorithm selected for the given parameters.
-  if (AutoTuneFusedConv::GetInstance()->Find(params, algorithm_config)) {
+  if (AutotuneFusedConv::GetInstance()->Find(params, algorithm_config)) {
     return Status::OK();
   }
   profiler::ScopedAnnotation trace("cudnn_autotuning");
@@ -430,7 +430,7 @@ Status FindBestConvolveAlgorithm(
                        profile_config.algorithm()->exec_plan_id()));
     }
   }
-  // Only log on an AutoTuneFusedConv cache miss.
+  // Only log on an AutotuneFusedConv cache miss.
   log(results);
   if (CudnnUseFrontend()) {
     TF_RETURN_IF_ERROR(
@@ -439,7 +439,7 @@ Status FindBestConvolveAlgorithm(
     TF_RETURN_IF_ERROR(
         BestCudnnConvAlgorithm(results, nullptr, algorithm_config));
   }
-  AutoTuneFusedConv::GetInstance()->Insert(params, *algorithm_config);
+  AutotuneFusedConv::GetInstance()->Insert(params, *algorithm_config);
   return Status::OK();
 }
 
