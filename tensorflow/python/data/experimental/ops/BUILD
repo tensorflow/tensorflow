@@ -259,6 +259,16 @@ py_library(
 )
 
 py_library(
+    name = "random_access",
+    srcs = ["random_access.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/util:structure",
+    ],
+)
+
+py_library(
     name = "random_ops",
     srcs = [
         "random_ops.py",
