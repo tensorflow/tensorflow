@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -96,11 +95,7 @@ class BCastGradArgsOp : public XlaOpKernel {
                   errors::InvalidArgument("In[", i, "] must be a vector.",
                                           in_shape.DebugString()));
       std::vector<int64> vec;
-      // Technically we don't need to infer the upper-bound here. However the
-      // forward path uses the upperbound as bounded shape so we need backward
-      // path to use the same shape to decide the reduction indices.
-      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(
-                              i, &vec, xla::ValueInferenceMode::kUpperBound));
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(i, &vec));
 
       shapes.push_back(BCast::Vec(vec.begin(), vec.end()));
     }

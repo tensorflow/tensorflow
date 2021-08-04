@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -135,11 +134,6 @@ class StridedSliceOp : public XlaOpKernel {
       // Pad input to 2x to avoid OOB access.
       slice = xla::Pad(slice, xla::Zero(ctx->builder(), ctx->input_xla_type(0)),
                        padding_config);
-      for (int64 i = 0; i < result_dims_are_dynamic.size(); ++i) {
-        if (result_dims_are_dynamic[i]) {
-          slice = xla::RemoveDynamicDimension(slice, i);
-        }
-      }
     }
     std::vector<xla::XlaOp> start_indices;
     std::vector<xla::XlaOp> slice_sizes_dynamic;
@@ -489,9 +483,7 @@ class StridedSliceGradOp : public XlaOpKernel {
     absl::InlinedVector<int64, 4> strides;
 
     TensorShape input_shape;
-    OP_REQUIRES_OK(
-        ctx, ctx->ConstantInputAsShape(0, &input_shape,
-                                       xla::ValueInferenceMode::kUpperBound));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &input_shape));
     xla::Literal begin_literal, end_literal, strides_literal;
 
     bool begin_is_constant = ctx->ConstantInput(1, &begin_literal).ok();
@@ -573,14 +565,14 @@ class StridedSliceGradOp : public XlaOpKernel {
 
     xla::XlaOp dynamic_shape = ctx->Input(0);
     xla::Shape grad_shape = ctx->builder()->GetShape(grad).ValueOrDie();
-    std::vector<bool> dynamic_input;
-    OP_REQUIRES_OK(ctx,
-                   ctx->ResolveInputDynamismIntoPredVector(0, &dynamic_input));
+    ctx->set_dynamic_dimension_is_minus_one(true);
+    std::vector<int64> dynamic_size;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(0, &dynamic_size));
     // Input of strided_slice_op has to have the same shape as output.
     DCHECK_EQ(grad_shape.rank(), input_shape.dims());
     for (int64_t dim = 0; dim < input_shape.dims(); ++dim) {
       DCHECK_EQ(grad_shape.dimensions(dim), input_shape.dim_size(dim));
-      if (dynamic_input[dim]) {
+      if (dynamic_size[dim] == -1) {
         // Input is a dynamic dimension, set the same dynamic dimension size in
         // the output.
         auto dim_size = xla::Slice(dynamic_shape, {dim}, {dim + 1}, {1});

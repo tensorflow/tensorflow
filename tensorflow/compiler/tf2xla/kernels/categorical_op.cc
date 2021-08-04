@@ -45,9 +45,7 @@ class CategoricalOp : public XlaOpKernel {
     const xla::XlaOp& logits = ctx->Input(0);
     TensorShape logits_shape = ctx->InputShape(0);
     int64_t num_samples;
-    OP_REQUIRES_OK(ctx,
-                   ctx->ConstantInputAsIntScalar(
-                       1, &num_samples, xla::ValueInferenceMode::kUpperBound));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &num_samples));
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(logits_shape),
                 errors::InvalidArgument("logits should be a matrix, got shape ",
                                         logits_shape.DebugString()));
@@ -68,10 +66,7 @@ class CategoricalOp : public XlaOpKernel {
 
     xla::Shape uniform_shape;
     int class_dimension;
-    bool num_samples_is_dynamic = false;
-    OP_REQUIRES_OK(
-        ctx, ctx->ResolveInputDynamismIntoPred(1, &num_samples_is_dynamic));
-    if (num_samples != 1 || num_samples_is_dynamic) {
+    if (num_samples != 1) {
       std::array<int64, 3> uniform_shape_array = {
           {batch_size, num_samples, num_classes}};
       xla::PrimitiveType uniform_xla_type;
@@ -96,9 +91,11 @@ class CategoricalOp : public XlaOpKernel {
     xla::PrimitiveType type;
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(input_type(0), &type));
     xla::XlaOp log_uniforms = GetLogUniforms(uniform_shape, type, ctx);
-
-    if (num_samples_is_dynamic) {
-      // num_samples is dimension 1 in uniform_shape_array.
+    bool num_samples_is_dynamic = false;
+    OP_REQUIRES_OK(
+        ctx, ctx->ResolveInputDynamismIntoPred(1, &num_samples_is_dynamic));
+    if (num_samples_is_dynamic && num_samples != 1) {
+      // Number samples is dimension 1 in uniform_shape_array.
       log_uniforms = xla::SetDimensionSize(log_uniforms, ctx->Input(1), 1);
     }
 
@@ -122,7 +119,7 @@ class CategoricalOp : public XlaOpKernel {
                            /*axis=*/class_dimension, /*stable=*/true);
     }
 
-    if (num_samples == 1 && !num_samples_is_dynamic) {
+    if (num_samples == 1) {
       argmax = xla::Reshape(argmax, {batch_size, 1});
     }
 
