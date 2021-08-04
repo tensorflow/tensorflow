@@ -115,6 +115,10 @@
     *   Promoting `tf.data.Options.experimental_deterministic` API to
         `tf.data.Options.deterministic` and deprecating the experimental
         endpoint.
+*   XLA:
+    * Added a new API that allows custom call functions to signal errors. The
+      old API will be deprecated in a future release. See
+      https://www.tensorflow.org/xla/custom_call for details.
 
 ## Thanks to our Contributors
 

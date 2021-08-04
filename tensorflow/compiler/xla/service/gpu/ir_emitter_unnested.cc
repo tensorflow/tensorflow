@@ -1518,15 +1518,39 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(results, values_to_slices(custom_call.output()));
   }
 
+  CustomCallThunk::CustomCallTarget custom_call_target;
+
   // For information about this calling convention, see
   // xla/g3doc/custom_call.md.
-  using call_type = void (*)(CustomCallThunk::Stream /*stream*/,
-                             void** /*buffers*/, const char* /*opaque*/, size_t
-                             /*opaque_len*/);
-  auto typed_call_target = reinterpret_cast<call_type>(call_target);
+  switch (custom_call.api_version()) {
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL:
+      using original_call_type =
+          void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
+                   const char* /*opaque*/, size_t /*opaque_len*/);
+      custom_call_target = [call_target](CustomCallThunk::Stream stream,
+                                         void** buffers, const char* opaque,
+                                         size_t opaque_len,
+                                         XlaCustomCallStatus*) {
+        auto typed_call_target =
+            reinterpret_cast<original_call_type>(call_target);
+        typed_call_target(stream, buffers, opaque, opaque_len);
+      };
+      break;
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+      using status_returning_call_type =
+          void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
+                   const char* /*opaque*/, size_t /*opaque_len*/,
+                   XlaCustomCallStatus* /*status*/);
+      custom_call_target =
+          reinterpret_cast<status_returning_call_type>(call_target);
+      break;
+    default:
+      return InternalError("Unknown custom-call API version enum value: %d",
+                           custom_call.api_version());
+  }
 
   AddThunkToThunkSequence(absl::make_unique<CustomCallThunk>(
-      GetThunkInfo(op), typed_call_target, std::move(operands),
+      GetThunkInfo(op), std::move(custom_call_target), std::move(operands),
       std::move(results), custom_call.backend_config().str()));
   return Status::OK();
 }
