@@ -672,9 +672,8 @@ class IteratorBase {
   // output will be stored in `*out_tensors` and `false` will be
   // stored in `*end_of_sequence`.
   //
-  // If no more outputs remain in this iterator's range, `true` will
-  // be stored in `*end_of_sequence`, and the content of
-  // `*out_tensors` will be undefined.
+  // If no more outputs remain in this iterator's range, `true` will be stored
+  // in `*end_of_sequence`, and `*out_tensors` will be empty.
   //
   // Implementations should never return `OutOfRange` error. If at end of
   // sequence, set `*end_of_sequence = true` and return `Status::OK()`.
@@ -1096,7 +1095,8 @@ class DatasetBaseIterator : public IteratorBase {
   // Internal implementation of GetNext that is wrapped in tracing logic.
   //
   // See the docstring of `GetNext` method regaring the contract for
-  // `out_tensors` and `end_of_sequence`.
+  // `out_tensors` and `end_of_sequence`. Implementations may assume that
+  // `*out_tensors` is empty.
   virtual Status GetNextInternal(IteratorContext* ctx,
                                  std::vector<Tensor>* out_tensors,
                                  bool* end_of_sequence) = 0;

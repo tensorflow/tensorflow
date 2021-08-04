@@ -135,7 +135,6 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
       int64_t index = split.scalar<int64>()();
-      out_tensors->clear();
       out_tensors->reserve(dataset()->tensors_.size());
       for (size_t i = 0; i < dataset()->tensors_.size(); ++i) {
         Tensor slice = dataset()->tensors_[i].SubSlice(index);

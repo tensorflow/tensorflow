@@ -127,10 +127,9 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
 
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
-  while (!end_of_sequence) {
-    TF_EXPECT_OK(iterator_->GetNext(iterator_ctx_.get(), &out_tensors,
-                                    &end_of_sequence));
-  }
+  TF_EXPECT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  ASSERT_FALSE(end_of_sequence);
   EXPECT_EQ(out_tensors.size(), test_case.expected_outputs.size());
   for (int i = 0; i < out_tensors.size(); ++i) {
     if (out_tensors[i].dtype() == DT_VARIANT) {
@@ -144,6 +143,10 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
       TF_EXPECT_OK(ExpectEqual(out_tensors[i], test_case.expected_outputs[i]));
     }
   }
+  TF_EXPECT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_TRUE(end_of_sequence);
+  EXPECT_TRUE(out_tensors.empty());
 }
 
 INSTANTIATE_TEST_CASE_P(TensorDatasetOpTest, ParameterizedGetNextTest,

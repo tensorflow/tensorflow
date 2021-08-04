@@ -809,10 +809,15 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
     }
     node_->record_start(now_nanos);
   }
+  out_tensors->clear();
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-  if (TF_PREDICT_TRUE(s.ok() && !*end_of_sequence)) {
-    DCHECK_EQ(out_tensors->size(), dataset()->output_dtypes().size());
-    RecordElement(ctx, out_tensors);
+  if (TF_PREDICT_TRUE(s.ok())) {
+    if (TF_PREDICT_TRUE(!*end_of_sequence)) {
+      DCHECK_EQ(out_tensors->size(), dataset()->output_dtypes().size());
+      RecordElement(ctx, out_tensors);
+    } else {
+      out_tensors->clear();
+    }
   }
   if (model && model->collect_resource_usage() && node_) {
     int64_t now_nanos = EnvTime::NowNanos();
