@@ -449,6 +449,7 @@ class ReportErrorOpConverter
       err_stream << " at ";
       loc.print(err_stream);
     }
+    err_stream << '\00';
     StringRef generated_error(err_stream.str());
     return CreateOrFindGlobalStringConstant(
         loc, builder, kErrorMessageGlobalBaseName, generated_error);
