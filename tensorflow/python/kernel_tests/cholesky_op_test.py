@@ -161,9 +161,7 @@ class CholeskyOpTest(test.TestCase):
     with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
       linalg_ops.cholesky(tensor3)
 
-  # TODO(b/144845034) GPU version still throws an InvalidArgumentError
-  # for non-invertible inputs. Enable test once addressed.
-  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testNotInvertibleCpu(self):
     # Non-invertible inputs result in lower-triangular NaNs.
     x = constant_op.constant([[1., -1., 0.], [-1., 1., -1.], [0., -1., 1.]])
