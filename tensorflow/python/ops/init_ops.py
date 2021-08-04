@@ -286,6 +286,25 @@ class Constant(Initializer):
   Traceback (most recent call last):
   ...
   TypeError: Expected Tensor's shape: (3, 4), got (8,).
+
+  @compatibility(TF2)
+  This API is compatible with TF2 behavior and `tf.function`, and can be
+  migrated immediately with `tf.constant_initializer`.  A minor discrepency
+  exists in that the default datatype has changed from int32 to float32.
+
+  Before:
+  >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
+  >>> initializer = tf.compat.v1.constant_initializer(value)
+  >>> initializer((8,))
+  <tf.Tensor: shape=(8,), dtype=float32, numpy=..., dtype=float32)>
+
+  After:
+  >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
+  >>> initializer = tf.constant_initializer(value)
+  >>> initializer((8,))
+  <tf.Tensor: shape=(8,), dtype=int32, numpy=..., dtype=int32)>
+
+  @end_compatibility
   """
 
   @deprecated_args(None,
