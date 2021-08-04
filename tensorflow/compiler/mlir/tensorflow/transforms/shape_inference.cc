@@ -950,9 +950,7 @@ bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op) {
   DCOMMENT_OP(op, "Inferring shape for with N = " << N << " and M = " << M);
 
   // Initialize with function input types.
-  std::vector<Type> input_types;
-  input_types.reserve(f.getNumArguments());
-  for (auto t : f.getArgumentTypes()) input_types.push_back(t);
+  SmallVector<Type> input_types(f.getArgumentTypes());
 
   // Track if changed to skip enqueueing.
   bool changed = false;
