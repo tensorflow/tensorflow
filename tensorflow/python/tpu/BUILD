@@ -220,6 +220,7 @@ pytype_library(
         "training_loop.py",
     ],
     srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":datasets",
         ":device_assignment",
