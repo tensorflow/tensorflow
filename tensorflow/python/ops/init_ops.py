@@ -288,21 +288,79 @@ class Constant(Initializer):
   TypeError: Expected Tensor's shape: (3, 4), got (8,).
 
   @compatibility(TF2)
-  This API is compatible with TF2 behavior and `tf.function`, and can be
-  migrated immediately with `tf.constant_initializer`.  A minor discrepency
-  exists in that the default datatype has changed from int32 to float32.
+  Although it is a legacy API endpoint, `tf.compat.v1.constant_initializer`
+  is compatible with eager execution and `tf.function`.
+
+  To migrate to a non-legacy TF2 API, please use `tf.constant_initializer`
+  instead. The `dtype`
+  argument in `tf.compat.v1.constant_initializer.__init__()` does not exist in
+  `tf.constant_initializer.__init__()`. However, you can specify the `dtype` in
+  `__call__()` in both cases.
+
+  In the `compat.v1` symbol, if `verify_shape` is set to `True`, an exception
+  is raised when initializing a variable with a different shape from
+  `value`. If set to `False`, `value` is reshaped to initialize the variable
+  if necessary. An exception would only be raised when the number of
+  elements are different.
+
+  The `verify_shape` argument is not supported in TF2. Using
+  `tf.constant_initializer` is equivalent to setting `verify_shape` to `False`.
+
+  #### Structural Mapping to Native TF2
 
   Before:
-  >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
-  >>> initializer = tf.compat.v1.constant_initializer(value)
-  >>> initializer((8,))
-  <tf.Tensor: shape=(8,), dtype=float32, numpy=..., dtype=float32)>
+
+  ```python
+  value = [0, 1, 2, 3, 4, 5, 6, 7]
+  initializer = tf.compat.v1.constant_initializer(
+      value=value,
+      dtype=tf.float32,
+      verify_shape=False)
+  variable = tf.Variable(initializer(shape=[2, 4]))
+  ```
 
   After:
-  >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
-  >>> initializer = tf.constant_initializer(value)
-  >>> initializer((8,))
-  <tf.Tensor: shape=(8,), dtype=int32, numpy=..., dtype=int32)>
+
+  ```python
+  value = [0, 1, 2, 3, 4, 5, 6, 7]
+  initializer = tf.constant_initializer(value=value)
+  tf.Variable(initializer(shape=[2, 4], dtype=tf.float32))
+  ```
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name          | TF2 Arg Name     | Note                        |
+  | :-------------------- | :--------------- | :-------------------------- |
+  | `value`               | `value`          | In constructor              |
+  | `dtype`               | `dtype`          | In `__call__()` method      |
+  | `verify_shape`        | Not Supported    | Equivalent to set to `False`|
+  | `partition_info`      | - |  (`__call__` arg in TF1) Not supported     |
+
+
+  #### Before & After Usage Example
+
+  Before:
+
+  >>> value = [1., 2., 3., 4.]
+  >>> initializer = tf.compat.v1.constant_initializer(
+  ...     value=value, dtype=tf.float32, verify_shape=True)
+  >>> tf.Variable(initializer(shape=[2, 2])).numpy()
+  Traceback (most recent call last):
+  ...
+  TypeError: Expected Tensor's shape: (2, 2), got (4,).
+  >>> initializer = tf.compat.v1.constant_initializer(
+  ...     value=value, dtype=tf.float32, verify_shape=False)
+  >>> tf.Variable(initializer(shape=[2, 2])).numpy()
+  array([[1., 2.],
+         [3., 4.]], dtype=float32)
+
+  After:
+
+  >>> value = [1., 2., 3., 4.]
+  >>> initializer = tf.constant_initializer(value=value)
+  >>> tf.Variable(initializer(shape=[2, 2], dtype=tf.float32)).numpy()
+  array([[1., 2.],
+         [3., 4.]], dtype=float32)
 
   @end_compatibility
   """
