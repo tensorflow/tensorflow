@@ -68,6 +68,7 @@ static void SpatialMaxPoolWithArgMaxHelper(
             "SpatialMaxPoolWithArgMaxHelper requires include_batch_in_index "
             "to be True when when input_backprop != nullptr"));
   }
+  if (tensor_in.NumElements() == 0 || output->NumElements() == 0) return;
 
   typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
       ConstEigenMatrixMap;
@@ -942,6 +943,10 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in = context->input(0);
+    OP_REQUIRES(context, tensor_in.dims() == 4,
+                errors::InvalidArgument("tensor_in must be 4-dimensional (2)"));
+    OP_REQUIRES(context, tensor_in.NumElements() > 0,
+                errors::InvalidArgument("tensor_in must not be empty (2)"));
 
     PoolParameters params{context,
                           ksize_,
