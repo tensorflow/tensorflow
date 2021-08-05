@@ -548,6 +548,16 @@ config_setting(
     flag_values = {":enable_bef_thunk": "True"},
 )
 
+bool_flag(
+    name = "enable_bef_executable",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "is_bef_executable_enabled",
+    flag_values = {":enable_bef_executable": "True"},
+)
+
 cc_library(
     name = "gpu_executable",
     srcs = [
@@ -601,6 +611,7 @@ cc_library(
         "GOOGLE_XCCL=1",
     ]) + select({
         ":is_bef_thunk_enabled": ["BEF_THUNKS=1"],
+        ":is_bef_executable_enabled": ["BEF_EXECUTABLE=1"],
         "//conditions:default": [],
     }),
     deps = [
@@ -657,6 +668,11 @@ cc_library(
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:kernel",
         "//tensorflow/stream_executor/gpu:gpu_stream",
+        "@tf_runtime//:basic_kernels_alwayslink",
+        "@tf_runtime//:befexecutor",
+        "@tf_runtime//:core_runtime",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -666,6 +682,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ] + if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cuda_stream",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
@@ -693,12 +710,14 @@ cc_library(
             "//tensorflow/stream_executor/cuda:cublas_plugin",
             "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
-            "@tf_runtime//:basic_kernels_alwayslink",
-            "@tf_runtime//:befexecutor",
-            "@tf_runtime//:core_runtime",
-            "@tf_runtime//:hostcontext",
             "@tf_runtime//:mlirtobef_translate",
-            "@tf_runtime//:support",
+            "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
+            "@tf_runtime//backends/gpu:gpu_types",
+        ],
+        ":is_bef_executable_enabled": [
+            "//tensorflow/core/tfrt/runtime:work_queue_interface",
+            "//tensorflow/stream_executor/cuda:cuda_driver",
+            "//tensorflow/stream_executor/gpu:gpu_executor_header",
             "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
             "@tf_runtime//backends/gpu:gpu_types",
         ],
@@ -1364,6 +1383,10 @@ cc_library(
     hdrs = [
         "gpu_compiler.h",
     ],
+    local_defines = select({
+        ":is_bef_executable_enabled": ["BEF_EXECUTABLE=1"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":alias_passthrough_params",
         ":cudnn_batchnorm_rewriter",
@@ -1398,6 +1421,19 @@ cc_library(
         ":target_constants",
         ":tree_reduction_rewriter",
         ":variadic_op_splitter",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:variant",
+        "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:BitReader",
+        "@llvm-project//llvm:BitWriter",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:GPUTransforms",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
         "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
@@ -1474,16 +1510,14 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:stream_executor_headers",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:AsmParser",
-        "@llvm-project//llvm:BitReader",
-        "@llvm-project//llvm:BitWriter",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:TransformUtils",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:IR",
-    ],
+        "@tf_runtime//:mlirtobef_translate",
+        "@tf_runtime//:support",
+    ] + select({
+        ":is_bef_executable_enabled": [
+            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
