@@ -295,7 +295,6 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::AllOp>(),
     TypeID::get<TF::AllToAllOp>(),
     TypeID::get<TF::AnyOp>(),
-    TypeID::get<TF::AssertOp>(),
     TypeID::get<TF::AvgPoolOp>(),
     TypeID::get<TF::AvgPool3DGradOp>(),
     TypeID::get<TF::AvgPoolGradOp>(),
