@@ -1528,7 +1528,7 @@ void Sub(const T* input1_data, const Dims<4>& input1_dims, const T* input2_data,
       output_data);
 }
 
-inline void AveragePool(const float* input_data, const Dims<4>& input_dims,
+inline bool AveragePool(const float* input_data, const Dims<4>& input_dims,
                         int stride_width, int stride_height, int pad_width,
                         int pad_height, int kwidth, int kheight,
                         float output_activation_min,
@@ -1543,8 +1543,8 @@ inline void AveragePool(const float* input_data, const Dims<4>& input_dims,
   params.padding_values.width = pad_width;
   params.float_activation_min = output_activation_min;
   params.float_activation_max = output_activation_max;
-  AveragePool(params, DimsToShape(input_dims), input_data,
-              DimsToShape(output_dims), output_data);
+  return AveragePool(params, DimsToShape(input_dims), input_data,
+                     DimsToShape(output_dims), output_data);
 }
 
 // Transitional version that will be moved shortly to legacy_reference_ops, as
@@ -1603,29 +1603,31 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
 
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
-void AveragePool(const float* input_data, const Dims<4>& input_dims,
+bool AveragePool(const float* input_data, const Dims<4>& input_dims,
                  int stride_width, int stride_height, int pad_width,
                  int pad_height, int kwidth, int kheight, float* output_data,
                  const Dims<4>& output_dims) {
   float output_activation_min, output_activation_max;
   GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
 
-  AveragePool(input_data, input_dims, stride_width, stride_height, pad_width,
-              pad_height, kwidth, kheight, output_activation_min,
-              output_activation_max, output_data, output_dims);
+  return AveragePool(input_data, input_dims, stride_width, stride_height,
+                     pad_width, pad_height, kwidth, kheight,
+                     output_activation_min, output_activation_max, output_data,
+                     output_dims);
 }
 
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
-void AveragePool(const float* input_data, const Dims<4>& input_dims, int stride,
+bool AveragePool(const float* input_data, const Dims<4>& input_dims, int stride,
                  int pad_width, int pad_height, int filter_width,
                  int filter_height, float* output_data,
                  const Dims<4>& output_dims) {
-  AveragePool<Ac>(input_data, input_dims, stride, stride, pad_width, pad_height,
-                  filter_width, filter_height, output_data, output_dims);
+  return AveragePool<Ac>(input_data, input_dims, stride, stride, pad_width,
+                         pad_height, filter_width, filter_height, output_data,
+                         output_dims);
 }
 
-inline void AveragePool(const uint8* input_data, const Dims<4>& input_dims,
+inline bool AveragePool(const uint8* input_data, const Dims<4>& input_dims,
                         int stride_width, int stride_height, int pad_width,
                         int pad_height, int filter_width, int filter_height,
                         int32 output_activation_min,
@@ -1640,13 +1642,13 @@ inline void AveragePool(const uint8* input_data, const Dims<4>& input_dims,
   params.padding_values.width = pad_width;
   params.quantized_activation_min = output_activation_min;
   params.quantized_activation_max = output_activation_max;
-  AveragePool(params, DimsToShape(input_dims), input_data,
-              DimsToShape(output_dims), output_data);
+  return AveragePool(params, DimsToShape(input_dims), input_data,
+                     DimsToShape(output_dims), output_data);
 }
 
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
-void AveragePool(const uint8* input_data, const Dims<4>& input_dims,
+bool AveragePool(const uint8* input_data, const Dims<4>& input_dims,
                  int stride_width, int stride_height, int pad_width,
                  int pad_height, int filter_width, int filter_height,
                  int32 output_activation_min, int32 output_activation_max,
@@ -1660,21 +1662,23 @@ void AveragePool(const uint8* input_data, const Dims<4>& input_dims,
     TFLITE_DCHECK_EQ(output_activation_min, 0);
     TFLITE_DCHECK_EQ(output_activation_max, 255);
   }
-  AveragePool(input_data, input_dims, stride_width, stride_height, pad_width,
-              pad_height, filter_width, filter_height, output_activation_min,
-              output_activation_max, output_data, output_dims);
+  return AveragePool(input_data, input_dims, stride_width, stride_height,
+                     pad_width, pad_height, filter_width, filter_height,
+                     output_activation_min, output_activation_max, output_data,
+                     output_dims);
 }
 
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
-void AveragePool(const uint8* input_data, const Dims<4>& input_dims, int stride,
+bool AveragePool(const uint8* input_data, const Dims<4>& input_dims, int stride,
                  int pad_width, int pad_height, int filter_width,
                  int filter_height, int32 output_activation_min,
                  int32 output_activation_max, uint8* output_data,
                  const Dims<4>& output_dims) {
-  AveragePool<Ac>(input_data, input_dims, stride, stride, pad_width, pad_height,
-                  filter_width, filter_height, output_activation_min,
-                  output_activation_max, output_data, output_dims);
+  return AveragePool<Ac>(input_data, input_dims, stride, stride, pad_width,
+                         pad_height, filter_width, filter_height,
+                         output_activation_min, output_activation_max,
+                         output_data, output_dims);
 }
 
 inline void MaxPool(const float* input_data, const Dims<4>& input_dims,
