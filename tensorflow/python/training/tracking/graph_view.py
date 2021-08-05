@@ -28,7 +28,6 @@ from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.training.saving import saveable_object as saveable_object_lib
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
@@ -214,13 +213,6 @@ class ObjectGraphView(object):
     path_to_root[self.root] = ()
     while to_visit:
       current_trackable = to_visit.popleft()
-      if isinstance(current_trackable, tracking.NotTrackable):
-        raise NotImplementedError(
-            ("The object %s does not support object-based saving. File a "
-             "feature request if this limitation bothers you. In the meantime, "
-             "you can remove the dependency on this object and save everything "
-             "else.")
-            % (current_trackable,))
       bfs_sorted.append(current_trackable)
       for name, dependency in self.list_dependencies(current_trackable):
         if dependency not in path_to_root:

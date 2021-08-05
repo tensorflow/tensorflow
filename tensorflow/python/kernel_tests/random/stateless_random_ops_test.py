@@ -105,7 +105,7 @@ def float_cases(shape_dtypes=(None,)):
   )
   # Explicitly passing in params because capturing cell variable from loop is
   # problematic in Python
-  def wrap(op, dtype, shape, shape_dtype, kwds, seed):
+  def wrap(op, dtype, shape, shape_dtype, seed, **kwargs):
     device_type = get_device().device_type
     # Some dtypes are not supported on some devices
     if (dtype == dtypes.float16 and device_type in ('XLA_GPU', 'XLA_CPU') or
@@ -113,7 +113,7 @@ def float_cases(shape_dtypes=(None,)):
       dtype = dtypes.float32
     shape_ = (constant_op.constant(shape, dtype=shape_dtype)
               if shape_dtype is not None else shape)
-    return op(seed=seed, shape=shape_, dtype=dtype, **kwds)
+    return op(seed=seed, shape=shape_, dtype=dtype, **kwargs)
 
   def _name(a):
     if hasattr(a, 'name'):
@@ -124,23 +124,24 @@ def float_cases(shape_dtypes=(None,)):
   for dtype in dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64:
     for shape_dtype in shape_dtypes:
       for shape in (), (3,), (2, 5):
-        for name, stateless_op, stateful_op, kwds in cases:
+        for name, stateless_op, stateful_op, kwargs in cases:
           yield (('%s_%s_%s_%s' %
                   (name, _name(dtype), shape, _name(shape_dtype))).replace(
                       ' ', ''),
                  functools.partial(wrap, stateless_op, dtype, shape,
-                                   shape_dtype, kwds),
+                                   shape_dtype, **kwargs),
                  functools.partial(wrap, stateful_op, dtype, shape, shape_dtype,
-                                   kwds))
+                                   **kwargs))
 
 
 def int_cases(shape_dtypes=(None,), minval_maxval=None):
 
-  def wrap(op, minval, maxval, shape, shape_dtype, dtype, seed):
+  def wrap(op, minval, maxval, shape, shape_dtype, dtype, seed, **kwargs):
     shape_ = (constant_op.constant(shape, dtype=shape_dtype)
               if shape_dtype is not None else shape)
     return op(
-        seed=seed, shape=shape_, minval=minval, maxval=maxval, dtype=dtype)
+        seed=seed, shape=shape_, minval=minval, maxval=maxval, dtype=dtype,
+        **kwargs)
 
   if minval_maxval is None:
     minval_maxval = ((2, 11111),)
@@ -236,6 +237,15 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
       with compat.forward_compatibility_horizon(*AFTER_EXPIRE):
         new = stateless_op(seed=seed)
       self.assertAllClose(old, new)
+
+  def _test_explicit_alg(self, case, seed):
+    """Tests that alg=philox and alg=None are the same (on CPU/GPU)."""
+    with ops.device(get_device().name):
+      _, stateless_op, _ = case
+      implicit_alg = stateless_op(seed=seed)
+      # All device types allowed in this test will result in Philox
+      explicit_alg = stateless_op(seed=seed, alg='philox')
+      self.assertAllClose(implicit_alg, explicit_alg)
 
   def _test_determinism(self, case, seed_type):
     # Stateless values should be equal iff the seeds are equal (roughly)
@@ -361,6 +371,23 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   def testOldAndNewStatelessMatchInt(self, case, seed):
     self._test_old_and_new_stateless_match(case, seed)
+
+  @parameterized.named_parameters(
+      ('_%s_%s' % (case[0], case_id), case)
+      for case_id, case in enumerate(float_cases()))
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
+  def testExplicitAlgFloat(self, case):
+    seed = (7, 17)
+    self._test_explicit_alg(case, seed)
+
+  @parameterized.named_parameters(
+      ('_%s_%s' % (case[0], case_id), case)
+      for case_id, case in enumerate(
+          int_cases(minval_maxval=((2, 11111), (None, None)))))
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
+  def testExplicitAlgInt(self, case):
+    seed = (7, 17)
+    self._test_explicit_alg(case, seed)
 
   @parameterized.named_parameters(
       ('_%s_%s_%s' % (case[0], seed_type.name, case_id), case, seed_type)  # pylint: disable=g-complex-comprehension

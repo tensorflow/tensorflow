@@ -26,6 +26,7 @@ limitations under the License.
 #endif
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -275,6 +276,48 @@ TEST_P(CustomCallTokensTest, TokensTest) {
 
 INSTANTIATE_TEST_CASE_P(CustomCallTokens, CustomCallTokensTest,
                         ::testing::ValuesIn(GetTokenTestCases()));
+
+void Callback_WithStatusSucceeded(se::gpu::GpuStreamHandle /*stream*/,
+                                  void** /*buffers*/, const char* /*opaque*/,
+                                  size_t /*opaque_len*/,
+                                  XlaCustomCallStatus* status) {
+  XlaCustomCallStatusSetSuccess(status);
+}
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_WithStatusSucceeded, PLATFORM);
+
+TEST_F(CustomCallTest, WithStatusSucceeded) {
+  XlaBuilder b(TestName());
+  CustomCall(
+      &b, "Callback_WithStatusSucceeded", /*operands=*/{},
+      ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+      /*has_side_effect=*/false,
+      /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+      /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
+  TF_ASSERT_OK(Execute(&b, {}).status());
+}
+
+void Callback_WithStatusFailed(se::gpu::GpuStreamHandle /*stream*/,
+                               void** /*buffers*/, const char* /*opaque*/,
+                               size_t /*opaque_len*/,
+                               XlaCustomCallStatus* status) {
+  XlaCustomCallStatusSetFailure(status, "Failed", 6);
+}
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_WithStatusFailed, PLATFORM);
+
+TEST_F(CustomCallTest, WithStatusFailed) {
+  XlaBuilder b(TestName());
+  CustomCall(
+      &b, "Callback_WithStatusFailed", /*operands=*/{},
+      ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+      /*has_side_effect=*/false,
+      /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+      /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
+  auto status = Execute(&b, {}).status();
+  EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed"));
+}
 
 }  // anonymous namespace
 }  // namespace xla

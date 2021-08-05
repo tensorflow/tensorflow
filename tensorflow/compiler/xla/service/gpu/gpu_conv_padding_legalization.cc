@@ -62,7 +62,7 @@ HloInstruction* MaybePaddedAndSlicedInput(
     PaddingConfig padding_config =
         MakeNoPaddingConfig(input->shape().dimensions_size());
     for (size_t i = 0; i < conv_dnums.input_spatial_dimensions().size(); ++i) {
-      int64 dim = conv_dnums.input_spatial_dimensions(i);
+      int64_t dim = conv_dnums.input_spatial_dimensions(i);
       if (conv_window->dimensions(i).padding_low() > 0) {
         padding_config.mutable_dimensions(dim)->set_edge_padding_low(
             conv_window->dimensions(i).padding_low());
@@ -96,7 +96,7 @@ HloInstruction* MaybePaddedAndSlicedInput(
                                      input->shape().dimensions().end());
     std::vector<int64> strides(input->shape().dimensions_size(), 1);
     for (size_t i = 0; i < conv_dnums.input_spatial_dimensions().size(); ++i) {
-      int64 dim = conv_dnums.input_spatial_dimensions(i);
+      int64_t dim = conv_dnums.input_spatial_dimensions(i);
       // If dimension "dim" has negative padding, increase the start index or
       // decrement the limit index by the amount of negative padding.
       if (conv_window->dimensions(i).padding_low() < 0) {
@@ -133,7 +133,7 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
     padding_config.add_dimensions();
   }
   for (size_t i = 0; i < conv_dnums.kernel_spatial_dimensions().size(); ++i) {
-    int64 dim = conv_dnums.kernel_spatial_dimensions(i);
+    int64_t dim = conv_dnums.kernel_spatial_dimensions(i);
     padding_config.mutable_dimensions(dim)->set_interior_padding(
         conv_window.dimensions(i).window_dilation() - 1);
   }
@@ -190,11 +190,11 @@ bool GpuConvPaddingLegalization::CanonicalizeForwardConvolution(
 }
 
 namespace {
-void IncreasePaddingLowBy(int64 delta, WindowDimension* window_dim) {
+void IncreasePaddingLowBy(int64_t delta, WindowDimension* window_dim) {
   window_dim->set_padding_low(window_dim->padding_low() + delta);
 }
 
-void IncreasePaddingHighBy(int64 delta, WindowDimension* window_dim) {
+void IncreasePaddingHighBy(int64_t delta, WindowDimension* window_dim) {
   window_dim->set_padding_high(window_dim->padding_high() + delta);
 }
 }  // namespace
@@ -223,8 +223,8 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
   ConvolutionDimensionNumbers backward_conv_dnums =
       backward_conv->convolution_dimension_numbers();
   for (size_t i = 0; i < backward_conv->window().dimensions_size(); ++i) {
-    int64 padding_low = backward_conv->window().dimensions(i).padding_low();
-    int64 padding_high = backward_conv->window().dimensions(i).padding_high();
+    int64_t padding_low = backward_conv->window().dimensions(i).padding_low();
+    int64_t padding_high = backward_conv->window().dimensions(i).padding_high();
     if (padding_low < 0 || padding_high < 0) {
       // TODO(b/32744257): The following canonicalization wouldn't remove
       // negative padding in a backward convolution, and would therefore cause
@@ -232,8 +232,8 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
       return false;
     }
     // Compute the new, even padding for the backward conv operation.
-    int64 new_conv_padding = std::min(padding_low, padding_high);
-    int64 dim = backward_conv_dnums.input_spatial_dimensions(i);
+    int64_t new_conv_padding = std::min(padding_low, padding_high);
+    int64_t dim = backward_conv_dnums.input_spatial_dimensions(i);
     input_padding_config.mutable_dimensions(dim)->set_edge_padding_low(
         padding_low - new_conv_padding);
     input_padding_config.mutable_dimensions(dim)->set_edge_padding_high(
@@ -288,8 +288,8 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
 
   Shape new_backward_conv_shape = backward_conv_shape;
   for (size_t i = 0; i < backward_conv->window().dimensions_size(); ++i) {
-    int64 padding_low = backward_conv->window().dimensions(i).padding_low();
-    int64 padding_high = backward_conv->window().dimensions(i).padding_high();
+    int64_t padding_low = backward_conv->window().dimensions(i).padding_low();
+    int64_t padding_high = backward_conv->window().dimensions(i).padding_high();
     if (padding_low < 0 || padding_high < 0) {
       // TODO(b/32744257): The following canonicalization wouldn't remove
       // negative padding in a backward convolution, and would therefore cause
@@ -317,7 +317,7 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
     // dimensions to be compatible with the cuDNN API, so
     // input_spatial_dimensions(i) gives the i-th spatial dimension of the
     // output.
-    int64 dim = backward_conv_dnums.input_spatial_dimensions(i);
+    int64_t dim = backward_conv_dnums.input_spatial_dimensions(i);
     new_backward_conv_shape.set_dimensions(
         dim, new_backward_conv_shape.dimensions(dim) +
                  std::abs(padding_low - padding_high));
@@ -355,13 +355,13 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
       new_backward_conv->shape().dimensions().end());
   std::vector<int64> strides(new_backward_conv->shape().dimensions_size(), 1LL);
   for (size_t i = 0; i < backward_conv->window().dimensions_size(); ++i) {
-    int64 padding_low = backward_conv->window().dimensions(i).padding_low();
-    int64 padding_high = backward_conv->window().dimensions(i).padding_high();
+    int64_t padding_low = backward_conv->window().dimensions(i).padding_low();
+    int64_t padding_high = backward_conv->window().dimensions(i).padding_high();
     // Note that we have swapped input spatial dimensions with output spatial
     // dimensions to be compatible with the cuDNN API, so
     // input_spatial_dimensions(i) gives the i-th spatial dimension of the
     // output.
-    int64 dim = backward_conv_dnums.input_spatial_dimensions(i);
+    int64_t dim = backward_conv_dnums.input_spatial_dimensions(i);
     if (padding_low > padding_high) {
       // If the amount of low padding (of the old backward convolution) is
       // larger, we internally pad the low end of the activations and slice

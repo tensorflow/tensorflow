@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_UTIL_H_
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -227,9 +228,9 @@ bool ContainersEqual(const Container1T& c1, const Container2T& c2,
 // source and destination. The source starting index is src_base, while the
 // destination one is dest_base.
 template <typename D, typename S>
-void StridedCopy(absl::Span<D> dest, int64 dest_base, int64 dest_stride,
-                 absl::Span<const S> src, int64 src_base, int64 src_stride,
-                 int64 count) {
+void StridedCopy(absl::Span<D> dest, int64_t dest_base, int64_t dest_stride,
+                 absl::Span<const S> src, int64_t src_base, int64_t src_stride,
+                 int64_t count) {
   for (; count > 0; --count, dest_base += dest_stride, src_base += src_stride) {
     dest[dest_base] = static_cast<D>(src[src_base]);
   }
@@ -329,7 +330,7 @@ Status ResourceExhaustedStrCat(Args&&... concat) {
 string Reindent(absl::string_view original, absl::string_view indentation);
 
 template <typename Container>
-int64 PositionInContainer(const Container& container, int64 value) {
+int64 PositionInContainer(const Container& container, int64_t value) {
   return std::distance(container.begin(), absl::c_find(container, value));
 }
 
@@ -386,7 +387,7 @@ string RoundTripFpToString(float value);
 string RoundTripFpToString(double value);
 
 // Returns a PaddingConfig object that represents no padding for the given rank.
-PaddingConfig MakeNoPaddingConfig(int64 rank);
+PaddingConfig MakeNoPaddingConfig(int64_t rank);
 
 // Returns a PaddingConfig object where 'padding' contains
 // (low edge padding, high edge padding) pairs for each dimension.
@@ -465,6 +466,71 @@ inline T ClearUpperBits(T value, int width) {
   return value & LsbMask<T>(width);
 }
 
+template <size_t>
+struct UnsignedIntegerTypeForSize;
+
+template <>
+struct UnsignedIntegerTypeForSize<1> {
+  using type = uint8_t;
+};
+
+template <>
+struct UnsignedIntegerTypeForSize<2> {
+  using type = uint16_t;
+};
+
+template <>
+struct UnsignedIntegerTypeForSize<4> {
+  using type = uint32_t;
+};
+
+template <>
+struct UnsignedIntegerTypeForSize<8> {
+  using type = uint64_t;
+};
+
+template <typename T>
+constexpr int NanPayloadBits() {
+  // Floating point types with NaNs have payloads.
+  if (!std::numeric_limits<T>::has_quiet_NaN) {
+    return 0;
+  }
+  return std::numeric_limits<T>::digits - 1;
+}
+
+template <typename T>
+constexpr uint64_t QuietNanWithoutPayload() {
+  if (const int bits = NanPayloadBits<T>()) {
+    return uint64_t{1} << (bits - 1);
+  }
+  return 0;
+}
+
+template <typename T>
+constexpr uint64_t NanPayloadBitMask() {
+  if (const int bits = NanPayloadBits<T>()) {
+    return LsbMask<uint64_t>(bits);
+  }
+  return 0;
+}
+
+template <typename T>
+T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
+  using RepT = typename UnsignedIntegerTypeForSize<sizeof(T)>::type;
+  const T val = std::numeric_limits<T>::quiet_NaN();
+  auto rep = absl::bit_cast<RepT>(val);
+  rep &= LsbMask<RepT>(std::numeric_limits<RepT>::digits - 1);
+  rep |= uint64_t{sign} << (std::numeric_limits<RepT>::digits - 1);
+  constexpr int kPayloadBits = NanPayloadBits<T>();
+  if (kPayloadBits > 0) {
+    // Clear rep's NaN payload.
+    rep &= ~NanPayloadBitMask<T>();
+    CHECK_NE(nan_payload, 0);
+    rep |= nan_payload;
+  }
+  return absl::bit_cast<T>(rep);
+}
+
 // Utility for performing a static_cast<> on a std::unique_ptr<>.
 template <typename Derived, typename Base>
 std::unique_ptr<Derived> unique_ptr_static_cast(std::unique_ptr<Base> ptr) {
@@ -511,12 +577,12 @@ int64 FindIndex(const C& c, Value&& value) {
 }
 
 template <typename C, typename Value>
-void InsertAt(C* c, int64 index, Value&& value) {
+void InsertAt(C* c, int64_t index, Value&& value) {
   c->insert(c->begin() + index, std::forward<Value>(value));
 }
 
 template <typename C>
-void EraseAt(C* c, int64 index) {
+void EraseAt(C* c, int64_t index) {
   c->erase(c->begin() + index);
 }
 

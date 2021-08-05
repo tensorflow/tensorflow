@@ -125,7 +125,7 @@ Microseconds SlackAnalysis::ComputeAlap(std::vector<Microseconds>* alap_times) {
     // For reverse execution order, Switch nodes are special. We process
     // them only once when one of its outputs is processed.
     if (IsSwitch(n)) {
-      int32 num_control_edges = 0;
+      int32_t num_control_edges = 0;
       for (const Edge* edge : n->out_edges()) {
         if (edge->IsControlEdge()) {
           num_control_edges++;
@@ -280,7 +280,7 @@ Microseconds GreedyScheduler::ComputeSchedule(
 const Node* GreedyScheduler::GetNodeWithHighestPriority(
     const std::vector<const Node*>& nodes) {
   const Node* curr_node = nullptr;
-  int64 curr_priority = kint64max;
+  int64_t curr_priority = kint64max;
   for (const Node* n : nodes) {
     if ((*priority_)[n->id()] < curr_priority) {
       curr_node = n;

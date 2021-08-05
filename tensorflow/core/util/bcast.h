@@ -31,7 +31,7 @@ namespace tensorflow {
 // (flattened) batch index of the input that must be used to compute the i'th
 // batch output.
 //
-inline void ComputeBatchIndices(const int64 output_batch_size,
+inline void ComputeBatchIndices(const int64_t output_batch_size,
                                 const gtl::InlinedVector<int64, 4>& reshape,
                                 const gtl::InlinedVector<int64, 4>& bcast,
                                 std::vector<int64>* out_indices) {
@@ -41,15 +41,15 @@ inline void ComputeBatchIndices(const int64 output_batch_size,
   //  - Broadcast to the output shape.
   //  - Reshape back to a flat 1D vector.
   out_indices->resize(output_batch_size);
-  int64 num_output_elements = 1;
-  int64 num_input_elements = 1;
-  for (int64 i = reshape.size() - 1; i >= 0; --i) {
+  int64_t num_output_elements = 1;
+  int64_t num_input_elements = 1;
+  for (int64_t i = reshape.size() - 1; i >= 0; --i) {
     // Replicate the already populated mapping an additional (dim - 1) times.
     // If we are broadcasting, just copy the existing mapping.
     // Otherwise, add another dimension from the input shape.
-    const int64 dim = std::max(reshape[i], bcast[i]);
-    const int64 incr = bcast[i] > 1 ? 0 : num_input_elements;
-    for (int64 k = 0; k < (dim - 1) * num_output_elements; ++k) {
+    const int64_t dim = std::max(reshape[i], bcast[i]);
+    const int64_t incr = bcast[i] > 1 ? 0 : num_input_elements;
+    for (int64_t k = 0; k < (dim - 1) * num_output_elements; ++k) {
       (*out_indices)[num_output_elements + k] = (*out_indices)[k] + incr;
     }
     num_output_elements *= dim;
@@ -134,7 +134,7 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
   typedef BCastList::Vec Vec;
 
   // Safely multiplies dimensions taking into account symbolic shapes.
-  auto mul_dims = [](int64 dim1, int64 dim2) -> int64 {
+  auto mul_dims = [](int64_t dim1, int64_t dim2) -> int64 {
     return dim1 != 0 && dim2 != 0 && (dim1 < 0 || dim2 < 0) ? -1 : dim1 * dim2;
   };
 
@@ -154,11 +154,11 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
   }
   if (all_equal && TF_PREDICT_TRUE(fewer_dims_optimization)) {
     // Fast path for common case of identical shapes.
-    int64 elements = 1;
+    int64_t elements = 1;
     const int rank = x[0].size();
     output_.resize(rank);
     for (int i = 0; i < rank; i++) {
-      const int64 dim = x[0][i];
+      const int64_t dim = x[0][i];
       elements = mul_dims(elements, dim);
       output_[i] = dim;
     }

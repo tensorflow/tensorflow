@@ -112,7 +112,7 @@ class Array {
   // For example, {{1, 2, 3}, {4, 5, 6}} results in an array with n1=2 and n2=3.
   Array(InitializerList2D values)
       : Array(ToInt64Vector({values.size(), values.begin()->size()})) {
-    int64 idx = 0;
+    int64_t idx = 0;
     for (const auto& it1 : values) {
       for (const auto& it2 : it1) {
         values_[idx] = it2;
@@ -132,7 +132,7 @@ class Array {
                              std::is_same<T2, float>::value>::type>
   Array(std::initializer_list<T2> values)
       : Array(ToInt64Vector({values.size()})) {
-    int64 idx = 0;
+    int64_t idx = 0;
     for (const auto& it1 : values) {
       values_[idx] = static_cast<T>(it1);
       ++idx;
@@ -150,7 +150,7 @@ class Array {
                              std::is_same<T2, float>::value>::type>
   Array(std::initializer_list<std::initializer_list<T2>> values)
       : Array(ToInt64Vector({values.size(), values.begin()->size()})) {
-    int64 idx = 0;
+    int64_t idx = 0;
     for (const auto& it1 : values) {
       for (const auto& it2 : it1) {
         values_[idx] = static_cast<T>(it2);
@@ -165,7 +165,7 @@ class Array {
   Array(InitializerList3D values)
       : Array(ToInt64Vector({values.size(), values.begin()->size(),
                              values.begin()->begin()->size()})) {
-    int64 idx = 0;
+    int64_t idx = 0;
     for (const auto& it1 : values) {
       for (const auto& it2 : it1) {
         for (const auto& it3 : it2) {
@@ -189,7 +189,7 @@ class Array {
             values)
       : Array(ToInt64Vector({values.size(), values.begin()->size(),
                              values.begin()->begin()->size()})) {
-    int64 idx = 0;
+    int64_t idx = 0;
     for (const auto& it1 : values) {
       for (const auto& it2 : it1) {
         for (const auto& it3 : it2) {
@@ -207,7 +207,7 @@ class Array {
       : Array(ToInt64Vector({values.size(), values.begin()->size(),
                              values.begin()->begin()->size(),
                              values.begin()->begin()->begin()->size()})) {
-    int64 idx = 0;
+    int64_t idx = 0;
     for (const auto& it1 : values) {
       for (const auto& it2 : it1) {
         for (const auto& it3 : it2) {
@@ -235,7 +235,7 @@ class Array {
       : Array(ToInt64Vector({values.size(), values.begin()->size(),
                              values.begin()->begin()->size(),
                              values.begin()->begin()->begin()->size()})) {
-    int64 idx = 0;
+    int64_t idx = 0;
     for (const auto& it1 : values) {
       for (const auto& it2 : it1) {
         for (const auto& it3 : it2) {
@@ -275,8 +275,8 @@ class Array {
 
   // Fills the array with a repeating sequence:
   //   [value, value + 1, ..., value + length - 1, value, ... ]
-  void FillRepeatedIota(const T& value, int64 length) {
-    for (int64 i = 0; i < num_elements(); i += length) {
+  void FillRepeatedIota(const T& value, int64_t length) {
+    for (int64_t i = 0; i < num_elements(); i += length) {
       std::iota(&values_[i], &values_[std::min(i + length, num_elements())],
                 value);
     }
@@ -284,7 +284,7 @@ class Array {
 
   // Fills the array with the sequence i*multiplier for i=0,1,...
   void FillWithMultiples(const T& multiplier) {
-    for (int64 i = 0; i < num_elements(); ++i) {
+    for (int64_t i = 0; i < num_elements(); ++i) {
       values_[i] = static_cast<T>(i) * multiplier;
     }
   }
@@ -297,7 +297,7 @@ class Array {
   void FillRandomDouble(double stddev, double mean = 0.0, int seed = 12345) {
     std::mt19937 g(seed);
     std::normal_distribution<double> distribution(mean, stddev);
-    for (int64 i = 0; i < num_elements(); ++i) {
+    for (int64_t i = 0; i < num_elements(); ++i) {
       if (std::is_same<T, bool>()) {
         values_[i] = static_cast<T>(distribution(g) > 0.0);
       } else {
@@ -318,7 +318,7 @@ class Array {
   // array.
   void Each(std::function<void(absl::Span<const int64>, T*)> f) {
     std::vector<int64> index(sizes_.size());
-    for (int64 i = 0; i < num_elements(); ++i, next_index(&index)) {
+    for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       f(index, &values_[i]);
     }
   }
@@ -326,7 +326,7 @@ class Array {
   // Invokes a callback with the (indices, value) for each cell in the array.
   void Each(std::function<void(absl::Span<const int64>, T)> f) const {
     std::vector<int64> index(sizes_.size());
-    for (int64 i = 0; i < num_elements(); ++i, next_index(&index)) {
+    for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       f(index, values_[i]);
     }
   }
@@ -336,7 +336,7 @@ class Array {
   // Status::OK().
   Status EachStatus(std::function<Status(absl::Span<const int64>, T*)> f) {
     std::vector<int64> index(sizes_.size());
-    for (int64 i = 0; i < num_elements(); ++i, next_index(&index)) {
+    for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       Status s = f(index, &values_[i]);
       if (!s.ok()) {
         return s;
@@ -350,7 +350,7 @@ class Array {
   // Status::OK().
   Status EachStatus(std::function<Status(absl::Span<const int64>, T)> f) const {
     std::vector<int64> index(sizes_.size());
-    for (int64 i = 0; i < num_elements(); ++i, next_index(&index)) {
+    for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       Status s = f(index, values_[i]);
       if (!s.ok()) {
         return s;
@@ -409,8 +409,8 @@ class Array {
   }
 
   // Returns the size of the dimension at the given index.
-  int64 dim(int64 n) const {
-    const int64 sizes_size = sizes_.size();
+  int64 dim(int64_t n) const {
+    const int64_t sizes_size = sizes_.size();
     CHECK(n < sizes_size);
     return sizes_[n];
   }
@@ -435,12 +435,12 @@ class Array {
     if (sizes_.size() != other.sizes_.size()) {
       return false;
     }
-    for (int64 i = 0, end = sizes_.size(); i < end; ++i) {
+    for (int64_t i = 0, end = sizes_.size(); i < end; ++i) {
       if (sizes_[i] != other.sizes_[i]) {
         return false;
       }
     }
-    for (int64 i = 0; i < num_elements(); ++i) {
+    for (int64_t i = 0; i < num_elements(); ++i) {
       if (values_[i] != other.values_[i]) {
         return false;
       }
@@ -459,12 +459,12 @@ class Array {
     std::vector<int64> sizes;
     std::transform(starts.begin(), starts.end(), limits.begin(),
                    std::back_inserter(sizes),
-                   [](int64 start, int64 limit) { return limit - start; });
+                   [](int64_t start, int64_t limit) { return limit - start; });
     Array<T> result(sizes);
 
     std::vector<int64> index(sizes_.size());
-    int64 slice_i = 0;
-    for (int64 i = 0; i < num_elements(); ++i, next_index(&index)) {
+    int64_t slice_i = 0;
+    for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       if (array_impl::all_inside_range(index, starts, limits)) {
         // Even though the bounds of result are different to our bounds, we're
         // iterating in the same order. So we can simply write successive linear
@@ -484,8 +484,8 @@ class Array {
                    from.dimensions().begin(), std::back_inserter(limit_indices),
                    std::plus<int64>{});
     std::vector<int64> index(sizes_.size());
-    int64 from_i = 0;
-    for (int64 i = 0; i < num_elements(); ++i, next_index(&index)) {
+    int64_t from_i = 0;
+    for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       if (array_impl::all_inside_range(index, start_indices, limit_indices)) {
         // Even though the bounds of from are different to our bounds, we're
         // iterating in the same order. So we can simply write successive linear
@@ -498,7 +498,7 @@ class Array {
   // Performs an in-place reshape, modifying the dimensions but not the
   // underlying data.
   void Reshape(absl::Span<const int64> new_dimensions) {
-    int64 old_num_elements = num_elements();
+    int64_t old_num_elements = num_elements();
     sizes_ = std::vector<int64>(new_dimensions.begin(), new_dimensions.end());
     CHECK_EQ(num_elements(), old_num_elements);
   }
@@ -510,9 +510,9 @@ class Array {
     do {
       // Emit leading spaces and opening square brackets
       if (index.back() == 0) {
-        for (int64 i = sizes_.size() - 1; i >= 0; --i) {
+        for (int64_t i = sizes_.size() - 1; i >= 0; --i) {
           if (i == 0 || index[i - 1] != 0) {
-            for (int64 j = 0; j < sizes_.size(); ++j) {
+            for (int64_t j = 0; j < sizes_.size(); ++j) {
               pieces.push_back(j < i ? " " : "[");
             }
             break;
@@ -528,7 +528,7 @@ class Array {
       }
 
       // Emit closing square brackets
-      for (int64 i = sizes_.size() - 1; i >= 0; --i) {
+      for (int64_t i = sizes_.size() - 1; i >= 0; --i) {
         if (index[i] != sizes_[i] - 1) {
           break;
         }
@@ -557,8 +557,8 @@ class Array {
   template <typename U>
   int64 calculate_index(const U& indexes) const {
     CHECK_EQ(sizes_.size(), indexes.size());
-    int64 index = 0;
-    for (int64 i = 0; i < sizes_.size(); ++i) {
+    int64_t index = 0;
+    for (int64_t i = 0; i < sizes_.size(); ++i) {
       index *= sizes_[i];
       index += indexes[i];
     }
@@ -570,7 +570,7 @@ class Array {
   // wrapped around (i.e. result isn't {0, 0, ...}).
   bool next_index(std::vector<int64>* index) const {
     CHECK_EQ(index->size(), sizes_.size());
-    for (int64 i = sizes_.size() - 1; i >= 0; --i) {
+    for (int64_t i = sizes_.size() - 1; i >= 0; --i) {
       (*index)[i]++;
       if ((*index)[i] < sizes_[i]) {
         return true;

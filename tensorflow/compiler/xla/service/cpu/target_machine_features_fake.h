@@ -28,7 +28,7 @@ class TargetMachineFeaturesWithFakeAlignmentLogic
     : public TargetMachineFeatures {
  public:
   explicit TargetMachineFeaturesWithFakeAlignmentLogic(
-      std::function<int64(int64)> fake_alignment_logic)
+      std::function<int64(int64_t)> fake_alignment_logic)
       : fake_alignment_logic_(std::move(fake_alignment_logic)) {}
 
   int vectorization_factor_in_bytes() const override {
@@ -48,12 +48,12 @@ class TargetMachineFeaturesWithFakeAlignmentLogic
     LOG(FATAL) << "Unexpected call to " << __func__;
   }
 
-  int64 minimum_alignment_for_allocation(int64 size_bytes) const override {
+  int64 minimum_alignment_for_allocation(int64_t size_bytes) const override {
     return fake_alignment_logic_(size_bytes);
   }
 
  private:
-  std::function<int64(int64)> fake_alignment_logic_;
+  std::function<int64(int64_t)> fake_alignment_logic_;
 };
 }  // namespace cpu
 }  // namespace xla

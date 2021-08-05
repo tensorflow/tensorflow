@@ -29,7 +29,7 @@ struct FileStatistics {
   bool is_directory = false;
 
   FileStatistics() {}
-  FileStatistics(int64 length, int64 mtime_nsec, bool is_directory)
+  FileStatistics(int64_t length, int64_t mtime_nsec, bool is_directory)
       : length(length), mtime_nsec(mtime_nsec), is_directory(is_directory) {}
   ~FileStatistics() {}
 };

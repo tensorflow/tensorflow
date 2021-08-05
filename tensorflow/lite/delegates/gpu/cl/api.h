@@ -82,11 +82,15 @@ class InferenceEnvironment {
   // Loading serialized_model is much faster than loading GraphFloat32.
   // serialized_model must be used with appropriate NewInferenceBuilder
   // method (see below).
+  // Normally BuildSerializedModel method need to be called whenever a model or
+  // OS GPU driver is updated.
   virtual absl::Status BuildSerializedModel(
       const InferenceOptions& options, GraphFloat32 model,
       std::vector<uint8_t>* serialized_model) = 0;
 
-  // std::unique_ptr<InferenceBuilder>* builder - required parameter
+  // Serialized model can became invalid when environment changes. In this case
+  // this call will fail and model must be regenerated(with
+  // BuildSerializedModel).
   virtual absl::Status NewInferenceBuilder(
       const absl::Span<const uint8_t> serialized_model,
       std::unique_ptr<InferenceBuilder>* builder) = 0;

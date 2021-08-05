@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
@@ -445,13 +446,10 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
                                         Operation* op, Value output_val,
                                         Value input_lhs_val,
                                         Value input_rhs_val) {
-  RankedTensorType input_lhs_type =
-      input_lhs_val.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType input_rhs_type =
-      input_rhs_val.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      output_val.getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
+  ShapedType input_lhs_type = input_lhs_val.getType().dyn_cast<ShapedType>();
+  ShapedType input_rhs_type = input_rhs_val.getType().dyn_cast<ShapedType>();
+  ShapedType output_type = output_val.getType().dyn_cast<ShapedType>();
+  // Not a shaped tensor output
   if (!input_lhs_type || !input_rhs_type || !output_type) return llvm::None;
 
   bool input_lhs_is_qtype =
@@ -471,8 +469,7 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
 
   Value output;
   if (output_is_qtype) {
-    RankedTensorType rescale_type =
-        RankedTensorType::get(output_type.getShape(), rewriter.getI32Type());
+    ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
     auto input_lhs_qtype = input_lhs_type.getElementType()
                                .cast<mlir::quant::UniformQuantizedType>();
     auto input_rhs_qtype = input_rhs_type.getElementType()
@@ -515,14 +512,14 @@ llvm::Optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
                                                  Value x, Value y) {
   // Squared-difference is (x-y)*(x-y).
   // This lowering calculates the difference and multiplies.
-  RankedTensorType result_type = result.getType().dyn_cast<RankedTensorType>();
+  ShapedType result_type = result.getType().dyn_cast<ShapedType>();
   if (!result_type) {
     op->emitOpError("SquaredDifference: result not ranked tensor type");
     return llvm::None;
   }
 
-  RankedTensorType x_type = x.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType y_type = y.getType().dyn_cast<RankedTensorType>();
+  ShapedType x_type = x.getType().dyn_cast<ShapedType>();
+  ShapedType y_type = y.getType().dyn_cast<ShapedType>();
   if (!x_type || !y_type) {
     op->emitOpError("SquaredDifference: inputs not ranked tensor type");
     return llvm::None;
@@ -539,15 +536,15 @@ llvm::Optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
 llvm::Optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
                                      Value result, Value input) {
   // Implements banker's rounding by calculating floor(input + 0.5).
-  RankedTensorType result_type = result.getType().dyn_cast<RankedTensorType>();
+  ShapedType result_type = result.getType().dyn_cast<ShapedType>();
   if (!result_type) {
-    op->emitOpError("Round: result not ranked tensor type");
+    op->emitOpError("Round: result not shaped tensor type");
     return llvm::None;
   }
 
-  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+  ShapedType input_type = input.getType().dyn_cast<ShapedType>();
   if (!input_type) {
-    op->emitOpError("Round: input not ranked tensor type");
+    op->emitOpError("Round: input not shaped tensor type");
     return llvm::None;
   }
 
@@ -2254,8 +2251,7 @@ llvm::Optional<Value> convertFloorModOp(PatternRewriter& rewriter,
 llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
                                              Operation* op, Value input_value,
                                              StringAttr fused_activation_fn) {
-  RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+  ShapedType input_type = input_value.getType().dyn_cast<ShapedType>();
   if (!input_type) return llvm::None;
 
   bool input_is_qtype =
@@ -2864,11 +2860,10 @@ llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
 }
 
 // Lowers Dequantize to a sequence of TOSA dequantization ops.
-llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
-                                          Operation* op,
-                                          RankedTensorType output_type,
-                                          Value input_value, double scale,
-                                          int64_t zeropoint) {
+llvm::Optional<Value> convertDequantizeOp(
+    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
+    Value input_value, ArrayRef<float> scale, ArrayRef<float> zeropoint,
+    int64_t dim) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
@@ -2877,20 +2872,39 @@ llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
   if (!input_type.getElementType().isa<mlir::quant::QuantizedType>())
     return llvm::None;
 
-  Value zp_val =
-      getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(zeropoint));
+  Optional<Value> zp_val;
+  if (zeropoint.size() == 1) {
+    zp_val = getTosaConstTensorSingleF32(rewriter, op,
+                                         static_cast<float>(zeropoint[0]));
+  } else {
+    SmallVector<int64_t> shape;
+    shape.resize(input_type.getRank(), 1);
+    shape[dim] = zeropoint.size();
+    zp_val = getConstTensor(rewriter, op, zeropoint, shape);
+  }
+
+  Optional<Value> scale_val;
+  if (scale.size() == 1) {
+    scale_val =
+        getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(scale[0]));
+  } else {
+    SmallVector<int64_t> shape;
+    shape.resize(input_type.getRank(), 1);
+    shape[dim] = scale.size();
+    scale_val = getConstTensor(rewriter, op, scale, shape);
+  }
+
+  if (!zp_val || !scale_val) return llvm::None;
 
   auto op1_cast_in =
       rewriter.create<tosa::CastOp>(op->getLoc(), output_type, input_value);
 
   auto op2_sub_op1 = rewriter.create<tosa::SubOp>(
-      op->getLoc(), output_type, op1_cast_in.getResult(), zp_val);
+      op->getLoc(), output_type, op1_cast_in.getResult(), zp_val.getValue());
 
   return rewriter
-      .create<tosa::MulOp>(
-          op->getLoc(), output_type, op2_sub_op1.getResult(),
-          getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(scale)),
-          0)
+      .create<tosa::MulOp>(op->getLoc(), output_type, op2_sub_op1.getResult(),
+                           scale_val.getValue(), 0)
       .getResult();
 }
 

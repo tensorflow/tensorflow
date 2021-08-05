@@ -258,7 +258,8 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
     }
     // Release variables holding inputs.
     for (int i = 0; i < variables.size(); ++i) {
-      *variables[i].var()->tensor() = Tensor();
+      *variables[i].var()->tensor() =
+          Tensor(variables[i].var()->tensor()->dtype());
     }
     // Flush on-device program memory cache.
     TF_RETURN_IF_ERROR(

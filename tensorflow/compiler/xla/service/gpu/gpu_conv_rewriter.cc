@@ -41,7 +41,7 @@ HloInstruction* CreateGpuConv(const char* call_target, const Shape& shape,
                               HloInstruction* lhs, HloInstruction* rhs,
                               const Window& window,
                               const ConvolutionDimensionNumbers& dnums,
-                              int64 feature_group_count,
+                              int64_t feature_group_count,
                               const OpMetadata& metadata) {
   HloComputation* computation = lhs->parent();
 
@@ -68,16 +68,16 @@ HloInstruction* CreateGpuConv(const char* call_target, const Shape& shape,
 HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
     HloInstruction* conv) {
   CHECK_EQ(conv->feature_group_count(), 1);
-  int64 num_groups = conv->batch_group_count();
+  int64_t num_groups = conv->batch_group_count();
   auto dim_numbers = conv->convolution_dimension_numbers();
   auto lhs = conv->mutable_operand(0);
   auto rhs = conv->mutable_operand(1);
 
-  int64 input_batch_dimension = dim_numbers.input_batch_dimension();
+  int64_t input_batch_dimension = dim_numbers.input_batch_dimension();
 
   Shape output_shape = conv->shape();
-  int64 input_feature_dimension = dim_numbers.input_feature_dimension();
-  int64 input_feature = lhs->shape().dimensions(input_feature_dimension);
+  int64_t input_feature_dimension = dim_numbers.input_feature_dimension();
+  int64_t input_feature = lhs->shape().dimensions(input_feature_dimension);
 
   HloComputation* computation = lhs->parent();
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
@@ -242,7 +242,7 @@ MatchBackwardFilter(HloInstruction* conv) {
     WindowDimension* dim = backward_conv_window.add_dimensions();
     // The window size of the backward convolution equals the output size of the
     // forward convolution.
-    int64 filter_size = conv->shape().dimensions(output_spatial_dims[i]);
+    int64_t filter_size = conv->shape().dimensions(output_spatial_dims[i]);
     dim->set_size(filter_size);
     // The window stride equals the window dilation of the forward convolution.
     dim->set_stride(conv->window().dimensions(i).window_dilation());
@@ -252,9 +252,9 @@ MatchBackwardFilter(HloInstruction* conv) {
     dim->set_base_dilation(1);
     dim->set_window_dilation(1);
 
-    int64 input_size =
+    int64_t input_size =
         conv->operand(0)->shape().dimensions(input_spatial_dims[i]);
-    int64 output_size = conv->window().dimensions(i).size();
+    int64_t output_size = conv->window().dimensions(i).size();
     // Compute the range of the amount of valid high padding. We first compute
     // min_padding_high, the amount of padding on the right/bottom to ensure the
     // last patch ends at the border, i.e.,
@@ -265,10 +265,10 @@ MatchBackwardFilter(HloInstruction* conv) {
     // Because convolution ignores trailing incomplete windows, any amount of
     // padding high from min_padding_high to min_padding_high+stride-1
     // (max_padding_high) has the same effect.
-    int64 padded_input_size = filter_size + (output_size - 1) * dim->stride();
-    int64 min_padding_high =
+    int64_t padded_input_size = filter_size + (output_size - 1) * dim->stride();
+    int64_t min_padding_high =
         padded_input_size - input_size - dim->padding_low();
-    int64 max_padding_high = min_padding_high + dim->stride() - 1;
+    int64_t max_padding_high = min_padding_high + dim->stride() - 1;
     CHECK_GE(dim->padding_low(), 0);
     // In practice, since cuDNN convolution only supports even padding, we make
     // the amount of high padding the same as the amount of low padding as long
@@ -578,16 +578,16 @@ MatchBackwardInput(HloInstruction* conv) {
   // dimensions, we need to divide the new 'kernel_input_feature_dimension' by
   // 'feature_group_count' and multiply the new
   // 'kernel_output_feature_dimension' by 'feature_group_count'.
-  int64 input_feature_dimension = dnums.kernel_input_feature_dimension();
-  int64 output_feature_dimension = dnums.kernel_output_feature_dimension();
+  int64_t input_feature_dimension = dnums.kernel_input_feature_dimension();
+  int64_t output_feature_dimension = dnums.kernel_output_feature_dimension();
   // The following code assumes that input_feature_dimension and
   // output_feature_dimension are adjacent.
   if (std::abs(input_feature_dimension - output_feature_dimension) != 1) {
     return no_match_result;
   }
 
-  int64 input_features = rhs->shape().dimensions(input_feature_dimension);
-  int64 output_features = rhs->shape().dimensions(output_feature_dimension);
+  int64_t input_features = rhs->shape().dimensions(input_feature_dimension);
+  int64_t output_features = rhs->shape().dimensions(output_feature_dimension);
 
   // Reshape [H, W, ..., in_depth, out_depth / G] -> [H, W, ..., G, in_depth/G,
   // out_depth / G]

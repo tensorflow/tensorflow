@@ -116,7 +116,7 @@ class HloLiveRange {
   // schedule and store it in the `instruction_schedule` and
   // 'flattened_instruction_sequence`. The end of each computation is tracked in
   // `computation_end_time`.
-  int64 FlattenSchedule(const HloComputation& computation, int64 start_time);
+  int64 FlattenSchedule(const HloComputation& computation, int64_t start_time);
 
   // Based on the flattened schedule, calculate the start and end of each
   // buffer.

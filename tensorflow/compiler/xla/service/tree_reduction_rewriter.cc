@@ -38,7 +38,7 @@ namespace xla {
 
 class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit ReductionRewriterVisitor(int64 reduce_window_size)
+  explicit ReductionRewriterVisitor(int64_t reduce_window_size)
       : reduce_window_size_(reduce_window_size) {}
 
   Status HandleReduce(HloInstruction *hlo) override {
@@ -52,7 +52,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     auto reduced_dimensions = hlo->dimensions();
     std::vector<int64> window_dimensions;
     std::vector<int64> window_strides;
-    for (int64 dim = 0; dim < input_shape.rank(); dim++) {
+    for (int64_t dim = 0; dim < input_shape.rank(); dim++) {
       if (!absl::c_linear_search(hlo->dimensions(), dim)) {
         window_dimensions.push_back(1);
         window_strides.push_back(1);

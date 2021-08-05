@@ -65,9 +65,9 @@ class SparseAddGradOp : public OpKernel {
                                 sum_indices->dim_size(0)));
 
     const int num_dims = a_indices->dim_size(1);
-    const int64 a_nnz = a_indices->dim_size(0);
-    const int64 b_nnz = b_indices->dim_size(0);
-    const int64 sum_nnz = backprop_val_grad->NumElements();
+    const int64_t a_nnz = a_indices->dim_size(0);
+    const int64_t b_nnz = b_indices->dim_size(0);
+    const int64_t sum_nnz = backprop_val_grad->NumElements();
 
     const auto a_indices_mat = a_indices->matrix<int64>();
     const auto b_indices_mat = b_indices->matrix<int64>();
@@ -102,7 +102,7 @@ class SparseAddGradOp : public OpKernel {
 
     // Set-intersect the indices; fill in grads for positions in the
     // intersection.
-    int64 i = 0, j = 0, k = 0;
+    int64_t i = 0, j = 0, k = 0;
     bool a_idx_geq, b_idx_geq;
     while (i < a_nnz && j < b_nnz && k < sum_nnz) {
       a_idx_geq = b_idx_geq = true;

@@ -82,8 +82,9 @@ class TFCode : public TFMultiShow {
               const Options& opts, string* display_str,
               MultiGraphNodeProto* proto, std::vector<uint64>* call_ids);
 
-  string FormatNode(CodeNode* node, const Options& opts, int64 indent) const;
-  string FormatNodeMemory(CodeNode* node, int64 bytes, int64 total_bytes) const;
+  string FormatNode(CodeNode* node, const Options& opts, int64_t indent) const;
+  string FormatNodeMemory(CodeNode* node, int64_t bytes,
+                          int64_t total_bytes) const;
 
   std::unique_ptr<CodeNode> root_;
   std::unique_ptr<TFMultiGraphNode> graph_root_;

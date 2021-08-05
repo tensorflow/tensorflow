@@ -29,7 +29,7 @@ def make_tensor_scatter_update_tests(options):
   """Make a set of tests to do tensor_scatter_update."""
 
   test_parameters = [{
-      "input_dtype": [tf.float32, tf.int32],
+      "input_dtype": [tf.float32, tf.int32, tf.int64],
       "input_shape": [[14], [2, 4, 7]],
       "updates_count": [1, 3, 5],
   }]

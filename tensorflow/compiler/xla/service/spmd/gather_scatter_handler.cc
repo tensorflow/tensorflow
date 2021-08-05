@@ -37,8 +37,8 @@ bool GatherScatterOperandPartitionedOnlyOnTrivialSliceDims(
   if (operand.sharding().IsTileMaximal()) {
     return false;
   }
-  int64 trivial_slice_dims_partitions = 1;
-  for (int64 dim : index_map) {
+  int64_t trivial_slice_dims_partitions = 1;
+  for (int64_t dim : index_map) {
     if (slice_size[dim] == 1) {
       trivial_slice_dims_partitions *=
           operand.sharding().tile_assignment().dim(dim);
@@ -53,15 +53,15 @@ std::pair<HloInstruction*, HloInstruction*>
 IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
     const PartitionedHlo& operand, const PartitionedHlo& replicated_indices,
     HloInstruction* partition_id, absl::Span<const int64> index_map,
-    int64 index_vector_dim, SpmdBuilder* b) {
+    int64_t index_vector_dim, SpmdBuilder* b) {
   auto operand_offsets = MakePartitionOffsets(
       operand.base_shape(), operand.sharding(), partition_id, b);
   // Find the per-dimension index bounds.
   std::vector<HloInstruction*> min_indices;
   std::vector<HloInstruction*> max_indices;
-  for (int64 i = 0; i < index_map.size(); ++i) {
-    int64 dim = index_map[i];
-    int64 partitions = operand.sharding().tile_assignment().dim(dim);
+  for (int64_t i = 0; i < index_map.size(); ++i) {
+    int64_t dim = index_map[i];
+    int64_t partitions = operand.sharding().tile_assignment().dim(dim);
     if (partitions == 1) {
       min_indices.push_back(CreateR0WithType<int32>(
           replicated_indices.base_shape().element_type(), 0, b));
@@ -91,7 +91,7 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
   if (index_vector_dim < replicated_indices.base_shape().rank()) {
     // The index vector is an R1, we need to reshape individual bounds to
     // [1], and concat them if there are more than one.
-    for (int64 i = 0; i < min_indices.size(); ++i) {
+    for (int64_t i = 0; i < min_indices.size(); ++i) {
       min_indices[i] = b->AddInstruction(HloInstruction::CreateReshape(
           ShapeUtil::MakeShape(min_indices[i]->shape().element_type(), {1}),
           min_indices[i]));
@@ -99,7 +99,7 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
           ShapeUtil::MakeShape(max_indices[i]->shape().element_type(), {1}),
           max_indices[i]));
     }
-    int64 slice_dims = max_indices.size();
+    int64_t slice_dims = max_indices.size();
     if (slice_dims > 1) {
       min_indices[0] = b->AddInstruction(HloInstruction::CreateConcatenate(
           ShapeUtil::MakeShape(min_indices[0]->shape().element_type(),
@@ -153,8 +153,8 @@ StatusOr<HloInstruction*> PartitionIndexOnlyPartition(
       std::vector<int64> output_dim_to_index_dim(pgather->shape().rank(), -1);
       std::vector<int64> index_dim_to_output_dim(indices.base_shape().rank(),
                                                  -1);
-      for (int64 i = 0; i < batch_dims.size(); ++i) {
-        int64 indices_batch_dim = i < dnums.index_vector_dim() ? i : i + 1;
+      for (int64_t i = 0; i < batch_dims.size(); ++i) {
+        int64_t indices_batch_dim = i < dnums.index_vector_dim() ? i : i + 1;
         output_dim_to_index_dim[batch_dims[i]] = indices_batch_dim;
         index_dim_to_output_dim[indices_batch_dim] = batch_dims[i];
       }
@@ -191,7 +191,7 @@ StatusOr<HloInstruction*> ParititonPassthroughOperand(
     auto pshape = MakePartitionedShape(output_shape, *maybe_passthrough);
     std::vector<int64> pslice_sizes(gather->gather_slice_sizes().begin(),
                                     gather->gather_slice_sizes().end());
-    for (int64 i = 0; i < pslice_sizes.size(); ++i) {
+    for (int64_t i = 0; i < pslice_sizes.size(); ++i) {
       if (operand.sharding().tile_assignment().dim(i) > 1) {
         pslice_sizes[i] = operand.hlo()->shape().dimensions(i);
       }
@@ -259,7 +259,7 @@ StatusOr<HloInstruction*> ParititonTrivialIndexedOperandDimension(
             indices.hlo(), indices_max, ComparisonDirection::kGt))));
     if (dnums.index_vector_dim() < indices.base_shape().rank()) {
       std::vector<int64> reduced_filter_dims;
-      for (int64 i = 0; i < filter->shape().rank(); ++i) {
+      for (int64_t i = 0; i < filter->shape().rank(); ++i) {
         if (i != dnums.index_vector_dim()) {
           reduced_filter_dims.push_back(filter->shape().dimensions(i));
         }
@@ -270,7 +270,7 @@ StatusOr<HloInstruction*> ParititonTrivialIndexedOperandDimension(
           MakeBinaryAdd(PRED, indices.state().module)));
     }
     std::vector<int64> batch_dims;
-    for (int64 i = 0; i < pgather->shape().rank(); ++i) {
+    for (int64_t i = 0; i < pgather->shape().rank(); ++i) {
       if (!absl::c_linear_search(dnums.offset_dims(), i)) {
         batch_dims.push_back(i);
       }
@@ -530,8 +530,8 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   auto indices = GetPartitionedHlo(scatter->operand(1));
   auto updates = GetPartitionedHlo(scatter->operand(2));
   std::vector<int64> slice_size(operand.base_shape().rank(), 1);
-  int64 num_update_window_dims = 0;
-  for (int64 i = 0; i < operand.base_shape().rank(); ++i) {
+  int64_t num_update_window_dims = 0;
+  for (int64_t i = 0; i < operand.base_shape().rank(); ++i) {
     if (absl::c_linear_search(dnums.inserted_window_dims(), i)) {
       continue;
     }
@@ -542,7 +542,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       dnums.scatter_dims_to_operand_dims().begin(),
       dnums.scatter_dims_to_operand_dims().end());
   std::vector<int64> update_scatter_dims;
-  for (int64 i = 0; i < updates.base_shape().rank(); ++i) {
+  for (int64_t i = 0; i < updates.base_shape().rank(); ++i) {
     if (!absl::c_linear_search(dnums.update_window_dims(), i)) {
       update_scatter_dims.push_back(i);
     }
@@ -583,8 +583,8 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
                                                  -1);
       std::vector<int64> index_dim_to_update_dim(indices.base_shape().rank(),
                                                  -1);
-      for (int64 i = 0; i < update_scatter_dims.size(); ++i) {
-        int64 indices_scatter_dim = i < dnums.index_vector_dim() ? i : i + 1;
+      for (int64_t i = 0; i < update_scatter_dims.size(); ++i) {
+        int64_t indices_scatter_dim = i < dnums.index_vector_dim() ? i : i + 1;
         update_dim_to_index_dim[update_scatter_dims[i]] = indices_scatter_dim;
         index_dim_to_update_dim[indices_scatter_dim] = update_scatter_dims[i];
       }
@@ -696,7 +696,7 @@ Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
   auto operand = GetPartitionedHlo(gather->operand(0));
   auto indices = GetPartitionedHlo(gather->operand(1));
   std::vector<int64> batch_dims;
-  for (int64 i = 0; i < gather->shape().rank(); ++i) {
+  for (int64_t i = 0; i < gather->shape().rank(); ++i) {
     if (!absl::c_linear_search(dnums.offset_dims(), i)) {
       batch_dims.push_back(i);
     }

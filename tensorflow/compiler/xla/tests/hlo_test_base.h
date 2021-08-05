@@ -85,12 +85,12 @@ class HloTestBase : public ManifestCheckingTest {
   // Like CreateNewUnverifiedModule, except the HloModule returned here runs the
   // HLO verifier on destruction.
   std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
-      const string& name = TestName(), int64 replica_count = 1);
+      const string& name = TestName(), int64_t replica_count = 1);
 
   // Parses the given string and returns module as a VerifiedHloModule.
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text, int64 replica_count = 1,
-      int64 num_partitions = 1);
+      absl::string_view hlo_text, int64_t replica_count = 1,
+      int64_t num_partitions = 1);
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
       absl::string_view hlo_text, const HloModuleConfig& config);
 
@@ -136,8 +136,8 @@ class HloTestBase : public ManifestCheckingTest {
   virtual DebugOptions GetDebugOptionsForTest();
 
   // Gets an HloModuleConfig with options appropriate for tests.
-  HloModuleConfig GetModuleConfigForTest(int64 replica_count = 1,
-                                         int64 num_partitions = 1) {
+  HloModuleConfig GetModuleConfigForTest(int64_t replica_count = 1,
+                                         int64_t num_partitions = 1) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     config.set_replica_count(replica_count);
@@ -164,20 +164,20 @@ class HloTestBase : public ManifestCheckingTest {
   // Executable::ExecuteOnStreams.
   StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-      int64 num_replicas, bool use_threads, bool run_hlo_passes = false);
+      int64_t num_replicas, bool use_threads, bool run_hlo_passes = false);
 
   // Same as above, but uses specified device assignment.
   StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-      int64 num_replicas, DeviceAssignment* device_assignment,
+      int64_t num_replicas, DeviceAssignment* device_assignment,
       bool run_hlo_passes, bool use_threads);
 
   // Same as above, but allows passing different programs for replicas.
   StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::function<Executable*(int64)> executable_provider,
-      std::function<int64(int64)> argument_count_provider,
-      std::function<const Literal*(int64, int64)> argument_provider,
-      int64 num_replicas, bool run_hlo_passes);
+      std::function<Executable*(int64_t)> executable_provider,
+      std::function<int64(int64_t)> argument_count_provider,
+      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      int64_t num_replicas, bool run_hlo_passes);
 
   // Executes the given hlo module on two backends and compares results.
   //
@@ -240,7 +240,7 @@ class HloTestBase : public ManifestCheckingTest {
   // Executes an hlo module with fake inputs on multiple replicas.
   ::testing::AssertionResult RunReplicated(
       const absl::string_view hlo_string, bool run_hlo_passes = true,
-      int64 num_replicas = 1, string backend_config = "") TF_MUST_USE_RESULT;
+      int64_t num_replicas = 1, string backend_config = "") TF_MUST_USE_RESULT;
 
   // If assert_determinism is true, the assertion will fail unless all runs
   // produce exactly the same output.
@@ -265,7 +265,7 @@ class HloTestBase : public ManifestCheckingTest {
   // Convenience method to force the layout of a given parameter in a module.
   // The layout of parameter number 'param_no' in the 'module' is set to
   // 'layout'.
-  void ForceParameterLayout(HloModule* module, int64 param_no,
+  void ForceParameterLayout(HloModule* module, int64_t param_no,
                             const Layout& layout) {
     ASSERT_LT(param_no,
               module->mutable_entry_computation_layout()->parameter_count());

@@ -368,14 +368,14 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
     _, graph = _enclosing_tpu_context_and_graph()
     with graph.as_default():
-      # pylint: disable=protected-access
-      saved_context = graph._get_control_flow_context()
-      graph._set_control_flow_context(self.outer_context)
       # If replicated_vars are variables, get the handles. Note that this can be
       # done inside TPUReplicateContext because replicated_vars.handle may
       # create new ops.
       if isinstance(replicated_vars[0], variables.Variable):
         replicated_vars = [v.handle for v in replicated_vars]
+      # pylint: disable=protected-access
+      saved_context = graph._get_control_flow_context()
+      graph._set_control_flow_context(self.outer_context)
       handle = tpu_ops.tpu_replicated_input(replicated_vars,
                                             name=name + "/handle",
                                             is_mirrored_variable=is_mirrored,

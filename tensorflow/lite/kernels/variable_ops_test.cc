@@ -18,32 +18,24 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 
 namespace tflite {
-
-// Forward declaration for op kernels.
-namespace ops {
-namespace custom {
-
-TfLiteRegistration* Register_ASSIGN_VARIABLE();
-TfLiteRegistration* Register_READ_VARIABLE();
-TfLiteRegistration* Register_VAR_HANDLE();
-
-}  // namespace custom
-}  // namespace ops
-
 namespace {
+const char kContainer[] = "c";
+const char kSharedName[] = "a";
 
 class VariableOpsTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    assign_registration_ = ::tflite::ops::custom::Register_ASSIGN_VARIABLE();
+    assign_registration_ = ::tflite::ops::builtin::Register_ASSIGN_VARIABLE();
     ASSERT_NE(assign_registration_, nullptr);
-    read_registration_ = ::tflite::ops::custom::Register_READ_VARIABLE();
+    read_registration_ = ::tflite::ops::builtin::Register_READ_VARIABLE();
     ASSERT_NE(read_registration_, nullptr);
-    var_handle_registration_ = ::tflite::ops::custom::Register_VAR_HANDLE();
+    var_handle_registration_ = ::tflite::ops::builtin::Register_VAR_HANDLE();
     ASSERT_NE(var_handle_registration_, nullptr);
 
     ConstructGraph();
@@ -59,12 +51,7 @@ class VariableOpsTest : public ::testing::Test {
     //   %1 = var_handle()
     //   %2 = read(%1)
 
-    flexbuffers::Builder fbb;
-    fbb.Map([&]() {
-      fbb.String("shared_name", "a");
-      fbb.String("container", "c");
-    });
-    fbb.Finish();
+    TfLiteVarHandleParams* var_handle_params = GetVarHandleParams();
 
     int first_new_tensor_index;
     ASSERT_EQ(interpreter_->AddTensors(3, &first_new_tensor_index), kTfLiteOk);
@@ -77,12 +64,19 @@ class VariableOpsTest : public ::testing::Test {
     interpreter_->SetTensorParametersReadWrite(2, kTfLiteFloat32, "", 0,
                                                nullptr, {}, false);
     int node_index;
-    auto data = fbb.GetBuffer();
-    interpreter_->AddNodeWithParameters(
-        {}, {1}, reinterpret_cast<char*>(data.data()), data.size(), nullptr,
-        var_handle_registration_, &node_index);
+    interpreter_->AddNodeWithParameters({}, {1}, nullptr, 0, var_handle_params,
+                                        var_handle_registration_, &node_index);
     interpreter_->AddNodeWithParameters({1}, {2}, nullptr, 0, nullptr,
                                         read_registration_, &node_index);
+  }
+
+  TfLiteVarHandleParams* GetVarHandleParams() {
+    TfLiteVarHandleParams* var_handle_params =
+        reinterpret_cast<TfLiteVarHandleParams*>(
+            malloc(sizeof(TfLiteVarHandleParams)));
+    var_handle_params->container = kContainer;
+    var_handle_params->shared_name = kSharedName;
+    return var_handle_params;
   }
 
   void ConstructGraph() {
@@ -94,13 +88,6 @@ class VariableOpsTest : public ::testing::Test {
     //   variable_assign(%1, %0)
     //   %2 = read(%1)
 
-    flexbuffers::Builder fbb;
-    fbb.Map([&]() {
-      fbb.String("shared_name", "a");
-      fbb.String("container", "c");
-    });
-    fbb.Finish();
-
     int first_new_tensor_index;
     ASSERT_EQ(interpreter_->AddTensors(3, &first_new_tensor_index), kTfLiteOk);
     ASSERT_EQ(interpreter_->SetInputs({0}), kTfLiteOk);
@@ -112,10 +99,10 @@ class VariableOpsTest : public ::testing::Test {
     interpreter_->SetTensorParametersReadWrite(2, kTfLiteFloat32, "", 0,
                                                nullptr, {}, false);
     int node_index;
-    auto data = fbb.GetBuffer();
-    interpreter_->AddNodeWithParameters(
-        {}, {1}, reinterpret_cast<char*>(data.data()), data.size(), nullptr,
-        var_handle_registration_, &node_index);
+
+    TfLiteVarHandleParams* var_handle_params = GetVarHandleParams();
+    interpreter_->AddNodeWithParameters({}, {1}, nullptr, 0, var_handle_params,
+                                        var_handle_registration_, &node_index);
     interpreter_->AddNodeWithParameters({1, 0}, {}, nullptr, 0, nullptr,
                                         assign_registration_, &node_index);
     interpreter_->AddNodeWithParameters({1}, {2}, nullptr, 0, nullptr,

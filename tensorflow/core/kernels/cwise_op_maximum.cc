@@ -24,9 +24,6 @@ REGISTER8(BinaryOp, CPU, "Maximum", functor::maximum, int8, uint8, int16,
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER6(BinaryOp, GPU, "Maximum", functor::maximum, float, Eigen::half,
           double, uint8, int16, int64);
-#else
-// TODO(b/172804967): We do not generate unsigned kernels for GPU via mlir.
-REGISTER(BinaryOp, GPU, "Maximum", functor::maximum, uint8);
 #endif
 
 // A special GPU kernel for int32.
@@ -40,5 +37,12 @@ REGISTER_KERNEL_BUILDER(Name("Maximum")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::maximum<int32>>);
 #endif
+REGISTER_KERNEL_BUILDER(Name("Maximum")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::maximum<int32>>);
 
 }  // namespace tensorflow

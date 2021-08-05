@@ -34,7 +34,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profile_utils {
 
-/* static */ constexpr int64 CpuUtils::INVALID_FREQUENCY;
+/* static */ constexpr int64_t CpuUtils::INVALID_FREQUENCY;
 
 static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
 
@@ -47,7 +47,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
 }
 #else
 /* static */ int64 CpuUtils::GetCycleCounterFrequency() {
-  static const int64 cpu_frequency = GetCycleCounterFrequencyImpl();
+  static const int64_t cpu_frequency = GetCycleCounterFrequencyImpl();
   return cpu_frequency;
 }
 #endif
@@ -71,7 +71,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
 }
 
 /* static */ std::chrono::duration<double> CpuUtils::ConvertClockCycleToTime(
-    const int64 clock_cycle) {
+    const int64_t clock_cycle) {
   return std::chrono::duration<double>(static_cast<double>(clock_cycle) /
                                        GetCycleCounterFrequency());
 }
@@ -109,7 +109,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
         LOG(WARNING) << "Failed to get CPU frequency: " << freq_ghz << " GHz";
         return INVALID_FREQUENCY;
       }
-      const int64 freq_n =
+      const int64_t freq_n =
           static_cast<int64>(freq_ghz * 1000.0 * 1000.0 * 1000.0);
       VLOG(1) << "CPU Frequency: " << freq_n << " Hz";
       return freq_n;

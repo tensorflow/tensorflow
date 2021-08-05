@@ -25,7 +25,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.saved_model import signature_def_utils
 
 
-class ExportOutput(object):
+class ExportOutput:
   """Represents an output of a model that can be served.
 
   These typically correspond to model heads.

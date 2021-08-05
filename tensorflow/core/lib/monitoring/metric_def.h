@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
 
 #include <array>
+#include <functional>
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/framework/summary.pb.h"
@@ -60,6 +62,11 @@ inline ValueType GetValueType<int64>() {
 }
 
 template <>
+inline ValueType GetValueType<std::function<int64()>>() {
+  return ValueType::kInt64;
+}
+
+template <>
 inline ValueType GetValueType<HistogramProto>() {
   return ValueType::kHistogram;
 }
@@ -70,12 +77,22 @@ inline ValueType GetValueType<Percentiles>() {
 }
 
 template <>
-inline ValueType GetValueType<string>() {
+inline ValueType GetValueType<std::string>() {
+  return ValueType::kString;
+}
+
+template <>
+inline ValueType GetValueType<std::function<std::string()>>() {
   return ValueType::kString;
 }
 
 template <>
 inline ValueType GetValueType<bool>() {
+  return ValueType::kBool;
+}
+
+template <>
+inline ValueType GetValueType<std::function<bool()>>() {
   return ValueType::kBool;
 }
 

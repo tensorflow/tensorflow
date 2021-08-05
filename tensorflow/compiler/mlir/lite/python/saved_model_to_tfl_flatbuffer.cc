@@ -161,12 +161,13 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
 
   std::vector<std::string> custom_opdefs(toco_flags.custom_opdefs().begin(),
                                          toco_flags.custom_opdefs().end());
-  std::unique_ptr<tensorflow::SavedModelBundle> bundle;
+  auto bundle = std::make_unique<tensorflow::SavedModelBundle>();
   TF_ASSIGN_OR_RETURN(
-      auto module, ImportSavedModel(model_flags.saved_model_dir(),
-                                    model_flags.saved_model_version(), tags,
-                                    absl::MakeSpan(custom_opdefs),
-                                    exported_names, specs, &context, &bundle));
+      auto module,
+      ImportSavedModel(
+          model_flags.saved_model_dir(), model_flags.saved_model_version(),
+          tags, absl::MakeSpan(custom_opdefs), exported_names, specs,
+          !toco_flags.enable_tflite_resource_variables(), &context, &bundle));
 
   if (!model_flags.input_arrays().empty() ||
       !model_flags.output_arrays().empty()) {
@@ -185,6 +186,8 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   if (toco_flags.inference_type() == toco::IODataType::QUANTIZED_INT16) {
     pass_config.unfold_batch_matmul = false;
   }
+  pass_config.unfold_large_splat_constant =
+      toco_flags.unfold_large_splat_constant();
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(

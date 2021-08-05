@@ -220,6 +220,45 @@ def checkpoints_iterator(checkpoint_dir,
 def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   """Replaces `tf.Variable` initializers so they load from a checkpoint file.
 
+  @compatibility(TF2)
+  `tf.compat.v1.train.init_from_checkpoint` is not recommended for restoring
+  variable values in TF2.
+
+  To restore checkpoints in TF2, please use
+  `tf.keras.Model.load_weights` or `tf.train.Checkpoint.restore`. These APIs use
+  use an [object-based method of checkpointing]
+  (https://www.tensorflow.org/guide/checkpoint#loading_mechanics), while
+  `tf.compat.v1.init_from_checkpoint` relies on a more-fragile variable-name
+  based method of checkpointing. There is no object-based equivalent of
+  `init_from_checkpoint` in TF2.
+
+  Please re-write your checkpoints immediately using the object-based APIs,
+  see [migration guide]
+  (https://www.tensorflow.org/guide/migrate#checkpoint_compatibility) for more
+  details.
+
+  You can load a name-based checkpoint written by `tf.compat.v1.train.Saver`
+  using `tf.train.Checkpoint.restore` or `tf.keras.Model.load_weights`. However,
+  you may have to change the names of the variables in your model to match the
+  variable names in the name-based checkpoint, which can be viewed with
+  `tf.train.list_variables(path)`.
+
+  Another option is to create an `assignment_map` that maps the name of the
+  variables in the name-based checkpoint to the variables in your model, eg:
+  ```
+  {
+      'sequential/dense/bias': model.variables[0],
+      'sequential/dense/kernel': model.variables[1]
+  }
+  ```
+  and use `tf.compat.v1.train.init_from_checkpoint(path, assignment_map)` to
+  restore the name-based checkpoint.
+
+  After restoring, re-encode your checkpoint using `tf.train.Checkpoint.save`
+  or `tf.keras.Model.save_weights`.
+
+  @end_compatibility
+
   Values are not loaded immediately, but when the initializer is run
   (typically by running a `tf.compat.v1.global_variables_initializer` op).
 
@@ -270,7 +309,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
                            partitioner=lambda shape, dtype: [5, 1])
 
   # Initialize all variables in `new_scope_1` from `old_scope_1`.
-  init_from_checkpoint('/tmp/model.ckpt', {'old_scope_1/': 'new_scope_1'})
+  init_from_checkpoint('/tmp/model.ckpt', {'old_scope_1/': 'new_scope_1/'})
 
   # Use names to specify which variables to initialize from checkpoint.
   init_from_checkpoint('/tmp/model.ckpt',

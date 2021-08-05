@@ -53,6 +53,8 @@ int main(int argc, char** argv) {
   }
   void* sym = dlsym(lib, argv[2]);
   if (!sym) {
+    printf("dlsym failed for %s on library %s with error: %s\n", argv[2],
+           argv[1], dlerror());
     return SYMBOL_LOOKUP_FAILED;
   }
   int (*f)(int argc, char** argv) = (int (*)(int, char**))sym;

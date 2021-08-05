@@ -7,7 +7,9 @@ labels: 'type:others'
 
 This template is for miscellaneous issues not covered by the other issue categories.
 
-For questions on how to work with TensorFlow, or support for problems that are not verified bugs in TensorFlow, please go to [StackOverflow](https://stackoverflow.com/questions/tagged/tensorflow).
+For questions on how to work with TensorFlow, or support for problems that are
+not verified bugs in TensorFlow, please go to
+[Discourse](https://discuss.tensorflow.org/).
 
 If you are reporting a vulnerability, please use the [dedicated reporting process](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md).
 

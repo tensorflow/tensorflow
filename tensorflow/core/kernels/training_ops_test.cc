@@ -86,7 +86,7 @@ static Node* Scalar(Graph* g, float val) {
   return test::graph::Constant(g, data);
 }
 
-static void SGD(int32 n, Graph** init_g, Graph** train_g) {
+static void SGD(int32_t n, Graph** init_g, Graph** train_g) {
   {
     Graph* g = new Graph(OpRegistry::Global());
     auto var = Var(g, n);
@@ -112,13 +112,13 @@ static void BM_SGD(::testing::benchmark::State& state) {
   test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
                   /*old_benchmark_api*/ false)
       .Run(state);
-  const int64 tot = static_cast<int64>(state.iterations()) * params;
+  const int64_t tot = static_cast<int64>(state.iterations()) * params;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }
 BENCHMARK(BM_SGD)->Arg(128 << 10)->Arg(256 << 10);
 
-static void Adagrad(int32 n, Graph** init_g, Graph** train_g) {
+static void Adagrad(int32_t n, Graph** init_g, Graph** train_g) {
   {
     Graph* g = new Graph(OpRegistry::Global());
     auto var = Var(g, n);
@@ -148,13 +148,14 @@ static void BM_Adagrad(::testing::benchmark::State& state) {
   test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
                   /*old_benchmark_api*/ false)
       .Run(state);
-  const int64 tot = static_cast<int64>(state.iterations()) * params;
+  const int64_t tot = static_cast<int64>(state.iterations()) * params;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }
 BENCHMARK(BM_Adagrad)->Arg(128 << 10)->Arg(256 << 10);
 
-static void SparseAdagrad(int32 m, int32 n, Graph** init_g, Graph** train_g) {
+static void SparseAdagrad(int32_t m, int32_t n, Graph** init_g,
+                          Graph** train_g) {
   {
     Graph* g = new Graph(OpRegistry::Global());
     auto var = Var(g, m, n);
@@ -186,7 +187,7 @@ static void BM_SparseAdagrad(::testing::benchmark::State& state) {
   test::Benchmark("cpu", train, GetMultiThreadedOptions(), init, nullptr, "",
                   /*old_benchmark_api*/ false)
       .Run(state);
-  const int64 tot = static_cast<int64>(state.iterations()) * m * n;
+  const int64_t tot = static_cast<int64>(state.iterations()) * m * n;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }
@@ -198,7 +199,7 @@ BENCHMARK(BM_SparseAdagrad)
     ->ArgPair(128, 32 << 10)
     ->ArgPair(128, 128 << 10);
 
-static void Momentum(int32 n, Graph** init_g, Graph** train_g) {
+static void Momentum(int32_t n, Graph** init_g, Graph** train_g) {
   TensorShape shape({n});
   {
     Graph* g = new Graph(OpRegistry::Global());
@@ -230,13 +231,13 @@ static void BM_Momentum(::testing::benchmark::State& state) {
   test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
                   /*old_benchmark_api*/ false)
       .Run(state);
-  const int64 tot = static_cast<int64>(state.iterations()) * params;
+  const int64_t tot = static_cast<int64>(state.iterations()) * params;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }
 BENCHMARK(BM_Momentum)->Arg(128 << 10)->Arg(256 << 10);
 
-static void Adam(int32 n, Graph** init_g, Graph** train_g) {
+static void Adam(int32_t n, Graph** init_g, Graph** train_g) {
   TensorShape shape({n});
   {
     Graph* g = new Graph(OpRegistry::Global());
@@ -285,14 +286,14 @@ static void BM_Adam(::testing::benchmark::State& state) {
                     /*old_benchmark_api*/ false)
         .Run(state);
   }
-  const int64 tot = static_cast<int64>(state.iterations()) * params;
+  const int64_t tot = static_cast<int64>(state.iterations()) * params;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }
 BENCHMARK(BM_Adam)->ArgPair(128 << 10, 0)->ArgPair(256 << 10, 0);
 BENCHMARK(BM_Adam)->ArgPair(256 << 5, 1)->ArgPair(256 << 16, 1);
 
-static void RMSProp(int32 n, Graph** init_g, Graph** train_g) {
+static void RMSProp(int32_t n, Graph** init_g, Graph** train_g) {
   TensorShape shape({n});
   {
     Graph* g = new Graph(OpRegistry::Global());
@@ -330,13 +331,13 @@ static void BM_RMSProp(::testing::benchmark::State& state) {
   test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
                   /*old_benhcmark_api*/ false)
       .Run(state);
-  const int64 tot = static_cast<int64>(state.iterations()) * params;
+  const int64_t tot = static_cast<int64>(state.iterations()) * params;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }
 BENCHMARK(BM_RMSProp)->Arg(128 << 10)->Arg(256 << 10);
 
-static void AddSign(int32 n, Graph** init_g, Graph** train_g) {
+static void AddSign(int32_t n, Graph** init_g, Graph** train_g) {
   TensorShape shape({n});
   {
     Graph* g = new Graph(OpRegistry::Global());
@@ -371,13 +372,13 @@ static void BM_AddSign(::testing::benchmark::State& state) {
   test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
                   /*old_benhcmark_api*/ false)
       .Run(state);
-  const int64 tot = static_cast<int64>(state.iterations()) * params;
+  const int64_t tot = static_cast<int64>(state.iterations()) * params;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }
 BENCHMARK(BM_AddSign)->Arg(128 << 10)->Arg(256 << 10);
 
-static void PowerSign(int32 n, Graph** init_g, Graph** train_g) {
+static void PowerSign(int32_t n, Graph** init_g, Graph** train_g) {
   TensorShape shape({n});
   {
     Graph* g = new Graph(OpRegistry::Global());
@@ -413,7 +414,7 @@ static void BM_PowerSign(::testing::benchmark::State& state) {
                   /*old_benhcmark_api*/ false)
       .Run(state);
 
-  const int64 tot = static_cast<int64>(state.iterations()) * params;
+  const int64_t tot = static_cast<int64>(state.iterations()) * params;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }

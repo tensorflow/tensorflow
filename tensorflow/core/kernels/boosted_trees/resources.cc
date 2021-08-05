@@ -34,8 +34,8 @@ string BoostedTreesEnsembleResource::DebugString() const {
                          "]");
 }
 
-bool BoostedTreesEnsembleResource::InitFromSerialized(const string& serialized,
-                                                      const int64 stamp_token) {
+bool BoostedTreesEnsembleResource::InitFromSerialized(
+    const string& serialized, const int64_t stamp_token) {
   CHECK_EQ(stamp(), -1) << "Must Reset before Init.";
   if (ParseProtoUnlimited(tree_ensemble_, serialized)) {
     set_stamp(stamp_token);
@@ -53,7 +53,7 @@ int32 BoostedTreesEnsembleResource::num_trees() const {
 }
 
 int32 BoostedTreesEnsembleResource::next_node(
-    const int32 tree_id, const int32 node_id, const int32 index_in_batch,
+    const int32_t tree_id, const int32_t node_id, const int32_t index_in_batch,
     const std::vector<TTypes<int32>::ConstMatrix>& bucketized_features) const {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   DCHECK_LT(node_id, tree_ensemble_->trees(tree_id).nodes_size());
@@ -83,7 +83,7 @@ int32 BoostedTreesEnsembleResource::next_node(
 }
 
 std::vector<float> BoostedTreesEnsembleResource::node_value(
-    const int32 tree_id, const int32 node_id) const {
+    const int32_t tree_id, const int32_t node_id) const {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   DCHECK_LT(node_id, tree_ensemble_->trees(tree_id).nodes_size());
   const auto& node = tree_ensemble_->trees(tree_id).nodes(node_id);
@@ -118,8 +118,8 @@ std::vector<float> BoostedTreesEnsembleResource::node_value(
   }
 }
 
-void BoostedTreesEnsembleResource::set_node_value(const int32 tree_id,
-                                                  const int32 node_id,
+void BoostedTreesEnsembleResource::set_node_value(const int32_t tree_id,
+                                                  const int32_t node_id,
                                                   const float logits) {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   DCHECK_LT(node_id, tree_ensemble_->trees(tree_id).nodes_size());
@@ -129,20 +129,20 @@ void BoostedTreesEnsembleResource::set_node_value(const int32 tree_id,
 }
 
 int32 BoostedTreesEnsembleResource::GetNumLayersGrown(
-    const int32 tree_id) const {
+    const int32_t tree_id) const {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   return tree_ensemble_->tree_metadata(tree_id).num_layers_grown();
 }
 
 void BoostedTreesEnsembleResource::SetNumLayersGrown(
-    const int32 tree_id, int32 new_num_layers) const {
+    const int32_t tree_id, int32_t new_num_layers) const {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   tree_ensemble_->mutable_tree_metadata(tree_id)->set_num_layers_grown(
       new_num_layers);
 }
 
 void BoostedTreesEnsembleResource::UpdateLastLayerNodesRange(
-    const int32 node_range_start, int32 node_range_end) const {
+    const int32_t node_range_start, int32_t node_range_end) const {
   tree_ensemble_->mutable_growing_metadata()->set_last_layer_node_start(
       node_range_start);
   tree_ensemble_->mutable_growing_metadata()->set_last_layer_node_end(
@@ -156,7 +156,7 @@ void BoostedTreesEnsembleResource::GetLastLayerNodesRange(
   *node_range_end = tree_ensemble_->growing_metadata().last_layer_node_end();
 }
 
-int64 BoostedTreesEnsembleResource::GetNumNodes(const int32 tree_id) {
+int64 BoostedTreesEnsembleResource::GetNumNodes(const int32_t tree_id) {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   return tree_ensemble_->trees(tree_id).nodes_size();
 }
@@ -165,37 +165,37 @@ int32 BoostedTreesEnsembleResource::GetNumLayersAttempted() {
   return tree_ensemble_->growing_metadata().num_layers_attempted();
 }
 
-bool BoostedTreesEnsembleResource::is_leaf(const int32 tree_id,
-                                           const int32 node_id) const {
+bool BoostedTreesEnsembleResource::is_leaf(const int32_t tree_id,
+                                           const int32_t node_id) const {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   DCHECK_LT(node_id, tree_ensemble_->trees(tree_id).nodes_size());
   const auto& node = tree_ensemble_->trees(tree_id).nodes(node_id);
   return node.node_case() == boosted_trees::Node::kLeaf;
 }
 
-int32 BoostedTreesEnsembleResource::feature_id(const int32 tree_id,
-                                               const int32 node_id) const {
+int32 BoostedTreesEnsembleResource::feature_id(const int32_t tree_id,
+                                               const int32_t node_id) const {
   const auto node = tree_ensemble_->trees(tree_id).nodes(node_id);
   DCHECK_EQ(node.node_case(), boosted_trees::Node::kBucketizedSplit);
   return node.bucketized_split().feature_id();
 }
 
 int32 BoostedTreesEnsembleResource::bucket_threshold(
-    const int32 tree_id, const int32 node_id) const {
+    const int32_t tree_id, const int32_t node_id) const {
   const auto node = tree_ensemble_->trees(tree_id).nodes(node_id);
   DCHECK_EQ(node.node_case(), boosted_trees::Node::kBucketizedSplit);
   return node.bucketized_split().threshold();
 }
 
-int32 BoostedTreesEnsembleResource::left_id(const int32 tree_id,
-                                            const int32 node_id) const {
+int32 BoostedTreesEnsembleResource::left_id(const int32_t tree_id,
+                                            const int32_t node_id) const {
   const auto node = tree_ensemble_->trees(tree_id).nodes(node_id);
   DCHECK_EQ(node.node_case(), boosted_trees::Node::kBucketizedSplit);
   return node.bucketized_split().left_id();
 }
 
-int32 BoostedTreesEnsembleResource::right_id(const int32 tree_id,
-                                             const int32 node_id) const {
+int32 BoostedTreesEnsembleResource::right_id(const int32_t tree_id,
+                                             const int32_t node_id) const {
   const auto node = tree_ensemble_->trees(tree_id).nodes(node_id);
   DCHECK_EQ(node.node_case(), boosted_trees::Node::kBucketizedSplit);
   return node.bucketized_split().right_id();
@@ -206,23 +206,24 @@ std::vector<float> BoostedTreesEnsembleResource::GetTreeWeights() const {
           tree_ensemble_->tree_weights().end()};
 }
 
-float BoostedTreesEnsembleResource::GetTreeWeight(const int32 tree_id) const {
+float BoostedTreesEnsembleResource::GetTreeWeight(const int32_t tree_id) const {
   return tree_ensemble_->tree_weights(tree_id);
 }
 
-float BoostedTreesEnsembleResource::IsTreeFinalized(const int32 tree_id) const {
+float BoostedTreesEnsembleResource::IsTreeFinalized(
+    const int32_t tree_id) const {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   return tree_ensemble_->tree_metadata(tree_id).is_finalized();
 }
 
 float BoostedTreesEnsembleResource::IsTreePostPruned(
-    const int32 tree_id) const {
+    const int32_t tree_id) const {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   return tree_ensemble_->tree_metadata(tree_id).post_pruned_nodes_meta_size() >
          0;
 }
 
-void BoostedTreesEnsembleResource::SetIsFinalized(const int32 tree_id,
+void BoostedTreesEnsembleResource::SetIsFinalized(const int32_t tree_id,
                                                   const bool is_finalized) {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   return tree_ensemble_->mutable_tree_metadata(tree_id)->set_is_finalized(
@@ -230,7 +231,7 @@ void BoostedTreesEnsembleResource::SetIsFinalized(const int32 tree_id,
 }
 
 // Sets the weight of i'th tree.
-void BoostedTreesEnsembleResource::SetTreeWeight(const int32 tree_id,
+void BoostedTreesEnsembleResource::SetTreeWeight(const int32_t tree_id,
                                                  const float weight) {
   DCHECK_GE(tree_id, 0);
   DCHECK_LT(tree_id, num_trees());
@@ -254,20 +255,20 @@ void BoostedTreesEnsembleResource::UpdateGrowingMetadata() const {
 
 // Add a tree to the ensemble and returns a new tree_id.
 int32 BoostedTreesEnsembleResource::AddNewTree(const float weight,
-                                               const int32 logits_dimension) {
+                                               const int32_t logits_dimension) {
   const std::vector<float> empty_leaf(logits_dimension);
   return AddNewTreeWithLogits(weight, empty_leaf, logits_dimension);
 }
 
 int32 BoostedTreesEnsembleResource::AddNewTreeWithLogits(
     const float weight, const std::vector<float>& logits,
-    const int32 logits_dimension) {
-  const int32 new_tree_id = tree_ensemble_->trees_size();
+    const int32_t logits_dimension) {
+  const int32_t new_tree_id = tree_ensemble_->trees_size();
   auto* node = tree_ensemble_->add_trees()->add_nodes();
   if (logits_dimension == 1) {
     node->mutable_leaf()->set_scalar(logits[0]);
   } else {
-    for (int32 i = 0; i < logits_dimension; ++i) {
+    for (int32_t i = 0; i < logits_dimension; ++i) {
       node->mutable_leaf()->mutable_vector()->add_value(logits[i]);
     }
   }
@@ -278,9 +279,9 @@ int32 BoostedTreesEnsembleResource::AddNewTreeWithLogits(
 }
 
 void BoostedTreesEnsembleResource::AddBucketizedSplitNode(
-    const int32 tree_id,
+    const int32_t tree_id,
     const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
-    const int32 logits_dimension, int32* left_node_id, int32* right_node_id) {
+    const int32_t logits_dimension, int32* left_node_id, int32* right_node_id) {
   const auto candidate = split_entry.second;
   auto* node = AddLeafNodes(tree_id, split_entry, logits_dimension,
                             left_node_id, right_node_id);
@@ -303,9 +304,9 @@ void BoostedTreesEnsembleResource::AddBucketizedSplitNode(
 }
 
 void BoostedTreesEnsembleResource::AddCategoricalSplitNode(
-    const int32 tree_id,
+    const int32_t tree_id,
     const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
-    const int32 logits_dimension, int32* left_node_id, int32* right_node_id) {
+    const int32_t logits_dimension, int32* left_node_id, int32* right_node_id) {
   const auto candidate = split_entry.second;
   auto* node = AddLeafNodes(tree_id, split_entry, logits_dimension,
                             left_node_id, right_node_id);
@@ -318,9 +319,9 @@ void BoostedTreesEnsembleResource::AddCategoricalSplitNode(
 }
 
 boosted_trees::Node* BoostedTreesEnsembleResource::AddLeafNodes(
-    const int32 tree_id,
+    const int32_t tree_id,
     const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
-    const int32 logits_dimension, int32* left_node_id, int32* right_node_id) {
+    const int32_t logits_dimension, int32* left_node_id, int32* right_node_id) {
   auto* tree = tree_ensemble_->mutable_trees(tree_id);
   const auto node_id = split_entry.first;
   const auto candidate = split_entry.second;
@@ -353,7 +354,7 @@ boosted_trees::Node* BoostedTreesEnsembleResource::AddLeafNodes(
                 node->metadata().original_leaf().vector().value_size());
     }
     float prev_logit_value = 0.0;
-    for (int32 i = 0; i < logits_dimension; ++i) {
+    for (int32_t i = 0; i < logits_dimension; ++i) {
       if (has_leaf_value) {
         prev_logit_value = node->metadata().original_leaf().vector().value(i);
       }
@@ -376,11 +377,11 @@ void BoostedTreesEnsembleResource::Reset() {
       protobuf::Arena::CreateMessage<boosted_trees::TreeEnsemble>(&arena_);
 }
 
-void BoostedTreesEnsembleResource::PostPruneTree(const int32 current_tree,
-                                                 const int32 logits_dimension) {
+void BoostedTreesEnsembleResource::PostPruneTree(
+    const int32_t current_tree, const int32_t logits_dimension) {
   // No-op if tree is empty.
   auto* tree = tree_ensemble_->mutable_trees(current_tree);
-  int32 num_nodes = tree->nodes_size();
+  int32_t num_nodes = tree->nodes_size();
   if (num_nodes == 0) {
     return;
   }
@@ -390,7 +391,7 @@ void BoostedTreesEnsembleResource::PostPruneTree(const int32 current_tree,
   // this node to its parent, as well as the parent id.
   std::vector<std::pair<int32, std::vector<float>>> nodes_changes;
   nodes_changes.reserve(num_nodes);
-  for (int32 i = 0; i < num_nodes; ++i) {
+  for (int32_t i = 0; i < num_nodes; ++i) {
     std::vector<float> prune_logit_changes;
     nodes_changes.emplace_back(i, prune_logit_changes);
   }
@@ -417,26 +418,26 @@ void BoostedTreesEnsembleResource::PostPruneTree(const int32 current_tree,
   // nodes_to_delete contains nodes who's indices should be skipped, in
   // ascending order. Save the information about new indices into meta.
   std::map<int32, int32> old_to_new_ids;
-  int32 new_index = 0;
-  int32 index_for_deleted = 0;
+  int32_t new_index = 0;
+  int32_t index_for_deleted = 0;
   auto* post_prune_meta = tree_ensemble_->mutable_tree_metadata(current_tree)
                               ->mutable_post_pruned_nodes_meta();
 
-  for (int32 i = 0; i < num_nodes; ++i) {
-    const int64 nodes_to_delete_size = nodes_to_delete.size();
+  for (int32_t i = 0; i < num_nodes; ++i) {
+    const int64_t nodes_to_delete_size = nodes_to_delete.size();
     if (index_for_deleted < nodes_to_delete_size &&
         i == nodes_to_delete[index_for_deleted]) {
       // Node i will get removed,
       ++index_for_deleted;
       // Update meta info that will allow us to use cached predictions from
       // those nodes.
-      int32 new_id;
+      int32_t new_id;
       std::vector<float> logit_changes;
       logit_changes.reserve(logits_dimension);
       CalculateParentAndLogitUpdate(i, nodes_changes, &new_id, &logit_changes);
       auto* meta = post_prune_meta->Add();
       meta->set_new_node_id(old_to_new_ids[new_id]);
-      for (int32 j = 0; j < logits_dimension; ++j) {
+      for (int32_t j = 0; j < logits_dimension; ++j) {
         meta->add_logit_change(logit_changes[j]);
       }
     } else {
@@ -445,17 +446,17 @@ void BoostedTreesEnsembleResource::PostPruneTree(const int32 current_tree,
       // Update meta info that will allow us to use cached predictions from
       // those nodes.
       meta->set_new_node_id(old_to_new_ids[i]);
-      for (int32 i = 0; i < logits_dimension; ++i) {
+      for (int32_t i = 0; i < logits_dimension; ++i) {
         meta->add_logit_change(0.0);
       }
     }
   }
   index_for_deleted = 0;
-  int32 i = 0;
+  int32_t i = 0;
   protobuf::RepeatedPtrField<boosted_trees::Node> new_nodes;
   new_nodes.Reserve(old_to_new_ids.size());
   for (auto node : *(tree->mutable_nodes())) {
-    const int64 nodes_to_delete_size = nodes_to_delete.size();
+    const int64_t nodes_to_delete_size = nodes_to_delete.size();
     if (index_for_deleted < nodes_to_delete_size &&
         i == nodes_to_delete[index_for_deleted]) {
       ++index_for_deleted;
@@ -480,8 +481,8 @@ void BoostedTreesEnsembleResource::PostPruneTree(const int32 current_tree,
 }
 
 void BoostedTreesEnsembleResource::GetPostPruneCorrection(
-    const int32 tree_id, const int32 initial_node_id, int32* current_node_id,
-    std::vector<float>* logit_updates) const {
+    const int32_t tree_id, const int32_t initial_node_id,
+    int32* current_node_id, std::vector<float>* logit_updates) const {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   if (IsTreeFinalized(tree_id) && IsTreePostPruned(tree_id)) {
     DCHECK_LT(
@@ -492,33 +493,33 @@ void BoostedTreesEnsembleResource::GetPostPruneCorrection(
             initial_node_id);
     *current_node_id = meta.new_node_id();
     DCHECK_EQ(meta.logit_change().size(), logit_updates->size());
-    for (int32 i = 0; i < meta.logit_change().size(); ++i) {
+    for (int32_t i = 0; i < meta.logit_change().size(); ++i) {
       logit_updates->at(i) = meta.logit_change(i);
     }
   }
 }
 
 bool BoostedTreesEnsembleResource::IsTerminalSplitNode(
-    const int32 tree_id, const int32 node_id) const {
+    const int32_t tree_id, const int32_t node_id) const {
   const auto& node = tree_ensemble_->trees(tree_id).nodes(node_id);
   DCHECK_EQ(node.node_case(), boosted_trees::Node::kBucketizedSplit);
-  const int32 left_id = node.bucketized_split().left_id();
-  const int32 right_id = node.bucketized_split().right_id();
+  const int32_t left_id = node.bucketized_split().left_id();
+  const int32_t right_id = node.bucketized_split().right_id();
   return is_leaf(tree_id, left_id) && is_leaf(tree_id, right_id);
 }
 
 // For each pruned node, finds the leaf where it finally ended up and
 // calculates the total update from that pruned node prediction.
 void BoostedTreesEnsembleResource::CalculateParentAndLogitUpdate(
-    const int32 start_node_id,
+    const int32_t start_node_id,
     const std::vector<std::pair<int32, std::vector<float>>>& nodes_changes,
     int32* parent_id, std::vector<float>* changes) const {
   const int logits_dimension = nodes_changes[start_node_id].second.size();
   for (int i = 0; i < logits_dimension; ++i) {
     changes->emplace_back(0.0);
   }
-  int32 node_id = start_node_id;
-  int32 parent = nodes_changes[node_id].first;
+  int32_t node_id = start_node_id;
+  int32_t parent = nodes_changes[node_id].first;
   while (parent != node_id) {
     for (int i = 0; i < logits_dimension; ++i) {
       changes->at(i) += nodes_changes[node_id].second[i];
@@ -530,7 +531,7 @@ void BoostedTreesEnsembleResource::CalculateParentAndLogitUpdate(
 }
 
 void BoostedTreesEnsembleResource::RecursivelyDoPostPrunePreparation(
-    const int32 tree_id, const int32 node_id,
+    const int32_t tree_id, const int32_t node_id,
     std::vector<int32>* nodes_to_delete,
     std::vector<std::pair<int32, std::vector<float>>>* nodes_meta) {
   auto* node = tree_ensemble_->mutable_trees(tree_id)->mutable_nodes(node_id);
@@ -552,8 +553,8 @@ void BoostedTreesEnsembleResource::RecursivelyDoPostPrunePreparation(
   // 2- After depth-first pruning, the node only has leaf children.
   const auto& node_metadata = node->metadata();
   if (node_metadata.gain() < 0 && IsTerminalSplitNode(tree_id, node_id)) {
-    const int32 left_id = node->bucketized_split().left_id();
-    const int32 right_id = node->bucketized_split().right_id();
+    const int32_t left_id = node->bucketized_split().left_id();
+    const int32_t right_id = node->bucketized_split().right_id();
 
     // Save children that need to be deleted.
     nodes_to_delete->push_back(left_id);
@@ -571,7 +572,7 @@ void BoostedTreesEnsembleResource::RecursivelyDoPostPrunePreparation(
     if (node_metadata.has_original_leaf()) {
       parent_values = node_value(tree_id, node_id);
     }
-    for (int32 i = 0, end = parent_values.size(); i < end; ++i) {
+    for (int32_t i = 0, end = parent_values.size(); i < end; ++i) {
       nodes_meta->at(left_id).second.emplace_back(parent_values[i] -
                                                   left_child_values[i]);
       nodes_meta->at(right_id).second.emplace_back(parent_values[i] -

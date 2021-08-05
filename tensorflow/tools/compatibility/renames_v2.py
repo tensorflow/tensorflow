@@ -538,6 +538,8 @@ renames = {
         'tf.keras.losses.cosine_similarity',
     'tf.keras.metrics.cosine_proximity':
         'tf.keras.losses.cosine_similarity',
+    'tf.keras.utils.track_tf1_style_variables':
+        'tf.compat.v1.keras.utils.track_tf1_style_variables',
     'tf.layers.AveragePooling1D':
         'tf.compat.v1.layers.AveragePooling1D',
     'tf.layers.AveragePooling2D':

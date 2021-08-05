@@ -68,7 +68,7 @@ class CopyInsertion : public HloModulePass {
   // eligible for copy elision are considered for removal.
   // If check_live_range_ordering is true, check that live ranges are ordered
   // in all the existing aliased buffers.
-  Status RemoveUnnecessaryCopies(const HloOrdering& ordering, HloModule* module,
+  Status RemoveUnnecessaryCopies(HloOrdering* ordering, HloModule* module,
                                  bool check_live_range_ordering = false);
 
   // Add copies to address special constraints on the roots of computations not

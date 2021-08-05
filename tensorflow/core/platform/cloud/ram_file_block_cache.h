@@ -96,7 +96,7 @@ class RamFileBlockCache : public FileBlockCache {
   // exist before. If the signature changes, update the existing signature with
   // the new one and remove the file from cache.
   bool ValidateAndUpdateFileSignature(const string& filename,
-                                      int64 file_signature) override
+                                      int64_t file_signature) override
       TF_LOCKS_EXCLUDED(mu_);
 
   /// Remove all cached blocks for `filename`.

@@ -205,7 +205,7 @@ static void RunReverseRowsBenchmark(::testing::benchmark::State& state,
   test::Benchmark("cpu", Reverse<T>(shape, 1), &opts, nullptr, nullptr, "",
                   /*old_benchmark_api*/ false)
       .Run(state);
-  const int64 num_items =
+  const int64_t num_items =
       static_cast<int64>(state.iterations()) * shape.num_elements();
   state.SetItemsProcessed(num_items);
   state.SetBytesProcessed(num_items * sizeof(T));

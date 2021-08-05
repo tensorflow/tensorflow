@@ -166,12 +166,29 @@ cc_library(
 )
 
 cc_library(
+    name = "rocblas_wrapper",
+    srcs = if_rocm_is_configured(["rocblas_wrapper.h"]),
+    hdrs = if_rocm_is_configured(["rocblas_wrapper.h"]),
+    deps = if_rocm_is_configured([
+        ":rocblas_if_static",
+        ":rocm_gpu_executor",
+        ":rocm_platform_id",
+        "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ]),
+    alwayslink = True,
+)
+
+cc_library(
     name = "rocblas_plugin",
     srcs = if_rocm_is_configured(["rocm_blas.cc"]),
     hdrs = if_rocm_is_configured(["rocm_blas.h"]),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         ":rocblas_if_static",
+        ":rocblas_wrapper",
         ":rocm_gpu_executor",
         ":rocm_platform_id",
         "//third_party/eigen3",

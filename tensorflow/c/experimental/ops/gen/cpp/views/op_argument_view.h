@@ -31,6 +31,7 @@ class OpArgumentView {
 
   string Declaration() const;
   string Initializer() const;
+  bool HasDefaultValue() const;
 
  private:
   string type_name_;

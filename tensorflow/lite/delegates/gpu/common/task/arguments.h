@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
@@ -76,16 +77,11 @@ class Arguments {
 
   void ReleaseCPURepresentation();
 
- private:
-  friend flatbuffers::Offset<tflite::gpu::data::Arguments> Encode(
-      const Arguments& args, flatbuffers::FlatBufferBuilder* builder);
-  friend absl::Status Decode(const tflite::gpu::data::Arguments* fb_args,
-                             Arguments* args);
-
-  friend class cl::CLArguments;
-  friend class metal::MetalArguments;
   void GetActiveArguments(const std::string& args_prefix,
                           const std::string& code);
+
+  void SetStateValueForAllObjects(const std::string& key,
+                                  const std::string& value);
 
   struct IntValue {
     int value;
@@ -94,8 +90,6 @@ class Arguments {
     // to reduce amount of data transferred we adding this optimization
     bool active = false;
   };
-  std::map<std::string, IntValue> int_values_;
-
   struct FloatValue {
     float value;
 
@@ -103,8 +97,6 @@ class Arguments {
     // to reduce amount of data transferred we adding this optimization
     bool active = false;
   };
-  std::map<std::string, FloatValue> float_values_;
-
   struct HalfValue {
     half value;
 
@@ -112,6 +104,38 @@ class Arguments {
     // to reduce amount of data transferred we adding this optimization
     bool active = false;
   };
+
+  const std::map<std::string, IntValue>& GetIntValues() const {
+    return int_values_;
+  }
+  const std::map<std::string, FloatValue>& GetFloatValues() const {
+    return float_values_;
+  }
+  const std::map<std::string, HalfValue>& GetHalfValues() const {
+    return half_values_;
+  }
+
+  const std::map<std::string, GPUObjectDescriptorPtr>& GetObjectRefs() const {
+    return object_refs_;
+  }
+  const std::map<std::string, GPUObjectDescriptorPtr>& GetObjects() const {
+    return objects_;
+  }
+  void MoveObjectRefs(std::map<std::string, GPUObjectDescriptorPtr>* result) {
+    *result = std::move(object_refs_);
+  }
+
+ private:
+  friend flatbuffers::Offset<tflite::gpu::data::Arguments> Encode(
+      const Arguments& args, flatbuffers::FlatBufferBuilder* builder);
+  friend absl::Status Decode(const tflite::gpu::data::Arguments* fb_args,
+                             Arguments* args);
+
+  friend class cl::CLArguments;
+  friend class metal::MetalArguments;
+
+  std::map<std::string, IntValue> int_values_;
+  std::map<std::string, FloatValue> float_values_;
   std::map<std::string, HalfValue> half_values_;
 
   std::map<std::string, GPUObjectDescriptorPtr> object_refs_;

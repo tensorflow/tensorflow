@@ -80,14 +80,14 @@ bool DetermineHloInstructionIsReplicated(
       if (global_id) {
         bool replicated_across_partitions = true;
         bool replicated_across_replicas = true;
-        const int64 num_partitions =
+        const int64_t num_partitions =
             hlo->GetModule()->config().num_partitions();
         for (const auto& group : hlo->replica_groups()) {
           absl::flat_hash_set<int64> visited_partitions;
           absl::flat_hash_set<int64> visited_replicas;
-          for (int64 id : group.replica_ids()) {
-            int64 rid = id / num_partitions;
-            int64 pid = id % num_partitions;
+          for (int64_t id : group.replica_ids()) {
+            int64_t rid = id / num_partitions;
+            int64_t pid = id % num_partitions;
             visited_partitions.insert(pid);
             visited_replicas.insert(rid);
           }
@@ -242,7 +242,7 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
     } else if (inst->opcode() == HloOpcode::kCall ||
                inst->opcode() == HloOpcode::kFusion) {
       auto called = inst->called_computations().front();
-      for (int64 i = 0; i < inst->operand_count(); ++i) {
+      for (int64_t i = 0; i < inst->operand_count(); ++i) {
         changed |= propagate_shapetree(inst->operand(i),
                                        called->parameter_instruction(i));
       }
@@ -251,7 +251,7 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
       changed |= propagate_shapetree(called->root_instruction(), inst);
     } else if (inst->opcode() == HloOpcode::kConditional) {
       // Propagate inputs' shape trees to the called computations' parameters.
-      for (int64 i = 0; i < inst->called_computations().size(); ++i) {
+      for (int64_t i = 0; i < inst->called_computations().size(); ++i) {
         changed |= propagate_shapetree(
             inst->operand(i + 1),
             inst->called_computations()[i]->parameter_instruction(0));
@@ -285,7 +285,7 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
       }
     } else if (inst->opcode() == HloOpcode::kTuple) {
       ShapeTree<bool> shape_tree(inst->shape(), true);
-      for (int64 i = 0; i < inst->operand_count(); ++i) {
+      for (int64_t i = 0; i < inst->operand_count(); ++i) {
         shape_tree.CopySubtreeFrom(hlo_replication_[inst->operand(i)], {}, {i});
       }
       changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);

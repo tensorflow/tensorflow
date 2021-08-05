@@ -260,11 +260,11 @@ static Status LiteralToPredVector(const xla::LiteralSlice& literal,
     return errors::InvalidArgument("value is not 1D, rank: ",
                                    literal.shape().rank());
   }
-  int64 size = xla::ShapeUtil::ElementsIn(literal.shape());
+  int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() != xla::PRED) {
     return errors::InvalidArgument("value is not PRED");
   }
-  for (int64 i = 0; i < size; ++i) {
+  for (int64_t i = 0; i < size; ++i) {
     out->push_back(literal.Get<bool>({i}));
   }
   return Status::OK();
@@ -337,13 +337,13 @@ static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
     return errors::InvalidArgument("value is not 1D, rank: ",
                                    literal.shape().rank());
   }
-  int64 size = xla::ShapeUtil::ElementsIn(literal.shape());
+  int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() == xla::S32) {
-    for (int64 i = 0; i < size; ++i) {
+    for (int64_t i = 0; i < size; ++i) {
       out->push_back(literal.Get<int32>({i}));
     }
   } else if (literal.shape().element_type() == xla::S64) {
-    for (int64 i = 0; i < size; ++i) {
+    for (int64_t i = 0; i < size; ++i) {
       out->push_back(literal.Get<int64>({i}));
     }
   } else {
@@ -393,7 +393,7 @@ Status XlaOpKernelContext::ConstantInputAsInt64Literal(
       *out = xla::Literal(
           xla::ShapeUtil::ChangeElementType(literal.shape(), xla::S64));
       auto src_data = literal.data<int32>();
-      for (int64 i = 0; i < src_data.size(); ++i) {
+      for (int64_t i = 0; i < src_data.size(); ++i) {
         out->data<int64>()[i] = src_data[i];
       }
       return Status::OK();
@@ -433,7 +433,7 @@ Status XlaOpKernelContext::ConstantInputAsPartialShape(
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
   // If `literal` is a scalar it's value must be -1.
   if (literal.shape().rank() == 0) {
-    int64 shape_val;
+    int64_t shape_val;
     TF_RETURN_IF_ERROR(LiteralToInt64Scalar(literal, &shape_val));
     if (shape_val != -1) {
       return errors::InvalidArgument(

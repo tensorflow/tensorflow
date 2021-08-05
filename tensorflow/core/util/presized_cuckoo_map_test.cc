@@ -116,14 +116,14 @@ TEST(PresizedCuckooMapTest, RepeatedClear) {
   }
 }
 
-void RunFill(int64 table_size) {
+void RunFill(int64_t table_size) {
   PresizedCuckooMap<int> pscm(table_size);
-  for (int64 i = 0; i < table_size; i++) {
+  for (int64_t i = 0; i < table_size; i++) {
     uint64 key =
         Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64)));
     EXPECT_TRUE(pscm.InsertUnique(key, i));
   }
-  for (int64 i = 0; i < table_size; i++) {
+  for (int64_t i = 0; i < table_size; i++) {
     uint64 key =
         Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64)));
     int out;
@@ -133,7 +133,7 @@ void RunFill(int64 table_size) {
 }
 
 TEST(PresizedCuckooMapTest, Fill) {
-  for (int64 table_size = 10; table_size <= 5000000; table_size *= 71) {
+  for (int64_t table_size = 10; table_size <= 5000000; table_size *= 71) {
     RunFill(table_size);
   }
 }

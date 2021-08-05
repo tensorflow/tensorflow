@@ -69,7 +69,7 @@ class SparseConcatOp : public OpKernel {
                                         shapes.size()));
     bool overflow_ocurred = false;
     for (int i = 0; i < N; i++) {
-      int64 new_num_elements = 1;
+      int64_t new_num_elements = 1;
       OP_REQUIRES(context, TensorShapeUtils::IsVector(shapes[i].shape()),
                   errors::InvalidArgument(
                       "Input shapes should be a vector but received shape ",

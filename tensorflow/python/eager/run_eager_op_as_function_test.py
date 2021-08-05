@@ -15,9 +15,13 @@
 """Tests for wrapping an eager op in a call op at runtime."""
 import time
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import benchmarks_test_base
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -106,6 +110,17 @@ class RunEagerOpAsFunctionTest(test.TestCase):
   def setUp(self):
     super().setUp()
     self._m_2_by_2 = random_ops.random_uniform((2, 2))
+
+  def testArrayFill(self):
+    array_ops.fill(
+        constant_op.constant([2], dtype=dtypes.int64), constant_op.constant(1))
+
+  def testDatasetMap(self):
+    # On GPU, this test triggers a different error: InternalError:
+    #   {{function_node __wrapped__RangeDataset}} No unary variant device copy
+    #   function found ...... [[{{node RangeDataset/_8}}]] [Op:RangeDataset]
+    with ops.device("CPU"):
+      dataset_ops.Dataset.range(2).map(math_ops.square)
 
   def testMatmul(self):
     math_ops.matmul(self._m_2_by_2, self._m_2_by_2)

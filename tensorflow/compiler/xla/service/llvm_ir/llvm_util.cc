@@ -137,7 +137,7 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
           : index);
 }
 
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64 index,
+llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64_t index,
                                    llvm::IRBuilder<>* b) {
   return EmitBufferIndexingGEP(array, b->getInt64(index), b);
 }
@@ -234,7 +234,7 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
     // A tuple buffer is an array of pointers.
     result_type = llvm::ArrayType::get(result_type, shape.tuple_shapes_size());
   } else if (shape.IsArray()) {
-    for (int64 dimension : LayoutUtil::MinorToMajor(shape)) {
+    for (int64_t dimension : LayoutUtil::MinorToMajor(shape)) {
       result_type =
           llvm::ArrayType::get(result_type, shape.dimensions(dimension));
     }
@@ -371,7 +371,7 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
 
 // Internal helper that is called from emitted code to log an int64 value with a
 // tag.
-static void LogS64(const char* tag, int64 value) {
+static void LogS64(const char* tag, int64_t value) {
   LOG(INFO) << tag << " (int64): " << value;
 }
 
@@ -409,7 +409,7 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
                     llvm::MDNode::get(context, dereferenceable_bytes_metadata));
 }
 
-llvm::Instruction* AddRangeMetadata(int64 lower, int64 upper,
+llvm::Instruction* AddRangeMetadata(int64_t lower, int64_t upper,
                                     llvm::Instruction* inst) {
   llvm::LLVMContext& context = inst->getParent()->getContext();
   llvm::IntegerType* i32 = llvm::Type::getInt32Ty(context);
@@ -608,16 +608,18 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
 
 void DumpIrIfEnabled(mlir::ModuleOp mlir_module, int unique_id,
                      const DebugOptions& debug_options) {
-  absl::string_view module_name = "<unnamed>";
+  absl::optional<absl::string_view> module_name;
   if (llvm::Optional<llvm::StringRef> mlir_module_name =
           mlir_module.getName()) {
     module_name = AsStringView(*mlir_module_name);
   }
-  if (!DumpingEnabledForHloModule(module_name, debug_options)) {
+  if (!DumpingEnabledForHloModule(module_name.value_or("<unnamed>"),
+                                  debug_options)) {
     return;
   }
 
-  DumpToFileInDirOrStdout(debug_options, unique_id, /*file_prefix=*/"",
+  DumpToFileInDirOrStdout(debug_options, unique_id, module_name.value_or(""),
+                          /*file_prefix=*/"",
                           /*file_suffix=*/"lmhlo", DumpToString(mlir_module));
 }
 

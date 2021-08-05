@@ -68,7 +68,7 @@ static void ConcatHelper(::testing::benchmark::State& state,
   concat_dim.scalar<int32>()() = concat_dimension;
   Tensor in0(dt, TensorShape({kDim1, dim2}));
   Tensor in1(dt, TensorShape({kDim1, dim2}));
-  int64 in0_bytes, in1_bytes;
+  int64_t in0_bytes, in1_bytes;
   FillTensorWithRandomValues<T>(&in0, string_length, &in0_bytes);
   FillTensorWithRandomValues<T>(&in1, string_length, &in1_bytes);
 

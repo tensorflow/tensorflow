@@ -612,7 +612,70 @@ def _get_saver_or_default():
 
 @tf_export(v1=["train.Saver"])
 class Saver(object):
+  # pylint: disable=line-too-long
   """Saves and restores variables.
+
+  @compatibility(TF2)
+  `tf.compat.v1.train.Saver` is not supported for saving and restoring
+  checkpoints in TF2. Please switch to `tf.train.Checkpoint` or
+  `tf.keras.Model.save_weights`, which perform a more robust [object-based
+  saving](https://www.tensorflow.org/guide/checkpoint#loading_mechanics).
+
+  ### How to Rewrite Checkpoints
+
+  Please rewrite your checkpoints immediately using the object-based checkpoint
+  APIs.
+
+  You can load a name-based checkpoint written by `tf.compat.v1.train.Saver`
+  using `tf.train.Checkpoint.restore` or `tf.keras.Model.load_weights`. However,
+  you may have to change the names of the variables in your model to match the
+  variable names in the name-based checkpoint, which can be viewed with
+  `tf.train.list_variables(path)`.
+
+  Another option is to create an `assignment_map` that maps the name of the
+  variables in the name-based checkpoint to the variables in your model, eg:
+  ```
+  {
+      'sequential/dense/bias': model.variables[0],
+      'sequential/dense/kernel': model.variables[1]
+  }
+  ```
+  and use `tf.compat.v1.train.init_from_checkpoint(path, assignment_map)` to
+  restore the name-based checkpoint.
+
+  After restoring, re-encode your checkpoint
+  using `tf.train.Checkpoint.save` or `tf.keras.Model.save_weights`.
+
+  See the [Checkpoint compatibility](
+  https://www.tensorflow.org/guide/migrate#checkpoint_compatibility)
+  section of the migration guide for more details.
+
+
+  ### Checkpoint Management in TF2
+
+  Use `tf.train.CheckpointManager` to manage checkpoints in TF2.
+  `tf.train.CheckpointManager` offers equivalent `keep_checkpoint_every_n_hours`
+  and `max_to_keep` parameters.
+
+  To recover the latest checkpoint,
+
+  ```
+  checkpoint = tf.train.Checkpoint(model)
+  manager = tf.train.CheckpointManager(checkpoint)
+  status = checkpoint.restore(manager.latest_checkpoint)
+  ```
+
+  `tf.train.CheckpointManager` also writes a [`CheckpointState` proto]
+  (https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/training/checkpoint_state.proto)
+  which contains the timestamp when each checkpoint was created.
+
+  ### Writing `MetaGraphDef`s in TF2
+
+  To replace, `tf.compat.v1.train.Saver.save(write_meta_graph=True)`, use
+  `tf.saved_model.save` to write the `MetaGraphDef` (which is contained in
+  `saved_model.pb`).
+
+  @end_compatibility
 
   See [Variables](https://tensorflow.org/guide/variables)
   for an overview of variables, saving and restoring.
@@ -685,6 +748,7 @@ class Saver(object):
   If you create several savers, you can specify a different filename for the
   protocol buffer file in the call to `save()`.
   """
+  # pylint: enable=line-too-long
 
   def __init__(self,
                var_list=None,

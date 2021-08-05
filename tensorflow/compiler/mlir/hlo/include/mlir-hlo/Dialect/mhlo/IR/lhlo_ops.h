@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_structured_interface.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
@@ -36,6 +37,10 @@ limitations under the License.
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
+
+// clang-format off
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
+// clang-format on
 
 namespace mlir {
 class OpBuilder;

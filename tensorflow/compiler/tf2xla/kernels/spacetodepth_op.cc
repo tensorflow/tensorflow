@@ -76,7 +76,7 @@ class SpaceToDepthOp : public XlaOpKernel {
     transpose_order.reserve(input_rank);
     output_shape.reserve(input_rank);
     if (data_format == FORMAT_NHWC) {
-      int64 block_elems = 1;
+      int64_t block_elems = 1;
       for (int i = 0; i < num_spatial_dims; ++i) {
         OP_REQUIRES(ctx, input_shape[1 + i] % block_size_ == 0,
                     errors::InvalidArgument(
@@ -108,7 +108,7 @@ class SpaceToDepthOp : public XlaOpKernel {
       output_shape.push_back(input_shape[feature_dim] * block_elems);
     } else {
       // FORMAT_NCHW
-      int64 block_elems = 1;
+      int64_t block_elems = 1;
       for (int i = 0; i < num_spatial_dims; ++i) {
         OP_REQUIRES(ctx, input_shape[2 + i] % block_size_ == 0,
                     errors::InvalidArgument(

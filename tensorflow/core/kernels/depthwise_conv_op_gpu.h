@@ -968,8 +968,9 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   const int num_in_backprop =
       args.batch * args.in_rows * args.in_cols * args.in_depth;
   auto device = ctx->eigen_gpu_device();
-  GpuLaunchConfig config =
-      GetGpuLaunchConfig(num_in_backprop, device, kernel, 0, 0);
+  int launch_bounds_value = 640;
+  GpuLaunchConfig config = GetGpuLaunchConfig(num_in_backprop, device, kernel,
+                                              0, launch_bounds_value);
   TF_CHECK_OK(GpuLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, filter, in_backprop, num_in_backprop));
@@ -1718,8 +1719,9 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
   const int num_out_backprop =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
   auto device = ctx->eigen_gpu_device();
-  GpuLaunchConfig config =
-      GetGpuLaunchConfig(num_out_backprop, device, kernel, 0, 0);
+  int launch_bounds_value = 640;
+  GpuLaunchConfig config = GetGpuLaunchConfig(num_out_backprop, device, kernel,
+                                              0, launch_bounds_value);
   TF_CHECK_OK(GpuLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, input, filter_backprop, num_out_backprop));

@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
-#include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/logging.h"
@@ -79,6 +79,10 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
+
+#ifdef INTEL_MKL
+#include "tensorflow/core/graph/mkl_graph_util.h"
+#endif
 
 namespace tensorflow {
 
@@ -272,7 +276,7 @@ inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
 }
 
 inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const int64 b) {
+                                               const int64_t b) {
   auto x = tensorflow::FingerprintCat64(a.low64, b);
   return {x, tensorflow::FingerprintCat64(a.high64, x)};
 }
@@ -327,7 +331,7 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
     *fingerprint = FingerprintCat128(*fingerprint, c);
   } else {
     for (int i = 0; i < shape.dims(); i++) {
-      int64 dim = shape.dim_size(i);
+      int64_t dim = shape.dim_size(i);
       *fingerprint = FingerprintCat128(*fingerprint, dim);
     }
   }
@@ -627,7 +631,8 @@ Status BuildWrappedOpSignature(EagerOperation* op, const OpDef& opdef,
         *arg_def = arg;
         arg_def->set_name(EscapeOrigName(arg.name()));
         if (!arg.type_attr().empty()) {
-          arg_def->set_type_attr(EscapeOrigName(arg.type_attr()));
+          // Don't escape: type attrs are still referenced by the original name.
+          arg_def->set_type_attr(arg.type_attr());
         }
       }
     }
@@ -754,6 +759,18 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
     for (const auto& attr : opdef.attr()) {
       (*ndef->mutable_attr())[attr.name()].set_placeholder(attr.name());
     }
+
+#ifdef INTEL_MKL
+    if (IsMklEnabled() &&
+        absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
+      // All MKL eager ops have `_kernel` private attribute that needs to be set
+      // to a fixed label.
+      AttrValue attr_kernel;
+      attr_kernel.set_s(mkl_op_registry::kMklNameChangeOpLabel);
+      (*ndef->mutable_attr()).insert({"_kernel", attr_kernel});
+    }
+#endif  // INTEL_MKL
+
     // Set `ret` map.
     TF_RETURN_IF_ERROR(
         PopulateRetMap(&fdef, op_attrs, op, opdef, signature, ndef->name()));
@@ -992,7 +1009,7 @@ Status CreateUnshapedOutput(
   return errors::Unimplemented(
       "Remote outputs are not available on mobile devices.");
 #else  // !IS_MOBILE_PLATFORM
-  int64 op_id;
+  int64_t op_id;
   if (remote_func_params.has_value()) {
     op_id = remote_func_params.value().op_id;
   } else {
@@ -1035,7 +1052,7 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
     return errors::Unimplemented(
         "Cross-process functions are not supported on mobile devices.");
 #else  // !IS_MOBILE_PLATFORM
-    const int64 op_id = ctx.RemoteMgr()->NextOpId();
+    const int64_t op_id = ctx.RemoteMgr()->NextOpId();
     remote_func_params =
         EagerRemoteFunctionParams{op_id, /*step_id=*/absl::nullopt};
 #endif  // !IS_MOBILE_PLATFORM
@@ -1534,9 +1551,14 @@ Status EagerKernelExecute(
   // device. We don't call it now because it is an unneeded overhead (it
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
+  CoordinationServiceAgent* coord_agent = nullptr;
+#if !defined(IS_MOBILE_PLATFORM)
+  if (ctx->GetDistributedManager() != nullptr)
+    coord_agent = ctx->GetDistributedManager()->GetCoordinationServiceAgent();
+#endif  // !IS_MOBILE_PLATFORM
   TF_RETURN_IF_ERROR(kernel->Run(container, inputs, &outputs,
                                  cancellation_manager, remote_func_params,
-                                 stack_trace));
+                                 stack_trace, coord_agent));
   if (graph_collector != nullptr) {
     CollectGraphs(ctx);
   }
@@ -1735,11 +1757,16 @@ void EagerKernelExecuteAsync(
     done(s);
     return;
   }
+  CoordinationServiceAgent* coord_agent = nullptr;
+#if !defined(IS_MOBILE_PLATFORM)
+  if (ctx->GetDistributedManager() != nullptr)
+    coord_agent = ctx->GetDistributedManager()->GetCoordinationServiceAgent();
+#endif  // !IS_MOBILE_PLATFORM
 
   kernel->Ref();  // Ownership of reference is transferred to the callback
   kernel->RunAsync(
       ctx->StepContainer(), *inputs, outputs.get(), cancellation_manager,
-      remote_func_params,
+      remote_func_params, coord_agent,
       [retvals, inputs, outputs, num_outputs, ctx, graph_collector,
        remote_func_params, kernel_raw = kernel.get(),
        done = std::move(done)](const Status& s) {

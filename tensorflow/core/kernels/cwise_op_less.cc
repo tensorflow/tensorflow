@@ -26,9 +26,6 @@ REGISTER7(BinaryOp, CPU, "Less", functor::less, uint8, uint16, uint32, uint64,
 REGISTER9(BinaryOp, GPU, "Less", functor::less, float, Eigen::half, double,
           int64, uint8, uint16, uint32, uint64, int8);
 REGISTER(BinaryOp, GPU, "Less", functor::less, int16);
-#else
-// TODO(b/172804967): We do not generate unsigned kernels for GPU via mlir.
-REGISTER4(BinaryOp, GPU, "Less", functor::less, uint8, uint16, uint32, uint64);
 #endif
 
 // A special GPU kernel for int32.
@@ -42,4 +39,11 @@ REGISTER_KERNEL_BUILDER(Name("Less")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::less<int32>>);
 #endif
+REGISTER_KERNEL_BUILDER(Name("Less")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::less<int32>>);
 }  // namespace tensorflow

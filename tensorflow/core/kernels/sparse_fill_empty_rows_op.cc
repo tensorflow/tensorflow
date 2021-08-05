@@ -338,7 +338,7 @@ struct SparseFillEmptyRowsGrad<CPUDevice, T, Tindex> {
       // Locate the index of the output of the forward prop associated
       // with this location in the input of the forward prop.  Copy
       // the gradient into it.  Mark it as visited.
-      int64 reverse_index = reverse_index_map(i);
+      int64_t reverse_index = reverse_index_map(i);
       if (reverse_index < 0 || reverse_index >= N_full) {
         return errors::InvalidArgument(
             "Elements in reverse index must be in [0, ", N_full, ") but got ",

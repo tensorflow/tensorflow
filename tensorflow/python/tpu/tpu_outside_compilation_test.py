@@ -514,20 +514,6 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
         strategy.experimental_local_results(train_step()),
         constant_op.constant(.1, shape=(strategy.num_replicas_in_sync)))
 
-  def testStringOpWithoutOutsideCompilationFail(self):
-    strategy = get_tpu_strategy()
-
-    @def_function.function
-    def train_step(x):
-
-      def computation(x):
-        return computation_with_string_ops(x)
-
-      return strategy.run(computation, args=(x,))
-
-    with self.assertRaisesRegex(Exception, "soft_device_placement"):
-      strategy.experimental_local_results(train_step(0))
-
 
 class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
                                             parameterized.TestCase):

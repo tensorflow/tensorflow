@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
-#include "tensorflow/lite/kernels/variable_ops.h"
 
 PYBIND11_MODULE(pywrap_variable_ops, m) {
   m.doc() = R"pbdoc(
@@ -24,8 +23,7 @@ PYBIND11_MODULE(pywrap_variable_ops, m) {
   m.def(
       "VariableOpsRegisterer",
       [](uintptr_t resolver) {
-        tflite::ops::custom::AddVariableOps(
-            reinterpret_cast<tflite::MutableOpResolver*>(resolver));
+        // TODO(b/149099381): Remove this library after updating users.
       },
       R"pbdoc(
         Registers variable custom ops.

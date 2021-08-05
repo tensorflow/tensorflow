@@ -124,14 +124,17 @@ if hasattr(_current_module, "keras"):
   try:
     _layer_package = "keras.api._v1.keras.__internal__.legacy.layers"
     layers = _LazyLoader("layers", globals(), _layer_package)
-    _module_dir = _module_util.get_parent_dir(layers)
+    _module_dir = _module_util.get_parent_dir_for_name(_layer_package)
     if _module_dir:
       _current_module.__path__ = [_module_dir] + _current_module.__path__
     setattr(_current_module, "layers", layers)
 
     _legacy_rnn_package = "keras.api._v1.keras.__internal__.legacy.rnn_cell"
-    legacy_rnn = _LazyLoader("legacy_rnn", globals(), _legacy_rnn_package)
-    _current_module.nn.rnn_cell = legacy_rnn
+    _rnn_cell = _LazyLoader("legacy_rnn", globals(), _legacy_rnn_package)
+    _module_dir = _module_util.get_parent_dir_for_name(_legacy_rnn_package)
+    if _module_dir:
+      _current_module.nn.__path__ = [_module_dir] + _current_module.nn.__path__
+    _current_module.nn.rnn_cell = _rnn_cell
   except ImportError:
     pass
 

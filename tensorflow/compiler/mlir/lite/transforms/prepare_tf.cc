@@ -92,6 +92,17 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
     allow_bf16_and_f16_type_legalization_ =
         allow_bf16_and_f16_type_legalization;
   }
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-prepare-tf";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Prepare TF for legalization to TensorFlow Lite dialect";
+  }
+
   void runOnFunction() override;
 
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -1326,8 +1337,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
                                          allow_bf16_type_legalization);
 }
 
-static PassRegistration<PrepareTFPass> pass(
-    "tfl-prepare-tf", "Prepare TF for legalization to TensorFlow Lite dialect");
+static PassRegistration<PrepareTFPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

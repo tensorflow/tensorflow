@@ -25,7 +25,7 @@ class TestHttpRequest : public HttpRequest {
   void SetUri(const string& uri) override {}
   void SetRange(uint64 start, uint64 end) override {}
   void AddHeader(const string& name, const string& value) override {}
-  void AddResolveOverride(const string& hostname, int64 port,
+  void AddResolveOverride(const string& hostname, int64_t port,
                           const string& ip_addr) override {
     EXPECT_EQ(port, 443) << "Unexpected port set for hostname: " << hostname;
     auto itr = resolve_overrides_.find(hostname);

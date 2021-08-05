@@ -28,8 +28,8 @@ namespace {
 Status PopulateInfeedLayoutVector(const xla::Shape& shape,
                                   std::vector<int>* layouts) {
   if (shape.IsTuple()) {
-    int64 tuple_elements = xla::ShapeUtil::TupleElementCount(shape);
-    for (int64 i = 0; i < tuple_elements; ++i) {
+    int64_t tuple_elements = xla::ShapeUtil::TupleElementCount(shape);
+    for (int64_t i = 0; i < tuple_elements; ++i) {
       const xla::Shape& subshape =
           xla::ShapeUtil::GetTupleElementShape(shape, i);
       TF_RETURN_IF_ERROR(PopulateInfeedLayoutVector(subshape, layouts));
@@ -50,7 +50,7 @@ Status PopulateInfeedLayoutVector(const xla::Shape& shape,
 StatusOr<bool> MakeLayout(absl::Span<const int64> minor_to_major,
                           xla::Layout* layout) {
   if (std::all_of(minor_to_major.begin(), minor_to_major.end(),
-                  [](int64 dim) { return dim == -1; })) {
+                  [](int64_t dim) { return dim == -1; })) {
     return false;
   }
   std::vector<bool> dim_present(minor_to_major.size(), false);
@@ -135,7 +135,7 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
   xla::Shape result =
       xla::ShapeUtil::MakeShapeWithLayout(type, dimensions, layout);
 
-  for (int64 d = 0; d < rank; ++d) {
+  for (int64_t d = 0; d < rank; ++d) {
     result.set_dynamic_dimension(d, dynamic_dimensions[d]);
   }
   return result;
@@ -175,11 +175,11 @@ Status GetShapeWithLayout(
     const std::function<xla::Layout(const xla::Shape&)>& layout_func,
     xla::Shape* output_shape) {
   if (input_shape.IsTuple()) {
-    int64 tuple_elements = xla::ShapeUtil::TupleElementCount(input_shape);
+    int64_t tuple_elements = xla::ShapeUtil::TupleElementCount(input_shape);
     std::vector<xla::Shape> shapes;
     shapes.reserve(tuple_elements);
     size_t position = 0;
-    for (int64 i = 0; i < tuple_elements; ++i) {
+    for (int64_t i = 0; i < tuple_elements; ++i) {
       const xla::Shape& shape =
           xla::ShapeUtil::GetTupleElementShape(input_shape, i);
       if (shape.IsTuple()) {
@@ -187,7 +187,7 @@ Status GetShapeWithLayout(
             "Nested tuples not supported: ",
             xla::ShapeUtil::HumanString(input_shape));
       }
-      int64 rank = shape.rank();
+      int64_t rank = shape.rank();
       if (position + rank > minor_to_major.size()) {
         return errors::InvalidArgument(
             "Not enough layout attribute elements: position=", position,
@@ -209,8 +209,8 @@ Status GetShapeWithLayout(
     }
     *output_shape = xla::ShapeUtil::MakeTupleShape(shapes);
   } else {
-    int64 rank = input_shape.rank();
-    const int64 minor_to_major_size = minor_to_major.size();
+    int64_t rank = input_shape.rank();
+    const int64_t minor_to_major_size = minor_to_major.size();
     if (rank != minor_to_major_size) {
       return errors::InvalidArgument(
           "Wrong number of layout attribute elements: rank=", rank,

@@ -30,7 +30,7 @@ template <typename Device, typename T>
 struct TopKFunctor {
   static Status Compute(OpKernelContext* context, bool sorted, int k,
                         const typename TTypes<T, 2>::ConstTensor& input,
-                        const int64 num_rows, const int64 num_cols,
+                        const int64_t num_rows, const int64_t num_cols,
                         typename TTypes<T, 2>::Tensor values,
                         typename TTypes<int, 2>::Tensor indices);
 };

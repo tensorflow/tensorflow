@@ -153,6 +153,10 @@ class FusionPattern {
   FusionValueList& getResults() { return results_; }
 
   // Returns values that are outputs of any lmhlo op in the fused pattern and
+  // have consumers outside the fusion pattern.
+  SmallVector<Operation*, 4>& getRootOps() { return root_ops_; }
+
+  // Returns values that are outputs of any lmhlo op in the fused pattern and
   // are only consumed by the lmhlo ops inside the fused pattern.
   FusionValueList& getInternalResults() { return internal_results_; }
 
@@ -180,6 +184,7 @@ class FusionPattern {
   FusionValueList operands_;
   FusionValueList results_;
   FusionValueList internal_results_;
+  SmallVector<Operation*, 4> root_ops_;
 };
 
 // Represents a list of disjoint fusion patterns for a block.
@@ -226,6 +231,14 @@ class ShapeConstraintAnalysis {
   bool HasSameNumElements(Value lhs, Value rhs) {
     return same_num_elements_impl_.isEquivalent(ValueWrapper(lhs),
                                                 ValueWrapper(rhs));
+  }
+
+  Value GetLeaderValueWithSameShape(Value val) const {
+    if (same_shape_impl_.findLeader(ValueWrapper(val)) ==
+        same_shape_impl_.member_end()) {
+      return nullptr;
+    }
+    return same_shape_impl_.getLeaderValue(ValueWrapper(val)).getValue();
   }
 
  private:

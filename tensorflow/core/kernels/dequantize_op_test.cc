@@ -74,7 +74,7 @@ class DequantizeOpTest : public OpsTestBase {
     TF_ASSERT_OK(InitOp());
 
     std::vector<T> input;
-    for (int64 i = std::numeric_limits<T>::min();
+    for (int64_t i = std::numeric_limits<T>::min();
          i < std::numeric_limits<T>::max(); ++i) {
       input.push_back(static_cast<T>(i));
     }
@@ -104,7 +104,7 @@ class DequantizeOpTest : public OpsTestBase {
     TF_ASSERT_OK(InitOp());
 
     std::vector<T> input;
-    for (int64 i = std::numeric_limits<T>::min();
+    for (int64_t i = std::numeric_limits<T>::min();
          i < std::numeric_limits<T>::max(); ++i) {
       input.push_back(static_cast<T>(i));
     }
@@ -130,7 +130,7 @@ class DequantizeOpTest : public OpsTestBase {
                                         const std::vector<T>& data) {
     uint32 seed = 123;
     std::minstd_rand rng(seed);
-    int64 out_size = 1;
+    int64_t out_size = 1;
     for (int dim : dims) {
       out_size *= dim;
     }
@@ -249,7 +249,7 @@ TEST_F(DequantizeOpTest, DequantizeScaledQint8Axis3) {
 template <typename T>
 static void BM_DequantizeMinCombinedCpu(::testing::benchmark::State& state) {
   auto root = Scope::NewRootScope().ExitOnError();
-  const int64 num_values = 1500 * 250;
+  const int64_t num_values = 1500 * 250;
   std::vector<T> inputs;
 
   inputs.reserve(num_values);
@@ -293,7 +293,7 @@ template <typename T>
 static void BM_DequantizeBfloat16MinCombinedCpu(
     ::testing::benchmark::State& state) {
   auto root = Scope::NewRootScope().ExitOnError();
-  const int64 num_values = 1500 * 250;
+  const int64_t num_values = 1500 * 250;
   std::vector<T> inputs;
 
   inputs.reserve(num_values);

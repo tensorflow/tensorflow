@@ -11,7 +11,7 @@ ARG ROCM_PATH=/opt/rocm-4.2.0
 ENV DEBIAN_FRONTEND noninteractive
 ENV TF_NEED_ROCM 1
 ENV HOME /root/
-RUN apt update && apt install -y wget software-properties-common
+RUN apt-get --allow-unauthenticated update && apt install -y wget software-properties-common
 
 # Add rocm repository
 RUN apt-get clean all
@@ -37,6 +37,7 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
   pkg-config \
   g++-multilib \
   git \
+  kmod \
   libunwind-dev \
   libfftw3-dev \
   libelf-dev \
@@ -64,8 +65,7 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
 # Install rocm pkgs
 RUN apt-get update --allow-insecure-repositories && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
-    rocm-dev rocm-libs hipcub rocm-utils rocm-cmake \
-    rocfft miopen-hip miopengemm rocblas hipblas rocrand rccl && \
+    rocm-dev rocm-libs rccl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -78,7 +78,7 @@ ENV PATH="$ROCM_PATH/bin:${PATH}"
 ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 
 # Add target file to help determine which device(s) to build for
-RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906\ngfx908" >> ${ROCM_PATH}/bin/target.lst'
+RUN bash -c 'echo -e "gfx900\ngfx906\ngfx908" >> ${ROCM_PATH}/bin/target.lst'
 
 # Need to explicitly create the $ROCM_PATH/.info/version file to workaround what seems to be a bazel bug
 # The env vars being set via --action_env in .bazelrc and .tf_configure.bazelrc files are sometimes

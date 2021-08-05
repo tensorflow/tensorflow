@@ -61,6 +61,7 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
@@ -303,54 +304,17 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
 
 #if GOOGLE_CUDA
 
-// Encapsulate the default shape information that is used by the convolution
-// operation, and add an activation mode for the fusion.
-class FusedConvParameters : public ConvParameters {
- public:
-  FusedConvParameters(const ConvParameters& base,
-                      const se::dnn::ActivationMode activation_mode)
-      : ConvParameters(base), activation_mode_(activation_mode) {}
-
-  string ToString() const {
-    return absl::StrCat(ConvParameters::ToString(), ", ", activation_mode_);
-  }
-
- private:
-  friend bool operator==(const FusedConvParameters& lhs,
-                         const FusedConvParameters& rhs);
-
-  using ParameterDataType =
-      std::tuple<ConvParameters::ParameterDataType, se::dnn::ActivationMode>;
-
-  ParameterDataType get_data_as_tuple() const {
-    return std::make_tuple(ConvParameters::get_data_as_tuple(),
-                           activation_mode_);
-  }
-
-  se::dnn::ActivationMode activation_mode_;
-};
-
-inline bool operator==(const FusedConvParameters& lhs,
-                       const FusedConvParameters& rhs) {
-  return lhs.get_data_as_tuple() == rhs.get_data_as_tuple();
-}
-
-inline bool operator!=(const FusedConvParameters& lhs,
-                       const FusedConvParameters& rhs) {
-  return !(lhs == rhs);
-}
-
 // A dummy type to group forward convolution autotune results together.
-struct FusedConvAutoTuneGroup {
+struct FusedConvAutotuneGroup {
   static string name() { return "FusedConv"; }
 };
 
-using AutoTuneFusedConv =
-    AutoTuneSingleton<FusedConvAutoTuneGroup, FusedConvParameters,
+using AutotuneFusedConv =
+    AutotuneSingleton<FusedConvAutotuneGroup, ConvParameters,
                       se::dnn::AlgorithmConfig>;
 
 inline int64 ConvolveScratchSize() {
-  static int64 convolve_scratch_size = GetDnnWorkspaceLimit(
+  static int64_t convolve_scratch_size = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
   );
@@ -363,17 +327,17 @@ inline int64 ConvolveScratchSize() {
 // TODO(ezhulenev): Move it to conv_ops_gpu.h and share with conv_ops.cc.
 template <typename T, typename ConvLaunch, typename LogFunc>
 Status FindBestConvolveAlgorithm(
-    const FusedConvParameters& params,
-    const se::dnn::BatchDescriptor& input_desc,
+    const ConvParameters& params, const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
     const se::dnn::BatchDescriptor& bias_desc,
     const se::dnn::BatchDescriptor& output_desc,
-    const se::dnn::ConvolutionDescriptor& conv_desc, double conv_input_scale,
+    const se::dnn::ConvolutionDescriptor& conv_desc,
+    const se::dnn::ActivationMode activation_mode, double conv_input_scale,
     double side_input_scale, const ConvLaunch launch, OpKernelContext* context,
     se::Stream* stream, se::DeviceMemory<T> output_ptr, const LogFunc& log,
     se::dnn::AlgorithmConfig* algorithm_config) {
   // Check if we already have an algorithm selected for the given parameters.
-  if (AutoTuneFusedConv::GetInstance()->Find(params, algorithm_config)) {
+  if (AutotuneFusedConv::GetInstance()->Find(params, algorithm_config)) {
     return Status::OK();
   }
   profiler::ScopedAnnotation trace("cudnn_autotuning");
@@ -388,7 +352,7 @@ Status FindBestConvolveAlgorithm(
                  se::dnn::ConvolutionKind::FORWARD,
                  se::dnn::ToDataType<T>::value, conv_input_scale,
                  side_input_scale, stream, input_desc, filter_desc, bias_desc,
-                 output_desc, conv_desc, &plans)
+                 output_desc, conv_desc, activation_mode, &plans)
              .ok()) {
       return errors::Unknown(
           "Failed to get convolution plans. This is probably because cuDNN "
@@ -401,9 +365,7 @@ Status FindBestConvolveAlgorithm(
           plan->getWorkspaceSize()));
     }
   } else {
-    if (!stream->parent()->GetConvolveAlgorithms(
-            params.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
-            &algorithms)) {
+    if (!stream->parent()->GetConvolveAlgorithms(&algorithms)) {
       return errors::Unknown(
           "Failed to get convolution algorithm. This is probably because cuDNN "
           "failed to initialize, so try looking to see if a warning log "
@@ -468,7 +430,7 @@ Status FindBestConvolveAlgorithm(
                        profile_config.algorithm()->exec_plan_id()));
     }
   }
-  // Only log on an AutoTuneFusedConv cache miss.
+  // Only log on an AutotuneFusedConv cache miss.
   log(results);
   if (CudnnUseFrontend()) {
     TF_RETURN_IF_ERROR(
@@ -477,7 +439,7 @@ Status FindBestConvolveAlgorithm(
     TF_RETURN_IF_ERROR(
         BestCudnnConvAlgorithm(results, nullptr, algorithm_config));
   }
-  AutoTuneFusedConv::GetInstance()->Insert(params, *algorithm_config);
+  AutotuneFusedConv::GetInstance()->Insert(params, *algorithm_config);
   return Status::OK();
 }
 
@@ -509,19 +471,19 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
 
     Tensor input = input_param;
 
-    const int64 in_batch = GetTensorDim(input, params.data_format, 'N');
-    int64 in_rows = GetTensorDim(input, params.data_format, 'H');
-    int64 in_cols = GetTensorDim(input, params.data_format, 'W');
-    const int64 in_depths = GetTensorDim(input, params.data_format, 'C');
+    const int64_t in_batch = GetTensorDim(input, params.data_format, 'N');
+    int64_t in_rows = GetTensorDim(input, params.data_format, 'H');
+    int64_t in_cols = GetTensorDim(input, params.data_format, 'W');
+    const int64_t in_depths = GetTensorDim(input, params.data_format, 'C');
 
-    const int64 patch_rows = filter.dim_size(0);
-    const int64 patch_cols = filter.dim_size(1);
-    const int64 patch_depths = filter.dim_size(2);
+    const int64_t patch_rows = filter.dim_size(0);
+    const int64_t patch_cols = filter.dim_size(1);
+    const int64_t patch_depths = filter.dim_size(2);
 
-    const int64 out_batch = GetTensorDim(*output, params.data_format, 'N');
-    const int64 out_rows = GetTensorDim(*output, params.data_format, 'H');
-    const int64 out_cols = GetTensorDim(*output, params.data_format, 'W');
-    const int64 out_depths = GetTensorDim(*output, params.data_format, 'C');
+    const int64_t out_batch = GetTensorDim(*output, params.data_format, 'N');
+    const int64_t out_rows = GetTensorDim(*output, params.data_format, 'H');
+    const int64_t out_cols = GetTensorDim(*output, params.data_format, 'W');
+    const int64_t out_depths = GetTensorDim(*output, params.data_format, 'C');
 
     // Bias of the following dimensions: [ output_depth ]
     const Tensor& bias = context->input(2);
@@ -532,9 +494,9 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
                 errors::InvalidArgument("bias depth must be equal to out depth",
                                         bias.shape().DebugString()));
 
-    const int64 common_padding_rows =
+    const int64_t common_padding_rows =
         std::min(dimensions.pad_rows_before, dimensions.pad_rows_after);
-    const int64 common_padding_cols =
+    const int64_t common_padding_cols =
         std::min(dimensions.pad_cols_before, dimensions.pad_cols_after);
     if (dimensions.pad_rows_before != dimensions.pad_rows_after ||
         dimensions.pad_cols_before != dimensions.pad_cols_after) {
@@ -548,25 +510,25 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
       // result is equivalent to as if the padding is (1, 1, 1, 1). Changing the
       // padding in such a way would allow us to avoid the allocation.
       Tensor transformed_input;
-      const int64 padding_rows_diff =
+      const int64_t padding_rows_diff =
           std::abs(dimensions.pad_rows_after - dimensions.pad_rows_before);
-      const int64 padding_cols_diff =
+      const int64_t padding_cols_diff =
           std::abs(dimensions.pad_cols_after - dimensions.pad_cols_before);
-      const int64 new_in_rows = in_rows + padding_rows_diff;
-      const int64 new_in_cols = in_cols + padding_cols_diff;
+      const int64_t new_in_rows = in_rows + padding_rows_diff;
+      const int64_t new_in_cols = in_cols + padding_cols_diff;
       OP_REQUIRES_OK(context,
                      context->allocate_temp(
                          DataTypeToEnum<T>::value,
                          ShapeFromFormat(params.data_format, in_batch,
                                          new_in_rows, new_in_cols, in_depths),
                          &transformed_input));
-      const int64 input_pad_top =
+      const int64_t input_pad_top =
           dimensions.pad_rows_before - common_padding_rows;
-      const int64 input_pad_bottom =
+      const int64_t input_pad_bottom =
           dimensions.pad_rows_after - common_padding_rows;
-      const int64 input_pad_left =
+      const int64_t input_pad_left =
           dimensions.pad_cols_before - common_padding_cols;
-      const int64 input_pad_right =
+      const int64_t input_pad_right =
           dimensions.pad_cols_after - common_padding_cols;
       bool in_bounds =
           FastBoundsCheck(input_pad_top, std::numeric_limits<int>::max()) &&
@@ -694,26 +656,27 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
 
     int device_id = stream->parent()->device_ordinal();
     DataType dtype = input.dtype();
-    FusedConvParameters conv_parameters = {
-        {in_batch,                      // batch
-         in_depths,                     // in_depths
-         {{in_rows,                     // in_rows
-           in_cols}},                   // in_cols
-         FORMAT_NCHW,                   // compute_data_format
-         out_depths,                    // out_depths
-         {{patch_rows,                  // filter_rows
-           patch_cols,                  // filter_cols
-           patch_depths}},              // filter_depths
-         {{dimensions.dilation_rows,    // dilation_rows
-           dimensions.dilation_cols}},  // dilation_cols
-         {{dimensions.stride_rows,      // stride_rows
-           dimensions.stride_cols}},    // stride_cols
-         {{common_padding_rows,         // padding_rows
-           common_padding_cols}},       // padding_cols
-         dtype,                         // tensor datatype
-         device_id,                     // device_id
-         conv_desc.group_count()},
-        dnn_activation_mode  // activation_mode
+    ConvParameters conv_parameters = {
+        in_batch,                      // batch
+        in_depths,                     // in_depths
+        {{in_rows,                     // in_rows
+          in_cols}},                   // in_cols
+        FORMAT_NCHW,                   // compute_data_format
+        out_depths,                    // out_depths
+        {{patch_rows,                  // filter_rows
+          patch_cols,                  // filter_cols
+          patch_depths}},              // filter_depths
+        {{dimensions.dilation_rows,    // dilation_rows
+          dimensions.dilation_cols}},  // dilation_cols
+        {{dimensions.stride_rows,      // stride_rows
+          dimensions.stride_cols}},    // stride_cols
+        {{common_padding_rows,         // padding_rows
+          common_padding_cols}},       // padding_cols
+        dtype,                         // tensor datatype
+        device_id,                     // device_id
+        conv_desc.group_count(),
+        /*has_side_input=*/false,  // this op doesn't support side inputs.
+        dnn_activation_mode        // activation_mode
     };
 
     constexpr double kConvInputScale = 1.0;
@@ -753,8 +716,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     if (cudnn_use_autotune) {
       auto status = FindBestConvolveAlgorithm<T>(
           conv_parameters, input_desc, filter_desc, bias_desc, output_desc,
-          conv_desc, kConvInputScale, kSideInputScale, launch, context, stream,
-          output_ptr,
+          conv_desc, dnn_activation_mode, kConvInputScale, kSideInputScale,
+          launch, context, stream, output_ptr,
           [&](absl::Span<const tensorflow::AutotuneResult> results) {
             LogFusedConvForwardAutotuneResults(
                 se::dnn::ToDataType<T>::value, input_ptr, filter_ptr,

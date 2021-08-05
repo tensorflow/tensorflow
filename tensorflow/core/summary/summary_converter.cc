@@ -27,7 +27,7 @@ namespace tensorflow {
 namespace {
 
 template <typename T>
-Status TensorValueAt(Tensor t, int64 i, T* out) {
+Status TensorValueAt(Tensor t, int64_t i, T* out) {
 #define CASE(I)                            \
   case DataTypeToEnum<I>::value:           \
     *out = static_cast<T>(t.flat<I>()(i)); \
@@ -219,7 +219,7 @@ Status AddTensorAsHistogramToSummary(const Tensor& t, const string& tag,
   Summary::Value* v = s->add_value();
   v->set_tag(tag);
   histogram::Histogram histo;
-  for (int64 i = 0; i < t.NumElements(); i++) {
+  for (int64_t i = 0; i < t.NumElements(); i++) {
     double double_val;
     TF_RETURN_IF_ERROR(TensorValueAt<double>(t, i, &double_val));
     if (Eigen::numext::isnan(double_val)) {
@@ -290,8 +290,8 @@ Status AddTensorAsAudioToSummary(const Tensor& tensor, const string& tag,
     return errors::InvalidArgument("sample_rate must be > 0");
   }
   const int batch_size = tensor.dim_size(0);
-  const int64 length_frames = tensor.dim_size(1);
-  const int64 num_channels =
+  const int64_t length_frames = tensor.dim_size(1);
+  const int64_t num_channels =
       tensor.dims() == 2 ? 1 : tensor.dim_size(tensor.dims() - 1);
   const int N = std::min<int>(max_outputs, batch_size);
   for (int i = 0; i < N; ++i) {

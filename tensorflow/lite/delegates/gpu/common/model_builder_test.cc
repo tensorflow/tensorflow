@@ -2085,13 +2085,6 @@ TEST(AveragePooling2DOperationParserTest, TestIsSupported) {
       parser
           ->IsSupported(context.get(), context->node(), context->registration())
           .ok());
-  // Invalid num_outputs for custom case.
-  TfLitePoolParams custom_initial_data;
-  context->node()->custom_initial_data = &custom_initial_data;
-  EXPECT_FALSE(
-      parser
-          ->IsSupported(context.get(), context->node(), context->registration())
-          .ok());
 }
 
 TEST(MaxPooling2DOperationParserTest, TestIsSupported) {
@@ -2151,10 +2144,58 @@ TEST(MaxPooling2DOperationParserTest, TestIsSupported) {
       parser
           ->IsSupported(context.get(), context->node(), context->registration())
           .ok());
-  // Invalid num_outputs for custom case.
-  TfLitePoolParams custom_initial_data;
-  context->node()->custom_initial_data = &custom_initial_data;
+}
+
+TEST(CustomMaxPooling2DOperationParserTest, TestIsSupported) {
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinCustom,
+                                                     /*op_version=*/2,
+                                                     /*num_inputs=*/1);
+  context->registration()->custom_name = "MaxPoolingWithArgmax2D";
+  TfLitePoolParams tf_options;
+  context->node()->custom_initial_data = &tf_options;
+  TfLiteIntArrayFree(context->node()->outputs);
+  // To make the op node has two outputs
+  context->node()->outputs = TfLiteIntArrayCreate(2);
+  context->node()->outputs->data[0] = 2;
+  context->node()->outputs->data[1] = 3;
+  auto parser = NewOperationParser(context->registration());
+
+  // Invalid filter and stride
+  tf_options.filter_height = 0;
+  tf_options.filter_width = 0;
+  tf_options.stride_width = 0;
+  tf_options.stride_height = 0;
   EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid filter
+  tf_options.filter_height = 0;
+  tf_options.filter_width = 0;
+  tf_options.stride_width = 1;
+  tf_options.stride_height = 1;
+
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid activation
+  tf_options.filter_height = 1;
+  tf_options.filter_width = 1;
+  tf_options.stride_width = 1;
+  tf_options.stride_height = 1;
+  tf_options.activation = kTfLiteActSignBit;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  tf_options.filter_height = 1;
+  tf_options.filter_width = 1;
+  tf_options.stride_width = 1;
+  tf_options.stride_height = 1;
+  tf_options.activation = kTfLiteActTanh;
+  EXPECT_TRUE(
       parser
           ->IsSupported(context.get(), context->node(), context->registration())
           .ok());

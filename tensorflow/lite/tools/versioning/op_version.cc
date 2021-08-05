@@ -228,6 +228,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_MUL:
+      // Version 5 supports int64 inputs
+      if (op_sig.inputs.at(0).type == kTfLiteInt64) {
+        return 5;
+      }
       // Version 4 supports int16 inputs
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 4;
@@ -374,6 +378,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 3;
       }
       if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        if (op_sig.ext_options.dequantize.is_per_channel_quantized) {
+          return 5;
+        }
         return 2;
       }
       return 1;
@@ -763,6 +770,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
+
+    case BuiltinOperator_REDUCE_PROD:
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
+          op_sig.inputs.at(0).type == kTfLiteInt16) {
+        return 2;
+      }
+      return 1;
+
     // The version one of broadcast to op won't be not supported since the
     // version one was rollbacked and the builtin op code number has been
     // changed because of builtin op code shortage problem.

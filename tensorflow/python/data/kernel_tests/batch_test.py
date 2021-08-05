@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -39,6 +40,8 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -267,12 +270,25 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.batch(
           batch_size=6, num_parallel_calls=2,
           deterministic=local_determinism).unbatch()
-      opts = dataset_ops.Options()
-      opts.experimental_deterministic = global_determinism
+      opts = options_lib.Options()
+      opts.deterministic = global_determinism
       dataset = dataset.with_options(opts)
       return dataset
 
     self.checkDeterminism(dataset_fn, expect_determinism, elements)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testCheckpointLargeBatches(self):
+    # Batches of size 512M
+    dataset = dataset_ops.Dataset.from_tensors(
+        array_ops.ones((64, 1024, 1024), dtype=dtypes.float32)).repeat()
+    dataset = dataset.batch(2, num_parallel_calls=5)
+    iterator = iter(dataset)
+    next(iterator)  # request an element to fill the buffer
+    ckpt = trackable_utils.Checkpoint(iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, self.get_temp_dir(), max_to_keep=1)
+    manager.save()
 
 
 class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,

@@ -44,7 +44,7 @@ AutoShardDatasetOp::AutoShardDatasetOp(OpKernelConstruction* ctx)
 
 void AutoShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                      DatasetBase** output) {
-  int64 index, num_workers, auto_shard_policy, num_replicas;
+  int64_t index, num_workers, auto_shard_policy, num_replicas;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kNumWorkers, &num_workers));
   OP_REQUIRES(
       ctx, num_workers > 0,
@@ -75,9 +75,10 @@ void AutoShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                      /*record_fingerprint=*/false, output));
 }
 
-RewriterConfig AutoShardDatasetOp::CreateConfig(int64 num_workers, int64 index,
-                                                int64 auto_shard_policy,
-                                                int64 num_replicas) {
+RewriterConfig AutoShardDatasetOp::CreateConfig(int64_t num_workers,
+                                                int64_t index,
+                                                int64_t auto_shard_policy,
+                                                int64_t num_replicas) {
   RewriterConfig rewriter_config;
   rewriter_config.set_fail_on_optimizer_errors(true);
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);

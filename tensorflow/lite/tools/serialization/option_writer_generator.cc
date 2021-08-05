@@ -88,6 +88,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteHashtableImportParams",
                                       "TfLiteHashtableSizeParams",
                                       "TfLiteConv3DTransposeParams",
+                                      "TfLiteVarHandleParams",
                                       nullptr};
 }  // namespace
 
@@ -203,6 +204,7 @@ class OpOptionData {
     op_to_option_["REAL"] = "";
     op_to_option_["IMAG"] = "";
     op_to_option_["COMPLEX_ABS"] = "";
+    op_to_option_["BROADCAST_ARGS"] = "";
 
     // TODO(aselle): These are undesirable hacks. Consider changing C structs
     option_to_struct_["Pool2DOptions"] = "TfLitePoolParams";
@@ -279,6 +281,19 @@ void GenerateImportForResizeBilinearOp(FILE* fp) {
           "  }\n  break;\n");
 }
 
+void GenerateImportForVarHandleOp(FILE* fp) {
+  fprintf(fp,
+          "  case BuiltinOperator_VAR_HANDLE:  {\n"
+          "    const auto* params = reinterpret_cast<const "
+          "TfLiteVarHandleParams*>(builtin_op_data);\n"
+          "    auto union_type = CreateVarHandleOptions(*fbb, "
+          "fbb->CreateString(params->container), "
+          "fbb->CreateString(params->shared_name)).Union();\n"
+          "    return std::make_pair(BuiltinOptions_VarHandleOptions, "
+          "union_type);\n"
+          "  }\n  break;\n");
+}
+
 // Reshape Op infers output shape either from Parameter or from shape tensor
 // that's is an additional input. When we have this additional shape tensor as
 // input we don't have the parameter present in this layer. In case of more than
@@ -313,6 +328,11 @@ void GenerateImportForOp(FILE* fp, const std::string& op_name,
   // Special-case ResizeBilinear which has some deprecated fields.
   if (struct_name == "TfLiteResizeBilinearParams") {
     GenerateImportForResizeBilinearOp(fp);
+    return;
+  }
+
+  if (struct_name == "TfLiteVarHandleParams") {
+    GenerateImportForVarHandleOp(fp);
     return;
   }
 

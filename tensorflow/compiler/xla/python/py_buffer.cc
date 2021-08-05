@@ -112,8 +112,8 @@ PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
       buffer_(std::move(buffer)),
       traceback_(std::move(traceback)) {
   CHECK(PyGILState_Check());
-  next_ = client_->buffers_;
-  client_->buffers_ = this;
+  next_ = client_->buffers_[buffer_->device()->id()];
+  client_->buffers_[buffer_->device()->id()] = this;
   prev_ = nullptr;
   if (next_) {
     next_->prev_ = this;
@@ -122,8 +122,8 @@ PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
 
 PyBuffer::~PyBuffer() {
   CHECK(PyGILState_Check());
-  if (client_->buffers_ == this) {
-    client_->buffers_ = next_;
+  if (client_->buffers_[device()->id()] == this) {
+    client_->buffers_[device()->id()] = next_;
   }
   if (prev_) {
     prev_->next_ = next_;
@@ -161,7 +161,7 @@ StatusOr<const Shape*> PyBuffer::xla_dynamic_shape() {
 }
 
 pybind11::tuple PyBuffer::python_shape() const {
-  return IntSpanToTuple(buffer()->on_device_shape().dimensions());
+  return SpanToTuple(buffer()->on_device_shape().dimensions());
 }
 
 pybind11::dtype PyBuffer::python_dtype() const {
@@ -287,7 +287,7 @@ StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
 
   py::dict result;
   TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
-  result["shape"] = IntSpanToTuple(dynamic_shape->dimensions());
+  result["shape"] = SpanToTuple(dynamic_shape->dimensions());
   TF_ASSIGN_OR_RETURN(py::str typestr,
                       TypeDescriptorForPrimitiveType(
                           buffer_->on_device_shape().element_type()));
@@ -551,7 +551,7 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       property_readonly([](py::object self) { return self; });
   type.attr(
       "shape") = property_readonly([](PyBuffer::object self) -> py::tuple {
-    return IntSpanToTuple(self.buf()->buffer()->on_device_shape().dimensions());
+    return SpanToTuple(self.buf()->buffer()->on_device_shape().dimensions());
   });
   type.attr("dtype") = property_readonly([](PyBuffer::object self) {
     PrimitiveType primitive =

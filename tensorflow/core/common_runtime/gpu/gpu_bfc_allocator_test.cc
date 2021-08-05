@@ -42,8 +42,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-void CheckStats(Allocator* a, int64 num_allocs, int64 bytes_in_use,
-                int64 peak_bytes_in_use, int64 largest_alloc_size) {
+void CheckStats(Allocator* a, int64_t num_allocs, int64_t bytes_in_use,
+                int64_t peak_bytes_in_use, int64_t largest_alloc_size) {
   absl::optional<AllocatorStats> stats = a->GetStats();
   EXPECT_TRUE(stats);
   if (!stats) {
@@ -267,7 +267,7 @@ TEST_P(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
   random::PhiloxRandom philox(123, 17);
   random::SimplePhilox rand(&philox);
 
-  const int32 max_mem = 1 << 27;
+  const int32_t max_mem = 1 << 27;
 
   std::vector<void*> initial_ptrs;
   for (int s = 1; s < 10; s++) {
@@ -288,7 +288,7 @@ TEST_P(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
     }
   }
 
-  const int32 max_mem_2 = 1 << 26;
+  const int32_t max_mem_2 = 1 << 26;
   // Allocate a lot of raw pointers between 100 bytes and 64 megs.
   for (int s = 1; s < 10; s++) {
     size_t size = std::min<size_t>(

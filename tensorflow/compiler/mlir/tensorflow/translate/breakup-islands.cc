@@ -48,6 +48,12 @@ class BreakUpIslands : public TF::PerFunctionAggregateAnalysisConsumerPass<
   }
 
  public:
+  StringRef getArgument() const final { return "tf-executor-break-up-islands"; }
+
+  StringRef getDescription() const final {
+    return "Transform from TF control dialect to TF executor dialect.";
+  }
+
   void runOnFunction(FuncOp func,
                      const TF::SideEffectAnalysis::Info& side_effect_analysis);
 
@@ -358,6 +364,4 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateBreakUpIslandsPass() {
 
 }  // namespace mlir
 
-static mlir::PassRegistration<mlir::BreakUpIslands> pass(
-    "tf-executor-break-up-islands",
-    "Transform from TF control dialect to TF executor dialect.");
+static mlir::PassRegistration<mlir::BreakUpIslands> pass;

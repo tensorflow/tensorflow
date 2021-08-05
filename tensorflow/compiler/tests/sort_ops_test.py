@@ -242,11 +242,9 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
   def testTopK(self):
     supported_types = set([
         dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64,
-        np.int32, np.uint32
+        np.int32, np.uint32, np.int64, np.uint64
     ])
     for dtype in supported_types.intersection(self.numeric_types):
-      if dtype == np.float64 and self.device == "TPU":
-        continue
       # Use small input size for bfloat16. Otherwise, we'll get duplicate values
       # after conversion to bfloat16, so the possible resulting index array is
       # no longer unique.
@@ -273,14 +271,13 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
       ("HalfFloatPrecision", np.float16),
       ("SinglePrecision", np.float32),
       ("DoublePrecision", np.float64),
-      ("Int", np.int32),
-      ("UnsignedInt", np.uint32),
+      ("Int32", np.int32),
+      ("UnsignedInt32", np.uint32),
+      ("Int64", np.int64),
+      ("UnsignedInt64", np.uint64),
   )
   def testTopK2D(self, dtype):
     if dtype in self.numeric_types:
-      # TPU implementation is not supported for double precision
-      if (dtype == np.float64 or dtype == np.float16) and self.device == "TPU":
-        return
       # Use small input size for bfloat16. Otherwise, we'll get duplicate values
       # after conversion to bfloat16, so the possible resulting index array is
       # no longer unique.
@@ -310,9 +307,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
     supported_types = set(
         [dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64])
     for dtype in supported_types.intersection(self.numeric_types):
-      # TPU implementation is not supported for double precision
-      if (dtype == np.float64 or dtype == np.float16) and self.device == "TPU":
-        continue
       with self.session() as sess:
         p = array_ops.placeholder(dtype)
         with self.test_scope():
@@ -328,9 +322,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
     supported_types = set(
         [dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64])
     for dtype in supported_types.intersection(self.numeric_types):
-      # TPU implementation is not supported for double precision
-      if (dtype == np.float64 or dtype == np.float16) and self.device == "TPU":
-        continue
       with self.session() as sess:
         p = array_ops.placeholder(dtype)
         with self.test_scope():

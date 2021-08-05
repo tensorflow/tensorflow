@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -78,7 +80,11 @@ bool IsMatrixMultiplication(const HloInstruction& dot);
 // after a GemmRewriter lowering pass.
 bool IsCublasGemm(const HloInstruction& hlo);
 
-constexpr int64 kWarpSize = 32;
+constexpr int64_t kWarpSize = 32;
+
+// Need at least 256 threads/block for reasonable tree reduction
+// performance (assuming all data fits).
+constexpr int64_t kMinThreadsXRowReduction = 256;
 
 // A call to cuBLAS general matrix multiplication API.
 extern const char* const kGemmCallTarget;
@@ -219,10 +225,7 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
 ReductionDimensions GetReductionKindAndContiguousComponents(
     mlir::Operation* reduce);
 
-// Get tiling per thread for the given reduction in dimensions [D, H, W] per
-// thread.
-// If the device isn't known pass null for device_description and you will get
-// non-optimized value.
+// Get tiling per thread for the given reduction in dimensions [D, H, W].
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     int smallest_input_dtype_bits,
@@ -275,6 +278,15 @@ inline std::string MlirToString(mlir::Operation* op) {
   return s;
 }
 
+inline std::string MlirToString(const mlir::Location& loc) {
+  std::string s;
+  {
+    llvm::raw_string_ostream os(s);
+    loc.print(os);
+  }
+  return s;
+}
+
 int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
 std::vector<mlir::Value> GetHloOperands(mlir::Operation* op);
 std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op);
@@ -293,6 +305,8 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<const BufferAllocation> allocations);
+
+Shape GetShape(mlir::Value value);
 
 }  // namespace gpu
 }  // namespace xla

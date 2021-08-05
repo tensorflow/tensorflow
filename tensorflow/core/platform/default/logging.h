@@ -272,11 +272,11 @@ inline const T& GetReferenceableValue(const T& t) {
 inline char GetReferenceableValue(char t) { return t; }
 inline unsigned char GetReferenceableValue(unsigned char t) { return t; }
 inline signed char GetReferenceableValue(signed char t) { return t; }
-inline int16 GetReferenceableValue(int16 t) { return t; }
+inline int16 GetReferenceableValue(int16_t t) { return t; }
 inline uint16 GetReferenceableValue(uint16 t) { return t; }
 inline int GetReferenceableValue(int t) { return t; }
 inline unsigned int GetReferenceableValue(unsigned int t) { return t; }
-inline int64 GetReferenceableValue(int64 t) { return t; }
+inline int64 GetReferenceableValue(int64_t t) { return t; }
 inline uint64 GetReferenceableValue(uint64 t) { return t; }
 
 // This formats a value for a failing CHECK_XX statement.  Ordinarily,

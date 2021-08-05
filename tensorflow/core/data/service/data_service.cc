@@ -17,41 +17,68 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
 
 namespace {
-constexpr const char kParallelEpochs[] = "parallel_epochs";
-constexpr const char kDistributedEpoch[] = "distributed_epoch";
 constexpr const char kAuto[] = "AUTO";
 constexpr const char kAny[] = "ANY";
 constexpr const char kLocal[] = "LOCAL";
 }  // namespace
 
-Status ParseProcessingMode(const std::string& s, ProcessingMode& mode) {
-  if (s == kParallelEpochs) {
-    mode = ProcessingMode::PARALLEL_EPOCHS;
-  } else if (s == kDistributedEpoch) {
-    mode = ProcessingMode::DISTRIBUTED_EPOCH;
-  } else {
-    return errors::InvalidArgument("Unrecognized processing mode: ", s);
+bool IsNoShard(const ProcessingModeDef& processing_mode) {
+  return processing_mode.sharding_policy() == ProcessingModeDef::OFF;
+}
+
+bool IsDynamicShard(const ProcessingModeDef& processing_mode) {
+  return processing_mode.sharding_policy() == ProcessingModeDef::DYNAMIC;
+}
+
+bool IsStaticShard(const ProcessingModeDef& processing_mode) {
+  return processing_mode.sharding_policy() == ProcessingModeDef::FILE ||
+         processing_mode.sharding_policy() == ProcessingModeDef::DATA ||
+         processing_mode.sharding_policy() == ProcessingModeDef::FILE_OR_DATA ||
+         processing_mode.sharding_policy() == ProcessingModeDef::HINT;
+}
+
+Status ValidateProcessingMode(const ProcessingModeDef& processing_mode) {
+  if (!IsNoShard(processing_mode) && !IsDynamicShard(processing_mode) &&
+      !IsStaticShard(processing_mode)) {
+    return errors::Internal(
+        "ProcessingMode ", processing_mode.ShortDebugString(),
+        " does not "
+        "specify a valid sharding policy. Please add the policy to either "
+        "`IsDynamicShard` or `IsStaticShard` (i.e., auto-shard).");
   }
   return Status::OK();
 }
 
-std::string ProcessingModeToString(ProcessingMode mode) {
-  switch (mode) {
-    case ProcessingMode::PARALLEL_EPOCHS:
-      return kParallelEpochs;
-    case ProcessingMode::DISTRIBUTED_EPOCH:
-      return kDistributedEpoch;
+StatusOr<AutoShardPolicy> ToAutoShardPolicy(
+    const ProcessingModeDef::ShardingPolicy sharding_policy) {
+  switch (sharding_policy) {
+    case ProcessingModeDef::FILE:
+      return AutoShardPolicy::FILE;
+    case ProcessingModeDef::DATA:
+      return AutoShardPolicy::DATA;
+    case ProcessingModeDef::FILE_OR_DATA:
+      return AutoShardPolicy::AUTO;
+    case ProcessingModeDef::HINT:
+      return AutoShardPolicy::HINT;
+    case ProcessingModeDef::DYNAMIC:
+    case ProcessingModeDef::OFF:
+      return AutoShardPolicy::OFF;
     default:
-      DCHECK(false);
-      return "Unknown";
+      return errors::Internal(
+          "tf.data service sharding policy ",
+          ProcessingModeDef::ShardingPolicy_Name(sharding_policy),
+          " is not convertible to a valid auto-shard policy. If you're "
+          "defining a new sharding policy, please update the policy mapping.");
   }
 }
 

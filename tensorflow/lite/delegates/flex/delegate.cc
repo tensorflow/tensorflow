@@ -32,15 +32,6 @@ limitations under the License.
 
 namespace tflite {
 
-// Corresponding weak declaration found in lite/interpreter_builder.cc.
-#if TFLITE_HAS_ATTRIBUTE_WEAK
-// If weak symbol is not supported (Windows), it can use
-// TF_AcquireFlexDelegate() path instead.
-TfLiteDelegateUniquePtr AcquireFlexDelegate() {
-  return tflite::FlexDelegate::Create();
-}
-#endif
-
 TfLiteDelegateUniquePtr FlexDelegate::Create(
     std::unique_ptr<FlexDelegate> base_delegate) {
   TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO,
@@ -169,17 +160,3 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
 }
 
 }  // namespace tflite
-
-// LINT.IfChange
-// Exported C interface function which is used by AcquireFlexDelegate() at
-// interpreter_builder.cc. To export the function name globally, the function
-// name must be matched with patterns in tf_version_script.lds. In Android, we
-// don't use this feature so skip building.
-#if !defined(__ANDROID__)
-extern "C" {
-TFL_CAPI_EXPORT tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
-  return tflite::FlexDelegate::Create();
-}
-}  // extern "C"
-#endif  // !defined(__ANDROID__)
-// LINT.ThenChange(//tensorflow/lite/interpreter_builder.cc)

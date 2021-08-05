@@ -491,7 +491,7 @@ def parse_sequence_example(serialized,
 
   `sequence_features` contains `VarLenFeature`, `RaggedFeature`, and
   `FixedLenSequenceFeature` objects. Each `VarLenFeature` is mapped to a
-  `SparseTensor`; each `RaggedFeature` is mapped to a `RaggedTensor; and
+  `SparseTensor`; each `RaggedFeature` is mapped to a `RaggedTensor`; and
   each `FixedLenSequenceFeature` is mapped to a `Tensor`, each of the specified
   type. The shape will be `(B,T,) + df.dense_shape` for
   `FixedLenSequenceFeature` `df`, where `B` is the batch size, and `T` is the
@@ -507,10 +507,10 @@ def parse_sequence_example(serialized,
   provides dicts of shape tensors as part of the output. There is one dict for
   the context features, and one for the feature_list features. Context features
   of type `FixedLenFeature`s will not be present, since their shapes are already
-  known by the caller. In situations where the input 'FixedLenFeature`s are of
-  different lengths across examples, the shorter examples will be padded with
-  default datatype values: 0 for numeric types, and the empty string for string
-  types.
+  known by the caller. In situations where the input `FixedLenSequenceFeature`s
+  are of different sequence lengths across examples, the shorter examples will
+  be padded with default datatype values: 0 for numeric types, and the empty
+  string for string types.
 
   Each `SparseTensor` corresponding to `sequence_features` represents a ragged
   vector.  Its indices are `[time, index]`, where `time` is the `FeatureList`

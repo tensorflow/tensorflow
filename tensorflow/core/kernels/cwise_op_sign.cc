@@ -35,5 +35,11 @@ REGISTER_KERNEL_BUILDER(Name("Sign")
                             .TypeConstraint<int32>("T"),
                         UnaryOp<CPUDevice, functor::sign<int32>>);
 #endif
+REGISTER_KERNEL_BUILDER(Name("Sign")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .TypeConstraint<int32>("T"),
+                        UnaryOp<CPUDevice, functor::sign<int32>>);
 
 }  // namespace tensorflow

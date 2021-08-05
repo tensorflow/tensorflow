@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 40.
+// Next ID to use: 41.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -257,4 +257,8 @@ message TocoFlags {
   // If true, automatically adds all tf ops into the model as select Tensorflow
   // ops.
   optional bool allow_all_select_tf_ops = 39;
+
+  // Whether to unfold large splat constant tensors in the flatbuffer to reduce
+  // model size.
+  optional bool unfold_large_splat_constant = 40 [default = false];
 }

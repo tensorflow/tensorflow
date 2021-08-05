@@ -35,10 +35,6 @@ NO_WORK_DIR = ""
 TEST_HEARTBEAT_INTERVAL_MS = 100
 TEST_DISPATCHER_TIMEOUT_MS = 1000
 PROTOCOL = "grpc"
-# Some clusters may take a long time to shut down due to blocked outstanding
-# RPCs. We store the clusters here so that they are destroyed at end of process
-# instead of slowing down unit tests.
-GLOBAL_CLUSTERS = set()
 
 
 def all_cluster_configurations():
@@ -64,6 +60,7 @@ def _make_worker(dispatcher_address, shutdown_quiet_period_ms=0, port=0):
   return server_lib.WorkerServer(config_proto, start=False)
 
 
+# pylint: disable=protected-access
 class TestWorker(object):
   """A tf.data service worker."""
 
@@ -74,12 +71,11 @@ class TestWorker(object):
     self._running = False
 
   def stop(self):
-    self._server._stop()  # pylint: disable=protected-access
+    self._server._stop()
     self._running = False
 
   def start(self):
     self._server.start()
-    # pylint: disable=protected-access
     self._port = int(self._server._address.split(":")[1])
     self._running = True
 
@@ -93,16 +89,16 @@ class TestWorker(object):
     self._server = _make_worker(self._dispatcher_address,
                                 self._shutdown_quiet_period_ms, port)
     self._server.start()
-    # pylint: disable=protected-access
     self._port = int(self._server._address.split(":")[1])
     self._running = True
 
+  def join(self):
+    self._server.join()
+
   def num_tasks(self):
-    # pylint: disable=protected-access
     return self._server._num_tasks()
 
   def worker_address(self):
-    # pylint: disable=protected-access
     return self._server._address
 
 
@@ -177,6 +173,10 @@ class TestCluster(object):
     # pylint: disable=protected-access
     self.dispatcher._stop()
 
+  def stop_workers(self):
+    for worker in self.workers:
+      worker.stop()
+
   # pylint: disable=protected-access
   def restart_dispatcher(self):
     """Stops `dispatcher` and creates a new dispatcher with the same port.
@@ -198,6 +198,9 @@ class TestCluster(object):
 
   def num_registered_workers(self):
     return self.dispatcher._num_workers()
+
+  def num_tasks_on_workers(self):
+    return sum(worker.num_tasks() for worker in self.workers)
 
   def __del__(self):
     # Destroy workers before the dispatcher for clean shutdown.

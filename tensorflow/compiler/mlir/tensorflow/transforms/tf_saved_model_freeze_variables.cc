@@ -206,6 +206,28 @@ FuncOp GetSessionInitializerFunc(ModuleOp module) {
   return nullptr;
 }
 
+// Returns ID for identifying a resource.
+std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef> GetResourceKey(
+    Operation* op) {
+  llvm::StringRef device;
+  if (auto attr = op->getAttrOfType<mlir::StringAttr>("device")) {
+    device = attr.getValue();
+  }
+
+  llvm::StringRef container;
+  if (auto attr = op->getAttrOfType<mlir::StringAttr>("container")) {
+    container = attr.getValue();
+  }
+
+  llvm::StringRef shared_name;
+  if (auto attr = op->getAttrOfType<mlir::StringAttr>("shared_name")) {
+    shared_name = attr.getValue();
+  }
+
+  return std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef>{
+      device, container, shared_name};
+}
+
 // Remove the initialization of the variables in 'var_handle_ops' from
 // the session init function 'sesion_init_func'
 void RemoveVariablesInitializations(
@@ -217,15 +239,11 @@ void RemoveVariablesInitializations(
   llvm::SetVector<std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef>>
       variables;
   for (auto var_handle_op : var_handle_ops)
-    variables.insert(
-        {var_handle_op->getAttrOfType<StringAttr>("device").getValue(),
-         var_handle_op.container(), var_handle_op.shared_name()});
+    variables.insert(GetResourceKey(var_handle_op));
 
   llvm::SmallVector<Operation*, 4> work_list;
   for (auto var_handle_op : sesion_init_func.getOps<TF::VarHandleOp>()) {
-    if (variables.count(
-            {var_handle_op->getAttrOfType<StringAttr>("device").getValue(),
-             var_handle_op.container(), var_handle_op.shared_name()}))
+    if (variables.count(GetResourceKey(var_handle_op)))
       work_list.push_back(var_handle_op);
   }
 

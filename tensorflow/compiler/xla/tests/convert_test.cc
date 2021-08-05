@@ -218,7 +218,7 @@ XLA_TEST_F(ConvertTest, ConvertR1S64ToR1F32) {
   ConvertElementType(arg_param, F32);
 
   std::vector<float> expected(arg.size());
-  for (int64 i = 0; i < arg.size(); ++i) {
+  for (int64_t i = 0; i < arg.size(); ++i) {
     expected[i] = static_cast<float>(arg[i]);
   }
   ComputeAndCompareR1<float>(&builder, expected, {arg_data.get()});
@@ -237,7 +237,7 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1F32) {
   ConvertElementType(arg_param, F32);
 
   std::vector<float> expected(arg.size());
-  for (int64 i = 0; i < arg.size(); ++i) {
+  for (int64_t i = 0; i < arg.size(); ++i) {
     expected[i] = static_cast<float>(arg[i]);
   }
   ComputeAndCompareR1<float>(&builder, expected, {arg_data.get()});
@@ -255,7 +255,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1U32) {
   ConvertElementType(arg_param, U32);
 
   std::vector<uint32> expected(arg.size());
-  for (int64 i = 0; i < arg.size(); ++i) {
+  for (int64_t i = 0; i < arg.size(); ++i) {
     expected[i] = static_cast<uint32>(arg[i]);
   }
   ComputeAndCompareR1<uint32>(&builder, expected, {arg_data.get()});
@@ -272,7 +272,7 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1S64) {
   ConvertElementType(arg_param, S64);
 
   std::vector<int64> expected(arg.size());
-  for (int64 i = 0; i < arg.size(); ++i) {
+  for (int64_t i = 0; i < arg.size(); ++i) {
     expected[i] = static_cast<int64>(arg[i]);
   }
   ComputeAndCompareR1<int64>(&builder, expected, {arg_data.get()});
@@ -289,7 +289,7 @@ XLA_TEST_F(ConvertTest, ConvertR1S32ToR1S64) {
   ConvertElementType(arg_param, S64);
 
   std::vector<int64> expected(arg.size());
-  for (int64 i = 0; i < arg.size(); ++i) {
+  for (int64_t i = 0; i < arg.size(); ++i) {
     expected[i] = static_cast<int64>(arg[i]);
   }
   ComputeAndCompareR1<int64>(&builder, expected, {arg_data.get()});
@@ -326,7 +326,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1S64) {
   ConvertElementType(arg_param, S64);
 
   std::vector<int64> expected(arg.size());
-  for (int64 i = 0; i < arg.size(); ++i) {
+  for (int64_t i = 0; i < arg.size(); ++i) {
     expected[i] = static_cast<int64>(arg[i]);
   }
   ComputeAndCompareR1<int64>(&builder, expected, {arg_data.get()});

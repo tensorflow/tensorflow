@@ -398,3 +398,21 @@ func @sub_sub(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
   }
   return %7 : tensor<?x?x32xf16>
 }
+
+// -----
+
+// CHECK-LABEL: @redundant_cstr_broadcastable
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<?xindex>, %[[ARG1:.*]]: tensor<?xindex>)
+func @redundant_cstr_broadcastable(%arg0: tensor<?xindex>,
+    %arg1 : tensor<?xindex>) {
+  // CHECK-DAG:  %[[WITNESS:.*]] = shape.cstr_broadcastable %[[ARG0]], %[[ARG1]]
+  // CHECK:      shape.assuming %[[WITNESS]]
+  %0 = shape.cstr_broadcastable %arg0, %arg1 : tensor<?xindex>, tensor<?xindex>
+  %1 = shape.cstr_broadcastable %arg0, %arg1 : tensor<?xindex>, tensor<?xindex>
+  %2 = shape.assuming_all %0, %1
+  shape.assuming %2 -> () {
+    "some.op"() : () -> ()
+    shape.assuming_yield
+  }
+  return
+}

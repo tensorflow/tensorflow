@@ -92,9 +92,9 @@ class DenseToCSRSparseMatrixCPUOp : public OpKernel {
       dense_shape_mutable(i) = dense_tensor_shape.dim_size(i);
     }
 
-    const int64 batch_size = (rank == 2) ? 1 : dense_tensor_shape.dim_size(0);
-    const int64 num_rows = dense_tensor_shape.dim_size((rank == 2) ? 0 : 1);
-    const int64 total_nnz = indices.NumElements() / rank;
+    const int64_t batch_size = (rank == 2) ? 1 : dense_tensor_shape.dim_size(0);
+    const int64_t num_rows = dense_tensor_shape.dim_size((rank == 2) ? 0 : 1);
+    const int64_t total_nnz = indices.NumElements() / rank;
 
     Tensor values;
     OP_REQUIRES_OK(ctx, functor::DoGatherNd<Device, T, int64>(
@@ -176,9 +176,9 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
             "indices.shape[1] must be equal to the rank of params, but saw: ",
             indices_t.dim_size(1), " vs. ", rank),
         done);
-    const int64 batch_size = (rank == 2) ? 1 : dense_tensor_shape.dim_size(0);
-    const int64 rows = dense_tensor_shape.dim_size((rank == 2) ? 0 : 1);
-    const int64 cols = dense_tensor_shape.dim_size((rank == 2) ? 1 : 2);
+    const int64_t batch_size = (rank == 2) ? 1 : dense_tensor_shape.dim_size(0);
+    const int64_t rows = dense_tensor_shape.dim_size((rank == 2) ? 0 : 1);
+    const int64_t cols = dense_tensor_shape.dim_size((rank == 2) ? 1 : 2);
 
     ScratchSpace<int32> nnz_per_batch_host(c, batch_size, /*on_host*/ true);
 

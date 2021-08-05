@@ -29,7 +29,7 @@ namespace functor {
 
 template <typename T>
 struct AdjustSaturationGPU {
-  void operator()(GPUDevice* device, const int64 number_of_elements,
+  void operator()(GPUDevice* device, const int64_t number_of_elements,
                   const T* const input, const float* const scale,
                   T* const output);
 };

@@ -122,7 +122,7 @@ TEST_F(HloConstantFoldingTest, Concatenate) {
     HloComputation::Builder builder(TestName());
     std::vector<int64> dimensions(test_config.dimensions.begin(),
                                   test_config.dimensions.end());
-    int64 concat_size = 0;
+    int64_t concat_size = 0;
     std::vector<HloInstruction*> operands;
     for (auto csize : test_config.concat_sizes) {
       dimensions[test_config.concat_dimension] = csize;

@@ -30,7 +30,7 @@ namespace shape_inference {
 Status GetWindowedOutputSizeFromDims(InferenceContext* c,
                                      DimensionHandle input_size,
                                      DimensionOrConstant filter_size,
-                                     int64 stride, Padding padding_type,
+                                     int64_t stride, Padding padding_type,
                                      DimensionHandle* output_size);
 
 // The V2 version computes the same outputs with arbitrary dilation_rate, and
@@ -39,8 +39,8 @@ Status GetWindowedOutputSizeFromDims(InferenceContext* c,
 // parameters are only used if padding_type == EXPLICIT.
 Status GetWindowedOutputSizeFromDimsV2(
     InferenceContext* c, DimensionHandle input_size,
-    DimensionOrConstant filter_size, int64 dilation_rate, int64 stride,
-    Padding padding_type, int64 padding_before, int64 padding_after,
+    DimensionOrConstant filter_size, int64_t dilation_rate, int64_t stride,
+    Padding padding_type, int64_t padding_before, int64_t padding_after,
     DimensionHandle* output_size);
 
 // Transfers shape of input(0) to output(0).
@@ -48,7 +48,7 @@ Status UnchangedShape(shape_inference::InferenceContext* c);
 
 // Transfers shape of input(0) to output(0), after asserting its rank is <rank>.
 inline Status UnchangedShapeWithRank(shape_inference::InferenceContext* c,
-                                     int32 rank) {
+                                     int32_t rank) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &out));
   c->set_output(0, out);
@@ -57,7 +57,7 @@ inline Status UnchangedShapeWithRank(shape_inference::InferenceContext* c,
 
 // Transfers shape of input(0) to output(0), after asserting its rank >= <rank>.
 inline Status UnchangedShapeWithRankAtLeast(
-    shape_inference::InferenceContext* c, int32 rank) {
+    shape_inference::InferenceContext* c, int32_t rank) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), rank, &out));
   c->set_output(0, out);
@@ -66,7 +66,7 @@ inline Status UnchangedShapeWithRankAtLeast(
 
 // Transfers shape of input(0) to output(0), after asserting its rank <= <rank>.
 inline Status UnchangedShapeWithRankAtMost(shape_inference::InferenceContext* c,
-                                           int32 rank) {
+                                           int32_t rank) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), rank, &out));
   c->set_output(0, out);

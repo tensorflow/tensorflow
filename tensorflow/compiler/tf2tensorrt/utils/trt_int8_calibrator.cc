@@ -27,7 +27,7 @@ namespace tensorflow {
 namespace tensorrt {
 
 // set the batch size before constructing the thread to execute engine
-int TRTInt8Calibrator::getBatchSize() const { return batch_size_; }
+int TRTInt8Calibrator::getBatchSize() const noexcept { return batch_size_; }
 
 TRTInt8Calibrator::TRTInt8Calibrator(
     const std::unordered_map<string, std::pair<void*, size_t>>& dev_buffers,
@@ -85,7 +85,7 @@ bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
 }
 
 bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
-                                 int num_bindings) {
+                                 int num_bindings) noexcept {
   mutex_lock lock(cond_mtx_);
   // Notify finish of last round of calibration.
   calib_running_ = false;
@@ -121,7 +121,8 @@ void TRTInt8Calibrator::waitAndSetDone() {
   }
 }
 
-const void* TRTInt8Calibrator::readCalibrationCache(std::size_t& length) {
+const void* TRTInt8Calibrator::readCalibrationCache(
+    std::size_t& length) noexcept {
   if (calibration_table_.empty()) return nullptr;
   length = calibration_table_.size();
   return calibration_table_.data();
@@ -134,7 +135,7 @@ void TRTInt8Calibrator::setDone() {
 }
 
 void TRTInt8Calibrator::writeCalibrationCache(const void* ptr,
-                                              std::size_t length) {
+                                              std::size_t length) noexcept {
   calibration_table_ = string(static_cast<const char*>(ptr), length);
   VLOG(1) << "Got calibration data for " << engine_name_ << " @" << ptr
           << " length=" << length;

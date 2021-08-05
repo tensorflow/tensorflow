@@ -3,6 +3,8 @@ FROM tensorflow/tensorflow:devel
 ENV ANDROID_DEV_HOME /android
 RUN mkdir -p ${ANDROID_DEV_HOME}
 
+RUN apt-get install -y --no-install-recommends default-jdk
+
 # Install Android SDK.
 ENV ANDROID_SDK_FILENAME tools_r25.2.5-linux.zip
 ENV ANDROID_SDK_URL https://dl.google.com/android/repository/${ANDROID_SDK_FILENAME}

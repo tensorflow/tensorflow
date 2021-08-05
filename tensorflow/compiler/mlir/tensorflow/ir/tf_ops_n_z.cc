@@ -2117,13 +2117,14 @@ bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
 // SummaryWriterOp
 //===----------------------------------------------------------------------===//
 
-ResourceHandleValueAndId SummaryWriterOp::GetResourceHandleValueAndId(
+llvm::SmallVector<ResourceHandleValueAndId, 4>
+SummaryWriterOp::GetResourceHandleValueAndIdList(
     llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
     int64_t &next_id) {
   llvm::StringRef device = GetDeviceOrEmpty(getOperation());
-  return GetResourceHandleValueAndIdBase(container(), shared_name(), device,
-                                         writer(), resource_handle_id_map,
-                                         next_id);
+  return {GetResourceHandleValueAndIdBase(container(), shared_name(), device,
+                                          writer(), resource_handle_id_map,
+                                          next_id)};
 }
 
 //===----------------------------------------------------------------------===//
@@ -2448,6 +2449,15 @@ class ToBoolOfRankedTensor : public OpRewritePattern<ToBoolOp> {
 void ToBoolOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
   results.insert<ToBoolOfRankedTensor>(context);
+}
+
+LogicalResult ToBoolOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  inferredReturnTypes.push_back(
+      RankedTensorType::get({}, IntegerType::get(context, 1)));
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2807,13 +2817,14 @@ static LogicalResult VerifyUnsortedSegmentReduction(Op op) {
 // VarHandleOp
 //===----------------------------------------------------------------------===//
 
-ResourceHandleValueAndId VarHandleOp::GetResourceHandleValueAndId(
+llvm::SmallVector<ResourceHandleValueAndId, 4>
+VarHandleOp::GetResourceHandleValueAndIdList(
     llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
     int64_t &next_id) {
   llvm::StringRef device = GetDeviceOrEmpty(getOperation());
-  return GetResourceHandleValueAndIdBase(container(), shared_name(), device,
-                                         resource(), resource_handle_id_map,
-                                         next_id);
+  return {GetResourceHandleValueAndIdBase(container(), shared_name(), device,
+                                          resource(), resource_handle_id_map,
+                                          next_id)};
 }
 
 //===----------------------------------------------------------------------===//

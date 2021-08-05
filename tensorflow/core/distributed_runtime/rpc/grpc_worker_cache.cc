@@ -97,7 +97,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
 
   void ClearLogs() override { logger_.ClearLogs(); }
 
-  bool RetrieveLogs(int64 step_id, StepStats* ss) override {
+  bool RetrieveLogs(int64_t step_id, StepStats* ss) override {
     return logger_.RetrieveLogs(step_id, ss);
   }
 
@@ -158,13 +158,13 @@ GrpcWorkerEnv::GrpcWorkerCacheThread::~GrpcWorkerCacheThread() {
 
 GrpcWorkerEnv* CreateGrpcWorkerEnv() {
   int num_cpus = port::NumSchedulableCPUs();
-  int64 num_completion_queues;
+  int64_t num_completion_queues;
   Status status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_QUEUES", 64,
                                       &num_completion_queues);
   if (!status.ok()) {
     LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_QUEUES: " << status;
   }
-  int64 num_threads;
+  int64_t num_threads;
   status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_THREADS", num_cpus,
                                &num_threads);
   if (!status.ok()) {

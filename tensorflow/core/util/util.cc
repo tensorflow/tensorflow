@@ -102,7 +102,7 @@ string PrintMemory(const char* ptr, size_t n) {
   return ret;
 }
 
-string SliceDebugString(const TensorShape& shape, const int64 flat) {
+string SliceDebugString(const TensorShape& shape, const int64_t flat) {
   // Special case rank 0 and 1
   const int dims = shape.dims();
   if (dims == 0) return "";
@@ -116,7 +116,7 @@ string SliceDebugString(const TensorShape& shape, const int64 flat) {
   }
 
   // Unflatten index
-  int64 left = flat;
+  int64_t left = flat;
   string result;
   for (int i = 0; i < dims; i++) {
     strings::StrAppend(&result, i ? "," : "[", left / strides[i]);

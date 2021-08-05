@@ -50,16 +50,16 @@ class ResourceAliasAnalysisInfo {
   // Returns if the analysis fails to resolve a resource-type value.
   bool IsUnknownResource(Value resource) const;
 
-  // Returns the set unique IDs which `resource` could alias. Requires that
+  // Returns the set of unique IDs which `resource` could alias. Requires that
   // IsUnknownResource(resource) == false.
   const llvm::SmallSet<int64_t, 8>& GetResourceUniqueIds(Value resource) const;
 
   // Returns the set of values that are potentially aliases of `value`. Requires
-  // that IsUnknownResource(resource) == false.
+  // `IsUnknownResource(resource) == false`.
   llvm::SmallSetVector<Value, 8> GetResourceAliases(Value resource) const;
 
  private:
-  // Maps resource value to unique ID and vice-versa. Returns true of the
+  // Maps resource value to unique ID and vice-versa. Returns true if the
   // mapping has changed.
   bool AddValueUniqueIDMapping(Value value, int64_t id) {
     resource_value_to_ids_[value].insert(id);
@@ -97,8 +97,33 @@ class ResourceAliasAnalysisInfo {
   llvm::SmallDenseMap<int64_t, llvm::SmallSetVector<Value, 8>, 8>
       id_to_resource_values_;
 
+  // Maps MLIR type IDs for resource types to internal resource type IDs.
+  llvm::SmallDenseMap<TypeID, int64_t> type_id_to_internal_type_id_;
+
  public:
+  // Resource IDs have the following semantics:
+  // a) -1 represents an unknown resource (both instance and type unknown)
+  // b) IDs in range [0,kMaxResourceTypeId] represent resource type IDs; we use
+  //    such IDs when we know the resource type but not the instance
+  // c) IDs > kMaxResourceTypeId represent resource instance IDs (i.e., we know
+  //    the specific resource instance)
+  //
+  // Note: In general, there can be different ops allocating a resource of the
+  // same type, for one we might assign a resource type ID and for the other
+  // a resource instance ID. That means, they will be treated as non-aliasing.
+  // This is correct for all current cases. A problematic case could be if we
+  // had two ops A and B, A has the `ResourceHandleAllocatorInterface` and B has
+  // not, and both ops might return a handle to the same resource (depending on
+  // attributes). In this case, the return value of A would get a different ID
+  // than the return value of B although both could point to the same resource.
+  // It seems highly unlikely to encounter such a case but, to be safe, this
+  // should be revisited for new resource-allocators that might potentially
+  // break our currently guaranteed correctness.
+  // For context, we are very conservative here compared to
+  // `auto_control_deps.py` where it is assumed that allocated resource values
+  // NEVER alias. We should align our assumptions in the future.
   static constexpr int64_t kUnknownResourceId = -1;
+  static constexpr int64_t kMaxResourceTypeId = 9999;
 };
 
 }  // namespace detail
@@ -115,15 +140,6 @@ class ResourceAliasAnalysis : public detail::PerFunctionAggregateAnalysis<
   // Constructs analysis by analyzing the given module operation.
   explicit ResourceAliasAnalysis(ModuleOp module);
 };
-
-// Returns a range with just resource type values from the input range
-// preserved.
-template <typename RangeT>
-auto filter_resources(RangeT&& range) {
-  return llvm::make_filter_range(std::forward<RangeT>(range), [](Value val) {
-    return getElementTypeOrSelf(val.getType()).isa<TF::ResourceType>();
-  });
-}
 
 }  // namespace TF
 }  // namespace mlir

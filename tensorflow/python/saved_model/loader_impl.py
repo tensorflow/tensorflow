@@ -34,7 +34,7 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
-from tensorflow.python.saved_model.experimental.pywrap_libexport import metrics
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
@@ -302,6 +302,45 @@ def load(sess, tags, export_dir, import_scope=None, **saver_kwargs):
 
   Raises:
     RuntimeError: MetaGraphDef associated with the tags cannot be found.
+
+  @compatibility(TF2)
+
+  `tf.compat.v1.saved_model.load` or `tf.compat.v1.saved_model.loader.load` is
+  not compatible with eager execution. Please use `tf.saved_model.load` instead
+  to load your model. You can refer to the [SavedModel guide]
+  (https://www.tensorflow.org/guide/saved_model) for more information as well as
+  "Importing SavedModels from TensorFlow 1.x" in the [`tf.saved_model.load`]
+  (https://www.tensorflow.org/api_docs/python/tf/saved_model/load) docstring.
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name          | TF2 Arg Name    | Note                       |
+  | :-------------------- | :-------------- | :------------------------- |
+  | `sess`                | Not supported   | -                          |
+  | `tags`                | `tags`          | -                          |
+  | `export_dir`          | `export_dir`    | -                          |
+  | `import_scope`        | Not supported   | Name scopes are not needed.
+  :                       :                 : By default, variables are  :
+  :                       :                 : associated with the loaded :
+  :                       :                 : object and function names  :
+  :                       :                 : are deduped.               :
+  | `saver_kwargs`        | Not supported   | -                          |
+
+  #### Before & After Usage Example
+
+  Before:
+
+  ```
+  with tf.compat.v1.Session(graph=tf.Graph()) as sess:
+    tf.compat.v1.saved_model.loader.load(sess, ["foo-tag"], export_dir)
+  ```
+
+  After:
+
+  ```
+  model = tf.saved_model.load(export_dir, tags=["foo-tag"])
+  ```
+  @end_compatibility
   """
   loader = SavedModelLoader(export_dir)
   return loader.load(sess, tags, import_scope, **saver_kwargs)
@@ -455,12 +494,20 @@ class SavedModelLoader(object):
     Returns:
       `MetagraphDef` proto of the graph that was loaded.
     """
+    saved_model_proto = parse_saved_model(self._export_dir)
     metrics.IncrementReadApi(_LOADER_LABEL)
+
     with sess.graph.as_default():
       saver, _ = self.load_graph(sess.graph, tags, import_scope,
                                  **saver_kwargs)
       self.restore_variables(sess, saver, import_scope)
       self.run_init_ops(sess, tags, import_scope)
     meta_graph_def = self.get_meta_graph_def_from_tags(tags)
-    metrics.IncrementRead()
+
+    if (len(saved_model_proto.meta_graphs) == 1 and
+        saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
+      metrics.IncrementRead(write_version="2")
+    else:
+      metrics.IncrementRead(write_version="1")
+
     return meta_graph_def

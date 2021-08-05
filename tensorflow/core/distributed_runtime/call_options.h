@@ -64,7 +64,7 @@ class CallOptions {
   //
   // Default: 0. indicating there is no timeout for this call.
   int64 GetTimeout();
-  void SetTimeout(int64 ms);
+  void SetTimeout(int64_t ms);
 
  private:
   mutex mu_;

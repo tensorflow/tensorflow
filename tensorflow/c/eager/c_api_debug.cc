@@ -37,7 +37,7 @@ std::vector<tensorflow::int64> TensorShapeAsVector(
   }
   shape.reserve(rank);
   for (int i = 0; i < rank; ++i) {
-    tensorflow::int64 dim;
+    int64_t dim;
     *status = handle.Dim(i, &dim);
     if (!status->ok()) {
       return shape;

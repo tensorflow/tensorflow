@@ -68,16 +68,39 @@ def initialize_all_tables(name="init_all_tables"):
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
-  See the [Low Level
-  Intro](https://www.tensorflow.org/guide/low_level_intro#feature_columns)
-  guide, for an example of usage.
-
   Args:
     name: Optional name for the initialization op.
 
   Returns:
     An Op that initializes all tables.  Note that if there are
     not tables the returned Op is a NoOp.
+
+  @compatibility(TF2)
+  `tf.compat.v1.tables_initializer` is no longer needed with eager execution and
+  `tf.function`. In TF2, when creating an initializable table like a
+  `tf.lookup.StaticHashTable`, the table will automatically be initialized on
+  creation.
+
+  #### Before & After Usage Example
+
+  Before:
+
+  >>> with tf.compat.v1.Session():
+  ...   init = tf.compat.v1.lookup.KeyValueTensorInitializer(['a', 'b'], [1, 2])
+  ...   table = tf.compat.v1.lookup.StaticHashTable(init, default_value=-1)
+  ...   tf.compat.v1.tables_initializer().run()
+  ...   result = table.lookup(tf.constant(['a', 'c'])).eval()
+  >>> result
+  array([ 1, -1], dtype=int32)
+
+  After:
+
+  >>> init = tf.lookup.KeyValueTensorInitializer(['a', 'b'], [1, 2])
+  >>> table = tf.lookup.StaticHashTable(init, default_value=-1)
+  >>> table.lookup(tf.constant(['a', 'c'])).numpy()
+  array([ 1, -1], dtype=int32)
+
+  @end_compatibility
   """
   initializers = ops.get_collection(ops.GraphKeys.TABLE_INITIALIZERS)
   if initializers:

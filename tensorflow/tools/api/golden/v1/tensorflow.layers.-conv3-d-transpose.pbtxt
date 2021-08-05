@@ -188,6 +188,10 @@ tf_class {
     argspec: "args=[\'self\', \'input_signature\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "convolution_op"
+    argspec: "args=[\'self\', \'inputs\', \'kernel\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "count_params"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

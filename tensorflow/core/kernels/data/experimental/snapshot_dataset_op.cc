@@ -141,6 +141,12 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
         Iterator::Params{this, absl::StrCat(prefix, "::Snapshot")});
   }
 
+  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                split_providers) const override {
+    return errors::Unimplemented(
+        "Splitting is not implemented for snapshot datasets.");
+  }
+
   const DataTypeVector& output_dtypes() const override {
     return input_->output_dtypes();
   }
@@ -248,7 +254,7 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
    public:
     static constexpr const char* const kIteratorName = "Reader";
 
-    Reader(const Params& params, int64 start_index)
+    Reader(const Params& params, int64_t start_index)
         : DatasetIterator<Dataset>(params), start_index_(start_index) {}
 
     Status Initialize(IteratorContext* ctx) override {
@@ -415,7 +421,7 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
           return WriteMetadataFile(ctx->env(), /*finalized=*/true);
         }
 
-        int64 shard_index = 0;
+        int64_t shard_index = 0;
         TF_RETURN_IF_ERROR(GetShardIndex(ctx, *out_tensors, &shard_index));
 
         // If the index does not exist, we will start a new thread.
@@ -459,8 +465,8 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      int64 run_id_signed;
-      int64 current_checkpoint_id;
+      int64_t run_id_signed;
+      int64_t current_checkpoint_id;
 
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kRunId), &run_id_signed));
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurrentCheckpointId),
@@ -668,7 +674,7 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
                                   " does not exist any more.");
         }
 
-        int64 iterator_mode;
+        int64_t iterator_mode;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name(kIteratorMode), &iterator_mode));
         mode_ = snapshot_util::Mode(iterator_mode);
@@ -737,7 +743,7 @@ SnapshotDatasetV2Op::SnapshotDatasetV2Op(OpKernelConstruction* ctx)
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kWriterPrefix, &writer_prefix_));
   }
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kHashValid, &hash_valid_));
-  int64 hash;
+  int64_t hash;
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kHash, &hash));
   hash_ = static_cast<uint64>(hash);
 
@@ -761,7 +767,7 @@ void SnapshotDatasetV2Op::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   } else {
     // Computes the hash of the preceding items in the graph.
     GraphDef graph_def;
-    SerializationContext::Params params;
+    SerializationContext::Params params(ctx);
     std::vector<std::pair<string, Tensor>> input_list;
     params.input_list = &input_list;
     params.external_state_policy =
@@ -797,9 +803,9 @@ REGISTER_KERNEL_BUILDER(Name("SnapshotDatasetV2").Device(DEVICE_CPU),
 namespace {
 
 // Defaults to 10 GiB per shard.
-const int64 kDefaultShardSizeBytes = 10LL * 1024 * 1024 * 1024;
+const int64_t kDefaultShardSizeBytes = 10LL * 1024 * 1024 * 1024;
 
-const int64 kCurrentVersion = 1;
+const int64_t kCurrentVersion = 1;
 
 constexpr char kSnapshotReaderWorkerPool[] = "snapshot_reader_worker_pool";
 constexpr char kSnapshotWriterWorkerPool[] = "snapshot_writer_worker_pool";
@@ -912,7 +918,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "path", &path));
 
-    SerializationContext::Params params;
+    SerializationContext::Params params(ctx);
     std::vector<std::pair<string, Tensor>> input_list;
     params.input_list = &input_list;
     params.external_state_policy =
@@ -983,6 +989,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         const string& prefix) const override {
       return absl::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::Snapshot")});
+    }
+
+    Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                  split_providers) const override {
+      return errors::Unimplemented(
+          "Splitting is not implemented for snapshot datasets.");
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -1153,7 +1165,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                      << hash_dir << "; new hash: " << hash_dir_;
           return Status::OK();
         }
-        int64 temp;
+        int64_t temp;
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kState), &temp));
         state_ = snapshot_util::Mode(temp);
         experimental::SnapshotMetadataRecord metadata;
@@ -1230,7 +1242,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
         explicit SnapshotReaderIterator(const Params& params,
                                         const string& hash_dir,
-                                        const string& run_id, int64 version)
+                                        const string& run_id, int64_t version)
             : DatasetIterator<Dataset>(params),
               hash_dir_(hash_dir),
               run_id_(run_id),
@@ -1330,7 +1342,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                     },
                     profiler::TraceMeLevel::kInfo);
                 // Printing some statistics along the way.
-                int64 num_bytes = 0;
+                int64_t num_bytes = 0;
                 for (int i = 0; i < out_tensors->size(); ++i) {
                   num_bytes += (*out_tensors)[i].TotalBytes();
                 }
@@ -1431,7 +1443,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           }
           size_t filenames_size;
           {
-            int64 temp;
+            int64_t temp;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
                 full_name(strings::StrCat(kFilenames, kSizeSuffix)), &temp));
             filenames_size = static_cast<size_t>(temp);
@@ -1449,13 +1461,13 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 &filenames_.back()));
           }
           {
-            int64 temp;
+            int64_t temp;
             TF_RETURN_IF_ERROR(
                 reader->ReadScalar(full_name(kElementsProduced), &temp));
             elements_produced_ = static_cast<uint64>(temp);
           }
           {
-            int64 temp;
+            int64_t temp;
             TF_RETURN_IF_ERROR(
                 reader->ReadScalar(full_name(kNextFileIndex), &temp));
             next_file_index_ = static_cast<uint64>(temp);
@@ -1582,7 +1594,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
         Status ReadStatus(IteratorStateReader* reader, size_t index,
                           Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-          int64 code_int;
+          int64_t code_int;
           TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
           error::Code code = static_cast<error::Code>(code_int);
 
@@ -1739,7 +1751,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
             // Book keeping to report some statistics.
             mutex_lock l(mu_);
-            int64 num_bytes = 0;
+            int64_t num_bytes = 0;
             for (const auto& out_tensor : *out_tensors) {
               num_bytes += out_tensor.TotalBytes();
             }
@@ -1857,14 +1869,14 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kRunId), &run_id_));
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kRunDir), &run_dir_));
           {
-            int64 temp;
+            int64_t temp;
             TF_RETURN_IF_ERROR(
                 reader->ReadScalar(full_name(kElementsProduced), &temp));
             elements_produced_ = static_cast<uint64>(temp);
           }
           size_t buffer_size;
           {
-            int64 temp;
+            int64_t temp;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
                 full_name(strings::StrCat(kBuffer, kSizeSuffix)), &temp));
             buffer_size = static_cast<size_t>(temp);
@@ -1874,7 +1886,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             auto& buffer_element = buffer_.back();
             size_t value_size;
             {
-              int64 temp;
+              int64_t temp;
               TF_RETURN_IF_ERROR(reader->ReadScalar(
                   full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
                   &temp));
@@ -1890,6 +1902,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             for (size_t j = 0; j < value_size; j++) {
               buffer_element.value.emplace_back();
               TF_RETURN_IF_ERROR(reader->ReadTensor(
+                  ctx->flr(),
                   full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
                   &buffer_element.value.back()));
             }
@@ -1917,7 +1930,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                                                 &num_elements_written_));
           size_t next_elem_size;
           {
-            int64 temp;
+            int64_t temp;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
                 full_name(strings::StrCat(kNextElem, kSizeSuffix)), &temp));
             next_elem_size = static_cast<size_t>(temp);
@@ -1932,7 +1945,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           for (size_t i = 0; i < next_elem_size; i++) {
             next_elem_.value.emplace_back();
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                full_name(strings::StrCat(kNextElem, "[", i, "]")),
+                ctx->flr(), full_name(strings::StrCat(kNextElem, "[", i, "]")),
                 &next_elem_.value.back()));
           }
           VLOG(2) << "Restoring SnapshotWriterIterator: "
@@ -2090,7 +2103,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             cond_var_.notify_all();
           });
 
-          int64 bytes_written = 0;
+          int64_t bytes_written = 0;
           string snapshot_data_filename = GetSnapshotFilename();
           std::unique_ptr<snapshot_util::Writer> writer;
           Status s = snapshot_util::Writer::Create(

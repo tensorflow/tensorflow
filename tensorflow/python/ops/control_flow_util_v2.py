@@ -189,6 +189,15 @@ def resource_input_index(tensor_name, input_names, node_defs, functions):
     output_idx = int(output_idx)
     node_def = node_defs[op_name]
 
+    def _extract_input_index(function_attribute_name):
+      func_name = node_def.attr[function_attribute_name].func.name
+      fdef = functions[func_name].definition
+      output_arg_name = fdef.signature.output_arg[output_idx].name
+      output_tensor_name = fdef.ret[output_arg_name]
+      return resource_input_index(
+          output_tensor_name, [arg.name for arg in fdef.signature.input_arg],
+          {ndef.name: ndef for ndef in fdef.node_def}, functions)
+
     if node_def.op in ("Identity", "While"):
       # Captured resources occur at the same index in the lists of inputs and
       # outputs of a while or identity op. So we lookup the input of `tensor.op`
@@ -199,21 +208,24 @@ def resource_input_index(tensor_name, input_names, node_defs, functions):
       # gradients.  `tensor_name` is one of these outputs from a nested
       # function call, so recursively find the corresponding input in the
       # nested FunctionDef.
-      func_name = node_def.attr["f"].func.name
-      fdef = functions[func_name].definition
-      output_arg_name = fdef.signature.output_arg[output_idx].name
-      output_tensor_name = fdef.ret[output_arg_name]
-      input_index = resource_input_index(
-          output_tensor_name, [arg.name for arg in fdef.signature.input_arg],
-          {ndef.name: ndef for ndef in fdef.node_def}, functions)
-      tensor_name = node_def.input[input_index]
+      tensor_name = node_def.input[_extract_input_index("f")]
+    elif node_def.op in ("If", "StatelessIf"):
+      input_index = _extract_input_index("then_branch")
+      if input_index != _extract_input_index("else_branch"):
+        raise AssertionError(
+            ("Expected cond branches ({} op) to each have the same "
+             "input->output mapping of resources.").format(node_def.op))
+      tensor_name = node_def.input[
+          # Ignore the `cond` input; the function inputs come after.
+          input_index + 1]
     else:
       # We assume there are no other ops types that will "forward" resource
       # handles like this, so all other handles must have been created by the
       # op. (Note that cond_v2 wraps resource handle outputs in optionals,
       # which we'll end up accumulating).
       raise ValueError("Taking gradient of a while loop which creates "
-                       "a resource in its body is not supported: %s" % op_name)
+                       "a resource in its body is not supported: %s (%s)"
+                       % (op_name, node_def.op))
 
   return input_names.index(tensor_name)
 

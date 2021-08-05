@@ -177,6 +177,16 @@ struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
         nodes_blocklist(LIST_FLAG_OR_STRING_SET(nodes_blocklist_flag,
                                                 nodes_blocklist_set)) {}
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-quantize";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Apply quantization on models in TensorFlow Lite dialect";
+  }
+
   void runOnFunction() override;
 
  private:
@@ -221,8 +231,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
                                         nodes_blocklist);
 }
 
-static PassRegistration<QuantizePass> pass(
-    "tfl-quantize", "Apply quantization on models in TensorFlow Lite dialect");
+static PassRegistration<QuantizePass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

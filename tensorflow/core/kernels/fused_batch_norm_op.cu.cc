@@ -23,6 +23,7 @@ limitations under the License.
 typedef __half2 half2;
 #endif
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
@@ -77,6 +78,12 @@ struct FusedBatchNormFreezeGrad<GPUDevice, T, U> {
     rest_by_one.set(0, rest_size);
 #endif
 
+    OP_REQUIRES(
+        context, !OpDeterminismRequired(),
+        errors::Unimplemented(
+            "A deterministic GPU implementation of fused batch-norm backprop,"
+            " when training is disabled, is not currently available."));
+
     // offset_backprop  = sum(y_backprop)
     // scale_backprop = y_backprop * ((x - pop_mean) * rsqrt(pop_var + epsilon))
     // x_backprop = y_backprop * (scale * rsqrt(pop_var + epsilon))
@@ -107,15 +114,6 @@ struct FusedBatchNormFreezeGrad<GPUDevice, T, U> {
 
 template struct FusedBatchNormFreezeGrad<GPUDevice, float, float>;
 template struct FusedBatchNormFreezeGrad<GPUDevice, Eigen::half, float>;
-
-template <class T>
-void SetNanFunctor<T>::operator()(const Eigen::GpuDevice& d,
-                                  typename TTypes<T>::Flat out) {
-  To32Bit(out).device(d) =
-      To32Bit(out).constant(Eigen::NumTraits<T>::quiet_NaN());
-}
-
-template class SetNanFunctor<float>;
 
 // -------------------------------------------------------------------------- //
 // FusedBatchNormInferenceFunctor implementation.                             //

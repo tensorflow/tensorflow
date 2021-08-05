@@ -47,7 +47,7 @@ class CpuUtils {
  public:
   // Constant for invalid frequency.
   // This value is returned when the frequency is not obtained somehow.
-  static constexpr int64 INVALID_FREQUENCY = -1;
+  static constexpr int64_t INVALID_FREQUENCY = -1;
   static constexpr uint64 DUMMY_CYCLE_CLOCK = 1;
 
   // Return current clock cycle. This function is designed to
@@ -151,7 +151,7 @@ class CpuUtils {
 
   // Return chrono::duration per each clock
   static std::chrono::duration<double> ConvertClockCycleToTime(
-      const int64 clock_cycle);
+      const int64_t clock_cycle);
 
  private:
   class DefaultCpuUtilsHelper : public ICpuUtilsHelper {

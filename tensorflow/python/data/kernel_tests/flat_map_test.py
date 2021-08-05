@@ -194,6 +194,19 @@ class FlatMapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
                          checkpoint_test_base.default_test_combinations()))
+  def testNested(self, verify_fn):
+
+    def build_ds():
+
+      inner_ds = dataset_ops.Dataset.from_tensor_slices(range(42))
+      ds = dataset_ops.Dataset.from_tensors(inner_ds)
+      return ds.flat_map(lambda x: x)
+
+    verify_fn(self, build_ds, num_outputs=42)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
   def testMapThenFlatMap(self, verify_fn):
 
     def build_ds():

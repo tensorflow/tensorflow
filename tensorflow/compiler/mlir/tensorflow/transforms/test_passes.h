@@ -21,14 +21,27 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
-namespace tf_saved_model {
+namespace tf_test {
 
 // Returns test pass for variable freezing.
 std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeVariableTestPass();
 
-#define GEN_PASS_REGISTRATION
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_test_passes.h.inc"
+// Test pass for applying TF->TF lowering patterns.
+std::unique_ptr<OperationPass<FuncOp>> CreateTestTFLowerTFPass();
 
-}  // namespace tf_saved_model
+// Test passes for visitor util.
+std::unique_ptr<OperationPass<FuncOp>> CreateTestVisitorUtilPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateTestVisitorUtilInterruptPass();
+
+// Test operation clustering based on user defined policy.
+std::unique_ptr<OperationPass<FuncOp>> CreateTestClusteringPolicyPass();
+
+// Test pass for analyzing side-effect analysis result.
+std::unique_ptr<OperationPass<ModuleOp>> CreateTestSideEffectAnalysisPass();
+
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
+
+}  // namespace tf_test
 }  // namespace mlir
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TEST_PASSES_H_

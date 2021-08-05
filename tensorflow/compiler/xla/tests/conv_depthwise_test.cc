@@ -42,10 +42,10 @@ static std::vector<DepthwiseConvolution2DSpec> GetConv2DTestCases() {
       {144, 5, 3, 3},   {8, 48, 17, 1},   {16, 9, 5, 4}};
 
   for (auto option : config_options) {
-    int64 feature = option[0];
-    int64 activation_size = option[1];
-    int64 kernel_size = option[2];
-    int64 batch = option[3];
+    int64_t feature = option[0];
+    int64_t activation_size = option[1];
+    int64_t kernel_size = option[2];
+    int64_t batch = option[3];
 
     std::vector<int64> kernel_layout = {3, 2, 1, 0};
     DepthwiseConvolution2DSpec config;

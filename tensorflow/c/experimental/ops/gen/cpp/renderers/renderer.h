@@ -27,6 +27,7 @@ class Renderer {
  public:
   explicit Renderer(RendererContext context);
 
+ protected:
   // Append a blank line.
   Renderer &BlankLine();
 

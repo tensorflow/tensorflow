@@ -14,22 +14,40 @@
 # ==============================================================================
 """Utility functions for TPU."""
 
+import contextlib
+
 from tensorflow.python.framework import ops
 from tensorflow.python.tpu import tpu
 
 
 def enclosing_tpu_context():
   """Returns the TPUReplicateContext, which exists inside a tpu.rewrite()."""
+  return enclosing_tpu_context_and_graph()[0]
+
+
+def enclosing_tpu_context_and_graph():
+  """Returns the TPUReplicateContext which exists inside a tpu.rewrite(), and its associated graph."""
   graph = ops.get_default_graph()
   while graph is not None:
-    # pylint: disable=protected-access
-    context_ = graph._get_control_flow_context()
-    # pylint: enable=protected-access
-    while context_ is not None:
-      if isinstance(context_, tpu.TPUReplicateContext):
-        return context_
-      context_ = context_.outer_context
+    ctx = graph._get_control_flow_context()  # pylint: disable=protected-access
+    while ctx is not None:
+      if isinstance(ctx, tpu.TPUReplicateContext):
+        return ctx, graph
+      ctx = ctx.outer_context
     # This may be a FuncGraph due to defuns or v2 control flow. We need to
     # find the original graph with the XLAControlFlowContext.
     graph = getattr(graph, "outer_graph", None)
-  return None
+  return None, None
+
+
+@contextlib.contextmanager
+def outside_or_skip_tpu_context():
+  """Returns a context manager that skips current enclosing context if there is any."""
+  ctx, graph = enclosing_tpu_context_and_graph()
+  if ctx is None:
+    yield
+  else:
+    saved_context = graph._get_control_flow_context()  # pylint: disable=protected-access
+    graph._set_control_flow_context(ctx.outer_context)  # pylint: disable=protected-access
+    yield
+    graph._set_control_flow_context(saved_context)  # pylint: disable=protected-access

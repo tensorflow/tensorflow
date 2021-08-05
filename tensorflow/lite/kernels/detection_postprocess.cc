@@ -364,10 +364,14 @@ TfLiteStatus DecodeCenterSizeBoxes(TfLiteContext* context, TfLiteNode* node,
 
 void DecreasingPartialArgSort(const float* values, int num_values,
                               int num_to_sort, int* indices) {
-  std::iota(indices, indices + num_values, 0);
-  std::partial_sort(
-      indices, indices + num_to_sort, indices + num_values,
-      [&values](const int i, const int j) { return values[i] > values[j]; });
+  if (num_to_sort == 1) {
+    indices[0] = optimized_ops::ArgMaxVector(values, num_values);
+  } else {
+    std::iota(indices, indices + num_values, 0);
+    std::partial_sort(
+        indices, indices + num_to_sort, indices + num_values,
+        [&values](const int i, const int j) { return values[i] > values[j]; });
+  }
 }
 
 void DecreasingArgSort(const float* values, int num_values, int* indices) {
@@ -698,11 +702,12 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
   std::vector<float> max_scores;
   max_scores.resize(num_boxes);
   std::vector<int> sorted_class_indices;
-  sorted_class_indices.resize(num_boxes * num_classes);
+  sorted_class_indices.resize(num_boxes * num_categories_per_anchor);
   for (int row = 0; row < num_boxes; row++) {
     const float* box_scores =
         scores + row * num_classes_with_background + label_offset;
-    int* class_indices = sorted_class_indices.data() + row * num_classes;
+    int* class_indices =
+        sorted_class_indices.data() + row * num_categories_per_anchor;
     DecreasingPartialArgSort(box_scores, num_classes, num_categories_per_anchor,
                              class_indices);
     max_scores[row] = box_scores[class_indices[0]];
@@ -716,8 +721,8 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
   for (const auto& selected_index : selected) {
     const float* box_scores =
         scores + selected_index * num_classes_with_background + label_offset;
-    const int* class_indices =
-        sorted_class_indices.data() + selected_index * num_classes;
+    const int* class_indices = sorted_class_indices.data() +
+                               selected_index * num_categories_per_anchor;
 
     for (int col = 0; col < num_categories_per_anchor; ++col) {
       int box_offset = max_categories_per_anchor * output_box_index + col;
@@ -746,11 +751,13 @@ void DequantizeClassPredictions(const TfLiteTensor* input_class_predictions,
   float quant_zero_point =
       static_cast<float>(input_class_predictions->params.zero_point);
   float quant_scale = static_cast<float>(input_class_predictions->params.scale);
-  Dequantizer dequantize(quant_zero_point, quant_scale);
-  const uint8* scores_quant = GetTensorData<uint8>(input_class_predictions);
-  for (int idx = 0; idx < num_boxes * num_classes_with_background; ++idx) {
-    GetTensorData<float>(scores)[idx] = dequantize(scores_quant[idx]);
-  }
+  tflite::DequantizationParams op_params;
+  op_params.zero_point = quant_zero_point;
+  op_params.scale = quant_scale;
+  const auto shape = RuntimeShape(1, num_boxes * num_classes_with_background);
+  optimized_ops::Dequantize(op_params, shape,
+                            GetTensorData<uint8>(input_class_predictions),
+                            shape, GetTensorData<float>(scores));
 }
 
 TfLiteStatus NonMaxSuppressionMultiClass(TfLiteContext* context,

@@ -63,7 +63,7 @@ xla::XlaOp FloatLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
 }
 
 xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
-                          int64 value) {
+                          int64_t value) {
   xla::Literal literal;
   switch (type) {
     case xla::U8:
@@ -121,7 +121,6 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
   }
   return xla::ConstantLiteral(builder, literal);
 }
-
 
 std::vector<int64> ConcatVectors(absl::Span<const int64> xs,
                                  absl::Span<const int64> ys) {

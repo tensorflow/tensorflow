@@ -34,7 +34,7 @@ namespace functor {
 
 template <typename Device, typename T>
 struct LaunchTensorToHashBucket {
-  void operator()(OpKernelContext* c, const int64 num_buckets, const T* input,
+  void operator()(OpKernelContext* c, const int64_t num_buckets, const T* input,
                   const int num_elems, int64* output) {
     string format = "%";
     switch (DataTypeToEnum<T>::value) {
@@ -69,7 +69,7 @@ struct LaunchTensorToHashBucket {
 #if GOOGLE_CUDA
 template <typename T>
 struct LaunchTensorToHashBucket<Eigen::GpuDevice, T> {
-  void operator()(OpKernelContext* c, const int64 num_buckets, const T* input,
+  void operator()(OpKernelContext* c, const int64_t num_buckets, const T* input,
                   const int num_elems, int64* output);
 };
 #endif  // GOOGLE_CUDA

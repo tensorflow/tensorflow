@@ -14,7 +14,7 @@
 # ==============================================================================
 
 import inspect
-from typing import Any, Callable, List, Sequence
+from typing import Any, Callable, List, Sequence, Iterable, Tuple
 
 _AvalDimSharding = Any
 _MeshDimAssignment = Any
@@ -46,11 +46,14 @@ class Replicated:
 
 class ShardingSpec:
   def __init__(self,
-               sharding: Sequence[_AvalDimSharding],
-               mesh_mapping: Sequence[_MeshDimAssignment]) -> None: ...
-  sharding: Sequence[_AvalDimSharding]
-  mesh_mapping: Sequence[_MeshDimAssignment]
+               sharding: Iterable[_AvalDimSharding],
+               mesh_mapping: Iterable[_MeshDimAssignment]) -> None: ...
+  @property
+  def sharding(self) -> Tuple[_AvalDimSharding]: ...
+  @property
+  def mesh_mapping(self) -> Tuple[_MeshDimAssignment]: ...
   def __eq__(self, __other: ShardingSpec) -> bool: ...
+  def __hash__(self) -> int: ...
 
 class ShardedDeviceArray:
   def __init__(self,
@@ -62,8 +65,9 @@ class ShardedDeviceArray:
   device_buffers: List[Any]
 
 class PmapFunction:
-   def __call__(self, *args, **kwargs) -> Any: ...
-   __signature__: inspect.Signature
+  def __call__(self, *args, **kwargs) -> Any: ...
+  __signature__: inspect.Signature
+  def _cache_size(self) -> int: ...
 
 def pmap(__fun: Callable[..., Any],
          __cache_miss: Callable[..., Any],

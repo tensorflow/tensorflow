@@ -61,6 +61,7 @@ cuda_py_test(
     size = "small",
     srcs = ["beta_test.py"],
     tags = [
+        "nomac",  # b/191763315
         "notsan",  # b/173653918
     ],
     xla_tags = [

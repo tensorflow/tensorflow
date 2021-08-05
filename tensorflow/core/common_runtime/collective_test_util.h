@@ -38,7 +38,7 @@ namespace tensorflow {
 class FailTestRMA : public CollectiveRemoteAccessLocal {
  public:
   FailTestRMA(const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
-              int64 step_id);
+              int64_t step_id);
 
   // Sets when it should fail. Setting to zero disables the failure.
   void set_fail_after(int fail_after) {
@@ -75,6 +75,7 @@ struct CollectiveTestEnv {
   int num_workers;
   int num_devices_per_worker;
   DeviceType device_type;
+  std::unique_ptr<ParamResolverInterface> param_resolver;
   std::unique_ptr<TestCollectiveExecutorMgr> col_exec_mgr;
   std::shared_ptr<UnboundedWorkQueue> work_queue;
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr;

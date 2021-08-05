@@ -43,6 +43,16 @@ class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
   explicit PostQuantizePass(bool emit_quant_adaptor_ops)
       : emit_quant_adaptor_ops_(emit_quant_adaptor_ops) {}
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-post-quantize";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Apply post quantization clean up after quantization";
+  }
+
   void runOnFunction() override;
 
  private:
@@ -59,6 +69,16 @@ class PostQuantizeRemoveQDQPass
  public:
   // Constructor used by the PassRegistration. This will remove QDQ ops.
   explicit PostQuantizeRemoveQDQPass() {}
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-post-quantize-remove-qdq";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Remove qdq from input and output nodes after quantization";
+  }
 
   void runOnFunction() override;
 };
@@ -251,12 +271,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizeRemoveQDQPass() {
   return std::make_unique<PostQuantizeRemoveQDQPass>();
 }
 
-static PassRegistration<PostQuantizePass> pass(
-    "tfl-post-quantize", "Apply post quantization clean up after quantization");
+static PassRegistration<PostQuantizePass> pass;
 
-static PassRegistration<PostQuantizeRemoveQDQPass> remove_qdq_pass(
-    "tfl-post-quantize-remove-qdq",
-    "Remove qdq from input and output nodes after quantization");
+static PassRegistration<PostQuantizeRemoveQDQPass> remove_qdq_pass;
 
 }  // namespace TFL
 }  // namespace mlir

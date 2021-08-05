@@ -25,9 +25,9 @@ from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import distribute
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import config
@@ -141,9 +141,9 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
               minval=1,
               maxval=10,
               dtype=dtypes.float32))
-      opt = dataset_ops.Options()
+      opt = options_lib.Options()
       opt.experimental_external_state_policy = (
-          distribute_options.ExternalStatePolicy.IGNORE)
+          options_lib.ExternalStatePolicy.IGNORE)
       dataset0 = dataset0.with_options(opt)
     replicated_ds = distribute.replicate(dataset0,
                                          [self._device1, self._device2])
@@ -171,9 +171,9 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
               minval=1,
               maxval=10,
               dtype=dtypes.float32))
-      opt = dataset_ops.Options()
+      opt = options_lib.Options()
       opt.experimental_external_state_policy = (
-          distribute_options.ExternalStatePolicy.WARN)
+          options_lib.ExternalStatePolicy.WARN)
       dataset0 = dataset0.with_options(opt)
     replicated_ds = distribute.replicate(dataset0,
                                          [self._device1, self._device2])
@@ -201,9 +201,9 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
               minval=1,
               maxval=10,
               dtype=dtypes.float32))
-      opt = dataset_ops.Options()
+      opt = options_lib.Options()
       opt.experimental_external_state_policy = (
-          distribute_options.ExternalStatePolicy.FAIL)
+          options_lib.ExternalStatePolicy.FAIL)
       dataset0 = dataset0.with_options(opt)
     with self.assertRaises(errors.FailedPreconditionError):
       replicated_ds = distribute.replicate(dataset0,

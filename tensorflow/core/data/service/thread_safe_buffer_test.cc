@@ -34,7 +34,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-using ::tensorflow::testing::TfIsOk;
+using ::tensorflow::testing::IsOk;
+using ::tensorflow::testing::StatusIs;
 using ::testing::UnorderedElementsAreArray;
 
 class ThreadSafeBufferTest
@@ -63,7 +64,7 @@ TEST_P(ThreadSafeBufferTest, OneReaderAndOneWriter) {
   auto thread = absl::WrapUnique(Env::Default()->StartThread(
       /*thread_options=*/{}, /*name=*/"writer_thread", [this, &buffer]() {
         for (int i = 0; i < GetNumOfElements(); ++i) {
-          ASSERT_THAT(buffer.Push(i), TfIsOk());
+          ASSERT_THAT(buffer.Push(i), IsOk());
         }
       }));
 
@@ -79,7 +80,7 @@ TEST_P(ThreadSafeBufferTest, OneReaderAndMultipleWriters) {
   for (int i = 0; i < GetNumOfElements(); ++i) {
     threads.push_back(absl::WrapUnique(Env::Default()->StartThread(
         /*thread_options=*/{}, /*name=*/absl::StrCat("writer_thread_", i),
-        [&buffer, i] { ASSERT_THAT(buffer.Push(i), TfIsOk()); })));
+        [&buffer, i] { ASSERT_THAT(buffer.Push(i), IsOk()); })));
   }
 
   std::vector<int> results;
@@ -107,7 +108,7 @@ TEST_P(ThreadSafeBufferTest, MultipleReadersAndOneWriter) {
   }
 
   for (int i = 0; i < GetNumOfElements(); ++i) {
-    ASSERT_THAT(buffer.Push(i), TfIsOk());
+    ASSERT_THAT(buffer.Push(i), IsOk());
   }
 
   // Wait for all threads to complete.
@@ -134,7 +135,7 @@ TEST_P(ThreadSafeBufferTest, MultipleReadersAndWriters) {
   for (int i = 0; i < GetNumOfElements(); ++i) {
     threads.push_back(absl::WrapUnique(Env::Default()->StartThread(
         /*thread_options=*/{}, /*name=*/absl::StrCat("writer_thread_", i),
-        [&buffer, i]() { ASSERT_THAT(buffer.Push(i), TfIsOk()); })));
+        [&buffer, i]() { ASSERT_THAT(buffer.Push(i), IsOk()); })));
   }
 
   // Wait for all threads to complete.
@@ -154,27 +155,27 @@ TEST_P(ThreadSafeBufferTest, BlockReaderWhenBufferIsEmpty) {
 
   // Pushing an element unblocks the `Pop` call.
   Env::Default()->SleepForMicroseconds(10000);
-  ASSERT_THAT(buffer.Push(Tensor("Test tensor")), TfIsOk());
+  ASSERT_THAT(buffer.Push(Tensor("Test tensor")), IsOk());
 }
 
 TEST_P(ThreadSafeBufferTest, BlockWriterWhenBufferIsFull) {
   ThreadSafeBuffer<Tensor> buffer(GetBufferSize());
   // Fills the buffer to block the next `Push` call.
   for (int i = 0; i < GetBufferSize(); ++i) {
-    ASSERT_THAT(buffer.Push(Tensor("Test tensor")), TfIsOk());
+    ASSERT_THAT(buffer.Push(Tensor("Test tensor")), IsOk());
   }
 
   uint64 push_time = 0;
   auto thread = absl::WrapUnique(Env::Default()->StartThread(
       /*thread_options=*/{}, /*name=*/"writer_thread", [&buffer, &push_time]() {
-        ASSERT_THAT(buffer.Push(Tensor("Test tensor")), TfIsOk());
+        ASSERT_THAT(buffer.Push(Tensor("Test tensor")), IsOk());
         push_time = Env::Default()->NowMicros();
       }));
 
   // Popping an element unblocks the `Push` call.
   Env::Default()->SleepForMicroseconds(10000);
   uint64 pop_time = Env::Default()->NowMicros();
-  ASSERT_THAT(buffer.Pop(), TfIsOk());
+  ASSERT_THAT(buffer.Pop(), IsOk());
   thread.reset();
   EXPECT_LE(pop_time, push_time);
 }
@@ -186,9 +187,7 @@ TEST_P(ThreadSafeBufferTest, CancelReaders) {
   for (int i = 0; i < GetNumOfElements(); ++i) {
     threads.push_back(absl::WrapUnique(Env::Default()->StartThread(
         /*thread_options=*/{}, /*name=*/absl::StrCat("reader_thread_", i),
-        [&buffer]() {
-          EXPECT_THAT(buffer.Pop(), testing::TfStatusIs(error::ABORTED));
-        })));
+        [&buffer]() { EXPECT_THAT(buffer.Pop(), StatusIs(error::ABORTED)); })));
   }
   buffer.Cancel(errors::Aborted("Aborted"));
 }
@@ -197,7 +196,7 @@ TEST_P(ThreadSafeBufferTest, CancelWriters) {
   ThreadSafeBuffer<Tensor> buffer(GetBufferSize());
   // Fills the buffer so subsequent pushes are all cancelled.
   for (int i = 0; i < GetBufferSize(); ++i) {
-    ASSERT_THAT(buffer.Push(Tensor("Test tensor")), TfIsOk());
+    ASSERT_THAT(buffer.Push(Tensor("Test tensor")), IsOk());
   }
 
   std::vector<std::unique_ptr<Thread>> threads;
@@ -207,7 +206,7 @@ TEST_P(ThreadSafeBufferTest, CancelWriters) {
         [&buffer]() {
           for (int i = 0; i < 100; ++i) {
             EXPECT_THAT(buffer.Push(Tensor("Test tensor")),
-                        testing::TfStatusIs(error::CANCELLED));
+                        StatusIs(error::CANCELLED));
           }
         })));
   }
@@ -217,13 +216,12 @@ TEST_P(ThreadSafeBufferTest, CancelWriters) {
 TEST_P(ThreadSafeBufferTest, CancelMultipleTimes) {
   ThreadSafeBuffer<Tensor> buffer(GetBufferSize());
   buffer.Cancel(errors::Unknown("Unknown"));
-  EXPECT_THAT(buffer.Push(Tensor("Test tensor")),
-              testing::TfStatusIs(error::UNKNOWN));
+  EXPECT_THAT(buffer.Push(Tensor("Test tensor")), StatusIs(error::UNKNOWN));
   buffer.Cancel(errors::DeadlineExceeded("Deadline exceeded"));
-  EXPECT_THAT(buffer.Pop(), testing::TfStatusIs(error::DEADLINE_EXCEEDED));
+  EXPECT_THAT(buffer.Pop(), StatusIs(error::DEADLINE_EXCEEDED));
   buffer.Cancel(errors::ResourceExhausted("Resource exhausted"));
   EXPECT_THAT(buffer.Push(Tensor("Test tensor")),
-              testing::TfStatusIs(error::RESOURCE_EXHAUSTED));
+              StatusIs(error::RESOURCE_EXHAUSTED));
 }
 
 }  // namespace

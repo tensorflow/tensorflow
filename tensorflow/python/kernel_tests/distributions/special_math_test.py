@@ -86,7 +86,7 @@ class NdtriTest(test.TestCase):
 
   def assertAllFinite(self, x):
     is_finite = np.isfinite(x)
-    all_true = np.ones_like(is_finite, dtype=np.bool)
+    all_true = np.ones_like(is_finite, dtype=np.bool_)
     self.assertAllEqual(all_true, is_finite)
 
   @test_util.run_in_graph_and_eager_modes
@@ -267,10 +267,10 @@ class NdtrGradientTest(test.TestCase):
   _error64 = ErrorSpec(rtol=1e-7, atol=0)
 
   def assert_all_true(self, v):
-    self.assertAllEqual(np.ones_like(v, dtype=np.bool), v)
+    self.assertAllEqual(np.ones_like(v, dtype=np.bool_), v)
 
   def assert_all_false(self, v):
-    self.assertAllEqual(np.zeros_like(v, dtype=np.bool), v)
+    self.assertAllEqual(np.zeros_like(v, dtype=np.bool_), v)
 
   def _test_grad_finite(self, dtype):
     x = constant_op.constant([-100., 0., 100.], dtype=dtype)
@@ -399,7 +399,7 @@ class LogCDFLaplaceTest(test.TestCase):
   CUTOFF_FLOAT32_UPPER = np.log(1. / (2. * np.finfo(np.float32).eps)) - 1.
 
   def assertAllTrue(self, x):
-    self.assertAllEqual(np.ones_like(x, dtype=np.bool), x)
+    self.assertAllEqual(np.ones_like(x, dtype=np.bool_), x)
 
   def _test_grid_log(self, dtype, scipy_dtype, grid_spec, error_spec):
     with self.cached_session():

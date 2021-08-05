@@ -22,8 +22,8 @@ namespace xla {
 namespace {
 
 StatusOr<SpatialDimensionOutputSizeAndPadding> GetWindowedOutputSize(
-    int64 input_size, int64 filter_size, int64 dilation_rate, int64 stride,
-    Padding padding_type) {
+    int64_t input_size, int64_t filter_size, int64_t dilation_rate,
+    int64_t stride, Padding padding_type) {
   if (stride <= 0) {
     return tensorflow::errors::InvalidArgument("Stride must be > 0, but got ",
                                                stride);
@@ -33,7 +33,7 @@ StatusOr<SpatialDimensionOutputSizeAndPadding> GetWindowedOutputSize(
         "Dilation rate must be >= 1, but got ", dilation_rate);
   }
 
-  int64 effective_filter_size = (filter_size - 1) * dilation_rate + 1;
+  int64_t effective_filter_size = (filter_size - 1) * dilation_rate + 1;
   SpatialDimensionOutputSizeAndPadding dim;
   switch (padding_type) {
     case Padding::kValid:
@@ -42,7 +42,7 @@ StatusOr<SpatialDimensionOutputSizeAndPadding> GetWindowedOutputSize(
       break;
     case Padding::kSame:
       dim.output_size = (input_size + stride - 1) / stride;
-      const int64 padding_needed =
+      const int64_t padding_needed =
           std::max(int64{0}, (dim.output_size - 1) * stride +
                                  effective_filter_size - input_size);
       // For odd values of total padding, add more padding on the "after" side
@@ -64,9 +64,9 @@ StatusOr<SpatialDimensionOutputSizeAndPadding> GetWindowedOutputSize(
 }  // namespace
 
 StatusOr<SpatialDimensionOutputSizeAndPadding>
-ConvGradExtractAndVerifyDimension(int64 input_size, int64 filter_size,
-                                  int64 output_size, int64 dilation,
-                                  int64 stride, Padding padding) {
+ConvGradExtractAndVerifyDimension(int64_t input_size, int64_t filter_size,
+                                  int64_t output_size, int64_t dilation,
+                                  int64_t stride, Padding padding) {
   TF_ASSIGN_OR_RETURN(SpatialDimensionOutputSizeAndPadding output_dim,
                       GetWindowedOutputSize(input_size, filter_size, dilation,
                                             stride, padding));
@@ -79,7 +79,7 @@ ConvGradExtractAndVerifyDimension(int64 input_size, int64 filter_size,
   }
 
   SpatialDimensionOutputSizeAndPadding dim;
-  int64 effective_filter_size = (filter_size - 1) * dilation + 1;
+  int64_t effective_filter_size = (filter_size - 1) * dilation + 1;
   dim.output_size = (output_dim.output_size - 1) * stride + 1;
   const auto padded_out_size = input_size + effective_filter_size - 1;
   dim.pad_before = effective_filter_size - 1 - output_dim.pad_before;

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_ROUNDTRIP_FLAGS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_ROUNDTRIP_FLAGS_H_
 
+#include <string>
+
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -36,8 +38,11 @@ struct ArrayInfo {
 };
 
 struct GraphImportConfig {
+  // Returns string representation of config.
+  std::string str() const;
+
   using InputArrays =
-      llvm::MapVector<string, ArrayInfo, llvm::StringMap<unsigned>>;
+      llvm::MapVector<std::string, ArrayInfo, llvm::StringMap<unsigned>>;
   // The name assigned to the function which is the import result of the given
   // graph. If empty, a default one will be used.
   std::string graph_func_name;

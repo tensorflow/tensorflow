@@ -497,6 +497,11 @@ typedef struct {
   TfLiteType value_dtype;
 } TfLiteHashtableParams;
 
+typedef struct {
+  const char* container;
+  const char* shared_name;
+} TfLiteVarHandleParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

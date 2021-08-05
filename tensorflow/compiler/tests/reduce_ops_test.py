@@ -92,8 +92,8 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   NONEMPTY_REAL_DATA = [x for x in REAL_DATA if np.size(x) > 0]
   NONEMPTY_COMPLEX_DATA = [x for x in COMPLEX_DATA if np.size(x) > 0]
   BOOL_DATA = [
-      np.array([], dtype=np.bool).reshape(2, 0),
-      np.array([], dtype=np.bool).reshape(0, 3),
+      np.array([], dtype=np.bool_).reshape(2, 0),
+      np.array([], dtype=np.bool_).reshape(0, 3),
       np.array([[False, True, False], [True, True, False]]),
   ]
   ONES = [np.ones([34000, 2])]
@@ -165,11 +165,11 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                         self.NONEMPTY_COMPLEX_DATA, index_dtype)
 
   def testReduceAll(self, index_dtype):
-    self._testReduction(math_ops.reduce_all, np.all, np.bool, self.BOOL_DATA,
+    self._testReduction(math_ops.reduce_all, np.all, np.bool_, self.BOOL_DATA,
                         index_dtype)
 
   def testReduceAny(self, index_dtype):
-    self._testReduction(math_ops.reduce_any, np.any, np.bool, self.BOOL_DATA,
+    self._testReduction(math_ops.reduce_any, np.any, np.bool_, self.BOOL_DATA,
                         index_dtype)
 
   @test_util.disable_mlir_bridge('Error messages differ')

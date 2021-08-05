@@ -51,13 +51,13 @@ class RpcCollectiveExecutorMgrTest : public ::testing::Test {
     std::unique_ptr<DeviceResolverDistributed> dr(
         new DeviceResolverDistributed(device_mgr_.get()));
     std::unique_ptr<CollectiveParamResolverDistributed> cpr(
-        new CollectiveParamResolverDistributed(options.config,
-                                               device_mgr_.get(), dr.get(),
-                                               worker_cache, task_name));
+        new CollectiveParamResolverDistributed(
+            options.config, device_mgr_.get(), dr.get(),
+            /*nccl_communicator*/ nullptr, worker_cache, task_name));
     // This CME is the group leader.
     cme_.reset(new RpcCollectiveExecutorMgr(
         options.config, device_mgr_.get(), std::move(dr), std::move(cpr),
-        MaybeCreateNcclCommunicator(), worker_cache, task_name));
+        MaybeCreateNcclCommunicator(options.config), worker_cache, task_name));
   }
 
   std::unique_ptr<RpcCollectiveExecutorMgr> cme_;
@@ -81,7 +81,7 @@ TEST_F(RpcCollectiveExecutorMgrTest, FindOrCreate) {
 }
 
 TEST_F(RpcCollectiveExecutorMgrTest, NextStepId) {
-  int64 x = cme_->NextStepId(7);
+  int64_t x = cme_->NextStepId(7);
   EXPECT_EQ(x, CollectiveExecutor::kInvalidId);
   // Calling Refresh should generate a valid id.
   {
@@ -104,7 +104,7 @@ TEST_F(RpcCollectiveExecutorMgrTest, NextStepId) {
   EXPECT_EQ(x, cme_->NextStepId(7));
   // Retire on same graph_key should advance.
   cme_->RetireStepId(7, x);
-  int64 y = cme_->NextStepId(7);
+  int64_t y = cme_->NextStepId(7);
   EXPECT_EQ((x + 1) & (((1uLL << 56) - 1) | (1uLL << 56)), y);
   // Calling refresh should jump to a different point in the random space.
   {
@@ -119,16 +119,16 @@ TEST_F(RpcCollectiveExecutorMgrTest, NextStepId) {
     note.WaitForNotification();
     EXPECT_TRUE(status.ok());
   }
-  int64 z = cme_->NextStepId(7);
+  int64_t z = cme_->NextStepId(7);
   // z should not be equal to or a successor of y.
   EXPECT_NE(y, z);
   EXPECT_GT(llabs(y - z), 3);
 }
 
 TEST_F(RpcCollectiveExecutorMgrTest, GetStepSequence) {
-  int64 x = cme_->NextStepId(3);
+  int64_t x = cme_->NextStepId(3);
   EXPECT_EQ(x, CollectiveExecutor::kInvalidId);
-  int64 y = cme_->NextStepId(4);
+  int64_t y = cme_->NextStepId(4);
   EXPECT_EQ(y, CollectiveExecutor::kInvalidId);
   GetStepSequenceRequest request;
   GetStepSequenceResponse response;

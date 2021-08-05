@@ -37,7 +37,7 @@ const uint32 kDefaultGpuLocalCoreId = 1;
 namespace {
 
 // Converts from StepDetails to StepInfoResult.
-StepInfoResult ConvertStepDetailsToStepInfo(bool has_device, int64 step_num,
+StepInfoResult ConvertStepDetailsToStepInfo(bool has_device, int64_t step_num,
                                             const StepDetails& step_details) {
   GenericStepBreakdown generic;
   Timespan step_time = step_details.StepTime();

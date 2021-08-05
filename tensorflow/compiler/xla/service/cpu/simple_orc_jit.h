@@ -23,10 +23,10 @@ limitations under the License.
 #include "llvm/ADT/Triple.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
-#include "llvm/ExecutionEngine/Orc/TargetProcessControl.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
@@ -54,7 +54,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   // LLVM IR-level optimizations.  post_codegen_hook is invoked after
   // compiling to machine code.
   SimpleOrcJIT(
-      std::unique_ptr<llvm::orc::TargetProcessControl> target_process_control,
+      std::unique_ptr<llvm::orc::ExecutorProcessControl> target_process_control,
       std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
       const llvm::TargetOptions& target_options,
       llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
@@ -111,7 +111,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   std::unique_ptr<llvm::TargetMachine> target_machine_;
   llvm::Triple target_triple_;
   const llvm::DataLayout data_layout_;
-  std::unique_ptr<llvm::orc::TargetProcessControl> target_process_control_;
+  std::unique_ptr<llvm::orc::ExecutorProcessControl> target_process_control_;
   std::unique_ptr<llvm::orc::ExecutionSession> execution_session_;
   ObjLayerT object_layer_;
   CompileLayerT compile_layer_;

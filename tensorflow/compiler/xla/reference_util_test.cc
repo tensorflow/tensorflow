@@ -39,8 +39,8 @@ class ReferenceUtilTest : public ::testing::Test {
     matrix_ = absl::make_unique<Array2D<float>>(rows_, cols_);
     // [1.f  2.f  3.f]
     // [4.f  5.f  6.f]
-    for (int64 i = 0; i < rows_; ++i) {
-      for (int64 j = 0; j < cols_; ++j) {
+    for (int64_t i = 0; i < rows_; ++i) {
+      for (int64_t j = 0; j < cols_; ++j) {
         (*matrix_)(i, j) = i * cols_ + j + 1;
       }
     }
@@ -102,7 +102,7 @@ TEST_F(ReferenceUtilTest, MapArray2D) {
 }
 
 TEST_F(ReferenceUtilTest, MapWithIndexArray2D) {
-  auto add_index = [](float value, int64 row, int64 col) {
+  auto add_index = [](float value, int64_t row, int64_t col) {
     return value + row + col;
   };
   auto result = ReferenceUtil::MapWithIndexArray2D(*matrix_, add_index);
@@ -129,8 +129,8 @@ TEST_F(ReferenceUtilTest, MapWithIndexArray4D) {
   auto input = absl::make_unique<Array4D<float>>(/*planes=*/2, /*depth=*/3,
                                                  /*height=*/4, /*width=*/5);
   input->FillWithMultiples(1.0f);
-  auto subtract_index = [](float value, int64 plane, int64 depth, int64 height,
-                           int64 width) {
+  auto subtract_index = [](float value, int64_t plane, int64_t depth,
+                           int64_t height, int64_t width) {
     return value - (3 * 4 * 5 * plane + 4 * 5 * depth + 5 * height + width);
   };
   auto result = ReferenceUtil::MapWithIndexArray4D(*input, subtract_index);

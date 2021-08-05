@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -42,8 +41,9 @@ class TriangularSolveThunk : public Thunk {
                        const TriangularSolveOptions& options,
                        const BufferAllocation::Slice& a_buffer,
                        const BufferAllocation::Slice& b_buffer,
-                       PrimitiveType type, int64 batch_size, int64 m, int64 n,
-                       int64 a_batch_stride, int64 b_batch_stride);
+                       PrimitiveType type, int64_t batch_size, int64_t m,
+                       int64_t n, int64_t a_batch_stride,
+                       int64_t b_batch_stride);
 
   TriangularSolveThunk(const TriangularSolveThunk&) = delete;
   TriangularSolveThunk& operator=(const TriangularSolveThunk&) = delete;

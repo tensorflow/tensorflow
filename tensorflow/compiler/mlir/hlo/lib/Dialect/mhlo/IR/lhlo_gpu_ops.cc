@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/utils/lhlo_utils.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -48,6 +49,8 @@ limitations under the License.
 
 namespace mlir {
 namespace lmhlo_gpu {
+
+using mhlo::TokenType;
 
 LmhloGpuDialect::LmhloGpuDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context, TypeID::get<LmhloGpuDialect>()) {

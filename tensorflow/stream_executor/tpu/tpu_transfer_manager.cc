@@ -214,7 +214,7 @@ int64 TpuTransferManager::GetByteSizeRequirement(
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
 
-  int64 size_in_bytes =
+  int64_t size_in_bytes =
       tpu::ExecutorApiFn()->TpuTransferManager_GetByteSizeRequirementFn(
           manager_, &c_shape);
 

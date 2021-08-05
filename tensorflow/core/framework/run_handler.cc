@@ -38,7 +38,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 // LINT.IfChange
-static constexpr int32 kMaxConcurrentHandlers = 128;
+static constexpr int32_t kMaxConcurrentHandlers = 128;
 // LINT.ThenChange(//tensorflow/core/framework/run_handler_test.cc)
 
 typedef typename internal::RunHandlerEnvironment::Task Task;
@@ -149,7 +149,7 @@ ThreadWorkSource::~ThreadWorkSource() {
 Task ThreadWorkSource::EnqueueTask(Task t, bool is_blocking) {
   mutex* mu = nullptr;
   Queue* task_queue = nullptr;
-  thread_local int64 closure_counter = 0;
+  thread_local int64_t closure_counter = 0;
 
   if (!is_blocking) {
     int queue_index = ++closure_counter % non_blocking_work_sharding_factor_;
@@ -258,7 +258,7 @@ int64 ThreadWorkSource::GetTracemeId() {
   return traceme_id_.load(std::memory_order_relaxed);
 }
 
-void ThreadWorkSource::SetTracemeId(int64 value) { traceme_id_ = value; }
+void ThreadWorkSource::SetTracemeId(int64_t value) { traceme_id_ = value; }
 
 void ThreadWorkSource::SetWaiter(uint64 version, Waiter* waiter, mutex* mutex) {
   {
@@ -522,7 +522,7 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
   PerThread* pt = GetPerThread();
   pt->pool = this;
   pt->thread_id = thread_id;
-  static constexpr int32 kMaxBlockingInflight = 10;
+  static constexpr int32_t kMaxBlockingInflight = 10;
 
   while (!cancelled_) {
     Task t;
@@ -664,7 +664,7 @@ void RunHandlerThreadPool::WaitForWorkInSubThreadPool(bool is_blocking,
 }
 
 void RunHandlerThreadPool::WaitForWork(bool is_blocking, int thread_id,
-                                       int32 max_blocking_inflight) {
+                                       int32_t max_blocking_inflight) {
   const int kMaxSleepMicros = 250;
 
   // The non-blocking thread will just sleep.
@@ -732,7 +732,7 @@ class RunHandler::Impl {
   void ScheduleInterOpClosure(std::function<void()> fn);
   void ScheduleIntraOpClosure(std::function<void()> fn);
 
-  void Reset(int64 step_id,
+  void Reset(int64_t step_id,
              const RunOptions::Experimental::RunHandlerPoolOptions& options);
 
   RunHandlerPool::Impl* pool_impl() { return pool_impl_; }
@@ -823,7 +823,7 @@ class RunHandlerPool::Impl {
   }
 
   std::unique_ptr<RunHandler> Get(
-      int64 step_id, int64 timeout_in_ms,
+      int64_t step_id, int64_t timeout_in_ms,
       const RunOptions::Experimental::RunHandlerPoolOptions& options)
       TF_LOCKS_EXCLUDED(mu_) {
     thread_local std::unique_ptr<
@@ -1064,7 +1064,7 @@ void RunHandler::Impl::ScheduleIntraOpClosure(std::function<void()> fn) {
 }
 
 void RunHandler::Impl::Reset(
-    int64 step_id,
+    int64_t step_id,
     const RunOptions::Experimental::RunHandlerPoolOptions& options) {
   start_time_us_ = tensorflow::Env::Default()->NowMicros();
   step_id_ = step_id;
@@ -1082,7 +1082,7 @@ RunHandlerPool::RunHandlerPool(int num_inter_op_threads,
 RunHandlerPool::~RunHandlerPool() {}
 
 std::unique_ptr<RunHandler> RunHandlerPool::Get(
-    int64 step_id, int64 timeout_in_ms,
+    int64_t step_id, int64_t timeout_in_ms,
     const RunOptions::Experimental::RunHandlerPoolOptions& options) {
   return impl_->Get(step_id, timeout_in_ms, options);
 }

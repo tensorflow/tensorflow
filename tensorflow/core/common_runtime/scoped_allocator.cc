@@ -19,10 +19,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-ScopedAllocator::ScopedAllocator(const Tensor& backing_tensor, int32 scope_id,
+ScopedAllocator::ScopedAllocator(const Tensor& backing_tensor, int32_t scope_id,
                                  const string& name,
                                  const gtl::ArraySlice<Field> fields,
-                                 int32 expected_call_count,
+                                 int32_t expected_call_count,
                                  ScopedAllocatorContainer* container)
     : backing_tensor_(backing_tensor),
       tbuf_(backing_tensor_.buf_),
@@ -55,7 +55,7 @@ ScopedAllocator::~ScopedAllocator() {
   if (tbuf_) tbuf_->Unref();
 }
 
-void* ScopedAllocator::AllocateRaw(int32 field_index, size_t num_bytes) {
+void* ScopedAllocator::AllocateRaw(int32_t field_index, size_t num_bytes) {
   VLOG(1) << "ScopedAllocator index " << id_ << " AllocateRaw "
           << "field " << field_index << " num_bytes " << num_bytes;
   void* ptr = nullptr;
@@ -159,7 +159,7 @@ bool ScopedAllocator::VerifyTensor(const Tensor* t) {
 }
 
 ScopedAllocatorInstance::ScopedAllocatorInstance(ScopedAllocator* sa,
-                                                 int32 field_index)
+                                                 int32_t field_index)
     : scoped_allocator_(sa),
       field_index_(field_index),
       allocated_(false),

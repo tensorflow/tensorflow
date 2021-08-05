@@ -43,9 +43,9 @@ struct ReshapeSparseTensorFunctor<CPUDevice> {
                     typename TTypes<int64>::ConstMatrix input_indices,
                     typename TTypes<int64>::Matrix output_indices) const {
     (void)context;  // Unused (only used in GPU implementation)
-    const int64 input_rank = input_shape.dims();
-    const int64 output_rank = output_shape.dims();
-    const int64 nnz = input_indices.dimension(0);
+    const int64_t input_rank = input_shape.dims();
+    const int64_t output_rank = output_shape.dims();
+    const int64_t nnz = input_indices.dimension(0);
     gtl::InlinedVector<int64, 8> input_strides(input_rank);
     if (input_rank > 0) {
       input_strides[input_rank - 1] = 1;
@@ -64,7 +64,7 @@ struct ReshapeSparseTensorFunctor<CPUDevice> {
     }
 
     for (int i = 0; i < nnz; ++i) {
-      int64 id = 0;
+      int64_t id = 0;
       for (int j = 0; j < input_rank; ++j) {
         id += input_indices(i, j) * input_strides[j];
       }
@@ -98,19 +98,19 @@ void ReshapeSparseTensor(OpKernelContext *context,
                   "Target shape should be a vector but received shape ",
                   target_shape_in.shape().DebugString()));
 
-  const int64 output_rank = target_shape_in.NumElements();
+  const int64_t output_rank = target_shape_in.NumElements();
   const TensorShape input_shape(input_shape_in.vec<int64>());
-  const int64 dense_size = input_shape.num_elements();
-  const int64 nnz = input_indices_in.shape().dim_size(0);
+  const int64_t dense_size = input_shape.num_elements();
+  const int64_t nnz = input_indices_in.shape().dim_size(0);
 
   // Compute the output shape. Determine product of specified dimensions, and
   // find the index of the unspecified one.
   TensorShape output_shape;
-  int64 product = 1;
+  int64_t product = 1;
   int unknown_index = -1;
   auto target_shape = target_shape_in.vec<int64>();
   for (int d = 0; d < output_rank; ++d) {
-    const int64 size = target_shape(d);
+    const int64_t size = target_shape(d);
     if (size == -1) {
       OP_REQUIRES(
           context, unknown_index == -1,
@@ -133,7 +133,7 @@ void ReshapeSparseTensor(OpKernelContext *context,
         errors::InvalidArgument("reshape cannot infer the missing "
                                 "input size for an empty tensor unless all "
                                 "specified input sizes are non-zero"));
-    const int64 missing = dense_size / product;
+    const int64_t missing = dense_size / product;
     OP_REQUIRES(
         context, product * missing == dense_size,
         errors::InvalidArgument(
@@ -174,6 +174,12 @@ void ReshapeSparseTensor(OpKernelContext *context,
                                           TensorShape({nnz, output_rank}),
                                           &result_indices));
   if (nnz > 0) {
+    OP_REQUIRES(
+        context, dense_size > 0 && product > 0,
+        errors::InvalidArgument(
+            "Input tensor has ", nnz, " non zero elements but input shape (",
+            input_shape.DebugString(), ") or output shape (",
+            output_shape.DebugString(), ") is empty"));
     OP_REQUIRES_OK(context, functor::ReshapeSparseTensorFunctor<Device>()(
                                 context, input_shape, output_shape,
                                 input_indices_in.matrix<int64>(),

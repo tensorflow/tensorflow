@@ -8,6 +8,33 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "tf_headers",
+    srcs = [
+        "op_kernel.h",
+        "shape.h",
+        "status_macros.h",
+        "tensor_view.h",
+        "tf_op_shim.h",
+        "tf_tensor_view.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+cc_library(
+    name = "tf_kernel_shim",
+    visibility = ["//tensorflow:__pkg__"],
+    deps = [
+        ":op_kernel",
+        ":shape",
+        ":status_macros",
+        ":tensor_view",
+        ":tf_op_shim",
+        ":tf_tensor_view",
+    ],
+)
+
 cc_library(
     name = "tensor_view",
     hdrs = ["tensor_view.h"],
@@ -27,7 +54,10 @@ cc_library(
     srcs = ["shape.cc"],
     hdrs = ["shape.h"],
     visibility = ["//visibility:public"],
-    deps = ["@com_google_absl//absl/status:statusor"],
+    deps = [
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 cc_test(
@@ -91,6 +121,7 @@ cc_test(
         ":test_util",
         ":tflite_tensor_view",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -153,6 +184,7 @@ cc_library(
 cc_library(
     name = "status_macros",
     hdrs = ["status_macros.h"],
+    visibility = ["//visibility:public"],
     deps = ["@com_google_absl//absl/status"],
 )
 

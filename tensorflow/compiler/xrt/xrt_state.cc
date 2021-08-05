@@ -43,7 +43,7 @@ class BufferAllocStats {
     int64 size = 0;
   };
 
-  Stats ReportAlloc(int64 device, int64 msize) {
+  Stats ReportAlloc(int64_t device, int64_t msize) {
     mutex_lock lock(lock_);
     Stats* device_stats = &stats_[device];
     device_stats->count += 1;
@@ -51,7 +51,7 @@ class BufferAllocStats {
     return *device_stats;
   }
 
-  Stats ReportFree(int64 device, int64 msize) {
+  Stats ReportFree(int64_t device, int64_t msize) {
     mutex_lock lock(lock_);
     Stats* device_stats = &stats_[device];
     device_stats->count -= 1;

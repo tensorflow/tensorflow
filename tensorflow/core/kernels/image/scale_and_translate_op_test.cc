@@ -95,24 +95,24 @@ void Sample(const DynamicKernel& kernel, const bool antialias,
   const Vector2f kernel_scale(antialias ? std::max(scale.x(), 1.0f) : 1.0,
                               antialias ? std::max(scale.y(), 1.0f) : 1.0);
 
-  const int64 in_height = images.dimension(1);
-  const int64 in_width = images.dimension(2);
+  const int64_t in_height = images.dimension(1);
+  const int64_t in_width = images.dimension(2);
   const int channels = images.dimension(3);
-  const int64 y_span_start = Clamp(
+  const int64_t y_span_start = Clamp(
       static_cast<int64>(0), in_height - 1,
       static_cast<int64>(
           std::ceil(sample_f.y() - kernel.Radius() * kernel_scale.y() - 0.5f)));
-  const int64 y_span_end =
+  const int64_t y_span_end =
       Clamp(static_cast<int64>(0), in_height - 1,
             static_cast<int64>(std::floor(
                 sample_f.y() + kernel.Radius() * kernel_scale.y() - 0.5f))) +
       1;
-  const int64 x_span_start = Clamp(
+  const int64_t x_span_start = Clamp(
       static_cast<int64>(0), in_width - 1,
       static_cast<int64>(
           std::ceil(sample_f.x() - kernel.Radius() * kernel_scale.x() - 0.5f)));
 
-  const int64 x_span_end =
+  const int64_t x_span_end =
       Clamp(static_cast<int64>(0), in_width - 1,
             static_cast<int64>(std::floor(
                 sample_f.x() + kernel.Radius() * kernel_scale.x() - 0.5f))) +
@@ -126,10 +126,10 @@ void Sample(const DynamicKernel& kernel, const bool antialias,
   const Vector2f one_over_kernel_scale(1.0f / kernel_scale.x(),
                                        1.0f / kernel_scale.y());
   float total_weight = 0.0f;
-  for (int64 y = y_span_start; y < y_span_end; ++y) {
+  for (int64_t y = y_span_start; y < y_span_end; ++y) {
     float y_kernel_pos = static_cast<float>(y) + 0.5f - sample_f.y();
     float y_weight = kernel.Value(y_kernel_pos * one_over_kernel_scale.y());
-    for (int64 x = x_span_start; x < x_span_end; ++x) {
+    for (int64_t x = x_span_start; x < x_span_end; ++x) {
       float x_kernel_pos = static_cast<float>(x) + 0.5f - sample_f.x();
       float x_weight = kernel.Value(x_kernel_pos * one_over_kernel_scale.x());
       float kernel_weight = y_weight * x_weight;
@@ -168,16 +168,16 @@ void ScaleAndTranslateBaseline(const DynamicKernel& kernel,
   ASSERT_EQ(batch, output.dimension(0));
   ASSERT_EQ(channels, output.dimension(3));
 
-  const int64 out_height = output.dimension(1);
-  const int64 out_width = output.dimension(2);
-  const int64 in_height = images.dimension(1);
-  const int64 in_width = images.dimension(2);
+  const int64_t out_height = output.dimension(1);
+  const int64_t out_width = output.dimension(2);
+  const int64_t in_height = images.dimension(1);
+  const int64_t in_width = images.dimension(2);
 
   for (int b = 0; b < batch; ++b) {
-    for (int64 y = 0; y < out_height; ++y) {
+    for (int64_t y = 0; y < out_height; ++y) {
       const float out_y_f = static_cast<float>(y) + 0.5;
       const float in_y_f = out_y_f * scale.y() + translate.y();
-      for (int64 x = 0; x < out_width; ++x) {
+      for (int64_t x = 0; x < out_width; ++x) {
         const float out_x_f = static_cast<float>(x) + 0.5;
         const float in_x_f = out_x_f * scale.x() + translate.x();
         if (in_x_f < 0.0f || in_y_f < 0.0f || in_x_f > in_width ||
@@ -213,8 +213,8 @@ class ScaleAndTranslateOpTest : public OpsTestBase {
                                  int num_channels) {
     inputs_.clear();
     std::vector<float> data;
-    const int64 row_size = num_col_squares * square_size * num_channels;
-    const int64 image_size = num_row_squares * square_size * row_size;
+    const int64_t row_size = num_col_squares * square_size * num_channels;
+    const int64_t image_size = num_row_squares * square_size * row_size;
     data.resize(batch_size * image_size);
     random::PhiloxRandom philox(42);
     random::SimplePhilox rnd(&philox);
@@ -270,11 +270,11 @@ class ScaleAndTranslateOpTest : public OpsTestBase {
 
 TEST_F(ScaleAndTranslateOpTest, IdentityTest) {
   CreateOp("lanczos3", true);
-  constexpr int64 kBatchSize = 2;
-  constexpr int64 kNumRowSquares = 16;
-  constexpr int64 kNumColSquares = 13;
-  constexpr int64 kSquareSize = 12;
-  constexpr int64 kNumChannels = 3;
+  constexpr int64_t kBatchSize = 2;
+  constexpr int64_t kNumRowSquares = 16;
+  constexpr int64_t kNumColSquares = 13;
+  constexpr int64_t kSquareSize = 12;
+  constexpr int64_t kNumChannels = 3;
   SetCheckerboardImageInput(kBatchSize, kNumRowSquares, kNumColSquares,
                             kSquareSize, kNumChannels);
   constexpr int kOutputImageHeight = kNumRowSquares * kSquareSize;
@@ -286,11 +286,11 @@ TEST_F(ScaleAndTranslateOpTest, IdentityTest) {
 
 TEST_F(ScaleAndTranslateOpTest, UpsampleTest) {
   CreateOp("lanczos3", true);
-  constexpr int64 kBatchSize = 2;
-  constexpr int64 kNumRowSquares = 16;
-  constexpr int64 kNumColSquares = 13;
-  constexpr int64 kSquareSize = 12;
-  constexpr int64 kNumChannels = 3;
+  constexpr int64_t kBatchSize = 2;
+  constexpr int64_t kNumRowSquares = 16;
+  constexpr int64_t kNumColSquares = 13;
+  constexpr int64_t kSquareSize = 12;
+  constexpr int64_t kNumChannels = 3;
   SetCheckerboardImageInput(kBatchSize, kNumRowSquares, kNumColSquares,
                             kSquareSize, kNumChannels);
   constexpr int kOutputImageHeight = kNumRowSquares * kSquareSize * 2;
@@ -302,11 +302,11 @@ TEST_F(ScaleAndTranslateOpTest, UpsampleTest) {
 
 TEST_F(ScaleAndTranslateOpTest, DownsampleTest) {
   CreateOp("lanczos3", true);
-  constexpr int64 kBatchSize = 2;
-  constexpr int64 kNumRowSquares = 16;
-  constexpr int64 kNumColSquares = 13;
-  constexpr int64 kSquareSize = 12;
-  constexpr int64 kNumChannels = 3;
+  constexpr int64_t kBatchSize = 2;
+  constexpr int64_t kNumRowSquares = 16;
+  constexpr int64_t kNumColSquares = 13;
+  constexpr int64_t kSquareSize = 12;
+  constexpr int64_t kNumChannels = 3;
   SetCheckerboardImageInput(kBatchSize, kNumRowSquares, kNumColSquares,
                             kSquareSize, kNumChannels);
   constexpr int kOutputImageHeight = kNumRowSquares * kSquareSize / 2;
@@ -318,11 +318,11 @@ TEST_F(ScaleAndTranslateOpTest, DownsampleTest) {
 
 TEST_F(ScaleAndTranslateOpTest, AntiAliasedDownsampleToASinglePixelTest) {
   CreateOp("lanczos3", true);
-  constexpr int64 kBatchSize = 2;
-  constexpr int64 kNumRowSquares = 16;
-  constexpr int64 kNumColSquares = 13;
-  constexpr int64 kSquareSize = 12;
-  constexpr int64 kNumChannels = 3;
+  constexpr int64_t kBatchSize = 2;
+  constexpr int64_t kNumRowSquares = 16;
+  constexpr int64_t kNumColSquares = 13;
+  constexpr int64_t kSquareSize = 12;
+  constexpr int64_t kNumChannels = 3;
   SetCheckerboardImageInput(kBatchSize, kNumRowSquares, kNumColSquares,
                             kSquareSize, kNumChannels);
   constexpr int kOutputImageHeight = 1;
@@ -335,11 +335,11 @@ TEST_F(ScaleAndTranslateOpTest, AntiAliasedDownsampleToASinglePixelTest) {
 
 TEST_F(ScaleAndTranslateOpTest, NonAntiAliasedDownsampleToASinglePixelTest) {
   CreateOp("lanczos3", false);
-  constexpr int64 kBatchSize = 2;
-  constexpr int64 kNumRowSquares = 16;
-  constexpr int64 kNumColSquares = 13;
-  constexpr int64 kSquareSize = 12;
-  constexpr int64 kNumChannels = 3;
+  constexpr int64_t kBatchSize = 2;
+  constexpr int64_t kNumRowSquares = 16;
+  constexpr int64_t kNumColSquares = 13;
+  constexpr int64_t kSquareSize = 12;
+  constexpr int64_t kNumChannels = 3;
   SetCheckerboardImageInput(kBatchSize, kNumRowSquares, kNumColSquares,
                             kSquareSize, kNumChannels);
   constexpr int kOutputImageHeight = 1;
@@ -352,11 +352,11 @@ TEST_F(ScaleAndTranslateOpTest, NonAntiAliasedDownsampleToASinglePixelTest) {
 
 TEST_F(ScaleAndTranslateOpTest, UsampleFromASinglePixelTest) {
   CreateOp("lanczos3", true);
-  constexpr int64 kBatchSize = 2;
-  constexpr int64 kNumRowSquares = 1;
-  constexpr int64 kNumColSquares = 1;
-  constexpr int64 kSquareSize = 1;
-  constexpr int64 kNumChannels = 3;
+  constexpr int64_t kBatchSize = 2;
+  constexpr int64_t kNumRowSquares = 1;
+  constexpr int64_t kNumColSquares = 1;
+  constexpr int64_t kSquareSize = 1;
+  constexpr int64_t kNumChannels = 3;
   SetCheckerboardImageInput(kBatchSize, kNumRowSquares, kNumColSquares,
                             kSquareSize, kNumChannels);
   constexpr int kOutputImageHeight = 10;
@@ -368,11 +368,11 @@ TEST_F(ScaleAndTranslateOpTest, UsampleFromASinglePixelTest) {
 
 TEST_F(ScaleAndTranslateOpTest, NonAntialiasedUsampleFromASinglePixelTest) {
   CreateOp("lanczos3", false);
-  constexpr int64 kBatchSize = 2;
-  constexpr int64 kNumRowSquares = 1;
-  constexpr int64 kNumColSquares = 1;
-  constexpr int64 kSquareSize = 1;
-  constexpr int64 kNumChannels = 3;
+  constexpr int64_t kBatchSize = 2;
+  constexpr int64_t kNumRowSquares = 1;
+  constexpr int64_t kNumColSquares = 1;
+  constexpr int64_t kSquareSize = 1;
+  constexpr int64_t kNumChannels = 3;
   SetCheckerboardImageInput(kBatchSize, kNumRowSquares, kNumColSquares,
                             kSquareSize, kNumChannels);
   constexpr int kOutputImageHeight = 10;
@@ -387,11 +387,11 @@ TEST_F(ScaleAndTranslateOpTest, NonAntialiasedUsampleFromASinglePixelTest) {
 
 TEST_F(ScaleAndTranslateOpTest, AntialiasedScaleAndTranslationTest) {
   CreateOp("lanczos3", true);
-  constexpr int64 kBatchSize = 2;
-  constexpr int64 kNumRowSquares = 11;
-  constexpr int64 kNumColSquares = 7;
-  constexpr int64 kSquareSize = 5;
-  constexpr int64 kNumChannels = 3;
+  constexpr int64_t kBatchSize = 2;
+  constexpr int64_t kNumRowSquares = 11;
+  constexpr int64_t kNumColSquares = 7;
+  constexpr int64_t kSquareSize = 5;
+  constexpr int64_t kNumChannels = 3;
   SetCheckerboardImageInput(kBatchSize, kNumRowSquares, kNumColSquares,
                             kSquareSize, kNumChannels);
   constexpr int kOutputImageHeight = 49;
@@ -403,11 +403,11 @@ TEST_F(ScaleAndTranslateOpTest, AntialiasedScaleAndTranslationTest) {
 
 TEST_F(ScaleAndTranslateOpTest, NonAntialiasedScaleAndTranslationTest) {
   CreateOp("lanczos3", false);
-  constexpr int64 kBatchSize = 2;
-  constexpr int64 kNumRowSquares = 11;
-  constexpr int64 kNumColSquares = 7;
-  constexpr int64 kSquareSize = 5;
-  constexpr int64 kNumChannels = 3;
+  constexpr int64_t kBatchSize = 2;
+  constexpr int64_t kNumRowSquares = 11;
+  constexpr int64_t kNumColSquares = 7;
+  constexpr int64_t kSquareSize = 5;
+  constexpr int64_t kNumChannels = 3;
   SetCheckerboardImageInput(kBatchSize, kNumRowSquares, kNumColSquares,
                             kSquareSize, kNumChannels);
   constexpr int kOutputImageHeight = 49;
@@ -423,11 +423,11 @@ TEST_F(ScaleAndTranslateOpTest, TestKernelTypes) {
       "triangle", "keyscubic", "mitchellcubic"};
   for (const string& kernel_type : kKernelTypes) {
     CreateOp(kernel_type, true);
-    constexpr int64 kBatchSize = 2;
-    constexpr int64 kNumRowSquares = 10;
-    constexpr int64 kNumColSquares = 11;
-    constexpr int64 kSquareSize = 1;
-    constexpr int64 kNumChannels = 3;
+    constexpr int64_t kBatchSize = 2;
+    constexpr int64_t kNumRowSquares = 10;
+    constexpr int64_t kNumColSquares = 11;
+    constexpr int64_t kSquareSize = 1;
+    constexpr int64_t kNumChannels = 3;
     SetCheckerboardImageInput(kBatchSize, kNumRowSquares, kNumColSquares,
                               kSquareSize, kNumChannels);
     constexpr int kOutputImageHeight = 9;

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -745,7 +746,7 @@ TfLiteStatus QuantizeActivation(TensorT* tensor, TensorType activations_type,
 }
 
 TfLiteStatus QuantizeActivationToInt16(TensorT* tensor, float scale) {
-  const int32 zero_point = 0;
+  const int32_t zero_point = 0;
   tensor->quantization = absl::make_unique<QuantizationParametersT>();
   tensor->quantization->scale.push_back(scale);
   tensor->quantization->zero_point.push_back(zero_point);
@@ -757,7 +758,8 @@ int GetPowerOfTwoScale(float min, float max) {
   const float range = std::max(std::abs(min), std::abs(max));
   int pot = 0;
   for (int i = 0; i < 10; i++) {
-    if (std::pow(2, pot) < range) {
+    // NOTE: use std::pow() for bitwise accuracy.
+    if (std::pow(2, pot) < range) {  // NOLINT
       pot++;
     }
   }

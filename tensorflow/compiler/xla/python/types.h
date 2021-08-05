@@ -23,9 +23,11 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
 #include "tensorflow/compiler/xla/python/absl_casters.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -34,16 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
-
-// Helper that converts a failing StatusOr to an exception.
-// For use only inside pybind11 code.
-template <typename T>
-T ValueOrThrow(StatusOr<T> v) {
-  if (!v.ok()) {
-    throw std::runtime_error(v.status().ToString());
-  }
-  return v.ConsumeValueOrDie();
-}
 
 // Converts a NumPy dtype to a PrimitiveType.
 StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
@@ -83,6 +75,7 @@ PrimitiveType Squash64BitTypes(PrimitiveType type);
 
 // Returns the strides for `shape`.
 std::vector<ssize_t> ByteStridesForShape(const Shape& shape);
+std::vector<int64_t> ByteStridesForShapeInt64(const Shape& shape);
 
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.
 // The literal's leaf arrays are not copied; instead the NumPy arrays share
@@ -106,13 +99,39 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(
     const pybind11::object& argument);
 
 // Converts a sequence of C++ ints to a Python tuple of ints.
-// Pybind11 by default converts a std::vector<int64> to a Python list;
+// Pybind11 by default converts a std::vector<T> to a Python list;
 // we frequently want a tuple instead e.g. for shapes.
-pybind11::tuple IntSpanToTuple(absl::Span<int64 const> xs);
-pybind11::tuple IntSpanToTuple(absl::Span<int const> xs);
+template <typename T>
+pybind11::tuple SpanToTuple(absl::Span<T const> xs) {
+  pybind11::tuple out(xs.size());
+  for (int i = 0; i < xs.size(); ++i) {
+    out[i] = pybind11::cast(xs[i]);
+  }
+  return out;
+}
+template <>
+pybind11::tuple SpanToTuple(absl::Span<int const> xs);
+template <>
+pybind11::tuple SpanToTuple(absl::Span<int64 const> xs);
 
-// Converts a Python sequence of integers to a std::vector<int64>
-std::vector<int64> IntSequenceToVector(const pybind11::object& sequence);
+// Converts a Python iterable/sequence of T to std::vector<T>
+template <typename T>
+std::vector<T> IterableToVector(const pybind11::iterable& iterable) {
+  std::vector<T> output;
+  for (auto item : iterable) {
+    output.push_back(item.cast<T>());
+  }
+  return output;
+}
+template <typename T>
+std::vector<T> SequenceToVector(const pybind11::sequence& sequence) {
+  std::vector<T> output;
+  output.reserve(sequence.size());
+  for (auto item : sequence) {
+    output.push_back(item.cast<T>());
+  }
+  return output;
+}
 
 // Private helper function used in the implementation of the type caster for
 // xla::BorrowingLiteral. Converts a Python array-like object into a buffer
@@ -132,40 +151,6 @@ absl::optional<CastToArrayResult> CastToArray(pybind11::handle h);
 // the exceptions are local to the binding code.
 namespace pybind11 {
 namespace detail {
-
-// Status, StatusOr. Failing statuses become Python exceptions; Status::OK()
-// becomes None.
-template <>
-struct type_caster<xla::Status> {
- public:
-  PYBIND11_TYPE_CASTER(xla::Status, _("Status"));
-
-  static handle cast(xla::Status src, return_value_policy /* policy */,
-                     handle /* parent */) {
-    if (!src.ok()) {
-      throw std::runtime_error(src.ToString());
-    }
-    return none().inc_ref();
-  }
-};
-
-template <typename T>
-struct type_caster<xla::StatusOr<T>> {
- public:
-  using value_conv = make_caster<T>;
-
-  PYBIND11_TYPE_CASTER(xla::StatusOr<T>,
-                       _("StatusOr[") + value_conv::name + _("]"));
-
-  static handle cast(xla::StatusOr<T> src, return_value_policy policy,
-                     handle parent) {
-    if (!src.ok()) {
-      throw std::runtime_error(src.status().ToString());
-    }
-    return value_conv::cast(std::forward<xla::StatusOr<T>>(src).ValueOrDie(),
-                            policy, parent);
-  }
-};
 
 // Literals.
 // Literal data can be passed to XLA as a NumPy array; its value can be

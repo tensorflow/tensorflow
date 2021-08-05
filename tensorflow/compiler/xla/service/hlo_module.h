@@ -102,7 +102,8 @@ class HloModule {
   // computations to replace. We could speed it up by keeping track of users of
   // computations.
   void ReplaceComputations(
-      const std::unordered_map<HloComputation*, HloComputation*>& replacements);
+      const absl::flat_hash_map<HloComputation*, HloComputation*>&
+          replacements);
 
   const string& name() const { return name_; }
   void set_name(string name) { name_ = std::move(name); }
@@ -183,7 +184,7 @@ class HloModule {
   int64 computation_count() const { return computations_.size(); }
 
   // Returns the mutable computation for the given index.
-  HloComputation* mutable_computation(int64 idx) {
+  HloComputation* mutable_computation(int64_t idx) {
     CHECK(idx >= 0 && idx < computations_.size());
     return computations_[idx].get();
   }
@@ -226,6 +227,7 @@ class HloModule {
   // Same as MakeNonfusionComputations() but sorting computations by content.
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
 
+  HloModuleConfig& config() { return config_; }
   const HloModuleConfig& config() const { return config_; }
   void set_config(const HloModuleConfig& config) { config_ = config; }
 
@@ -362,7 +364,7 @@ class HloModule {
   }
 
   // Add a program argument to be prefetched across programs.
-  void AddCrossProgramPrefetch(int64 parameter, const ShapeIndex& index) {
+  void AddCrossProgramPrefetch(int64_t parameter, const ShapeIndex& index) {
     cross_program_prefetches_.emplace_back(parameter, index);
   }
 

@@ -29,6 +29,7 @@ namespace eager {
 namespace {
 
 using ::testing::ContainsRegex;
+using ::testing::HasSubstr;
 
 class TestCustomDevice : public CustomDevice {
  public:
@@ -67,17 +68,17 @@ class TestCustomDeviceTensorHandle : public CustomDeviceTensorHandle {
  public:
   TestCustomDeviceTensorHandle(ImmediateExecutionContext* context,
                                TestCustomDevice* device,
-                               tensorflow::DataType dtype)
-      : CustomDeviceTensorHandle(context, device, dtype) {}
+                               tensorflow::DataType dtype, int64_t length)
+      : CustomDeviceTensorHandle(context, device, dtype), length_(length) {}
 
   void* DevicePointer() const override { return nullptr; }
   Status NumDims(int* num_dims) const override {
     *num_dims = 1;
     return Status::OK();
   }
-  Status Dim(int dim_index, int64* dim) const override {
+  Status Dim(int dim_index, int64_t* dim) const override {
     if (dim_index == 0) {
-      *dim = 3;
+      *dim = length_;
       return Status::OK();
     } else {
       return errors::Internal("Dim out of bounds");
@@ -88,6 +89,9 @@ class TestCustomDeviceTensorHandle : public CustomDeviceTensorHandle {
     summary = std::string("TestValue");
     return Status::OK();
   }
+
+ private:
+  const int64_t length_;
 };
 
 TEST(CustomDevice, TestTensorHandle) {
@@ -100,7 +104,8 @@ TEST(CustomDevice, TestTensorHandle) {
   std::string device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:15";
   TestCustomDevice device(device_name);
   core::RefCountPtr<TestCustomDeviceTensorHandle> tensor(
-      new TestCustomDeviceTensorHandle(ctx.get(), &device, DT_FLOAT));
+      new TestCustomDeviceTensorHandle(ctx.get(), &device, DT_FLOAT,
+                                       /*length=*/3));
   Status s;
   std::string device_type = tensor->DeviceType(&s);
   ASSERT_TRUE(s.ok()) << s.error_message();
@@ -108,7 +113,7 @@ TEST(CustomDevice, TestTensorHandle) {
   int device_index = tensor->DeviceId(&s);
   ASSERT_TRUE(s.ok()) << s.error_message();
   EXPECT_EQ(15, device_index);
-  int64 num_elements = 0;
+  int64_t num_elements = 0;
   s = tensor->NumElements(&num_elements);
   ASSERT_TRUE(s.ok()) << s.error_message();
   EXPECT_EQ(3, num_elements);
@@ -116,6 +121,24 @@ TEST(CustomDevice, TestTensorHandle) {
       tensor->DebugString(),
       ContainsRegex(
           R"re(TensorHandle\(TestValue, shape=\[3\], dtype=DT_FLOAT, device=.*\))re"));
+}
+
+TEST(CustomDevice, TestTensorHandleUnknownDimNumElements) {
+  StaticDeviceMgr device_mgr(DeviceFactory::NewDevice(
+      "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
+  core::RefCountPtr<EagerContext> ctx(new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
+      &device_mgr, false, nullptr, nullptr));
+  std::string device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:15";
+  TestCustomDevice device(device_name);
+  core::RefCountPtr<TestCustomDeviceTensorHandle> tensor(
+      new TestCustomDeviceTensorHandle(ctx.get(), &device, DT_FLOAT,
+                                       /*length=*/-1));
+  int64_t num_elements;
+  Status s = tensor->NumElements(&num_elements);
+  EXPECT_FALSE(s.ok());
+  EXPECT_THAT(s.error_message(), HasSubstr("representing varying shapes"));
 }
 
 TEST(CustomDevice, TestResourcePlacement) {
@@ -129,9 +152,11 @@ TEST(CustomDevice, TestResourcePlacement) {
       "/job:localhost/replica:0/task:0/device:CUSTOM:15";
   TestCustomDevice custom_device(custom_device_name);
   core::RefCountPtr<TestCustomDeviceTensorHandle> custom_float_tensor(
-      new TestCustomDeviceTensorHandle(ctx.get(), &custom_device, DT_FLOAT));
+      new TestCustomDeviceTensorHandle(ctx.get(), &custom_device, DT_FLOAT,
+                                       /*length=*/3));
   core::RefCountPtr<TestCustomDeviceTensorHandle> custom_resource_tensor(
-      new TestCustomDeviceTensorHandle(ctx.get(), &custom_device, DT_RESOURCE));
+      new TestCustomDeviceTensorHandle(ctx.get(), &custom_device, DT_RESOURCE,
+                                       /*length=*/3));
 
   Tensor resource_tensor(DT_RESOURCE, {});
   Device* physical_device = device_mgr.ListDevices().at(0);

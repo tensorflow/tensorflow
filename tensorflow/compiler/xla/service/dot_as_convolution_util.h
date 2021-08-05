@@ -25,6 +25,16 @@ limitations under the License.
 namespace xla {
 namespace dot_as_convolution_util {
 
+// Type of Batch representation for a convolution that has a spatial dimension
+// that is effectively a batch dimension. We currently have two
+// representations that we detect as "batch equivalent" and this enum allows
+// differentiating between the two.
+enum class SpatialBatchRepresentation {
+  kNone,
+  kUnpaddedVersion,
+  kPaddedVersion,
+};
+
 // Describes the dimensions of a convolution that can be interpreted as a dot
 // or a normal convolution.
 struct DotConvolutionDimsInfo {
@@ -65,9 +75,23 @@ CreateShardedConvForDotGeneralConvolution(
 // Check if a spatial dim is parallel batch dimension.
 // A parallel batch dimension in DotGeneral is represented as a spatial
 // dimension with window size B (batch dimension size), stride B - 1, and base
-// dilation B.
-bool ConvSpatialDimensionIsParallel(const WindowDimension& wd, int64 lhs_size);
-
+// dilation B or an alternative representation of window size B, stride B,
+// padding low/high B - 1, base dilation B - 1 and window reversal
+SpatialBatchRepresentation SpatialIsBatch(int64_t lhs_spatial_size,
+                                          const WindowDimension& spatial_wd);
+// Returns if the spatial dimension represented by 'spatial_wd' is an LHS non
+// contracting dimension.
+bool SpatialIsLhsNonContracting(int64_t rhs_spatial_size,
+                                const WindowDimension& spatial_wd);
+// Returns if the spatial dimension represented by 'spatial_wd' is an RHS non
+// contracting dimension.
+bool SpatialIsRhsNonContracting(int64_t lhs_spatial_size,
+                                int64_t rhs_spatial_size,
+                                const WindowDimension& spatial_wd);
+// Returns if the spatial dimension represented by 'spatial_wd' endsup being
+// equivalent to a contracting dimension.
+bool SpatialIsContracting(int64_t lhs_spatial_size, int64_t rhs_spatial_size,
+                          const WindowDimension& spatial_wd);
 // Returns a DotConvolutionDimsInfo from a kDot instruction, where all
 // the spatial_dim values are set to -1.
 DotConvolutionDimsInfo ParseDotGeneralFromDot(const HloInstruction* dot);

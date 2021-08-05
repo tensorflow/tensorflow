@@ -367,7 +367,7 @@ xla::ProgramShape XlaCompiledProgramShape(
   xla::ExecutableBuildOptions exec_options;
   exec_options.set_result_layout(input_program_shape.result());
   std::vector<const xla::Shape*> parameters_shapes;
-  for (int64 i = 0; i < input_program_shape.parameters_size(); ++i) {
+  for (int64_t i = 0; i < input_program_shape.parameters_size(); ++i) {
     parameters_shapes.push_back(&input_program_shape.parameters(i));
   }
   std::vector<std::unique_ptr<xla::LocalExecutable>> local_executables =
@@ -579,7 +579,7 @@ TEST(RawApiTest, AllocAndRewrite) {
   TF_EXPECT_OK(session.Run({read_back, handle}, &outputs));
   EXPECT_EQ(outputs.size(), 2);
 
-  int64 allocation_handle = outputs[1].scalar<int64>()();
+  int64_t allocation_handle = outputs[1].scalar<int64>()();
   xla::LiteralProto response;
   EXPECT_TRUE(ParseFromTString(outputs[0].scalar<tstring>()(), &response));
   EXPECT_TRUE(CompareLiteralProtos(alloc.value(), response));
@@ -632,8 +632,8 @@ TEST(RawApiTest, AllocReleaseMany) {
   TF_EXPECT_OK(session.Run({handle1, handle2}, &outputs));
   EXPECT_EQ(outputs.size(), 2);
 
-  int64 allocation_handle1 = outputs[0].scalar<int64>()();
-  int64 allocation_handle2 = outputs[1].scalar<int64>()();
+  int64_t allocation_handle1 = outputs[0].scalar<int64>()();
+  int64_t allocation_handle2 = outputs[1].scalar<int64>()();
 
   Tensor release_tensor(DT_INT64, TensorShape({2}));
   release_tensor.flat<int64>()(0) = allocation_handle1;
@@ -681,8 +681,8 @@ TEST(RawApiTest, CompileAndReleaseMany) {
   TF_EXPECT_OK(session.Run({c_handle1.handle, c_handle2.handle}, &outputs));
   EXPECT_EQ(outputs.size(), 2);
 
-  int64 compilation_handle1 = outputs[0].scalar<int64>()();
-  int64 compilation_handle2 = outputs[1].scalar<int64>()();
+  int64_t compilation_handle1 = outputs[0].scalar<int64>()();
+  int64_t compilation_handle2 = outputs[1].scalar<int64>()();
 
   Tensor release_tensor(DT_INT64, TensorShape({2}));
   release_tensor.flat<int64>()(0) = compilation_handle1;
@@ -708,7 +708,7 @@ TEST(RawApiTest, AllocAndClearAll) {
   TF_EXPECT_OK(session.Run({handle}, &outputs));
   EXPECT_EQ(outputs.size(), 1);
 
-  int64 allocation_handle = outputs[0].scalar<int64>()();
+  int64_t allocation_handle = outputs[0].scalar<int64>()();
 
   auto clear_all = ops::XRTReleaseAllAllocations(root);
 
@@ -909,8 +909,8 @@ TEST(RawApiTest, ExecuteChainedOpByOp) {
       session.Run({c_add_scale_op.handle, c_sub_scale_op.handle}, &outputs));
   EXPECT_EQ(outputs.size(), 2);
 
-  int64 c_add_scale_handle = outputs[0].scalar<int64>()();
-  int64 c_sub_scale_handle = outputs[1].scalar<int64>()();
+  int64_t c_add_scale_handle = outputs[0].scalar<int64>()();
+  int64_t c_sub_scale_handle = outputs[1].scalar<int64>()();
 
   xrt::XLAAllocation p0;
   *p0.mutable_value() = FloatVector({1.0f, 2.0f});
@@ -979,8 +979,8 @@ TEST(RawApiTest, ExecuteChained) {
       session.Run({c_add_scale_op.handle, c_sub_scale_op.handle}, &outputs));
   EXPECT_EQ(outputs.size(), 2);
 
-  int64 c_add_scale_handle = outputs[0].scalar<int64>()();
-  int64 c_sub_scale_handle = outputs[1].scalar<int64>()();
+  int64_t c_add_scale_handle = outputs[0].scalar<int64>()();
+  int64_t c_sub_scale_handle = outputs[1].scalar<int64>()();
 
   xrt::XLAAllocation p0;
   *p0.mutable_value() = FloatVector({1.0f, 2.0f});
@@ -997,8 +997,8 @@ TEST(RawApiTest, ExecuteChained) {
   TF_EXPECT_OK(session.Run({p0_handle_op, p1_handle_op}, &outputs));
   EXPECT_EQ(outputs.size(), 2);
 
-  int64 p0_handle = outputs[0].scalar<int64>()();
-  int64 p1_handle = outputs[1].scalar<int64>()();
+  int64_t p0_handle = outputs[0].scalar<int64>()();
+  int64_t p1_handle = outputs[1].scalar<int64>()();
 
   xrt::XRTChainedExecuteConfig config;
   auto config_const =
@@ -1748,7 +1748,7 @@ TEST(RawApiTest, CompileAndExecuteReturnExplodedTuple) {
   EXPECT_EQ(handles_vec.size(), 2);
 
   const float kResults[2] = {15.0f, 9.0f};
-  for (int64 i = 0; i < handles_vec.size(); ++i) {
+  for (int64_t i = 0; i < handles_vec.size(); ++i) {
     auto read_back = ops::XRTReadLiteralAndRelease(root, Input(handles_vec(i)));
     std::vector<Tensor> voutputs;
     TF_EXPECT_OK(session.Run({read_back}, &voutputs));
@@ -1839,7 +1839,7 @@ TEST(RawApiTest, CompileAndExecuteWithReusedBuffers) {
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({param_handle}, &outputs));
 
-  int64 alloc_handle = outputs[0].scalar<int64>()();
+  int64_t alloc_handle = outputs[0].scalar<int64>()();
 
   // Note that we release the result handle immediately, but since we aliased
   // the output buffers onto the input allocation ones (held in alloc_handle),
@@ -1938,7 +1938,7 @@ TEST(RawApiTest, CompileAndExecuteWithReusedBuffersS64) {
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({param_handle}, &outputs));
 
-  int64 alloc_handle = outputs[0].scalar<int64>()();
+  int64_t alloc_handle = outputs[0].scalar<int64>()();
 
   // Note that we release the result handle immediately, but since we aliased
   // the output buffers onto the input allocation ones (held in alloc_handle),

@@ -202,7 +202,7 @@ TEST_F(HorizontalLoopFusionTest, GradientDescentOptimizerLike) {
   HloComputation::Builder builder(TestName());
 
   std::vector<HloInstruction*> var_outs;
-  for (int64 i = 0; i < 128; ++i) {
+  for (int64_t i = 0; i < 128; ++i) {
     // For shapes {1, 1024}, {2, 1024}, ..., {128, 1024}
     Shape shape = ShapeUtil::MakeShape(F32, {i + 1, 1024});
     HloInstruction* param_var_in = builder.AddInstruction(
@@ -295,7 +295,7 @@ TEST_F(HorizontalLoopFusionTest, RMSPropLike) {
   HloComputation::Builder builder(TestName());
 
   std::vector<HloInstruction*> all_outputs;
-  for (int64 i = 0; i < 48; ++i) {
+  for (int64_t i = 0; i < 48; ++i) {
     Shape shape = ShapeUtil::MakeShape(F32, {2, 1024 + i});
     // ms <- grad**2 (1 - rho) + ms * rho
     HloInstruction* grad = builder.AddInstruction(

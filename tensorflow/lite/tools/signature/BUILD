@@ -15,18 +15,27 @@ cc_library(
     srcs = ["signature_def_util.cc"],
     hdrs = ["signature_def_util.h"],
     copts = tflite_copts(),
-    deps = [
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:protos_all_cc",
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:lib_proto_parsing",
+            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/platform:errors",
+            "//tensorflow/core/platform:status",
+        ],
+    }) + [
+        "@com_google_protobuf//:protobuf",
+        "@com_google_absl//absl/memory",
+        "@flatbuffers",
         "//tensorflow/core:protos_all_cc_impl",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
-        "@com_google_protobuf//:protobuf",
-        "@flatbuffers",
     ],
 )
 

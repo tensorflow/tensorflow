@@ -52,5 +52,19 @@ REGISTER_KERNEL_BUILDER(Name("AddV2")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::add<int32>>);
 #endif
+REGISTER_KERNEL_BUILDER(Name("Add")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::add<int32>>);
+REGISTER_KERNEL_BUILDER(Name("AddV2")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::add<int32>>);
 
 }  // namespace tensorflow

@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 namespace read_variable {
 
 constexpr int kInputVariableId = 0;
@@ -82,6 +82,6 @@ TfLiteRegistration* Register_READ_VARIABLE() {
   return &r;
 }
 
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

@@ -34,7 +34,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import signature_serialization
-from tensorflow.python.saved_model.experimental.pywrap_libexport import metrics
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training.tracking import tracking
@@ -283,4 +283,6 @@ def load(export_dir, tags):
   """Load a v1-style SavedModel as an object."""
   metrics.IncrementReadApi(_LOAD_V1_V2_LABEL)
   loader = _EagerSavedModelLoader(export_dir)
-  return loader.load(tags=tags)
+  result = loader.load(tags=tags)
+  metrics.IncrementRead(write_version="1")
+  return result

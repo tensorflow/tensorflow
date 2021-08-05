@@ -133,7 +133,8 @@ class KernelAndDevice : public core::RefCounted {
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
-      const absl::optional<ManagedStackTrace>& stack_trace) = 0;
+      const absl::optional<ManagedStackTrace>& stack_trace,
+      CoordinationServiceAgent* coordination_service_agent) = 0;
 
   // Execute kernel asynchronously when applicable. Different from `Run` which
   // blocks the caller thread and waits for the execution of the op/function,
@@ -148,6 +149,7 @@ class KernelAndDevice : public core::RefCounted {
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      CoordinationServiceAgent* coordination_service_agent,
       StatusCallback done) = 0;
 
   virtual Device* InputDevice(int i) const = 0;
@@ -210,17 +212,19 @@ class KernelAndDeviceOp final : public KernelAndDevice {
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
-      const absl::optional<ManagedStackTrace>& stack_trace) override;
+      const absl::optional<ManagedStackTrace>& stack_trace,
+      CoordinationServiceAgent* coordination_service_agent) override;
 
   void RunAsync(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      CoordinationServiceAgent* coordination_service_agent,
       StatusCallback done) override {
     // Trivial async implementation on top of the sync version
     done(Run(step_container, inputs, outputs, cancellation_manager,
-             remote_func_params, {}));
+             remote_func_params, {}, coordination_service_agent));
   }
 
   const OpKernel* kernel() const override { return kernel_.get(); }
@@ -268,7 +272,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
       Device* host_cpu_device, const string& name,
       const bool outputs_on_op_device,
-      std::function<Rendezvous*(const int64)> rendezvous_creator,
+      std::function<Rendezvous*(const int64_t)> rendezvous_creator,
       std::function<int64()> get_op_id)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
@@ -300,13 +304,15 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
-      const absl::optional<ManagedStackTrace>& stack_trace) override;
+      const absl::optional<ManagedStackTrace>& stack_trace,
+      CoordinationServiceAgent* coordination_service_agent) override;
 
   void RunAsync(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      CoordinationServiceAgent* coordination_service_agent,
       StatusCallback done) override;
 
   const OpKernel* kernel() const override { return nullptr; }
@@ -328,7 +334,8 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       ScopedStepContainer* step_container, std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
-      const absl::optional<ManagedStackTrace>& stack_trace);
+      const absl::optional<ManagedStackTrace>& stack_trace,
+      CoordinationServiceAgent* coordination_service_agent);
 
   ProcessFunctionLibraryRuntime* const pflr_;  // non-null
   FunctionLibraryRuntime::Handle handle_;
@@ -354,7 +361,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   DataTypeVector output_dtypes_;
   string name_;
 
-  std::function<Rendezvous*(const int64)> rendezvous_creator_;
+  std::function<Rendezvous*(const int64_t)> rendezvous_creator_;
   std::function<int64()> get_op_id_;
 };
 

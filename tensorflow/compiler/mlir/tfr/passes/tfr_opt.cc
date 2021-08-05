@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -32,6 +34,6 @@ int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::scf::SCFDialect, mlir::TF::TensorFlowDialect,
                   mlir::StandardOpsDialect, mlir::shape::ShapeDialect,
-                  mlir::TFR::TFRDialect>();
+                  mlir::quant::QuantizationDialect, mlir::TFR::TFRDialect>();
   return failed(mlir::MlirOptMain(argc, argv, "TFR Pass Driver\n", registry));
 }

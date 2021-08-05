@@ -176,7 +176,7 @@ class DeviceMemoryAllocator {
   virtual port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal,
                                                       uint64 size,
                                                       bool retry_on_failure,
-                                                      int64 memory_space) = 0;
+                                                      int64_t memory_space) = 0;
 
   // Two-arg version of Allocate(), which sets retry-on-failure to true and
   // memory_space to default (0).
@@ -200,7 +200,7 @@ class DeviceMemoryAllocator {
   template <typename ElemT>
   port::StatusOr<ScopedDeviceMemory<ElemT>> Allocate(
       int device_ordinal, uint64 size, bool retry_on_failure = true,
-      int64 memory_space = 0) {
+      int64_t memory_space = 0) {
     return Allocate(device_ordinal, size, retry_on_failure, memory_space);
   }
 
@@ -243,7 +243,7 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
 
   port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
                                               bool retry_on_failure,
-                                              int64 memory_space) override;
+                                              int64_t memory_space) override;
 
   // Pull in two-arg overload that sets retry_on_failure to true.
   using DeviceMemoryAllocator::Allocate;

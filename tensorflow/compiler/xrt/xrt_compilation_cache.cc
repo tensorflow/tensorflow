@@ -82,7 +82,7 @@ XRTCompilationCache::~XRTCompilationCache() {
   CHECK_EQ(marked_for_eviction_entries_, 0);
 }
 
-Status XRTCompilationCache::Release(int64 uid) {
+Status XRTCompilationCache::Release(int64_t uid) {
   absl::MutexLock lock(&mu_);
   auto iter = entries_by_uid_.find(uid);
 
@@ -268,7 +268,7 @@ Status XRTCompilationCache::CompileIfKeyAbsent(
 }
 
 Status XRTCompilationCache::Lookup(
-    int64 uid, std::unique_ptr<XRTCompilationCacheEntryRef>* entry) {
+    int64_t uid, std::unique_ptr<XRTCompilationCacheEntryRef>* entry) {
   entry->reset();
 
   absl::MutexLock lock(&mu_);
@@ -287,7 +287,7 @@ string XRTCompilationCache::DebugString() const {
 }
 
 xla::StatusOr<RefPtr<XRTCompilationCache>> GetOrCreateCompilationCache(
-    ResourceMgr* rm, int64 max_number_of_entries) {
+    ResourceMgr* rm, int64_t max_number_of_entries) {
   if (max_number_of_entries == 0) {
     max_number_of_entries = GetCompilationCacheSizeFromEnv();
   }

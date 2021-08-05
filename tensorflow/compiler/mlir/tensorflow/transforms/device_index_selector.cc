@@ -36,7 +36,7 @@ namespace {
 //  %1 = "tf.DeviceIndex"()
 //          {device = "", device_names = ["CPU", "GPU"]} : () -> tensor<i32>
 //  %4 = "tf.Case"(%1, %arg0, %arg1)
-//          {branches = [@foo, @baz], output_shapes = [#tf.shape<>]} :
+//          {branches = [@foo, @baz], output_shapes = [#tf_type.shape<>]} :
 //            (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
 // ```
 //
@@ -45,6 +45,12 @@ namespace {
 // for CPU or GPU.
 struct DeviceIndexSelector
     : public PassWrapper<DeviceIndexSelector, OperationPass<FuncOp>> {
+  StringRef getArgument() const final { return "tf-device-index-selector"; }
+
+  StringRef getDescription() const final {
+    return "Fold tf.DeviceIndex to constant";
+  }
+
   void runOnOperation() override;
 };
 
@@ -78,8 +84,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass() {
   return std::make_unique<DeviceIndexSelector>();
 }
 
-static PassRegistration<DeviceIndexSelector> pass(
-    "tf-device-index-selector", "Fold tf.DeviceIndex to constant");
+static PassRegistration<DeviceIndexSelector> pass;
 
 }  // namespace TF
 }  // namespace mlir

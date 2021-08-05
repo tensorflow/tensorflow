@@ -212,9 +212,6 @@ cc_library(
     hdrs = ["client_library_test_base.h"],
     deps = [
         ":manifest_checking_test",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
@@ -238,12 +235,10 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-    ] + select({
-        "//tensorflow/compiler/xla/service/gpu:is_bef_thunk_enabled": [
-            "//tensorflow/compiler/xla/service/gpu/tests:tfrt_exec_ctx_injector",
-        ],
-        "//conditions:default": [],
-    }),
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 cc_library(
@@ -1513,6 +1508,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
@@ -1625,6 +1621,7 @@ xla_test(
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
     tags = [
+        "nomac",  # b/194731834
         "nozapfhahn",
         "optonly",
     ],
@@ -1722,7 +1719,11 @@ xla_test(
     srcs = ["custom_call_test.cc"],
     backends = ["cpu"],
     deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
         ":test_macros_header",
+        ":xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -1731,10 +1732,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "@com_google_absl//absl/memory",
@@ -2171,8 +2168,8 @@ xla_test(
 )
 
 xla_test(
-    name = "dynamism_inference_test",
-    srcs = ["dynamism_inference_test.cc"],
+    name = "value_inference_test",
+    srcs = ["value_inference_test.cc"],
     deps = [
         ":literal_test_util",
         ":test_macros_header",

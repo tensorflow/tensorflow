@@ -641,4 +641,16 @@ func @fused_batch_norm_v3_training(%arg0 : tensor<1x1x6x2xf32>, %arg1 : tensor<2
   // CHECK:  %[[ADD0:.*]] = "tf.Add"(%[[MUL2]], %[[SUB]]) : (tensor<1x1x6x2xf32>, tensor<2xf32>) -> tensor<1x1x6x2xf32>
   // CHECK:  return %[[ADD0]] : tensor<1x1x6x2xf32>
 }
+
+func @scatter_nd_add(%arg0: tensor<7xi64>, %arg1: tensor<1x1xi32>, %arg2: tensor<1xi64>) -> tensor<7xi64> {
+  %0 = "tf.TensorScatterAdd"(%arg0, %arg1, %arg2) : (tensor<7xi64>, tensor<1x1xi32>, tensor<1xi64>) -> tensor<7xi64>
+  return %0 : tensor<7xi64>
+
+  // CHECK-LABEL: scatter_nd_add
+  // CHECK:  %[[GATHER:.*]] = "tf.GatherNd"(%arg0, %arg1) : (tensor<7xi64>, tensor<1x1xi32>) -> tensor<1xi64>
+  // CHECK:  %[[ADD:.*]] = "tf.Add"(%arg2, %[[GATHER]]) : (tensor<1xi64>, tensor<1xi64>) -> tensor<1xi64>
+  // CHECK:  %[[SCATTER:.*]] = "tf.TensorScatterUpdate"(%arg0, %arg1, %[[ADD]]) : (tensor<7xi64>, tensor<1x1xi32>, tensor<1xi64>) -> tensor<7xi64>
+  // CHECK:  return %[[SCATTER]] : tensor<7xi64>
 }
+}
+

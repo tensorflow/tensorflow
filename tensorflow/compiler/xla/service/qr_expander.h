@@ -38,14 +38,14 @@ class QrExpander : public OpExpanderPass {
 
   virtual StatusOr<XlaOp> CompactWYRepresentation(
       PrimitiveType type, absl::Span<const int64> batch_dims, XlaOp vs,
-      XlaOp taus, int64 m, int64 n, PrecisionConfig::Precision precision);
+      XlaOp taus, int64_t m, int64_t n, PrecisionConfig::Precision precision);
 
  private:
-  StatusOr<XlaOp> BuildQrDecomposition(XlaOp a, int64 block_size,
+  StatusOr<XlaOp> BuildQrDecomposition(XlaOp a, int64_t block_size,
                                        PrecisionConfig::Precision precision);
 
   StatusOr<XlaOp> ProductOfElementaryHouseholderReflectors(
-      XlaOp a, XlaOp taus, int64 block_size,
+      XlaOp a, XlaOp taus, int64_t block_size,
       PrecisionConfig::Precision precision);
 
   // Mapping from op signatures to existing computations.

@@ -48,7 +48,7 @@ class GetSessionHandleOp : public OpKernel {
     OP_REQUIRES(ctx, session_state != nullptr,
                 errors::FailedPrecondition(
                     "GetSessionHandle called on null session state"));
-    int64 id = session_state->GetNewId();
+    int64_t id = session_state->GetNewId();
     TensorStore::TensorAndKey tk{val, id, requested_device()};
     OP_REQUIRES_OK(ctx, ctx->tensor_store()->AddTensor(name(), tk));
 

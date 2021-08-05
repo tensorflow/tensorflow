@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/split_utils.h"
 
+#include <string>
+
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/test.h"
@@ -39,7 +42,7 @@ Status SaveAndRestore(SplitProvider* split_provider) {
 
 Status CheckOutput(SplitProvider* split_provider,
                    std::vector<Tensor> expected) {
-  int64 next = 0;
+  int64_t next = 0;
   bool end_of_splits = false;
   while (!end_of_splits) {
     Tensor split;

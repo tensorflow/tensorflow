@@ -34,7 +34,7 @@ using test::function::NDef;
 class ThreadPoolOpAlreadySetTest : public ::testing::TestWithParam<int64> {};
 
 TEST_P(ThreadPoolOpAlreadySetTest, PrivateThreadPool) {
-  const int64 num_of_threads = GetParam();
+  const int64_t num_of_threads = GetParam();
 
   GrapplerItem item;
   MutableGraphView graph(&item.graph);

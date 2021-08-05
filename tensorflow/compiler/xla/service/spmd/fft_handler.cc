@@ -50,11 +50,11 @@ namespace {
 // after padding, it becomes {0, 1, 2, 3} in partition 0 and {4, 5, 0, 0} in
 // partition 1.
 absl::optional<HloInstruction*> PadEachPartitionWithHaloExchange(
-    HloInstruction* hlo, int64 num_partitions, const HloSharding& sharding,
+    HloInstruction* hlo, int64_t num_partitions, const HloSharding& sharding,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b) {
-  int64 size_per_partition = hlo->shape().dimensions().back();
-  int64 size_padded_per_partition =
+  int64_t size_per_partition = hlo->shape().dimensions().back();
+  int64_t size_padded_per_partition =
       CeilOfRatio(size_per_partition, num_partitions) * num_partitions;
   if (size_per_partition == size_padded_per_partition) {
     return hlo;
@@ -110,9 +110,9 @@ absl::optional<HloInstruction*> PadEachPartitionWithHaloExchange(
 // If partition 0 has {0, 1, 2, 3} and num partitions is 2, after shuffling,
 // the data becomes {0, 2, 1, 3}.
 HloInstruction* ShuffleWithinEachPartitionUsingOneHot(HloInstruction* hlo,
-                                                      int64 num_partitions,
+                                                      int64_t num_partitions,
                                                       SpmdBuilder* b) {
-  int64 size_per_partition = hlo->shape().dimensions().back();
+  int64_t size_per_partition = hlo->shape().dimensions().back();
   CHECK_EQ(size_per_partition % num_partitions, 0);
   auto indices_iota = b->AddInstruction(HloInstruction::CreateIota(
       ShapeUtil::MakeShape(S32, {size_per_partition}), 0));
@@ -157,7 +157,7 @@ HloInstruction* ShuffleWithinEachPartitionUsingOneHot(HloInstruction* hlo,
 // num partitions is 2, after all-to-all, partition 0 will have {0, 2, 4, 0}
 // and partition 1 will have {1, 3, 5, 0}.
 HloInstruction* ShuffleDataWithAllToAll(
-    HloInstruction* hlo, int64 num_partitions,
+    HloInstruction* hlo, int64_t num_partitions,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64* next_channel_id, SpmdBuilder* b) {
   std::vector<std::vector<int64>> groups(1);
@@ -169,7 +169,7 @@ HloInstruction* ShuffleDataWithAllToAll(
   return all_to_all;
 }
 
-HloInstruction* GetCorrectionFactor(HloInstruction* hlo, int64 num_partitions,
+HloInstruction* GetCorrectionFactor(HloInstruction* hlo, int64_t num_partitions,
                                     HloInstruction* partition_id,
                                     SpmdBuilder* b) {
   /* n = size_per_replica
@@ -182,7 +182,7 @@ HloInstruction* GetCorrectionFactor(HloInstruction* hlo, int64 num_partitions,
   auto add_hlo = [&](std::unique_ptr<HloInstruction> to_add) {
     return b->AddInstruction(std::move(to_add));
   };
-  int64 per_replica_size = hlo->shape().dimensions().back();
+  int64_t per_replica_size = hlo->shape().dimensions().back();
   auto constant_factor =
       add_hlo(HloInstruction::CreateConstant(LiteralUtil::CreateR0(
           complex64(0, -2.0 * M_PI / (num_partitions * per_replica_size)))));
@@ -227,8 +227,8 @@ HloInstruction* GetCorrectionFactor(HloInstruction* hlo, int64 num_partitions,
 HloInstruction* GetFinalFftUsingCollectivePermute(
     HloInstruction* hlo, const HloSharding& sharding,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
-    int64 num_partitions, HloInstruction* partition_id, int64* next_channel_id,
-    HloModule* module, SpmdBuilder* b) {
+    int64_t num_partitions, HloInstruction* partition_id,
+    int64* next_channel_id, HloModule* module, SpmdBuilder* b) {
   auto iteration = b->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(0)));
   auto converted_partition_id = b->AddInstruction(HloInstruction::CreateConvert(
@@ -283,10 +283,10 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
   // collective permute for source partition_id and source_transfrom.
   std::vector<std::pair<int64, int64>> src_dst_pairs;
   sharding.tile_assignment().Each(
-      [&](absl::Span<const int64> indices, int64 src_device) {
+      [&](absl::Span<const int64> indices, int64_t src_device) {
         std::vector<int64> target_indices(indices.begin(), indices.end());
         target_indices.back() = (indices.back() + 1) % num_partitions;
-        int64 dst_device = sharding.tile_assignment()(target_indices);
+        int64_t dst_device = sharding.tile_assignment()(target_indices);
         src_dst_pairs.emplace_back(src_device, dst_device);
       });
 
@@ -354,8 +354,8 @@ Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
   }
 
   // Only support input_length equals fft_length's case.
-  int64 input_length = hlo->operand(0)->shape().dimensions().back();
-  int64 fft_length = hlo->fft_length().back();
+  int64_t input_length = hlo->operand(0)->shape().dimensions().back();
+  int64_t fft_length = hlo->fft_length().back();
   if (input_length != fft_length || input_length % num_partitions_ != 0) {
     return DefaultAction(hlo);
   }

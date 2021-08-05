@@ -55,7 +55,7 @@ StatusOr<HloInstruction*> CreateCholesky(GpuSolverContext* context,
   Shape a_shape = operand->shape();
   int ndim = a_shape.dimensions_size();
   CHECK_GE(ndim, 2);
-  int64 n = a_shape.dimensions(ndim - 1);
+  int64_t n = a_shape.dimensions(ndim - 1);
 
   std::vector<int64> batch_dims(a_shape.dimensions().begin(),
                                 a_shape.dimensions().end() - 2);
@@ -65,7 +65,7 @@ StatusOr<HloInstruction*> CreateCholesky(GpuSolverContext* context,
   // Find the workspace size.
   se::blas::UpperLower uplo = options.lower() ? se::blas::UpperLower::kLower
                                               : se::blas::UpperLower::kUpper;
-  int64 workspace_size;  // Number of elements of size a_shape.element_type()
+  int64_t workspace_size;  // Number of elements of size a_shape.element_type()
   TF_ASSIGN_OR_RETURN(workspace_size, context->PotrfBufferSize(
                                           a_shape.element_type(), uplo, n, n));
 

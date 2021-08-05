@@ -23,6 +23,7 @@ table TensorDescWithId {
 
 table CLNode {
   gpu_op:tflite.gpu.data.GPUOperation;
+  fingerprint:uint64;
   input_ids:[int32];
   output_ids:[int32];
   name:string;
@@ -33,7 +34,14 @@ table PairOfValueIds {
   second:int32;
 }
 
+table BinaryProgram {
+  fingerprint:uint64;
+  binary:[ubyte];
+}
+
 table InferenceContext {
+  driver_version:string;
+  binary_programs:[BinaryProgram];
   need_flush:bool;
   flush_periodically:bool;
   flush_period:int32;

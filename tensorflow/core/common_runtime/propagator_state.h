@@ -45,8 +45,8 @@ typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
 // adding them to a `TaggedNodeSeq`.
 class PropagatorState {
  public:
-  PropagatorState(const ImmutableExecutorState& immutable_state, int64 step_id,
-                  bool vlog);
+  PropagatorState(const ImmutableExecutorState& immutable_state,
+                  int64_t step_id, bool vlog);
   ~PropagatorState();
 
  private:
@@ -121,7 +121,8 @@ class PropagatorState {
  private:
   // The state of an iteration in a particular frame.
   struct IterationState {
-    explicit IterationState(int64 iter_num, const PendingCounts* pending_counts,
+    explicit IterationState(int64_t iter_num,
+                            const PendingCounts* pending_counts,
                             int total_input_tensors)
         : iter_num(iter_num),
           input_tensors(new Entry[total_input_tensors]),
@@ -286,7 +287,7 @@ class PropagatorState {
 
     void InitializeFrameInfo(const ImmutableExecutorState::FrameInfo& finfo);
 
-    inline IterationState* GetIteration(int64 iter)
+    inline IterationState* GetIteration(int64_t iter)
         TF_SHARED_LOCKS_REQUIRED(mu) {
       if (TF_PREDICT_TRUE(iter == 0)) {
         return iterations_first;
@@ -296,7 +297,7 @@ class PropagatorState {
       }
     }
 
-    void SetIteration(int64 iter, IterationState* state);
+    void SetIteration(int64_t iter, IterationState* state);
 
     // Adjust the outstanding op count by 'delta' and clean up the iterations in
     // the frame if no more ops are oustanding. Return true iff the execution of

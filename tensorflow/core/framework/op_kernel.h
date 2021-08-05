@@ -78,6 +78,7 @@ class ResourceMgr;
 class ScopedStepContainer;
 class CollectiveExecutor;
 class StepStatsCollectorInterface;
+class CoordinationServiceAgent;
 
 class OpKernel {
  public:
@@ -554,6 +555,9 @@ class OpKernelContext {
     // The step being executed.
     int64 step_id = 0;
 
+    // Timestamp for the start of graph execution. Used for latency metrics.
+    int64 start_time_usecs = 0;
+
     // The op kernel being computed.
     OpKernel* op_kernel = nullptr;
 
@@ -663,6 +667,9 @@ class OpKernelContext {
     // For implementing `OpKernelContext::output_required()`. If null, all
     // outputs are required.
     bool* outputs_required_array = nullptr;
+
+    // For access to distributed coordination service.
+    CoordinationServiceAgent* coordination_service_agent = nullptr;
   };
 
   // params must outlive the OpKernelContext.
@@ -673,6 +680,8 @@ class OpKernelContext {
   Env* env() const { return params_->device->env(); }
 
   int64 step_id() const { return params_->step_id; }
+
+  int64 start_time_usecs() const { return params_->start_time_usecs; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
 
@@ -1132,6 +1141,11 @@ class OpKernelContext {
     return params_->step_container;
   }
 
+  // Access to distributed coordination service.
+  CoordinationServiceAgent* coordination_service_agent() const {
+    return params_->coordination_service_agent;
+  }
+
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(const Status& s);
   void CtxFailureWithWarning(const Status& s);
@@ -1153,7 +1167,7 @@ class OpKernelContext {
 
   // Records temp memory allocation. Tensor object is recorded to identify the
   // case where temp memory is used as output memory.
-  void record_temp_memory_allocation(int64 size, const Tensor& t)
+  void record_temp_memory_allocation(int64_t size, const Tensor& t)
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size of temporary memory;
@@ -1162,7 +1176,7 @@ class OpKernelContext {
 
   // Records persistent memory allocation, size can be negative indicating
   // deallocation.
-  void record_persistent_memory_allocation(int64 size, int64 alloc_id = -1)
+  void record_persistent_memory_allocation(int64_t size, int64_t alloc_id = -1)
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size and ids of persistent memory.

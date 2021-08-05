@@ -131,33 +131,33 @@ struct DepthwiseFilterPadOp {
   void operator()(const DepthwiseArgs& args, const T* filter,
                   T* padded_filter) {
     typedef typename Eigen::internal::packet_traits<T>::type Packet;
-    static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
+    static const int64_t kPacketSize = (sizeof(Packet) / sizeof(T));
 
     // Calculate vectorized and scalar lengths of filter's inner dimension.
-    const int64 filter_inner_dim_size = args.out_depth;
-    const int64 vectorized_size =
+    const int64_t filter_inner_dim_size = args.out_depth;
+    const int64_t vectorized_size =
         (filter_inner_dim_size / kPacketSize) * kPacketSize;
-    const int64 scalar_size = filter_inner_dim_size - vectorized_size;
+    const int64_t scalar_size = filter_inner_dim_size - vectorized_size;
     // Calculate required padding and padded output buffer stride.
-    const int64 pad_size = scalar_size > 0 ? kPacketSize - scalar_size : 0;
-    const int64 padded_filter_stride = vectorized_size + kPacketSize;
+    const int64_t pad_size = scalar_size > 0 ? kPacketSize - scalar_size : 0;
+    const int64_t padded_filter_stride = vectorized_size + kPacketSize;
 
-    const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
-    for (int64 i = 0; i < filter_spatial_size; ++i) {
-      const int64 input_base = i * filter_inner_dim_size;
-      const int64 output_base = i * padded_filter_stride;
+    const int64_t filter_spatial_size = args.filter_rows * args.filter_cols;
+    for (int64_t i = 0; i < filter_spatial_size; ++i) {
+      const int64_t input_base = i * filter_inner_dim_size;
+      const int64_t output_base = i * padded_filter_stride;
       // Write vectorized length of filter's inner dimension to output.
-      for (int64 j = 0; j < vectorized_size; j += kPacketSize) {
+      for (int64_t j = 0; j < vectorized_size; j += kPacketSize) {
         const auto v = Eigen::internal::ploadu<Packet>(filter + input_base + j);
         Eigen::internal::pstoreu<T>(padded_filter + output_base + j, v);
       }
       // Write scalar length of filter's inner dimension to output.
-      for (int64 j = 0; j < scalar_size; ++j) {
+      for (int64_t j = 0; j < scalar_size; ++j) {
         padded_filter[output_base + vectorized_size + j] =
             filter[input_base + vectorized_size + j];
       }
       // Pad the remainder of output to vector-register boundary.
-      for (int64 j = 0; j < pad_size; ++j) {
+      for (int64_t j = 0; j < pad_size; ++j) {
         padded_filter[output_base + vectorized_size + scalar_size + j] =
             static_cast<T>(0);
       }
@@ -190,42 +190,43 @@ struct DepthwiseFilterPadOp {
 template <typename T>
 struct DepthwiseInputCopyOp {
   void operator()(const DepthwiseArgs& args,
-                  const int64 padded_filter_inner_dim_size, const int64 out_r,
-                  const int64 out_c, const T* input, T* input_buffer) {
+                  const int64_t padded_filter_inner_dim_size,
+                  const int64_t out_r, const int64_t out_c, const T* input,
+                  T* input_buffer) {
     typedef typename Eigen::internal::packet_traits<T>::type Packet;
-    static const int64 kPacketSize = Eigen::internal::packet_traits<T>::size;
+    static const int64_t kPacketSize = Eigen::internal::packet_traits<T>::size;
 
-    const int64 kDepth = args.depth_multiplier;
+    const int64_t kDepth = args.depth_multiplier;
     // Calculate vectorized and scalar (residual) lengths for 'in_depth'.
-    const int64 input_vectorized_size =
+    const int64_t input_vectorized_size =
         (args.in_depth / kPacketSize) * kPacketSize;
-    const int64 input_scalar_size = args.in_depth - input_vectorized_size;
+    const int64_t input_scalar_size = args.in_depth - input_vectorized_size;
 
     // Calculate output padding length.
-    const int64 output_scalar_size = args.out_depth % kPacketSize;
-    const int64 output_pad_size =
+    const int64_t output_scalar_size = args.out_depth % kPacketSize;
+    const int64_t output_pad_size =
         output_scalar_size > 0 ? kPacketSize - output_scalar_size : 0;
 
     // Iterate through all rows x cols reading 'in_depth' from 'input' and
     // replicating by 'depth_multiplier' into 'input_buffer' (otherwise
     // zero-padding input buffer as needed).
     auto* in_buf = input_buffer;
-    const int64 in_r_start = out_r * args.stride - args.pad_rows;
-    const int64 in_c_start = out_c * args.stride - args.pad_cols;
+    const int64_t in_r_start = out_r * args.stride - args.pad_rows;
+    const int64_t in_c_start = out_c * args.stride - args.pad_cols;
 
     // TODO: add a ploaddup variant for depth == 2 if needed.
     if (kDepth > 1 && kDepth <= kPacketSize) {
-      for (int64 f_r = 0; f_r < args.filter_rows; ++f_r) {
-        const int64 in_r = in_r_start + f_r;
+      for (int64_t f_r = 0; f_r < args.filter_rows; ++f_r) {
+        const int64_t in_r = in_r_start + f_r;
 
-        for (int64 f_c = 0; f_c < args.filter_cols; ++f_c) {
-          const int64 in_c = in_c_start + f_c;
+        for (int64_t f_c = 0; f_c < args.filter_cols; ++f_c) {
+          const int64_t in_c = in_c_start + f_c;
 
           if (in_r >= 0 && in_r < args.in_rows && in_c >= 0 &&
               in_c < args.in_cols) {
             const auto* in =
                 input + (in_r * args.in_cols + in_c) * args.in_depth;
-            int64 limit = args.in_depth;
+            int64_t limit = args.in_depth;
             // This will overwrite up to kPacketSize next elements,
             // this is ok on all iterations except the last one, since
             // we will write correct values on a next iteration.
@@ -236,23 +237,23 @@ struct DepthwiseInputCopyOp {
               }
             }
             // Copy vectorized portion of inner dimension.
-            for (int64 d = 0; d < limit; d++) {
+            for (int64_t d = 0; d < limit; d++) {
               const auto p = Eigen::internal::pset1<Packet>(in[d]);
               Eigen::internal::pstoreu<T>(in_buf, p);
               in_buf += kDepth;
             }
 
             // Copy the scalar portion.
-            for (int64 d = limit; d < args.in_depth; d++) {
+            for (int64_t d = limit; d < args.in_depth; d++) {
               const auto value = in[d];
-              for (int64 dm = 0; dm < kDepth; dm++) {
+              for (int64_t dm = 0; dm < kDepth; dm++) {
                 in_buf[dm] = value;
               }
               in_buf += kDepth;
             }
 
             // Pad the remainder of the output to vector register boundary.
-            for (int64 d = 0; d < output_pad_size; ++d) {
+            for (int64_t d = 0; d < output_pad_size; ++d) {
               in_buf[d] = static_cast<T>(0);
             }
             in_buf += output_pad_size;
@@ -267,22 +268,22 @@ struct DepthwiseInputCopyOp {
       // Calculate vectorized and scalar (residual) lengths for
       // 'depth_multiplier'. This is used to efficiently replicate data for
       // when 'depth_multiplier' > kPacketSize.
-      const int64 dm_vectorized_size = (kDepth / kPacketSize) * kPacketSize;
+      const int64_t dm_vectorized_size = (kDepth / kPacketSize) * kPacketSize;
 
-      for (int64 f_r = 0; f_r < args.filter_rows; ++f_r) {
-        const int64 in_r = in_r_start + f_r;
+      for (int64_t f_r = 0; f_r < args.filter_rows; ++f_r) {
+        const int64_t in_r = in_r_start + f_r;
 
-        for (int64 f_c = 0; f_c < args.filter_cols; ++f_c) {
-          const int64 in_c = in_c_start + f_c;
+        for (int64_t f_c = 0; f_c < args.filter_cols; ++f_c) {
+          const int64_t in_c = in_c_start + f_c;
 
           if (in_r >= 0 && in_r < args.in_rows && in_c >= 0 &&
               in_c < args.in_cols) {
             const auto* in =
                 input + (in_r * args.in_cols + in_c) * args.in_depth;
             // Copy vectorized portion of inner dimension.
-            for (int64 d = 0; d < args.in_depth; d++) {
+            for (int64_t d = 0; d < args.in_depth; d++) {
               const auto p = Eigen::internal::pset1<Packet>(in[d]);
-              for (int64 dm = 0; dm < dm_vectorized_size; dm += kPacketSize) {
+              for (int64_t dm = 0; dm < dm_vectorized_size; dm += kPacketSize) {
                 Eigen::internal::pstoreu<T>(in_buf + dm, p);
               }
               // Overlapping store for the remainder.
@@ -290,7 +291,7 @@ struct DepthwiseInputCopyOp {
               in_buf += kDepth;
             }
             // Pad the remainder of the output to vector register boundary.
-            for (int64 d = 0; d < output_pad_size; ++d) {
+            for (int64_t d = 0; d < output_pad_size; ++d) {
               in_buf[d] = static_cast<T>(0);
             }
             in_buf += output_pad_size;
@@ -302,29 +303,29 @@ struct DepthwiseInputCopyOp {
         }
       }
     } else if (kDepth == 1) {
-      for (int64 f_r = 0; f_r < args.filter_rows; ++f_r) {
-        const int64 in_r = in_r_start + f_r;
+      for (int64_t f_r = 0; f_r < args.filter_rows; ++f_r) {
+        const int64_t in_r = in_r_start + f_r;
 
-        for (int64 f_c = 0; f_c < args.filter_cols; ++f_c) {
-          const int64 in_c = in_c_start + f_c;
+        for (int64_t f_c = 0; f_c < args.filter_cols; ++f_c) {
+          const int64_t in_c = in_c_start + f_c;
 
           if (in_r >= 0 && in_r < args.in_rows && in_c >= 0 &&
               in_c < args.in_cols) {
             const auto* in =
                 input + (in_r * args.in_cols + in_c) * args.in_depth;
-            for (int64 d = 0; d < input_vectorized_size; d += kPacketSize) {
+            for (int64_t d = 0; d < input_vectorized_size; d += kPacketSize) {
               const auto p = Eigen::internal::ploadu<Packet>(in + d);
               Eigen::internal::pstoreu<T>(in_buf, p);
               in_buf += kPacketSize;
             }
-            for (int64 d = 0; d < input_scalar_size; ++d) {
+            for (int64_t d = 0; d < input_scalar_size; ++d) {
               T v = in[input_vectorized_size + d];
               in_buf[d] = v;
             }
             in_buf += input_scalar_size;
 
             // Pad the remainder of the output to vector register boundary.
-            for (int64 d = 0; d < output_pad_size; ++d) {
+            for (int64_t d = 0; d < output_pad_size; ++d) {
               in_buf[d] = static_cast<T>(0);
             }
             in_buf += output_pad_size;

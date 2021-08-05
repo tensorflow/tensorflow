@@ -112,6 +112,9 @@ tf_py_test(
     srcs = ["save_test.py"],
     python_version = "PY3",
     shard_count = 4,
+    tags = [
+        "no_windows",  # TODO(b/192257375)
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/feature_column:feature_column_v2",

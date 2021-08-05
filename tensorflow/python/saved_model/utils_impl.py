@@ -61,6 +61,13 @@ def build_tensor_info(tensor):
 
   Raises:
     RuntimeError: If eager execution is enabled.
+
+  @compatibility(TF2)
+  This API is not compatible with eager execution as `tensor` needs to be a
+  graph tensor, and there is no replacement for it in TensorFlow 2.x. To start
+  writing programs using TensorFlow 2.x, please refer to the [Effective
+  TensorFlow 2](https://www.tensorflow.org/guide/effective_tf2) guide.
+  @end_compatibility
   """
   if context.executing_eagerly():
     raise RuntimeError("build_tensor_info is not supported in Eager mode.")

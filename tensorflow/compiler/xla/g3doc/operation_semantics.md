@@ -112,53 +112,6 @@ program, there are not a lot of ways for that to happen, but it is possible when
 a while loop's condition depends on data from infeed and the data that is infed
 causes the while loop to iterate more times on one replica than another.
 
-## AllReduceScatter
-
-See also
-[`XlaBuilder::AllReduceScatter`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
-
-AllReduceScatter is a collective operation that effectively does an AllReduce
-and then scatters the result by splitting it into `shard_count` blocks along the
-`scatter_dimension` and replica `i` in the replica group receives the `ith`
-shard.
-
-<b> `AllReduceScatter(operand, computation, scatter_dim, shard_count,
-replica_group_ids, channel_id)` </b>
-
-| Arguments        | Type                 | Semantics                         |
-| ---------------- | -------------------- | --------------------------------- |
-| `operand`        | `XlaOp`              | Array or a non-empty tuple of     |
-:                  :                      : arrays to reduce across replicas. :
-| `computation`    | `XlaComputation`     | Reduction computation             |
-| `replica_groups` | vector of vectors of | Groups between which the          |
-:                  : `int64`              : reductions are performed          :
-| `channel_id`     | optional `int64`     | Optional channel ID for           |
-:                  :                      : cross-module communication        :
-
--   When `operand` is a tuple of arrays, the all-reduce-scatter is performed on
-    each element of the tuple.
--   `replica_groups` is a list of replica groups between which the reduction is
-    performed (replica id for the current replica can be retrieved using
-    [`ReplicaId`](#replicaid)). The order of replicas in each group determines
-    the order in which the all-reduce result will be scattered. `replica_groups`
-    must either be empty (in which case all replicas belong to a single group),
-    or contain the same number of elements as the number of replicas. When there
-    are more than one replica groups, they all must be of the same size. For
-    example, `replica_groups = {0, 2}, {1, 3}` performs reduction between the
-    replicas `0` and `2`, and `1` and `3` and then scatters the result.
--   `shard_count` is the size of each replica group. We need this in cases where
-    `replica_groups` are empty. If `replica_groups` is not empty, `shard_count`
-    must be equal to the size of each replica group.
--   `channel_id` is used for cross-module communication: only
-    `all-reduce-scatter` operations with the same `channel_id` can communicate
-    with each other.
-
-The output shape is the input shape with the `scatter_dim` made `shard_count`
-times smaller. For example, if there are two replicas and the operand has the
-value `[1.0, 2.25]` and `[3.0, 5.25]` respectively on the two replicas, then the
-output value from this op where `scatter_dim` is `0` will be `[4.0]` for the
-first replica and `[7.5]` for the second replica.
-
 ## AllToAll
 
 See also
@@ -2133,6 +2086,52 @@ distinguish a zero value from an infinity, since both have a zero mantissa), and
 must have a non-negative number of mantissa bits. The number of exponent or
 mantissa bits may exceed the corresponding value for type `T`; the corresponding
 portion of the conversion is then simply a no-op.
+
+## ReduceScatter
+
+See also
+[`XlaBuilder::ReduceScatter`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+ReduceScatter is a collective operation that effectively does an AllReduce and
+then scatters the result by splitting it into `shard_count` blocks along the
+`scatter_dimension` and replica `i` in the replica group receives the `ith`
+shard.
+
+<b> `ReduceScatter(operand, computation, scatter_dim, shard_count,
+replica_group_ids, channel_id)` </b>
+
+| Arguments        | Type                 | Semantics                         |
+| ---------------- | -------------------- | --------------------------------- |
+| `operand`        | `XlaOp`              | Array or a non-empty tuple of     |
+:                  :                      : arrays to reduce across replicas. :
+| `computation`    | `XlaComputation`     | Reduction computation             |
+| `replica_groups` | vector of vectors of | Groups between which the          |
+:                  : `int64`              : reductions are performed          :
+| `channel_id`     | optional `int64`     | Optional channel ID for           |
+:                  :                      : cross-module communication        :
+
+-   When `operand` is a tuple of arrays, the reduce-scatter is performed on each
+    element of the tuple.
+-   `replica_groups` is a list of replica groups between which the reduction is
+    performed (replica id for the current replica can be retrieved using
+    [`ReplicaId`](#replicaid)). The order of replicas in each group determines
+    the order in which the all-reduce result will be scattered. `replica_groups`
+    must either be empty (in which case all replicas belong to a single group),
+    or contain the same number of elements as the number of replicas. When there
+    are more than one replica groups, they all must be of the same size. For
+    example, `replica_groups = {0, 2}, {1, 3}` performs reduction between the
+    replicas `0` and `2`, and `1` and `3` and then scatters the result.
+-   `shard_count` is the size of each replica group. We need this in cases where
+    `replica_groups` are empty. If `replica_groups` is not empty, `shard_count`
+    must be equal to the size of each replica group.
+-   `channel_id` is used for cross-module communication: only `reduce-scatter`
+    operations with the same `channel_id` can communicate with each other.
+
+The output shape is the input shape with the `scatter_dim` made `shard_count`
+times smaller. For example, if there are two replicas and the operand has the
+value `[1.0, 2.25]` and `[3.0, 5.25]` respectively on the two replicas, then the
+output value from this op where `scatter_dim` is `0` will be `[4.0]` for the
+first replica and `[7.5]` for the second replica.
 
 ## ReduceWindow
 

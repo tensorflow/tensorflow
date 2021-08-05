@@ -58,9 +58,9 @@ Status ReadGroundTruthFile(const string& file_name,
 void CalculateAccuracyStats(
     const std::vector<std::pair<string, int64>>& ground_truth_list,
     const std::vector<std::pair<string, int64>>& found_words,
-    int64 up_to_time_ms, int64 time_tolerance_ms,
+    int64_t up_to_time_ms, int64_t time_tolerance_ms,
     StreamingAccuracyStats* stats) {
-  int64 latest_possible_time;
+  int64_t latest_possible_time;
   if (up_to_time_ms == -1) {
     latest_possible_time = std::numeric_limits<int64>::max();
   } else {
@@ -68,7 +68,7 @@ void CalculateAccuracyStats(
   }
   stats->how_many_ground_truth_words = 0;
   for (const std::pair<string, int64>& ground_truth : ground_truth_list) {
-    const int64 ground_truth_time = ground_truth.second;
+    const int64_t ground_truth_time = ground_truth.second;
     if (ground_truth_time > latest_possible_time) {
       break;
     }
@@ -81,12 +81,12 @@ void CalculateAccuracyStats(
   std::unordered_set<int64> has_ground_truth_been_matched;
   for (const std::pair<string, int64>& found_word : found_words) {
     const string& found_label = found_word.first;
-    const int64 found_time = found_word.second;
-    const int64 earliest_time = found_time - time_tolerance_ms;
-    const int64 latest_time = found_time + time_tolerance_ms;
+    const int64_t found_time = found_word.second;
+    const int64_t earliest_time = found_time - time_tolerance_ms;
+    const int64_t latest_time = found_time + time_tolerance_ms;
     bool has_match_been_found = false;
     for (const std::pair<string, int64>& ground_truth : ground_truth_list) {
-      const int64 ground_truth_time = ground_truth.second;
+      const int64_t ground_truth_time = ground_truth.second;
       if ((ground_truth_time > latest_time) ||
           (ground_truth_time > latest_possible_time)) {
         break;

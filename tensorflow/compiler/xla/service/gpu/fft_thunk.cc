@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -33,12 +32,12 @@ FftScratchAllocator::FftScratchAllocator(
     : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
 int64 FftScratchAllocator::GetMemoryLimitInBytes() {
-  constexpr int64 kFftScratchSize = 1LL << 32;  // 4GB by default.
+  constexpr int64_t kFftScratchSize = 1LL << 32;  // 4GB by default.
   return kFftScratchSize;
 }
 
 StatusOr<se::DeviceMemory<uint8>> FftScratchAllocator::AllocateBytes(
-    int64 byte_size) {
+    int64_t byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes()) {
     return se::port::Status(
@@ -125,9 +124,6 @@ Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   FftScratchAllocator scratch_allocator(buffer_allocations.device_ordinal(),
                                         buffer_allocations.memory_allocator());
-
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
   FftPlan* fft_plan_ptr;
   {
     absl::MutexLock lock(&mu_);
@@ -143,7 +139,7 @@ Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
   absl::MutexLock lock(&fft_plan_ptr->mu);
   std::unique_ptr<se::fft::Plan>& fft_plan = fft_plan_ptr->plan;
   if (fft_plan == nullptr) {
-    const int64 fft_rank = fft_length_.size();
+    const int64_t fft_rank = fft_length_.size();
     CHECK_LE(fft_rank, 3);
     int batch_size = 1;
     for (int i = 0; i < input_shape_.dimensions_size() - fft_rank; ++i) {

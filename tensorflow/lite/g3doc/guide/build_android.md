@@ -78,9 +78,10 @@ directory instead (-v hostDir:/host_dir).
 android update sdk --no-ui -a --filter tools,platform-tools,android-${ANDROID_API_LEVEL},build-tools-${ANDROID_BUILD_TOOLS_VERSION}
 ```
 
-You can now proceed to the "Build and Install" section. After you are finished
-building the libraries, you can copy them to /host_dir inside the container so
-that you can access them on the host.
+Now you should proceed to the [Configure WORKSPACE and .bazelrc](#configure_workspace_and_bazelrc) section to configure the build settings.
+
+After you finish building the libraries, you can copy them to /host_dir
+inside the container so that you can access them on the host.
 
 ### Set up build environment without Docker
 
@@ -99,10 +100,11 @@ have it and the Android NDK and SDK installed on your system.
     [Android Studio](https://developer.android.com/studio/index.html). Build
     tools API >= 23 is the recommended version for building TensorFlow Lite.
 
-#### Configure WORKSPACE and .bazelrc
+### Configure WORKSPACE and .bazelrc
 
-Run the `./configure` script in the root TensorFlow checkout directory, and
-answer "Yes" when the script asks to interactively configure the `./WORKSPACE`
+This is a one-time configuration step that is required to build the TF Lite
+libraries. Run the `./configure` script in the root TensorFlow checkout
+directory, and answer "Yes" when the script asks to interactively configure the `./WORKSPACE`
 for Android builds. The script will attempt to configure settings using the
 following environment variables:
 

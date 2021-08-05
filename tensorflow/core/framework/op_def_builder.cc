@@ -95,7 +95,7 @@ bool ConsumeAttrNumber(StringPiece* sp, int64* out) {
            .GetResult(&remaining, &match)) {
     return false;
   }
-  int64 value = 0;
+  int64_t value = 0;
   if (!strings::safe_strto64(match, &value)) {
     return false;
   }
@@ -251,7 +251,7 @@ void FinalizeAttr(StringPiece spec, bool allow_attr_type_any, OpDef* op_def,
 
   // Read optional minimum constraint at the end.
   if ((is_list || type == "int") && absl::ConsumePrefix(&spec, ">=")) {
-    int64 min_limit = -999;
+    int64_t min_limit = -999;
     VERIFY(ConsumeAttrNumber(&spec, &min_limit),
            "Could not parse integer lower limit after '>=', found '", spec,
            "' instead");

@@ -31,6 +31,17 @@ class InsertCallOnceOpFromSessionInitializerPass
     registry.insert<TensorFlowLiteDialect>();
   }
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-insert-call-once-op";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Insert CallOnce op when tf_saved_model's session initializer is "
+           "given";
+  }
+
  private:
   void runOnOperation() override;
 };
@@ -74,9 +85,7 @@ CreateInsertCallOnceOpFromSessionInitializerPass() {
   return std::make_unique<InsertCallOnceOpFromSessionInitializerPass>();
 }
 
-static PassRegistration<InsertCallOnceOpFromSessionInitializerPass> pass(
-    "tfl-insert-call-once-op",
-    "Insert CallOnce op when tf_saved_model's session initializer is given");
+static PassRegistration<InsertCallOnceOpFromSessionInitializerPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

@@ -86,7 +86,7 @@ class TFStats {
   void AddGraph(std::unique_ptr<GraphDef> graph);
 
   // Add a step of run time meta data.
-  void AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta);
+  void AddRunMeta(int64_t step, std::unique_ptr<RunMetadata> run_meta);
   // Add tfprof operation meta data, such as customized op type, float_ops,
   // and code traces.
   void AddOpLogProto(std::unique_ptr<OpLogProto> op_log);
@@ -95,7 +95,7 @@ class TFStats {
   void WriteProfile(const string& filename);
 
   // For test purpose only.
-  void AddNodeForTest(int64 step, std::unique_ptr<TFGraphNode> node);
+  void AddNodeForTest(int64_t step, std::unique_ptr<TFGraphNode> node);
 
  private:
   bool Validate(const Options& opts) const;

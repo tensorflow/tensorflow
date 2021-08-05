@@ -25,6 +25,7 @@ limitations under the License.
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <string>
 #include <thread>  // NOLINT: code only used on Android, where std::thread is allowed
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -38,25 +39,26 @@ limitations under the License.
 namespace tflite {
 namespace acceleration {
 
-namespace {}  // namespace
-constexpr char kValidationFunctionName[] =
-    "Java_org_tensorflow_lite_acceleration_validation_entrypoint";
 constexpr int kMaxAttempts = 2;
+constexpr int64_t ValidatorRunner::kDefaultEventTimeoutUs;
 
 ValidatorRunner::ValidatorRunner(const std::string& model_path,
                                  const std::string& storage_path,
                                  const std::string& data_directory_path,
+                                 const std::string validation_function_name,
                                  ErrorReporter* error_reporter)
     : model_path_(model_path),
       storage_path_(storage_path),
       data_directory_path_(data_directory_path),
       storage_(storage_path_, error_reporter),
+      validation_function_name_(validation_function_name),
       error_reporter_(error_reporter) {}
 
 ValidatorRunner::ValidatorRunner(int model_fd, size_t model_offset,
                                  size_t model_size,
                                  const std::string& storage_path,
                                  const std::string& data_directory_path,
+                                 const std::string validation_function_name,
                                  ErrorReporter* error_reporter)
     :
 #ifndef _WIN32
@@ -69,6 +71,7 @@ ValidatorRunner::ValidatorRunner(int model_fd, size_t model_offset,
       storage_path_(storage_path),
       data_directory_path_(data_directory_path),
       storage_(storage_path_, error_reporter),
+      validation_function_name_(validation_function_name),
       error_reporter_(error_reporter) {
 }
 
@@ -95,18 +98,17 @@ MinibenchmarkStatus ValidatorRunner::Init() {
   }
 
 #ifndef _WIN32
-  int (*PJava_org_tensorflow_lite_acceleration_validation_entrypoint)(int,
-                                                                      char**) =
+  int (*validation_entrypoint)(int, char**) =
       reinterpret_cast<int (*)(int, char**)>(
-          dlsym(RTLD_DEFAULT, kValidationFunctionName));
-  if (!PJava_org_tensorflow_lite_acceleration_validation_entrypoint) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "Could not load symbol %s",
-                         kValidationFunctionName);
+          dlsym(RTLD_DEFAULT, validation_function_name_.c_str()));
+  if (!validation_entrypoint) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "Could not load symbol '%s': '%s'",
+                         validation_function_name_.c_str(), dlerror());
     return kMinibenchmarkValidationEntrypointSymbolNotFound;
   }
-  ProcessRunner check_runner(
-      data_directory_path_, kValidationFunctionName,
-      PJava_org_tensorflow_lite_acceleration_validation_entrypoint);
+  ProcessRunner check_runner(data_directory_path_,
+                             validation_function_name_.c_str(),
+                             validation_entrypoint);
   MinibenchmarkStatus status = check_runner.Init();
   if (status != kMinibenchmarkSuccess) {
     TF_LITE_REPORT_ERROR(error_reporter_, "Runner::Init returned %d",
@@ -189,7 +191,8 @@ int ValidatorRunner::TriggerMissingValidation(
   // runner may potentially hang, so we can't wait for it to terminate.
   std::thread detached_thread(
       [model_path = model_path, storage_path = storage_path_,
-       data_directory_path = data_directory_path_, to_be_run]() {
+       data_directory_path = data_directory_path_, to_be_run,
+       validation_function_name = validation_function_name_]() {
         FileLock lock(storage_path + ".parent_lock");
         if (!lock.TryLock()) {
           return;
@@ -199,16 +202,17 @@ int ValidatorRunner::TriggerMissingValidation(
           TFLiteSettingsT tflite_settings;
           flatbuffers::GetRoot<TFLiteSettings>(one_to_run->GetBufferPointer())
               ->UnPackTo(&tflite_settings);
-          int (*PJava_org_tensorflow_lite_acceleration_validation_entrypoint)(
-              int, char**) = nullptr;
+          int (*validation_entrypoint)(int, char**) = nullptr;
+          TFLITE_LOG_PROD(TFLITE_LOG_INFO,
+                          "Loading validation entry point '%s'",
+                          validation_function_name.c_str());
 #ifndef _WIN32
-          PJava_org_tensorflow_lite_acceleration_validation_entrypoint =
-              reinterpret_cast<int (*)(int, char**)>(
-                  dlsym(RTLD_DEFAULT, kValidationFunctionName));
+          validation_entrypoint = reinterpret_cast<int (*)(int, char**)>(
+              dlsym(RTLD_DEFAULT, validation_function_name.c_str()));
 #endif  // !_WIN32
-          ProcessRunner runner(
-              data_directory_path, kValidationFunctionName,
-              PJava_org_tensorflow_lite_acceleration_validation_entrypoint);
+          ProcessRunner runner(data_directory_path,
+                               validation_function_name.c_str(),
+                               validation_entrypoint);
           int exitcode = 0;
           int signal = 0;
           MinibenchmarkStatus status = runner.Init();
@@ -258,6 +262,19 @@ std::vector<const BenchmarkEvent*> ValidatorRunner::GetSuccessfulResults() {
     }
   }
   return results;
+}
+
+int ValidatorRunner::GetNumCompletedResults() {
+  storage_.Read();
+  int num_results = 0;
+  for (int i = 0; i < storage_.Count(); i++) {
+    const BenchmarkEvent* event = storage_.Get(i);
+    if (event->event_type() == BenchmarkEventType_ERROR ||
+        (event->event_type() == BenchmarkEventType_END && event->result())) {
+      num_results++;
+    }
+  }
+  return num_results;
 }
 
 std::vector<const BenchmarkEvent*> ValidatorRunner::GetAndFlushEventsToLog(
@@ -311,7 +328,8 @@ std::vector<const BenchmarkEvent*> ValidatorRunner::GetAndFlushEventsToLog(
       break;
     }
     if (event->event_type() == BenchmarkEventType_END ||
-        event->event_type() == BenchmarkEventType_ERROR) {
+        event->event_type() == BenchmarkEventType_ERROR ||
+        event->event_type() == BenchmarkEventType_RECOVERED_ERROR) {
       events.push_back(event);
       seen_end = true;
     } else if (event->event_type() == BenchmarkEventType_START) {

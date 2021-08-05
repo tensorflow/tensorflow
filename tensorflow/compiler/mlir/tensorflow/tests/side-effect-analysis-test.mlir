@@ -6,8 +6,8 @@
 // CHECK-LABEL: func @non_aliasing_reads_writes
 func @non_aliasing_reads_writes(
 // expected-remark@above {{ID: 13}}
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg1: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
   %arg2: tensor<32xf32>) -> (tensor<32xf32>) {
   %graph = tf_executor.graph {
   // expected-remark@above {{ID: 11}}
@@ -16,30 +16,30 @@ func @non_aliasing_reads_writes(
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 9}}
     // expected-remark@above {{Successors: {10}}}
-      %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       // expected-remark@above {{ID: 0}}
       // expected-remark@above {{Successors: {1}}}
-      "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       // expected-remark@above {{ID: 1}}
       // expected-remark@above {{Predecessors: {0}}}
       // expected-remark@above {{Successors: {6}}}
-      %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       // expected-remark@above {{ID: 2}}
       // expected-remark@above {{Successors: {5}}}
-      %var_handle = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> tensor<*x!tf.resource<tensor<32xf32>>>
+      %var_handle = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       // expected-remark@above {{ID: 3}}
-      %read2 = "tf.ReadVariableOp"(%var_handle) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %read2 = "tf.ReadVariableOp"(%var_handle) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       // expected-remark@above {{ID: 4}}
       // expected-remark@above {{Successors: {8}}}
-      "tf.AssignVariableOp"(%arg1, %read0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      "tf.AssignVariableOp"(%arg1, %read0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       // expected-remark@above {{ID: 5}}
       // expected-remark@above {{Predecessors: {2}}}
       // expected-remark@above {{Successors: {8}}}
-      "tf.AssignVariableOp"(%arg0, %read2) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      "tf.AssignVariableOp"(%arg0, %read2) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       // expected-remark@above {{ID: 6}}
       // expected-remark@above {{Predecessors: {1}}}
       // expected-remark@above {{Successors: {7}}}
-      %read3 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %read3 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       // expected-remark@above {{ID: 7}}
       // expected-remark@above {{Predecessors: {6}}}
       // expected-remark@above {{Successors: {8}}}
@@ -71,32 +71,32 @@ func @aliasing_reads_writes(%arg0: tensor<32xf32>) -> () {
     %island = tf_executor.island {
     // expected-remark@above {{ID: 10}}
     // expected-remark@above {{Successors: {11}}}
-      %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> tensor<*x!tf.resource<tensor<32xf32>>>
+      %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       // expected-remark@above {{ID: 0}}
-      %vh1 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> tensor<*x!tf.resource<tensor<32xf32>>>
+      %vh1 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       // expected-remark@above {{ID: 1}}
-      %vh1_id:2 = "tf.IdentityN"(%vh1, %arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>)
+      %vh1_id:2 = "tf.IdentityN"(%vh1, %arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>)
       // expected-remark@above {{ID: 2}}
-      %read0 = "tf.ReadVariableOp"(%vh0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %read0 = "tf.ReadVariableOp"(%vh0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       // expected-remark@above {{ID: 3}}
       // expected-remark@above {{Successors: {4}}}
-      "tf.AssignVariableOp"(%vh1_id#0, %arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      "tf.AssignVariableOp"(%vh1_id#0, %arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       // expected-remark@above {{ID: 4}}
       // expected-remark@above {{Predecessors: {3}}}
       // expected-remark@above {{Successors: {5,6}}}
-      %read1 = "tf.ReadVariableOp"(%vh0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %read1 = "tf.ReadVariableOp"(%vh0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       // expected-remark@above {{ID: 5}}
       // expected-remark@above {{Predecessors: {4}}}
       // expected-remark@above {{Successors: {7}}}
-      %read2 = "tf.ReadVariableOp"(%vh1) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %read2 = "tf.ReadVariableOp"(%vh1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       // expected-remark@above {{ID: 6}}
       // expected-remark@above {{Predecessors: {4}}}
       // expected-remark@above {{Successors: {7}}}
-      "tf.AssignVariableOp"(%vh0, %read2) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      "tf.AssignVariableOp"(%vh0, %read2) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       // expected-remark@above {{ID: 7}}
       // expected-remark@above {{Predecessors: {5,6}}}
       // expected-remark@above {{Successors: {8}}}
-      "tf.AssignVariableOp"(%vh1_id#0, %read1) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      "tf.AssignVariableOp"(%vh1_id#0, %read1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       // expected-remark@above {{ID: 8}}
       // expected-remark@above {{Predecessors: {7}}}
       // expected-remark@above {{Successors: {9}}}
@@ -128,33 +128,33 @@ func @unknown_side_effecting_op(%arg0: tensor<32xf32>) -> () {
     %island = tf_executor.island {
     // expected-remark@above {{ID: 10}}
     // expected-remark@above {{Successors: {11}}}
-      %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> tensor<*x!tf.resource<tensor<32xf32>>>
+      %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       // expected-remark@above {{ID: 0}}
-      %vh1 = "tf.VarHandleOp"() {container = "c", shared_name = "v1"} : () -> tensor<*x!tf.resource<tensor<32xf32>>>
+      %vh1 = "tf.VarHandleOp"() {container = "c", shared_name = "v1"} : () -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       // expected-remark@above {{ID: 1}}
-      %read0 = "tf.ReadVariableOp"(%vh0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %read0 = "tf.ReadVariableOp"(%vh0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       // expected-remark@above {{ID: 2}}
       // expected-remark@above {{Successors: {4}}}
-      "tf.AssignVariableOp"(%vh1, %arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      "tf.AssignVariableOp"(%vh1, %arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       // expected-remark@above {{ID: 3}}
       // expected-remark@above {{Successors: {4}}}
       "tf._UnknownSideEffectingOp_"() : () -> ()
       // expected-remark@above {{ID: 4}}
       // expected-remark@above {{Predecessors: {2,3}}}
       // expected-remark@above {{Successors: {5,6,7}}}
-      %read1 = "tf.ReadVariableOp"(%vh1) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %read1 = "tf.ReadVariableOp"(%vh1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       // expected-remark@above {{ID: 5}}
       // expected-remark@above {{Predecessors: {4}}}
       // expected-remark@above {{Successors: {8}}}
-      %read2 = "tf.ReadVariableOp"(%vh1) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %read2 = "tf.ReadVariableOp"(%vh1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       // expected-remark@above {{ID: 6}}
       // expected-remark@above {{Predecessors: {4}}}
       // expected-remark@above {{Successors: {8}}}
-      "tf.AssignVariableOp"(%vh0, %read1) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      "tf.AssignVariableOp"(%vh0, %read1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       // expected-remark@above {{ID: 7}}
       // expected-remark@above {{Predecessors: {4}}}
       // expected-remark@above {{Successors: {9}}}
-      "tf.AssignVariableOp"(%vh1, %read0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      "tf.AssignVariableOp"(%vh1, %read0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       // expected-remark@above {{ID: 8}}
       // expected-remark@above {{Predecessors: {5,6}}}
       // expected-remark@above {{Successors: {9}}}
@@ -186,20 +186,20 @@ func @read_only_unknown_resource(%arg0: tensor<32xf32>) -> () {
     %island = tf_executor.island {
     // expected-remark@above {{ID: 6}}
     // expected-remark@above {{Successors: {7}}}
-      %vh0 = "tf._UnknownSideEffectingOp_"() : () -> tensor<*x!tf.resource<tensor<32xf32>>>
+      %vh0 = "tf._UnknownSideEffectingOp_"() : () -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       // expected-remark@above {{ID: 0}}
       // expected-remark@above {{Successors: {2,3}}}
-      %vh1 = "tf.VarHandleOp"() {container = "c", shared_name = "v1"} : () -> tensor<*x!tf.resource<tensor<32xf32>>>
+      %vh1 = "tf.VarHandleOp"() {container = "c", shared_name = "v1"} : () -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       // expected-remark@above {{ID: 1}}
-      %read0 = "tf.ReadVariableOp"(%vh0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %read0 = "tf.ReadVariableOp"(%vh0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       // expected-remark@above {{ID: 2}}
       // expected-remark@above {{Predecessors: {0}}}
       // expected-remark@above {{Successors: {4}}}
-      %read1 = "tf.ReadVariableOp"(%vh1) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %read1 = "tf.ReadVariableOp"(%vh1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       // expected-remark@above {{ID: 3}}
       // expected-remark@above {{Predecessors: {0}}}
       // expected-remark@above {{Successors: {4}}}
-      "tf.AssignVariableOp"(%vh1, %read0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      "tf.AssignVariableOp"(%vh1, %read0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       // expected-remark@above {{ID: 4}}
       // expected-remark@above {{Predecessors: {2,3}}}
       // expected-remark@above {{Successors: {5}}}
@@ -223,10 +223,10 @@ func @read_only_unknown_resource(%arg0: tensor<32xf32>) -> () {
 
 func @with_replicate(
   // expected-remark@above {{ID: 12}}
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg1: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg2: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg3: tensor<*x!tf.resource<tensor<32xf32>>>) {
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg2: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg3: tensor<*x!tf_type.resource<tensor<32xf32>>>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 10}}
   // expected-remark@above {{Successors: {11}}}
@@ -240,17 +240,17 @@ func @with_replicate(
       // expected-remark@above {{ID: 5}}
       // expected-remark@above {{Predecessors: {0}}}
       // expected-remark@above {{Successors: {6}}}
-          [%arg0, %arg1] as %r0: tensor<*x!tf.resource<tensor<32xf32>>>,
-          [%arg2, %arg3] as %r1: tensor<*x!tf.resource<tensor<32xf32>>>,
+          [%arg0, %arg1] as %r0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+          [%arg2, %arg3] as %r1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
           [%u0#0, %u0#1] as %u : tensor<32xf32>)
           {n = 2 : i32, devices = {CORE_0 = ["/CPU:0", "/GPU:1"]}} {
-        %read0 = "tf.ReadVariableOp"(%r0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        %read0 = "tf.ReadVariableOp"(%r0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Successors: {4}}}
-        "tf.AssignVariableOp"(%r1, %u) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        "tf.AssignVariableOp"(%r1, %u) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
         // expected-remark@above {{ID: 2}}
         // expected-remark@above {{Successors: {3}}}
-        %read1 = "tf.ReadVariableOp"(%r1) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        %read1 = "tf.ReadVariableOp"(%r1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Predecessors: {2}}}
         // expected-remark@above {{Successors: {4}}}
@@ -282,7 +282,7 @@ func @with_replicate(
 // CHECK-LABEL: func @stateless_if_op
 func @stateless_if_op(
   // expected-remark@above {{ID: 8}}
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
   %arg1: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 6}}
@@ -294,7 +294,7 @@ func @stateless_if_op(
       %r0 = "tf.ReadVariableOp"(%arg0) :
       // expected-remark@above {{ID: 0}}
       // expected-remark@above {{Successors: {2}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       %if = "tf.If"(%arg1, %arg1) {
       // expected-remark@above {{ID: 1}}
           then_branch = @if_then, else_branch = @if_else, is_stateless = true}
@@ -303,7 +303,7 @@ func @stateless_if_op(
       // expected-remark@above {{ID: 2}}
       // expected-remark@above {{Predecessors: {0}}}
       // expected-remark@above {{Successors: {3}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       tf_executor.yield
       // expected-remark@above {{ID: 3}}
       // expected-remark@above {{Predecessors: {2}}}
@@ -367,7 +367,7 @@ func @if_else(%arg0: tensor<i1>) -> tensor<i1> {
 // CHECK-LABEL: func @stateless_ifregion_op
 func @stateless_ifregion_op(
   // expected-remark@above {{ID: 18}}
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
   %arg1: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 16}}
@@ -380,7 +380,7 @@ func @stateless_ifregion_op(
       %r0 = "tf.ReadVariableOp"(%arg0) :
       // expected-remark@above {{ID: 0}}
       // expected-remark@above {{Successors: {12}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
 
       %if = "tf.IfRegion"(%arg1) (
       // expected-remark@above {{ID: 11}}
@@ -421,7 +421,7 @@ func @stateless_ifregion_op(
       // expected-remark@above {{ID: 12}}
       // expected-remark@above {{Predecessors: {0}}}
       // expected-remark@above {{Successors: {13}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
 
       tf_executor.yield
       // expected-remark@above {{ID: 13}}
@@ -443,7 +443,7 @@ func @stateless_ifregion_op(
 // CHECK-LABEL: func @stateless_if_op
 func @stateless_if_op(
   // expected-remark@above {{ID: 8}}
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
   %arg1: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 6}}
@@ -455,7 +455,7 @@ func @stateless_if_op(
       %r0 = "tf.ReadVariableOp"(%arg0) :
       // expected-remark@above {{ID: 0}}
       // expected-remark@above {{Successors: {2}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       %while = "tf.While"(%arg1) {
       // expected-remark@above {{ID: 1}}
           body = @while_body, cond = @while_cond, is_stateless = true}
@@ -464,7 +464,7 @@ func @stateless_if_op(
       // expected-remark@above {{ID: 2}}
       // expected-remark@above {{Predecessors: {0}}}
       // expected-remark@above {{Successors: {3}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       tf_executor.yield
       // expected-remark@above {{ID: 3}}
       // expected-remark@above {{Predecessors: {2}}}
@@ -528,7 +528,7 @@ func @while_cond(%arg0: tensor<i1>) -> tensor<i1> {
 // CHECK-LABEL: func @stateless_whileregion_op
 func @stateless_whileregion_op(
   // expected-remark@above {{ID: 18}}
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
   %arg1: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 16}}
@@ -540,7 +540,7 @@ func @stateless_whileregion_op(
       %r0 = "tf.ReadVariableOp"(%arg0) :
       // expected-remark@above {{ID: 0}}
       // expected-remark@above {{Successors: {12}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
 
       %while = "tf.WhileRegion"(%arg1) (
       // expected-remark@above {{ID: 11}}
@@ -582,7 +582,7 @@ func @stateless_whileregion_op(
       // expected-remark@above {{ID: 12}}
       // expected-remark@above {{Predecessors: {0}}}
       // expected-remark@above {{Successors: {13}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       tf_executor.yield
       // expected-remark@above {{ID: 13}}
       // expected-remark@above {{Predecessors: {12}}}
@@ -617,8 +617,8 @@ func @stateless_whileregion_op(
 // CHECK-LABEL: func @output_of_if_op
 func @output_of_if_op(
   // expected-remark@above {{ID: 12}}
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg1: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
   %arg2: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 10}}
@@ -627,43 +627,43 @@ func @output_of_if_op(
     %island = tf_executor.island {
     // expected-remark@above {{ID: 8}}
     // expected-remark@above {{Successors: {9}}}
-      %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>)
+      %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
       // expected-remark@above {{ID: 0}}
-        -> tensor<*x!tf.resource<tensor<32xf32>>>
+        -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       %if:3 = "tf.If"(%arg2, %id0, %arg1) {
       // expected-remark@above {{ID: 1}}
       // expected-remark@above {{Successors: {2,3,4}}}
           then_branch = @if_then, else_branch = @if_else, is_stateless = false}
-        : (tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
-           tensor<*x!tf.resource<tensor<32xf32>>>) ->
-          (tensor<*x!tf.resource<tensor<32xf32>>>,
-           tensor<*x!tf.resource<tensor<32xf32>>>,
-           tensor<*x!tf.resource<tensor<32xf32>>>)
+        : (tensor<i1>, tensor<*x!tf_type.resource<tensor<32xf32>>>,
+           tensor<*x!tf_type.resource<tensor<32xf32>>>) ->
+          (tensor<*x!tf_type.resource<tensor<32xf32>>>,
+           tensor<*x!tf_type.resource<tensor<32xf32>>>,
+           tensor<*x!tf_type.resource<tensor<32xf32>>>)
       %r0 = "tf.ReadVariableOp"(%if#0) :
       // expected-remark@above {{ID: 2}}
       // expected-remark@above {{Predecessors: {1}}}
       // expected-remark@above {{Successors: {5,6}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       %r1 = "tf.ReadVariableOp"(%if#1) :
       // expected-remark@above {{ID: 3}}
       // expected-remark@above {{Predecessors: {1}}}
       // expected-remark@above {{Successors: {5}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       %r2 = "tf.ReadVariableOp"(%if#2) :
       // expected-remark@above {{ID: 4}}
       // expected-remark@above {{Predecessors: {1}}}
       // expected-remark@above {{Successors: {5,6}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       "tf.AssignVariableOp"(%arg0, %r0) :
       // expected-remark@above {{ID: 5}}
       // expected-remark@above {{Predecessors: {2,3,4}}}
       // expected-remark@above {{Successors: {7}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       "tf.AssignVariableOp"(%arg1, %r0) :
       // expected-remark@above {{ID: 6}}
       // expected-remark@above {{Predecessors: {2,4}}}
       // expected-remark@above {{Successors: {7}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       tf_executor.yield
       // expected-remark@above {{ID: 7}}
       // expected-remark@above {{Predecessors: {5,6}}}
@@ -680,11 +680,11 @@ func @output_of_if_op(
 // CHECK-LABEL: func @if_then
 func @if_then(
   // expected-remark@above {{ID: 7}}
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg1: tensor<*x!tf.resource<tensor<32xf32>>>) ->
-  (tensor<*x!tf.resource<tensor<32xf32>>>,
-   tensor<*x!tf.resource<tensor<32xf32>>>,
-   tensor<*x!tf.resource<tensor<32xf32>>>) {
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>) ->
+  (tensor<*x!tf_type.resource<tensor<32xf32>>>,
+   tensor<*x!tf_type.resource<tensor<32xf32>>>,
+   tensor<*x!tf_type.resource<tensor<32xf32>>>) {
   %graph:3 = tf_executor.graph {
   // expected-remark@above {{ID: 5}}
   // expected-remark@above {{Successors: {6}}}
@@ -694,71 +694,71 @@ func @if_then(
       %u0 = "tf._UnknownSideEffectingOp_"() : ()
       // expected-remark@above {{ID: 0}}
       // expected-remark@above {{Successors: {2}}}
-        -> tensor<*x!tf.resource<tensor<32xf32>>>
-      %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>)
+        -> tensor<*x!tf_type.resource<tensor<32xf32>>>
+      %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
       // expected-remark@above {{ID: 1}}
-        -> tensor<*x!tf.resource<tensor<32xf32>>>
+        -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       tf_executor.yield %u0, %id0, %id0 :
       // expected-remark@above {{ID: 2}}
       // expected-remark@above {{Predecessors: {0}}}
-        tensor<*x!tf.resource<tensor<32xf32>>>,
-        tensor<*x!tf.resource<tensor<32xf32>>>,
-        tensor<*x!tf.resource<tensor<32xf32>>>
+        tensor<*x!tf_type.resource<tensor<32xf32>>>,
+        tensor<*x!tf_type.resource<tensor<32xf32>>>,
+        tensor<*x!tf_type.resource<tensor<32xf32>>>
     }
     tf_executor.fetch %island#0, %island#1, %island#2 :
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
-      tensor<*x!tf.resource<tensor<32xf32>>>,
-      tensor<*x!tf.resource<tensor<32xf32>>>,
-      tensor<*x!tf.resource<tensor<32xf32>>>
+      tensor<*x!tf_type.resource<tensor<32xf32>>>,
+      tensor<*x!tf_type.resource<tensor<32xf32>>>,
+      tensor<*x!tf_type.resource<tensor<32xf32>>>
   }
   return %graph#0, %graph#1, %graph#2 :
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Predecessors: {5}}}
-    tensor<*x!tf.resource<tensor<32xf32>>>,
-    tensor<*x!tf.resource<tensor<32xf32>>>,
-    tensor<*x!tf.resource<tensor<32xf32>>>
+    tensor<*x!tf_type.resource<tensor<32xf32>>>,
+    tensor<*x!tf_type.resource<tensor<32xf32>>>,
+    tensor<*x!tf_type.resource<tensor<32xf32>>>
 }
 
 // CHECK-LABEL: func @if_else
 func @if_else(
   // expected-remark@above {{ID: 7}}
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg1: tensor<*x!tf.resource<tensor<32xf32>>>) ->
-  (tensor<*x!tf.resource<tensor<32xf32>>>,
-   tensor<*x!tf.resource<tensor<32xf32>>>,
-   tensor<*x!tf.resource<tensor<32xf32>>>) {
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>) ->
+  (tensor<*x!tf_type.resource<tensor<32xf32>>>,
+   tensor<*x!tf_type.resource<tensor<32xf32>>>,
+   tensor<*x!tf_type.resource<tensor<32xf32>>>) {
   %graph:3 = tf_executor.graph {
   // expected-remark@above {{ID: 5}}
   // expected-remark@above {{Successors: {6}}}
     %island:4 = tf_executor.island {
     // expected-remark@above {{ID: 3}}
     // expected-remark@above {{Successors: {4}}}
-      %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>)
+      %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
       // expected-remark@above {{ID: 0}}
-        -> tensor<*x!tf.resource<tensor<32xf32>>>
-      %id1 = "tf.Identity"(%arg1) : (tensor<*x!tf.resource<tensor<32xf32>>>)
+        -> tensor<*x!tf_type.resource<tensor<32xf32>>>
+      %id1 = "tf.Identity"(%arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
       // expected-remark@above {{ID: 1}}
-        -> tensor<*x!tf.resource<tensor<32xf32>>>
+        -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       tf_executor.yield %id0, %id0, %id1 :
       // expected-remark@above {{ID: 2}}
-        tensor<*x!tf.resource<tensor<32xf32>>>,
-        tensor<*x!tf.resource<tensor<32xf32>>>,
-        tensor<*x!tf.resource<tensor<32xf32>>>
+        tensor<*x!tf_type.resource<tensor<32xf32>>>,
+        tensor<*x!tf_type.resource<tensor<32xf32>>>,
+        tensor<*x!tf_type.resource<tensor<32xf32>>>
     }
     tf_executor.fetch %island#0, %island#1, %island#2 :
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
-      tensor<*x!tf.resource<tensor<32xf32>>>,
-      tensor<*x!tf.resource<tensor<32xf32>>>,
-      tensor<*x!tf.resource<tensor<32xf32>>>
+      tensor<*x!tf_type.resource<tensor<32xf32>>>,
+      tensor<*x!tf_type.resource<tensor<32xf32>>>,
+      tensor<*x!tf_type.resource<tensor<32xf32>>>
   }
   return %graph#0, %graph#1, %graph#2 :
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Predecessors: {5}}}
-    tensor<*x!tf.resource<tensor<32xf32>>>,
-    tensor<*x!tf.resource<tensor<32xf32>>>,
-    tensor<*x!tf.resource<tensor<32xf32>>>
+    tensor<*x!tf_type.resource<tensor<32xf32>>>,
+    tensor<*x!tf_type.resource<tensor<32xf32>>>,
+    tensor<*x!tf_type.resource<tensor<32xf32>>>
 }
 
 // -----
@@ -769,8 +769,8 @@ func @if_else(
 // CHECK-LABEL: func @output_of_ifregion_op
 func @output_of_ifregion_op(
   // expected-remark@above {{ID: 26}}
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg1: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
   %arg2: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 24}}
@@ -779,9 +779,9 @@ func @output_of_ifregion_op(
     %island = tf_executor.island {
     // expected-remark@above {{ID: 22}}
     // expected-remark@above {{Successors: {23}}}
-      %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>)
+      %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
       // expected-remark@above {{ID: 0}}
-        -> tensor<*x!tf.resource<tensor<32xf32>>>
+        -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       %if:3 = "tf.IfRegion"(%arg2) (
       // expected-remark@above {{ID: 15}}
       // expected-remark@above {{Successors: {16,17,18}}}
@@ -794,29 +794,29 @@ func @output_of_ifregion_op(
               %u0 = "tf._UnknownSideEffectingOp_"() : ()
               // expected-remark@above {{ID: 1}}
               // expected-remark@above {{Successors: {3}}}
-                -> tensor<*x!tf.resource<tensor<32xf32>>>
-              %iid0 = "tf.Identity"(%id0) : (tensor<*x!tf.resource<tensor<32xf32>>>)
+                -> tensor<*x!tf_type.resource<tensor<32xf32>>>
+              %iid0 = "tf.Identity"(%id0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
               // expected-remark@above {{ID: 2}}
-                -> tensor<*x!tf.resource<tensor<32xf32>>>
+                -> tensor<*x!tf_type.resource<tensor<32xf32>>>
               tf_executor.yield %u0, %iid0, %iid0 :
               // expected-remark@above {{ID: 3}}
               // expected-remark@above {{Predecessors: {1}}}
-                tensor<*x!tf.resource<tensor<32xf32>>>,
-                tensor<*x!tf.resource<tensor<32xf32>>>,
-                tensor<*x!tf.resource<tensor<32xf32>>>
+                tensor<*x!tf_type.resource<tensor<32xf32>>>,
+                tensor<*x!tf_type.resource<tensor<32xf32>>>,
+                tensor<*x!tf_type.resource<tensor<32xf32>>>
             }
             tf_executor.fetch %island#0, %island#1, %island#2 :
             // expected-remark@above {{ID: 5}}
             // expected-remark@above {{Predecessors: {4}}}
-              tensor<*x!tf.resource<tensor<32xf32>>>,
-              tensor<*x!tf.resource<tensor<32xf32>>>,
-              tensor<*x!tf.resource<tensor<32xf32>>>
+              tensor<*x!tf_type.resource<tensor<32xf32>>>,
+              tensor<*x!tf_type.resource<tensor<32xf32>>>,
+              tensor<*x!tf_type.resource<tensor<32xf32>>>
           }
           "tf.Yield"(%graph#0, %graph#1, %graph#2) :
           // expected-remark@above {{ID: 7}}
-            (tensor<*x!tf.resource<tensor<32xf32>>>,
-            tensor<*x!tf.resource<tensor<32xf32>>>,
-            tensor<*x!tf.resource<tensor<32xf32>>>) -> ()
+            (tensor<*x!tf_type.resource<tensor<32xf32>>>,
+            tensor<*x!tf_type.resource<tensor<32xf32>>>,
+            tensor<*x!tf_type.resource<tensor<32xf32>>>) -> ()
         },
         {
           %graph:3 = tf_executor.graph {
@@ -824,60 +824,60 @@ func @output_of_ifregion_op(
             %island:4 = tf_executor.island {
             // expected-remark@above {{ID: 11}}
             // expected-remark@above {{Successors: {12}}}
-              %iid0 = "tf.Identity"(%id0) : (tensor<*x!tf.resource<tensor<32xf32>>>)
+              %iid0 = "tf.Identity"(%id0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
               // expected-remark@above {{ID: 8}}
-                -> tensor<*x!tf.resource<tensor<32xf32>>>
-              %iid1 = "tf.Identity"(%arg1) : (tensor<*x!tf.resource<tensor<32xf32>>>)
+                -> tensor<*x!tf_type.resource<tensor<32xf32>>>
+              %iid1 = "tf.Identity"(%arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
               // expected-remark@above {{ID: 9}}
-                -> tensor<*x!tf.resource<tensor<32xf32>>>
+                -> tensor<*x!tf_type.resource<tensor<32xf32>>>
               tf_executor.yield %iid0, %iid0, %iid1 :
               // expected-remark@above {{ID: 10}}
-                tensor<*x!tf.resource<tensor<32xf32>>>,
-                tensor<*x!tf.resource<tensor<32xf32>>>,
-                tensor<*x!tf.resource<tensor<32xf32>>>
+                tensor<*x!tf_type.resource<tensor<32xf32>>>,
+                tensor<*x!tf_type.resource<tensor<32xf32>>>,
+                tensor<*x!tf_type.resource<tensor<32xf32>>>
             }
             tf_executor.fetch %island#0, %island#1, %island#2 :
             // expected-remark@above {{ID: 12}}
             // expected-remark@above {{Predecessors: {11}}}
-              tensor<*x!tf.resource<tensor<32xf32>>>,
-              tensor<*x!tf.resource<tensor<32xf32>>>,
-              tensor<*x!tf.resource<tensor<32xf32>>>
+              tensor<*x!tf_type.resource<tensor<32xf32>>>,
+              tensor<*x!tf_type.resource<tensor<32xf32>>>,
+              tensor<*x!tf_type.resource<tensor<32xf32>>>
           }
           "tf.Yield"(%graph#0, %graph#1, %graph#2) :
           // expected-remark@above {{ID: 14}}
-            (tensor<*x!tf.resource<tensor<32xf32>>>,
-            tensor<*x!tf.resource<tensor<32xf32>>>,
-            tensor<*x!tf.resource<tensor<32xf32>>>) -> ()
+            (tensor<*x!tf_type.resource<tensor<32xf32>>>,
+            tensor<*x!tf_type.resource<tensor<32xf32>>>,
+            tensor<*x!tf_type.resource<tensor<32xf32>>>) -> ()
         }) { is_stateless = false}
         : (tensor<i1>) ->
-          (tensor<*x!tf.resource<tensor<32xf32>>>,
-           tensor<*x!tf.resource<tensor<32xf32>>>,
-           tensor<*x!tf.resource<tensor<32xf32>>>)
+          (tensor<*x!tf_type.resource<tensor<32xf32>>>,
+           tensor<*x!tf_type.resource<tensor<32xf32>>>,
+           tensor<*x!tf_type.resource<tensor<32xf32>>>)
       %r0 = "tf.ReadVariableOp"(%if#0) :
       // expected-remark@above {{ID: 16}}
       // expected-remark@above {{Predecessors: {15}}}
       // expected-remark@above {{Successors: {19,20}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       %r1 = "tf.ReadVariableOp"(%if#1) :
       // expected-remark@above {{ID: 17}}
       // expected-remark@above {{Predecessors: {15}}}
       // expected-remark@above {{Successors: {19}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       %r2 = "tf.ReadVariableOp"(%if#2) :
       // expected-remark@above {{ID: 18}}
       // expected-remark@above {{Predecessors: {15}}}
       // expected-remark@above {{Successors: {19,20}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       "tf.AssignVariableOp"(%arg0, %r0) :
       // expected-remark@above {{ID: 19}}
       // expected-remark@above {{Predecessors: {16,17,18}}}
       // expected-remark@above {{Successors: {21}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       "tf.AssignVariableOp"(%arg1, %r0) :
       // expected-remark@above {{ID: 20}}
       // expected-remark@above {{Predecessors: {16,18}}}
       // expected-remark@above {{Successors: {21}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       tf_executor.yield
       // expected-remark@above {{ID: 21}}
       // expected-remark@above {{Predecessors: {19,20}}}
@@ -911,8 +911,8 @@ func @output_of_ifregion_op(
 // CHECK-LABEL: func @output_of_while_op
 func @output_of_while_op(
   // expected-remark@above {{ID: 12}}
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg1: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
   %arg2: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 10}}
@@ -921,44 +921,44 @@ func @output_of_while_op(
     %island = tf_executor.island {
     // expected-remark@above {{ID: 8}}
     // expected-remark@above {{Successors: {9}}}
-      %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>)
+      %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
       // expected-remark@above {{ID: 0}}
-        -> tensor<*x!tf.resource<tensor<32xf32>>>
+        -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       %while:4 = "tf.While"(%arg2, %id0, %arg1, %arg1) {
       // expected-remark@above {{ID: 1}}
       // expected-remark@above {{Successors: {2,3,4}}}
           body = @while_body, cond = @while_cond, is_stateless = false}
-        : (tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
-           tensor<*x!tf.resource<tensor<32xf32>>>,
-           tensor<*x!tf.resource<tensor<32xf32>>>) ->
-          (tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
-           tensor<*x!tf.resource<tensor<32xf32>>>,
-           tensor<*x!tf.resource<tensor<32xf32>>>)
+        : (tensor<i1>, tensor<*x!tf_type.resource<tensor<32xf32>>>,
+           tensor<*x!tf_type.resource<tensor<32xf32>>>,
+           tensor<*x!tf_type.resource<tensor<32xf32>>>) ->
+          (tensor<i1>, tensor<*x!tf_type.resource<tensor<32xf32>>>,
+           tensor<*x!tf_type.resource<tensor<32xf32>>>,
+           tensor<*x!tf_type.resource<tensor<32xf32>>>)
       %r0 = "tf.ReadVariableOp"(%while#1) :
       // expected-remark@above {{ID: 2}}
       // expected-remark@above {{Predecessors: {1}}}
       // expected-remark@above {{Successors: {5}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       %r1 = "tf.ReadVariableOp"(%while#2) :
       // expected-remark@above {{ID: 3}}
       // expected-remark@above {{Predecessors: {1}}}
       // expected-remark@above {{Successors: {6}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       %r2 = "tf.ReadVariableOp"(%while#3) :
       // expected-remark@above {{ID: 4}}
       // expected-remark@above {{Predecessors: {1}}}
       // expected-remark@above {{Successors: {5,6}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       "tf.AssignVariableOp"(%arg0, %r0) :
       // expected-remark@above {{ID: 5}}
       // expected-remark@above {{Predecessors: {2,4}}}
       // expected-remark@above {{Successors: {7}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       "tf.AssignVariableOp"(%arg1, %r0) :
       // expected-remark@above {{ID: 6}}
       // expected-remark@above {{Predecessors: {3,4}}}
       // expected-remark@above {{Successors: {7}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       tf_executor.yield
       // expected-remark@above {{ID: 7}}
       // expected-remark@above {{Predecessors: {5,6}}}
@@ -976,54 +976,54 @@ func @output_of_while_op(
 func @while_body(
   // expected-remark@above {{ID: 7}}
   %pred: tensor<i1>,
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg1: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg2: tensor<*x!tf.resource<tensor<32xf32>>>) ->
-  (tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
-   tensor<*x!tf.resource<tensor<32xf32>>>,
-   tensor<*x!tf.resource<tensor<32xf32>>>) {
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg2: tensor<*x!tf_type.resource<tensor<32xf32>>>) ->
+  (tensor<i1>, tensor<*x!tf_type.resource<tensor<32xf32>>>,
+   tensor<*x!tf_type.resource<tensor<32xf32>>>,
+   tensor<*x!tf_type.resource<tensor<32xf32>>>) {
   %graph:4 = tf_executor.graph {
   // expected-remark@above {{ID: 5}}
   // expected-remark@above {{Successors: {6}}}
     %island:5 = tf_executor.island {
     // expected-remark@above {{ID: 3}}
     // expected-remark@above {{Successors: {4}}}
-      %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>)
+      %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
       // expected-remark@above {{ID: 0}}
-        -> tensor<*x!tf.resource<tensor<32xf32>>>
+        -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       %u0 = "tf._UnknownSideEffectingOp_"() : ()
       // expected-remark@above {{ID: 1}}
       // expected-remark@above {{Successors: {2}}}
-        -> tensor<*x!tf.resource<tensor<32xf32>>>
+        -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       tf_executor.yield %pred, %id0, %arg1, %u0 :
       // expected-remark@above {{ID: 2}}
       // expected-remark@above {{Predecessors: {1}}}
-        tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
-        tensor<*x!tf.resource<tensor<32xf32>>>,
-        tensor<*x!tf.resource<tensor<32xf32>>>
+        tensor<i1>, tensor<*x!tf_type.resource<tensor<32xf32>>>,
+        tensor<*x!tf_type.resource<tensor<32xf32>>>,
+        tensor<*x!tf_type.resource<tensor<32xf32>>>
     }
     tf_executor.fetch %island#0, %island#1, %island#2, %island#3 :
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
-      tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
-      tensor<*x!tf.resource<tensor<32xf32>>>,
-      tensor<*x!tf.resource<tensor<32xf32>>>
+      tensor<i1>, tensor<*x!tf_type.resource<tensor<32xf32>>>,
+      tensor<*x!tf_type.resource<tensor<32xf32>>>,
+      tensor<*x!tf_type.resource<tensor<32xf32>>>
   }
   return %graph#0, %graph#1, %graph#2, %graph#3 :
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Predecessors: {5}}}
-    tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
-    tensor<*x!tf.resource<tensor<32xf32>>>,
-    tensor<*x!tf.resource<tensor<32xf32>>>
+    tensor<i1>, tensor<*x!tf_type.resource<tensor<32xf32>>>,
+    tensor<*x!tf_type.resource<tensor<32xf32>>>,
+    tensor<*x!tf_type.resource<tensor<32xf32>>>
 }
 
 // CHECK-LABEL: func @while_cond
 func @while_cond(
   // expected-remark@above {{ID: 7}}
   %pred: tensor<i1>,
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg1: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg2: tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<i1> {
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg2: tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<i1> {
   %graph = tf_executor.graph {
   // expected-remark@above {{ID: 5}}
   // expected-remark@above {{Successors: {6}}}
@@ -1054,8 +1054,8 @@ func @while_cond(
 // CHECK-LABEL: func @output_of_whileregion_op
 func @output_of_whileregion_op(
   // expected-remark@above {{ID: 26}}
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg1: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
   %arg2: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 24}}
@@ -1064,17 +1064,17 @@ func @output_of_whileregion_op(
     %island = tf_executor.island {
     // expected-remark@above {{ID: 22}}
     // expected-remark@above {{Successors: {23}}}
-      %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>)
+      %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
       // expected-remark@above {{ID: 0}}
-        -> tensor<*x!tf.resource<tensor<32xf32>>>
+        -> tensor<*x!tf_type.resource<tensor<32xf32>>>
       %while:4 = "tf.WhileRegion"(%arg2, %id0, %arg1, %arg1) (
       // expected-remark@above {{ID: 15}}
       // expected-remark@above {{Successors: {16,17,18}}}
         {
           ^bb0(%pred: tensor<i1>,
-               %carg1: tensor<*x!tf.resource<tensor<32xf32>>>,
-               %carg2: tensor<*x!tf.resource<tensor<32xf32>>>,
-               %carg3: tensor<*x!tf.resource<tensor<32xf32>>>):
+               %carg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+               %carg2: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+               %carg3: tensor<*x!tf_type.resource<tensor<32xf32>>>):
             %graph = tf_executor.graph {
             // expected-remark@above {{ID: 6}}
               %island:2 = tf_executor.island {
@@ -1096,73 +1096,73 @@ func @output_of_whileregion_op(
         },
         {
           ^bb0(%pred: tensor<i1>,
-               %barg0: tensor<*x!tf.resource<tensor<32xf32>>>,
-               %barg1: tensor<*x!tf.resource<tensor<32xf32>>>,
-               %barg2: tensor<*x!tf.resource<tensor<32xf32>>>):
+               %barg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+               %barg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+               %barg2: tensor<*x!tf_type.resource<tensor<32xf32>>>):
              %graph:4 = tf_executor.graph {
             // expected-remark@above {{ID: 13}}
               %island:5 = tf_executor.island {
               // expected-remark@above {{ID: 11}}
               // expected-remark@above {{Successors: {12}}}
-                %iid0 = "tf.Identity"(%barg0) : (tensor<*x!tf.resource<tensor<32xf32>>>)
+                %iid0 = "tf.Identity"(%barg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
                 // expected-remark@above {{ID: 8}}
-                  -> tensor<*x!tf.resource<tensor<32xf32>>>
+                  -> tensor<*x!tf_type.resource<tensor<32xf32>>>
                 %u0 = "tf._UnknownSideEffectingOp_"() : ()
                 // expected-remark@above {{ID: 9}}
                 // expected-remark@above {{Successors: {10}}}
-                  -> tensor<*x!tf.resource<tensor<32xf32>>>
+                  -> tensor<*x!tf_type.resource<tensor<32xf32>>>
                 tf_executor.yield %pred, %iid0, %barg1, %u0 :
                 // expected-remark@above {{ID: 10}}
                 // expected-remark@above {{Predecessors: {9}}}
-                  tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
-                  tensor<*x!tf.resource<tensor<32xf32>>>,
-                  tensor<*x!tf.resource<tensor<32xf32>>>
+                  tensor<i1>, tensor<*x!tf_type.resource<tensor<32xf32>>>,
+                  tensor<*x!tf_type.resource<tensor<32xf32>>>,
+                  tensor<*x!tf_type.resource<tensor<32xf32>>>
               }
               tf_executor.fetch %island#0, %island#1, %island#2, %island#3 :
               // expected-remark@above {{ID: 12}}
               // expected-remark@above {{Predecessors: {11}}}
-                tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
-                tensor<*x!tf.resource<tensor<32xf32>>>,
-                tensor<*x!tf.resource<tensor<32xf32>>>
+                tensor<i1>, tensor<*x!tf_type.resource<tensor<32xf32>>>,
+                tensor<*x!tf_type.resource<tensor<32xf32>>>,
+                tensor<*x!tf_type.resource<tensor<32xf32>>>
             }
             "tf.Yield"(%graph#0, %graph#1, %graph#2, %graph#3) :
             // expected-remark@above {{ID: 14}}
-              (tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
-              tensor<*x!tf.resource<tensor<32xf32>>>,
-              tensor<*x!tf.resource<tensor<32xf32>>>) -> ()
+              (tensor<i1>, tensor<*x!tf_type.resource<tensor<32xf32>>>,
+              tensor<*x!tf_type.resource<tensor<32xf32>>>,
+              tensor<*x!tf_type.resource<tensor<32xf32>>>) -> ()
         }
       ) {is_stateless = false}
-        : (tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
-           tensor<*x!tf.resource<tensor<32xf32>>>,
-           tensor<*x!tf.resource<tensor<32xf32>>>) ->
-          (tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
-           tensor<*x!tf.resource<tensor<32xf32>>>,
-           tensor<*x!tf.resource<tensor<32xf32>>>)
+        : (tensor<i1>, tensor<*x!tf_type.resource<tensor<32xf32>>>,
+           tensor<*x!tf_type.resource<tensor<32xf32>>>,
+           tensor<*x!tf_type.resource<tensor<32xf32>>>) ->
+          (tensor<i1>, tensor<*x!tf_type.resource<tensor<32xf32>>>,
+           tensor<*x!tf_type.resource<tensor<32xf32>>>,
+           tensor<*x!tf_type.resource<tensor<32xf32>>>)
       %r0 = "tf.ReadVariableOp"(%while#1) :
       // expected-remark@above {{ID: 16}}
       // expected-remark@above {{Predecessors: {15}}}
       // expected-remark@above {{Successors: {19}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       %r1 = "tf.ReadVariableOp"(%while#2) :
       // expected-remark@above {{ID: 17}}
       // expected-remark@above {{Predecessors: {15}}}
       // expected-remark@above {{Successors: {20}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       %r2 = "tf.ReadVariableOp"(%while#3) :
       // expected-remark@above {{ID: 18}}
       // expected-remark@above {{Predecessors: {15}}}
       // expected-remark@above {{Successors: {19,20}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       "tf.AssignVariableOp"(%arg0, %r0) :
       // expected-remark@above {{ID: 19}}
       // expected-remark@above {{Predecessors: {16,18}}}
       // expected-remark@above {{Successors: {21}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       "tf.AssignVariableOp"(%arg1, %r0) :
       // expected-remark@above {{ID: 20}}
       // expected-remark@above {{Predecessors: {17,18}}}
       // expected-remark@above {{Successors: {21}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       tf_executor.yield
       // expected-remark@above {{ID: 21}}
       // expected-remark@above {{Predecessors: {19,20}}}
@@ -1184,7 +1184,7 @@ func @output_of_whileregion_op(
 // CHECK-LABEL: func @tf_registry_ops
 func @tf_registry_ops(
   // expected-remark@above {{ID: 8}}
-  %arg0: tensor<!tf.string>, %arg1: tensor<!tf.string>) {
+  %arg0: tensor<!tf_type.string>, %arg1: tensor<!tf_type.string>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Successors: {7}}}
@@ -1194,15 +1194,15 @@ func @tf_registry_ops(
       "tf.PrintV2"(%arg0) { output_stream = "stderr", end = "\n" }
       // expected-remark@above {{ID: 0}}
       // expected-remark@above {{Successors: {2}}}
-        : (tensor<!tf.string>) -> ()
+        : (tensor<!tf_type.string>) -> ()
       %merge_summary = "tf.MergeSummary"(%arg0, %arg1) { N = 2 }
       // expected-remark@above {{ID: 1}}
-        : (tensor<!tf.string>, tensor<!tf.string>) -> (tensor<!tf.string>)
+        : (tensor<!tf_type.string>, tensor<!tf_type.string>) -> (tensor<!tf_type.string>)
       "tf.PrintV2"(%merge_summary) { output_stream = "stderr", end = "\n" }
       // expected-remark@above {{ID: 2}}
       // expected-remark@above {{Predecessors: {0}}}
       // expected-remark@above {{Successors: {3}}}
-        : (tensor<!tf.string>) -> ()
+        : (tensor<!tf_type.string>) -> ()
       tf_executor.yield
       // expected-remark@above {{ID: 3}}
       // expected-remark@above {{Predecessors: {2}}}
@@ -1224,9 +1224,9 @@ func @tf_registry_ops(
 // CHECK-LABEL: func @arguments_with_unique_ids
 func @arguments_with_unique_ids(
   // expected-remark@above {{ID: 9}}
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>> {tf._resource_arg_unique_id = 0 : i64},
-  %arg1: tensor<*x!tf.resource<tensor<32xf32>>> {tf._resource_arg_unique_id = 0 : i64},
-  %arg2: tensor<*x!tf.resource<tensor<32xf32>>> {tf._resource_arg_unique_id = 33 : i64}) {
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>> {tf._resource_arg_unique_id = 0 : i64},
+  %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>> {tf._resource_arg_unique_id = 0 : i64},
+  %arg2: tensor<*x!tf_type.resource<tensor<32xf32>>> {tf._resource_arg_unique_id = 33 : i64}) {
   tf_executor.graph {
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Successors: {8}}}
@@ -1236,20 +1236,20 @@ func @arguments_with_unique_ids(
       %r0 = "tf.ReadVariableOp"(%arg0) :
       // expected-remark@above {{ID: 0}}
       // expected-remark@above {{Successors: {3}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       %r1 = "tf.ReadVariableOp"(%arg1) :
       // expected-remark@above {{ID: 1}}
       // expected-remark@above {{Successors: {3}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       %r2 = "tf.ReadVariableOp"(%arg2) :
       // expected-remark@above {{ID: 2}}
       // expected-remark@above {{Successors: {4}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
       "tf.AssignVariableOp"(%arg1, %r0) :
       // expected-remark@above {{ID: 3}}
       // expected-remark@above {{Predecessors: {0,1}}}
       // expected-remark@above {{Successors: {4}}}
-        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       tf_executor.yield
       // expected-remark@above {{ID: 4}}
       // expected-remark@above {{Predecessors: {2,3}}}
@@ -1268,7 +1268,7 @@ func @arguments_with_unique_ids(
 // Tests value-based side-effects for non-resource values.
 func @value_based_side_effect_non_resource(
   // expected-remark@above {{ID: 8}}
-  %arg0: tensor<!tf.string>) {
+  %arg0: tensor<!tf_type.string>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 6}}
     // expected-remark@above {{Successors: {7}}}
@@ -1278,7 +1278,7 @@ func @value_based_side_effect_non_resource(
         "tf._UnknownSideEffectingOp_"() : () -> ()
         // expected-remark@above {{ID: 0}}
         // expected-remark@above {{Successors: {1}}}
-        "tf._InternalTestNonResourceValueSideEffects_"(%arg0) : (tensor<!tf.string>) -> ()
+        "tf._InternalTestNonResourceValueSideEffects_"(%arg0) : (tensor<!tf_type.string>) -> ()
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Predecessors: {0}}}
         // expected-remark@above {{Successors: {2}}}
@@ -1305,23 +1305,23 @@ func @value_based_side_effect_non_resource(
 // `DatasetIterator` resource.
 func @dataset_op_sequence(
   // expected-remark@above {{ID: 9}}
-  %arg0: tensor<!tf.variant>) {
+  %arg0: tensor<!tf_type.variant>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 7}}
     // expected-remark@above {{Successors: {8}}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 5}}
         // expected-remark@above {{Successors: {6}}}
-        %handle, %deleter = "tf.AnonymousIteratorV2"() {_class = ["loc:@GeneratorDataset_2"], device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", output_shapes = [#tf.shape<>], output_types = [!tf.string]} : () -> (tensor<!tf.resource>, tensor<!tf.variant>)
+        %handle, %deleter = "tf.AnonymousIteratorV2"() {_class = ["loc:@GeneratorDataset_2"], device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string]} : () -> (tensor<!tf_type.resource>, tensor<!tf_type.variant>)
         // expected-remark@above {{ID: 0}}
-        "tf.MakeIterator"(%arg0, %handle) {_class = ["loc:@GeneratorDataset_2"], device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"} : (tensor<!tf.variant>, tensor<!tf.resource>) -> ()
+        "tf.MakeIterator"(%arg0, %handle) {_class = ["loc:@GeneratorDataset_2"], device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"} : (tensor<!tf_type.variant>, tensor<!tf_type.resource>) -> ()
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Successors: {2}}}
-         %0 = "tf.IteratorGetNext"(%handle) {_class = ["loc:@GeneratorDataset_2"], device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"} : (tensor<!tf.resource>) -> tensor<!tf.string>
+         %0 = "tf.IteratorGetNext"(%handle) {_class = ["loc:@GeneratorDataset_2"], device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"} : (tensor<!tf_type.resource>) -> tensor<!tf_type.string>
         // expected-remark@above {{ID: 2}}
         // expected-remark@above {{Predecessors: {1}}}
         // expected-remark@above {{Successors: {3}}}
-        "tf.DeleteIterator"(%handle, %deleter) {device = ""} : (tensor<!tf.resource>, tensor<!tf.variant>) -> ()
+        "tf.DeleteIterator"(%handle, %deleter) {device = ""} : (tensor<!tf_type.resource>, tensor<!tf_type.variant>) -> ()
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Predecessors: {2}}}
         // expected-remark@above {{Successors: {4}}}
@@ -1343,7 +1343,7 @@ func @dataset_op_sequence(
 // Tests `tf.GeneratorDataset` with surrounding ops with unknown side-effects.
 func @generator_dataset_with_unknown_side_effect_ops(
   // expected-remark@above {{ID: 8}}
-  %arg0: tensor<!tf.string>) {
+  %arg0: tensor<!tf_type.string>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 6}}
     // expected-remark@above {{Successors: {7}}}
@@ -1353,7 +1353,7 @@ func @generator_dataset_with_unknown_side_effect_ops(
         "tf._UnknownSideEffectingOp_"() : () -> ()
         // expected-remark@above {{ID: 0}}
         // expected-remark@above {{Successors: {1}}}
-        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf.shape<>], output_types = [!tf.string]} : (tensor<!tf.string>, tensor<!tf.string>, tensor<!tf.string>) -> tensor<!tf.variant>
+        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string]} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Predecessors: {0}}}
         // expected-remark@above {{Successors: {2}}}
@@ -1372,4 +1372,118 @@ func @generator_dataset_with_unknown_side_effect_ops(
   return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Predecessors: {6}}}
+}
+
+// -----
+
+// Tests that two resources allocated with identical non-empty `shared_name`
+// attributes are dependent. That means, `%handle1` and `%handle2` point to
+// the same resources and the second `InitializeTableV2` op depends on the
+// first one.
+func @resources_allocated_with_same_nonempty_shared_name(
+  // expected-remark@above {{ID: 9}}
+  %key: tensor<!tf_type.string>,
+  %value: tensor<i64>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Successors: {8}}}
+    %island = tf_executor.island {
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Successors: {6}}}
+        %handle1 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "some_name", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
+        // expected-remark@above {{ID: 0}}
+        %handle2 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "some_name", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
+        // expected-remark@above {{ID: 1}}
+        "tf.InitializeTableV2"(%handle1, %key, %value) : (tensor<!tf_type.resource>, tensor<!tf_type.string>, tensor<i64>) -> ()
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Successors: {3}}}
+        "tf.InitializeTableV2"(%handle2, %key, %value) : (tensor<!tf_type.resource>, tensor<!tf_type.string>, tensor<i64>) -> ()
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Predecessors: {2}}}
+        // expected-remark@above {{Successors: {4}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Predecessors: {3}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Predecessors: {5}}}
+  }
+  return
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Predecessors: {7}}}
+}
+
+// -----
+
+// Tests two side-effecting ops operating on resources passed as function
+// parameters. The expectation is that the ops are treated as independent (as
+// no `tf._resource_arg_unique_id` attributes are present).
+func @side_effecting_ops_with_different_resources(
+  // expected-remark@above {{ID: 7}}
+  %arg0: tensor<!tf_type.resource>,
+  %arg1: tensor<!tf_type.resource>,
+  %arg2: tensor<f32>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 5}}
+  // expected-remark@above {{Successors: {6}}}
+    %island = tf_executor.island {
+    // expected-remark@above {{ID: 3}}
+    // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.StackPushV2"(%arg0, %arg2) {device = "", swap_memory = false} : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {2}}}
+        %1 = "tf.StackPushV2"(%arg1, %arg2) {device = "", swap_memory = false} : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {0,1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Predecessors: {5}}}
+}
+
+// -----
+
+// Tests two side-effecting ops operating on resources that are allocated in the
+// same function. The expectation is that the ops are treated as independent
+// (as the involved resource allocators have the `UniqueResourceAllocation`
+// trait).
+func @side_effecting_ops_with_different_resources_and_allocations(
+  // expected-remark@above {{ID: 9}}
+  %arg0: tensor<i32>,
+  %arg1: tensor<f32>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Successors: {8}}}
+    %island = tf_executor.island {
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Successors: {6}}}
+        %stack_handle1 = "tf.StackV2"(%arg0) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf_type.resource>
+        // expected-remark@above {{ID: 0}}
+        %stack_handle2 = "tf.StackV2"(%arg0) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf_type.resource>
+        // expected-remark@above {{ID: 1}}
+        %0 = "tf.StackPushV2"(%stack_handle1, %arg1) {device = "", swap_memory = false} : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Successors: {4}}}
+        %1 = "tf.StackPushV2"(%stack_handle2, %arg1) {device = "", swap_memory = false} : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Predecessors: {2,3}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Predecessors: {5}}}
+  }
+  return
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Predecessors: {7}}}
 }

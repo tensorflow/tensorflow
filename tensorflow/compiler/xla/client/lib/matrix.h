@@ -31,7 +31,8 @@ namespace xla {
 
 // Returns an m x n matrix with 1s on the diagonal elements, zeros everywhere
 // else.
-XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m, int64 n);
+XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64_t m,
+                     int64_t n);
 
 // Returns a mask where the 'diagonal'-th diagonal is true and everything else
 // is false.
@@ -115,7 +116,7 @@ xla::XlaOp BatchDot(
 // directly.
 
 StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
-    absl::string_view einsum_config, int64 x_rank, int64 y_rank);
+    absl::string_view einsum_config, int64_t x_rank, int64_t y_rank);
 
 // If an einsum config does not contain an -> one will be added and the output
 // config will be the sorted characters with any ellipsis at the beginning.

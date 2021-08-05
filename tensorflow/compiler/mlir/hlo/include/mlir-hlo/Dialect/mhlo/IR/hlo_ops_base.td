@@ -164,4 +164,11 @@ class HLO_NativeOpTrait<string name> : NativeOpTrait<name> {
 // semantics.
 def HLO_BroadcastingElementwise : HLO_NativeOpTrait<"BroadcastingElementwise">;
 
+// Op has pairwise operand and result type matching: the number of operands
+// must be equal to the number of results and the type of ith operand must
+// match the type of ith result.
+// TODO(b/195086460) Promote this to be an mlir trait and remove it here.
+def HLO_PairwiseSameOperandAndResultType :
+  HLO_NativeOpTrait<"PairwiseSameOperandAndResultType">;
+
 #endif // HLO_OPS_BASE

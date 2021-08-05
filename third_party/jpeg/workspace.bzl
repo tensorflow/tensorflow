@@ -6,11 +6,11 @@ def repo():
     tf_http_archive(
         name = "libjpeg_turbo",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.5.tar.gz",
-            "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.5.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/libjpeg-turbo/libjpeg-turbo/archive/2.1.0.tar.gz",
+            "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.1.0.tar.gz",
         ],
-        sha256 = "b3090cd37b5a8b3e4dbd30a1311b3989a894e5d3c668f14cbc6739d77c9402b7",
-        strip_prefix = "libjpeg-turbo-2.0.5",
+        sha256 = "d6b7790927d658108dfd3bee2f0c66a2924c51ee7f9dc930f62c452f4a638c52",
+        strip_prefix = "libjpeg-turbo-2.1.0",
         build_file = "//third_party/jpeg:BUILD.bazel",
         system_build_file = "//third_party/jpeg:BUILD.system",
     )

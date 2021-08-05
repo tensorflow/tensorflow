@@ -66,7 +66,8 @@ std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef> GetResourceKey(
     shared_name = attr.getValue();
   }
 
-  return {device, container, shared_name};
+  return std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef>{
+      device, container, shared_name};
 }
 }  // namespace
 ResourceAnalyzer::ResourceAnalyzer(ModuleOp module, bool skip_session_init) {

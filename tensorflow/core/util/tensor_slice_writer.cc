@@ -111,7 +111,7 @@ Status TensorSliceWriter::Finish() {
     builder->Add(x.first, x.second);
   }
 
-  int64 file_size;
+  int64_t file_size;
   s = builder->Finish(&file_size);
   // We need to rename the file to the proper name
   if (s.ok()) {
@@ -176,11 +176,11 @@ size_t TensorSliceWriter::MaxBytesPerElement(DataType dt) {
 }
 
 template <>
-Status TensorSliceWriter::SaveData(const tstring* data, int64 num_elements,
+Status TensorSliceWriter::SaveData(const tstring* data, int64_t num_elements,
                                    SavedSlice* ss) {
   size_t size_bound = ss->ByteSize() + kTensorProtoHeaderBytes +
                       (num_elements * MaxBytesPerElement(DT_INT32));
-  for (int64 i = 0; i < num_elements; ++i) {
+  for (int64_t i = 0; i < num_elements; ++i) {
     size_bound += data[i].size();
   }
   if (size_bound > kMaxMessageBytes) {

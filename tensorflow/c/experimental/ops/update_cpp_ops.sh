@@ -60,3 +60,10 @@ ${generate} \
   Relu \
   BiasAdd \
   BiasAddGrad
+
+${generate} \
+  --category=resource_variable \
+  VarHandleOp \
+  ReadVariableOp \
+  AssignVariableOp \
+  DestroyResourceOp

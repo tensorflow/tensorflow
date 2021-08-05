@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/ir/types/dialect.h"
 
 #define DEBUG_TYPE "tf-shape-inference"
 
@@ -85,11 +86,11 @@ namespace {
 // is always more refined (i.e. has more static information) than `lhs`
 // This method will actually merge the information contained in the
 // types, it is capable of refining:
-//   tensor<!tf.variant<tensor<?x8xf32>>>
+//   tensor<!tf_type.variant<tensor<?x8xf32>>>
 // and:
-//   tensor<!tf.variant<tensor<10x?xf32>>>
+//   tensor<!tf_type.variant<tensor<10x?xf32>>>
 // into:
-//   tensor<!tf.variant<tensor<10x8xf32>>>
+//   tensor<!tf_type.variant<tensor<10x8xf32>>>
 //
 // In case of inconsistencies (rank disagreement for example), it returns `lhs`.
 Type TypeMeet(Type lhs, Type rhs) {
@@ -142,7 +143,7 @@ Type TypeMeet(Type lhs, Type rhs) {
   // Look for resource or variant element type and ensure we refine the subtype.
   // We only support a single subtype at the moment, we won't handle something
   // like:
-  //   tensor<!tf.variant<tensor<10xf32>, tensor<8xf32>>
+  //   tensor<!tf_type.variant<tensor<10xf32>, tensor<8xf32>>
   if (rhs_element_type_with_subtype &&
       rhs_element_type_with_subtype.GetSubtypes().size() == 1) {
     auto lhs_element_type_with_subtype =
@@ -160,9 +161,9 @@ Type TypeMeet(Type lhs, Type rhs) {
     } else {
       // Recurse on the subtypes in the variant/resource. Basically if the input
       // were:
-      //   tensor<!tf.variant<tensor<?x8xf32>>>
+      //   tensor<!tf_type.variant<tensor<?x8xf32>>>
       // and:
-      //   tensor<!tf.variant<tensor<10x8xf32>>>
+      //   tensor<!tf_type.variant<tensor<10x8xf32>>>
       // we'll try here to refine tensor<?x8xf32> with tensor<10x8xf32>.
       auto refined_subtype =
           TypeMeet(lhs_element_type_with_subtype.GetSubtypes().front(),
@@ -731,6 +732,10 @@ class ShapeInference {
   // module.  Returns true if a return type was changed.
   bool InferShapeForXlaHostComputeMlir(_XlaHostComputeMlirOp op);
 
+  // Infers the shape for MapDatasetOp and its associated function. Returns
+  // whether either op or function type was changed.
+  bool InferShapeForMapDataset(MapDatasetOp op);
+
   // Infers the shape of ops that create TensorList. Specifically,
   // TensorListReserveOp, EmptyTensorListOp and TensorListFromTensor ops. It
   // refines the element shape if all tensors written to the list across all
@@ -927,6 +932,59 @@ bool ShapeInference::InferShapeForXlaHostComputeMlir(
   }
 
   return changed;
+}
+
+bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op) {
+  // MapDatasetOp's relationship with its associated function is as
+  // follows: first M function params are dictated by the the set
+  // output shapes and types, the next N are the last Ninputs from MapDataset
+  // op. The MapDataset op always has N+1 inputs.
+  // TODO(jpienaar): Avoid this lookup.
+  auto module = op->getParentOfType<ModuleOp>();
+  auto f = module.lookupSymbol<FuncOp>(op.f());
+  // Skip if function is not found or more than one caller.
+  if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
+
+  int N = op.getNumOperands() - 1;
+  int M = f.getNumArguments() - N;
+  DCOMMENT_OP(op, "Inferring shape for with N = " << N << " and M = " << M);
+
+  // Initialize with function input types.
+  SmallVector<Type> input_types(f.getArgumentTypes());
+
+  // Track if changed to skip enqueueing.
+  bool changed = false;
+  auto it = input_types.begin();
+  // First set first M argument shapes & types.
+  for (int i = 0; i < M; ++i) {
+    auto shape = op.output_shapes()[i].cast<tf_type::ShapeAttr>();
+    auto type = op.output_types()[i].cast<TypeAttr>();
+    Type t;
+    if (shape.hasRank())
+      t = RankedTensorType::get(shape.getShape(), type.getValue());
+    else
+      t = UnrankedTensorType::get(type.getValue());
+    t = TypeMeet(*it, t);
+    changed = changed || (t != *it);
+    ++it;
+  }
+  // Now the remaining N from operand types.
+  for (auto t : llvm::drop_begin(op.getOperandTypes())) {
+    auto meet = TypeMeet(*it, t);
+    changed = changed || (meet != *it);
+    *it = meet;
+    ++it;
+  }
+  if (!changed) return false;
+
+  // TODO(jpienaar): Pipe the max_iteration value through.
+  FailureOr<bool> res =
+      PropagateShapeToFunctions(module, input_types, {f}, /*max_iteration=*/10);
+  if (failed(res)) {
+    LOG(ERROR) << "Propagating shapes for MapDataset failed";
+    return false;
+  }
+  return *res;
 }
 
 bool ShapeInference::InferShapeForTensorListInitOps(Operation* op) {
@@ -1235,6 +1293,9 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   if (auto host_compute_op = dyn_cast<_XlaHostComputeMlirOp>(op)) {
     return InferShapeForXlaHostComputeMlir(host_compute_op);
   }
+
+  if (auto map_dataset_op = dyn_cast<MapDatasetOp>(op))
+    return InferShapeForMapDataset(map_dataset_op);
 
   // Handle TensorList init operations by inferring shape from TensorList write
   // operations. If we are unable to refine element shape here, proceed to use

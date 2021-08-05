@@ -84,7 +84,7 @@ Status ValidateHostPortPair(const string& host_port) {
           args->SetString(name_value[0], value);
         }
       } else {
-        int64 value;
+        int64_t value;
         if (strings::safe_strto64(name_value[1], &value)) {
           args->SetInt(name_value[0], value);
         } else {
@@ -301,7 +301,7 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
       LOG(WARNING) << "Replica ID must be 0 in target: " << target;
       return "";
     }
-    int32 task = parsed.has_task ? parsed.task : -1;
+    int32_t task = parsed.has_task ? parsed.task : -1;
     auto iter = host_ports_.find(task);
     if (iter == host_ports_.end()) {
       LOG(WARNING) << "Task " << task << " was not defined in sparse job "

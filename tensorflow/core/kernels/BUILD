@@ -40,6 +40,9 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_disable_ptxas_warning_flags")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
@@ -942,6 +945,9 @@ cc_library(
         "eigen_convolution_helpers.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    defines = [
+        "EIGEN_ALTIVEC_USE_CUSTOM_PACK=0",
+    ],
 )
 
 # OpKernel libraries ----------------------------------------------------------
@@ -1063,8 +1069,21 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "constant_op",
+    copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
+    # *.cu.cc sources are compiled with gpu_copts instead of copts.
+    gpu_copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     prefix = "constant_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "//tensorflow/core/kernels/mlir_generated:constant_op",
+    ],
 )
 
 tf_kernel_library(
@@ -1159,6 +1178,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "quantize_and_dequantize_op",
+    gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "quantize_and_dequantize_op",
     deps = ARRAY_DEPS + [":cwise_op"],
 )
@@ -1247,6 +1267,7 @@ tf_kernel_library(
         "tile_functor_cpu_variant.cc",
     ],
     hdrs = ["tile_functor.h"],
+    gpu_copts = tf_disable_ptxas_warning_flags(),
     gpu_srcs = [
         "tile_functor.h",
         "tile_functor_gpu.h",
@@ -1822,8 +1843,8 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["depthwise_conv_ops_test.cc"],
     tags = tf_cuda_tests_tags() + [
+        "no_gpu",  # TODO(b/194100358): re-enable after flakiness resolved.
         "no_cuda_asan",  # TODO(b/171342266): re-enable.
-        "no_gpu",  # flaky, TODO(b/191214648)
     ],
     deps = [
         ":conv_ops",
@@ -3024,7 +3045,6 @@ cc_library(
     deps = [
         ":fixed_length_record_reader_op",
         ":identity_reader_op",
-        ":lmdb_reader_op",
         ":matching_files_op",
         ":reader_ops",
         ":restore_op",
@@ -3033,7 +3053,10 @@ cc_library(
         ":text_line_reader_op",
         ":tf_record_reader_op",
         ":whole_file_read_ops",
-    ],
+    ] + select({
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [":lmdb_reader_op"],
+    }),
 )
 
 IO_DEPS = [
@@ -3273,6 +3296,19 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "resource_ops_test",
+    size = "small",
+    srcs = ["resource_ops_test.cc"],
+    deps = [
+        ":dense_update_functor",
+        ":ops_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 MATH_DEPS = [
     ":fill_functor",
     "//tensorflow/core:core_cpu",
@@ -3381,6 +3417,10 @@ tf_kernel_library(
     copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
+    # *.cu.cc sources are compiled with gpu_copts instead of copts.
+    gpu_copts = if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     prefix = "cast_op",
     deps = MATH_DEPS + [
         "//tensorflow/core/kernels/mlir_generated:cast_op",
@@ -3456,7 +3496,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
-    deps = MATH_DEPS + if_cuda_or_rocm([
+    deps = MATH_DEPS + [
+        "//tensorflow/core/util:determinism_for_kernels",
+    ] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
         "//tensorflow/core/util:cuda_solvers",
     ]),
@@ -3874,6 +3916,7 @@ tf_kernel_library(
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
+        "//tensorflow/core/util/autotune_maps:conv_parameters",
     ]),
 )
 
@@ -3975,8 +4018,7 @@ cc_library(
     ],
 )
 
-NN_DEPS = [
-    ":conv_2d",
+NN_DEPS = if_cuda_or_rocm([":conv_2d"]) + [
     ":eigen_contraction_kernel",
     ":ops_util",
     "//tensorflow/core:framework",
@@ -4023,6 +4065,7 @@ tf_kernel_library(
         ":fill_functor",
         ":redux_functor",
         ":transpose_functor",
+        "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda([
         "//tensorflow/core/platform:stream_executor",
     ]),
@@ -4047,6 +4090,12 @@ tf_kernel_library(
     ) + if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
+    # *.cu.cc sources are compiled with gpu_copts instead of copts.
+    gpu_copts = if_mlir_generated_experimental_kernels_enabled(
+        ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED"],
+    ) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     prefix = "relu_op",
     deps = NN_DEPS + [
         "//tensorflow/core/kernels/mlir_generated:relu_op",
@@ -4063,14 +4112,32 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "softplus_op",
+    copts = if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
+    # *.cu.cc sources are compiled with gpu_copts instead of copts.
+    gpu_copts = if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     prefix = "softplus_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [
+        "//tensorflow/core/kernels/mlir_generated:softplus_op",
+    ],
 )
 
 tf_kernel_library(
     name = "softsign_op",
+    copts = if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
+    # *.cu.cc sources are compiled with gpu_copts instead of copts.
+    gpu_copts = if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     prefix = "softsign_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [
+        "//tensorflow/core/kernels/mlir_generated:softsign_op",
+    ],
 )
 
 tf_kernel_library(
@@ -4103,8 +4170,9 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "xent_op",
+    gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "xent_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
 )
 
 tf_kernel_library(
@@ -4252,6 +4320,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/util:determinism_for_kernels",
         "//third_party/eigen3",
     ],
 )
@@ -4260,6 +4329,7 @@ tf_kernel_library(
     name = "fake_quant_ops",
     srcs = ["fake_quant_ops.cc"],
     hdrs = ["fake_quant_ops_functor.h"],
+    gpu_copts = tf_disable_ptxas_warning_flags(),
     gpu_srcs = [
         "fake_quant_ops_gpu.cu.cc",
         "fake_quant_ops_functor.h",
@@ -4294,6 +4364,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util:determinism_for_kernels",
         "//third_party/eigen3",
     ],
 )
@@ -4746,6 +4817,7 @@ tf_kernel_library(
         ":fill_functor",
         "//third_party/eigen3",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/util:determinism_for_kernels",
     ],
 )
 
@@ -4762,11 +4834,13 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "sparse_xent_op",
+    gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "sparse_xent_op",
     deps = SPARSE_DEPS + [
         "//third_party/eigen3",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
     ]) + if_cuda([
@@ -6049,6 +6123,8 @@ filegroup(
         "stateless_random_ops_v2.h",
         "sparse_xent_op.h",
         "sparse_fill_empty_rows_op.h",
+        "sparse_reorder_op.h",
+        "sparse_tensor_dense_matmul_op.h",
         "string_util.h",
         "string_to_hash_bucket_op.h",
         "string_to_hash_bucket_fast_op.h",
@@ -6069,8 +6145,9 @@ filegroup(
         "//tensorflow/core/data:dataset_utils.h",
         "//tensorflow/core/data:name_utils.h",
         "//tensorflow/core/data:rewrite_utils.h",
-        "//tensorflow/core/data:root_dataset.h",
         "//tensorflow/core/data:split_utils.h",
+        "//tensorflow/core/data:root_dataset.h",
+        "//tensorflow/core/data:serialization_utils.h",
         "//tensorflow/core/data:stats_utils.h",
         "//tensorflow/core/data:unbounded_thread_pool.h",
         "//tensorflow/core/kernels/boosted_trees/quantiles:weighted_quantiles_hdrs",
@@ -6349,8 +6426,10 @@ filegroup(
         "sparse_reduce_op.cc",
         "sparse_xent_op.cc",
         "sparse_fill_empty_rows_op.cc",
+        "sparse_reorder_op.cc",
         "sparse_reshape_op.cc",
         "sparse_slice_op.cc",
+        "sparse_tensor_dense_matmul_op.cc",
         "sparse_to_dense_op.cc",
         "spectrogram.cc",
         "spectrogram_op.cc",
@@ -6416,6 +6495,7 @@ filegroup(
         "//tensorflow/core/data:name_utils.cc",
         "//tensorflow/core/data:rewrite_utils.cc",
         "//tensorflow/core/data:root_dataset.cc",
+        "//tensorflow/core/data:serialization_utils.cc",
         "//tensorflow/core/data:split_utils.cc",
         "//tensorflow/core/data:stats_utils.cc",
         "//tensorflow/core/data:unbounded_thread_pool.cc",
@@ -6604,7 +6684,6 @@ cc_library(
         "//tensorflow/core/kernels:portable_extended_ops",
     ]),
     copts = tf_copts() + tf_opts_nortti_if_lite_protos(),
-    features = ["-no_undefined"],
     linkopts = if_android(["-ldl"]),
     tags = [
         "manual",
@@ -6633,7 +6712,7 @@ cc_library(
 )
 
 build_test(
-    name = "android_tensorflow_kernels_build_test",
+    name = "portable_tensorflow_kernels_build_test",
     targets = [":portable_tensorflow_kernels"],
 )
 
@@ -6686,6 +6765,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util:image_resizer_state",
         "//third_party/eigen3",
         "@gemmlowp",

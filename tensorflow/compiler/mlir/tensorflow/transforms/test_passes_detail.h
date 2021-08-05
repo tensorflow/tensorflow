@@ -20,12 +20,12 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
-namespace tf_saved_model {
+namespace tf_test {
 
 #define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_test_passes.h.inc"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
 
-}  // namespace tf_saved_model
+}  // namespace tf_test
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TEST_PASSES_DETAIL_H_

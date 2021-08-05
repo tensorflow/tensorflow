@@ -116,6 +116,16 @@ class PrepareQuantizePass
   explicit PrepareQuantizePass(const QuantizationSpecs& quant_specs)
       : quant_specs_(quant_specs) {}
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-prepare-quantize";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Prepare TFL dialect for quantization";
+  }
+
   void runOnFunction() override;
 
  private:
@@ -420,8 +430,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
   return std::make_unique<PrepareQuantizePass>(quant_specs);
 }
 
-static PassRegistration<PrepareQuantizePass> pass(
-    "tfl-prepare-quantize", "Prepare TFL dialect for quantization");
+static PassRegistration<PrepareQuantizePass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

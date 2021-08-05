@@ -26,7 +26,7 @@ namespace data {
 // task should be removed.
 class TaskRemover {
  public:
-  explicit TaskRemover(int64 num_consumers);
+  explicit TaskRemover(int64_t num_consumers);
 
   // Attempts to remove the task. The task is removed when all consumers
   // concurrently reach a barrier in this method.
@@ -35,7 +35,7 @@ class TaskRemover {
   //  - There is a timeout waiting for other consumers to request task removal.
   //    This timeout is hardcoded into the implementation.
   //  - Another consumer requests removal at a different round.
-  bool RequestRemoval(int64 consumer_index, int64 round);
+  bool RequestRemoval(int64_t consumer_index, int64_t round);
 
  private:
   const int64 num_consumers_;

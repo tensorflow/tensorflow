@@ -48,7 +48,7 @@ Status OutputSparse(const BatchedMap<T>& per_batch_counts, int num_values,
 
   auto output_indices = indices->matrix<int64>();
   auto output_values = values->flat<T>();
-  int64 value_loc = 0;
+  int64_t value_loc = 0;
   for (int b = 0; b < num_batches; ++b) {
     const auto& per_batch_count = per_batch_counts[b];
     std::vector<std::pair<int, T>> pairs(per_batch_count.begin(),

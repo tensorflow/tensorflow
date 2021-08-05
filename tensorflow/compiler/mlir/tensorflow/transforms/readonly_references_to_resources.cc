@@ -59,6 +59,14 @@ class ConvertReadonlyReferenceVariablesToResourceVariablesPass
           ConvertReadonlyReferenceVariablesToResourceVariablesPass,
           FunctionPass> {
  public:
+  StringRef getArgument() const final {
+    return "tf-readonly-references-to-resources";
+  }
+
+  StringRef getDescription() const final {
+    return "Convert readonly reference variables to resource variables.";
+  }
+
   void runOnFunction() override;
 };
 
@@ -192,8 +200,7 @@ CreateConvertReadonlyReferenceVariablesToResourceVariablesPass() {
 
 static PassRegistration<
     ConvertReadonlyReferenceVariablesToResourceVariablesPass>
-    pass("tf-readonly-references-to-resources",
-         "Convert readonly reference variables to resource variables.");
+    pass;
 
 }  // namespace TF
 

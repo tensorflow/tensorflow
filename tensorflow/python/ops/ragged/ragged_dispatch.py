@@ -33,6 +33,7 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_array_ops
@@ -309,6 +310,7 @@ _UNARY_ELEMENTWISE_OPS = [
     math_ops.digamma,
     math_ops.erf,
     math_ops.erfc,
+    math_ops.erfcinv,
     math_ops.erfinv,
     math_ops.exp,
     math_ops.expm1,
@@ -324,18 +326,23 @@ _UNARY_ELEMENTWISE_OPS = [
     math_ops.logical_not,
     math_ops.ndtri,
     math_ops.negative,
+    math_ops.nextafter,
     math_ops.real,
     math_ops.reciprocal,
+    math_ops.reciprocal_no_nan,
     math_ops.rint,
     math_ops.round,
     math_ops.rsqrt,
     math_ops.saturate_cast,
     math_ops.sign,
+    math_ops.sigmoid,
     math_ops.sin,
     math_ops.sinh,
+    math_ops.softplus,
     math_ops.sqrt,
     math_ops.square,
     math_ops.tan,
+    math_ops.tanh,
     parsing_ops.decode_compressed,
     string_ops.string_to_number,
     string_ops.string_to_hash_bucket,
@@ -353,6 +360,10 @@ _UNARY_ELEMENTWISE_OPS = [
     string_ops.string_length,
     string_ops.string_length_v2,
     string_ops.unicode_script,
+    special_math_ops.bessel_i0,
+    special_math_ops.bessel_i0e,
+    special_math_ops.bessel_i1,
+    special_math_ops.bessel_i1e,
 ]
 
 _UNARY_LIST_ELEMENTWISE_OPS = [
@@ -531,6 +542,7 @@ _RAGGED_DISPATCH_OPS = [
     (math_ops.reduce_all, ragged_math_ops.reduce_all, ['input_tensor']),
     (nn_ops.dropout, _ragged_nn_dropout_v1, ['x']),
     (nn_ops.dropout_v2, _ragged_nn_dropout_v2, ['x']),
+    (nn_ops.softmax_v2, ragged_math_ops.softmax, ['logits']),
 ]
 
 

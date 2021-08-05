@@ -101,6 +101,16 @@ MinibenchmarkStatus ProcessRunner::Init() {
 #ifndef __ANDROID__
   return kMinibenchmarkSuccess;
 #else
+  tflite::acceleration::AndroidInfo android_info;
+  if (!tflite::acceleration::RequestAndroidInfo(&android_info).ok()) {
+    return kMinibenchmarkRequestAndroidInfoFailed;
+  }
+  if (android_info.android_sdk_version.length() < 2 ||
+      android_info.android_sdk_version < "23") {
+    // The codepaths have only been tested on 23+.
+    return kMinibenchmarkUnsupportedPlatform;
+  }
+
   // Find name of this shared object.
   std::string soname;
   Dl_info dl_info;
@@ -138,10 +148,6 @@ MinibenchmarkStatus ProcessRunner::Init() {
     return kMinibenchmarkCouldntChmodTemporaryFile;
   }
   runner_path = ShellEscape(runner_path);
-  tflite::acceleration::AndroidInfo android_info;
-  if (!tflite::acceleration::RequestAndroidInfo(&android_info).ok()) {
-    return kMinibenchmarkRequestAndroidInfoFailed;
-  }
   if (android_info.android_sdk_version >= "29") {
     // On 29+ we need to use /system/bin/linker to load the binary from the app,
     // as exec()ing writable files was blocked for security. (See comment at top

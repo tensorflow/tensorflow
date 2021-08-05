@@ -67,7 +67,7 @@ static void CalculateWeightsAndGains(const Eigen::VectorXf& g,
                                      const float l2, Eigen::VectorXf* weight,
                                      float* gain) {
   const float kEps = 1e-15;
-  const int32 logits_dim = g.size();
+  const int32_t logits_dim = g.size();
   if (logits_dim == 1) {
     // The formula for weight is -(g+l1*sgn(w))/(H+l2), for gain it is
     // (g+l1*sgn(w))^2/(h+l2).

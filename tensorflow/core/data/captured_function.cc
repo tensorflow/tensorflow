@@ -48,7 +48,7 @@ namespace {
 // cares about collecting the CPU time needed to execute a captured function.
 class SimpleStepStatsCollector : public StepStatsCollectorInterface {
  public:
-  void IncrementProcessingTime(int64 delta) {
+  void IncrementProcessingTime(int64_t delta) {
     mutex_lock l(mu_);
     processing_time_ += delta;
   }
@@ -96,7 +96,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
 
     void SetOutput(int slot, const Tensor* tensor) override {}
 
-    void SetScheduled(int64 nanos) override {}
+    void SetScheduled(int64_t nanos) override {}
 
    private:
     int64 start_time_ns_ = 0;
@@ -234,30 +234,6 @@ Status CreateFunctionLibraryDefinition(
   *result = absl::make_unique<FunctionLibraryDefinition>(
       lib_def->ReachableDefinitions(*fdef));
   return (*result)->CopyFunctionDefFrom(func_name, *lib_def);
-}
-
-Status IsFunctionStateful(const FunctionLibraryDefinition& library,
-                          const FunctionDef& function_def) {
-  if (!function_def.signature().is_stateful()) {
-    return Status::OK();
-  }
-
-  for (const NodeDef& node_def : function_def.node_def()) {
-    TF_RETURN_IF_ERROR(IsNodeStateful(library, node_def));
-  }
-  return Status::OK();
-}
-
-// Returns whether an op has been allowlisted as stateless. Uses a heuristic to
-// allowlist source dataset ops which have been marked stateful due to
-// b/65524810. Also looks up the `op_def->name` in the global
-// `AllowlistedStatefulOpRegistry`.
-bool IsOpAllowlisted(const OpDef* op_def) {
-  return (op_def->output_arg_size() == 1 &&
-          op_def->output_arg(0).type() == DT_VARIANT &&
-          (absl::EndsWith(op_def->name(), "Dataset") ||
-           absl::EndsWith(op_def->name(), "DatasetV2"))) ||
-         AllowlistedStatefulOpRegistry::Global()->Contains(op_def->name());
 }
 
 Status LookupFunction(const FunctionLibraryDefinition& lib_def,
@@ -398,52 +374,9 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 
 }  // namespace
 
-Status IsNodeStateful(const FunctionLibraryDefinition& library,
-                      const NodeDef& node) {
-  const OpDef* op_def;
-
-  // TODO(jsimsa): Fix C++ unit tests so that we do not have to ignore
-  // `LookUpOpDef` errors here.
-  if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok() ||
-      IsOpAllowlisted(op_def) || !op_def->is_stateful() ||
-      op_def->name() == "Assert") {
-    return Status::OK();
-  }
-
-  if (op_def->name() == "If") {
-    const FunctionDef* then_func =
-        library.Find(node.attr().at("then_branch").func().name());
-    const FunctionDef* else_func =
-        library.Find(node.attr().at("else_branch").func().name());
-    if (then_func != nullptr) {
-      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *then_func));
-    }
-    if (else_func != nullptr) {
-      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *else_func));
-    }
-    return Status::OK();
-  }
-
-  if (op_def->name() == "While") {
-    const FunctionDef* cond_func =
-        library.Find(node.attr().at("cond").func().name());
-    const FunctionDef* body_func =
-        library.Find(node.attr().at("body").func().name());
-    if (cond_func != nullptr) {
-      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *cond_func));
-    }
-    if (body_func != nullptr) {
-      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *body_func));
-    }
-    return Status::OK();
-  }
-
-  return errors::FailedPrecondition(op_def->name(), " is stateful.");
-}
-
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const IteratorBase* parent,
-    const std::vector<Tensor>& input_element, int64 thread_index,
+    const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator) {
   return MakeIteratorFromInputElement(ctx, parent, input_element, thread_index,
@@ -453,7 +386,7 @@ Status MakeIteratorFromInputElement(
 
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const IteratorBase* parent,
-    const std::vector<Tensor>& input_element, int64 thread_index,
+    const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator,
     const std::shared_ptr<model::Node>& node) {
@@ -475,13 +408,13 @@ Status MakeIteratorFromInputElement(
 
   // Create an iterator for the dataset that was returned by `f`.
   std::string iterator_prefix = strings::StrCat(prefix, "[", thread_index, "]");
-  if (ctx->split_provider() == nullptr) {
+  if (ctx->split_providers().empty()) {
     return returned_dataset->MakeIterator(ctx, parent, iterator_prefix,
                                           out_iterator);
   }
-  // Strip out the split provider so that it doesn't apply to sub-iterators.
+  // Strip out the split providers so that they don't apply to sub-iterators.
   IteratorContext::Params params(ctx);
-  params.split_provider = nullptr;
+  params.split_providers.clear();
   return returned_dataset->MakeIterator(IteratorContext(std::move(params)),
                                         parent, iterator_prefix, out_iterator);
 }
@@ -871,8 +804,8 @@ Status InstantiatedCapturedFunction::Run(
                            ret_types_);
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat(
-            "InstantiatedCapturedFunction::Run#id=", f_opts.step_id, "#");
+        return profiler::TraceMeEncode("InstantiatedCapturedFunction::Run",
+                                       {{"id", f_opts.step_id}});
       },
       profiler::TraceMeLevel::kInfo);
   if (node) {
@@ -934,9 +867,9 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
                               ret_types_);
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat(
-            "InstantiatedCapturedFunction::RunWithBorrowedArgs#id=",
-            f_opts.step_id, "#");
+        return profiler::TraceMeEncode(
+            "InstantiatedCapturedFunction::RunWithBorrowedArgs",
+            {{"id", f_opts.step_id}});
       },
       profiler::TraceMeLevel::kInfo);
   if (node) {
@@ -981,8 +914,9 @@ Status InstantiatedCapturedFunction::RunInstantiated(
                               ret_types_);
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat("InstantiatedCapturedFunction::RunInstantiated#id=",
-                            f_opts.step_id, "#");
+        return profiler::TraceMeEncode(
+            "InstantiatedCapturedFunction::RunInstantiated",
+            {{"id", f_opts.step_id}});
       },
       profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
@@ -1076,8 +1010,8 @@ void InstantiatedCapturedFunction::RunAsync(
 
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat(
-            "InstantiatedCapturedFunction::RunAsync#id=", f_opts.step_id, "#");
+        return profiler::TraceMeEncode("InstantiatedCapturedFunction::RunAsync",
+                                       {{"id", f_opts.step_id}});
       },
       profiler::TraceMeLevel::kInfo);
   // Stop the usage collection before calling `Run()` because `callback` may

@@ -230,7 +230,7 @@ class HashTable : public InitializableLookupTable {
       return errors::Aborted("HashTable is not initialized.");
     }
 
-    const int64 size = table_.size();
+    const int64_t size = table_.size();
 
     Tensor* keys;
     Tensor* values;
@@ -241,7 +241,7 @@ class HashTable : public InitializableLookupTable {
 
     auto keys_data = keys->flat<K>();
     auto values_data = values->flat<V>();
-    int64 i = 0;
+    int64_t i = 0;
     for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
       keys_data(i) = it->first;
       values_data(i) = it->second;
@@ -271,7 +271,7 @@ class HashTable : public InitializableLookupTable {
   Status DoInsert(const Tensor& keys, const Tensor& values) override {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
-    for (int64 i = 0; i < key_values.size(); ++i) {
+    for (int64_t i = 0; i < key_values.size(); ++i) {
       auto&& key = SubtleMustCopyIfIntegral(key_values(i));
       auto&& value = SubtleMustCopyIfIntegral(value_values(i));
       auto result = table_.try_emplace(key, value);
@@ -290,7 +290,7 @@ class HashTable : public InitializableLookupTable {
     const auto key_values = key.flat<K>();
     auto value_values = value->flat<V>();
 
-    for (int64 i = 0; i < key_values.size(); ++i) {
+    for (int64_t i = 0; i < key_values.size(); ++i) {
       value_values(i) = gtl::FindWithDefault(
           table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
     }
@@ -301,7 +301,7 @@ class HashTable : public InitializableLookupTable {
     if (!is_initialized()) {
       return 0;
     }
-    const int64 num_elements = table_.size();
+    const int64_t num_elements = table_.size();
     return num_elements * (sizeof(K) + sizeof(V));
   }
 

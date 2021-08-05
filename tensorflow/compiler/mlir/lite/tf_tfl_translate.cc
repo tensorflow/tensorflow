@@ -185,9 +185,10 @@ int main(int argc, char **argv) {
     }
     std::vector<std::string> extra_opdefs(custom_opdefs.begin(),
                                           custom_opdefs.end());
-    module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
-                                          tags, extra_opdefs, exported_names,
-                                          specs, &context, &bundle);
+    module = tensorflow::ImportSavedModel(
+        input_file_name, saved_model_version, tags, extra_opdefs,
+        exported_names, specs, /*enable_variable_lifting=*/true, &context,
+        &bundle);
   } else {
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
@@ -240,6 +241,7 @@ int main(int argc, char **argv) {
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
   pass_config.legalize_tf_while = convert_tf_while_to_tfl_while;
   pass_config.unfold_batch_matmul = unfold_batchmatmul;
+  pass_config.unfold_large_splat_constant = unfold_large_splat_constant;
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm,

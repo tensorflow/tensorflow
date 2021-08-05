@@ -49,7 +49,7 @@ inline const T& Clamp(const T& low, const T& high, const T& value) {
 
 template <typename Kernel>
 Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
-                        const int64 output_size, const int64 input_size,
+                        const int64_t output_size, const int64_t input_size,
                         const float scale, const float translate,
                         const bool antialias, Spans* spans) {
   // When sampling, we need the inverse scale and translation, to map from an
@@ -89,9 +89,9 @@ Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
       starts_vec(x) = 0;
       continue;
     }
-    int64 span_start =
+    int64_t span_start =
         std::ceil(sample_f - kernel.Radius() * kernel_scale - 0.5f);
-    int64 span_end =
+    int64_t span_end =
         std::floor(sample_f + kernel.Radius() * kernel_scale - 0.5f);
     span_start = Clamp(static_cast<int64>(0), input_size - 1, span_start);
     span_end = Clamp(static_cast<int64>(0), input_size - 1, span_end) + 1;
@@ -124,8 +124,9 @@ Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
 }
 
 Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
-                            const int64 forward_output_size,
-                            const int64 forward_input_size, Spans* grad_spans) {
+                            const int64_t forward_output_size,
+                            const int64_t forward_input_size,
+                            Spans* grad_spans) {
   struct GradComponent {
     int index;
     float weight;
@@ -188,7 +189,7 @@ Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
 // output_size = input_size * scale.
 Status ComputeSpans(OpKernelContext* context,
                     const functor::SamplingKernelType kernel_type,
-                    const int64 output_size, const int64 input_size,
+                    const int64_t output_size, const int64_t input_size,
                     const float scale, const float translate,
                     const bool antialias, Spans* spans) {
   switch (kernel_type) {
@@ -236,8 +237,8 @@ Status ComputeSpans(OpKernelContext* context,
 // the forward operation.
 Status ComputeGradSpans(OpKernelContext* context,
                         const functor::SamplingKernelType kernel_type,
-                        const int64 forward_output_size,
-                        const int64 forward_input_size, const float scale,
+                        const int64_t forward_output_size,
+                        const int64_t forward_input_size, const float scale,
                         const float translate, const bool antialias,
                         Spans* grad_spans) {
   Spans spans;
@@ -291,8 +292,8 @@ class ScaleAndTranslateOp : public OpKernel {
                 errors::InvalidArgument("output_shape_t must have two elements",
                                         output_shape_t.shape().DebugString()));
     auto output_shape_vec = output_shape_t.vec<int32>();
-    const int64 output_height = internal::SubtleMustCopy(output_shape_vec(0));
-    const int64 output_width = internal::SubtleMustCopy(output_shape_vec(1));
+    const int64_t output_height = internal::SubtleMustCopy(output_shape_vec(0));
+    const int64_t output_width = internal::SubtleMustCopy(output_shape_vec(1));
 
     OP_REQUIRES(
         context,
@@ -301,10 +302,10 @@ class ScaleAndTranslateOp : public OpKernel {
                             std::numeric_limits<int32>::max()),
         errors::InvalidArgument("input sizes must be between 0 and max int32"));
 
-    const int64 batch_size = input.dim_size(0);
-    const int64 input_height = input.dim_size(1);
-    const int64 input_width = input.dim_size(2);
-    const int64 channels = input.dim_size(3);
+    const int64_t batch_size = input.dim_size(0);
+    const int64_t input_height = input.dim_size(1);
+    const int64_t input_width = input.dim_size(2);
+    const int64_t channels = input.dim_size(3);
     OP_REQUIRES(context, output_height > 0 && output_width > 0,
                 errors::InvalidArgument("output dimensions must be positive"));
     OP_REQUIRES(
@@ -406,10 +407,10 @@ class ScaleAndTranslateGradOp : public OpKernel {
                                         original_image.shape().DebugString()));
 
     // Allocate output and initialize to zeros.
-    const int64 batch_size = input.dim_size(0);
-    const int64 channels = input.dim_size(3);
-    const int64 forward_input_height = original_image.dim_size(1);
-    const int64 forward_input_width = original_image.dim_size(2);
+    const int64_t batch_size = input.dim_size(0);
+    const int64_t channels = input.dim_size(3);
+    const int64_t forward_input_height = original_image.dim_size(1);
+    const int64_t forward_input_width = original_image.dim_size(2);
 
     OP_REQUIRES(context,
                 FastBoundsCheck(forward_input_height,
@@ -437,8 +438,8 @@ class ScaleAndTranslateGradOp : public OpKernel {
     TTypes<float, 4>::ConstTensor input_grad = input.tensor<float, 4>();
     typename TTypes<T, 4>::Tensor output_grad(output->tensor<T, 4>());
 
-    const int64 forward_output_height = input_grad.dimension(1);
-    const int64 forward_output_width = input_grad.dimension(2);
+    const int64_t forward_output_height = input_grad.dimension(1);
+    const int64_t forward_output_width = input_grad.dimension(2);
 
     functor::Spans col_spans;
     OP_REQUIRES_OK(context,
@@ -482,12 +483,12 @@ class ScaleAndTranslateGradOp : public OpKernel {
 
 template <typename T>
 void GatherColumns(int span_size, const int32* starts, const float* weights,
-                   const T* image, const int64 input_height,
-                   const int64 input_width, const int64 output_height,
-                   const int64 output_width, const int channels,
+                   const T* image, const int64_t input_height,
+                   const int64_t input_width, const int64_t output_height,
+                   const int64_t output_width, const int channels,
                    float* output) {
-  const int64 in_row_size = input_width * channels;
-  const int64 out_row_size = output_width * channels;
+  const int64_t in_row_size = input_width * channels;
+  const int64_t out_row_size = output_width * channels;
 
   for (int y = 0; y < output_height; ++y) {
     const T* input_row_start = image + in_row_size * y;
@@ -525,11 +526,11 @@ inline void AddScaledVector(const T* in_vec, int vec_len, float weight,
 
 template <typename T>
 void GatherRows(int span_size, const int32* starts, const float* weights,
-                const T* image, const int64 input_height,
-                const int64 input_width, const int64 output_height,
-                const int64 output_width, const int channels, float* output) {
-  const int64 in_row_size = input_width * channels;
-  const int64 out_row_size = output_width * channels;
+                const T* image, const int64_t input_height,
+                const int64_t input_width, const int64_t output_height,
+                const int64_t output_width, const int channels, float* output) {
+  const int64_t in_row_size = input_width * channels;
+  const int64_t out_row_size = output_width * channels;
 
   for (int y = 0; y < output_height; ++y) {
     float* out_row_data = output + out_row_size * y;
@@ -564,17 +565,18 @@ struct GatherSpans<CPUDevice, T> {
                   typename TTypes<float, 4>::Tensor intermediate_buffer,
                   typename TTypes<float, 4>::Tensor resized_images) {
     const int batch_size = images.dimension(0);
-    const int64 input_height = images.dimension(1);
-    const int64 input_width = images.dimension(2);
+    const int64_t input_height = images.dimension(1);
+    const int64_t input_width = images.dimension(2);
     const int channels = images.dimension(3);
 
-    const int64 output_height = resized_images.dimension(1);
-    const int64 output_width = resized_images.dimension(2);
+    const int64_t output_height = resized_images.dimension(1);
+    const int64_t output_width = resized_images.dimension(2);
 
-    const int64 input_pix_per_batch = input_width * input_height * channels;
-    const int64 intermediate_pix_per_batch =
+    const int64_t input_pix_per_batch = input_width * input_height * channels;
+    const int64_t intermediate_pix_per_batch =
         input_width * output_height * channels;
-    const int64 output_pix_per_batch = output_width * output_height * channels;
+    const int64_t output_pix_per_batch =
+        output_width * output_height * channels;
     float* intermediate_ptr = intermediate_buffer.data();
 
     const T* image_ptr = images.data();

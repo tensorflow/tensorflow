@@ -419,12 +419,16 @@ PassQuantizationAndGetConsumers(
       GetTensorConsumers(model, subgraph, output_tensor_idx));
 }
 
-TfLiteStatus QuantizeWeightsInt8(flatbuffers::FlatBufferBuilder* builder,
-                                 const Model* input_model,
-                                 bool use_hybrid_evaluation,
-                                 uint64_t weights_min_num_elements,
-                                 const CustomOpMap& custom_op_map,
-                                 bool use_updated_hybrid_scheme) {
+inline bool IsOpDenylisted(const flat_hash_set<BuiltinOperator>& op_denylist,
+                           const BuiltinOperator op_code) {
+  return op_denylist.find(op_code) != op_denylist.end();
+}
+
+TfLiteStatus QuantizeWeightsInt8(
+    flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
+    bool use_hybrid_evaluation, uint64_t weights_min_num_elements,
+    const CustomOpMap& custom_op_map, bool use_updated_hybrid_scheme,
+    const flat_hash_set<BuiltinOperator>& op_denylist = {}) {
   std::unique_ptr<ModelT> model;
   model.reset(input_model->UnPack());
 
@@ -478,6 +482,7 @@ TfLiteStatus QuantizeWeightsInt8(flatbuffers::FlatBufferBuilder* builder,
         // dequantization we need to add a Dequantize op.
         bool eval_hybrid =
             use_hybrid_evaluation &&
+            !IsOpDenylisted(op_denylist, GetBuiltinCode(consumer_op_code)) &&
             IsHybridEvaluationOp(consumer_op, consumer_op_code, custom_op_map,
                                  use_updated_hybrid_scheme) &&
             CheckAllOpInputsQuantized(subgraph, consumer_op, consumer_op_code,
@@ -672,15 +677,15 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              kUseUpdatedHybridSchemeDefault);
 }
 
-TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
-                             const Model* input_model,
-                             uint64_t weights_min_num_elements,
-                             const CustomOpMap& custom_op_map,
-                             bool use_updated_hybrid_scheme) {
+TfLiteStatus QuantizeWeights(
+    flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
+    uint64_t weights_min_num_elements, const CustomOpMap& custom_op_map,
+    bool use_updated_hybrid_scheme,
+    const flat_hash_set<BuiltinOperator>& op_denylist) {
   return QuantizeWeightsInt8(builder, input_model,
                              /*use_hybrid_evaluation=*/true,
                              weights_min_num_elements, custom_op_map,
-                             use_updated_hybrid_scheme);
+                             use_updated_hybrid_scheme, op_denylist);
 }
 
 }  // namespace optimize

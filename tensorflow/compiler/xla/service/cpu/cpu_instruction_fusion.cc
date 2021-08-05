@@ -69,7 +69,7 @@ bool CanBeOutputFusedIntoSomeOperand(const HloInstruction* consumer) {
 }  // namespace
 
 bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
-                                      int64 operand_index) {
+                                      int64_t operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
   VLOG(2) << "Considering for fusion: operand " << operand_index << " of "
           << consumer->ToString();

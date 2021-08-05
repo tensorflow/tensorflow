@@ -22,6 +22,9 @@ def NonOpaqueElementsAttr : ElementsAttrBase<
   CPred<"!$_self.isa<OpaqueElementsAttr>()">,
   "non-opaque constant tensor">;
 
+def CreateGatherNdOp : NativeCodeCall<
+    "$_builder.create<TF::GatherNdOp>($0.getLoc(), $0.getType(), $1, $2)">;
+
 // Convert to std constant for statically shaped, non-opaque constants.
 def : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (ConstantOp $value),
           [(AnyStaticShapeTensor $res)]>;
@@ -147,3 +150,11 @@ def : Pat<(TF_MatrixSetDiagV3Op $input, $diagonal,
             $align),
           (TF_MatrixSetDiagOp $input, $diagonal)>;
 
+//===----------------------------------------------------------------------===//
+// TensorScatterAdd op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerTensorScatterAdd: Pat<
+  (TF_TensorScatterAddOp $input, $indices, $updates),
+  (TF_TensorScatterUpdateOp $input, $indices,
+     (TF_AddOp $updates, (CreateGatherNdOp $updates, $input, $indices)))>;

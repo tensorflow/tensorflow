@@ -33,8 +33,6 @@ REGISTER(BinaryOp, CPU, "Sub", functor::sub, int32);
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER8(BinaryOp, GPU, "Sub", functor::sub, float, Eigen::half, double, int64,
           complex64, complex128, uint32, uint64);
-#else
-REGISTER2(BinaryOp, GPU, "Sub", functor::sub, uint64, uint32);
 #endif
 
 // A special GPU kernel for int32.
@@ -48,5 +46,12 @@ REGISTER_KERNEL_BUILDER(Name("Sub")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::sub<int32>>);
 #endif
+REGISTER_KERNEL_BUILDER(Name("Sub")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::sub<int32>>);
 
 }  // namespace tensorflow

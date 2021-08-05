@@ -188,6 +188,7 @@ cc_test(
     linkstatic = 1,
     deps = [
         ":serialization",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest_main",
     ],

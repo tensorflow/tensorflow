@@ -124,7 +124,7 @@ class StreamExecutor {
   // Synchronously allocates an array on the device of type T with element_count
   // elements.
   template <typename T>
-  DeviceMemory<T> AllocateArray(uint64 element_count, int64 memory_space = 0);
+  DeviceMemory<T> AllocateArray(uint64 element_count, int64_t memory_space = 0);
 
   // As AllocateArray(), but returns a ScopedDeviceMemory<T>.
   template <typename T>
@@ -260,7 +260,7 @@ class StreamExecutor {
                          uint64 size) SE_MUST_USE_RESULT;
 
   // Same as SynchronousMemcpy(DeviceMemoryBase*, ...) above.
-  port::Status SynchronousMemcpyH2D(const void *host_src, int64 size,
+  port::Status SynchronousMemcpyH2D(const void *host_src, int64_t size,
                                     DeviceMemoryBase *device_dst);
 
   // Alternative interface for memcpying from host to device that takes an
@@ -276,7 +276,7 @@ class StreamExecutor {
 
   // Same as SynchronousMemcpy(void*, ...) above.
   port::Status SynchronousMemcpyD2H(const DeviceMemoryBase &device_src,
-                                    int64 size, void *host_dst);
+                                    int64_t size, void *host_dst);
 
   // Alternative interface for memcpying from device to host that takes an
   // array slice. Checks that the destination size can accommodate the host
@@ -365,8 +365,7 @@ class StreamExecutor {
 
   // Returns the list of supported algorithms for the forward convolution
   // operation.
-  bool GetConvolveAlgorithms(bool with_winograd_nonfused,
-                             std::vector<dnn::AlgorithmDesc> *out_algorithms);
+  bool GetConvolveAlgorithms(std::vector<dnn::AlgorithmDesc> *out_algorithms);
 
   // Returns the supported execution plans for the convolution operation.
   bool GetConvolveExecutionPlans(
@@ -385,6 +384,7 @@ class StreamExecutor {
       const dnn::BatchDescriptor &bias_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
+      dnn::ActivationMode activation_mode,
       std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>
           *out_exec_plans) {
     dnn::DnnSupport *dnn_support = AsDnn();
@@ -395,7 +395,8 @@ class StreamExecutor {
       return cudnn_dnn->GetFusedConvolveExecutionPlans(
           kind, element_type, conv_input_scale, side_input_scale, stream,
           input_descriptor, filter_descriptor, bias_descriptor,
-          output_descriptor, convolution_descriptor, out_exec_plans);
+          output_descriptor, convolution_descriptor, activation_mode,
+          out_exec_plans);
 #endif  // GOOGLE_CUDA
     }
     return port::UnimplementedError("DNN library is not found.");
@@ -419,13 +420,11 @@ class StreamExecutor {
 
   // Get the list of supported algorithms for the backward convolution on data.
   bool GetConvolveBackwardDataAlgorithms(
-      bool with_winograd_nonfused,
       std::vector<dnn::AlgorithmDesc> *out_algorithms);
 
   // Get the list of supported algorithms for the backward convolution on the
   // filter.
   bool GetConvolveBackwardFilterAlgorithms(
-      bool with_winograd_nonfused,
       std::vector<dnn::AlgorithmDesc> *out_algorithms);
 
   // Get the list of supported algorithms for BLAS gemm.
@@ -583,7 +582,7 @@ class StreamExecutor {
   // Synchronously allocates size bytes on the underlying platform and returns
   // a DeviceMemoryBase representing that allocation. In the case of failure,
   // nullptr is returned.
-  DeviceMemoryBase Allocate(uint64 size, int64 memory_space);
+  DeviceMemoryBase Allocate(uint64 size, int64_t memory_space);
 
   // Gets-or-creates (creates with memoization) an RngSupport datatype that can
   // be used for random-number-generation routines on the current platform.
@@ -848,7 +847,7 @@ StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
 
 template <typename T>
 inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64 element_count,
-                                                     int64 memory_space) {
+                                                     int64_t memory_space) {
   uint64 bytes = sizeof(T) * element_count;
   return DeviceMemory<T>(Allocate(bytes, memory_space));
 }

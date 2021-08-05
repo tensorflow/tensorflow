@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 
+#include <string>
+
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -23,11 +25,51 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
+#include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace jax {
+
+// Flags, such as JIT disable and the x64 mode, are controlled by:
+// - a global flag value, e.g., associated to --jax_enable_x64
+// - possibly a thread-local value, which initially is absl::nullopt and
+//   overrides the global value if set. The thread-local state is
+//   used to implement context managers that locally override the global state.
+// TODO(phawkins): consider changing the global state to optional types to
+// catch cases where we fail to set it.
+struct GlobalJitState {
+  bool disable_jit = false;
+  bool enable_x64 = false;
+
+  // Extra context that should be included in the JIT cache key. Must be
+  // hashable and have an equality defined.
+  pybind11::object extra_jit_context = pybind11::none();
+
+  // A callback that, if present, is called when a JITted function is executed
+  // from cache.
+  absl::optional<pybind11::function> post_hook;
+};
+
+struct ThreadLocalJitState {
+  ~ThreadLocalJitState() {
+    if (extra_jit_context) {
+      // We likely do not hold the GIL, so we hand the Python object to the
+      // global reference manager to destroy.
+      pybind11::object o = std::move(*extra_jit_context);
+      xla::GlobalPyRefManager()->AddGarbage(absl::MakeSpan(&o, 1));
+      extra_jit_context = absl::nullopt;
+    }
+  }
+  absl::optional<bool> disable_jit;
+  absl::optional<bool> enable_x64;
+  absl::optional<pybind11::object> extra_jit_context;
+  absl::optional<pybind11::function> post_hook;
+};
+
+GlobalJitState& GetGlobalState();
+ThreadLocalJitState& GetLocalState();
 
 // Returns the value for jax_enable_x64 (defined by a thread-local value if
 // defined, defaulting to the value of the flag otherwise).
@@ -61,7 +103,10 @@ struct CallSignature {
   // Static keyword argument names. Interned, and sorted by keyword name.
   std::vector<pybind11::object> static_arg_names;
 
-  xla::PjRtDevice* device;
+  // For JIT, we need this in the key because computation follows the data, so
+  // we may have multiple executables depending on the devices the data is on.
+  // This is not the case for PMAP, and is set to `nullptr`.
+  xla::PjRtDevice* device = nullptr;
   bool jax_enable_x64;
 
   // Opaque additional context that should be included as part of the cache key.

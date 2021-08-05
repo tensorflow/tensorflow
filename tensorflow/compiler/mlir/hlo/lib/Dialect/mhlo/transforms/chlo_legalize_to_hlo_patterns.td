@@ -19,6 +19,7 @@ limitations under the License.
 // ambiguous/different for various backends. Avoid patterns that are actually
 // lowering to non-canonical forms.
 
+include "mlir/Dialect/Shape/IR/ShapeOps.td"
 include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"

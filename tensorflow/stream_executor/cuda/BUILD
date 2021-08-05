@@ -416,6 +416,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:tensor_float_32_utils",
+        "//tensorflow/core/util:determinism",
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:plugin_registry",
@@ -694,4 +695,10 @@ tf_cuda_cc_test(
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
     ],
+)
+
+filegroup(
+    name = "cudnn_wrappers",
+    srcs = glob(["*.inc"]),
+    visibility = ["//visibility:public"],
 )

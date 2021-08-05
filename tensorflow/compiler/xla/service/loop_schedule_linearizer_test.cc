@@ -37,7 +37,7 @@ namespace xla {
 namespace {
 
 int64 CountCopies(const HloComputation& computation) {
-  int64 count = 0;
+  int64_t count = 0;
   for (const auto& instruction : computation.instructions()) {
     if (instruction->opcode() == HloOpcode::kCopy) {
       count++;
@@ -47,7 +47,7 @@ int64 CountCopies(const HloComputation& computation) {
 }
 
 int64 CountCopies(const HloModule& module) {
-  int64 count = 0;
+  int64_t count = 0;
   for (const auto& computation : module.computations()) {
     count += CountCopies(*computation);
   }
@@ -55,7 +55,7 @@ int64 CountCopies(const HloModule& module) {
 }
 
 int64 CountControlEdges(const HloComputation& computation) {
-  int64 count = 0;
+  int64_t count = 0;
   for (const auto& instruction : computation.instructions()) {
     count += instruction->control_successors().size();
   }
@@ -63,7 +63,7 @@ int64 CountControlEdges(const HloComputation& computation) {
 }
 
 int64 CountControlEdges(const HloModule& module) {
-  int64 count = 0;
+  int64_t count = 0;
   for (const auto& computation : module.computations()) {
     count += CountControlEdges(*computation);
   }

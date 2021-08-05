@@ -42,6 +42,14 @@ namespace tf_saved_model {
 namespace {
 struct OptimizeGlobalTensorsPass
     : public PassWrapper<OptimizeGlobalTensorsPass, OperationPass<ModuleOp>> {
+  StringRef getArgument() const final {
+    return "tf-saved-model-optimize-global-tensors";
+  }
+
+  StringRef getDescription() const final {
+    return "Optimize tf_saved_model.global_tensor's.";
+  }
+
   void runOnOperation() override;
 };
 
@@ -164,9 +172,7 @@ void OptimizeGlobalTensorsPass::runOnOperation() {
 }
 
 // For "opt" to pick up this pass.
-PassRegistration<OptimizeGlobalTensorsPass> pass(
-    "tf-saved-model-optimize-global-tensors",
-    "Optimize tf_saved_model.global_tensor's.");
+PassRegistration<OptimizeGlobalTensorsPass> pass;
 
 }  // namespace
 

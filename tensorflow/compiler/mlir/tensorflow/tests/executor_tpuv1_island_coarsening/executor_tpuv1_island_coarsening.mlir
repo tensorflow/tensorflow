@@ -1,5 +1,45 @@
 // RUN: tf-opt %s -tf-executor-tpu-v1-island-coarsening -split-input-file -verify-diagnostics | FileCheck %s
 
+// Tests that funcs reachable from TPUPartitionedCallOps are not coarsened.
+// CHECK-LABEL: func @skips_tpu_partitioned_call_reachable
+func @skips_tpu_partitioned_call_reachable() {
+  tf_executor.graph {
+    %outputs_0, %control_1 = tf_executor.island wraps "tf.TPUOrdinalSelector"() {device = ""} : () -> tensor<?xi32>
+    %control_2 = tf_executor.island wraps "tf.TPUPartitionedCall"(%outputs_0) {autotuner_thresh = 0 : i64, device = "", f = @tpu_partitioned_call_reachable} : (tensor<?xi32>) -> ()
+    tf_executor.fetch
+  }
+  return
+}
+
+// Ensures that these islands are not coarsened (due to caller above).
+// CHECK-LABEL: func @tpu_partitioned_call_reachable
+func @tpu_partitioned_call_reachable() {
+// CHECK-COUNT-4: island
+// CHECK-NOT: island
+  tf_executor.graph {
+    %outputs, %control = tf_executor.island wraps "tf.Const"() {_tpu_replicate = "cluster", value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_tpu_replicate = "cluster", value = dense<2> : tensor<i32>} : () -> tensor<i32>
+    %outputs_1, %control_2 = tf_executor.island wraps "tf.AddV2"(%outputs, %outputs_0) {_tpu_replicate = "cluster"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %control_3 = tf_executor.island wraps "tf.OpA"() {_tpu_replicate = "cluster", f = @tpu_partitioned_call_indirectly_reachable} : () -> ()
+    tf_executor.fetch
+  }
+  return
+}
+
+// Ensures that these islands are not coarsened (due to indirect caller above).
+// CHECK-LABEL: func @tpu_partitioned_call_indirectly_reachable
+func @tpu_partitioned_call_indirectly_reachable() {
+// CHECK-COUNT-3: island
+// CHECK-NOT: island
+  tf_executor.graph {
+    %outputs, %control = tf_executor.island wraps "tf.Const"() {_tpu_replicate = "cluster", value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_tpu_replicate = "cluster", value = dense<2> : tensor<i32>} : () -> tensor<i32>
+    %outputs_1, %control_2 = tf_executor.island wraps "tf.AddV2"(%outputs, %outputs_0) {_tpu_replicate = "cluster"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    tf_executor.fetch
+  }
+  return
+}
+
 // Test that islands without the attribute are not merged.
 // CHECK-LABEL: func @control_input
 func @control_input(%arg0 : tensor<i1>) -> tensor<f32> {

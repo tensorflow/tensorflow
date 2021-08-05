@@ -97,7 +97,7 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
   }
 
   // Compute the product of the block_shape values.
-  int64 block_shape_product = 1;
+  int64_t block_shape_product = 1;
   for (int block_dim = 0; block_dim < block_dims; ++block_dim) {
     block_shape_product *= block_shape[block_dim];
   }
@@ -134,9 +134,9 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
   external_output_shape.AddDim(orig_input_tensor.dim_size(0) *
                                block_shape_product);
 
-  int64 input_batch_size = orig_input_tensor.dim_size(0);
+  int64_t input_batch_size = orig_input_tensor.dim_size(0);
   for (int block_dim = 0; block_dim < removed_prefix_block_dims; ++block_dim) {
-    const int64 size = orig_input_tensor.dim_size(block_dim + 1);
+    const int64_t size = orig_input_tensor.dim_size(block_dim + 1);
     input_batch_size *= size;
     external_output_shape.AddDim(size);
   }
@@ -145,14 +145,14 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
 
   for (int block_dim = removed_prefix_block_dims;
        block_dim < block_dims - removed_suffix_block_dims; ++block_dim) {
-    const int64 pad_start = paddings[2 * block_dim],
-                pad_end = paddings[2 * block_dim + 1];
+    const int64_t pad_start = paddings[2 * block_dim],
+                  pad_end = paddings[2 * block_dim + 1];
     if (pad_start < 0 || pad_end < 0) {
       return errors::InvalidArgument("Paddings must be non-negative");
     }
-    const int64 input_size = orig_input_tensor.dim_size(block_dim + 1);
-    const int64 block_shape_value = block_shape[block_dim];
-    const int64 padded_size = input_size + pad_start + pad_end;
+    const int64_t input_size = orig_input_tensor.dim_size(block_dim + 1);
+    const int64_t block_shape_value = block_shape[block_dim];
+    const int64_t padded_size = input_size + pad_start + pad_end;
     if (padded_size % block_shape_value != 0) {
       return errors::InvalidArgument("padded_shape[", block_dim,
                                      "]=", padded_size,
@@ -160,15 +160,15 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
                                      block_dim, "]=", block_shape_value);
     }
     internal_input_shape.AddDim(input_size);
-    const int64 output_size = padded_size / block_shape_value;
+    const int64_t output_size = padded_size / block_shape_value;
     internal_output_shape.AddDim(output_size);
     external_output_shape.AddDim(output_size);
   }
 
-  int64 depth = 1;
+  int64_t depth = 1;
   for (int dim = block_dims - removed_suffix_block_dims + 1; dim < input_dims;
        ++dim) {
-    const int64 size = orig_input_tensor.dim_size(dim);
+    const int64_t size = orig_input_tensor.dim_size(dim);
     external_output_shape.AddDim(size);
     depth *= size;
   }

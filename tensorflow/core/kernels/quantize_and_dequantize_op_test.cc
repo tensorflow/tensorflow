@@ -100,7 +100,7 @@ template <typename T>
 std::vector<T> ScalePerSliceAlongAxis(std::vector<int64> dims, int axis,
                                       const std::vector<T>& data) {
   uint32 seed = 123;
-  int64 out_size = 1;
+  int64_t out_size = 1;
   for (int dim : dims) {
     out_size *= dim;
   }

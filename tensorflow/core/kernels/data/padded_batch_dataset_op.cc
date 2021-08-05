@@ -49,7 +49,7 @@ constexpr char kExhausted[] = "exhausted";
 
 class PaddedBatchDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 batch_size, bool drop_remainder,
+  Dataset(OpKernelContext* ctx, int64_t batch_size, bool drop_remainder,
           bool parallel_copy, std::vector<PartialTensorShape> padded_shapes,
           std::vector<Tensor> padding_values, const DatasetBase* input,
           int op_version)
@@ -114,7 +114,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+    int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -283,7 +283,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
       static bool in_experiment =
           GetExperiments().contains("parallelize_batch_copy");
       const size_t num_tuple_components = batch_elements[0].size();
-      const int64 num_batch_elements = batch_elements.size();
+      const int64_t num_batch_elements = batch_elements.size();
       for (size_t component_index = 0; component_index < num_tuple_components;
            ++component_index) {
         // 1. Determine the shape of the padded tensor.
@@ -299,7 +299,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
           }
         }
 
-        for (int64 i = 0; i < num_batch_elements; ++i) {
+        for (int64_t i = 0; i < num_batch_elements; ++i) {
           const TensorShape& element_shape =
               batch_elements[i][component_index].shape();
           // TODO(mrry): Perform this check in the shape function if
@@ -370,9 +370,9 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
           mutex status_mu;
           const auto num_threads = ctx->runner_threadpool_size();
           const auto slice_size = num_batch_elements / num_threads;
-          int64 offset = 0;
+          int64_t offset = 0;
           for (size_t i = 0; i < num_threads; ++i) {
-            int64 length = slice_size;
+            int64_t length = slice_size;
             // When the number of threads does not divide the number of elements
             // evenly, the size of some slices is incremented to guarantee their
             // sizes add up to the total number of elements.
@@ -426,7 +426,7 @@ PaddedBatchDatasetOp::PaddedBatchDatasetOp(OpKernelConstruction* ctx)
 
 void PaddedBatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                        DatasetBase** output) {
-  int64 batch_size;
+  int64_t batch_size;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kBatchSize, &batch_size));
   OP_REQUIRES(ctx, batch_size > 0,
               errors::InvalidArgument("Batch size must be greater than zero."));

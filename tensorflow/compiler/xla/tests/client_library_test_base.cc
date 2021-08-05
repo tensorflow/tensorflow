@@ -218,8 +218,8 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
   // This is a recursive function. It's an std::function instead of a lambda
   // because it needs to capture itself. The index is the index of the argument
   // to try all layouts for.
-  std::function<Status(int64)> choose;
-  choose = [&, this](int64 index) -> Status {
+  std::function<Status(int64_t)> choose;
+  choose = [&, this](int64_t index) -> Status {
     if (index < arguments.size()) {
       // Try out all layouts for the operand.
       TF_ASSIGN_OR_RETURN(auto literal,
@@ -568,8 +568,8 @@ XlaComputation ClientLibraryTestBase::CreateScalarReluSensitivity() {
 std::unique_ptr<Array2D<float>> ClientLibraryTestBase::CreatePatternedMatrix(
     int rows, int cols, float offset) {
   auto array = absl::make_unique<Array2D<float>>(rows, cols);
-  for (int64 row = 0; row < rows; ++row) {
-    for (int64 col = 0; col < cols; ++col) {
+  for (int64_t row = 0; row < rows; ++row) {
+    for (int64_t col = 0; col < cols; ++col) {
       (*array)(row, col) = col + (row * 1000.0f) + offset;
     }
   }
@@ -583,8 +583,8 @@ ClientLibraryTestBase::CreatePatternedMatrixWithZeroPadding(int rows, int cols,
   CHECK_GE(rows_padded, rows);
   CHECK_GE(cols_padded, cols);
   auto array = absl::make_unique<Array2D<float>>(rows_padded, cols_padded, 0.0);
-  for (int64 row = 0; row < rows; ++row) {
-    for (int64 col = 0; col < cols; ++col) {
+  for (int64_t row = 0; row < rows; ++row) {
+    for (int64_t col = 0; col < cols; ++col) {
       (*array)(row, col) = col + (row * 1000.0f);
     }
   }
@@ -606,11 +606,9 @@ XlaOp ClientLibraryTestBase::CreateConstantFromLiteral(const Literal& literal,
 }
 
 StatusOr<std::unique_ptr<GlobalData>>
-ClientLibraryTestBase::CreateParameterAndTransferLiteral(int64 parameter_number,
-                                                         const Literal& literal,
-                                                         const string& name,
-                                                         XlaBuilder* builder,
-                                                         XlaOp* data_handle) {
+ClientLibraryTestBase::CreateParameterAndTransferLiteral(
+    int64_t parameter_number, const Literal& literal, const string& name,
+    XlaBuilder* builder, XlaOp* data_handle) {
   return CreateParameterAndTransferLiteral(parameter_number, literal, name,
                                            nullptr, builder, data_handle);
 }
@@ -639,7 +637,7 @@ Literal ClientLibraryTestBase::MaybeConvertLiteralToBfloat16(
 
 StatusOr<std::unique_ptr<GlobalData>>
 ClientLibraryTestBase::CreateParameterAndTransferLiteral(
-    int64 parameter_number, const Literal& literal, const string& name,
+    int64_t parameter_number, const Literal& literal, const string& name,
     const DeviceHandle* device_handle, XlaBuilder* builder,
     XlaOp* data_handle) {
   Literal param_literal = MaybeConvertLiteralToBfloat16(literal);

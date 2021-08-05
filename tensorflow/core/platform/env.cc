@@ -424,8 +424,8 @@ bool Env::LocalTempFilename(string* filename) {
 }
 
 bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
-  int32 tid = GetCurrentThreadId();
-  int32 pid = GetProcessId();
+  int32_t tid = GetCurrentThreadId();
+  int32_t pid = GetProcessId();
   long long now_microsec = NowMicros();  // NOLINT
 
   *prefix += strings::Printf("%s-%x-%d-%llx", port::Hostname().c_str(), tid,

@@ -63,7 +63,7 @@ class XlaPadOp : public XlaOpKernel {
                     "rank (",
                     padding_interior.size(), " vs. ", rank, ")"));
 
-    auto non_negative = [](int64 x) { return x >= 0; };
+    auto non_negative = [](int64_t x) { return x >= 0; };
     OP_REQUIRES(
         context, absl::c_all_of(padding_interior, non_negative),
         errors::InvalidArgument("padding_interior must be non-negative, got [",

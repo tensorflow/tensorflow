@@ -121,7 +121,7 @@ ComputeArgAndRetvalShardings(const Graph& graph) {
 
 Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
                     XlaCompilationDevice* device, FunctionLibraryRuntime* flib,
-                    int64 step_id) {
+                    int64_t step_id) {
   // Resource cleanup is a bit messy. XlaContext is a ref-countd resource; the
   // resource manager takes ownership via Create, and unrefs via Cleanup.  We
   // explicitly add a reference to ensure the refcount at entry is maintained at
@@ -312,7 +312,7 @@ Status BuildComputation(
             use_tuple_arg ? xla::ShapeIndex({update.input_index})
                           : xla::ShapeIndex{};
         int xla_param_num = argument_to_xla_arg[param_num];
-        int64 output_index_num = elems.size();
+        int64_t output_index_num = elems.size();
         xla::ShapeIndex output_index = xla::ShapeIndex({output_index_num});
         VLOG(3) << "Storing alias: " << output_index.ToString() << ": ("
                 << xla_param_num << ", " << param_index.ToString() << ")";
@@ -379,7 +379,7 @@ Status BuildComputation(
       if (elem_shapes[i].IsTuple()) {
         const std::vector<xla::HloSharding> sub_sharding_elems =
             sub_sharding.tuple_elements();
-        const int64 sub_sharding_elems_size = sub_sharding_elems.size();
+        const int64_t sub_sharding_elems_size = sub_sharding_elems.size();
         TF_RET_CHECK(sub_sharding_elems_size ==
                      xla::ShapeUtil::GetLeafCount(elem_shapes[i]));
         for (const auto& sub_sharding_elem : sub_sharding_elems) {
@@ -816,7 +816,7 @@ Status XlaCompiler::CompileFunction(
         /*uses_uninitialized_resource_args=*/AnyUninitializedResourceArg(args));
   }
   if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
-    VLOG(1) << "Using MLIR bridge";
+    VLOG(1) << "Using MLIR bridge to compile the function";
     GraphDebugInfo debug_info;
 
     std::vector<std::string> valid_control_rets =
@@ -828,6 +828,7 @@ Status XlaCompiler::CompileFunction(
         options.use_tuple_arg, /*analyse_graph=*/false, *options_.flib_def,
         debug_info, options_.shape_representation_fn, result));
   } else {
+    VLOG(1) << "Using the old bridge to compile the function";
     TF_RETURN_IF_ERROR(
         CompileGraph(options, function_id, std::move(graph), args, result));
   }
@@ -1064,7 +1065,7 @@ Status XlaCompiler::BuildArguments(
     if (is_entry_computation) {
       xla::OpSharding tuple_sharding;
       tuple_sharding.set_type(xla::OpSharding::TUPLE);
-      for (int64 parameter : *input_to_args) {
+      for (int64_t parameter : *input_to_args) {
         auto it = arg_shardings.find(parameter);
         *tuple_sharding.add_tuple_shardings() =
             it == arg_shardings.end() ? xla::sharding_builder::AssignDevice(0)

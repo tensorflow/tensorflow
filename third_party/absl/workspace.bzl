@@ -6,8 +6,10 @@ def repo():
     """Imports absl."""
 
     # Attention: tools parse and update these lines.
+    # LINT.IfChange
     ABSL_COMMIT = "997aaf3a28308eba1b9156aa35ab7bca9688e9f6"
     ABSL_SHA256 = "35f22ef5cb286f09954b7cc4c85b5a3f6221c9d4df6b8c4a1e9d399555b366ee"
+    # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/abseil-cpp.cmake)
 
     tf_http_archive(
         name = "com_google_absl",

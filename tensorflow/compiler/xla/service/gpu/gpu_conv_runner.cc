@@ -52,7 +52,7 @@ class ScratchBufAllocator : public se::ScratchAllocator {
   int64 GetMemoryLimitInBytes() override { return scratch_.size(); }
 
   se::port::StatusOr<DeviceMemory<uint8>> AllocateBytes(
-      int64 byte_size) override {
+      int64_t byte_size) override {
     if (allocated_) {
       return se::port::InternalError(
           "Can't allocate twice from a ScratchBufAllocator.");
@@ -550,6 +550,9 @@ Status RunGpuConv(const gpu::GpuConvConfig& config,
   switch (input_primitive_type) {
     case F16:
       return RunGpuConvImpl<Eigen::half, Eigen::half, Eigen::half>(
+          params, scratch_allocator, stream, options);
+    case BF16:
+      return RunGpuConvImpl<Eigen::bfloat16, Eigen::bfloat16, Eigen::bfloat16>(
           params, scratch_allocator, stream, options);
     case F32:
       return RunGpuConvImpl<float, float, float>(params, scratch_allocator,

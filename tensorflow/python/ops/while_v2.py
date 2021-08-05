@@ -1239,9 +1239,12 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     """
     assert tensor.dtype == dtypes.resource
 
+    forward_graph_input_names = [t.name for t in self._forward_graph.inputs]
+    forward_graph_name_to_opdef = {
+        op.name: op.node_def for op in self._forward_graph.get_operations()}
     index = util.resource_input_index(
-        tensor.name, [t.name for t in self._forward_graph.inputs],
-        {op.name: op.node_def for op in self._forward_graph.get_operations()},
+        tensor.name, forward_graph_input_names,
+        forward_graph_name_to_opdef,
         self._forward_graph._functions)
 
     input_placeholder = self._forward_graph.inputs[index]
@@ -1249,9 +1252,17 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
 
     assert input_placeholder.dtype == dtypes.resource
     assert tensor_in_outer_graph.dtype == dtypes.resource
-    # This must be a loop invariant.
-    assert input_placeholder is self._forward_graph.outputs[index], (
-        "Resource tensors must be loop invariants %s." % tensor_in_outer_graph)
+    # This must be a loop invariant. However, infrastructure
+    # (e.g. tf.vectorized_map) may insert identity nodes, function calls, conds,
+    # etc. which take and return the resource tensor unmodified; this means that
+    # the Python objects may differ.
+    if index != util.resource_input_index(
+        self._forward_graph.outputs[index].name, forward_graph_input_names,
+        forward_graph_name_to_opdef,
+        self._forward_graph._functions):
+      raise AssertionError(
+          "Resource tensors must be loop invariants %s."
+          % tensor_in_outer_graph)
 
     self._indirect_captures[ops.tensor_id(tensor)] = self.capture(
         tensor_in_outer_graph)

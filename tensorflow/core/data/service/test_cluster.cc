@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -29,20 +30,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-
 namespace {
-const char kProtocol[] = "grpc+local";
-
-// Parse the address from a string in the form "<protocol>://<address>".
-Status AddressFromTarget(absl::string_view target, std::string* address) {
-  std::vector<std::string> parts = absl::StrSplit(target, "://");
-  if (parts.size() != 2) {
-    return errors::InvalidArgument("target ", target, " split into ",
-                                   parts.size(), " parts, not 2");
-  }
-  *address = parts[1];
-  return Status::OK();
-}
+const char kProtocol[] = "grpc";
 }  // namespace
 
 TestCluster::TestCluster(int num_workers) : num_workers_(num_workers) {}
@@ -54,7 +43,6 @@ Status TestCluster::Initialize() {
   }
   initialized_ = true;
   experimental::DispatcherConfig config;
-  config.set_port(0);
   config.set_protocol(kProtocol);
   TF_RETURN_IF_ERROR(NewDispatchServer(config, dispatcher_));
   TF_RETURN_IF_ERROR(dispatcher_->Start());
@@ -70,7 +58,6 @@ Status TestCluster::Initialize() {
 Status TestCluster::AddWorker() {
   std::unique_ptr<WorkerGrpcDataServer> worker;
   experimental::WorkerConfig config;
-  config.set_port(0);
   config.set_protocol(kProtocol);
   config.set_dispatcher_address(dispatcher_address_);
   config.set_worker_address("localhost:%port%");

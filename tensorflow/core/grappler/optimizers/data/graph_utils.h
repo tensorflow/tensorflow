@@ -76,7 +76,7 @@ NodeDef* AddScalarConstNode(float v, MutableGraphView* graph);
 template <>
 NodeDef* AddScalarConstNode(int v, MutableGraphView* graph);
 template <>
-NodeDef* AddScalarConstNode(int64 v, MutableGraphView* graph);
+NodeDef* AddScalarConstNode(int64_t v, MutableGraphView* graph);
 template <>
 NodeDef* AddScalarConstNode(StringPiece v, MutableGraphView* graph);
 
@@ -126,7 +126,7 @@ NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph);
 
 // Gets the ith input to a node in the graph.
 NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph,
-                      int64 i);
+                      int64_t i);
 
 // Gets the attr corresponding to a dataset node's output types, if it exists.
 Status GetDatasetOutputTypesAttr(const NodeDef& node,

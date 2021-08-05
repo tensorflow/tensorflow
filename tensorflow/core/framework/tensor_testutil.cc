@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace test {
 
-static ::testing::AssertionResult IsSameType(const Tensor& x, const Tensor& y) {
+::testing::AssertionResult IsSameType(const Tensor& x, const Tensor& y) {
   if (x.dtype() != y.dtype()) {
     return ::testing::AssertionFailure()
            << "Tensors have different dtypes (" << x.dtype() << " vs "
@@ -32,8 +32,7 @@ static ::testing::AssertionResult IsSameType(const Tensor& x, const Tensor& y) {
   return ::testing::AssertionSuccess();
 }
 
-static ::testing::AssertionResult IsSameShape(const Tensor& x,
-                                              const Tensor& y) {
+::testing::AssertionResult IsSameShape(const Tensor& x, const Tensor& y) {
   if (!x.IsSameSize(y)) {
     return ::testing::AssertionFailure()
            << "Tensors have different shapes (" << x.shape().DebugString()

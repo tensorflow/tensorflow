@@ -33,8 +33,8 @@ struct UpdateVariableAndFill_Philox<CPUDevice, Distribution> {
                   Distribution dist, UpdateVariableAndFill_Philox_Arg* arg,
                   typename Distribution::ResultElementType* output_data)
       TF_UNLOCK_FUNCTION() {
-    int64 output_size = arg->output_size;
-    int64 alg_tag_skip = arg->alg_tag_skip;
+    int64_t output_size = arg->output_size;
+    int64_t alg_tag_skip = arg->alg_tag_skip;
     ScopedUnlockUnrefVar* state_var_guard = arg->not_used;
     Tensor* state_tensor = arg->state_tensor;
 
@@ -66,7 +66,7 @@ Status CheckState(const Tensor& state) {
   return Status::OK();
 }
 
-Status CheckPhiloxState(const Tensor& state, int64 alg_tag_skip = 0) {
+Status CheckPhiloxState(const Tensor& state, int64_t alg_tag_skip = 0) {
   static_assert(std::is_same<StateElementType, int64>::value,
                 "StateElementType must be int64");
   static_assert(std::is_same<PhiloxRandom::ResultElementType, uint32>::value,
@@ -84,7 +84,7 @@ Status CheckPhiloxState(const Tensor& state, int64 alg_tag_skip = 0) {
 template <typename Device, typename Distribution>
 Status UpdateVariableAndFill(
     OpKernelContext* ctx, Distribution dist, int state_input_idx,
-    bool read_alg_from_state, Algorithm alg, int64 output_size,
+    bool read_alg_from_state, Algorithm alg, int64_t output_size,
     typename Distribution::ResultElementType* output_data) {
   Var* var = nullptr;
   TF_RETURN_IF_ERROR(
@@ -97,7 +97,7 @@ Status UpdateVariableAndFill(
   Tensor* var_tensor = var->tensor();
   TF_RETURN_IF_ERROR(CheckState(*var_tensor));
   auto var_tensor_flat = var_tensor->flat<StateElementType>();
-  int64 alg_tag_skip = 0;
+  int64_t alg_tag_skip = 0;
   if (read_alg_from_state) {
     alg_tag_skip = 1;
     if (var_tensor_flat.size() < 1) {
@@ -332,7 +332,7 @@ class NonDeterministicIntsOp : public OpKernel {
       case DT_UINT64: {
         auto output_flat = output->flat<T>();
         auto data = output_flat.data();
-        for (int64 i = 0; i < output_flat.size(); ++i) {
+        for (int64_t i = 0; i < output_flat.size(); ++i) {
           data[i] = static_cast<T>(random::New64());
         }
         break;

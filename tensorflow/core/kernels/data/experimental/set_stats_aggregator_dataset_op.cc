@@ -36,11 +36,11 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
       : wrapped_(stats_aggregator), tag_(tag), prefix_(prefix) {}
 
   void AddToHistogram(const string& name, gtl::ArraySlice<double> values,
-                      int64 steps) override {
+                      int64_t steps) override {
     wrapped_->AddToHistogram(TaggedName(name), values, steps);
   }
 
-  void AddScalar(const string& name, float value, int64 steps) override {
+  void AddScalar(const string& name, float value, int64_t steps) override {
     wrapped_->AddScalar(TaggedName(name), value, steps);
   }
 
@@ -49,7 +49,7 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
   }
 
   void IncrementCounter(const string& name, const string& label,
-                        int64 val) override {
+                        int64_t val) override {
     if (!prefix_.empty()) {
       wrapped_->IncrementCounter(
           strings::StrCat(prefix_, "/", TaggedName(name)), label, val);

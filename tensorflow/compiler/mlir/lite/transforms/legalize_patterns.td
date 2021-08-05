@@ -226,6 +226,9 @@ def LegalizeTranspose : Pat<(TF_TransposeOp $arg, $perm),
 def LegalizeWhere : Pat<(TF_WhereOp $arg), (TFL_WhereOp $arg)>;
 def LegalizeZerosLike : Pat<(TF_ZerosLikeOp $arg), (TFL_ZerosLikeOp $arg)>;
 
+def LegalizeBroadcastArgs : Pat<(TF_BroadcastArgsOp $s0, $s1),
+                                (TFL_BroadcastArgsOp $s0, $s1)>;
+
 //===----------------------------------------------------------------------===//
 // Binary ops patterns.
 //===----------------------------------------------------------------------===//

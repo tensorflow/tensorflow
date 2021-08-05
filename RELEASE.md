@@ -1,21 +1,167 @@
+# Release 2.7.0
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+## Breaking Changes
+
+* `tf.keras`:
+  * The methods `Model.fit()`, `Model.predict()`, and `Model.evaluate()` will
+    no longer uprank input data of shape `(batch_size,)`
+    to become `(batch_size, 1)`. This enables `Model` subclasses to process
+    scalar data in their `train_step()`/`test_step()`/`predict_step()` methods.
+    Note that this change may break certain subclassed models.
+    You can revert back to the previous behavior by adding upranking yourself
+    in the `train_step()`/`test_step()`/`predict_step()` methods, e.g.
+    `if x.shape.rank == 1: x = tf.expand_dims(x, axis=-1)`.
+    Functional models as well as Sequential models built with an explicit
+    input shape are not affected.
+  * The methods `Model.to_yaml()` and `keras.models.model_from_yaml` have been
+    replaced to raise a `RuntimeError` as they can be abused to cause arbitrary
+    code execution. It is recommended to use JSON serialization instead of YAML,
+    or, a better alternative, serialize to H5.
+
+* `tf.lite`:
+  * Rename fields `SignatureDef` table in schema to maximize the parity with
+    TF SavedModel's Signature concept.
+
+* TF Core:
+    *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
+        Previously, when called within `name_scope("")` or `name_scope(None)`
+        contexts, it returned None; now it returns the empty string.
+    *   `tensorflow/core/ir/` contains a new MLIR-based Graph dialect that is
+        isomorphic to GraphDef and will be used to replace GraphDef-based (e.g.,
+        Grappler) optimizations.
+    *   Deprecated and removed attrs() function in shape inference. All
+        attributes should be queried by name now (rather than range returned)
+        to enable changing the underlying storage there.
+
+## Known Caveats
+
+*<CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+*<ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+*<KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+## Major Features and Improvements
+
+* Improvements to the TensorFlow debugging experience:
+  * Previously, TensorFlow error stack traces involved many internal frames,
+    which could be challenging to read through,
+    while not being actionable for end users.
+    As of TF 2.7, TensorFlow filters internal frames in most errors that it
+    raises, to keep stack traces short, readable, and focused on what's
+    actionable for end users (their own code).
+
+    This behavior can be disabled by calling
+    `tf.debugging.disable_traceback_filtering()`, and can be re-enabled via
+    `tf.debugging.enable_traceback_filtering()`. If you are debugging a
+    TensorFlow-internal issue (e.g. to prepare a TensorFlow PR), make sure
+    to disable traceback filtering. You can check whether this feature is
+    currently enabled by calling
+    `tf.debugging.is_traceback_filtering_enabled()`.
+
+    Note that this feature is only available with Python 3.7 or higher.
+
+  * Improve the informativeness of error messages raised by Keras
+    `Layer.__call__()`, by adding the full list of argument values passed to the
+    layer in every exception.
+
+*   TF1 -> TF2 Migration
+    * Introduced the `tf.compat.v1.keras.utils.track_tf1_style_variables`
+      decorator, which enables using large classes of tf1-style variable_scope,
+      `get_variable`, and `compat.v1.layer`-based components from within TF2
+      models running with TF2 behavior enabled.
+
+*  `tf.data`:
+    *   tf.data service now supports auto-sharding. Users specify the sharding
+        policy with `tf.data.experimental.service.ShardingPolicy` enum. It can
+        be one of OFF (equivalent to today's `"parallel_epochs"` mode), DYNAMIC
+        (equivalent to today's `"distributed_epoch"` mode), or one of the static
+        sharding policies: FILE, DATA, FILE_OR_DATA, or HINT (corresponding to
+        values of `tf.data.experimental.AutoShardPolicy`).
+
+        Static sharding (auto-sharding) requires the number of tf.data service
+        workers be fixed. Users need to specify the worker addresses in
+        `tensorflow.data.experimental.DispatcherConfig`.
+*  Keras:
+  *  `tf.keras.layers.Conv` now includes a public `convolution_op` method.
+      This method can be used to simplify the implementation of Conv subclasses.
+      There are two primary ways to use this new method.  The first is to use the method directly in your own `call` method:
+      ```
+        class StandardizedConv2D(tf.keras.layers.Conv2D):
+          def call(self, inputs):
+            mean, var = tf.nn.moments(self.kernel, axes=[0, 1, 2], keepdims=True)
+            return self.convolution_op(inputs, (self.kernel - mean) / tf.sqrt(var + 1e-10))
+      ```
+      Alternatively, you can override `convolution_op`:
+      ```
+        class StandardizedConv2D(tf.keras.Layer):
+          def convolution_op(self, inputs, kernel):
+            mean, var = tf.nn.moments(kernel, axes=[0, 1, 2], keepdims=True)
+            # Author code uses std + 1e-5
+            return super().convolution_op(inputs, (kernel - mean) / tf.sqrt(var + 1e-10))
+      ```
+
+## Bug Fixes and Other Changes
+
+*<SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+*<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+*<NOTES SHOULD BE GROUPED PER AREA>
+*   TF Core:
+    * Random number generation (RNG) system
+        *   Added argument `alg` to `tf.random.stateless_*` functions to explicitly select the RNG algorithm.
+        *   Added `tf.nn.experimental.stateless_dropout`, a stateless version of `tf.nn.dropout`.
+        *   `tf.random.Generator` now can be created inside the scope of `tf.distribute.experimental.CentralStorageStrategy`.
+*   `tf.data`:
+    *   Promoting `tf.data.Options.experimental_deterministic` API to
+        `tf.data.Options.deterministic` and deprecating the experimental
+        endpoint.
+*   XLA:
+    * Added a new API that allows custom call functions to signal errors. The
+      old API will be deprecated in a future release. See
+      https://www.tensorflow.org/xla/custom_call for details.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.6.0
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
 ## Breaking Changes
 
-* `tf.train.experimental.enable_mixed_precision_graph_rewrite` is removed, as
-  the API only works in graph mode and is not customizable. The function is
-  still accessible under
-  `tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite`, but it is
-  recommended to use the
-  [Keras mixed precision API](https://www.tensorflow.org/guide/mixed_precision)
-  instead.
+*   `tf.train.experimental.enable_mixed_precision_graph_rewrite` is removed, as
+    the API only works in graph mode and is not customizable. The function is
+    still accessible under
+    `tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite`, but it
+    is recommended to use the
+    [Keras mixed precision API](https://www.tensorflow.org/guide/mixed_precision)
+    instead.
 
-* `tf.lite`:
-  * Remove `experimental.nn.dynamic_rnn`, `experimental.nn.TfLiteRNNCell` and
-  `experimental.nn.TfLiteLSTMCell` since they're no longer supported. It's
-  recommended to just use [keras lstm](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM) instead.
+*   `tf.lite`:
+
+    *   Remove `experimental.nn.dynamic_rnn`, `experimental.nn.TfLiteRNNCell`
+        and `experimental.nn.TfLiteLSTMCell` since they're no longer supported.
+        It's recommended to just use
+        [keras lstm](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM)
+        instead.
+
+*   Keras been split into a separate PIP package (`keras`), and its code has
+    been moved to the GitHub
+    repository[keras-team/keras](http://github.com/keras-team/keras). The API
+    endpoints for `tf.keras` stay unchanged, but are now backed by the `keras`
+    PIP package. The existing code in tensorflow/python/keras is a staled copy
+    and will be removed in future release (2.7). Please remove any imports to
+    `tensorflow.python.keras` and replace them with public tf.keras API instead.
+
+*   Modular File System Migration
+
+    *   S3 and HDFS file system supports have been migrated to modular file
+        systems and is now available in https://github.com/tensorflow/io. The
+        tensorflow-io python package should be installed for S3 and HDFS support
+        with tensorflow.
 
 *<DOCUMENT BREAKING CHANGES HERE>
 *<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
@@ -34,6 +180,10 @@
       `while_loop`'s `parallel_iterations` value to 1, which is consistent with
       prior behavior.
 
+* `tf.keras`:
+  * The `trainable` argument when creating a Keras Layer must now be a boolean
+    (previously there was no validation and `None` values were allowed).
+
 ## Major Features and Improvements
 
 *<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
@@ -50,15 +200,48 @@
     *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
         `tf.distribute.InputOptions` for specific options when used with
         distribution.
+    *   `tf.keras.experimental.SidecarEvaluator` is now available for a program
+        intended to be run on an evaluator task, which is commonly used to
+        supplement a training cluster running with
+        `tf.distribute.experimental.ParameterServerStrategy` (see
+        https://www.tensorflow.org/tutorials/distribute/parameter_server_training).
+        It can also be used with single-worker training or other strategies.
+        See docstring for more info.
+    *   Preprocessing layers moved from experimental to core.
+        *   Import paths moved from
+            `tf.keras.layers.preprocessing.experimental` to `tf.keras.layers`.
     *   Updates to Preprocessing layers API for consistency and clarity:
         *   `StringLookup` and `IntegerLookup` default for `mask_token` changed
             to `None`. This matches the default masking behavior of `Hashing`
             and `Embedding` layers. To keep existing behavior, pass
             `mask_token=""` during layer creation.
+        *   Renamed `"binary"` output mode to `"multi_hot"` for
+            `CategoryEncoding`, `StringLookup`, `IntegerLookup`, and
+            `TextVectorization`. Multi-hot encoding will no longer
+            automatically uprank rank 1 inputs, so these layers can now
+            multi-hot encode unbatched multi-dimensional samples.
+        *   Added a new output mode `"one_hot"` for `CategoryEncoding`,
+            `StringLookup`, `IntegerLookup`, which will encode each element in
+            an input batch individually, and automatically append a new output
+            dimension if necessary. Use this mode on rank 1 inputs for the old
+            `"binary"` behavior of one-hot encoding a batch of scalars.
+        *   `Normalization` will no longer automatically uprank rank 1 inputs,
+            allowing normalization of unbatched multi-dimensional samples.
 
 * `tf.lite`:
     *   The recommended Android NDK version for building TensorFlow Lite has
         been changed from r18b to r19c.
+    *   Supports int64 for mul.
+    *   Supports native variable builtin ops - ReadVariable, AssignVariable.
+    *   Converter:
+        *  Experimental support for variables in TFLite. To enable through
+           conversion, users need to set
+           `experimental_enable_resource_variables` on tf.lite.TFLiteConverter
+           to True.
+           Note: mutable variables is only available using from_saved_model
+           in this release, support for other methods is coming soon.
+        *  Old Converter (TOCO) is getting removed from next release.
+           It's been deprecated for few releases already.
 * `tf.saved_model`:
     *   SavedModels can now save custom gradients. Use the option
         `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
@@ -71,6 +254,7 @@
     *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
         peak memory returned by `tf.config.experimental.get_memory_info`.
 *  `tf.data`:
+    *   Added checkpointing support for `tf.data.experimental.save()`.
     *   Added `target_workers` param to `data_service_ops.from_dataset_id` and
         `data_service_ops.distribute`. Users can specify `"AUTO"`, `"ANY"`, or
         `"LOCAL"` (case insensitive). If `"AUTO"`, tf.data service runtime
@@ -99,7 +283,7 @@
         collective. This parallelizes work on CPU and speeds up the collective
         performance. Default behavior is unchanged.
     *   Add an option `perturb_singular` to `tf.linalg.tridiagonal_solve` that
-        allows solving linear systems with a numerically singular tridiagonal 
+        allows solving linear systems with a numerically singular tridiagonal
         matrix, e.g. for use in inverse iteration.
     *   Added `tf.linalg.eigh_tridiagonal` that computes the eigenvalues of a
         Hermitian tridiagonal matrix.
@@ -169,6 +353,9 @@
         methods to skip the cached function and generate a new one. This is
 	useful to regenerate in a single call the compiled training function
 	when any `.trainable` attribute of any model's layer has changed.
+    *   Models now have a `save_spec` property which contains the `TensorSpec`
+        specs for calling the model. This spec is automatically saved when
+        the model is called for the first time.
 *   `tf.linalg`:
     *   Add `CompositeTensor` as a base class to `LinearOperator`.
 *   `tf.lite`:
@@ -179,6 +366,10 @@
         *    `modifyGraphWithDelegate` - Use `Interpreter.Options.addDelegate`
         *    `setNumThreads` - Use `Interpreter.Options.setNumThreads`
     *   Add Conv3DTranspose as a builtin op.
+*   `tf.summary`:
+    *   Fix `tf.summary.should_record_summaries()` so it correctly reflects when
+        summaries will be written, even when `tf.summary.record_if()` is not
+        in effect, by returning True tensor if default writer is present.
 *   `Grappler`:
     *   Disable default Grappler optimization timeout to make the optimization
         pipeline deterministic. This may lead to increased model loading time,

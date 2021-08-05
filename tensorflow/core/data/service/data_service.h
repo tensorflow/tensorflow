@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -29,22 +31,22 @@ namespace data {
 // between tf.data servers.
 constexpr int kDataServiceVersion = 3;
 
-// Modes for how a tf.data service job should process a dataset.
-enum class ProcessingMode : int64 {
-  UNSET = 0,
-  // Each tf.data worker processes an entire epoch. If a dataset contains 2
-  // elements and there are 3 workers, the job will produce 6 elements.
-  PARALLEL_EPOCHS = 1,
-  // Processing of a single epoch is distributed across all tf.data workers.
-  DISTRIBUTED_EPOCH = 2,
-};
+// Returns true if `processing_mode` specifies no sharding policy.
+bool IsNoShard(const ProcessingModeDef& processing_mode);
 
-// Parses a string representing a processing mode and stores the result in
-// `mode`. Returns an InvalidArgument status if the string is not recognized.
-Status ParseProcessingMode(const std::string& s, ProcessingMode& mode);
+// Returns true if `processing_mode` is dynamic sharding.
+bool IsDynamicShard(const ProcessingModeDef& processing_mode);
 
-// Converts a processing mode to its corresponding string.
-std::string ProcessingModeToString(ProcessingMode mode);
+// Returns true if `processing_mode` is static sharding.
+bool IsStaticShard(const ProcessingModeDef& processing_mode);
+
+// Returns an internal error if `processing_mode` is invalid.
+Status ValidateProcessingMode(const ProcessingModeDef& processing_mode);
+
+// Converts tf.data service `sharding_policy` to `AutoShardPolicy`. Returns an
+// internal error if `sharding_policy` is not supported.
+StatusOr<AutoShardPolicy> ToAutoShardPolicy(
+    ProcessingModeDef::ShardingPolicy sharding_policy);
 
 // Specifies which tf.data service workers to read from.
 enum class TargetWorkers : int64 {
