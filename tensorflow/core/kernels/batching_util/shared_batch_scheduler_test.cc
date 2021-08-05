@@ -27,8 +27,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -115,20 +117,22 @@ QueueOptions CreateQueueOptions(size_t max_execution_batch_size,
                                 size_t batch_timeout_micros,
                                 size_t max_enqueued_batches,
                                 bool enable_large_batch_splitting,
-                                SplitFunc split_func) {
+                                bool enable_lazy_split, SplitFunc split_func) {
   QueueOptions queue_options;
   queue_options.max_enqueued_batches = max_enqueued_batches;
   queue_options.max_execution_batch_size = max_execution_batch_size;
   queue_options.input_batch_size_limit = input_batch_size_limit;
   queue_options.batch_timeout_micros = batch_timeout_micros;
   queue_options.enable_large_batch_splitting = enable_large_batch_splitting;
+  queue_options.enable_lazy_split = enable_lazy_split;
   if (enable_large_batch_splitting) {
     queue_options.split_input_task_func = split_func;
   }
   return queue_options;
 }
 
-class SharedBatchSchedulerTest : public ::testing::TestWithParam<bool> {
+class SharedBatchSchedulerTest
+    : public ::testing::TestWithParam<std::tuple<bool, bool>> {
  protected:
   QueueOptions CreateQueueOptions(size_t max_execution_batch_size,
                                   size_t input_batch_size_limit,
@@ -136,9 +140,12 @@ class SharedBatchSchedulerTest : public ::testing::TestWithParam<bool> {
                                   size_t max_enqueued_batches) {
     return tensorflow::serving::CreateQueueOptions(
         max_execution_batch_size, input_batch_size_limit, batch_timeout_micros,
-        max_enqueued_batches, enable_input_batch_split(), get_split_func());
+        max_enqueued_batches, enable_input_batch_split(), enable_lazy_split(),
+        get_split_func());
   }
-  bool enable_input_batch_split() const { return GetParam(); }
+  bool enable_input_batch_split() const { return std::get<0>(GetParam()); }
+
+  bool enable_lazy_split() const { return std::get<1>(GetParam()); }
 
   SplitFunc get_split_func() const {
     if (enable_input_batch_split()) {
@@ -750,10 +757,39 @@ TEST_P(SharedBatchSchedulerTest, QueueDestructorBlocksUntilAllTasksProcessed) {
   stop_teardown.Notify();
 }
 
+TEST_P(SharedBatchSchedulerTest, InvalidQueueOptions) {
+  auto callback = [](std::unique_ptr<Batch<FakeTask>> batch) {
+    // do nothing.
+  };
+
+  auto scheduler = CreateSharedBatchScheduler(2);
+
+  const size_t input_batch_size_limit = 10;
+  const size_t batch_timeout_micros = 100 * 1000;  // 100 milliseconds
+  const size_t max_enqueued_batches = 2;
+  std::unique_ptr<Queue> queue;
+  EXPECT_THAT(
+      scheduler->AddQueue(tensorflow::serving::CreateQueueOptions(
+                              input_batch_size_limit, input_batch_size_limit,
+                              batch_timeout_micros, max_enqueued_batches,
+                              false /* enable_large_batch_splitting */,
+                              true /* enable_lazy_split */, get_split_func()),
+                          callback, &queue),
+      testing::StatusIs(error::INVALID_ARGUMENT,
+                        "enable_lazy_split should be enabled only if "
+                        "enable_large_batch_splitting is enabled."));
+}
+
 // TODO(b/161857471):
 // Add test coverage when input-split and no-split returns differently.
-INSTANTIATE_TEST_SUITE_P(Parameter, SharedBatchSchedulerTest,
-                         ::testing::Bool());
+INSTANTIATE_TEST_SUITE_P(
+    Parameter, SharedBatchSchedulerTest,
+    ::testing::Values(std::make_tuple(/*enable_input_batch_split=*/true,
+                                      /*enable_lazy_split=*/true),
+                      std::make_tuple(/*enable_input_batch_split=*/true,
+                                      /*enable_lazy_split=*/false),
+                      std::make_tuple(/*enable_input_batch_split=*/false,
+                                      /*enable_lazy_split=*/false)));
 
 #ifdef PLATFORM_GOOGLE
 // This benchmark relies on https://github.com/google/benchmark features,
@@ -808,18 +844,30 @@ void CreateQueues() {
       CreateQueueOptions(max_execution_batch_size, input_batch_size_limit,
                          batch_timeout_micros, INT_MAX /* unbounded queue */,
                          true /* enable_large_batch_splitting */,
+                         false /* enable_lazy_split */,
                          split_func_for_size_one_task),
       process_batch_callback));
-  queue_labels->push_back(std::string("InlineSplit"));
+  queue_labels->push_back(std::string("EagerSplit"));
 
   queues->push_back(CreateQueue(
       CreateSharedBatchScheduler(5),
       CreateQueueOptions(max_execution_batch_size, input_batch_size_limit,
                          batch_timeout_micros, INT_MAX /* unbounded queue */,
                          false /* enable_large_batch_splitting */,
-                         nullptr /* no func */),
+
+                         false /* enable_lazy_split */, nullptr /* no func */),
       process_batch_callback));
   queue_labels->push_back(std::string("NoSplit"));
+
+  queues->push_back(CreateQueue(
+      CreateSharedBatchScheduler(5),
+      CreateQueueOptions(max_execution_batch_size, input_batch_size_limit,
+                         batch_timeout_micros, INT_MAX /* unbounded queue */,
+                         true /* enable_large_batch_splitting */,
+                         true /* enable_lazy_split */,
+                         split_func_for_size_one_task),
+      process_batch_callback));
+  queue_labels->push_back(std::string("LazySplit"));
 }
 
 void BM_QueueSchedule(::testing::benchmark::State& state) {
@@ -846,7 +894,7 @@ BENCHMARK(BM_QueueSchedule)->Apply([](benchmark::internal::Benchmark* b) {
   b->ThreadRange(1,
                  port::NumSchedulableCPUs() * tensorflow::port::CPUIDNumSMT());
 
-  for (int queue_index : {0, 1}) {
+  for (int queue_index : {0, 1, 2}) {
     b->ArgPair(10000, queue_index);
   }
 });
