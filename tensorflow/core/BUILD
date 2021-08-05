@@ -799,7 +799,6 @@ tf_cuda_library(
         "//tensorflow/core/framework:tensor_testutil.h",
         "//tensorflow/core/framework:fake_input.h",
         "//tensorflow/core/framework:function_testlib.h",
-        #   "//tensorflow/core/platform:test_benchmark.h",
     ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
@@ -823,7 +822,6 @@ tf_cuda_library(
         "//tensorflow/core/framework:shape_inference_testutil",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:ops_testutil",
-        "//tensorflow/core/platform:test_benchmark",
         "//tensorflow/core/kernels:ops_util",
     ],
 )
