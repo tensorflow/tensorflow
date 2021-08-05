@@ -2146,6 +2146,9 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python:while_v2",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/eager:cancellation",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:executor",
         "//third_party/py/numpy",
     ],
 )

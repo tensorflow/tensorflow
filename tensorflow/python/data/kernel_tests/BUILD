@@ -612,6 +612,9 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "//tensorflow/python/eager:cancellation",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:executor",
         "@absl_py//absl/testing:parameterized",
     ],
 )
