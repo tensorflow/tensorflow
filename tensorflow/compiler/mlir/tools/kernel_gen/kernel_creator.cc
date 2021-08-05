@@ -283,6 +283,10 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
   // Remove UnrealizedConversionCastOps and TensorLoadOps.
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  // Remove copies which are introduced by canonicalizing
+  // BufferCastOp(TensorLoadOp).
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::kernel_gen::transforms::CreateCopyCleanupPass());
   // Find candidates for buffer reuse. This is only successful if buffer size
   // equality can be determined based on `linalg.generic` operations.
   pm.addNestedPass<mlir::FuncOp>(

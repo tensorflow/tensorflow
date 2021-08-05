@@ -186,4 +186,15 @@ def VectorizationCleanupPass : FunctionPass<"vectorization-cleanup"> {
   }];
 }
 
+def CopyCleanupPass : FunctionPass<"copy-cleanup"> {
+  let summary = "Pass to remove copies which are consumed by a GenericOp.";
+  let constructor = "transforms::CreateCopyCleanupPass()";
+  let description = [{
+    We can have GenericOps which have operands that are a copy, but the copy is
+    not used by any other op. In this case, the GenericOp can just use the
+    buffer which is the source of the copy, and we can remove the Alloc and the
+    copy.
+  }];
+}
+
 #endif // TF_KERNEL_GEN_PASSES
