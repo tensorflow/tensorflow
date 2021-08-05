@@ -100,6 +100,8 @@
             # Author code uses std + 1e-5
             return super().convolution_op(inputs, (kernel - mean) / tf.sqrt(var + 1e-10))
       ```
+  * Added `merge_state()` method to `tf.keras.metrics.Metric` for use in
+    distributed computations.
 
 ## Bug Fixes and Other Changes
 
