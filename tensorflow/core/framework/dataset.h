@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/function.h"
@@ -379,6 +380,7 @@ class IteratorContext {
     explicit Params(IteratorContext* ctx)
         : allocator_getter(ctx->allocator_getter()),
           cancellation_manager(ctx->cancellation_manager()),
+          collective_executor(ctx->collective_executor()),
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
@@ -393,7 +395,9 @@ class IteratorContext {
           thread_pool(ctx->thread_pool()) {}
 
     explicit Params(OpKernelContext* ctx)
-        : env(ctx->env()), flr(ctx->function_library()) {
+        : collective_executor(ctx->collective_executor()),
+          env(ctx->env()),
+          flr(ctx->function_library()) {
       // NOTE: need reinterpret_cast because function.h forward-declares Device.
       DeviceBase* device =
           reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
@@ -432,6 +436,9 @@ class IteratorContext {
 
     // The CancellationManager to be used to cancel execution of ops.
     CancellationManager* cancellation_manager;
+
+    // Collective support.
+    CollectiveExecutor* collective_executor = nullptr;
 
     // Interface to operating system functionality.
     Env* env = nullptr;
@@ -491,6 +498,10 @@ class IteratorContext {
 
   CancellationManager* cancellation_manager() {
     return params_.cancellation_manager;
+  }
+
+  CollectiveExecutor* collective_executor() {
+    return params_.collective_executor;
   }
 
   Env* env() const { return params_.env; }
