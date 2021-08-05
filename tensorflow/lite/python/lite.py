@@ -1401,6 +1401,12 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     Raises:
       Invalid input type.
     """
+    if trackable_obj is None:
+      logging.warning(
+          "Please consider providing the trackable_obj argument in the "
+          "from_concrete_functions. Providing without the trackable_obj "
+          "argument is deprecated and it will use the deprecated conversion "
+          "path.")
     for func in funcs:
       if not isinstance(func, _function.ConcreteFunction):
         message = "This function takes in a list of ConcreteFunction."
