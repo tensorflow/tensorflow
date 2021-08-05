@@ -52,7 +52,10 @@ cc_library(
 
 cc_library(
     name = "types",
-    hdrs = ["types.h"],
+    hdrs = [
+        "runtime_shape.h",
+        "types.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
