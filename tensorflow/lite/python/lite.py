@@ -710,7 +710,15 @@ class TFLiteConverterBase(object):
     if self._sparsify_model():
       model = _mlir_sparsify(model)
 
-    model = _deduplicate_readonly_buffers(model)
+    try:
+      model = _deduplicate_readonly_buffers(model)
+    except Exception:  # pylint: disable=broad-except
+      # Skip buffer deduplication when flatbuffer library is not ready to be
+      # utilized.
+      logging.warning(
+          "Buffer deduplication procedure will be skipped when flatbuffer "
+          "library is not properly loaded")
+
     return model
 
   def _convert_and_export_metrics(self, convert_func, *args, **kwargs):
