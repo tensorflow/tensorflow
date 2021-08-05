@@ -273,7 +273,8 @@ class SparseConcatTest(test.TestCase):
 
       concat_out = self.evaluate(sp_concat)
 
-      self.assertAllEqual(concat_out.indices, sp_b.indices + [0, 7, 0])
+      self.assertAllEqual(concat_out.indices,
+                          sp_b.indices + [0, sp_a.dense_shape[1], 0])
       self.assertAllEqual(concat_out.values, sp_b.values)
       self.assertAllEqual(concat_out.dense_shape, [2, 15, 4])
 
