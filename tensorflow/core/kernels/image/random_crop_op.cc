@@ -45,12 +45,12 @@ class RandomCropOp : public OpKernel {
                                         shape_t.shape().DebugString()));
 
     auto shape_vec = shape_t.vec<int64>();
-    const int32 target_height = shape_vec(0);
-    const int32 target_width = shape_vec(1);
+    const int32_t target_height = shape_vec(0);
+    const int32_t target_width = shape_vec(1);
 
-    const int32 height = input.dim_size(0);
-    const int32 width = input.dim_size(1);
-    const int32 channels = input.dim_size(2);
+    const int32_t height = input.dim_size(0);
+    const int32_t width = input.dim_size(1);
+    const int32_t channels = input.dim_size(2);
 
     // Initialize shape to the batch size of the input, then add
     // the rest of the dimensions
@@ -73,8 +73,8 @@ class RandomCropOp : public OpKernel {
                     "height must be >= target_height: height = ", height,
                     ", target_height = ", target_height));
 
-    int32 offset_height = 0;
-    int32 offset_width = 0;
+    int32_t offset_height = 0;
+    int32_t offset_width = 0;
 
     auto local_gen = generator_.ReserveSamples32(2);
     random::SimplePhilox random(&local_gen);

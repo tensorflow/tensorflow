@@ -227,6 +227,8 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
   info.opencl_info.max_work_group_total_size =
       GetDeviceInfo<size_t>(id, CL_DEVICE_MAX_WORK_GROUP_SIZE);
 
+  info.opencl_info.base_addr_align_in_bits =
+      GetDeviceInfo<cl_uint>(id, CL_DEVICE_MEM_BASE_ADDR_ALIGN);
   info.opencl_info.image_pitch_alignment = 0;
   if (info.opencl_info.cl_version == OpenClVersion::kCl2_0 ||
       info.opencl_info.cl_version == OpenClVersion::kCl2_1 ||

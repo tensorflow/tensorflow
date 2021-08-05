@@ -163,8 +163,8 @@ class Pooling3DOp : public UnaryOp<T> {
 
     OP_REQUIRES(context, tensor_in.dims() == 5,
                 errors::InvalidArgument("tensor_in must be 5-dimensional"));
-    const int64 depth = GetTensorDim(tensor_in, data_format_, 'C');
-    const int64 in_batch = GetTensorDim(tensor_in, data_format_, 'N');
+    const int64_t depth = GetTensorDim(tensor_in, data_format_, 'C');
+    const int64_t in_batch = GetTensorDim(tensor_in, data_format_, 'N');
 
     // Dimension order for these arrays is: x, y, z.
     std::array<int64, 3> input_size{
@@ -209,7 +209,7 @@ struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Tensor* output) {
     output->flat<T>().setZero();
-    for (int64 p = 0; p < out_backprop.dim_size(3); ++p) {
+    for (int64_t p = 0; p < out_backprop.dim_size(3); ++p) {
       // Calculate broadcast size for planes/rows/cols. For SAME padding,
       // current index could be in the padding area, and
       //   p * stride_planes + window_planes
@@ -225,12 +225,12 @@ struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
       OP_REQUIRES_OK(context,
                      GetBroadcastSize(p, input_size[0], window[0], stride[0],
                                       padding[0], &pindex, &psize));
-      for (int64 r = 0; r < out_backprop.dim_size(2); ++r) {
+      for (int64_t r = 0; r < out_backprop.dim_size(2); ++r) {
         int rindex, rsize;
         OP_REQUIRES_OK(context,
                        GetBroadcastSize(r, input_size[1], window[1], stride[1],
                                         padding[1], &rindex, &rsize));
-        for (int64 c = 0; c < out_backprop.dim_size(1); ++c) {
+        for (int64_t c = 0; c < out_backprop.dim_size(1); ++c) {
           int cindex, csize;
           OP_REQUIRES_OK(
               context, GetBroadcastSize(c, input_size[2], window[2], stride[2],
@@ -400,7 +400,7 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
     std::array<int64, 3> input_size = {{tensor_in_shape.dim_size(3),
                                         tensor_in_shape.dim_size(2),
                                         tensor_in_shape.dim_size(1)}};
-    for (int64 p = 0; p < out_backprop.dim_size(3); ++p) {
+    for (int64_t p = 0; p < out_backprop.dim_size(3); ++p) {
       // Calculate broadcast size for planes/rows/cols. For SAME padding,
       // current index could be in the padding area, and
       //   p * stride_planes + window_planes
@@ -413,12 +413,12 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
       OP_REQUIRES_OK(context,
                      GetBroadcastSize(p, input_size[0], window[0], stride[0],
                                       padding[0], &pindex, &psize));
-      for (int64 r = 0; r < out_backprop.dim_size(2); ++r) {
+      for (int64_t r = 0; r < out_backprop.dim_size(2); ++r) {
         int rindex, rsize;
         OP_REQUIRES_OK(context,
                        GetBroadcastSize(r, input_size[1], window[1], stride[1],
                                         padding[1], &rindex, &rsize));
-        for (int64 c = 0; c < out_backprop.dim_size(1); ++c) {
+        for (int64_t c = 0; c < out_backprop.dim_size(1); ++c) {
           int cindex, csize;
           OP_REQUIRES_OK(
               context, GetBroadcastSize(c, input_size[2], window[2], stride[2],
@@ -512,7 +512,7 @@ class AvgPooling3dGradOp : public OpKernel {
 
     TensorShape output_shape;
     auto shape_vec = tensor_in_shape.vec<int32>();
-    for (int64 i = 0; i < tensor_in_shape.NumElements(); ++i) {
+    for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
       output_shape.AddDim(shape_vec(i));
     }
 
@@ -583,27 +583,27 @@ struct LaunchMaxPooling3dGradGradOp<CPUDevice, T> {
         *(context->device()->tensorflow_cpu_worker_threads());
 
     auto shard = [&params, &in_mat, &out_mat, &top_diff_mat, &bottom_diff_mat](
-                     int64 start, int64 limit) {
-      const int32 depth = params.depth;
-      const int32 in_planes = params.tensor_in_planes;
-      const int32 in_rows = params.tensor_in_rows;
-      const int32 in_cols = params.tensor_in_cols;
-      const int32 pad_planes = params.pad_planes;
-      const int32 pad_rows = params.pad_rows;
-      const int32 pad_cols = params.pad_cols;
-      const int32 window_planes = params.window_planes;
-      const int32 window_rows = params.window_rows;
-      const int32 window_cols = params.window_cols;
-      const int32 plane_stride = params.plane_stride;
-      const int32 row_stride = params.row_stride;
-      const int32 col_stride = params.col_stride;
-      const int32 out_plane = params.out_plane;
-      const int32 out_height = params.out_height;
-      const int32 out_width = params.out_width;
+                     int64_t start, int64_t limit) {
+      const int32_t depth = params.depth;
+      const int32_t in_planes = params.tensor_in_planes;
+      const int32_t in_rows = params.tensor_in_rows;
+      const int32_t in_cols = params.tensor_in_cols;
+      const int32_t pad_planes = params.pad_planes;
+      const int32_t pad_rows = params.pad_rows;
+      const int32_t pad_cols = params.pad_cols;
+      const int32_t window_planes = params.window_planes;
+      const int32_t window_rows = params.window_rows;
+      const int32_t window_cols = params.window_cols;
+      const int32_t plane_stride = params.plane_stride;
+      const int32_t row_stride = params.row_stride;
+      const int32_t col_stride = params.col_stride;
+      const int32_t out_plane = params.out_plane;
+      const int32_t out_height = params.out_height;
+      const int32_t out_width = params.out_width;
 
       {
         // Initializes the output grad backprop tensor with 0.
-        const int32 output_image_size =
+        const int32_t output_image_size =
             out_plane * out_height * out_width * params.depth;
         EigenMatrixMap bottom_diff_shard(
             bottom_diff_mat.data() + start * output_image_size, 1,
@@ -653,7 +653,7 @@ struct LaunchMaxPooling3dGradGradOp<CPUDevice, T> {
         }
       }
     };
-    const int64 shard_cost =
+    const int64_t shard_cost =
         params.out_plane * params.out_height * params.out_width * params.depth *
         params.window_planes * params.window_rows * params.window_cols;
     Shard(worker_threads.num_threads, worker_threads.workers,
@@ -682,8 +682,8 @@ class MaxPooling3dGradGradOp : public OpKernel {
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
-    const int32 ksize_c = GetTensorDim(ksize_, data_format_, 'C');
-    const int32 stride_c = GetTensorDim(stride_, data_format_, 'C');
+    const int32_t ksize_c = GetTensorDim(ksize_, data_format_, 'C');
+    const int32_t stride_c = GetTensorDim(stride_, data_format_, 'C');
     OP_REQUIRES(context, ksize_c == 1 && stride_c == 1,
                 errors::Unimplemented("MaxPooling3dGradGrad is not yet "
                                       "supported on the depth dimension."));

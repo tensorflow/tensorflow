@@ -68,6 +68,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
+
 _XLA_OP_BY_OP_INPUTS_LIMIT = 200
 
 
@@ -860,10 +861,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     if context.executing_eagerly():
       # In async remote eager, we want to sync the executors before exiting the
       # program.
-      def async_wait():
-        if context.context()._context_handle is not None:  # pylint: disable=protected-access
-          context.async_wait()
-      atexit.register(async_wait)
+      atexit.register(context.async_wait)
 
     # Flag to turn on VariablePolicy.
     self._use_var_policy = True
@@ -1168,6 +1166,19 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         distribute_utils.TPU_VARIABLE_CLASS_MAPPING,
         distribute_utils.TPU_VARIABLE_POLICY_MAPPING, **kwargs)
 
+  def _resource_creator_scope(self):
+
+    def lookup_creator(next_creator, *args, **kwargs):
+      host_to_table = collections.OrderedDict()
+      for host_device in self._device_input_worker_devices.keys():
+        with ops.device(host_device):
+          host_to_table[host_device] = next_creator(*args, **kwargs)
+
+      return values.PerWorkerResource(self._container_strategy(), host_to_table)
+
+    # TODO(b/194362531): Define creator(s) for other resources.
+    return ops.resource_creator_scope("StaticHashTable", lookup_creator)
+
   def _gather_to_implementation(self, value, destinations, axis, options):
     if not isinstance(value, values.DistributedValues):
       return value
@@ -1221,7 +1232,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
        ) and tpu_util.enclosing_tpu_context() is not None:
       if reduce_op == reduce_util.ReduceOp.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
-        value *= (1. / self._num_replicas_in_sync)
+        # scalar_mul maintains the type of value: tensor or IndexedSlices.
+        value = math_ops.scalar_mul((1./self._num_replicas_in_sync), value)
       elif reduce_op != reduce_util.ReduceOp.SUM:
         raise NotImplementedError(
             "Currently only support sum & mean in TPUStrategy.")
@@ -1465,6 +1477,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             rank = input_tensor.shape.rank
           else:
             rank = np.ndim(input_tensor)
+          if rank is None:
+            raise ValueError(
+                "input tensor {} to TPUStrategy.run() has unknown rank, "
+                "which is not allowed".format(input_tensor))
           maximum_shape = tensor_shape.TensorShape([None] * rank)
           maximum_shapes.append(maximum_shape)
         maximum_shapes = nest.pack_sequence_as(replicate_inputs[0],

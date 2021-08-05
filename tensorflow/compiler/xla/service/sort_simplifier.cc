@@ -53,7 +53,7 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
 
   // Also note which parameters are used by the comparator computation.
   auto comparator = sort->to_apply();
-  for (int64 i = 0; i < sort->operand_count() * 2; ++i) {
+  for (int64_t i = 0; i < sort->operand_count() * 2; ++i) {
     if (comparator->parameter_instruction(i)->user_count() > 0) {
       // operand i corresponds to parameters 2 * i and 2 * i + 1 of the
       // computation.
@@ -68,7 +68,7 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
 
   std::vector<HloInstruction*> operands;
   std::vector<Shape> new_shapes;
-  for (int64 i = 0; i < sort->operand_count(); ++i) {
+  for (int64_t i = 0; i < sort->operand_count(); ++i) {
     if (used_indices.contains(i)) {
       operands.push_back(sort->mutable_operand(i));
       new_shapes.push_back(sort->operand(i)->shape());
@@ -82,8 +82,8 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
       sort->CloneWithNewOperands(new_sort_shape, operands));
   absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       replacements;
-  int64 parameter_number = 0;
-  for (int64 i = 0; i < sort->operand_count(); ++i) {
+  int64_t parameter_number = 0;
+  for (int64_t i = 0; i < sort->operand_count(); ++i) {
     auto* old_lhs_parameter = comparator->parameter_instruction(i * 2);
     auto* old_rhs_parameter = comparator->parameter_instruction(i * 2 + 1);
     if (used_indices.contains(i)) {
@@ -111,8 +111,8 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
   absl::flat_hash_map<int64, HloInstruction*> result_map;
   if (new_sort->shape().IsTuple()) {
     // Old sort key maps to new sort key.
-    int64 new_index = 0;
-    for (int64 i = 0; i < sort->operand_count(); ++i) {
+    int64_t new_index = 0;
+    for (int64_t i = 0; i < sort->operand_count(); ++i) {
       if (used_indices.count(i)) {
         result_map[i] =
             computation->AddInstruction(HloInstruction::CreateGetTupleElement(

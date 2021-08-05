@@ -19,8 +19,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"
+#include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
@@ -549,7 +549,7 @@ class RalToLLVMPass : public RalToLLVMPassBase<RalToLLVMPass> {
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addIllegalDialect<StandardOpsDialect, gpu::GPUDialect,
                              disc_ral::RalDialect, math::MathDialect>();
-    target.addIllegalOp<LLVM::DialectCastOp>();
+    target.addIllegalOp<UnrealizedConversionCastOp>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();
     // Do not look into gpu modules, only consider host-side.

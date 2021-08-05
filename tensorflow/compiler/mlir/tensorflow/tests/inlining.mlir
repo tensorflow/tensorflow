@@ -73,7 +73,7 @@ func @inline_simple_tf_device_region() -> tensor<2xi32> {
   %cluster_result = "tf_device.cluster"() ( {
     %result = "tf.StatefulPartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @simple_callee} : () -> tensor<2xi32>
     tf_device.return %result : tensor<2xi32>
-  }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> (tensor<2xi32>)
+  }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> (tensor<2xi32>)
   return %cluster_result : tensor<2xi32>
 }
 
@@ -113,8 +113,8 @@ func @inline_into_island() -> (tensor<2xi32>, tensor<2xi32>) {
 
 func private @simple_callee_var() -> tensor<2xi32>  {
   %cst = "tf.Const"() { value = dense<2> : tensor<2xi32> } : () -> tensor<2xi32>
-  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<!tf.resource<tensor<2xi32>>>
-  "tf.AssignVariableOp"(%0, %cst) {device = ""} : (tensor<!tf.resource<tensor<2xi32>>>, tensor<2xi32>) -> ()
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<!tf_type.resource<tensor<2xi32>>>
+  "tf.AssignVariableOp"(%0, %cst) {device = ""} : (tensor<!tf_type.resource<tensor<2xi32>>>, tensor<2xi32>) -> ()
   return %cst : tensor<2xi32>
 }
 

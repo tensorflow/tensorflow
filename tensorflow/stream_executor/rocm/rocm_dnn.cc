@@ -3075,7 +3075,7 @@ port::Status MIOpenSupport::DoConvolve(
 
 bool MIOpenSupport::GetConvolveAlgorithms(
     // ROCM TODO: refactor cc_major / cc_minor
-    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
@@ -3486,7 +3486,7 @@ bool MIOpenSupport::GetRnnAlgorithms(
 
 bool MIOpenSupport::GetConvolveBackwardDataAlgorithms(
     // ROCM TODO: refactor cc_major / cc_minor
-    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
@@ -3501,7 +3501,7 @@ bool MIOpenSupport::GetConvolveBackwardDataAlgorithms(
 
 bool MIOpenSupport::GetConvolveBackwardFilterAlgorithms(
     // ROCM TODO: refactor cc_major / cc_minor
-    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off

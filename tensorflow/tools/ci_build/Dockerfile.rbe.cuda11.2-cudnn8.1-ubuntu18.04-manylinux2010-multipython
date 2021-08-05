@@ -95,4 +95,7 @@ ENV CLANG_VERSION="r7f6f9f4cf966c78a315d15d6e913c43cfa45c47c"
 COPY install/install_latest_clang.sh /install/
 RUN /install/install_latest_clang.sh
 
+# TensorRT 7 for CUDA 11.1 is compatible with CUDA 11.2, but requires
+# libnvrtc.so.11.1. See https://github.com/NVIDIA/TensorRT/issues/1064.
+# TODO(b/187962120): Remove when upgrading to TensorRT 8.
 ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda-11.1/lib64"

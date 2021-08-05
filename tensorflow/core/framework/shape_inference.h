@@ -42,7 +42,7 @@ class InferenceContext;
 class Dimension {
  private:
   Dimension();
-  Dimension(int64 value);
+  Dimension(int64_t value);
   ~Dimension() {}
 
   const int64 value_;
@@ -121,7 +121,7 @@ struct DimensionOrConstant {
   DimensionOrConstant(DimensionHandle dim);
 
   // val must be non-negative or InferenceContext::kUnknownDim.
-  DimensionOrConstant(int64 val);
+  DimensionOrConstant(int64_t val);
 
   // dim takes precedence. If dim != nullptr, val is ignored.
   DimensionHandle dim;
@@ -157,8 +157,8 @@ struct ShapeAndType {
 // by the InferenceContext.
 class InferenceContext {
  public:
-  static constexpr int64 kUnknownDim = -1;
-  static constexpr int32 kUnknownRank = -1;
+  static constexpr int64_t kUnknownDim = -1;
+  static constexpr int32_t kUnknownRank = -1;
 
   // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
   //
@@ -262,7 +262,7 @@ class InferenceContext {
 
   void SetInput(int idx, ShapeHandle shape) { inputs_[idx] = shape; }
 
-  ShapeHandle input(int64 idx) const { return inputs_[idx]; }
+  ShapeHandle input(int64_t idx) const { return inputs_[idx]; }
   Status input(StringPiece input_name, std::vector<ShapeHandle>* output) const;
   int num_inputs() const { return inputs_.size(); }
 
@@ -314,7 +314,7 @@ class InferenceContext {
     return input_tensors_as_shapes_;
   }
 
-  ShapeHandle output(int64 idx) const { return outputs_.at(idx); }
+  ShapeHandle output(int64_t idx) const { return outputs_.at(idx); }
   void set_output(int idx, ShapeHandle shape) { outputs_.at(idx) = shape; }
   Status set_output(StringPiece output_name,
                     const std::vector<ShapeHandle>& shapes);
@@ -324,20 +324,26 @@ class InferenceContext {
   Status output(StringPiece output_name,
                 std::vector<ShapeHandle>* output) const;
 
-  const AttrSlice& attrs() const { return attrs_; }
+  // Returns the value for attribute named `attr_name`.
+  Status GetAttr(StringPiece attr_name, const AttrValue** attr_value) const {
+    return attrs_.Find(attr_name, attr_value);
+  }
+  const AttrValue* GetAttr(StringPiece attr_name) const {
+    return attrs_.Find(attr_name);
+  }
 
   const FullTypeDef& ret_types() const { return ret_types_; }
 
   // idx can be negative for an offset from end of dimensions.
   // idx must be in the range [-1 * s.rank, s.rank).
-  DimensionHandle Dim(ShapeHandle s, int64 idx) {
+  DimensionHandle Dim(ShapeHandle s, int64_t idx) {
     if (!s.Handle() || s->rank_ == kUnknownRank) {
       return UnknownDim();
     }
     return DimKnownRank(s, idx);
   }
   // As above, but asserts that the rank of the shape is known.
-  static DimensionHandle DimKnownRank(ShapeHandle s, int64 idx) {
+  static DimensionHandle DimKnownRank(ShapeHandle s, int64_t idx) {
     CHECK_NE(s->rank_, kUnknownRank);
     if (idx < 0) {
       return s->dims_[s->dims_.size() + idx];
@@ -381,18 +387,18 @@ class InferenceContext {
   // the shape with asserted rank in <*out>. Otherwise return an error.
   //
   // Note that <*out> may be set to <shape>.
-  Status WithRank(ShapeHandle shape, int64 rank,
+  Status WithRank(ShapeHandle shape, int64_t rank,
                   ShapeHandle* out) TF_MUST_USE_RESULT;
-  Status WithRankAtLeast(ShapeHandle shape, int64 rank,
+  Status WithRankAtLeast(ShapeHandle shape, int64_t rank,
                          ShapeHandle* out) TF_MUST_USE_RESULT;
-  Status WithRankAtMost(ShapeHandle shape, int64 rank,
+  Status WithRankAtMost(ShapeHandle shape, int64_t rank,
                         ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // If <dim> has value <value>, or its value is unknown, returns OK and returns
   // the dimension with asserted value in <*out>. Otherwise returns an error.
   //
   // Note that <*out> may be set to <dim>.
-  Status WithValue(DimensionHandle dim, int64 value,
+  Status WithValue(DimensionHandle dim, int64_t value,
                    DimensionHandle* out) TF_MUST_USE_RESULT;
 
   // Merges <s0> and <s1> and returns the merged shape in <*out>. See
@@ -417,20 +423,20 @@ class InferenceContext {
   // Returns in <*out> a sub-shape of <s> with dimensions [start:].
   // <start> can be negative to index from the end of the shape. If <start> >
   // rank of <s>, then an empty subshape is returned.
-  Status Subshape(ShapeHandle s, int64 start,
+  Status Subshape(ShapeHandle s, int64_t start,
                   ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Returns in <*out> a sub-shape of <s>, with dimensions [start:end].
   // <start> and <end> can be negative, to index from the end of the shape.
   // <start> and <end> are set to the rank of <s> if > rank of <s>.
-  Status Subshape(ShapeHandle s, int64 start, int64 end,
+  Status Subshape(ShapeHandle s, int64_t start, int64_t end,
                   ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Returns in <*out> a sub-shape of <s>, with dimensions [start:end:stride].
   // <start> and <end> can be negative, to index from the end of the shape.
   // <start> and <end> are set to the rank of <s> if > rank of <s>.
   // <stride> can be negative, to reverse the <s>.
-  Status Subshape(ShapeHandle s, int64 start, int64 end, int64 stride,
+  Status Subshape(ShapeHandle s, int64_t start, int64_t end, int64_t stride,
                   ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Returns in <*out> the result of appending the dimensions of <s2> to those
@@ -440,7 +446,7 @@ class InferenceContext {
 
   // Returns in <out> the shape from replacing <s.dim[dim_index]> with
   // <new_dim>.
-  Status ReplaceDim(ShapeHandle s, int64 dim_index, DimensionHandle new_dim,
+  Status ReplaceDim(ShapeHandle s, int64_t dim_index, DimensionHandle new_dim,
                     ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Returns a new shape with the given dims. The returned value is owned by
@@ -452,7 +458,7 @@ class InferenceContext {
   ShapeHandle UnknownShape();
 
   // Returns a shape with specified rank but unknown dims.
-  ShapeHandle UnknownShapeOfRank(int64 rank);
+  ShapeHandle UnknownShapeOfRank(int64_t rank);
 
   // Returns a new shape of zero dimensions.
   ShapeHandle Scalar();
@@ -500,7 +506,7 @@ class InferenceContext {
 
   // Returns in <val> a scalar value from a 1D input tensor <t> with int32 or
   // int64 elements. Caller must ensure that the input tensor is not NULL.
-  Status GetScalarFromTensor(const Tensor* t, int64 idx, int64* val);
+  Status GetScalarFromTensor(const Tensor* t, int64_t idx, int64* val);
 
   // Returns a new dimension whose value is given by a scalar input tensor.
   // The input tensor must be in host memory, since it is dereferenced to get
@@ -786,7 +792,7 @@ class InferenceContext {
 // Template and inline method implementations, please ignore
 
 inline Dimension::Dimension() : value_(InferenceContext::kUnknownDim) {}
-inline Dimension::Dimension(int64 value) : value_(value) {
+inline Dimension::Dimension(int64_t value) : value_(value) {
   DCHECK(value >= 0 || value == InferenceContext::kUnknownDim)
       << "Dimension must be non-negative or equal to "
          "InferenceContext::kUnknownDim but got "
@@ -802,7 +808,7 @@ inline DimensionOrConstant::DimensionOrConstant(DimensionHandle dim)
   DCHECK(dim.IsSet()) << "Internal error: Got nullptr for Dimension.";
 }
 
-inline DimensionOrConstant::DimensionOrConstant(int64 val) : val(val) {
+inline DimensionOrConstant::DimensionOrConstant(int64_t val) : val(val) {
   DCHECK(val >= 0 || val == InferenceContext::kUnknownDim)
       << "Dimension must be non-negative or equal to "
          "InferenceContext::kUnknownDim but got "

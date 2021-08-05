@@ -46,7 +46,7 @@ void AlarmLoop() {
       // Fire the alarm if applicable.
       if (alarm->deadline() <= now) {
         outstanding_alarms->erase(it);
-        int64 count =
+        int64_t count =
             alarm->counter() == nullptr ? 0 : alarm->counter()->fetch_add(1);
         // If the alarm has a counter, only fire if the count is a power of 2.
         if (count == 0 || (count & (count - 1)) == 0) {

@@ -61,7 +61,14 @@ tpu_py_test(
     disable_experimental = True,
     disable_mlir_bridge = False,
     python_version = "PY3",
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        # Disable this test from running automatically since it fails without
+        # the MLIR bridge enabled (see b/178826597#comment107).
+        # TODO(b/191201209): remove along with entire legacy Keras codebase.
+        "manual",
+        "notap",
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

@@ -77,18 +77,20 @@ Status NcclAllGatherThunk::RunNcclCollective(const ExecuteParams& params,
         params.buffer_allocations->GetDeviceAddress(buffer.destination_buffer)
             .opaque();
 
-    TF_ASSIGN_OR_RETURN(ncclDataType_t datatype,
-                        ToNcclDataType(config_.config.operand_element_type[i]));
+    PrimitiveType element_type = config_.config.operand_element_type[i];
+    TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
+                        ToNcclDataTypeAndCountMultiplier(element_type));
+    ncclDataType_t dtype = dtype_and_multiplier.first;
+    int element_count = buffer.element_count * dtype_and_multiplier.second;
 
     VLOG(3) << absl::StreamFormat(
         "Calling ncclAllGather(send_buffer=%p, recv_buffer=%p, sendcount=%d, "
         "comm=%p, stream=%p)",
-        send_buffer, recv_buffer, buffer.element_count,
-        static_cast<const void*>(comm), cu_stream);
+        send_buffer, recv_buffer, element_count, static_cast<const void*>(comm),
+        cu_stream);
 
-    XLA_CUDA_RETURN_IF_ERROR(ncclAllGather(send_buffer, recv_buffer,
-                                           buffer.element_count, datatype, comm,
-                                           *cu_stream));
+    XLA_CUDA_RETURN_IF_ERROR(ncclAllGather(
+        send_buffer, recv_buffer, element_count, dtype, comm, *cu_stream));
   }
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 

@@ -125,14 +125,11 @@ class TRTEngineResourceOpsTest
         TrtUniquePtrType<nvinfer1::INetworkDefinition>(builder->createNetworkV2(
             1U << static_cast<int>(
                 nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)));
-#elif IS_TRT_VERSION_GE(6, 0, 0, 0)
+#else
     network =
         TrtUniquePtrType<nvinfer1::INetworkDefinition>(builder->createNetworkV2(
             1U << static_cast<int>(
                 nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)));
-#else
-    network = TrtUniquePtrType<nvinfer1::INetworkDefinition>(
-        builder->createNetwork());
 #endif
 
     // Add the input.
@@ -153,13 +150,9 @@ class TRTEngineResourceOpsTest
     network->markOutput(*output->trt_tensor());
 
     // Build the engine
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config(
         builder->createBuilderConfig());
     builder_config->setMaxWorkspaceSize(1 << 10);
-#else
-    builder->setMaxWorkspaceSize(1 << 10);
-#endif
     builder->setMaxBatchSize(1);
 
     if (this->param_.dynamic_shape) {
@@ -203,19 +196,12 @@ class TRTEngineResourceOpsTest
       profile.InitProfiles(input_partial_shapes,
                            ProfileStrategy::kImplicitBatchModeCompatible);
       // Configure and build engine
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
       TF_CHECK_OK(profile.ConfigureBuilder(builder.get(), builder_config.get(),
                                            network.get()));
-#endif
     }
     VLOG(2) << "ConfigureBuilder Finished";
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
         builder->buildEngineWithConfig(*network, *builder_config));
-#else
-    TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
-        builder->buildCudaEngine(*network));
-#endif
     VLOG(2) << "Engine constructed";
     EXPECT_NE(nullptr, engine);
     return engine;
@@ -229,13 +215,10 @@ constexpr std::array<TestParam, 3> TestParameters = {
     TestParam{nvinfer1::Dims{1, {1}}, false, 1},
     TestParam{nvinfer1::Dims{1, {1}}, true, 1},
     TestParam{nvinfer1::Dims{2, {3, 3}}, true, 2}};
-#elif IS_TRT_VERSION_GE(6, 0, 0, 0)
+#else
 constexpr std::array<TestParam, 2> TestParameters = {
     TestParam{nvinfer1::Dims{1, {1}}, false, 1},
     TestParam{nvinfer1::Dims{1, {1}}, true, 1}};
-#else
-constexpr std::array<TestParam, 1> TestParameters = {
-    TestParam{nvinfer1::Dims{1, {1}}, false, 1}};
 #endif
 
 INSTANTIATE_TEST_CASE_P(EngineResourceOpsTestInstantiation,
@@ -248,8 +231,6 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
       DeviceFactory::NewDevice("GPU", {}, "/job:worker/replica:0/task:0"));
   ResourceMgr* rm = device->resource_manager();
   SetDevice(DEVICE_GPU, std::move(device));
-
-  VLOG(2) << "Is TRT64 ? " << IS_TRT_VERSION_GE(6, 0, 0, 0);
 
   // Create a resource handle.
   const string container(kTfTrtContainerName);

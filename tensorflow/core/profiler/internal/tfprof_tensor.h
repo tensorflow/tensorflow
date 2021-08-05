@@ -62,7 +62,7 @@ class TFProfTensor {
       absl::StrAppendFormat(&formatted_str_, "%.2f ",
                             dim->value_double(dim->value_double_size() - 1));
     } else if (typeid(value) == typeid(int64)) {
-      int64 int64_val = 0;
+      int64_t int64_val = 0;
       CHECK(absl::SimpleAtoi(sstream.str(), &int64_val));  // Crash OK
       dim->add_value_int64(int64_val);
       absl::StrAppendFormat(&formatted_str_, "%d ",
@@ -80,10 +80,10 @@ class TFProfTensor {
   // indirectly at various places:
   // TODO(xpan): Further verifying it.
   template <typename T>
-  int64 BuildOutput(int64 start, int depth, const std::vector<T>& values,
+  int64 BuildOutput(int64_t start, int depth, const std::vector<T>& values,
                     TFProfTensorProto* dim) {
     formatted_str_ += "[";
-    int64 nstart = start;
+    int64_t nstart = start;
     if (tensor_->dims() == 0 && values.size() == 1) {
       std::ostringstream sstream;
       sstream << values[nstart];
@@ -95,7 +95,7 @@ class TFProfTensor {
         absl::StrAppendFormat(&formatted_str_, "%.2f ",
                               dim->value_double(dim->value_double_size() - 1));
       } else if (typeid(values[nstart]) == typeid(int64)) {
-        int64 int64_val = 0;
+        int64_t int64_val = 0;
         CHECK(absl::SimpleAtoi(sstream.str(), &int64_val));  // Crash OK
         dim->add_value_int64(int64_val);
         absl::StrAppendFormat(&formatted_str_, "%d ",
@@ -122,7 +122,7 @@ class TFProfTensor {
                 &formatted_str_, "%.2f ",
                 dim->value_double(dim->value_double_size() - 1));
           } else if (typeid(values[nstart]) == typeid(int64)) {
-            int64 int64_val = 0;
+            int64_t int64_val = 0;
             CHECK(absl::SimpleAtoi(sstream.str(), &int64_val));  // Crash OK
             dim->add_value_int64(int64_val);
             absl::StrAppendFormat(
@@ -157,7 +157,7 @@ class TFProfTensor {
       absl::FPrintF(stderr, "Showing huge tensor, the tool might halt...\n");
     }
     auto values = tensor_->flat<T>();
-    for (int64 i = 0; i < tensor_->NumElements(); i++) {
+    for (int64_t i = 0; i < tensor_->NumElements(); i++) {
       value_vec->push_back(static_cast<U>(values(i)));
     }
   }

@@ -112,10 +112,12 @@ bool WhileLoopInvariantCodeMotion::NotWorthHoistingIndividually(
     case HloOpcode::kConstant:
       return !hoist_constants_;
 
+    case HloOpcode::kReshape:
+      return !hoist_reshapes_;
+
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kIota:
-    case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kSlice:
     case HloOpcode::kTranspose:
@@ -210,8 +212,8 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
       continue;
     }
 
-    if (!hoist_non_constants_ &&
-        instruction->opcode() != HloOpcode::kConstant) {
+    if (!hoist_other_ && instruction->opcode() != HloOpcode::kConstant &&
+        instruction->opcode() != HloOpcode::kReshape) {
       continue;
     }
 
@@ -225,7 +227,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
       // platforms where memory is limited. This can be especially harmful if
       // the instruction has a significantly larger output than its input, e.g.
       // kIota, kBroadcast or kConstant.
-      int64 input_size = 0, output_size = 0;
+      int64_t input_size = 0, output_size = 0;
 
       for (auto* operand : instruction->operands()) {
         ShapeUtil::ForEachSubshape(

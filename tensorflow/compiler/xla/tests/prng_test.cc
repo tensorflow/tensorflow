@@ -37,19 +37,20 @@ namespace {
 class PrngTest : public ClientLibraryTestBase {
  protected:
   template <typename T>
-  Literal UniformTest(T a, T b, absl::Span<const int64> dims, int64 seed = 42);
+  Literal UniformTest(T a, T b, absl::Span<const int64> dims,
+                      int64_t seed = 42);
 
   // Computes the χ² statistic of a sample of the discrete uniform distribution
   // of the given range size. `expected_count` is the number of times each
   // possible value is expected to be generated. Thus, the sample size is
   // `range_size * expected_count`.
-  double UniformChiSquared(int32 range_size, int32 expected_count,
-                           int64 seed = 42);
+  double UniformChiSquared(int32_t range_size, int32_t expected_count,
+                           int64_t seed = 42);
 };
 
 template <typename T>
 Literal PrngTest::UniformTest(T a, T b, absl::Span<const int64> dims,
-                              int64 seed) {
+                              int64_t seed) {
   XlaBuilder builder(TestName());
   RngUniform(
       ConstantR0<T>(&builder, a), ConstantR0<T>(&builder, b),
@@ -122,11 +123,11 @@ XLA_TEST_F(PrngTest, DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
   bfloat16 interval = static_cast<bfloat16>(0.25);
   std::vector<int32> counts(static_cast<int64>((high - low) / interval), 0);
 
-  constexpr int64 count = 1000;
-  for (int64 seed = 0; seed < count; ++seed) {
+  constexpr int64_t count = 1000;
+  for (int64_t seed = 0; seed < count; ++seed) {
     auto result = UniformTest<bfloat16>(low, high, {}, /*seed=*/seed);
     result.EachCell<bfloat16>([&](absl::Span<const int64>, bfloat16 value) {
-      int64 index = static_cast<int64>((value - low) / interval);
+      int64_t index = static_cast<int64>((value - low) / interval);
       counts[index]++;
     });
   }
@@ -144,9 +145,9 @@ T Square(T x) {
 }
 }  // namespace
 
-double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count,
-                                   int64 seed) {
-  int32 sample_size = range_size * expected_count;
+double PrngTest::UniformChiSquared(int32_t range_size, int32_t expected_count,
+                                   int64_t seed) {
+  int32_t sample_size = range_size * expected_count;
 
   XlaBuilder builder(TestName());
   RngUniform(ConstantR0<int32>(&builder, 0),
@@ -158,9 +159,9 @@ double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count,
       ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
   std::vector<int32> counts(range_size, 0);
   actual.EachCell<int32>(
-      [&counts](absl::Span<const int64>, int32 value) { ++counts[value]; });
-  int64 sum = 0;
-  for (int32 i = 0; i < range_size; ++i) {
+      [&counts](absl::Span<const int64>, int32_t value) { ++counts[value]; });
+  int64_t sum = 0;
+  for (int32_t i = 0; i < range_size; ++i) {
     sum += Square(static_cast<int64>(counts[i] - expected_count));
   }
   return static_cast<double>(sum) / expected_count;

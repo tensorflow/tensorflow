@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 using stream_executor::dnn::DimIndex;
 #include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
@@ -401,9 +402,9 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
 
-    int64 top_pad_planes, bottom_pad_planes;
-    int64 top_pad_rows, bottom_pad_rows;
-    int64 left_pad_cols, right_pad_cols;
+    int64_t top_pad_planes, bottom_pad_planes;
+    int64_t top_pad_rows, bottom_pad_rows;
+    int64_t left_pad_cols, right_pad_cols;
 
     OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
                                 dims.spatial_dims[0].input_size,
@@ -428,14 +429,14 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
     // functions in conv_grad_ops, and update 2d convolution backprop.
 
     // The total dimension size of each kernel.
-    const int64 filter_total_size =
+    const int64_t filter_total_size =
         dims.spatial_dims[0].filter_size * dims.spatial_dims[1].filter_size *
         dims.spatial_dims[2].filter_size * dims.in_depth;
 
     // The output image size is the spatial size of the output.
-    const int64 output_image_size = dims.spatial_dims[0].output_size *
-                                    dims.spatial_dims[1].output_size *
-                                    dims.spatial_dims[2].output_size;
+    const int64_t output_image_size = dims.spatial_dims[0].output_size *
+                                      dims.spatial_dims[1].output_size *
+                                      dims.spatial_dims[2].output_size;
 
     const auto cache_sizes = Eigen::internal::CacheSizes();
     const ptrdiff_t l3_cache_size = cache_sizes.m_l3;
@@ -444,13 +445,13 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
     const size_t target_working_set_size = l3_cache_size / sizeof(T);
 
     // Calculate size of matrices involved in MatMul: C = A x B.
-    const int64 size_A = output_image_size * dims.out_depth;
+    const int64_t size_A = output_image_size * dims.out_depth;
 
-    const int64 size_B = filter_total_size * dims.out_depth;
+    const int64_t size_B = filter_total_size * dims.out_depth;
 
-    const int64 size_C = output_image_size * filter_total_size;
+    const int64_t size_C = output_image_size * filter_total_size;
 
-    const int64 work_unit_size = size_A + size_B + size_C;
+    const int64_t work_unit_size = size_A + size_B + size_C;
 
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
 
@@ -472,19 +473,19 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
             : (target_working_set_size + work_unit_size - 1) / work_unit_size;
 
     // Total number of elements in all the tensors used by this kernel.
-    int64 total_tensor_elements = input_shape.num_elements() +
-                                  filter_shape.num_elements() +
-                                  out_backprop_shape.num_elements();
+    int64_t total_tensor_elements = input_shape.num_elements() +
+                                    filter_shape.num_elements() +
+                                    out_backprop_shape.num_elements();
 
     // Shape of the temporary workspace buffer.
     TensorShape col_buffer_shape = {static_cast<int64>(shard_size),
                                     static_cast<int64>(output_image_size),
                                     static_cast<int64>(filter_total_size)};
-    int64 col_buffer_elements = col_buffer_shape.num_elements();
+    int64_t col_buffer_elements = col_buffer_shape.num_elements();
 
     // If the temporary allocation overhead is too large, fallback on Eigen
     // implementation which requires much less memory.
-    int64 col_buffer_overhead = col_buffer_elements / total_tensor_elements;
+    int64_t col_buffer_overhead = col_buffer_elements / total_tensor_elements;
     if (col_buffer_overhead > kMaxTempAllocationOverhead) {
       VLOG(2) << "Fallback on Eigen implementation of Conv3DBackpropInputOp: "
                  "col_buffer_overhead="
@@ -508,12 +509,12 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
                                           col_buffer_shape, &col_buffer));
 
     // The input offset corresponding to a single input image.
-    const int64 input_offset = dims.spatial_dims[0].input_size *
-                               dims.spatial_dims[1].input_size *
-                               dims.spatial_dims[2].input_size * dims.in_depth;
+    const int64_t input_offset =
+        dims.spatial_dims[0].input_size * dims.spatial_dims[1].input_size *
+        dims.spatial_dims[2].input_size * dims.in_depth;
 
     // The output offset corresponding to a single output image.
-    const int64 output_offset =
+    const int64_t output_offset =
         dims.spatial_dims[0].output_size * dims.spatial_dims[1].output_size *
         dims.spatial_dims[2].output_size * dims.out_depth;
 
@@ -588,7 +589,7 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
                       &output_image_size, &filter_total_size,
                       &input_backprop_data, &col_buffer_data,
                       &out_backprop_data, &filter_data, &input_offset,
-                      &output_offset, &size_C](int64 start, int64 limit) {
+                      &output_offset, &size_C](int64_t start, int64_t limit) {
           for (int shard_id = start; shard_id < limit; ++shard_id) {
             T* im2col_buf = col_buffer_data + shard_id * size_C;
             T* input_data = input_backprop_data + shard_id * input_offset;
@@ -918,9 +919,9 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
       return;
     }
 
-    int64 top_pad_planes, bottom_pad_planes;
-    int64 top_pad_rows, bottom_pad_rows;
-    int64 left_pad_cols, right_pad_cols;
+    int64_t top_pad_planes, bottom_pad_planes;
+    int64_t top_pad_rows, bottom_pad_rows;
+    int64_t left_pad_cols, right_pad_cols;
 
     OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
                                 dims.spatial_dims[0].input_size,
@@ -945,13 +946,13 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
     // functions in conv_grad_ops, and update 2d convolution backprop.
 
     // The total dimension size of each kernel.
-    const int64 filter_total_size =
+    const int64_t filter_total_size =
         dims.spatial_dims[0].filter_size * dims.spatial_dims[1].filter_size *
         dims.spatial_dims[2].filter_size * dims.in_depth;
     // The output image size is the spatial size of the output.
-    const int64 output_image_size = dims.spatial_dims[0].output_size *
-                                    dims.spatial_dims[1].output_size *
-                                    dims.spatial_dims[2].output_size;
+    const int64_t output_image_size = dims.spatial_dims[0].output_size *
+                                      dims.spatial_dims[1].output_size *
+                                      dims.spatial_dims[2].output_size;
 
     // Shard 'batch' images (volumes) into 'shard_size' groups of images
     // (volumes) to be fed into the parallel matmul. Calculate 'shard_size' by
@@ -966,13 +967,13 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
     //    other concurrently running tensorflow ops.
     const size_t target_working_set_size = l3_cache_size / sizeof(T);
 
-    const int64 size_A = output_image_size * filter_total_size;
+    const int64_t size_A = output_image_size * filter_total_size;
 
-    const int64 size_B = output_image_size * dims.out_depth;
+    const int64_t size_B = output_image_size * dims.out_depth;
 
-    const int64 size_C = filter_total_size * dims.out_depth;
+    const int64_t size_C = filter_total_size * dims.out_depth;
 
-    const int64 work_unit_size = size_A + size_B + size_C;
+    const int64_t work_unit_size = size_A + size_B + size_C;
 
     OP_REQUIRES(
         context, work_unit_size > 0,
@@ -983,19 +984,19 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
         (target_working_set_size + work_unit_size - 1) / work_unit_size;
 
     // Total number of elements in all the tensors used by this kernel.
-    int64 total_tensor_elements = input_shape.num_elements() +
-                                  filter_shape.num_elements() +
-                                  out_backprop_shape.num_elements();
+    int64_t total_tensor_elements = input_shape.num_elements() +
+                                    filter_shape.num_elements() +
+                                    out_backprop_shape.num_elements();
 
     // Shape of the temporary workspace buffer.
     TensorShape col_buffer_shape = {static_cast<int64>(shard_size),
                                     static_cast<int64>(output_image_size),
                                     static_cast<int64>(filter_total_size)};
-    int64 col_buffer_elements = col_buffer_shape.num_elements();
+    int64_t col_buffer_elements = col_buffer_shape.num_elements();
 
     // If the temporary allocation overhead is too large, fallback on Eigen
     // implementation which requires much less memory.
-    int64 col_buffer_overhead = col_buffer_elements / total_tensor_elements;
+    int64_t col_buffer_overhead = col_buffer_elements / total_tensor_elements;
     if (col_buffer_overhead > kMaxTempAllocationOverhead) {
       VLOG(2) << "Fallback on Eigen implementation of Conv3DBackpropFilterOp: "
                  "col_buffer_overhead="
@@ -1019,11 +1020,11 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
                                           col_buffer_shape, &col_buffer));
 
     // The input offset corresponding to a single input image.
-    const int64 input_offset = dims.spatial_dims[0].input_size *
-                               dims.spatial_dims[1].input_size *
-                               dims.spatial_dims[2].input_size * dims.in_depth;
+    const int64_t input_offset =
+        dims.spatial_dims[0].input_size * dims.spatial_dims[1].input_size *
+        dims.spatial_dims[2].input_size * dims.in_depth;
     // The output offset corresponding to a single output image.
-    const int64 output_offset =
+    const int64_t output_offset =
         dims.spatial_dims[0].output_size * dims.spatial_dims[1].output_size *
         dims.spatial_dims[2].output_size * dims.out_depth;
 
@@ -1057,7 +1058,7 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
       auto shard = [&input_data, &col_buffer_data, &dims, &top_pad_planes,
                     &top_pad_rows, &left_pad_cols, &bottom_pad_planes,
                     &bottom_pad_rows, &right_pad_cols, &input_offset,
-                    &size_A](int64 start, int64 limit) {
+                    &size_A](int64_t start, int64_t limit) {
         for (int shard_id = start; shard_id < limit; ++shard_id) {
           const T* input_data_shard = input_data + shard_id * input_offset;
           T* col_data_shard = col_buffer_data + shard_id * size_A;
@@ -1191,14 +1192,14 @@ DECLARE_GPU_SPEC(double);
 }  // namespace functor
 
 // A dummy type to group backward data autotune results together.
-struct Conv3dBackwardDataAutoTuneGroup {
+struct Conv3dBackwardDataAutotuneGroup {
   static string name() { return "Conv3dBwdData"; }
 };
 
-typedef AutoTuneSingleton<Conv3dBackwardDataAutoTuneGroup, ConvParameters,
+typedef AutotuneSingleton<Conv3dBackwardDataAutotuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
 
-    AutoTuneConv3dBwdData;
+    AutotuneConv3dBwdData;
 template <typename T>
 class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
  public:
@@ -1479,7 +1480,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         AsDeviceMemory(pre_transformed_in_backprop.template flat<T>().data(),
                        pre_transformed_in_backprop.template flat<T>().size());
 
-    static int64 ConvolveBackwardDataScratchSize = GetDnnWorkspaceLimit(
+    static int64_t ConvolveBackwardDataScratchSize = GetDnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     const int device_id = stream->parent()->device_ordinal();
@@ -1511,7 +1512,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 #endif
     AlgorithmConfig algorithm_config;
 
-    if (cudnn_use_autotune_ && !AutoTuneConv3dBwdData::GetInstance()->Find(
+    if (cudnn_use_autotune_ && !AutotuneConv3dBwdData::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
       profiler::ScopedAnnotation trace("cudnn_autotuning");
       std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
@@ -1535,16 +1536,13 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
               plan->getWorkspaceSize()));
         }
       } else {
-        OP_REQUIRES(context,
-                    stream->parent()->GetConvolveBackwardDataAlgorithms(
-                        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
-                            stream->parent()),
-                        &algorithms),
-                    errors::Unknown(
-                        "Failed to get convolution execution plan. This is "
-                        "probably because cuDNN failed to initialize, so try "
-                        "looking to see if a warning log message was printed "
-                        "above."));
+        OP_REQUIRES(
+            context,
+            stream->parent()->GetConvolveBackwardDataAlgorithms(&algorithms),
+            errors::Unknown(
+                "Failed to get convolution execution plan. This is probably "
+                "because cuDNN failed to initialize, so try looking to see if "
+                "a warning log message was printed above."));
         for (const auto& algorithm : algorithms) {
           configs.push_back(AlgorithmConfig(algorithm));
         }
@@ -1664,7 +1662,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         OP_REQUIRES_OK(context, BestCudnnConvAlgorithm(results, nullptr,
                                                        &algorithm_config));
       }
-      AutoTuneConv3dBwdData::GetInstance()->Insert(conv_parameters,
+      AutotuneConv3dBwdData::GetInstance()->Insert(conv_parameters,
                                                    algorithm_config);
     }
 
@@ -1676,7 +1674,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         VLOG(4) << "Conv3DBackpropInput Execution Plan: "
                 << algorithm_config.algorithm()->exec_plan_id();
       } else {
-        VLOG(4) << "Convolution AutoTune has been turned off";
+        VLOG(4) << "Convolution Autotune has been turned off";
       }
       cudnn_launch_status = stream->ConvolveBackwardDataWithExecutionPlan(
           filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
@@ -1737,13 +1735,13 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 };
 
 // A dummy type to group backward filter autotune results together.
-struct Conv3dBackwardFilterAutoTuneGroup {
+struct Conv3dBackwardFilterAutotuneGroup {
   static string name() { return "Conv3dBwdFilter"; }
 };
 
-typedef AutoTuneSingleton<Conv3dBackwardFilterAutoTuneGroup, ConvParameters,
+typedef AutotuneSingleton<Conv3dBackwardFilterAutotuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
-    AutoTuneConv3dBwdFilter;
+    AutotuneConv3dBwdFilter;
 
 template <typename T>
 class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
@@ -2043,7 +2041,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         AsDeviceMemory(transformed_input.template flat<T>().data(),
                        transformed_input.template flat<T>().size());
 
-    static int64 ConvolveBackwardFilterScratchSize = GetDnnWorkspaceLimit(
+    static int64_t ConvolveBackwardFilterScratchSize = GetDnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     const int device_id = stream->parent()->device_ordinal();
@@ -2074,7 +2072,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
 
     AlgorithmConfig algorithm_config;
 
-    if (cudnn_use_autotune_ && !AutoTuneConv3dBwdFilter::GetInstance()->Find(
+    if (cudnn_use_autotune_ && !AutotuneConv3dBwdFilter::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
       std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
@@ -2097,16 +2095,13 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
               plan->getWorkspaceSize()));
         }
       } else {
-        OP_REQUIRES(context,
-                    stream->parent()->GetConvolveBackwardFilterAlgorithms(
-                        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
-                            stream->parent()),
-                        &algorithms),
-                    errors::Unknown(
-                        "Failed to get convolution execution plan. This is "
-                        "probably because cuDNN failed to initialize, so try "
-                        "looking to see if a warning log message was printed "
-                        "above."));
+        OP_REQUIRES(
+            context,
+            stream->parent()->GetConvolveBackwardFilterAlgorithms(&algorithms),
+            errors::Unknown(
+                "Failed to get convolution execution plan. This is probably "
+                "because cuDNN failed to initialize, so try looking to see if "
+                "a warning log message was printed above."));
         for (const auto& algorithm : algorithms) {
           configs.push_back(AlgorithmConfig(algorithm));
         }
@@ -2222,7 +2217,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
 #endif
         OP_REQUIRES_OK(context, s);
       }
-      AutoTuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
+      AutotuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
                                                      algorithm_config);
     }
 
@@ -2234,7 +2229,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         VLOG(4) << "Conv3DBackpropFilter Execution Plan: "
                 << algorithm_config.algorithm()->exec_plan_id();
       } else {
-        VLOG(4) << "Convolution AutoTune has been turned off";
+        VLOG(4) << "Convolution Autotune has been turned off";
       }
       cudnn_launch_status = stream->ConvolveBackwardFilterWithExecutionPlan(
           input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,

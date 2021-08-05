@@ -40,7 +40,7 @@ namespace tensorflow {
 }
 
 /*static*/ std::unique_ptr<XlaResource> XlaResource::CreateStack(
-    string name, DataType type, int64 max_size) {
+    string name, DataType type, int64_t max_size) {
   return absl::make_unique<XlaResource>(
       XlaResource::kStack, /*arg_num=*/-1, std::move(name), type, TensorShape(),
       /*initial_value=*/xla::XlaOp(),
@@ -51,7 +51,7 @@ namespace tensorflow {
 
 /*static*/ std::unique_ptr<XlaResource> XlaResource::CreateTensorArray(
     string name, DataType type, TensorShape shape, xla::XlaOp initial_value,
-    int64 max_array_size) {
+    int64_t max_array_size) {
   return absl::make_unique<XlaResource>(
       XlaResource::kTensorArray, /*arg_num=*/-1, std::move(name), type, shape,
       initial_value, max_array_size,
@@ -61,7 +61,7 @@ namespace tensorflow {
 
 XlaResource::XlaResource(
     Kind kind, int arg_num, string name, DataType type, TensorShape shape,
-    xla::XlaOp initial_value, int64 max_array_size,
+    xla::XlaOp initial_value, int64_t max_array_size,
     const std::set<string>& tensor_array_gradients,
     bool tensor_array_multiple_writes_aggregate,
     const absl::optional<ManagedStackTrace>& definition_stack_trace)

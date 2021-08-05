@@ -28,13 +28,13 @@ REGISTER_SYSTEM_OP("_Arg")
     .Attr("index: int >= 0")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* context) {
-      const AttrValue* dtype_attr = context->attrs().Find("T");
+      const AttrValue* dtype_attr = context->GetAttr("T");
       if (!dtype_attr) {
         return errors::InvalidArgument(
             "_Arg node does not have attribute \"T\"");
       }
 
-      const AttrValue* shape_attr = context->attrs().Find("_output_shapes");
+      const AttrValue* shape_attr = context->GetAttr("_output_shapes");
       if (shape_attr && shape_attr->has_list()) {
         if (shape_attr->list().shape().empty()) {
           return errors::InvalidArgument(
@@ -56,8 +56,8 @@ REGISTER_SYSTEM_OP("_Arg")
 
       // If the argument is for a resource type, then also try to infer the
       // type of the tensor store in the resource type.
-      dtype_attr = context->attrs().Find("_handle_dtypes");
-      shape_attr = context->attrs().Find("_handle_shapes");
+      dtype_attr = context->GetAttr("_handle_dtypes");
+      shape_attr = context->GetAttr("_handle_shapes");
       // If either the shape or type attribute is not set then simply return
       // with unknown output set above.
       if (!dtype_attr || !shape_attr) {

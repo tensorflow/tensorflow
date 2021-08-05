@@ -55,7 +55,7 @@ class Tile {
   // Returns the dimensions of the tile.
   absl::Span<const int64> dimensions() const { return dimensions_; }
 
-  Tile& add_dimensions(int64 value) {
+  Tile& add_dimensions(int64_t value) {
     dimensions_.push_back(value);
     return *this;
   }
@@ -67,7 +67,8 @@ class Tile {
 
   // This dimension size means the corresponding dimension in the shape is
   // combined with the next minor dimension before tiling is applied.
-  static constexpr int64 kCombineDimension = std::numeric_limits<int64>::min();
+  static constexpr int64_t kCombineDimension =
+      std::numeric_limits<int64>::min();
 
   template <typename H>
   friend H AbslHashValue(H h, const Tile& t) {
@@ -91,7 +92,7 @@ class Layout {
   // Constructs a dense tiled layout with the given minor-to-major order and
   // tiles.
   Layout(absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
-         int64 element_size_in_bits = 0, int64 memory_space = 0)
+         int64_t element_size_in_bits = 0, int64_t memory_space = 0)
       : format_(DENSE),
         minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
         tiles_(tiles.begin(), tiles.end()),
@@ -171,11 +172,11 @@ class Layout {
   // Methods for accessing the minor-to-major array.
   int minor_to_major_size() const { return minor_to_major_.size(); }
   int64 minor_to_major(int index) const { return minor_to_major_.at(index); }
-  Layout& set_minor_to_major(int index, int64 value) {
+  Layout& set_minor_to_major(int index, int64_t value) {
     minor_to_major_.at(index) = value;
     return *this;
   }
-  Layout& add_minor_to_major(int64 value) {
+  Layout& add_minor_to_major(int64_t value) {
     minor_to_major_.push_back(value);
     return *this;
   }
@@ -204,14 +205,14 @@ class Layout {
   absl::InlinedVector<Tile, 2>* mutable_tiles() { return &tiles_; }
 
   int64 element_size_in_bits() const { return element_size_in_bits_; }
-  Layout& set_element_size_in_bits(int64 value) {
+  Layout& set_element_size_in_bits(int64_t value) {
     element_size_in_bits_ = value;
     return *this;
   }
-  static constexpr int64 kDefaultMemorySpace = 0;
-  static constexpr int64 kGenericFastMemorySpace = 1;
+  static constexpr int64_t kDefaultMemorySpace = 0;
+  static constexpr int64_t kGenericFastMemorySpace = 1;
   int64 memory_space() const { return memory_space_; }
-  Layout& set_memory_space(int64 value) {
+  Layout& set_memory_space(int64_t value) {
     memory_space_ = value;
     return *this;
   }

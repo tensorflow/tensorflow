@@ -21,7 +21,6 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -36,11 +35,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util.tf_export import keras_export
-
-
-keras_kpl_gauge = monitoring.BoolGauge(
-    '/tensorflow/api/keras/layers/preprocessing',
-    'keras preprocessing layers usage', 'method')
 
 
 @keras_export('keras.layers.experimental.preprocessing.PreprocessingLayer')

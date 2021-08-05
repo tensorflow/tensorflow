@@ -96,7 +96,7 @@ int64 ShapeSizeInBytes(const Shape& shape);
 // sharding.
 Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
                                           const HloSharding& sharding,
-                                          int64 partition_id);
+                                          int64_t partition_id);
 
 // Generates the HLO instructions that represent the dimension offsets on any
 // device. The size of the returned vector is the rank of the given shape.
@@ -139,8 +139,8 @@ class MultiplyAddDivideOffsetCalculation {
  public:
   MultiplyAddDivideOffsetCalculation()
       : multiplier_(0), offset_(0), divisor_(1) {}
-  MultiplyAddDivideOffsetCalculation(int64 multiplier, int64 offset,
-                                     int64 divisor);
+  MultiplyAddDivideOffsetCalculation(int64_t multiplier, int64_t offset,
+                                     int64_t divisor);
 
   OffsetCalculation operator-(
       const MultiplyAddDivideOffsetCalculation& other) const;
@@ -152,13 +152,13 @@ class MultiplyAddDivideOffsetCalculation {
 
   bool IsConstant() const { return multiplier_ == 0; }
   void Simplify();
-  int64 Calculate(int64 shard_ordinal) const;
+  int64 Calculate(int64_t shard_ordinal) const;
   HloInstruction* Calculate(HloInstruction* shard_ordinal,
                             SpmdBuilder* b) const;
 
   // Returns the maximum result for shard ordinals in the range
   // [start_ordinal, limit_ordinal).
-  int64 MaxInRange(int64 start_ordinal, int64 limit_ordinal) const;
+  int64 MaxInRange(int64_t start_ordinal, int64_t limit_ordinal) const;
 
  private:
   int64 multiplier_;
@@ -196,13 +196,13 @@ class OffsetCalculation {
 
   OffsetCalculation operator-(const OffsetCalculation& other) const;
   bool operator==(const OffsetCalculation& other) const;
-  int64 Calculate(int64 shard_ordinal) const;
+  int64 Calculate(int64_t shard_ordinal) const;
   HloInstruction* Calculate(HloInstruction* shard_ordinal,
                             SpmdBuilder* b) const;
 
   // Returns the maximum result for shard ordinals in the range
   // [start_ordinal, limit_ordinal).
-  int64 MaxInRange(int64 start_ordinal, int64 limit_ordinal) const;
+  int64 MaxInRange(int64_t start_ordinal, int64_t limit_ordinal) const;
 
  private:
   HloOpcode opcode_;
@@ -216,7 +216,7 @@ class OffsetCalculation {
 // direct neighbor of the shard.
 absl::optional<HloInstruction*> ExchangeHalo(
     HloInstruction* hlo, const OffsetCalculation& left_halo_size_function,
-    const OffsetCalculation& right_halo_size_function, int64 dim,
+    const OffsetCalculation& right_halo_size_function, int64_t dim,
     const HloSharding& target,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64* next_channel_id, SpmdBuilder* b);
@@ -253,8 +253,8 @@ absl::optional<HloInstruction*> ExchangeHaloAndGetValidData(
     HloInstruction* hlo, const Shape& base_shape,
     const OffsetCalculation& left_halo_size_function,
     const OffsetCalculation& right_halo_size_function,
-    int64 explicit_left_padding_on_full_shape, int64 padded_full_shape_size,
-    int64 shard_size_with_halo, int64 dim, const HloSharding& target,
+    int64_t explicit_left_padding_on_full_shape, int64_t padded_full_shape_size,
+    int64_t shard_size_with_halo, int64_t dim, const HloSharding& target,
     HloInstruction* offset_on_padded_shape, HloInstruction* pad_value,
     HloInstruction* partition_ordinal,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
@@ -275,10 +275,10 @@ absl::optional<int64> GetKValueInTopKWhenPartitionSortDim(HloInstruction* hlo);
 
 // Slices the first k elements at slice dimension.
 HloInstruction* SliceFirstK(HloInstruction* hlo, SpmdBuilder* builder,
-                            int64 slice_dim, int64 k);
+                            int64_t slice_dim, int64_t k);
 
 // Check if a dimension is sharded.
-int64 ShardCountAtDim(const HloSharding& sharding, int64 dim);
+int64 ShardCountAtDim(const HloSharding& sharding, int64_t dim);
 
 // Returns the list of source-target pairs of dimensions to swap during
 // resharding via all-to-all. Reshard can be done by swapping each pair at a
@@ -297,7 +297,7 @@ bool CanReshardWithCollectivePermute(const HloSharding& source,
 struct GroupedSharding {
   GroupedSharding(std::vector<std::vector<int64>> device_groups,
                   std::vector<int64> group_dims,
-                  std::vector<int64> group_dim_sizes, int64 data_rank,
+                  std::vector<int64> group_dim_sizes, int64_t data_rank,
                   HloSharding grouped_sharding)
       : device_groups(std::move(device_groups)),
         group_dims(std::move(group_dims)),

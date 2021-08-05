@@ -21,13 +21,10 @@ namespace {
 class InitializeVariablesInSessionInitializerPass;
 
 static PassRegistration<InitializeVariablesInSessionInitializerPass>
-    initialize_variables_in_session_init_test_pass(
-        "tf-saved-model-initialize-variables-in-session-init-test",
-        "Initialize variables in session initializer function.", [] {
-          static tensorflow::Session* session =
-              new TF::test_util::FakeSession();
-          return CreateInitializeVariablesInSessionInitializerPass(session);
-        });
+    initialize_variables_in_session_init_test_pass([] {
+      static tensorflow::Session* session = new TF::test_util::FakeSession();
+      return CreateInitializeVariablesInSessionInitializerPass(session);
+    });
 }  // namespace
 }  // namespace tf_saved_model
 }  // namespace mlir

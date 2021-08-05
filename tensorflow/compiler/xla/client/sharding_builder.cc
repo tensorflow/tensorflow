@@ -43,7 +43,7 @@ OpSharding Tile(const Shape& tile_shape,
   OpSharding result;
   result.set_type(OpSharding::OTHER);
   *result.mutable_tile_shape() = tile_shape.ToProto();
-  for (int64 dim : tile_assignment.dimensions()) {
+  for (int64_t dim : tile_assignment.dimensions()) {
     result.add_tile_assignment_dimensions(dim);
   }
   for (uint32 device : tile_assignment) {
@@ -52,7 +52,7 @@ OpSharding Tile(const Shape& tile_shape,
   return result;
 }
 
-OpSharding Tile1D(const Shape& tile_shape, int64 num_tiles) {
+OpSharding Tile1D(const Shape& tile_shape, int64_t num_tiles) {
   OpSharding result;
   result.set_type(OpSharding::OTHER);
 
@@ -63,7 +63,7 @@ OpSharding Tile1D(const Shape& tile_shape, int64 num_tiles) {
       (*result.mutable_tile_shape()->mutable_dimensions())[0];
   tile_dimension = CeilOfRatio(static_cast<int64>(tile_dimension), num_tiles);
   result.add_tile_assignment_dimensions(num_tiles);
-  for (int64 i = 0; i < num_tiles; ++i) {
+  for (int64_t i = 0; i < num_tiles; ++i) {
     result.add_tile_assignment_devices(i);
   }
   return result;

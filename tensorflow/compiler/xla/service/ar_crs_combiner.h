@@ -95,7 +95,7 @@ class ArCrsCombiner : public HloModulePass {
     int64 distance;
 
     ArCrsPair(HloInstruction* all_reduce, HloInstruction* cross_replica_sum,
-              int64 dist)
+              int64_t dist)
         : ar(all_reduce), crs(cross_replica_sum), distance(dist) {}
 
     string ToString() {
@@ -142,7 +142,7 @@ class ArCrsCombiner : public HloModulePass {
   // Checks whether two different elements in the same tuple compute the same
   // value.
   bool TupleElementsComputeSameValue(
-      HloInstruction* tuple_shaped_instruction, int64 i1, int64 i2,
+      HloInstruction* tuple_shaped_instruction, int64_t i1, int64_t i2,
       absl::flat_hash_map<int64, int64>* visited_pairs);
 
   // Returns whether the instructions i1 and i2 can be shown to evaluate to the

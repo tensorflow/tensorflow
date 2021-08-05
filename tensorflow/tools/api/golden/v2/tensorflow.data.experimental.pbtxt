@@ -186,7 +186,7 @@ tf_module {
   }
   member_method {
     name: "save"
-    argspec: "args=[\'dataset\', \'path\', \'compression\', \'shard_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'dataset\', \'path\', \'compression\', \'shard_func\', \'checkpoint_args\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "scan"

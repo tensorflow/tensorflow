@@ -30,7 +30,7 @@ namespace xla {
 class AllToAllDecomposer : public OpExpanderPass {
  public:
   explicit AllToAllDecomposer(bool decompose_to_tuple = true,
-                              int64 min_array_rank = 0)
+                              int64_t min_array_rank = 0)
       : decompose_to_tuple_(decompose_to_tuple),
         min_array_rank_(min_array_rank) {}
   ~AllToAllDecomposer() override = default;

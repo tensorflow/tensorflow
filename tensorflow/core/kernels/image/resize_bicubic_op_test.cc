@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -58,7 +59,7 @@ class ResizeBicubicOpTest : public OpsTestBase {
   }
 
  private:
-  static constexpr int64 kTableSize = (1 << 10);
+  static constexpr int64_t kTableSize = (1 << 10);
 
   const float* InitCoeffsTable() {
     // Allocate and initialize coefficients table using Bicubic
@@ -82,17 +83,17 @@ class ResizeBicubicOpTest : public OpsTestBase {
   }
 
   // Used in the baseline implementation
-  inline int64 Bound(int64 val, int64 limit) {
+  inline int64 Bound(int64_t val, int64_t limit) {
     return std::min(limit - 1, std::max(int64{0}, val));
   }
 
   // Used in the baseline implementation
-  inline void GetWeightsAndIndices(float scale, int64 out_loc, int64 limit,
+  inline void GetWeightsAndIndices(float scale, int64_t out_loc, int64_t limit,
                                    std::array<float, 4>* weights,
                                    std::array<int64, 4>* indices) {
-    const int64 in_loc = scale * out_loc;
+    const int64_t in_loc = scale * out_loc;
     const float delta = scale * out_loc - in_loc;
-    const int64 offset = lrintf(delta * kTableSize);
+    const int64_t offset = lrintf(delta * kTableSize);
     const float* coeffs_tab = GetCoeffsTable();
     *weights = {{coeffs_tab[offset * 2 + 1], coeffs_tab[offset * 2],
                  coeffs_tab[(kTableSize - offset) * 2],
@@ -113,35 +114,35 @@ class ResizeBicubicOpTest : public OpsTestBase {
   void ResizeBicubicBaseline(TTypes<float, 4>::ConstTensor images,
                              TTypes<float, 4>::Tensor output) {
     const int batch_size = images.dimension(0);
-    const int64 in_height = images.dimension(1);
-    const int64 in_width = images.dimension(2);
+    const int64_t in_height = images.dimension(1);
+    const int64_t in_width = images.dimension(2);
     const int channels = images.dimension(3);
 
     ASSERT_EQ(batch_size, output.dimension(0));
     ASSERT_EQ(channels, output.dimension(3));
 
-    const int64 out_height = output.dimension(1);
-    const int64 out_width = output.dimension(2);
+    const int64_t out_height = output.dimension(1);
+    const int64_t out_width = output.dimension(2);
 
     const float height_scale = in_height / static_cast<float>(out_height);
     const float width_scale = in_width / static_cast<float>(out_width);
 
     std::array<float, 4> coeff = {{0.0, 0.0, 0.0, 0.0}};
-    for (int64 b = 0; b < batch_size; ++b) {
-      for (int64 y = 0; y < out_height; ++y) {
+    for (int64_t b = 0; b < batch_size; ++b) {
+      for (int64_t y = 0; y < out_height; ++y) {
         std::array<float, 4> y_weights;
         std::array<int64, 4> y_indices;
         GetWeightsAndIndices(height_scale, y, in_height, &y_weights,
                              &y_indices);
-        for (int64 x = 0; x < out_width; ++x) {
+        for (int64_t x = 0; x < out_width; ++x) {
           std::array<float, 4> x_weights;
           std::array<int64, 4> x_indices;
           GetWeightsAndIndices(width_scale, x, in_width, &x_weights,
                                &x_indices);
-          for (int64 c = 0; c < channels; ++c) {
+          for (int64_t c = 0; c < channels; ++c) {
             // Use a 4x4 patch to compute the interpolated output value at
             // (b, y, x, c).
-            for (int64 i = 0; i < 4; ++i) {
+            for (int64_t i = 0; i < 4; ++i) {
               const std::array<float, 4> values = {
                   {static_cast<float>(images(b, y_indices[i], x_indices[0], c)),
                    static_cast<float>(images(b, y_indices[i], x_indices[1], c)),
@@ -158,8 +159,8 @@ class ResizeBicubicOpTest : public OpsTestBase {
   }
 
  protected:
-  void RunRandomTest(const int batch_size, const int64 in_height,
-                     const int64 in_width, const int target_height,
+  void RunRandomTest(const int batch_size, const int64_t in_height,
+                     const int64_t in_width, const int target_height,
                      const int target_width, int channels) {
     LOG(INFO) << "Running random test " << in_height << "x" << in_width << "x"
               << channels << " to " << target_height << "x" << target_width
@@ -221,8 +222,9 @@ TEST_F(ResizeBicubicOpTest, TestBicubic2x2To0x0) {
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
 
   Status s = RunOpKernel();
-  EXPECT_TRUE(absl::StrContains(
-      s.ToString(), "Invalid argument: output dimensions must be positive"))
+  EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                "output dimensions must be positive"))
       << s;
 }
 

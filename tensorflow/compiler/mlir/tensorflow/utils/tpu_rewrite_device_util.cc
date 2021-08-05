@@ -150,7 +150,7 @@ Status GetTPUDevices(
            std::next(system_devices.begin()), system_devices.end())) {
     auto host_tpu_devices = lookup(device_spec);
     // Check number of TPU devices per host all match.
-    const int64 host_tpu_devices_size = host_tpu_devices.size();
+    const int64_t host_tpu_devices_size = host_tpu_devices.size();
     if (num_tpus_per_host != host_tpu_devices_size)
       return errors::InvalidArgument(
           "expected the number of TPU devices per host to be ",

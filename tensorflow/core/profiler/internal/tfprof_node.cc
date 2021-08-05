@@ -53,7 +53,7 @@ void ExecStep::AddTimeStats(const string& dev, const NodeExecStats& step_stat) {
     } else {
       exec_.set_all_start_micros(step_stat.all_start_micros());
     }
-    int64 op_end_rel_micros = step_stat.op_end_rel_micros();
+    int64_t op_end_rel_micros = step_stat.op_end_rel_micros();
     // Round quick execution to 1 micro to be semantically robust.
     if (op_end_rel_micros == 0) {
       ++op_end_rel_micros;
@@ -109,17 +109,17 @@ void ExecStep::AddMemoryStats(const string& dev,
                   accelerator_allocator_cnt);
   }
 
-  int64 total_output_bytes = 0;
+  int64_t total_output_bytes = 0;
   for (const auto& output : step_stat.output()) {
     if (output.has_tensor_description() &&
         output.tensor_description().has_allocation_description()) {
       // TODO(xpan): Maybe allocated_bytes.
-      int64 output_bytes = std::max(output.tensor_description()
-                                        .allocation_description()
-                                        .allocated_bytes(),
-                                    output.tensor_description()
-                                        .allocation_description()
-                                        .requested_bytes());
+      int64_t output_bytes = std::max(output.tensor_description()
+                                          .allocation_description()
+                                          .allocated_bytes(),
+                                      output.tensor_description()
+                                          .allocation_description()
+                                          .requested_bytes());
       uint64 output_ptr =
           output.tensor_description().allocation_description().ptr();
       total_output_bytes += output_bytes;
@@ -164,9 +164,9 @@ void ExecStep::AddMemoryStats(const string& dev,
   //    is not used and hence tracks some complementary bytes. It appears in
   //    'NodeExecStats.memory_stats'. It's suspicious. But we should
   //    use it now since it covers constant op.
-  int64 residual_bytes = 0;
-  int64 requested_bytes = 0;
-  int64 peak_bytes = 0;
+  int64_t residual_bytes = 0;
+  int64_t requested_bytes = 0;
+  int64_t peak_bytes = 0;
   for (const auto& mem : step_stat.memory()) {
     residual_bytes += mem.live_bytes();
     requested_bytes += mem.total_bytes();
@@ -188,7 +188,7 @@ void ExecStep::AddMemoryStats(const string& dev,
   memory_execs_.emplace_back(exec_mem);
 }
 
-void TFGraphNode::AddStepStat(int64 step, const string& device,
+void TFGraphNode::AddStepStat(int64_t step, const string& device,
                               const NodeExecStats& step_stat) {
   string dev = absl::AsciiStrToLower(device);
 
@@ -229,7 +229,7 @@ int64 ExecStep::exec_micros() const {
 }
 
 int64 ExecStep::accelerator_exec_micros() const {
-  int64 total = 0;
+  int64_t total = 0;
   // Normally, an op should only be scheduled on 1 accelerator device.
   // Hence there should generally be 1 element in accelerator_execs_.
   for (const auto& execs : accelerator_execs_) {
@@ -243,7 +243,7 @@ int64 ExecStep::accelerator_exec_micros() const {
 }
 
 int64 ExecStep::cpu_exec_micros() const {
-  int64 total = 0;
+  int64_t total = 0;
   // Normally, an op can only be scheduled on 1 device.
   for (const auto& execs : cpu_execs_) {
     // An op can be scheduled multiple times in while-loop.
@@ -273,7 +273,7 @@ TensorShapeProto VecToShapeProto(const std::vector<int64>& shape_vec) {
     shape_pb.set_unknown_rank(true);
     return shape_pb;
   }
-  for (const int64 s : shape_vec) {
+  for (const int64_t s : shape_vec) {
     shape_pb.add_dim()->set_size(s);
   }
   return shape_pb;

@@ -636,7 +636,7 @@ StatusOr<bool> MarkForCompilationPassImpl::Initialize() {
 template <typename FnTy>
 StatusOr<bool> MarkForCompilationPassImpl::ForEachEdgeInPostOrder(FnTy fn) {
   bool changed = false;
-  for (int32 node : cycles_graph_.AllNodesInPostOrder()) {
+  for (int32_t node : cycles_graph_.AllNodesInPostOrder()) {
     Cluster* cluster_from = GetClusterForCyclesGraphNode(node);
     if (!cluster_from) {
       continue;
@@ -1717,7 +1717,7 @@ Status MarkForCompilation(
       .Run();
 }
 
-std::atomic<int64>* GetPointerToFuel(int64 initial_value) {
+std::atomic<int64>* GetPointerToFuel(int64_t initial_value) {
   static std::atomic<int64>* fuel = [&]() {
     std::atomic<int64>* fuel = new std::atomic<int64>;
     *fuel = initial_value;
@@ -2052,6 +2052,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "TensorScatterMin",
                                      "TensorScatterSub",
                                      "TensorScatterUpdate",
+                                     "ToBool",
                                      "TridiagonalSolve",
                                      "TruncatedNormal",
                                      "Unique",
@@ -2082,6 +2083,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaReduceWindow",
                                      "XlaRemoveDynamicDimensionSize",
                                      "XlaReplicaId",
+                                     "XlaRngBitGenerator",
                                      "XlaScatter",
                                      "XlaSelectAndScatter",
                                      "XlaSelfAdjointEig",
@@ -2094,6 +2096,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaSpmdShardToFullShape",
                                      "XlaSvd",
                                      "XlaVariadicReduce",
+                                     "XlaVariadicReduceV2",
                                      "XlaVariadicSort",
                                      "XlaWhile",
                                      "Zeta",

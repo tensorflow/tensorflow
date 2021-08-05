@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
-#include "third_party/tf_runtime/backends/gpu/include/tfrt/gpu/gpu_types.h"
+#include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime

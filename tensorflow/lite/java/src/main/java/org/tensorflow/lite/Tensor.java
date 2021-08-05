@@ -42,7 +42,18 @@ public final class Tensor {
    * interpreter is valid until the tensor is closed.
    */
   static Tensor fromIndex(long nativeInterpreterHandle, int tensorIndex) {
-    return new Tensor(create(nativeInterpreterHandle, tensorIndex));
+    return new Tensor(create(nativeInterpreterHandle, tensorIndex, /*subgraphIndex=*/ 0));
+  }
+
+  /**
+   * Creates a Tensor wrapper from the provided interpreter instance, subgraph and tensor indices.
+   *
+   * <p>The caller is responsible for closing the created wrapper, and ensuring the provided native
+   * interpreter is valid until the tensor is closed.
+   */
+  static Tensor fromSubgraphAndIndex(
+      long nativeInterpreterHandle, int subgraphIndex, int tensorIndex) {
+    return new Tensor(create(nativeInterpreterHandle, tensorIndex, subgraphIndex));
   }
 
   /**
@@ -141,12 +152,21 @@ public final class Tensor {
   }
 
   /**
-   * Returns the (global) index of the tensor within the owning {@link Interpreter}.
+   * Returns the (global) index of the tensor within the subgraph of the owning {@link Interpreter}.
    *
    * @hide
    */
   public int index() {
     return index(nativeHandle);
+  }
+
+  /**
+   * Returns the subgraph index of the tensor within the owning {@link Interpreter}.
+   *
+   * @hide
+   */
+  public int subgraph() {
+    return subgraph(nativeHandle);
   }
 
   /**
@@ -570,7 +590,7 @@ public final class Tensor {
     return buffer(nativeHandle).order(ByteOrder.nativeOrder());
   }
 
-  private static native long create(long interpreterHandle, int tensorIndex);
+  private static native long create(long interpreterHandle, int tensorIndex, int subgraphIndex);
 
   private static native void delete(long handle);
 
@@ -595,6 +615,8 @@ public final class Tensor {
   private static native void writeScalar(long handle, Object src);
 
   private static native int index(long handle);
+
+  private static native int subgraph(long handle);
 
   private static native String name(long handle);
 

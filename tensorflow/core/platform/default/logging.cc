@@ -333,7 +333,7 @@ LogMessage& LogMessage::AtLocation(const char* fname, int line) {
 
 LogMessage::~LogMessage() {
   // Read the min log level once during the first call to logging.
-  static int64 min_log_level = MinLogLevelFromEnv();
+  static int64_t min_log_level = MinLogLevelFromEnv();
   if (severity_ >= min_log_level) {
     GenerateLogMessage();
   }
@@ -344,7 +344,7 @@ void LogMessage::GenerateLogMessage() {
 }
 
 int64 LogMessage::MaxVLogLevel() {
-  static int64 max_vlog_level = MaxVLogLevelFromEnv();
+  static int64_t max_vlog_level = MaxVLogLevelFromEnv();
   return max_vlog_level;
 }
 
@@ -463,8 +463,8 @@ bool LogEveryPow2State::ShouldLog(int ignored) {
 
 bool LogEveryNSecState::ShouldLog(double seconds) {
   LossyIncrement(&counter_);
-  const int64 now_cycles = absl::base_internal::CycleClock::Now();
-  int64 next_cycles = next_log_time_cycles_.load(std::memory_order_relaxed);
+  const int64_t now_cycles = absl::base_internal::CycleClock::Now();
+  int64_t next_cycles = next_log_time_cycles_.load(std::memory_order_relaxed);
   do {
     if (now_cycles <= next_cycles) return false;
   } while (!next_log_time_cycles_.compare_exchange_weak(
@@ -534,7 +534,7 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
   static bool log_thread_id = internal::EmitThreadIdFromEnv();
   uint64 now_micros = EnvTime::NowMicros();
   time_t now_seconds = static_cast<time_t>(now_micros / 1000000);
-  int32 micros_remainder = static_cast<int32>(now_micros % 1000000);
+  int32_t micros_remainder = static_cast<int32>(now_micros % 1000000);
   const size_t time_buffer_size = 30;
   char time_buffer[time_buffer_size];
   strftime(time_buffer, time_buffer_size, "%Y-%m-%d %H:%M:%S",

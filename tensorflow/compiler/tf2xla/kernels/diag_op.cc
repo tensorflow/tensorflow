@@ -31,7 +31,7 @@ namespace tensorflow {
 namespace {
 
 // Create a diagonal / batch diagonal matrix with 'input' on the diagonal.
-xla::XlaOp CreateDiagonal(xla::XlaOp input, int64 last_dim_size,
+xla::XlaOp CreateDiagonal(xla::XlaOp input, int64_t last_dim_size,
                           absl::Span<const int64> other_dims) {
   xla::XlaBuilder* builder = input.builder();
   // Create two matrices that have the following forms, and compare them:
@@ -96,7 +96,7 @@ class DiagOp : public XlaOpKernel {
     //                            [0, 0, 0, 4]]
 
     // Flattens the input to 1D.
-    int64 size = input_shape.num_elements();
+    int64_t size = input_shape.num_elements();
     input = xla::Reshape(input, {size});
 
     // Create an R2 with the R1 diagonal.

@@ -24,11 +24,11 @@ limitations under the License.
 #include <cstring>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/arena_planner.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
@@ -43,6 +43,11 @@ limitations under the License.
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
+#ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
+#include "tensorflow/lite/simple_planner.h"
+#else
+#include "tensorflow/lite/arena_planner.h"
+#endif
 
 namespace tflite {
 
@@ -200,14 +205,16 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
                    TfLiteExternalContext** external_contexts,
                    std::vector<std::unique_ptr<Subgraph>>* subgraphs,
                    resource::ResourceMap* resources,
-                   resource::ResourceIDMap* resource_ids)
+                   resource::ResourceIDMap* resource_ids,
+                   resource::InitializationStatusMap* initialization_status_map)
     : external_contexts_(external_contexts),
       error_reporter_(error_reporter),
       next_execution_plan_index_to_prepare_(0),
       next_execution_plan_index_to_plan_allocation_(0),
       subgraphs_(subgraphs),
       resources_(resources),
-      resource_ids_(resource_ids) {
+      resource_ids_(resource_ids),
+      initialization_status_map_(initialization_status_map) {
   // TODO(b/161272052): Consider a better TfLiteContext initialization pattern:
   context_.impl_ = static_cast<void*>(this);
   context_.ResizeTensor = ResizeTensor;
@@ -222,6 +229,7 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
   context_.profiler = nullptr;
   context_.GetTensor = nullptr;
   context_.GetEvalTensor = nullptr;
+  context_.GetModelMetadata = GetModelMetadata;
 
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kTensorsReservedCapacity);
@@ -499,6 +507,30 @@ void Subgraph::FreeDelegatePartitioningData() {
   partitioning_preview_cache_.clear();
 }
 
+TfLiteStatus Subgraph::GetModelMetadata(const char* name, const char** ptr,
+                                        size_t* bytes) {
+  TF_LITE_ENSURE(&context_, ptr != nullptr);
+  TF_LITE_ENSURE(&context_, bytes != nullptr);
+  *ptr = nullptr;
+  *bytes = 0;
+  if (!metadata_) return kTfLiteError;
+  const std::string name_str = name;
+  auto itr = metadata_->find(name_str);
+  if (itr != metadata_->end()) {
+    *ptr = itr->second.c_str();
+    *bytes = itr->second.size();
+    return kTfLiteOk;
+  }
+  return kTfLiteError;
+}
+
+TfLiteStatus Subgraph::GetModelMetadata(const struct TfLiteContext* context,
+                                        const char* name, const char** ptr,
+                                        size_t* bytes) {
+  return static_cast<Subgraph*>(context->impl_)
+      ->GetModelMetadata(name, ptr, bytes);
+}
+
 TfLiteStatus Subgraph::PreviewDelegatePartitioning(
     const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegateParams** partition_params_array, int* num_partitions) {
@@ -559,6 +591,13 @@ TfLiteStatus Subgraph::SetVariables(std::vector<int> variables) {
   TF_LITE_ENSURE_OK(&context_, CheckTensorIndices("variables", variables.data(),
                                                   variables.size()));
   variables_ = std::move(variables);
+  return kTfLiteOk;
+}
+
+TfLiteStatus Subgraph::SetMetadata(
+    const std::map<std::string, std::string>* metadata) {
+  metadata_ = metadata;
+  // TODO(b/188185962): Set context_.allow_fp32_relax_to_fp16 based on metadata.
   return kTfLiteOk;
 }
 
@@ -653,6 +692,8 @@ TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
 TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
                                      size_t dims_size, size_t* bytes) {
   TF_LITE_ENSURE(&context_, bytes != nullptr);
+  // When 'dims_size' is 0, we simply assume it's a scalar. Therefore, we start
+  // 'count' as 1.
   size_t count = 1;
   for (int k = 0; k < dims_size; k++) {
     size_t old_count = count;
@@ -962,9 +1003,13 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
 
 TfLiteStatus Subgraph::PrepareOpsAndTensors() {
   if (!memory_planner_) {
-    memory_planner_.reset(new ArenaPlanner(
-        &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this)),
-        preserve_all_tensors_, kDefaultTensorAlignment));
+#ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
+    memory_planner_.reset(new SimplePlanner(&context_, CreateGraphInfo()));
+#else
+    memory_planner_.reset(new ArenaPlanner(&context_, CreateGraphInfo(),
+                                           preserve_all_tensors_,
+                                           kDefaultTensorAlignment));
+#endif
     memory_planner_->PlanAllocations();
   }
 
@@ -1707,6 +1752,10 @@ TfLiteStatus Subgraph::PreserveAllTensorsExperimental() {
   }
   preserve_all_tensors_ = true;
   return kTfLiteOk;
+}
+
+std::unique_ptr<GraphInfo> Subgraph::CreateGraphInfo() {
+  return std::unique_ptr<GraphInfo>(new InterpreterInfo(this));
 }
 
 }  // namespace tflite

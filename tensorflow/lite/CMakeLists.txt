@@ -72,6 +72,10 @@ option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
 
 set(CMAKE_CXX_STANDARD 14)  # Some components require C++14.
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(_TFLITE_ENABLE_RUY "${TFLITE_ENABLE_RUY}")
+if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
+  set(_TFLITE_ENABLE_RUY ON)
+endif()
 set(_TFLITE_ENABLE_NNAPI "${TFLITE_ENABLE_NNAPI}")
 if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
   set(_TFLITE_ENABLE_NNAPI OFF)
@@ -288,6 +292,8 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_DELEGATES_GPU_COMMON_TASKS_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_TASKS_SPECIAL_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_SRCS}
+    ${TFLITE_SOURCE_DIR}/tools/versioning/gpu_compatibility.cc
+    ${TFLITE_SOURCE_DIR}/tools/versioning/op_signature.cc
   )
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DCL_DELEGATE_NO_GL" "-DEGL_NO_X11")
   list(APPEND TFLITE_TARGET_DEPENDENCIES
@@ -341,7 +347,8 @@ populate_tflite_source_vars("experimental/ruy/profiler"
   TFLITE_EXPERIMENTAL_RUY_PROFILER_SRCS
   FILTER ".*(test|test_instrumented_library)\\.(cc|h)$"
 )
-if(TFLITE_ENABLE_RUY)
+if(_TFLITE_ENABLE_RUY)
+  message(STATUS "RUY is enabled.")
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFLITE_WITH_RUY")
 endif()
 populate_tflite_source_vars("kernels"

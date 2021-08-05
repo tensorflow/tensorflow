@@ -400,13 +400,22 @@ inline size_t ReducedOutputOffset(const int num_dims, const int* dims,
   return offset;
 }
 
+// Since tensors with '0' in their shape are valid in TF, these offset functions
+// allow that as long as the corresponding index is also 0. It is upto the
+// calling ops to ensure that they perform verification checks on tensor shapes
+// if they don't support a particular behavior.
+
 inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3) {
   TFLITE_DCHECK_EQ(shape.DimensionsCount(), 4);
   const int* dims_data = reinterpret_cast<const int*>(shape.DimsDataUpTo5D());
-  TFLITE_DCHECK(i0 >= 0 && i0 < dims_data[0]);
-  TFLITE_DCHECK(i1 >= 0 && i1 < dims_data[1]);
-  TFLITE_DCHECK(i2 >= 0 && i2 < dims_data[2]);
-  TFLITE_DCHECK(i3 >= 0 && i3 < dims_data[3]);
+  TFLITE_DCHECK((dims_data[0] == 0 && i0 == 0) ||
+                (i0 >= 0 && i0 < dims_data[0]));
+  TFLITE_DCHECK((dims_data[1] == 0 && i1 == 0) ||
+                (i1 >= 0 && i1 < dims_data[1]));
+  TFLITE_DCHECK((dims_data[2] == 0 && i2 == 0) ||
+                (i2 >= 0 && i2 < dims_data[2]));
+  TFLITE_DCHECK((dims_data[3] == 0 && i3 == 0) ||
+                (i3 >= 0 && i3 < dims_data[3]));
   return ((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3;
 }
 
@@ -414,31 +423,40 @@ inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3,
                   int i4) {
   TFLITE_DCHECK_EQ(shape.DimensionsCount(), 5);
   const int* dims_data = reinterpret_cast<const int*>(shape.DimsDataUpTo5D());
-  TFLITE_DCHECK(i0 >= 0 && i0 < dims_data[0]);
-  TFLITE_DCHECK(i1 >= 0 && i1 < dims_data[1]);
-  TFLITE_DCHECK(i2 >= 0 && i2 < dims_data[2]);
-  TFLITE_DCHECK(i3 >= 0 && i3 < dims_data[3]);
-  TFLITE_DCHECK(i4 >= 0 && i4 < dims_data[4]);
+  TFLITE_DCHECK((dims_data[0] == 0 && i0 == 0) ||
+                (i0 >= 0 && i0 < dims_data[0]));
+  TFLITE_DCHECK((dims_data[1] == 0 && i1 == 0) ||
+                (i1 >= 0 && i1 < dims_data[1]));
+  TFLITE_DCHECK((dims_data[2] == 0 && i2 == 0) ||
+                (i2 >= 0 && i2 < dims_data[2]));
+  TFLITE_DCHECK((dims_data[3] == 0 && i3 == 0) ||
+                (i3 >= 0 && i3 < dims_data[3]));
+  TFLITE_DCHECK((dims_data[4] == 0 && i4 == 0) ||
+                (i4 >= 0 && i4 < dims_data[4]));
   return (((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3) *
              dims_data[4] +
          i4;
 }
 
+inline int Offset(const RuntimeShape& shape, int* index) {
+  return Offset(shape, index[0], index[1], index[2], index[3]);
+}
+
 inline int Offset(const Dims<4>& dims, int i0, int i1, int i2, int i3) {
-  TFLITE_DCHECK(i0 >= 0 && i0 < dims.sizes[0]);
-  TFLITE_DCHECK(i1 >= 0 && i1 < dims.sizes[1]);
-  TFLITE_DCHECK(i2 >= 0 && i2 < dims.sizes[2]);
-  TFLITE_DCHECK(i3 >= 0 && i3 < dims.sizes[3]);
+  TFLITE_DCHECK((i0 == 0 && dims.sizes[0] == 0) ||
+                (i0 >= 0 && i0 < dims.sizes[0]));
+  TFLITE_DCHECK((i1 == 0 && dims.sizes[1] == 0) ||
+                (i1 >= 0 && i1 < dims.sizes[1]));
+  TFLITE_DCHECK((i2 == 0 && dims.sizes[2] == 0) ||
+                (i2 >= 0 && i2 < dims.sizes[2]));
+  TFLITE_DCHECK((i3 == 0 && dims.sizes[3] == 0) ||
+                (i3 >= 0 && i3 < dims.sizes[3]));
   return i0 * dims.strides[0] + i1 * dims.strides[1] + i2 * dims.strides[2] +
          i3 * dims.strides[3];
 }
 
 inline int Offset(const Dims<4>& dims, int* index) {
   return Offset(dims, index[0], index[1], index[2], index[3]);
-}
-
-inline int Offset(const RuntimeShape& shape, int* index) {
-  return Offset(shape, index[0], index[1], index[2], index[3]);
 }
 
 // Get array size, DCHECKing that the dim index is in range.

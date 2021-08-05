@@ -15,7 +15,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/shuffle_dataset_op.h"
 
 #include <deque>
+#include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/data/dataset_utils.h"
@@ -148,7 +150,6 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           generator_(&parent_generator_) {
       buffer_ = absl::make_unique<std::vector<std::vector<Tensor>>>(
           params.dataset->buffer_size_);
-      slices_.push_back(absl::make_unique<Slice>(0, 0));
     }
 
     Status Initialize(IteratorContext* ctx) override {
@@ -162,101 +163,26 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
-      int64 start_micros = EnvTime::NowMicros();
-      int64 num_log_entries = 0;
-      if (!input_impl_ && epoch_ == 0) {
-        TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-            ctx, this, this->prefix(), &input_impl_));
-      }
-      while (input_impl_ && num_elements_ < this->dataset()->buffer_size_) {
-        if (EnvTime::NowMicros() >
-            ((num_log_entries + 1) * kLogIntervalMicros) + start_micros) {
-          num_log_entries++;
-          LOG(INFO) << "Filling up shuffle buffer (this may take a while): "
-                    << num_elements_ << " of " << this->dataset()->buffer_size_;
-        }
-        std::vector<Tensor> input_element;
-        bool end_of_input_sequence = false;
-        while (this->dataset()->count_ == -1 ||
-               epoch_ < this->dataset()->count_) {
-          TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &input_element,
-                                                  &end_of_input_sequence));
-          if (!end_of_input_sequence) {
-            data_produced_ = true;
-            break;
-          }
-          if (ctx->split_providers().empty() && !data_produced_ &&
-              this->dataset()->count_ == -1) {
-            // If we encounter the end of sequence without producing data, we
-            // terminate the iteration immediately. (Otherwise, this iterator
-            // would loop infinitely and never produce a value.)
-            *end_of_sequence = true;
-            return Status::OK();
-          }
-          epoch_++;
-          int64 n = slices_.back()->end;
-          slices_.push_back(absl::make_unique<Slice>(n, n));
-          for (const auto& provider : ctx->split_providers()) {
-            TF_RETURN_IF_ERROR(provider->Reset());
-          }
-          TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-              ctx, this, this->prefix(), &input_impl_));
-        }
-        if (!end_of_input_sequence) {
-          if (num_elements_ == 0) {
-            VLOG(1) << "Starting to fill up shuffle buffer of size: "
-                    << this->dataset()->buffer_size_;
-          }
-          this->RecordBufferEnqueue(ctx, input_element);
-          buffer_->at(slices_.back()->end % this->dataset()->buffer_size_) =
-              std::move(input_element);
-          num_elements_++;
-          slices_.back()->end++;
-        } else {
-          input_impl_.reset();
-        }
-        if (slices_.size() > kMaxEpochsInBuffer) {
-          // When the elements stored in `buffer_` span more than
-          // `kMaxEpochsInBuffer` epochs, we do not fill the buffer further to
-          // conserve memory. This means that the upper bound on the size of
-          // `buffer_` is `kMaxEpochsInBuffer * cardinality(input_dataset) +
-          // 1`.
-          break;
-        }
-      }
-      if (num_log_entries > 0) {
-        LOG(INFO) << "Shuffle buffer filled.";
-      }
-
-      if (num_elements_ > 0) {
-        *end_of_sequence = false;
-        // Garbage collect all empty slices.
-        while (!slices_.empty() &&
-               slices_.front()->start == slices_.front()->end) {
-          slices_.pop_front();
-          // Reinitialize the RNG state for the next epoch.
-          num_random_samples_ = 0;
-          seed_generator_->GenerateSeeds(&seed_, &seed2_);
-          ResetRngs();
-        }
-        DCHECK(!slices_.empty());
-        // Choose an element to produce uniformly at random from the first
-        // slice, and then remove the element from the slice.
-        int64 offset =
-            Random() % (slices_.front()->end - slices_.front()->start);
-        int64 index =
-            (slices_.front()->start + offset) % this->dataset()->buffer_size_;
-        *out_tensors = std::move(buffer_->at(index));
-        this->RecordBufferDequeue(ctx, *out_tensors);
-        std::swap(buffer_->at(index),
-                  buffer_->at(slices_.front()->start %
-                              this->dataset()->buffer_size_));
-        slices_.front()->start++;
-        num_elements_--;
-      } else {
+      TF_RETURN_IF_ERROR(FillBuffer(ctx));
+      if (num_elements_ == 0) {
         DCHECK(input_impl_ == nullptr);
         *end_of_sequence = true;
+        return Status::OK();
       }
+
+      *end_of_sequence = false;
+      ClearEmptySlices();
+      DCHECK(!slices_.empty());
+      // Choose an element to produce uniformly at random from the first
+      // slice, and then remove the element from the slice.
+      int64 offset = Random() % (slices_.front()->end - slices_.front()->start);
+      int64 index = (slices_.front()->start + offset) % buffer_->size();
+      *out_tensors = std::move(buffer_->at(index));
+      this->RecordBufferDequeue(ctx, *out_tensors);
+      std::swap(buffer_->at(index),
+                buffer_->at(slices_.front()->start % buffer_->size()));
+      slices_.front()->start++;
+      num_elements_--;
       return Status::OK();
     }
 
@@ -355,10 +281,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
             reader->ReadScalar(this->full_name(kSlicesSize), &temp));
         slices_size = static_cast<size_t>(temp);
       }
-      buffer_ = absl::make_unique<std::vector<std::vector<Tensor>>>(
-          this->dataset()->buffer_size_);
+      buffer_ = absl::make_unique<std::vector<std::vector<Tensor>>>();
       TF_RETURN_IF_ERROR(
           ReadElementsFromCheckpoint(ctx, reader, prefix(), buffer_.get()));
+      buffer_->resize(dataset()->buffer_size_);
       slices_.clear();
       for (size_t i = 0; i < slices_size; ++i) {
         int64 start;
@@ -399,6 +325,106 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       num_random_samples_++;
       auto out = generator_();
       return out;
+    }
+
+    // Fills the shuffle buffer, preparing the buffer for sampling.
+    Status FillBuffer(IteratorContext* ctx) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      int64 start_micros = EnvTime::NowMicros();
+      int64 num_log_entries = 0;
+      while (ShouldFillBuffer()) {
+        if (EnvTime::NowMicros() >
+            ((num_log_entries + 1) * kLogIntervalMicros) + start_micros) {
+          num_log_entries++;
+          LOG(INFO) << "Filling up shuffle buffer (this may take a while): "
+                    << num_elements_ << " of " << BufferSizeString();
+        }
+        if (!input_impl_) {
+          TF_RETURN_IF_ERROR(PrepareNextEpoch(ctx));
+        }
+        std::vector<Tensor> input_element;
+        bool end_of_input_sequence = false;
+        TF_RETURN_IF_ERROR(
+            input_impl_->GetNext(ctx, &input_element, &end_of_input_sequence));
+        if (!end_of_input_sequence) {
+          AddToShuffleBuffer(ctx, std::move(input_element));
+          continue;
+        }
+        input_impl_.reset();
+        // Reached end of input_impl_.
+        if (ctx->split_providers().empty() && !data_produced_ &&
+            this->dataset()->count_ == -1) {
+          // If we encounter the end of sequence without producing data, we
+          // terminate the iteration immediately. (Otherwise, this iterator
+          // would loop infinitely and never produce a value.)
+          return Status::OK();
+        }
+      }
+      if (num_log_entries > 0) {
+        LOG(INFO) << "Shuffle buffer filled.";
+      }
+      return Status::OK();
+    }
+
+    bool ShouldFillBuffer() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (!input_impl_ && dataset()->count_ != -1 &&
+          epoch_ >= dataset()->count_) {
+        return false;
+      }
+      if (slices_.size() > kMaxEpochsInBuffer && num_elements_ > 0) {
+        // When the elements stored in `buffer_` span more than
+        // `kMaxEpochsInBuffer` epochs, we do not fill the buffer further to
+        // conserve memory. This means that the upper bound on the size of
+        // `buffer_` is `kMaxEpochsInBuffer * cardinality(input_dataset) +
+        // 1`.
+        return false;
+      }
+      return num_elements_ < buffer_->size();
+    }
+
+    Status PrepareNextEpoch(IteratorContext* ctx)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (epoch_ == 0) {
+        slices_.push_back(absl::make_unique<Slice>(0, 0));
+      } else {
+        int64 n = slices_.back()->end;
+        slices_.push_back(absl::make_unique<Slice>(n, n));
+        for (const auto& provider : ctx->split_providers()) {
+          TF_RETURN_IF_ERROR(provider->Reset());
+        }
+      }
+      TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
+          ctx, this, this->prefix(), &input_impl_));
+      epoch_++;
+      return Status::OK();
+    }
+
+    void AddToShuffleBuffer(IteratorContext* ctx, std::vector<Tensor>&& element)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      data_produced_ = true;
+      if (num_elements_ == 0) {
+        VLOG(1) << "Starting to fill up shuffle buffer of size: "
+                << BufferSizeString();
+      }
+      this->RecordBufferEnqueue(ctx, element);
+      size_t index = slices_.back()->end % buffer_->size();
+      buffer_->at(index) = std::move(element);
+      num_elements_++;
+      slices_.back()->end++;
+    }
+
+    void ClearEmptySlices() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      // Garbage collect all empty slices.
+      while (slices_.front()->start == slices_.front()->end) {
+        slices_.pop_front();
+        // Reinitialize the RNG state for the next epoch.
+        num_random_samples_ = 0;
+        seed_generator_->GenerateSeeds(&seed_, &seed2_);
+        ResetRngs();
+      }
+    }
+
+    std::string BufferSizeString() {
+      return absl::StrCat(dataset()->buffer_size_);
     }
 
     mutex mu_;

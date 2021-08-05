@@ -33,8 +33,6 @@ REGISTER(BinaryOp, CPU, "Mul", functor::mul, int32);
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER4(BinaryOp, GPU, "Mul", functor::mul, Eigen::half, float, double,
           uint8);
-#else
-REGISTER(BinaryOp, GPU, "Mul", functor::mul, uint8);
 #endif
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -56,8 +54,7 @@ REGISTER_KERNEL_BUILDER(Name("Mul")
                         BinaryOp<CPUDevice, functor::mul<int32>>);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER5(BinaryOp, GPU, "MulNoNan", functor::mul_no_nan, Eigen::half, float,
           double, complex64, complex128);
 #endif

@@ -25,7 +25,11 @@ from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
+from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.eager import cancellation
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import executor
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -33,6 +37,71 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import test
+
+
+cls_combination = combinations.combine(cls=[
+    combinations.NamedObject("MultiDeviceIterator",
+                             multi_device_iterator_ops.MultiDeviceIterator),
+    combinations.NamedObject("OwnedMultiDeviceIterator",
+                             multi_device_iterator_ops.OwnedMultiDeviceIterator)
+])
+
+
+class MultiDeviceIteratorCommonTest(test_base.DatasetTestBase,
+                                    parameterized.TestCase):
+  """Tests that are common to MultiDeviceIterator and OwnedMultiDeviceIterator."""
+
+  def setUp(self):
+    super().setUp()
+    self._devices = self.configureDevicesForMultiDeviceTest(3)
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(), cls_combination))
+  def testCancelGetNextWithDevice(self, cls):
+    ping = data_flow_ops.FIFOQueue(capacity=2, dtypes=dtypes.int64)
+    pong = data_flow_ops.FIFOQueue(capacity=2, dtypes=dtypes.int64)
+
+    @def_function.function
+    def map_fn(v):
+      ball = ping.dequeue()
+      with ops.control_dependencies([pong.enqueue(ball)]):
+        return v + ping.dequeue()
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.map(map_fn)
+
+    # We need to set prefetch_buffer_size=0 so that we can cancel the
+    # MultiDeviceIteratorGetNextFromShardOp from eager. If
+    # prefetch_buffer_size>0, that op runs in the background threads of the
+    # prefetch and can only be cancelled by deleting the iterator.
+    multi_device_iterator = cls(
+        dataset, [self._devices[1], self._devices[2]], prefetch_buffer_size=0)
+
+    @def_function.function
+    def get_next_device1():
+      return multi_device_iterator.get_next(self._devices[1])
+
+    async_executor = executor.new_executor(enable_async=True)
+    with context.executor_scope(async_executor):
+      cancel_mgr = cancellation.CancellationManager()
+      cancel_mgr.get_cancelable_function(
+          get_next_device1.get_concrete_function())()
+    # Make sure we cancel in the middle of get_next.
+    ping.enqueue(0)
+    pong.dequeue()
+    cancel_mgr.start_cancel()
+    with self.assertRaises(errors.CancelledError):
+      async_executor.wait()
+    # Note that fetching from upstream iterator is not cancelled with the
+    # cancellation of get_next.
+    ping.enqueue(0)
+
+    # Cancelling a get_next on one device shouldn't cancel the
+    # multi_device_iterator and iterators on other devices.
+    ping.enqueue(0)
+    ping.enqueue(0)
+    self.assertEqual(1,
+                     multi_device_iterator.get_next(self._devices[2]).numpy())
 
 
 class MultiDeviceIteratorTest(test_base.DatasetTestBase,
@@ -209,7 +278,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
     dataset = dataset.skip(0)  # this should be optimized away
     dataset = dataset.cache()
 
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.noop_elimination = True
     dataset = dataset.with_options(options)
 

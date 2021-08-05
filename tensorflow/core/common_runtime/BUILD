@@ -252,6 +252,7 @@ filegroup(
         "costmodel_manager.h",
         "placer_inspection_required_ops_utils.h",
         "debugger_state_interface.h",
+        "all_to_all.h",
         "device_resolver_local.h",
         "dma_helper.h",
         "executor.h",
@@ -305,6 +306,27 @@ cc_library(
     deps = [
         ":optimization_registry",
         "//tensorflow/core:graph",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "all_to_all",
+    srcs = ["all_to_all.cc"],
+    hdrs = ["all_to_all.h"],
+    copts = tf_copts(),
+    deps = [
+        ":base_collective_executor",
+        ":collective_rma_local",
+        ":collective_util",
+        ":copy_tensor",
+        ":device",
+        ":device_mgr",
+        ":dma_helper",
+        ":process_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )
@@ -1682,6 +1704,7 @@ tf_cuda_library(
     copts = tf_copts(),
     deps = [
         ":accumulate_n_optimizer",
+        ":all_to_all",
         ":base_collective_executor",
         ":bfc_allocator",
         ":buf_rendezvous",
@@ -1864,6 +1887,38 @@ filegroup(
     ],
 )
 
+cc_library(
+    name = "cost_measurement",
+    hdrs = ["cost_measurement.h"],
+    visibility = ["//visibility:public"],
+    deps = ["@com_google_absl//absl/time"],
+)
+
+cc_library(
+    name = "cost_measurement_registry",
+    srcs = ["cost_measurement_registry.cc"],
+    hdrs = ["cost_measurement_registry.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cost_measurement",
+        "//tensorflow/core:tflite_portable_logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "no_op_cost_measurement",
+    srcs = ["no_op_cost_measurement.cc"],
+    hdrs = ["no_op_cost_measurement.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cost_measurement_registry",
+    ],
+    alwayslink = 1,
+)
+
 # -----------------------------------------------------------------------------
 # Tests
 
@@ -1907,6 +1962,25 @@ tf_cc_test(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "all_to_all_test",
+    srcs = ["all_to_all_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
+    deps = [
+        ":collective_test_util",
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":process_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:blocking_counter",
     ],
 )
 
@@ -2848,5 +2922,26 @@ tf_cc_test(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/util:protos_test_cc",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "cost_measurement_registry_test",
+    srcs = ["cost_measurement_registry_test.cc"],
+    deps = [
+        ":cost_measurement_registry",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "no_op_cost_measurement_test",
+    srcs = ["no_op_cost_measurement_test.cc"],
+    deps = [
+        ":no_op_cost_measurement",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

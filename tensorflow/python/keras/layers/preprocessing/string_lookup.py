@@ -18,7 +18,6 @@
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import table_utils
 from tensorflow.python.util import compat
@@ -316,7 +315,6 @@ class StringLookup(index_lookup.IndexLookup):
         sparse=sparse,
         pad_to_max_tokens=pad_to_max_tokens,
         **kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell("StringLookup").set(True)
 
   def get_config(self):
     config = {"encoding": self.encoding}

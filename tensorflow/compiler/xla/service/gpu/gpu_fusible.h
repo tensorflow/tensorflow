@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-constexpr int64 kMaxOperandsAndOutputsPerFusion = 64;
+constexpr int64_t kMaxOperandsAndOutputsPerFusion = 64;
 
 bool IsInputFusible(const HloInstruction& instr);
 

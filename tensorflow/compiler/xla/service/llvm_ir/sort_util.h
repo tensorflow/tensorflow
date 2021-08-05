@@ -35,10 +35,10 @@ using EmitCallToNestedComputationCallback =
 // as-is. This implements the inner loop of BitonicSort. It is assumed that
 // 'xor_masks' contains only powers of 2, or values 2^k - 1 (k > 0).
 Status EmitSortInPlace(
-    int64 dimension_to_sort, const std::vector<IrArray>& values_arrays,
+    int64_t dimension_to_sort, const std::vector<IrArray>& values_arrays,
     absl::string_view name, absl::Span<const int64> xor_masks,
     llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
-    int64 num_iterations_in_sort_dim, int64 tile_size,
+    int64_t num_iterations_in_sort_dim, int64_t tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback);
 }  // namespace llvm_ir
 }  // namespace xla

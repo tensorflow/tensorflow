@@ -45,11 +45,11 @@ IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
 void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
                                  llvm::Value* linear, const Shape& shape,
                                  llvm::IRBuilder<>* b) const {
-  int64 divisor = 1;
+  int64_t divisor = 1;
   const Layout& layout = shape.layout();
-  for (int64 i = 0; i < layout.minor_to_major_size(); ++i) {
-    int64 dimension = layout.minor_to_major(i);
-    int64 size_of_current_dimension = shape.dimensions(dimension);
+  for (int64_t i = 0; i < layout.minor_to_major_size(); ++i) {
+    int64_t dimension = layout.minor_to_major(i);
+    int64_t size_of_current_dimension = shape.dimensions(dimension);
 
     // If i is not the last dimension, compute
     //   (linear_index / divisor) % current_dimension.
@@ -80,8 +80,8 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
   CHECK_EQ(multidim_.size(), shape.rank());
   llvm::Value* divisor = GetConstantWithIndexType(1);
   const Layout& layout = shape.layout();
-  for (int64 i = 0; i < layout.minor_to_major_size(); ++i) {
-    int64 dimension = layout.minor_to_major(i);
+  for (int64_t i = 0; i < layout.minor_to_major_size(); ++i) {
+    int64_t dimension = layout.minor_to_major(i);
 
     // If i is not the last dimension, compute
     //   (linear_index / divisor) % current_dimension.
@@ -225,7 +225,7 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     // 'source_multidim_index' which does not belong to 'deleted_dims_indices',
     // we retrieve the corresponding value from 'multidim_' (skipping any
     // indices that appear in 'inserted_dims_indices').
-    for (int64 i = 0, j = 0, k = 0, l = 0; i < source_multidim_index.size();
+    for (int64_t i = 0, j = 0, k = 0, l = 0; i < source_multidim_index.size();
          ++i) {
       if (j == deleted_dims_indices.size() || deleted_dims_indices[j] > i) {
         // This is a dimension that was preserved. Take the matching value from
@@ -264,7 +264,7 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
       // Delinearizes logical_linear_index for the source array in row-major
       // collapsed order. The first rank-1 indices are the remainder of the
       // linear index by each dimension size.
-      for (int64 i = common_factors[k + 1].first - 1;
+      for (int64_t i = common_factors[k + 1].first - 1;
            i >= common_factors[k].first; --i) {
         llvm::Value* divisor =
             GetConstantWithIndexType(input_shape.dimensions(i));
@@ -295,7 +295,7 @@ IrArray::Index IrArray::Index::SourceIndexOfSlice(
     absl::Span<const int64> strides, llvm::IRBuilder<>* builder) const {
   std::vector<llvm::Value*> source_multi_index(multidim_.size());
   for (int i = 0; i < multidim_.size(); ++i) {
-    int64 stride = strides[i];
+    int64_t stride = strides[i];
     if (stride != 1) {
       source_multi_index[i] = builder->CreateAdd(
           builder->CreateMul(multidim_[i], GetConstantWithIndexType(stride)),
@@ -345,7 +345,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
   // First linearize the index coming from the output of the bitcast. We want
   // the physical index of the element in the buffer. This is like Linearize,
   // but takes the layout into account.
-  int64 scale = 1;
+  int64_t scale = 1;
   llvm::Value* linear_index = GetConstantWithIndexType(0);
   for (auto dimension : LayoutUtil::MinorToMajor(shape)) {
     linear_index = builder->CreateAdd(
@@ -364,9 +364,9 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
     const Shape& shape, const Shape& operand_shape,
     absl::Span<const int64> dimension_mapping,
     llvm::IRBuilder<>* builder) const {
-  int64 rank = operand_shape.rank();
+  int64_t rank = operand_shape.rank();
   std::vector<llvm::Value*> source_index(rank);
-  for (int64 i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < rank; ++i) {
     source_index[i] = multidim_[dimension_mapping[i]];
   }
   if (linear_ == nullptr || !LayoutUtil::HasLayout(operand_shape) ||
@@ -378,13 +378,13 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
   // The other dimensions can be masked out with a div and a mod operation.
   std::vector<int64> logical_to_physical =
       LayoutUtil::MakeLogicalToPhysical(shape.layout());
-  int64 output_rank = shape.rank();
+  int64_t output_rank = shape.rank();
   // The minimum physical dimension that is broadcasted.
-  int64 min_broadcasted_dimension = output_rank;
+  int64_t min_broadcasted_dimension = output_rank;
   // The maximum physical dimension that is broadcasted.
-  int64 max_broadcasted_dimension = -1;
-  for (int64 i = 0; i < rank; ++i) {
-    int64 physical_dim = logical_to_physical[dimension_mapping[i]];
+  int64_t max_broadcasted_dimension = -1;
+  for (int64_t i = 0; i < rank; ++i) {
+    int64_t physical_dim = logical_to_physical[dimension_mapping[i]];
     min_broadcasted_dimension =
         std::min(min_broadcasted_dimension, physical_dim);
     max_broadcasted_dimension =
@@ -398,23 +398,23 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
   // Check if the mapped dimensions are a bitcast.
   std::vector<int64> operand_logical_to_physical =
       LayoutUtil::MakeLogicalToPhysical(operand_shape.layout());
-  for (int64 i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < rank; ++i) {
     if (operand_logical_to_physical[i] !=
         logical_to_physical[dimension_mapping[i]] - min_broadcasted_dimension) {
       return Index(source_index, operand_shape, index_type_);
     }
   }
   llvm::Value* linear = linear_;
-  int64 divisor = 1;
-  for (int64 i = max_broadcasted_dimension + 1; i < output_rank; ++i) {
+  int64_t divisor = 1;
+  for (int64_t i = max_broadcasted_dimension + 1; i < output_rank; ++i) {
     divisor *= shape.dimensions(LayoutUtil::Major(shape.layout(), i));
   }
   if (divisor > 1) {
     linear = builder->CreateUDiv(linear, GetConstantWithIndexType(divisor));
   }
   if (min_broadcasted_dimension > 0) {
-    int64 mod = 1;
-    for (int64 i = min_broadcasted_dimension; i <= max_broadcasted_dimension;
+    int64_t mod = 1;
+    for (int64_t i = min_broadcasted_dimension; i <= max_broadcasted_dimension;
          ++i) {
       mod *= shape.dimensions(LayoutUtil::Major(shape.layout(), i));
     }
@@ -429,7 +429,7 @@ llvm::Value* IrArray::Index::Linearize(absl::Span<const int64> dimensions,
   // earlier dimensions and added to the accumulator logical_linear_index.
   CHECK_EQ(size(), dimensions.size());
   llvm::Value* logical_linear_index = GetConstantWithIndexType(0);
-  int64 multiplier = 1;
+  int64_t multiplier = 1;
   for (ssize_t i = size() - 1; i >= 0; --i) {
     llvm::Value* addend =
         builder->CreateMul((*this)[i], GetConstantWithIndexType(multiplier), "",
@@ -487,7 +487,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
   }
 
   std::vector<llvm::Value*> actual_index;
-  for (int64 i = 0; i < index.size(); ++i) {
+  for (int64_t i = 0; i < index.size(); ++i) {
     // When dimension i is of size 1, LLVM optimization is able to replace
     // index[i] with 0. However, setting index[i] to 0 here still allows LLVM to
     // produce better code in some cases.
@@ -504,8 +504,8 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
   CHECK_GT(index.size(), 0);
   std::vector<llvm::Value*> gep_indices(
       1, llvm::ConstantInt::get(index[0]->getType(), 0));
-  for (int64 i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
-    int64 dimension = LayoutUtil::Major(shape_.layout(), i);
+  for (int64_t i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
+    int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
     gep_indices.push_back(actual_index[dimension]);
   }
   return b->CreateInBoundsGEP(base_ptr_, gep_indices,
@@ -561,7 +561,7 @@ bool IrArray::Index::ShapeIsCompatible(const Shape& a, const Shape& b) {
   // which should be considered compatible.
   const auto get_strides = [](const Shape& shape) {
     int rank = shape.dimensions().size();
-    int64 stride = 1;
+    int64_t stride = 1;
     std::vector<int64> strides;
     for (int i = 0; i < rank; i++) {
       auto dim = shape.dimensions(shape.layout().minor_to_major(i));

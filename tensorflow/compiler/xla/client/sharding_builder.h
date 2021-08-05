@@ -51,7 +51,7 @@ OpSharding Tile(const Shape& tile_shape, const TileAssignment& tile_assignment);
 // be rank 1 and using devices [0..num_tiles).
 //
 // This is simply a convenience wrapper for Tile().
-OpSharding Tile1D(const Shape& tile_shape, int64 num_tiles);
+OpSharding Tile1D(const Shape& tile_shape, int64_t num_tiles);
 
 // Creates a tuple sharding from the given ShapeTree of element shardings.
 OpSharding Tuple(const ShapeTree<OpSharding>& shardings);

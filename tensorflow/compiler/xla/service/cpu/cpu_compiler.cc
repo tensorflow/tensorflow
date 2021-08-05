@@ -111,6 +111,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/operand_upcaster.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
+#include "tensorflow/compiler/xla/service/reduce_scatter_decomposer.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/result_caster.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
@@ -171,7 +172,7 @@ se::Platform::Id CpuAotCompilationOptions::PlatformId() const {
 
 CpuAotCompilationResult::CpuAotCompilationResult(
     ObjectFileData object_file_data, std::vector<BufferInfo> buffer_infos,
-    int64 result_buffer_index,
+    int64_t result_buffer_index,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data)
     : object_file_data_(std::move(object_file_data)),
       buffer_infos_(std::move(buffer_infos)),
@@ -328,6 +329,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<TriangularSolveExpander>();
   pipeline.AddPass<AllGatherDecomposer>();
   pipeline.AddPass<AllToAllDecomposer>();
+  pipeline.AddPass<ReduceScatterDecomposer>();
 
   // Inline computations with a single call site.
   pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
@@ -395,7 +397,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<ConditionalSimplifier>();
   }();
 
-  pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64) {
+  pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64_t) {
     return sort->operand(0)->shape().element_type() == F32;
   });
   pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
@@ -414,8 +416,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // flattened.
   pipeline.AddPass<FlattenCallGraph>();
   pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout(),
-      LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
+      module->mutable_entry_computation_layout(), target_machine_features);
 
   pipeline.AddPass<CpuInstructionFusion>();
 
@@ -727,8 +728,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
         &hlo_profile_index_map, &hlo_profile_printer_data));
   }
 
-  std::unique_ptr<Executable> cpu_executable;
-
   // Cache these flags here since we'll want to access them after the module's
   // ownership is std::moved.
   const bool embed_ir_in_executable =
@@ -810,17 +809,29 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   llvm::orc::ThreadSafeModule thread_safe_module(std::move(llvm_module),
                                                  std::move(llvm_context));
   cantFail((*jit)->AddModule(std::move(thread_safe_module)));
-  cpu_executable.reset(new CpuExecutable(
+
+  auto cpu_executable = absl::make_unique<CpuExecutable>(
       std::move(*jit), std::move(assignment), std::move(module), function_name,
-      std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map)));
+      std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map));
 
   if (embed_ir_in_executable) {
-    static_cast<CpuExecutable&>(*cpu_executable)
-        .set_ir_module_string(ir_module_string);
+    cpu_executable->set_ir_module_string(ir_module_string);
   }
 
+  // Dump computation proto state and buffer assignment for debug and test, if
+  // dump is enabled.
+  if (DumpingEnabledForHloModule(cpu_executable->module())) {
+    auto hlo_proto = absl::make_unique<HloProto>();
+    *hlo_proto->mutable_hlo_module() = cpu_executable->module().ToProto();
+    *hlo_proto->mutable_buffer_assignment() =
+        cpu_executable->buffer_assignment().ToProto();
+    cpu_executable->set_hlo_proto(std::move(hlo_proto));
+  }
+
+  cpu_executable->set_debug_info(
+      cpu_executable->buffer_assignment().GetStats().ToString());
   VLOG(1) << "Compilation finished";
-  return std::move(cpu_executable);
+  return std::unique_ptr<Executable>(std::move(cpu_executable));
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
@@ -850,7 +861,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     const auto& field_name = fn_and_name.second;
     bool first_module_val =
         (modules[0]->config().debug_options().*field_method_ptr)();
-    for (int64 i = 0; i < modules.size(); ++i) {
+    for (int64_t i = 0; i < modules.size(); ++i) {
       bool cur_module_val =
           (modules[i]->config().debug_options().*field_method_ptr)();
       if (first_module_val != cur_module_val) {

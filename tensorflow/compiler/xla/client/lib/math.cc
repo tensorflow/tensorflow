@@ -1380,7 +1380,7 @@ XlaOp NextAfter(XlaOp from, XlaOp to) {
     result_for_nan = BitcastConvertType(result_for_nan, int_type);
 
     // The sign bit is the MSB.
-    const int64 sign_mask = int64{1} << (bitwidth - 1);
+    const int64_t sign_mask = int64{1} << (bitwidth - 1);
     // Discard the sign bit to make the result non-negative.
     auto from_abs = And(from_as_int, ScalarLike(from_as_int, ~sign_mask));
     auto to_abs = And(to_as_int, ScalarLike(to_as_int, ~sign_mask));
@@ -1633,7 +1633,7 @@ XlaOp BesselI1e(XlaOp x) {
 // arguments and order. J. Comput. Phys. 64, 2 (June 1986), 490-509.
 // DOI=http://dx.doi.org/10.1016/0021-9991(86)90046-X
 static XlaOp LentzThompsonBarnettAlgorithm(
-    int64 num_iterations, double small, double threshold,
+    int64_t num_iterations, double small, double threshold,
     const ForEachIndexBodyFunction& nth_partial_numerator,
     const ForEachIndexBodyFunction& nth_partial_denominator,
     absl::Span<const XlaOp> inputs, absl::string_view name) {

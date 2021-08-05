@@ -57,7 +57,7 @@ XLA_TEST_P(UnaryOpTest, Ops) {
 
   std::function<half(half)> compute_func = GetParam().compute_func;
   std::vector<half> expected;
-  for (int64 i = 0; i < x.size(); ++i) {
+  for (int64_t i = 0; i < x.size(); ++i) {
     expected.push_back(compute_func(x[i]));
   }
 
@@ -112,7 +112,7 @@ XLA_TEST_P(UnaryPredTest, Ops) {
   std::function<bool(half)> compute_func = GetParam().compute_func;
   CHECK_EQ(kNumElements, x.size());
   bool expected[kNumElements];
-  for (int64 i = 0; i < x.size(); ++i) {
+  for (int64_t i = 0; i < x.size(); ++i) {
     expected[i] = compute_func(x[i]);
   }
 
@@ -151,7 +151,7 @@ XLA_TEST_P(BinaryOpTest, Ops) {
 
   std::function<half(half, half)> compute_func = GetParam().compute_func;
   std::vector<half> expected;
-  for (int64 i = 0; i < x.size(); ++i) {
+  for (int64_t i = 0; i < x.size(); ++i) {
     expected.push_back(compute_func(x[i], y[i]));
   }
 
@@ -206,7 +206,7 @@ XLA_TEST_P(BinaryPredTest, Ops) {
   std::function<bool(half, half)> compute_func = GetParam().compute_func;
   CHECK_EQ(kNumElements, x.size());
   bool expected[kNumElements];
-  for (int64 i = 0; i < x.size(); ++i) {
+  for (int64_t i = 0; i < x.size(); ++i) {
     expected[i] = compute_func(x[i], y[i]);
   }
 

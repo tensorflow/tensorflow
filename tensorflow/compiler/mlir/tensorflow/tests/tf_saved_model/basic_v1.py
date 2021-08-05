@@ -37,11 +37,11 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 
 # CHECK:      func {{@[a-zA-Z_0-9]+}}(
 # CHECK-SAME:   [[ARG0:%.*]]: tensor<3x1xf32> {tf_saved_model.index_path = ["x"]},
-# CHECK-SAME:   [[ARG1:%.*]]: tensor<!tf.resource<tensor<1x3xf32>>> {tf_saved_model.bound_input = @[[VAR]]})
+# CHECK-SAME:   [[ARG1:%.*]]: tensor<!tf_type.resource<tensor<1x3xf32>>> {tf_saved_model.bound_input = @[[VAR]]})
 # CHECK-SAME:             -> (tensor<3x3xf32> {tf_saved_model.index_path = ["r"]})
 # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["key"]
 
-# CHECK-NEXT: [[R0:%.*]] = "tf.ReadVariableOp"([[ARG1]]) {{{.*}}} : (tensor<!tf.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
+# CHECK-NEXT: [[R0:%.*]] = "tf.ReadVariableOp"([[ARG1]]) {{{.*}}} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
 # CHECK-NEXT: [[R1:%.*]] = "tf.MatMul"([[ARG0]], [[R0]]) {{{.*}}} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>
 # CHECK-NEXT: return [[R1]] : tensor<3x3xf32>
 

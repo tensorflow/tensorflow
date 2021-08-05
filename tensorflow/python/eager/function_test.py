@@ -155,6 +155,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(sq.numpy().reshape(-1), [10, 14, 14, 20])
     self.assertAllEqual(sq2.numpy().reshape(-1), [52, 76, 74, 108])
 
+  def testPythonFunctionNotCallable(self):
+    with self.assertRaisesRegex(TypeError, 'is not a callable object'):
+      def_function.function(1)
+
   def testOnExitCallback(self):
     values = []
     def append_1():
@@ -2041,16 +2045,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined = function.defun(func)
     defined(0, baz=20)
-
-    def cache_keys():
-      """Sanitizes cache keys of non-input metadata."""
-      return tuple(key[0] for key in total_function_cache(defined))
-
-    # `True` corresponds to the fact that we're executing eagerly
-    self.assertIn(('UURRRuDu', (0, 1, 20)), cache_keys())
+    self.assertLen(total_function_cache(defined), 1)
 
     defined(1)  # bar=1, baz=2
-    self.assertIn(('UURRRuDu', (1, 1, 2)), cache_keys())
+    self.assertLen(total_function_cache(defined), 2)
 
     # This matches the previous call.
     defined(foo=1)
@@ -2058,7 +2056,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined(1, 2, 3)
     self.assertLen(total_function_cache(defined), 3)
-    self.assertIn(('UURRRuDu', (1, 2, 3)), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
@@ -2067,6 +2064,29 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # This matches the previous call.
     defined(1, baz=3, bar=2)
     self.assertLen(total_function_cache(defined), 3)
+
+  def testDatasetIteratorCaching(self):
+    def func(it1, it2):
+      next(it1)
+      next(it2)
+      return 0
+
+    defined = function.defun(func)
+
+    d = dataset_ops.DatasetV2.from_tensor_slices([1, 2, 3])
+    it1 = iter(d)
+    it2 = iter(d)
+    _ = defined(it1, it2)  # The two iterators are different
+    self.assertLen(total_function_cache(defined), 1)
+
+    it3 = iter(d)
+    it4 = iter(d)
+    _ = defined(it3, it4)  # The two iterators are different, should not retrace
+    self.assertLen(total_function_cache(defined), 1)
+
+    it5 = iter(d)
+    _ = defined(it5, it5)  # The two iterators are the same, should retrace
+    self.assertLen(total_function_cache(defined), 2)
 
   def testFunctoolsPartialUnwrappedCorrectly(self):
 
@@ -5208,6 +5228,16 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       lazy_capture()
 
+  def testFunctoolsLruCache(self):
+    self.skipTest(
+        "b/194845243: inspect.getfullargspec doesn't unwrap Python decorators.")
+
+    @def_function.function
+    @functools.lru_cache(maxsize=2)
+    def f(a):
+      return 2 * a
+
+    self.assertAllEqual(f(1), array_ops.constant(2))
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

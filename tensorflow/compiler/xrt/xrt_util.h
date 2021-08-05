@@ -51,8 +51,8 @@ void SetNcclUniqueIdFactory(std::shared_ptr<NcclUniqueIdFactory> factory);
 std::shared_ptr<NcclUniqueIdFactory> GetNcclUniqueIdFactory();
 
 struct InputCoords {
-  explicit InputCoords(int64 handle) : handle(handle) {}
-  InputCoords(int64 handle, xla::ShapeIndex index)
+  explicit InputCoords(int64_t handle) : handle(handle) {}
+  InputCoords(int64_t handle, xla::ShapeIndex index)
       : handle(handle), index(std::move(index)) {}
 
   int64 handle = 0;
@@ -77,8 +77,8 @@ bool InputShapeMatches(const xla::Shape& parameter_shape,
 xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetInputTupleAllocations(
     const std::vector<InputCoords>& input_coords,
     XRTMemoryManager::WorkingSet* working_set, xla::Backend* backend,
-    int64 num_input_shapes,
-    const std::function<xla::Shape(int64)>& shape_getter, bool release_inputs,
+    int64_t num_input_shapes,
+    const std::function<xla::Shape(int64_t)>& shape_getter, bool release_inputs,
     se::DeviceMemoryAllocator* allocator);
 
 Status RebuildOutputAliases(

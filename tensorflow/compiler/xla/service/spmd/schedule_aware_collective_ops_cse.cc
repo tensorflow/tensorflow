@@ -86,16 +86,16 @@ HloInstruction* MayConsiderCollective(HloInstruction* hlo, bool for_replicas) {
 }
 
 StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
-                                int64 distance_threshold) {
+                                int64_t distance_threshold) {
   // We consider estimate the live ranges of all-gathers by comparing their
   // users' distance to the root, e.g., height.
   bool changed = false;
   absl::flat_hash_map<const HloInstruction*, int64> height;
   auto ordered_hlos = comp->MakeInstructionPostOrder();
-  int64 max_height = 0;
+  int64_t max_height = 0;
   for (auto it = ordered_hlos.rbegin(); it != ordered_hlos.rend(); ++it) {
     auto hlo = *it;
-    int64 h = 0;
+    int64_t h = 0;
     for (auto user : hlo->users()) {
       h = std::max(h, height[user]) + 1;
     }
@@ -104,7 +104,7 @@ StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
   }
 
   auto lowest_user_height = [&](const HloInstruction* hlo) {
-    int64 lowest = height[hlo];
+    int64_t lowest = height[hlo];
     for (auto user : hlo->users()) {
       lowest = std::min(lowest, height[user]);
     }
@@ -122,7 +122,7 @@ StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
         operand_to_collective[PassthroughDegenerateAddingReshapes(
             coll->operand(0))];
     bool found = false;
-    int64 coll_height = height[coll];
+    int64_t coll_height = height[coll];
     for (HloInstruction* earlier_coll : earlier_colls) {
       if (!ShapeUtil::Equal(earlier_coll->shape(), coll->shape())) {
         continue;

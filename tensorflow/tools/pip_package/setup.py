@@ -82,7 +82,7 @@ REQUIRED_PACKAGES = [
     # Install other dependencies
     'absl-py ~= 0.10',
     'astunparse ~= 1.6.3',
-    'libclang ~= 12.0.0',
+    'libclang ~= 11.1.0',
     'flatbuffers ~= 1.12.0',
     'google_pasta ~= 0.2',
     'h5py ~= 3.1.0',
@@ -119,9 +119,9 @@ if 'tf_nightly' in project_name:
     if 'tensorboard' in pkg:
       REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.6.0.a'
     elif 'tensorflow_estimator' in pkg:
-      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.6.0.dev'
+      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.7.0.dev'
     elif 'keras' in pkg and 'keras_preprocessing' not in pkg:
-      REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.6.0.dev'
+      REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.7.0.dev'
 
 
 # grpcio does not build correctly on big-endian machines due to lack of
@@ -292,6 +292,7 @@ headers = (
     list(find_files('*.h', 'tensorflow/compiler')) +
     list(find_files('*.h.inc', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/core')) +
+    list(find_files('*.h', 'tensorflow/lite/kernels/shim')) +
     list(find_files('*.h', 'tensorflow/python')) +
     list(find_files('*.h', 'tensorflow/python/client')) +
     list(find_files('*.h', 'tensorflow/python/framework')) +

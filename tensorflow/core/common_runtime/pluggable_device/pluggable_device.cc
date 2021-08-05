@@ -209,7 +209,7 @@ Status PluggableDevice::Init(const SessionOptions& options) {
                                           &device_thread_mode));
   device_thread_mode = absl::AsciiStrToLower(device_thread_mode);
   if (device_thread_mode != "global") {
-    int64 device_thread_count = -1;
+    int64_t device_thread_count = -1;
     // Default to two threads. One for device compute and another for memory
     // copies.
     TF_RETURN_IF_ERROR(
@@ -395,7 +395,7 @@ Status PluggableDevice::MakeTensorFromProto(
           });
     };
     Status s;
-    for (int64 ix = 0; ix < parsed.NumElements(); ++ix) {
+    for (int64_t ix = 0; ix < parsed.NumElements(); ++ix) {
       s = VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE,
                             from[ix], &copy_variant[ix], copier);
       if (!s.ok()) {

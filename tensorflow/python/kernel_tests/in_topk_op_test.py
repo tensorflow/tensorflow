@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 class InTopKTest(test.TestCase):
 
   def _validateInTopK(self, predictions, target, k, expected):
-    np_ans = np.array(expected, np.bool)
+    np_ans = np.array(expected, np.bool_)
     with self.cached_session():
       precision = nn_ops.in_top_k(predictions, target, k)
       out = self.evaluate(precision)

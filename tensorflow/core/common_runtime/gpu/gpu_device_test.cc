@@ -35,7 +35,7 @@ int64 GetTotalGPUMemory(PlatformDeviceId gpu_id) {
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
           .ValueOrDie();
 
-  int64 total_memory, available_memory;
+  int64_t total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
   return total_memory;
 }
@@ -378,7 +378,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
       opts, kDeviceNamePrefix, &devices));
   ASSERT_EQ(1, devices.size());
 
-  int64 memory_limit = devices[0]->attributes().memory_limit();
+  int64_t memory_limit = devices[0]->attributes().memory_limit();
   ASSERT_EQ(memory_limit,
             static_cast<int64>(GetTotalGPUMemory(kPlatformDeviceId) *
                                kGpuMemoryFraction));
@@ -486,7 +486,7 @@ TEST_F(GPUKernelTrackerTest, CappingOnly) {
 
   // Mature the kernels in order until empty.
   while (!queued_counts.empty()) {
-    int64 x = queued_counts.front();
+    int64_t x = queued_counts.front();
     queued_counts.pop_front();
     kernel_tracker_->RecordTerminated(x);
     EXPECT_EQ(queued_counts.size(), kernel_tracker_->NumPending());
@@ -497,12 +497,12 @@ TEST_F(GPUKernelTrackerTest, CappingOnly) {
   // Next inject so many kernel events that the ring buffer needs
   // to grow a couple of times, while maturing a few in random order
   // to introduce gaps between last_completed_ and first_available_.
-  int64 lower_bound = timing_counter_->get();
+  int64_t lower_bound = timing_counter_->get();
   for (int i = 0; i < 1111; ++i) {
     uint64 queued_count = timing_counter_->next();
     queued_counts.push_back(queued_count);
     RecordQueued(queued_count);
-    int64 upper_bound = timing_counter_->get();
+    int64_t upper_bound = timing_counter_->get();
     if (0 == (i % 16)) {
       size_t index = (random::New64() % queued_counts.size());
       kernel_tracker_->RecordTerminated(queued_counts[index]);
@@ -514,7 +514,7 @@ TEST_F(GPUKernelTrackerTest, CappingOnly) {
 
   // Next mature the remaining kernels in order until empty.
   while (!queued_counts.empty()) {
-    int64 x = queued_counts.front();
+    int64_t x = queued_counts.front();
     queued_counts.pop_front();
     kernel_tracker_->RecordTerminated(x);
     EXPECT_EQ(queued_counts.size(), kernel_tracker_->NumPending());

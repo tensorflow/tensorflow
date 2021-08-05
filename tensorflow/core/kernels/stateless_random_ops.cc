@@ -187,8 +187,8 @@ class StatelessRandomPoissonOp : public StatelessRandomOpBase {
                 errors::InvalidArgument(
                     "Shape passed in must end with broadcasted shape."));
 
-    const int64 num_rate = rate_t.NumElements();
-    const int64 samples_per_rate = samples_shape.num_elements() / num_rate;
+    const int64_t num_rate = rate_t.NumElements();
+    const int64_t samples_per_rate = samples_shape.num_elements() / num_rate;
     const auto rate_flat = rate_t.flat<T>().data();
     auto samples_flat = output->flat<U>().data();
 

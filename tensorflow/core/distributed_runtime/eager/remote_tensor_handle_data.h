@@ -32,12 +32,12 @@ class RemoteTensorHandleData {
   // the corresponding remote tensor is ready. So the remote tensor should be
   // ready when we create a lazy remote handle. If it refers to a remote output,
   // it's not ready until the shape is set.
-  RemoteTensorHandleData(int64 op_id, int output_num, uint64 context_view_id,
+  RemoteTensorHandleData(int64_t op_id, int output_num, uint64 context_view_id,
                          bool is_ready);
   // Constructor for unshaped remote handles. It controls the lifetime of a
   // remote handel that it refers to.
-  RemoteTensorHandleData(int64 op_id, int output_num, const string& remote_task,
-                         EagerContext* ctx);
+  RemoteTensorHandleData(int64_t op_id, int output_num,
+                         const string& remote_task, EagerContext* ctx);
   ~RemoteTensorHandleData();
 
   // A remote tensor handle does not have a Tensor object, hence it can only

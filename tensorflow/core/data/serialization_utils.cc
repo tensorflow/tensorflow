@@ -106,13 +106,14 @@ Status ReadElementsFromCheckpoint(IteratorContext* ctx,
                                   IteratorStateReader* reader,
                                   StringPiece key_prefix,
                                   std::vector<std::vector<Tensor>>* elements) {
-  int64 num_elements;
+  int64_t num_elements;
   TF_RETURN_IF_ERROR(
       reader->ReadScalar(key_prefix, kNumElements, &num_elements));
+  DCHECK(elements->empty());
   elements->reserve(num_elements);
   for (int i = 0; i < num_elements; ++i) {
     std::string element_prefix = absl::StrCat(key_prefix, "::", i);
-    int64 num_components;
+    int64_t num_components;
     TF_RETURN_IF_ERROR(
         reader->ReadScalar(element_prefix, kNumComponents, &num_components));
     elements->emplace_back();
@@ -284,14 +285,15 @@ Status VariantTensorDataReader::ReadDatasetInternal(FunctionLibraryRuntime* flr,
   return Status::OK();
 }
 
-Status VariantTensorDataWriter::WriteScalar(StringPiece key, const int64 val) {
+Status VariantTensorDataWriter::WriteScalar(StringPiece key,
+                                            const int64_t val) {
   string name;
   TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
   return WriteScalar(name, key, val);
 }
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
-                                            const int64 val) {
+                                            const int64_t val) {
   return WriteScalarInternal(name, key, val);
 }
 

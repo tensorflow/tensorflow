@@ -14,6 +14,8 @@ limitations under the License.
 
 ==============================================================================*/
 
+#include <utility>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -329,6 +331,28 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
   }
 };
 
+struct EliminateDuplicateCstrBroadcastableOps
+    : public OpRewritePattern<shape::CstrBroadcastableOp> {
+  using OpRewritePattern<shape::CstrBroadcastableOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(shape::CstrBroadcastableOp op,
+                                PatternRewriter &rewriter) const override {
+    // Search for previous occurence of the same constraint.
+    Operation *it = op->getPrevNode();
+    while (it != nullptr) {
+      if (auto candidate = llvm::dyn_cast<shape::CstrBroadcastableOp>(it)) {
+        if (candidate.shapes() == op.shapes()) {
+          rewriter.replaceOp(op, candidate.result());
+          return success();
+        }
+      }
+      it = it->getPrevNode();
+    }
+
+    return failure();
+  }
+};
+
 struct EarlyBroadcastInDimOpPattern
     : public OpRewritePattern<DynamicBroadcastInDimOp> {
   using OpRewritePattern<DynamicBroadcastInDimOp>::OpRewritePattern;
@@ -399,6 +423,7 @@ void PopulateBroadcastsPropagationPatterns(MLIRContext *context,
                                            OwningRewritePatternList *patterns) {
   // clang-format off
   patterns->insert<
+      EliminateDuplicateCstrBroadcastableOps,
       InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
       MergeAssumingOpsPattern,
       MoveElementwiseOpsIntoAssumingOpPattern,

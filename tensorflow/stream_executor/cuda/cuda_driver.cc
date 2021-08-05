@@ -72,7 +72,7 @@ namespace stream_executor {
 namespace gpu {
 
 /* static */ absl::Mutex CreatedContexts::mu_{absl::kConstInit};
-/* static */ int64 CreatedContexts::next_id_ = 1;  // 0 means "no context"
+/* static */ int64_t CreatedContexts::next_id_ = 1;  // 0 means "no context"
 
 namespace {
 
@@ -425,6 +425,10 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   }
 
   CreatedContexts::Remove(context->context());
+}
+
+/* static */ CUcontext GpuDriver::GetContextHandle(GpuContext* context) {
+  return context->context();
 }
 
 /* static */ port::Status GpuDriver::FuncGetAttribute(

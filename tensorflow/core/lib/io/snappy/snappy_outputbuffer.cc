@@ -19,8 +19,8 @@ namespace tensorflow {
 namespace io {
 
 SnappyOutputBuffer::SnappyOutputBuffer(WritableFile* file,
-                                       int32 input_buffer_bytes,
-                                       int32 output_buffer_bytes)
+                                       int32_t input_buffer_bytes,
+                                       int32_t output_buffer_bytes)
     : file_(file),
       input_buffer_(new char[input_buffer_bytes]),
       input_buffer_capacity_(input_buffer_bytes),
@@ -139,9 +139,9 @@ void SnappyOutputBuffer::AddToInputBuffer(StringPiece data) {
   // If it doesn't fit we free the space at the head of the stream and then
   // append `data` at the end of existing data.
 
-  const int32 read_bytes = next_in_ - input_buffer_.get();
-  const int32 unread_bytes = avail_in_;
-  const int32 free_tail_bytes =
+  const int32_t read_bytes = next_in_ - input_buffer_.get();
+  const int32_t unread_bytes = avail_in_;
+  const int32_t free_tail_bytes =
       input_buffer_capacity_ - (read_bytes + unread_bytes);
 
   if (static_cast<int32>(bytes_to_write) > free_tail_bytes) {

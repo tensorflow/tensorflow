@@ -306,7 +306,7 @@ class OpLevelCostEstimator {
       DataType type, const std::vector<int64>& dims);
 
   // Helper method for building common case NodeCosts.
-  static Status PredictDefaultNodeCosts(const int64 num_compute_ops,
+  static Status PredictDefaultNodeCosts(const int64_t num_compute_ops,
                                         const OpContext& op_context,
                                         bool* found_unknown_shapes,
                                         NodeCosts* node_costs);

@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import os
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -29,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+import tensorflow.python.framework.config as config_exec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -48,6 +50,76 @@ def GetDeviceScope(self, use_gpu=False):
     return ops.device("CPU:0")
   else:
     return self.session(use_gpu=use_gpu)
+
+
+# TODO(jlebar): Convert the rest of this file to parameters.parameterized().
+# Then remove GetTestConfigs() and rename GetTestConfigsDicts().
+def GetTestConfigsDicts(v1_fn,
+                        v2_fn=None,
+                        one_dimensional=False,
+                        allow_gpu=True):
+  # (data_format, use_gpu) tuple
+  if one_dimensional:
+    configs0 = [
+        ("NWC", False),
+        ("NWC", True),
+        ("NCW", True),
+    ]
+  else:
+    configs0 = [
+        ("NHWC", False),
+        ("NHWC", True),
+        ("NCHW", True),
+    ]
+    # NCHW_VECT_C only supported for max_pool.
+    if (v1_fn == nn_ops.max_pool or v1_fn == nn_ops.max_pool1d or
+        v2_fn == nn_ops.max_pool_v2 or v2_fn == gen_nn_ops.max_pool_v2):
+      configs0.append(("NCHW_VECT_C", True))
+
+  # (data_format, use_gpu, data_type) tuple
+  configs1 = []
+  for data_format, use_gpu in configs0:
+    configs1.append((data_format, use_gpu, dtypes.float32))
+
+    # In our test, VECT_C always uses float32.  (It gets converted to int8 in
+    # the test runner.)
+    if data_format == "NCHW_VECT_C":
+      continue
+
+    configs1 += [(data_format, use_gpu, dtypes.float16),
+                 (data_format, use_gpu, dtypes.float64)]
+
+  # Convert from tuple to dict and add v1/v2 versions.
+  ret = []
+  for data_format, use_gpu, data_type in configs1:
+    ret.append({
+        "pool_func": v1_fn,
+        "data_format": data_format,
+        "data_type": data_type,
+        "use_gpu": use_gpu,
+        "v2": False
+    })
+    if v2_fn:
+      ret.append({
+          "pool_func": v2_fn,
+          "data_format": data_format,
+          "data_type": data_type,
+          "use_gpu": use_gpu,
+          "v2": False
+      })
+      ret.append({
+          "pool_func": v2_fn,
+          "data_format": data_format,
+          "data_type": data_type,
+          "use_gpu": use_gpu,
+          "v2": True
+      })
+
+  # Filter out GPU configs if necessary.
+  if not allow_gpu:
+    ret = [c for c in ret if not c["use_gpu"]]
+
+  return ret
 
 
 def GetTestConfigs(include_nchw_vect_c=False, one_dimensional=False):
@@ -110,7 +182,7 @@ def GetShrunkInceptionMaxPoolShapes(shrink=30):
     yield n, i, f, o, s, p
 
 
-class PoolingTest(test.TestCase):
+class PoolingTest(test.TestCase, parameterized.TestCase):
 
   def _isMaxPool(self, func):
     return func in (nn_ops.max_pool, nn_ops.max_pool_v2)
@@ -134,20 +206,31 @@ class PoolingTest(test.TestCase):
       v2: Whether to use v2 version.
       use_negative_input: If the input values should be negative.
     """
+    # Check that this test is compatible with the hardware we have.  (Really
+    # this should be done in GetTestConfigsDicts(), but when that runs, we
+    # haven't initialized enough of TF to know what our hardware is!)
+    if use_gpu and not test.is_gpu_available():
+      self.skipTest("No GPU is available.")
+    if use_gpu and data_type == dtypes.float64 and test.is_built_with_rocm():
+      self.skipTest("ROCm pooling ops don't support float64.")
+    if use_gpu and data_format == "NCHW_VECT_C" and not test.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(6, 1)):
+      self.skipTest("NCHW_VECT_C requires sm61+.")
+
+    if v2 and data_format != "NHWC":
+      self.skipTest("v2 not supported for %s" % data_format)
+    if v2 and not isinstance(padding, str):
+      self.skipTest("non-constant ksize/strides requires nonexplicit padding")
+    if data_format == "NCHW_VECT_C":
+      if data_type != dtypes.float32:
+        self.skipTest("quantization to qint8 not implemented for %r" %
+                      data_type)
+      if input_sizes[-1] % 4 != 0:
+        self.skipTest("Skipping test for depth %d" % input_sizes[-1])
+
     total_size = 1
     for s in input_sizes:
       total_size *= s
-    if v2 and data_format != "NHWC":
-      tf_logging.info("v2 not supported for %s", data_format)
-      return
-    if data_format == "NCHW_VECT_C":
-      if data_type != dtypes.float32:
-        tf_logging.info("quantization to qint8 not implemented for %r",
-                        data_type)
-        return
-      if input_sizes[-1] % 4 != 0:
-        tf_logging.info("Skipping test for depth %d", input_sizes[-1])
-        return
     tf_logging.info("Running %s test. %r %r %d %r %r %r %s", data_format, v2,
                     input_sizes, total_size, pool_func, ksize, strides,
                     data_type)
@@ -268,46 +351,49 @@ class PoolingTest(test.TestCase):
         dimensional pools.
       use_negative_input: If the input values should be negative.
     """
-    for (data_format, use_gpu_2) in GetTestConfigs(True, one_dim):
+    for (data_format, use_gpu_2) in GetTestConfigs(
+        include_nchw_vect_c=True, one_dimensional=one_dim):
       if use_gpu_2 == use_gpu:
         self._VerifyOneTest(pool_func, input_sizes, ksize, strides, padding,
                             data_format, expected, use_gpu, v2,
                             use_negative_input)
 
-  def _testAvgPoolValidPadding(self, use_gpu):
-    expected_output = [7.0, 8.0, 9.0]
-    self._VerifyValues(
-        nn_ops.avg_pool,
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testAvgPoolValidPadding(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[1, 3, 3, 3],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 2, 1],
         padding="VALID",
-        expected=expected_output,
-        use_gpu=use_gpu)
+        expected=[7.0, 8.0, 9.0],
+        **kwargs)
 
-  def _testAvgPoolEmpty(self, use_gpu):
-    expected_output = [7.0, 8.0, 9.0]
-    self._VerifyValues(
-        nn_ops.avg_pool,
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testAvgPoolEmpty(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[1, 3, 3, 0],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 2, 1],
         padding="VALID",
-        expected=expected_output,
-        use_gpu=use_gpu)
+        expected=[],
+        **kwargs)
 
-  def _testAvgPoolSamePadding(self, use_gpu):
-    expected_output = [8.5, 9.5, 10.5, 14.5, 15.5, 16.5]
-    self._VerifyValues(
-        nn_ops.avg_pool,
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testAvgPoolSamePadding(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[1, 2, 4, 3],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 2, 1],
         padding="SAME",
-        expected=expected_output,
-        use_gpu=use_gpu)
+        expected=[8.5, 9.5, 10.5, 14.5, 15.5, 16.5],
+        **kwargs)
 
-  def _testAvgPoolSamePaddingNonSquareWindow(self, use_gpu):
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testAvgPoolSamePaddingNonSquareWindow(self, **kwargs):
     # input is:
     # [1.0, 2.0
     #  3.0  4.0]
@@ -315,31 +401,33 @@ class PoolingTest(test.TestCase):
     # Window of [x, x] should do:
     #  [avg(1.0, 2.0), avg(2.0, padded0),
     #   avg(3.0, 4.0), avg(4.0, padded0)]
-    self._VerifyValues(
-        nn_ops.avg_pool,
+    self._VerifyOneType(
         input_sizes=[1, 2, 2, 1],
         ksize=[1, 1, 2, 1],
         strides=[1, 1, 1, 1],
         padding="SAME",
         expected=[1.5, 2.0, 3.5, 4.0],
-        use_gpu=use_gpu)
+        **kwargs)
 
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testAvgPoolSamePaddingNonSquareWindow_2(self, **kwargs):
     # Window of [x,
     #            x] should do:
     #  [avg(1.0, 3.0), avg(2.0, 4.0)
     #   avg(3.0, padded0), avg(4.0, padded0)]
-    self._VerifyValues(
-        nn_ops.avg_pool,
+    self._VerifyOneType(
         input_sizes=[1, 2, 2, 1],
         ksize=[1, 2, 1, 1],
         strides=[1, 1, 1, 1],
         padding="SAME",
         expected=[2.0, 3.0, 3.0, 4.0],
-        use_gpu=use_gpu)
+        **kwargs)
 
-  def _testAvgPoolSamePaddingNonSquareWindowMultiBatch(self, use_gpu):
-    self._VerifyValues(
-        nn_ops.avg_pool,
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testAvgPoolSamePaddingNonSquareWindowMultiBatch(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[2, 2, 2, 2],
         ksize=[1, 1, 2, 1],
         strides=[1, 1, 1, 1],
@@ -348,9 +436,12 @@ class PoolingTest(test.TestCase):
             2.0, 3.0, 3.0, 4.0, 6.0, 7.0, 7.0, 8.0, 10.0, 11.0, 11.0, 12.0,
             14.0, 15.0, 15.0, 16.0
         ],
-        use_gpu=use_gpu)
-    self._VerifyValues(
-        nn_ops.avg_pool,
+        **kwargs)
+
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testAvgPoolSamePaddingNonSquareWindowMultiBatch_2(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[2, 2, 2, 2],
         ksize=[1, 2, 1, 1],
         strides=[1, 1, 1, 1],
@@ -359,55 +450,63 @@ class PoolingTest(test.TestCase):
             3.0, 4.0, 5.0, 6.0, 5.0, 6.0, 7.0, 8.0, 11.0, 12.0, 13.0, 14.0,
             13.0, 14.0, 15.0, 16.0
         ],
-        use_gpu=use_gpu)
+        **kwargs)
 
-  def _testAvgPoolValidPaddingUnevenStride(self, use_gpu):
-    self._VerifyValues(
-        nn_ops.avg_pool,
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testAvgPoolValidPaddingUnevenStride(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[1, 3, 3, 3],
         ksize=[1, 2, 2, 1],
         strides=[1, 1, 2, 1],
         padding="VALID",
         expected=[7.0, 8.0, 9.0, 16.0, 17.0, 18.0],
-        use_gpu=use_gpu)
-    self._VerifyValues(
-        nn_ops.avg_pool,
+        **kwargs)
+
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testAvgPoolValidPaddingUnevenStride_2(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[1, 3, 3, 3],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 1, 1],
         padding="VALID",
         expected=[7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
-        use_gpu=use_gpu)
+        **kwargs)
 
-  def _testAvgPoolSamePadding4(self, use_gpu):
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testAvgPoolSamePadding_2(self, **kwargs):
     expected_output = [
         11.0, 12.0, 13.0, 14.0, 19.0, 20.0, 21.0, 22.0, 43.0, 44.0, 45.0, 46.0,
         51.0, 52.0, 53.0, 54.0
     ]
-    self._VerifyValues(
-        nn_ops.avg_pool,
+    self._VerifyOneType(
         input_sizes=[1, 4, 4, 4],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 2, 1],
         padding="SAME",
         expected=expected_output,
-        use_gpu=use_gpu)
+        **kwargs)
 
-  def _testAvgPoolSamePaddingPacket4(self, use_gpu):
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testAvgPoolSamePaddingPacket_4(self, **kwargs):
     expected_output = [
         21.0, 22.0, 23.0, 24.0, 27.0, 28.0, 29.0, 30.0, 45.0, 46.0, 47.0, 48.0,
         51.0, 52.0, 53.0, 54.0
     ]
-    self._VerifyValues(
-        nn_ops.avg_pool,
+    self._VerifyOneType(
         input_sizes=[1, 4, 4, 4],
         ksize=[1, 3, 3, 1],
         strides=[1, 2, 2, 1],
         padding="SAME",
         expected=expected_output,
-        use_gpu=use_gpu)
+        **kwargs)
 
-  def _testAvgPoolSamePaddingPacket8(self, use_gpu):
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testAvgPoolSamePaddingPacket_8(self, **kwargs):
     expected_output = [
         -12.0, -11.0, -10.0, -9.0, -8.0, -7.0, -6.0, -5.0, 4.0, 5.0, 6.0, 7.0,
         8.0, 9.0, 10.0, 11.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0,
@@ -422,179 +521,153 @@ class PoolingTest(test.TestCase):
         -53.0, -52.0, -51.0, -50.0, -49.0, -48.0, -47.0, -46.0, -41.0, -40.0,
         -39.0, -38.0, -37.0, -36.0, -35.0, -34.0
     ]
-
-    self._VerifyValues(
-        nn_ops.avg_pool,
+    self._VerifyOneType(
         input_sizes=[1, 8, 8, 8],
         ksize=[1, 3, 3, 1],
         strides=[1, 2, 2, 1],
         padding="SAME",
         expected=expected_output,
-        use_gpu=use_gpu)
+        **kwargs)
 
-  def _testAvgPoolEmptyInput(self, use_gpu):
-    self._VerifyValues(
-        nn_ops.avg_pool,
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testAvgPoolEmptyInput(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[0, 8, 8, 8],
         ksize=[1, 3, 3, 1],
         strides=[1, 2, 2, 1],
         padding="SAME",
         expected=[],
-        use_gpu=use_gpu)
+        **kwargs)
 
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
   @test_util.run_deprecated_v1
-  def testAvgPooling(self):
-    for use_gpu in True, False:
-      self._testAvgPoolValidPadding(use_gpu)
-      self._testAvgPoolSamePadding(use_gpu)
-      self._testAvgPoolSamePaddingNonSquareWindow(use_gpu)
-      self._testAvgPoolSamePaddingNonSquareWindowMultiBatch(use_gpu)
-      self._testAvgPoolValidPaddingUnevenStride(use_gpu)
-      self._testAvgPoolSamePadding4(use_gpu)
-      self._testAvgPoolSamePaddingPacket4(use_gpu)
-      self._testAvgPoolSamePaddingPacket8(use_gpu)
-      self._testAvgPoolEmptyInput(use_gpu)
-
-  def _testMaxPoolValidPadding(self, use_gpu):
-    expected_output = [13.0, 14.0, 15.0]
-    self._VerifyValues(
-        nn_ops.max_pool,
+  def testMaxPoolValidPadding(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[1, 3, 3, 3],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 2, 1],
         padding="VALID",
-        expected=expected_output,
-        use_gpu=use_gpu)
+        expected=[13.0, 14.0, 15.0],
+        **kwargs)
 
-    for v2 in [True, False]:
-      self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
-          input_sizes=[1, 3, 3, 3],
-          ksize=[1, 2, 2, 1],
-          strides=[1, 2, 2, 1],
-          padding="VALID",
-          expected=expected_output,
-          use_gpu=use_gpu,
-          v2=v2)
-
-  def _testMaxPoolSamePadding(self, use_gpu):
-    expected_output = [13.0, 14.0, 15.0, 16.0, 17.0, 18.0]
-    self._VerifyValues(
-        nn_ops.max_pool,
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
+  @test_util.run_deprecated_v1
+  def testMaxPoolSamePadding(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[1, 2, 3, 3],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 2, 1],
         padding="SAME",
-        expected=expected_output,
-        use_gpu=use_gpu)
+        expected=[13.0, 14.0, 15.0, 16.0, 17.0, 18.0],
+        **kwargs)
 
-    for v2 in [True, False]:
-      self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
-          input_sizes=[1, 2, 3, 3],
-          ksize=[1, 2, 2, 1],
-          strides=[1, 2, 2, 1],
-          padding="SAME",
-          expected=expected_output,
-          use_gpu=use_gpu,
-          v2=v2)
-
-  def _testMaxPoolZeroExplicitPadding(self, use_gpu):
-    expected_output = [9.0]
-    self._VerifyValues(
-        nn_ops.max_pool,
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
+  @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
+  @test_util.run_deprecated_v1
+  def testMaxPoolZeroExplicitPadding(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[1, 3, 3, 1],
         ksize=[1, 3, 3, 1],
         strides=[1, 2, 2, 1],
         padding=[[0, 0], [0, 0], [0, 0], [0, 0]],
-        expected=expected_output,
-        use_gpu=use_gpu)
+        expected=[9.0],
+        **kwargs)
 
-  def _testMaxPoolNegativeInputExpPadding(self, use_gpu):
-    expected_output = [-1, -1, -1, -1]
-    self._VerifyValues(
-        nn_ops.max_pool,
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
+  @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
+  @test_util.run_deprecated_v1
+  def testMaxPoolNegativeInputExpPadding(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[1, 3, 3, 1],
         ksize=[1, 3, 3, 1],
         strides=[1, 2, 2, 1],
         padding=[[0, 0], [2, 1], [2, 1], [0, 0]],
-        expected=expected_output,
-        use_gpu=use_gpu,
-        use_negative_input=True)
+        expected=[-1, -1, -1, -1],
+        use_negative_input=True,
+        **kwargs)
 
-  def _testMaxPoolExplicitPadding(self, use_gpu):
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
+  @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
+  @test_util.run_deprecated_v1
+  def testMaxPoolExplicitPadding(self, **kwargs):
     expected_output = [9.0, 9.0]
-    self._VerifyValues(
-        nn_ops.max_pool,
+    self._VerifyOneType(
         input_sizes=[1, 3, 3, 1],
         ksize=[1, 3, 3, 1],
         strides=[1, 2, 2, 1],
         padding=[[0, 0], [0, 2], [0, 1], [0, 0]],
         expected=expected_output,
-        use_gpu=use_gpu)
+        **kwargs)
 
-  def _testMaxPoolExplicitPaddingAdvanced(self, use_gpu):
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
+  @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
+  @test_util.run_deprecated_v1
+  def testMaxPoolExplicitPaddingAdvanced(self, **kwargs):
     expected_output = [7, 9, 11, 12, 19, 21, 23, 24, 31, 33, 35, 36, 31, 33,
                        35, 36]
-    self._VerifyValues(
-        nn_ops.max_pool,
+    self._VerifyOneType(
         input_sizes=[1, 6, 6, 1],
         ksize=[1, 3, 3, 1],
         strides=[1, 2, 2, 1],
         padding=[[0, 0], [1, 2], [2, 1], [0, 0]],
         expected=expected_output,
-        use_gpu=use_gpu)
+        **kwargs)
 
-  def _testMaxPoolNegativeInputExpPaddingAdv(self, use_gpu):
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
+  @test_util.run_deprecated_v1
+  def testMaxPoolNegativeInputExpPaddingAdv(self, **kwargs):
     expected_output = [-1, -1, -3, -5, -7, -7, -9, -11, -19, -19, -21, -23, -31,
                        -31, -33, -35]
 
-    self._VerifyValues(
-        nn_ops.max_pool,
+    self._VerifyOneType(
         input_sizes=[1, 6, 6, 1],
         ksize=[1, 3, 3, 1],
         strides=[1, 2, 2, 1],
         padding=[[0, 0], [1, 2], [2, 1], [0, 0]],
         expected=expected_output,
-        use_gpu=use_gpu,
-        use_negative_input=True)
+        use_negative_input=True,
+        **kwargs)
 
-  def _testMaxPoolExplicitPaddingV2(self, use_gpu):
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
+  @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
+  @test_util.run_deprecated_v1
+  def testMaxPoolExplicitPadding2_(self, **kwargs):
     expected_output = [9.0, 9.0]
-    self._VerifyValues(
-        nn_ops.max_pool_v2,
+    self._VerifyOneType(
         input_sizes=[1, 3, 3, 1],
         ksize=[1, 3, 3, 1],
         strides=[1, 2, 2, 1],
         padding=[[0, 0], [0, 2], [0, 1], [0, 0]],
         expected=expected_output,
-        use_gpu=use_gpu)
+        **kwargs)
 
-  def _testMaxPoolExplicitPadding1D(self, use_gpu):
-    expected_output = [2.0, 3.0]
-    self._VerifyValues(
-        nn_ops.max_pool1d,
+  @parameterized.parameters(
+      GetTestConfigsDicts(
+          nn_ops.max_pool1d, nn_ops.max_pool_v2, one_dimensional=True))
+  @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
+  @test_util.run_deprecated_v1
+  def testMaxPoolExplicitPadding_1D(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[1, 3, 1],
         ksize=[1, 2, 1],
         strides=[1, 2, 1],
         padding=[[0, 0], [0, 1], [0, 0]],
-        expected=expected_output,
-        use_gpu=use_gpu,
-        one_dim=True)
+        expected=[2.0, 3.0],
+        **kwargs)
 
-  def _testMaxPoolExplicitPadding1dV2(self, use_gpu):
-    expected_output = [2.0, 3.0]
-    self._VerifyValues(
-        nn_ops.max_pool_v2,
-        input_sizes=[1, 3, 1],
-        ksize=[1, 2, 1],
-        strides=[1, 2, 1],
-        padding=[[0, 0], [0, 1], [0, 0]],
-        expected=expected_output,
-        use_gpu=use_gpu,
-        one_dim=True)
-
-  def _testMaxPoolSamePaddingNonSquareWindow(self, use_gpu):
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
+  @test_util.run_deprecated_v1
+  def testMaxPoolSamePaddingNonSquareWindow(self, **kwargs):
     # input is:
     # [1.0, 2.0
     #  3.0  4.0]
@@ -603,90 +676,58 @@ class PoolingTest(test.TestCase):
     #
     #  [max(1.0, 2.0), max(2.0, padded0),
     #   max(3.0, 4.0), max(4.0, padded0)]
-    self._VerifyValues(
-        nn_ops.max_pool,
+    self._VerifyOneType(
         input_sizes=[1, 2, 2, 1],
         ksize=[1, 1, 2, 1],
         strides=[1, 1, 1, 1],
         padding="SAME",
         expected=[2.0, 2.0, 4.0, 4.0],
-        use_gpu=use_gpu)
+        **kwargs)
 
-    for v2 in [True, False]:
-      self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
-          input_sizes=[1, 2, 2, 1],
-          ksize=[1, 1, 2, 1],
-          strides=[1, 1, 1, 1],
-          padding="SAME",
-          expected=[2.0, 2.0, 4.0, 4.0],
-          use_gpu=use_gpu,
-          v2=v2)
-
-  def _testMaxPoolValidPaddingUnevenStride(self, use_gpu):
-    self._VerifyValues(
-        nn_ops.max_pool,
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
+  @test_util.run_deprecated_v1
+  def testMaxPoolValidPaddingUnevenStride(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[1, 4, 4, 1],
         ksize=[1, 2, 2, 1],
         strides=[1, 1, 2, 1],
         padding="VALID",
         expected=[6.0, 8.0, 10.0, 12.0, 14.0, 16.0],
-        use_gpu=use_gpu)
-    self._VerifyValues(
-        nn_ops.max_pool,
+        **kwargs)
+
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
+  @test_util.run_deprecated_v1
+  def testMaxPoolValidPaddingUnevenStride2_(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[1, 4, 4, 1],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 1, 1],
         padding="VALID",
         expected=[6.0, 7.0, 8.0, 14.0, 15.0, 16.0],
-        use_gpu=use_gpu)
+        **kwargs)
 
-    for v2 in [True, False]:
-      self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
-          input_sizes=[1, 4, 4, 1],
-          ksize=[1, 2, 2, 1],
-          strides=[1, 1, 2, 1],
-          padding="VALID",
-          expected=[6.0, 8.0, 10.0, 12.0, 14.0, 16.0],
-          use_gpu=use_gpu,
-          v2=v2)
-      self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
-          input_sizes=[1, 4, 4, 1],
-          ksize=[1, 2, 2, 1],
-          strides=[1, 2, 1, 1],
-          padding="VALID",
-          expected=[6.0, 7.0, 8.0, 14.0, 15.0, 16.0],
-          use_gpu=use_gpu,
-          v2=v2)
-
-  def _testMaxPoolSamePaddingPacket4(self, use_gpu):
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
+  @test_util.run_deprecated_v1
+  def testMaxPoolSamePaddingPacket4_(self, **kwargs):
     expected_output = [
         21.0, 22.0, 23.0, 24.0, 29.0, 30.0, 31.0, 32.0, 53.0, 54.0, 55.0, 56.0,
         61.0, 62.0, 63.0, 64.0
     ]
-    self._VerifyValues(
-        nn_ops.max_pool,
+    self._VerifyOneType(
         input_sizes=[1, 4, 4, 4],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 2, 1],
         padding="SAME",
         expected=expected_output,
-        use_gpu=use_gpu)
+        **kwargs)
 
-    for v2 in [True, False]:
-      self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
-          input_sizes=[1, 4, 4, 4],
-          ksize=[1, 2, 2, 1],
-          strides=[1, 2, 2, 1],
-          padding="SAME",
-          expected=expected_output,
-          use_gpu=use_gpu,
-          v2=v2)
-
-  def _testMaxPoolSamePaddingPacket8(self, use_gpu):
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
+  @test_util.run_deprecated_v1
+  def testMaxPoolSamePaddingPacket8_(self, **kwargs):
     expected_output = [
         81.0, 82.0, 83.0, 84.0, 85.0, 86.0, 87.0, 88.0, 97.0, 98.0, 99.0, 100.0,
         101.0, 102.0, 103.0, 104.0, 113.0, 114.0, 115.0, 116.0, 117.0, 118.0,
@@ -701,187 +742,111 @@ class PoolingTest(test.TestCase):
         -24.0, -23.0, -22.0, -13.0, -12.0, -11.0, -10.0, -9.0, -8.0, -7.0, -6.0,
         -5.0, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0
     ]
-    self._VerifyValues(
-        nn_ops.max_pool,
+    self._VerifyOneType(
         input_sizes=[1, 8, 8, 8],
         ksize=[1, 3, 3, 1],
         strides=[1, 2, 2, 1],
         padding="SAME",
         expected=expected_output,
-        use_gpu=use_gpu)
+        **kwargs)
 
-    for v2 in [True, False]:
-      self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
-          input_sizes=[1, 8, 8, 8],
-          ksize=[1, 3, 3, 1],
-          strides=[1, 2, 2, 1],
-          padding="SAME",
-          expected=expected_output,
-          use_gpu=use_gpu,
-          v2=v2)
-
-  def _testMaxPoolEmptyInput(self, use_gpu):
-    self._VerifyValues(
-        gen_nn_ops.max_pool_v2,
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
+  @test_util.run_deprecated_v1
+  def testMaxPoolEmptyInput(self, **kwargs):
+    self._VerifyOneType(
         input_sizes=[0, 8, 8, 8],
         ksize=[1, 3, 3, 1],
         strides=[1, 2, 2, 1],
         padding="SAME",
         expected=[],
-        use_gpu=use_gpu)
-
-  @test_util.run_deprecated_v1
-  @test_util.xla_allow_fallback(
-      "Allow VECT_* data formats on newer hardware versions which XLA does not"
-      " handle."
-  )
-  def testMaxPooling(self):
-    for use_gpu in True, False:
-      self._testMaxPoolValidPadding(use_gpu)
-      self._testMaxPoolSamePadding(use_gpu)
-      self._testMaxPoolSamePaddingNonSquareWindow(use_gpu)
-      self._testMaxPoolValidPaddingUnevenStride(use_gpu)
-      self._testMaxPoolSamePaddingPacket4(use_gpu)
-      self._testMaxPoolSamePaddingPacket8(use_gpu)
-      self._testMaxPoolEmptyInput(use_gpu)
-      self._testMaxPoolZeroExplicitPadding(use_gpu)
-      self._testMaxPoolExplicitPadding(use_gpu)
-      self._testMaxPoolExplicitPaddingV2(use_gpu)
-      self._testMaxPoolExplicitPadding1D(use_gpu)
-      self._testMaxPoolExplicitPadding1dV2(use_gpu)
-      self._testMaxPoolExplicitPaddingAdvanced(use_gpu)
-      self._testMaxPoolNegativeInputExpPadding(use_gpu)
-      self._testMaxPoolNegativeInputExpPaddingAdv(use_gpu)
+        **kwargs)
 
   # Tests for DepthwiseMaxPooling on CPU only.
+  @parameterized.parameters(
+      GetTestConfigsDicts(
+          nn_ops.max_pool, gen_nn_ops.max_pool_v2, allow_gpu=False))
   @test_util.run_deprecated_v1
-  def testDepthwiseMaxPool1x1DepthWindow1(self):
+  def testDepthwiseMaxPool1x1DepthWindow(self, **kwargs):
     # input is:
     # [1.0, ..., 10.0] along depth,
     #
     # We maxpool by depth in patches of 2.
-    self._VerifyValues(
-        nn_ops.max_pool,
+    self._VerifyOneType(
         input_sizes=[1, 1, 1, 10],
         ksize=[1, 1, 1, 2],
         strides=[1, 1, 1, 2],
         padding="SAME",
         expected=[2.0, 4.0, 6.0, 8.0, 10.0],
-        use_gpu=False)
+        **kwargs)
 
-    for v2 in [True, False]:
-      self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
-          input_sizes=[1, 1, 1, 10],
-          ksize=[1, 1, 1, 2],
-          strides=[1, 1, 1, 2],
-          padding="SAME",
-          expected=[2.0, 4.0, 6.0, 8.0, 10.0],
-          use_gpu=False,
-          v2=v2)
-
+  @parameterized.parameters(
+      GetTestConfigsDicts(
+          nn_ops.max_pool, gen_nn_ops.max_pool_v2, allow_gpu=False))
   @test_util.run_deprecated_v1
-  def testDepthwiseMaxPool2x2DepthWindow3(self):
+  def testDepthwiseMaxPool2x2DepthWindow(self, **kwargs):
     # input is:
     #
     # a 2x2x6 cube, and we depthwise max across 3 to produce a 2x2x2
     # output.  Each node has contiguous values, so the depthwise max
     # should be multiples of 3.0.
-    self._VerifyValues(
-        nn_ops.max_pool,
+    self._VerifyOneType(
         input_sizes=[1, 2, 2, 6],
         ksize=[1, 1, 1, 3],
         strides=[1, 1, 1, 3],
         padding="SAME",
         expected=[3.0, 6.0, 9.0, 12.0, 15.0, 18.0, 21.0, 24.0],
-        use_gpu=False)
+        **kwargs)
 
-    for v2 in [True, False]:
-      self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
-          input_sizes=[1, 2, 2, 6],
-          ksize=[1, 1, 1, 3],
-          strides=[1, 1, 1, 3],
-          padding="SAME",
-          expected=[3.0, 6.0, 9.0, 12.0, 15.0, 18.0, 21.0, 24.0],
-          use_gpu=False,
-          v2=v2)
-
+  @parameterized.parameters(
+      GetTestConfigsDicts(
+          nn_ops.max_pool, gen_nn_ops.max_pool_v2, allow_gpu=False))
   @test_util.run_deprecated_v1
-  def testKernelSmallerThanStrideValid(self):
-    for use_gpu in [True, False]:
-      self._VerifyValues(
-          nn_ops.max_pool,
-          input_sizes=[1, 7, 7, 1],
-          ksize=[1, 2, 2, 1],
-          strides=[1, 3, 3, 1],
-          padding="VALID",
-          expected=[9, 12, 30, 33],
-          use_gpu=use_gpu)
+  def testMaxPoolKernelSmallerThanStrideValid(self, **kwargs):
+    self._VerifyOneType(
+        input_sizes=[1, 7, 7, 1],
+        ksize=[1, 2, 2, 1],
+        strides=[1, 3, 3, 1],
+        padding="VALID",
+        expected=[9, 12, 30, 33],
+        **kwargs)
 
-      for v2 in [True, False]:
-        self._VerifyValues(
-            gen_nn_ops.max_pool_v2,
-            input_sizes=[1, 7, 7, 1],
-            ksize=[1, 2, 2, 1],
-            strides=[1, 3, 3, 1],
-            padding="VALID",
-            expected=[9, 12, 30, 33],
-            use_gpu=use_gpu,
-            v2=v2)
-
-      self._VerifyValues(
-          nn_ops.avg_pool,
-          input_sizes=[1, 7, 7, 1],
-          ksize=[1, 2, 2, 1],
-          strides=[1, 3, 3, 1],
-          padding="VALID",
-          expected=[5, 8, 26, 29],
-          use_gpu=use_gpu)
-
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
   @test_util.run_deprecated_v1
-  def testKernelSmallerThanStrideSame(self):
-    for use_gpu in [True, False]:
-      for pool_func in [nn_ops.max_pool, nn_ops.avg_pool]:
-        self._VerifyValues(
-            pool_func,
-            input_sizes=[1, 3, 3, 1],
-            ksize=[1, 1, 1, 1],
-            strides=[1, 2, 2, 1],
-            padding="SAME",
-            expected=[1, 3, 7, 9],
-            use_gpu=use_gpu)
+  def testAvgPoolKernelSmallerThanStride(self, **kwargs):
+    self._VerifyOneType(
+        input_sizes=[1, 7, 7, 1],
+        ksize=[1, 2, 2, 1],
+        strides=[1, 3, 3, 1],
+        padding="VALID",
+        expected=[5, 8, 26, 29],
+        **kwargs)
 
-        self._VerifyValues(
-            pool_func,
-            input_sizes=[1, 4, 4, 1],
-            ksize=[1, 1, 1, 1],
-            strides=[1, 2, 2, 1],
-            padding="SAME",
-            expected=[1, 3, 9, 11],
-            use_gpu=use_gpu)
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2) +
+      GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testKernelSmallerThanStrideSame1_(self, **kwargs):
+    self._VerifyOneType(
+        input_sizes=[1, 3, 3, 1],
+        ksize=[1, 1, 1, 1],
+        strides=[1, 2, 2, 1],
+        padding="SAME",
+        expected=[1, 3, 7, 9],
+        **kwargs)
 
-      for v2 in [True, False]:
-        self._VerifyValues(
-            gen_nn_ops.max_pool_v2,
-            input_sizes=[1, 3, 3, 1],
-            ksize=[1, 1, 1, 1],
-            strides=[1, 2, 2, 1],
-            padding="SAME",
-            expected=[1, 3, 7, 9],
-            use_gpu=use_gpu,
-            v2=v2)
-
-        self._VerifyValues(
-            gen_nn_ops.max_pool_v2,
-            input_sizes=[1, 4, 4, 1],
-            ksize=[1, 1, 1, 1],
-            strides=[1, 2, 2, 1],
-            padding="SAME",
-            expected=[1, 3, 9, 11],
-            use_gpu=use_gpu,
-            v2=v2)
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2) +
+      GetTestConfigsDicts(nn_ops.avg_pool))
+  @test_util.run_deprecated_v1
+  def testKernelSmallerThanStrideSame2_(self, **kwargs):
+    self._VerifyOneType(
+        input_sizes=[1, 4, 4, 1],
+        ksize=[1, 1, 1, 1],
+        strides=[1, 2, 2, 1],
+        padding="SAME",
+        expected=[1, 3, 9, 11],
+        **kwargs)
 
   def _testDepthwiseMaxPoolInvalidConfig(self,
                                          in_size,
@@ -1066,6 +1031,61 @@ class PoolingTest(test.TestCase):
             11.0, 12.0, 0.0, 13.0, 0.0, 14.0, 0.0, 0.0, 0.0, 21.0, 0.0, 22.0,
             0.0, 0.0, 0.0, 23.0, 0.0, 24.0
         ])
+
+  def testMaxPoolingGradThrowDeterminismError(self):
+    if test.is_gpu_available(cuda_only=True):
+      try:
+        config_exec.enable_deterministic_ops(True)
+        orig_input = [
+            1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 1.0
+        ]
+        tensor_input = [11.0, 12.0, 13.0, 14.0, 21.0, 22.0, 23.0, 24.0]
+
+        with GetDeviceScope(self, True):
+          orig_in = constant_op.constant(orig_input, shape=[2, 3, 3, 1])
+          t = constant_op.constant(tensor_input, shape=[2, 2, 2, 1])
+          argmax_t = constant_op.constant(
+              [0, 1, 3, 5, 0, 2, 6, 8], shape=[2, 2, 2, 1], dtype=dtypes.int64)
+          with self.assertRaisesRegexp(
+              errors_impl.UnimplementedError, "Determinism is not yet supported "
+              "for MaxPoolGradWithArgmax."):
+            out_op = gen_nn_ops.max_pool_grad_with_argmax(
+                orig_in,
+                t,
+                argmax_t,
+                ksize=[1, 2, 2, 1],
+                strides=[1, 1, 1, 1],
+                padding="VALID",
+                include_batch_in_index=False)
+            self.evaluate(out_op)
+      finally:
+        config_exec.enable_deterministic_ops(False)
+    else:
+      try:
+        config_exec.enable_deterministic_ops(True)
+        orig_input = [
+            1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 1.0
+        ]
+        tensor_input = [11.0, 12.0, 13.0, 14.0, 21.0, 22.0, 23.0, 24.0]
+
+        with GetDeviceScope(self, False):
+          orig_in = constant_op.constant(orig_input, shape=[2, 3, 3, 1])
+          t = constant_op.constant(tensor_input, shape=[2, 2, 2, 1])
+          argmax_t = constant_op.constant(
+              [0, 1, 3, 5, 0, 2, 6, 8], shape=[2, 2, 2, 1], dtype=dtypes.int64)
+          out_op = gen_nn_ops.max_pool_grad_with_argmax(
+              orig_in,
+              t,
+              argmax_t,
+              ksize=[1, 2, 2, 1],
+              strides=[1, 1, 1, 1],
+              padding="VALID",
+              include_batch_in_index=False)
+          self.evaluate(out_op)
+      finally:
+        config_exec.enable_deterministic_ops(False)
 
   def testMaxPoolingGradGradWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on CUDA.
@@ -1400,7 +1420,7 @@ class PoolingTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
-  def _testMaxPoolExplicitPadding1(self, data_format, use_gpu):
+  def _testMaxPoolExplicitPadding_1(self, data_format, use_gpu):
     for pool_func in [nn_ops.max_pool]:
       self._ConstructAndTestGradient(
           pool_func,
@@ -1414,7 +1434,7 @@ class PoolingTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
-  def _testMaxPoolExplicitPadding2(self, data_format, use_gpu):
+  def _testMaxPoolExplicitPadding_2(self, data_format, use_gpu):
     for pool_func in [nn_ops.max_pool]:
       self._ConstructAndTestGradient(
           pool_func,
@@ -1483,8 +1503,8 @@ class PoolingTest(test.TestCase):
       self._testMaxPoolGradSamePadding2_1(data_format, use_gpu)
       self._testMaxPoolGradSamePadding2_2(data_format, use_gpu)
       self._testMaxPoolGradSamePadding3_1(data_format, use_gpu)
-      self._testMaxPoolExplicitPadding1(data_format, use_gpu)
-      self._testMaxPoolExplicitPadding2(data_format, use_gpu)
+      self._testMaxPoolExplicitPadding_1(data_format, use_gpu)
+      self._testMaxPoolExplicitPadding_2(data_format, use_gpu)
       self._testMaxPoolExplicitPaddingStrides(data_format, use_gpu)
       self._testMaxPoolExplicitPaddingLeftGreater(data_format, use_gpu)
       self._testMaxPoolExplicitPaddingBatchChannel(data_format, use_gpu)
@@ -2292,10 +2312,11 @@ class PoolingTest(test.TestCase):
               padding="VALID")
 
   @test_util.run_deprecated_v1
-  def _testEdgeCasesRaiseErrors(self):
+  def testEdgeCasesRaiseErrors(self):
     with self.assertRaisesRegexp(
         ValueError, "Data formats NCHW_VECT_C is not yet supported with "
-                    "explicit padding"):
+        "explicit padding|XLA does not support pooling ops with explicit "
+        "padding"):
       nn_ops.max_pool(
           array_ops.placeholder(dtypes.float32, shape=[1, 3, 3, 1]),
           ksize=[1, 2, 2, 1],
@@ -2322,11 +2343,12 @@ class PoolingTest(test.TestCase):
           data_format="NHWC")
 
   @test_util.run_deprecated_v1
-  def _testEdgeCasesExcessPadding(self):
+  def testEdgeCasesExcessPadding(self):
     with self.session(use_gpu=test.is_gpu_available()) as sess:
       with self.assertRaisesRegexp(
-          errors_impl.InvalidArgumentError,
-          "Right padding 2 needs to be smaller than the window size 2"):
+          (errors_impl.UnimplementedError, errors_impl.InvalidArgumentError),
+          "Right padding 2 needs to be smaller than the window size 2|"
+          "XLA does not support pooling ops with explicit padding"):
         input_sizes = [1, 3, 3, 1]
         x = [(((f + 128) % 255) - 127) for f in range(9)]
         t = constant_op.constant(x, shape=input_sizes, dtype=dtypes.float32)
@@ -2339,7 +2361,7 @@ class PoolingTest(test.TestCase):
             data_format="NHWC"))
 
   @test_util.run_deprecated_v1
-  def _testNegativePadding(self):
+  def testNegativePadding(self):
     with self.session(use_gpu=test.is_gpu_available()) as sess:
       with self.assertRaisesRegexp(
           ValueError, "All elements of explicit_paddings must be "
@@ -2356,7 +2378,7 @@ class PoolingTest(test.TestCase):
             data_format="NHWC"))
 
   @test_util.run_deprecated_v1
-  def _testExplicitPaddingBatch(self):
+  def testExplicitPaddingBatch(self):
     with self.session(use_gpu=test.is_gpu_available()) as sess:
       with self.assertRaisesRegexp(
           ValueError, "Nonzero explicit padding in the batch or depth "
@@ -2371,13 +2393,6 @@ class PoolingTest(test.TestCase):
             padding="EXPLICIT",
             explicit_paddings=[1, 1, 1, 1, 1, 1, 0, 0],
             data_format="NHWC"))
-
-  def testExplicitPaddingEdgeCases(self):
-    # Tests for Explicit padding.
-    self._testEdgeCasesRaiseErrors()
-    self._testEdgeCasesExcessPadding()
-    self._testExplicitPaddingBatch()
-    self._testNegativePadding()
 
 
 def GetMaxPoolFwdTest(input_size, filter_size, strides, padding):

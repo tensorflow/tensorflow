@@ -232,14 +232,14 @@ TEST(CAPI, LibraryLoadFunctions) {
 }
 
 void TestEncodeDecode(int line, const std::vector<string>& data) {
-  const tensorflow::int64 n = data.size();
+  const int64_t n = data.size();
   Status status;
   for (const std::vector<tensorflow::int64>& dims :
        std::vector<std::vector<tensorflow::int64>>{
            {n}, {1, n}, {n, 1}, {n / 2, 2}}) {
     // Create C++ Tensor
     Tensor src(tensorflow::DT_STRING, TensorShape(dims));
-    for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
+    for (int64_t i = 0; i < src.NumElements(); ++i) {
       src.flat<tstring>()(i) = data[i];
     }
     TF_Tensor* dst = TF_TensorFromTensor(src, &status);
@@ -249,7 +249,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
     Tensor output;
     ASSERT_EQ(Status::OK(), TF_TensorToTensor(dst, &output)) << line;
     ASSERT_EQ(src.NumElements(), output.NumElements()) << line;
-    for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
+    for (int64_t i = 0; i < src.NumElements(); ++i) {
       ASSERT_EQ(data[i], output.flat<tstring>()(i)) << line;
     }
 
@@ -1421,7 +1421,7 @@ TEST(CAPI, SavedModel) {
 
   // Write {0, 1, 2, 3} as tensorflow::Example inputs.
   Tensor input(tensorflow::DT_STRING, TensorShape({4}));
-  for (tensorflow::int64 i = 0; i < input.NumElements(); ++i) {
+  for (int64_t i = 0; i < input.NumElements(); ++i) {
     tensorflow::Example example;
     auto* feature_map = example.mutable_features()->mutable_feature();
     (*feature_map)["x"].mutable_float_list()->add_value(i);

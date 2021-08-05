@@ -169,6 +169,15 @@ bool IsEagerTensorSlow(PyObject* o);
 //   True if the object is a ResourceVariable.
 bool IsResourceVariable(PyObject* o);
 
+// Returns a true if its input is an OwnedIterator.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is an OwnedIterator.
+bool IsOwnedIterator(PyObject* o);
+
 // Returns a true if its input is a Variable.
 //
 // Args:

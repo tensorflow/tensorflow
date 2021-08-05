@@ -93,8 +93,7 @@
 // CHECK-NEXT:      name: "start_logits",
 // CHECK-NEXT:      tensor_index: 4
 // CHECK-NEXT:    } ],
-// CHECK-NEXT:    method_name: "serving_default",
-// CHECK-NEXT:    key: ""
+// CHECK-NEXT:    signature_key: "serving_default"
 // CHECK-NEXT:  } ]
 // CHECK-NEXT:}
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 554 : i32}, tf_saved_model.semantics} {

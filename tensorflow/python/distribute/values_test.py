@@ -26,6 +26,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
@@ -327,6 +328,42 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
     for i in range(len(distribution.extended.worker_devices)):
       self.assertAllEqual(distributed_values._values[i].device,
                           worker_devices[i])
+
+
+class PerWorkerResourceTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(dataset_fn_as_tf_function=[True, False]))
+  def testMapFnTracing(self, dataset_fn_as_tf_function):
+    # For a PerWorkerResource to correctly behave when used in dataset.map,
+    # it has to be that the map_fn is not traced only once such that
+    # PerWorkerResource.local_table can return the correct resource. This test
+    # can detect the potential breakage of this behavior on TAP.
+    self._traced_once = 0
+
+    def map_fn(x):
+      self._traced_once += 1
+      return x
+
+    def dataset_fn():
+      dataset = dataset_ops.DatasetV2.from_tensors([0, 1, 2]).repeat().batch(
+          2, drop_remainder=True)
+      dataset = dataset.map(map_fn)
+      return dataset
+
+    datasets = []
+    number_of_input_pipelines = 5
+
+    if dataset_fn_as_tf_function:
+      dataset_fn = def_function.function(dataset_fn)
+      expected_tracing_times = 1
+    else:
+      expected_tracing_times = number_of_input_pipelines
+
+    for _ in range(number_of_input_pipelines):
+      datasets.append(dataset_fn())
+
+    self.assertEqual(self._traced_once, expected_tracing_times)
 
 
 class DistributedDelegateTest(test.TestCase):

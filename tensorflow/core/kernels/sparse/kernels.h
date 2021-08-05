@@ -119,7 +119,7 @@ struct COOSparseMatrixToCSRSparseMatrix {
 //   Also csr_row_ptr should be initially filled with zeros.
 //
 struct SparseTensorToCSRSparseMatrixCPUFunctor {
-  Status operator()(const int64 batch_size, const int num_rows,
+  Status operator()(const int64_t batch_size, const int num_rows,
                     TTypes<int64>::ConstMatrix indices,
                     TTypes<int32>::Vec batch_ptr,
                     TTypes<int32>::Vec csr_row_ptr,

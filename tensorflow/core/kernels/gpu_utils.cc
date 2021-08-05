@@ -242,6 +242,10 @@ Status BestCudnnConvAlgorithm(
   }
 
   if (plans == nullptr) {
+    VLOG(2) << "fastest algorithm: "
+            << proto_utils::FromDurationProto(results[idx].run_time())
+            << " with algo " << results[idx].conv().algorithm()
+            << ", workspace bytes " << results[idx].scratch_bytes();
     algo->set_algorithm({results[idx].conv().algorithm(),
                          results[idx].conv().tensor_ops_enabled()});
     algo->set_scratch_size(results[idx].scratch_bytes());
@@ -251,6 +255,10 @@ Status BestCudnnConvAlgorithm(
            results[idx_no_scratch].conv().tensor_ops_enabled()});
     }
   } else {
+    VLOG(2) << "fastest algorithm: "
+            << proto_utils::FromDurationProto(results[idx].run_time())
+            << " with algo " << (*plans)[idx]->getTag() << ", workspace bytes "
+            << (*plans)[idx]->getWorkspaceSize();
     algo->set_algorithm(
         {(*plans)[idx]->getTag(), (*plans)[idx]->get_raw_desc()});
     algo->set_scratch_size((*plans)[idx]->getWorkspaceSize());

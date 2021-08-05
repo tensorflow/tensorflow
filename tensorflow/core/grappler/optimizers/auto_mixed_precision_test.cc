@@ -44,11 +44,11 @@ namespace grappler {
 namespace {
 
 template <DataType DTYPE>
-Tensor GenerateIdentityMatrix(int64 height, int64 width) {
+Tensor GenerateIdentityMatrix(int64_t height, int64_t width) {
   typedef typename EnumToDataType<DTYPE>::Type T;
   Tensor tensor(DTYPE, TensorShape{height, width});
-  for (int64 i = 0; i < height; ++i) {
-    for (int64 j = 0; j < width; ++j) {
+  for (int64_t i = 0; i < height; ++i) {
+    for (int64_t j = 0; j < width; ++j) {
       tensor.matrix<T>()(i, j) = i == j;
     }
   }

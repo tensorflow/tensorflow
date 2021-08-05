@@ -26,17 +26,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// We won't pad a conv if doing so increases the total number of bytes in the
-// lhs, rhs, or result by more than this amount.
-//
-// TODO(jlebar): This number was tuned experimentally.  It represents a
-// compromise on our current benchmarks; it speeds some up significantly, and
-// doesn't slow any down.  But we can observe by changing this value that
-// there's additional room for speedups.  Achieving those speedups without
-// also slowing other things down will likely require a more sophisticated
-// heuristic, possibly some form of auto-tuning.
-static constexpr double kMaxBytesTouchedIncrease = 1.35;
-
 // Creates and returns an HLO that zero-pads one or more dimensions in the given
 // instruction so that its shape is equal to the given shape.
 //
@@ -55,7 +44,7 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
   PaddingConfig pad_config = MakeNoPaddingConfig(shape.rank());
 
   bool added_padding = false;
-  for (int64 dim = 0; dim < shape.rank(); ++dim) {
+  for (int64_t dim = 0; dim < shape.rank(); ++dim) {
     if (shape.dimensions(dim) == new_shape.dimensions(dim)) {
       continue;
     }
@@ -102,6 +91,9 @@ static Status PadConv(HloCustomCallInstruction* conv,
   auto* new_conv =
       add(conv->CloneWithNewOperands(new_conv_shape, new_operands));
 
+  VLOG(2) << "Padded features of " << conv->ToString() << ", replaced with "
+          << new_conv->ToString();
+
   // Slice the new conv result if necessary, keeping in mind that new_conv
   // has tuple shape (new_result_shape, u8[0]).
   if (!ShapeUtil::Equal(result_shape, new_result_shape)) {
@@ -120,8 +112,6 @@ static Status PadConv(HloCustomCallInstruction* conv,
         add(HloInstruction::CreateTuple({sliced_result, empty_temp_buffer}));
   }
 
-  VLOG(2) << "Padded features of " << conv->ToString() << ", replaced with "
-          << new_conv->ToString();
   return conv->parent()->ReplaceInstruction(conv, new_conv);
 }
 
@@ -233,7 +223,7 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
     new_input_shape->set_dimensions(dnums.input_feature_dimension(), 4);
     new_filter_shape->set_dimensions(dnums.kernel_input_feature_dimension(), 4);
   } else {
-    auto pad_dim = [](Shape* s, int64 dim) {
+    auto pad_dim = [](Shape* s, int64_t dim) {
       s->set_dimensions(dim, RoundUpToNearest<int64>(s->dimensions(dim), 8));
     };
     pad_dim(new_input_shape, dnums.input_feature_dimension());
@@ -241,12 +231,23 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
     pad_dim(new_filter_shape, dnums.kernel_output_feature_dimension());
     pad_dim(new_output_shape, dnums.output_feature_dimension());
 
+    // We won't pad a conv if doing so increases the total number of bytes in
+    // the lhs, rhs, or result by more than this amount.
+    //
+    // TODO(jlebar): This number was tuned experimentally.  It represents a
+    // compromise on our current benchmarks; it speeds some up significantly,
+    // and doesn't slow any down.  But we can observe by changing this value
+    // that there's additional room for speedups.  Achieving those speedups
+    // without also slowing other things down will likely require a more
+    // sophisticated heuristic, possibly some form of auto-tuning.
+    static constexpr double kMaxBytesTouchedIncrease = 1.35;
+
     // Check that padding wouldn't increase the total bytes read/written by this
     // operation too much.
     auto check_size_increase = [&](const Shape& old_shape,
                                    const Shape& new_shape) {
-      int64 old_bytes = ShapeUtil::ByteSizeOf(old_shape);
-      int64 new_bytes = ShapeUtil::ByteSizeOf(new_shape);
+      int64_t old_bytes = ShapeUtil::ByteSizeOf(old_shape);
+      int64_t new_bytes = ShapeUtil::ByteSizeOf(new_shape);
       if (new_bytes <= old_bytes * kMaxBytesTouchedIncrease) {
         return true;
       }
@@ -316,14 +317,14 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
   std::tie(input_vect_dim, kernel_vect_dim, result_vect_dim) =
       FindVectorizedFeatureDims(dnums, input_shape, kernel_shape, result_shape);
 
-  int64 input_vect_size =
+  int64_t input_vect_size =
       input_vect_dim.has_value() ? input_shape.dimensions(*input_vect_dim) : 1;
-  int64 kernel_vect_size = kernel_vect_dim.has_value()
-                               ? kernel_shape.dimensions(*kernel_vect_dim)
-                               : 1;
-  int64 result_vect_size = result_vect_dim.has_value()
-                               ? result_shape.dimensions(*result_vect_dim)
-                               : 1;
+  int64_t kernel_vect_size = kernel_vect_dim.has_value()
+                                 ? kernel_shape.dimensions(*kernel_vect_dim)
+                                 : 1;
+  int64_t result_vect_size = result_vect_dim.has_value()
+                                 ? result_shape.dimensions(*result_vect_dim)
+                                 : 1;
   if (pad_to % input_vect_size != 0 || pad_to % kernel_vect_size != 0 ||
       pad_to % result_vect_size != 0) {
     // If the conv is already vectorized but pad_to is not a multiple of the
@@ -335,7 +336,7 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
 
   // Pad the features to multiples of pad_to.
   {
-    auto pad_dim = [&](Shape* s, int64 dim, int64 cur_vect_size) {
+    auto pad_dim = [&](Shape* s, int64_t dim, int64_t cur_vect_size) {
       CHECK_EQ(pad_to % cur_vect_size, 0);
       s->set_dimensions(dim, RoundUpToNearest<int64>(s->dimensions(dim),
                                                      pad_to / cur_vect_size));
@@ -390,14 +391,29 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
       default:
         CHECK(false);
     }
+
+    // We won't pad a conv if doing so increases the total number of bytes in
+    // the lhs, rhs, or result by more than this amount.
+    //
+    // TODO(jlebar): This number was tuned experimentally, but without much
+    // experimental evidence.
+    static constexpr double kMaxBytesTouchedIncrease = 2.5;
+
+    // It's always OK to pad up to this many bytes, even if it increases us
+    // beyond the kMaxBytesTouchedIncrease factor.  This handles padding very
+    // small vectors, like the bias vector of fused convs (which is just one
+    // float per batch).
+    static constexpr int64 kAlwaysOkToPadBytes = 4096;
+
     // Check that padding wouldn't increase the total bytes read/written by this
     // operation too much.
     auto check_size_increase = [&](const Shape& old_shape,
                                    const Shape& new_shape) {
-      int64 old_bytes = ShapeUtil::ByteSizeOf(old_shape);
-      int64 new_bytes = ShapeUtil::ByteSizeOf(new_shape);
-      if (new_bytes <= old_bytes * kMaxBytesTouchedIncrease) {
-        return;
+      int64_t old_bytes = ShapeUtil::ByteSizeOf(old_shape);
+      int64_t new_bytes = ShapeUtil::ByteSizeOf(new_shape);
+      if (new_bytes <= old_bytes * kMaxBytesTouchedIncrease ||
+          new_bytes <= kAlwaysOkToPadBytes) {
+        return true;
       }
       VLOG(3)
           << "Not padding convolution; doing so would change input / result "
@@ -406,16 +422,22 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
           << ShapeUtil::HumanString(new_shape) << ", a size increase of "
           << new_bytes / static_cast<double>(old_bytes) << "x > "
           << kMaxBytesTouchedIncrease << "x: " << conv->ToString();
+      return false;
     };
 
-    for (int64 i = 0; i < conv->operand_count(); ++i) {
-      check_size_increase(conv->operand(i)->shape(), new_input_shapes[i]);
+    for (int64_t i = 0; i < conv->operand_count(); ++i) {
+      if (!check_size_increase(conv->operand(i)->shape(),
+                               new_input_shapes[i])) {
+        return false;
+      }
     }
-    check_size_increase(result_shape, new_result_shape);
+    if (!check_size_increase(result_shape, new_result_shape)) {
+      return false;
+    }
   }
 
   bool changed = false;
-  for (int64 i = 0; i < conv->operand_count(); ++i) {
+  for (int64_t i = 0; i < conv->operand_count(); ++i) {
     changed |=
         !ShapeUtil::Equal(conv->operand(i)->shape(), new_input_shapes[i]);
   }

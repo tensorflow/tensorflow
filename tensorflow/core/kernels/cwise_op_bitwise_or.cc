@@ -31,10 +31,6 @@ REGISTER4(BinaryOp, CPU, "BitwiseOr", functor::bitwise_or, uint8, uint16,
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER8(BinaryOp, GPU, "BitwiseOr", functor::bitwise_or, int8, int16, int32,
           int64, uint8, uint16, uint32, uint64);
-#else
-// TODO(b/172804967): We do not generate unsigned kernels for GPU via mlir.
-REGISTER4(BinaryOp, GPU, "BitwiseOr", functor::bitwise_or, uint8, uint16,
-          uint32, uint64);
 #endif  // !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

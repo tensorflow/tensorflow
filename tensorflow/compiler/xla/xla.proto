@@ -243,8 +243,8 @@ message DebugOptions {
   // If specified, will only dump modules which match this regexp.
   string xla_dump_hlo_module_re = 110;
 
-  // If this flag is specified, will also HLO before and after passes that match
-  // this regular expression.  Set to .* to dump before/after all passes.
+  // If this flag is specified, will also dump HLO before and after passes that
+  // match this regular expression.  Set to .* to dump before/after all passes.
   string xla_dump_hlo_pass_re = 111;
 
   // Specifies the format that HLO is dumped in.  Multiple of these may be
@@ -287,6 +287,9 @@ message DebugOptions {
 
   // Paths to files with ptx code.
   repeated string xla_gpu_ptx_file = 127;
+
+  // Whether to dump llvm ir when compiling to ptx.
+  bool xla_gpu_dump_llvmir = 155;
 
   // Denylist for cuDNN convolutions.
   string xla_gpu_algorithm_denylist_path = 128;
@@ -335,7 +338,12 @@ message DebugOptions {
   // Disable dumping metadata in HLO dumps.
   bool xla_dump_disable_metadata = 153;
 
-  // Next id: 154
+  // If this flag is specified, will only dump HLO before and after passes in
+  // the pass pipeline that matches this regular expression. Default empty value
+  // enables dumping in all pipelines.
+  string xla_dump_hlo_pipeline_re = 154;
+
+  // Next id: 156
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

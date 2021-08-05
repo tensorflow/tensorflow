@@ -142,8 +142,8 @@ std::string StridedSlice::GetStridedSliceCode(const OperationDef& op_def,
       c += "    int s_z = min(s_ch >> 2, args.src_tensor.Slices() - 1);\n";
       c += "    int s_z_rem = s_ch & 3;\n";
       c += "    FLT4 t = args.src_tensor.Read(s_x, s_y, s_z);\n";
-      c += "    FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
-      c += "    result." + postfixes[i] + " = t_ar[s_z_rem];\n";
+      c += "    result." + postfixes[i] +
+           " = SELECT_BY_INDEX_FROM_FLT4(t, s_z_rem);\n";
       c += "  }\n";
     }
   }

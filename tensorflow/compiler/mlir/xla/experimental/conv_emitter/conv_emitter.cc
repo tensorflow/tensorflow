@@ -65,7 +65,7 @@ struct ShapeInfo {
 };
 
 ShapeInfo GetShapeInfo(
-    const Shape& shape, int64 n_dim, int64 c_dim,
+    const Shape& shape, int64_t n_dim, int64_t c_dim,
     absl::Span<const tensorflow::protobuf_int64> spatial_dims,
     mlir::Builder builder) {
   ShapeInfo shape_info;
@@ -78,22 +78,22 @@ ShapeInfo GetShapeInfo(
 
   nchw_to_logical.push_back(n_dim);
   nchw_to_logical.push_back(c_dim);
-  for (int64 dim : spatial_dims) {
+  for (int64_t dim : spatial_dims) {
     nchw_to_logical.push_back(dim);
   }
 
-  for (int64 dim : nchw_to_logical) {
+  for (int64_t dim : nchw_to_logical) {
     shape_info.nchw_dimensions.push_back(shape.dimensions(dim));
   }
 
-  for (int64 dim : physical_to_logical) {
+  for (int64_t dim : physical_to_logical) {
     shape_info.physical_dimensions.push_back(shape.dimensions(dim));
   }
 
   std::vector<mlir::AffineExpr> affine_exprs;
   // We want physical to nchw order.
-  for (int64 dim : ComposePermutations(InversePermutation(nchw_to_logical),
-                                       physical_to_logical)) {
+  for (int64_t dim : ComposePermutations(InversePermutation(nchw_to_logical),
+                                         physical_to_logical)) {
     affine_exprs.push_back(builder.getAffineDimExpr(dim));
   }
 

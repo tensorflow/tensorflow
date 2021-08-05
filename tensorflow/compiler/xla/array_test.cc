@@ -37,9 +37,9 @@ TEST(ArrayTest, FillCtor) {
   EXPECT_EQ(fullof7.dim(1), 2);
   EXPECT_EQ(fullof7.dim(2), 3);
 
-  for (int64 n0 = 0; n0 < fullof7.dim(0); ++n0) {
-    for (int64 n1 = 0; n1 < fullof7.dim(1); ++n1) {
-      for (int64 n2 = 0; n2 < fullof7.dim(2); ++n2) {
+  for (int64_t n0 = 0; n0 < fullof7.dim(0); ++n0) {
+    for (int64_t n1 = 0; n1 < fullof7.dim(1); ++n1) {
+      for (int64_t n2 = 0; n2 < fullof7.dim(2); ++n2) {
         EXPECT_EQ(fullof7(n0, n1, n2), 7);
       }
     }
@@ -116,15 +116,15 @@ TEST(ArrayTest, IndexingReadWriteBool) {
 
 TEST(ArrayTest, Fill) {
   Array<int> fullof7({2, 3}, 7);
-  for (int64 n1 = 0; n1 < fullof7.dim(0); ++n1) {
-    for (int64 n2 = 0; n2 < fullof7.dim(1); ++n2) {
+  for (int64_t n1 = 0; n1 < fullof7.dim(0); ++n1) {
+    for (int64_t n2 = 0; n2 < fullof7.dim(1); ++n2) {
       EXPECT_EQ(fullof7(n1, n2), 7);
     }
   }
 
   fullof7.Fill(11);
-  for (int64 n1 = 0; n1 < fullof7.dim(0); ++n1) {
-    for (int64 n2 = 0; n2 < fullof7.dim(1); ++n2) {
+  for (int64_t n1 = 0; n1 < fullof7.dim(0); ++n1) {
+    for (int64_t n2 = 0; n2 < fullof7.dim(1); ++n2) {
       EXPECT_EQ(fullof7(n1, n2), 11);
     }
   }
@@ -162,9 +162,9 @@ TEST(ArrayTest, Each) {
   Array<int64> arr({2, 3, 4});
   arr.FillWithMultiples(1);
 
-  int64 each_count = 0, each_sum = 0;
+  int64_t each_count = 0, each_sum = 0;
   arr.Each([&](absl::Span<const int64> idx, int cell) {
-    int64 lin_idx = idx[0] * 12 + idx[1] * 4 + idx[2];
+    int64_t lin_idx = idx[0] * 12 + idx[1] * 4 + idx[2];
     EXPECT_EQ(lin_idx, cell);
     each_count++;
     each_sum += cell;

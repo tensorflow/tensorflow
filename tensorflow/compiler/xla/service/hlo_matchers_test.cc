@@ -300,5 +300,28 @@ TEST_F(HloMatchersTest, AsyncCopyMatcher) {
               "is in the memory space 1, expected 3");
 }
 
+TEST_F(HloMatchersTest, ConstantMatcher) {
+  string hlo_string = R"(
+HloModule Constant
+
+ENTRY main {
+  ROOT x = u32[2] constant({1, 2})
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+
+  EXPECT_THAT(root, op::Constant());
+  EXPECT_THAT(root, op::Constant(LiteralUtil::CreateR1<uint32_t>({1, 2})));
+  EXPECT_THAT(root, ::testing::Not(
+                        op::Constant(LiteralUtil::CreateR1<uint32_t>({1, 1}))));
+
+  EXPECT_THAT(Explain(root, op::Constant(LiteralUtil::CreateR0<uint32_t>(1))),
+              "(%x = u32[2]{0} constant({1, 2})) has wrong value (got u32[2] "
+              "{1, 2}, want u32[] 1)");
+}
+
 }  // namespace
 }  // namespace xla

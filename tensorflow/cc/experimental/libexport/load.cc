@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/cc/experimental/libexport/load.h"
 
-#include "absl/status/status.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/env.h"
@@ -34,37 +33,30 @@ namespace libexport {
 using protobuf::RepeatedPtrField;
 using CheckpointKey = TFPackage::CheckpointKey;
 
-absl::Status ConvertToAbslStatus(const ::tensorflow::Status& s) {
-  return s.ok() ? absl::OkStatus()
-                : absl::Status(absl::StatusCode::kUnknown, s.error_message());
-}
-
-absl::StatusOr<TFPackage> TFPackage::Load(const std::string& path) {
+tensorflow::StatusOr<TFPackage> TFPackage::Load(const std::string& path) {
   // Load the proto
   TFPackage tf_package;
   const string saved_model_pb_path = io::JoinPath(path, kSavedModelFilenamePb);
   const string saved_model_pbtxt_path =
       io::JoinPath(path, kSavedModelFilenamePbTxt);
   if (Env::Default()->FileExists(saved_model_pb_path).ok()) {
-    RETURN_IF_ERROR(ConvertToAbslStatus(ReadBinaryProto(
-        Env::Default(), saved_model_pb_path, &tf_package.saved_model_proto_)));
+    RETURN_IF_ERROR(ReadBinaryProto(Env::Default(), saved_model_pb_path,
+                                    &tf_package.saved_model_proto_));
   } else if (Env::Default()->FileExists(saved_model_pbtxt_path).ok()) {
-    RETURN_IF_ERROR(ConvertToAbslStatus(
-        ReadTextProto(Env::Default(), saved_model_pbtxt_path,
-                      &tf_package.saved_model_proto_)));
+    RETURN_IF_ERROR(ReadTextProto(Env::Default(), saved_model_pbtxt_path,
+                                  &tf_package.saved_model_proto_));
   } else {
-    return ConvertToAbslStatus(
-        Status(error::Code::NOT_FOUND,
-               "Could not find SavedModel .pb or .pbtxt at supplied export "
-               "directory path: " +
-                   path));
+    return Status(error::Code::NOT_FOUND,
+                  "Could not find SavedModel .pb or .pbtxt at supplied export "
+                  "directory path: " +
+                      path);
   }
   return tf_package;
 }
 
-absl::StatusOr<std::vector<CheckpointKey>>
+tensorflow::StatusOr<std::vector<CheckpointKey>>
 TFPackage::GetVariableCheckpointKeys() {
-  return absl::InternalError("Not implemented.");
+  return errors::Unimplemented("GetVariableCheckpointKeys not implemented.");
 }
 
 const SavedObjectGraph& TFPackage::GetObjectGraph() {

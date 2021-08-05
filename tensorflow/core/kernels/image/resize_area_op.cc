@@ -70,14 +70,14 @@ class ResizeAreaOp : public OpKernel {
     for (int i = 0; i < y_ptrs.size(); ++i) {
       const T* ptr = y_ptrs[i];
       float scale_x = x_interp.start_scale;
-      int64 offset = 3 * BOUND_IF_NEEDED(x_interp.start, st.in_width);
+      int64_t offset = 3 * BOUND_IF_NEEDED(x_interp.start, st.in_width);
       float sum_y_0 = static_cast<float>(ptr[offset + 0]) * scale_x;
       float sum_y_1 = static_cast<float>(ptr[offset + 1]) * scale_x;
       float sum_y_2 = static_cast<float>(ptr[offset + 2]) * scale_x;
 
       if (x_interp.start + 1 != x_interp.end) {
-        for (int64 x = x_interp.start + 1; x < x_interp.end - 1; ++x) {
-          int64 offset = 3 * BOUND_IF_NEEDED(x, st.in_width);
+        for (int64_t x = x_interp.start + 1; x < x_interp.end - 1; ++x) {
+          int64_t offset = 3 * BOUND_IF_NEEDED(x, st.in_width);
           sum_y_0 += static_cast<float>(ptr[offset + 0]);
           sum_y_1 += static_cast<float>(ptr[offset + 1]);
           sum_y_2 += static_cast<float>(ptr[offset + 2]);
@@ -114,7 +114,7 @@ class ResizeAreaOp : public OpKernel {
 #define BOUND_IF_NEEDED(x, y) (NeedsXBounding ? Bound(x, y) : (x))
 
     const auto num_channels = st.channels;
-    for (int64 c = 0; c < num_channels; ++c) {
+    for (int64_t c = 0; c < num_channels; ++c) {
       float sum = 0;
       for (int i = 0; i < y_ptrs.size(); ++i) {
         const T* ptr = y_ptrs[i];
@@ -125,7 +125,7 @@ class ResizeAreaOp : public OpKernel {
                               c]) *
                       scale_x;
         if (x_interp.start + 1 != x_interp.end) {
-          for (int64 x = x_interp.start + 1; x < x_interp.end - 1; ++x) {
+          for (int64_t x = x_interp.start + 1; x < x_interp.end - 1; ++x) {
             sum_y += static_cast<float>(
                 ptr[num_channels * BOUND_IF_NEEDED(x, st.in_width) + c]);
           }
@@ -160,13 +160,13 @@ class ResizeAreaOp : public OpKernel {
     // Note that it may be useful to cache x_interps for a given
     // ImageResizerState.
     std::vector<CachedInterpolation> x_interps(st.out_width);
-    for (int64 x = 0; x < st.out_width; ++x) {
+    for (int64_t x = 0; x < st.out_width; ++x) {
       auto& x_interp = x_interps[x];
       const float in_x = x * st.width_scale;
       const float in_x1 = (x + 1) * st.width_scale;
       // The start and end width indices of all the cells that could
       // contribute to the target cell.
-      int64 v = std::floor(in_x);
+      int64_t v = std::floor(in_x);
       x_interp.start = v;
       // TODO(cwhipkey): simplify this logic.
       x_interp.start_scale =
@@ -221,17 +221,17 @@ class ResizeAreaOp : public OpKernel {
     std::vector<const T*> y_ptrs;
     float scale = 1.0 / (st.height_scale * st.width_scale);
     float* output_ptr = output_data.data();
-    for (int64 b = 0; b < st.batch_size; ++b) {
-      for (int64 y = 0; y < st.out_height; ++y) {
+    for (int64_t b = 0; b < st.batch_size; ++b) {
+      for (int64_t y = 0; y < st.out_height; ++y) {
         const float in_y = y * st.height_scale;
         const float in_y1 = (y + 1) * st.height_scale;
         // The start and end height indices of all the cells that could
         // contribute to the target cell.
-        const int64 y_start = std::floor(in_y);
-        const int64 y_end = std::ceil(in_y1);
+        const int64_t y_start = std::floor(in_y);
+        const int64_t y_end = std::ceil(in_y1);
         y_scales.clear();
         y_ptrs.clear();
-        for (int64 i = y_start; i < y_end; ++i) {
+        for (int64_t i = y_start; i < y_end; ++i) {
           float scale_y;
           if (i < in_y) {
             scale_y = (i + 1 > in_y1 ? st.height_scale : i + 1 - in_y);
@@ -246,7 +246,7 @@ class ResizeAreaOp : public OpKernel {
         }
 
         if (kKnownNumChannels == 3) {
-          for (int64 x = 0; x < st.out_width; ++x) {
+          for (int64_t x = 0; x < st.out_width; ++x) {
             const CachedInterpolation& x_interp = x_interps[x];
             if (x_interp.needs_bounding) {
               ComputePatchSumOf3Channels<true>(scale, st, y_ptrs, y_scales,
@@ -258,7 +258,7 @@ class ResizeAreaOp : public OpKernel {
             output_ptr += 3;
           }
         } else {
-          for (int64 x = 0; x < st.out_width; ++x) {
+          for (int64_t x = 0; x < st.out_width; ++x) {
             const CachedInterpolation& x_interp = x_interps[x];
             if (x_interp.needs_bounding) {
               ComputePatchSum<true>(scale, st, y_ptrs, y_scales, x_interp,
@@ -275,7 +275,7 @@ class ResizeAreaOp : public OpKernel {
   }
 
  private:
-  static EIGEN_ALWAYS_INLINE int64 Bound(int64 val, int64 limit) {
+  static EIGEN_ALWAYS_INLINE int64 Bound(int64_t val, int64_t limit) {
     return std::min(limit - 1, std::max(int64{0}, val));
   }
 

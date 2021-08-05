@@ -134,8 +134,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       if (*end_of_sequence) {
         return Status::OK();
       }
-      int64 index = split.scalar<int64>()();
-      out_tensors->clear();
+      int64_t index = split.scalar<int64>()();
       out_tensors->reserve(dataset()->tensors_.size());
       for (size_t i = 0; i < dataset()->tensors_.size(); ++i) {
         Tensor slice = dataset()->tensors_[i].SubSlice(index);
@@ -192,7 +191,7 @@ void TensorSliceDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES(
       ctx, inputs[0].dims() > 0,
       errors::InvalidArgument("All components must be at least 1-dimensional"));
-  const int64 num_slices = inputs[0].dim_size(0);
+  const int64_t num_slices = inputs[0].dim_size(0);
   for (const Tensor& t : inputs) {
     components.push_back(t);
     OP_REQUIRES(ctx, t.dims() > 0,

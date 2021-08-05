@@ -97,7 +97,7 @@ Status UncompressElement(const CompressedElement& compressed,
   // vector space so that the vector doesn't resize itself, which could
   // invalidate pointers to its strings' data.
   tensor_proto_strs.reserve(num_components);
-  int64 total_size = 0;
+  int64_t total_size = 0;
   for (int i = 0; i < num_components; ++i) {
     const CompressedComponentMetadata& metadata =
         compressed.component_metadata(i);

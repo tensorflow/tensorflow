@@ -92,7 +92,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       }
     }
 
-    int64 cardinality = inputs[0]->Cardinality();
+    int64_t cardinality = inputs[0]->Cardinality();
     for (size_t i = 1, num_inputs = inputs.size(); i < num_inputs; ++i) {
       if (cardinality == kUnknownCardinality) {
         cardinality = inputs[i]->Cardinality();
@@ -119,7 +119,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
     Dataset(OpKernelContext* ctx, std::vector<DatasetBase*> inputs,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
-            int64 cardinality, int64 num_experiments)
+            int64_t cardinality, int64_t num_experiments)
         : DatasetBase(DatasetContext(ctx)),
           inputs_(std::move(inputs)),
           output_types_(output_types),
@@ -329,7 +329,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       void RunnerThread(IteratorContext* ctx, InvocationResult* result, int i) {
         RecordStart(ctx);
         auto cleanup = gtl::MakeCleanup([this, ctx]() { RecordStop(ctx); });
-        int64 start = EnvTime::NowNanos();
+        int64_t start = EnvTime::NowNanos();
         Status s = input_impls_[i]->GetNext(ctx, &result->out_tensors,
                                             &result->end_of_sequence);
         histograms_[i].Add(static_cast<double>(EnvTime::NowNanos() - start));

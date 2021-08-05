@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
@@ -200,7 +201,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
     input_layout = DataLayout::kBatchDepthYX;
   } else if (LayoutUtil::Equal(input.layout(), nchw_vect_input)) {
     // Differentiate between VECT_4 and VECT_32 by looking at the input shape.
-    int64 vect_size = input.dimensions(input.layout().minor_to_major(0));
+    int64_t vect_size = input.dimensions(input.layout().minor_to_major(0));
     if (vect_size == 4) {
       input_layout = DataLayout::kBatchDepthYX4;
     } else if (vect_size == 32) {
@@ -224,7 +225,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   if (LayoutUtil::Equal(filter.layout(), nchw_filter)) {
     filter_layout = FilterLayout::kOutputInputYX;
   } else if (LayoutUtil::Equal(filter.layout(), nchw_vect_filter)) {
-    int64 vect_size = filter.dimensions(filter.layout().minor_to_major(0));
+    int64_t vect_size = filter.dimensions(filter.layout().minor_to_major(0));
     if (vect_size == 4) {
       filter_layout = FilterLayout::kOutputInputYX4;
     } else if (vect_size == 32) {
@@ -248,7 +249,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   if (LayoutUtil::Equal(output.layout(), nchw_output)) {
     output_layout = DataLayout::kBatchDepthYX;
   } else if (LayoutUtil::Equal(output.layout(), nchw_vect_output)) {
-    int64 vect_size = output.dimensions(output.layout().minor_to_major(0));
+    int64_t vect_size = output.dimensions(output.layout().minor_to_major(0));
     if (vect_size == 4) {
       output_layout = DataLayout::kBatchDepthYX4;
     } else if (vect_size == 32) {
@@ -278,9 +279,10 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
 // When D is the set of dimensions in a ConvolutionDimensionNumbers, this finds
 // the dimension number that corresponds to the vectorized-features dimension in
 // the convolution.
-static absl::optional<int64> FindVectorizedDim(int64 rank, int64 d0, int64 d1,
+static absl::optional<int64> FindVectorizedDim(int64_t rank, int64_t d0,
+                                               int64_t d1,
                                                absl::Span<const int64> ds) {
-  for (int64 i = 0; i < rank; i++) {
+  for (int64_t i = 0; i < rank; i++) {
     if (i == d0 || i == d1 || absl::c_linear_search(ds, i)) {
       continue;
     }
@@ -417,13 +419,13 @@ static void InitializeTypedBuffer(se::Stream* stream,
 
   char* current_addr = static_cast<char*>(buffer.opaque());
   CHECK_EQ(0, buffer.size() % sizeof(T));
-  int64 elements_left = buffer.size() / sizeof(T);
+  int64_t elements_left = buffer.size() / sizeof(T);
   while (elements_left > 0) {
     CHECK_LE(host_index, host_buffer->size());
     if (host_buffer->size() == host_index) {
       host_index = 0;
     }
-    int64 elements_copied =
+    int64_t elements_copied =
         std::min<int64>(host_buffer->size() - host_index, elements_left);
     se::DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
     stream->ThenMemcpy(&mem, host_buffer->data() + host_index,
@@ -491,17 +493,14 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
 
 bool RequireDeterminism(const HloModuleConfig& config) {
   static bool require_cudnn_determinism = [] {
-    bool deterministic_ops = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &deterministic_ops));
+    // TODO(reedwm): Remove the TF_CUDNN_DETERMINISTIC env var.
     bool cudnn_deterministic = false;
     TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
                                                /*default_val=*/false,
                                                &cudnn_deterministic));
-    return deterministic_ops || cudnn_deterministic;
+    return cudnn_deterministic;
   }();
-  return require_cudnn_determinism ||
+  return tensorflow::OpDeterminismRequired() || require_cudnn_determinism ||
          config.debug_options().xla_gpu_deterministic_ops();
 }
 

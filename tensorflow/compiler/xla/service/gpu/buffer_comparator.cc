@@ -695,7 +695,7 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
 template <typename ElementType, typename ComparisonType>
 StatusOr<bool> HostCompare(se::Stream* stream, se::DeviceMemoryBase lhs,
                            se::DeviceMemoryBase rhs) {
-  int64 n = lhs.size() / sizeof(ElementType);
+  int64_t n = lhs.size() / sizeof(ElementType);
   std::vector<ElementType> host_lhs(n), host_rhs(n);
   stream->ThenMemcpy(host_lhs.data(), lhs, lhs.size());
   stream->ThenMemcpy(host_rhs.data(), rhs, rhs.size());
@@ -712,7 +712,7 @@ StatusOr<bool> HostCompare(se::Stream* stream, se::DeviceMemoryBase lhs,
     return a;
   };
   int differences_seen = 0;
-  for (int64 i = 0; i < n && differences_seen < 10; i++) {
+  for (int64_t i = 0; i < n && differences_seen < 10; i++) {
     auto original_lhs = static_cast<ComparisonType>(host_lhs[i]);
     auto original_rhs = static_cast<ComparisonType>(host_rhs[i]);
     ComparisonType lhs = canonicalize(original_lhs);
@@ -791,7 +791,7 @@ BufferComparator::BufferComparator(const Shape& shape,
   // Normalize complex shapes: since we treat the passed array as a contiguous
   // storage it does not matter which dimension are we doubling.
   auto double_dim_size = [&]() {
-    int64 prev_zero_dim_size = shape_.dimensions(0);
+    int64_t prev_zero_dim_size = shape_.dimensions(0);
     shape_.set_dimensions(0, prev_zero_dim_size * 2);
   };
 

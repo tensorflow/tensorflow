@@ -1188,7 +1188,7 @@ class ConvertGatherV2OpDynamic : public OpRewritePattern<TF::GatherV2Op> {
       }
     }
     Value slice_sizes_value = rewriter.create<tensor::FromElementsOp>(
-        loc, rewriter.getI32Type(), slice_sizes_vals);
+        loc, indices_ty.getElementType(), slice_sizes_vals);
     // offset_dims
     SmallVector<int64_t, 4> offset_dims;
     for (int64_t dim_idx = 0; dim_idx < params_rank; dim_idx++) {
@@ -1507,9 +1507,9 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
         pad_low = get_int(explicit_paddings[2 * dim]);
         pad_high = get_int(explicit_paddings[2 * dim + 1]);
       } else {
-        tensorflow::int64 output_size;
-        tensorflow::int64 pad_low_int64;
-        tensorflow::int64 pad_high_int64;
+        int64_t output_size;
+        int64_t pad_low_int64;
+        int64_t pad_high_int64;
         tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
             input_ty.getDimSize(dim), filter_ty.getDimSize(i), dilation, stride,
             padding, &output_size, &pad_low_int64, &pad_high_int64);
@@ -1670,11 +1670,6 @@ class ConvertGatherNdOpDynamic : public OpRewritePattern<TF::GatherNdOp> {
     // the last dim of indices of GatherNdOp must be fixed shaped
     if (num_index_dims == ShapedType::kDynamicSize) return failure();
 
-    // TODO(disc): Remove this constraint once fold and canonicalization is
-    // implemented.
-    if (params_ty.hasStaticShape() && indices_ty.hasStaticShape())
-      return failure();
-
     SmallVector<int64_t, 4> slice_sizes;
     slice_sizes.reserve(params_rank);
     for (int64_t i = 0; i < params_rank; ++i) {
@@ -1736,9 +1731,17 @@ class ConvertGatherNdOpDynamic : public OpRewritePattern<TF::GatherNdOp> {
         /*start_index_map=*/GetI64ElementsAttr(start_index_map, &rewriter),
         /*index_vector_dim=*/rewriter.getI64IntegerAttr(index_vector_dim),
         rewriter.getContext());
-    rewriter.replaceOpWithNewOp<mhlo::DynamicGatherOp>(
-        op, op.getType(), op.params(), op.indices(), slice_sizes_value,
-        dims_attr);
+    // TODO(disc): Remove this if-statement once fold and canonicalization is
+    // implemented.
+    if (params_ty.hasStaticShape() && indices_ty.hasStaticShape()) {
+      rewriter.replaceOpWithNewOp<mhlo::GatherOp>(
+          op, op.getType(), op.params(), op.indices(), dims_attr,
+          GetI64ElementsAttr(slice_sizes, &rewriter));
+    } else {
+      rewriter.replaceOpWithNewOp<mhlo::DynamicGatherOp>(
+          op, op.getType(), op.params(), op.indices(), slice_sizes_value,
+          dims_attr);
+    }
     return success();
   }
 };
@@ -2316,17 +2319,6 @@ class ConvertIdentityNOp : public OpRewritePattern<TF::IdentityNOp> {
   LogicalResult matchAndRewrite(TF::IdentityNOp op,
                                 PatternRewriter &rewriter) const override {
     rewriter.replaceOp(op, op.getOperands());
-    return success();
-  }
-};
-
-// Bypass _EagerConst
-class ConvertEagerConstOp : public OpRewritePattern<TF::_EagerConstOp> {
- public:
-  using OpRewritePattern<TF::_EagerConstOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(TF::_EagerConstOp op,
-                                PatternRewriter &rewriter) const override {
-    rewriter.replaceOp(op, op.getOperand());
     return success();
   }
 };
@@ -6273,7 +6265,11 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
         op.getLoc(), op.getType(), op.input(),
         /*call_target_name=*/rewriter.getStringAttr("Sharding"),
         /*has_side_effect=*/rewriter.getBoolAttr(false),
-        /*backend_config=*/rewriter.getStringAttr(""));
+        /*backend_config=*/rewriter.getStringAttr(""),
+        /*api_version=*/
+        mhlo::CustomCallApiVersionAttr::get(
+            rewriter.getContext(),
+            mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL));
     custom_call->setAttr(kShardingAttr, op._XlaShardingAttr());
     rewriter.replaceOp(op, custom_call.getResult(0));
 
@@ -6624,21 +6620,7 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
         RankedTensorType::get(result_ty.getShape(), rewriter.getIndexType());
     auto shape_op =
         rewriter.create<shape::ShapeOfOp>(op.getLoc(), index_tensor, input);
-
-    // Index cast is not defined on tensors, so we use a tensor.generate to have
-    // it work on scalars.
-    rewriter.replaceOpWithNewOp<tensor::GenerateOp>(
-        op, result_ty,
-        result_ty.hasStaticShape()
-            ? ValueRange{}
-            : ValueRange{rewriter.create<RankOp>(op.getLoc(), input)},
-        [&](OpBuilder &b, Location loc, ValueRange args) {
-          Value dim = args.front();
-          Value extent = b.create<tensor::ExtractOp>(loc, shape_op, dim);
-          Value casted =
-              b.create<IndexCastOp>(loc, extent, result_ty.getElementType());
-          b.create<tensor::YieldOp>(loc, casted);
-        });
+    rewriter.replaceOpWithNewOp<IndexCastOp>(op, shape_op, result_ty);
     return success();
   }
 };
@@ -7354,11 +7336,16 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     // within MLIR.
     TypeID::get<TF::ConstOp>(),
 
+    // AssertOp with string types are not supported by the fallback.
+    TypeID::get<TF::AssertOp>(),
+
     // TF2XLA fallback pattern doesn't support these op as MLIR hlo builder
     // doesn't override the necessary builder methods. These ops have simple
     // lowering pattern so this should be safe.
-    TypeID::get<TF::OutfeedEnqueueTupleOp>(),
     TypeID::get<TF::CrossReplicaSumOp>(),
+    TypeID::get<TF::InfeedDequeueTupleOp>(),
+    TypeID::get<TF::OutfeedEnqueueTupleOp>(),
+    TypeID::get<TF::XlaShardingOp>(),
   };
   // clang-format on
   return *ops;
@@ -7491,7 +7478,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertFusedBatchNormV3Op,
     ConvertInfeedDequeueTupleOp,
     ConvertIdentityNOp,
-    ConvertEagerConstOp,
     ConvertInplaceUpdateOp,
     ConvertLinSpaceOp,
     ConvertMaxOp,

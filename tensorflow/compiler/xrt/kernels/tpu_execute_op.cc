@@ -59,7 +59,7 @@ using GetBufferFunction =
 
 // Looks up the input `key` in the compilation cache.
 Status GetComputationCacheEntry(
-    ResourceMgr* rm, int64 key, int core_index_in_replica,
+    ResourceMgr* rm, int64_t key, int core_index_in_replica,
     std::unique_ptr<CompilationCacheEntryRef>* entry) {
   profiler::TraceMe trace_me("XRTExecuteOp::LookupProto", /*level=*/2);
   TpuCompilationCacheLookup* proto_lookup;
@@ -75,7 +75,7 @@ std::vector<bool> GetDynamicInputInfo(
     const TPUExecutableInfoProto& executable_proto) {
   std::vector<bool> input_is_dynamic;
   input_is_dynamic.reserve(executable_proto.input_shapes().size());
-  for (int64 i = 0; i < executable_proto.input_shapes().size(); ++i) {
+  for (int64_t i = 0; i < executable_proto.input_shapes().size(); ++i) {
     input_is_dynamic.push_back(
         !xla::Shape(executable_proto.input_shapes(i)).is_static());
   }
@@ -294,7 +294,7 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
 
   const Tensor& execution_input = context->input(0);
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_input.shape()));
-  int64 compilation_handle = execution_input.scalar<int64>()();
+  int64_t compilation_handle = execution_input.scalar<int64>()();
 
   const Tensor& execution_config = context->input(1);
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_config.shape()));
@@ -345,7 +345,7 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
       std::vector<RefPtr<XRTTupleAllocation>> input_tuples,
       GetInputTupleAllocations(
           input_coords, &working_set, backend, executable.input_shapes_size(),
-          [&](int64 i) { return xla::Shape(executable.input_shapes(i)); },
+          [&](int64_t i) { return xla::Shape(executable.input_shapes(i)); },
           release_inputs, backend->memory_allocator()));
   auto get_buffers_fn = [&]() {
     return GetArgumentsBuffers(input_output_alias, input_tuples,

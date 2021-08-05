@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/tools/versioning/op_signature.h"
@@ -90,11 +89,11 @@ absl::Status IsActivationSupported(TfLiteFusedActivation fused_activation) {
 }
 
 // Returns the number of runtime inputs of the given OpSignature.
-// runtime inputs are input tensors which are not constant tensors.
+// runtime inputs are input tensors which are not constant or optional tensors.
 int GetNumberOfRuntimeInputs(const OpSignature& op_sig) {
   int number_of_runtime_inputs = 0;
   for (auto& input : op_sig.inputs) {
-    if (!input.is_const) {
+    if (!input.is_const && input.type != kTfLiteNoType) {
       number_of_runtime_inputs++;
     }
   }

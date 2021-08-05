@@ -120,7 +120,6 @@ foreach Mapping = [[HLO_AbsOp, TF_AbsOp],
                    [HLO_LogOp, TF_LogOp],
                    [HLO_Log1pOp, TF_Log1pOp],
                    [HLO_LogisticOp, TF_SigmoidOp],
-                   [HLO_NotOp, TF_LogicalNotOp],
                    [HLO_NegOp, TF_NegOp],
                    [HLO_RealOp, TF_RealOp],
                    [HLO_RsqrtOp, TF_RsqrtOp],
@@ -130,6 +129,7 @@ foreach Mapping = [[HLO_AbsOp, TF_AbsOp],
                    [HLO_TanhOp, TF_TanhOp]] in
  def : Pat<(Mapping[0] TF_IntOrFpTensor:$input), (Mapping[1] $input)>;
 
+def : Pat<(HLO_NotOp TF_BoolTensor:$input), (TF_LogicalNotOp $input)>;
 def : Pat<(HLO_AbsOp TF_ComplexTensor:$arg), (TF_ComplexAbsOp $arg)>;
 
 def : Pat<(HLO_BroadcastOp $arg, $shape),

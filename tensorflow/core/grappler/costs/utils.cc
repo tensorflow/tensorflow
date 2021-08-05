@@ -198,7 +198,7 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
 }
 
 int64 CalculateTensorSize(const OpInfo::TensorProperties& prop) {
-  int64 size = DataTypeSize(BaseType(prop.dtype()));
+  int64_t size = DataTypeSize(BaseType(prop.dtype()));
   TensorShapeProto shape = prop.shape();
 
   // Can't infer the size if the rank is unknown. It has to be at least a
@@ -216,7 +216,7 @@ int64 CalculateTensorSize(const OpInfo::TensorProperties& prop) {
     }
   }
 
-  int64 num_elems = TensorShape(shape).num_elements();
+  int64_t num_elems = TensorShape(shape).num_elements();
   return num_elems * size;
 }
 

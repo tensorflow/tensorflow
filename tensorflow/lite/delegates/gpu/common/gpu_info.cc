@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 
+#include <algorithm>
 #include <map>
 #include <string>
 
@@ -483,6 +484,10 @@ bool GpuInfo::SupportsImages() const {
   return true;
 }
 
+bool GpuInfo::SupportsPointersInKernels() const {
+  return IsApiOpenCl() || IsApiMetal();
+}
+
 bool GpuInfo::IsWaveSizeEqualTo32() const {
   return supported_subgroup_sizes.size() == 1 &&
          supported_subgroup_sizes[0] == 32;
@@ -546,6 +551,9 @@ int GpuInfo::GetComputeUnitsCount() const {
   }
   if (IsApple()) {
     return apple_info.GetComputeUnitsCount();
+  }
+  if (IsAMD() && IsApiVulkan()) {
+    return amd_info.GetComputeUnitsCount();
   }
   return 1;
 }
@@ -733,6 +741,15 @@ bool GpuInfo::IsApiVulkan() const { return gpu_api == GpuApi::kVulkan; }
 bool GpuInfo::IsApiMetal() const { return gpu_api == GpuApi::kMetal; }
 
 bool GpuInfo::IsApiOpenCl() const { return gpu_api == GpuApi::kOpenCl; }
+
+bool GpuInfo::IsGlsl() const { return IsApiOpenGl() || IsApiVulkan(); }
+
+bool GpuInfo::IsCL11OrHigher() const {
+  if (!IsApiOpenCl()) {
+    return false;
+  }
+  return opencl_info.cl_version != OpenClVersion::kCl1_0;
+}
 
 bool GpuInfo::IsCL20OrHigher() const {
   if (!IsApiOpenCl()) {

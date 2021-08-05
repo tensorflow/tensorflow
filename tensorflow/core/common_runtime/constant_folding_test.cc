@@ -161,7 +161,7 @@ TEST_F(ConstantFoldingTest, DeterministicFolding) {
 
     TF_CHECK_OK(s.ToGraph(&g));
     bool was_mutated;
-    int64 unique_id = 0;
+    int64_t unique_id = 0;
     auto generate_new_name = [&unique_id](Graph* graph, string old_name) {
       return strings::StrCat(graph->NewName(old_name), "__cf__", unique_id++);
     };
@@ -180,7 +180,7 @@ TEST_F(ConstantFoldingTest, DeterministicFolding) {
   auto index = g2.BuildNodeNameIndex();
 
   // All the nodes in g1 are expected to be present in g2.
-  for (int64 i = 0; i < g1.num_nodes(); ++i) {
+  for (int64_t i = 0; i < g1.num_nodes(); ++i) {
     Node* n1 = g1.FindNodeId(i);
     EXPECT_GT(index.count(n1->name()), 0);
   }

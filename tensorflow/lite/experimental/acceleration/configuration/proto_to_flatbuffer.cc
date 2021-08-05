@@ -195,7 +195,9 @@ Offset<NNAPISettings> ConvertNNAPISettings(const proto::NNAPISettings& settings,
       /*allow_dynamic_dimensions=*/
       settings.allow_dynamic_dimensions(),
       /*allow_fp16_precision_for_fp32=*/
-      settings.allow_fp16_precision_for_fp32());
+      settings.allow_fp16_precision_for_fp32(),
+      /*use_burst_computation=*/
+      settings.use_burst_computation());
 }
 
 Offset<GPUSettings> ConvertGPUSettings(const proto::GPUSettings& settings,
@@ -320,13 +322,55 @@ Offset<TFLiteSettings> ConvertTfliteSettings(
       ConvertFallbackSettings(settings.fallback_settings(), builder));
 }
 
+Offset<ModelFile> ConvertModelFile(const proto::ModelFile& model_file,
+                                   FlatBufferBuilder* builder) {
+  return CreateModelFile(*builder, builder->CreateString(model_file.filename()),
+                         model_file.fd(), model_file.offset(),
+                         model_file.length());
+}
+
+Offset<BenchmarkStoragePaths> ConvertBenchmarkStoragePaths(
+    const proto::BenchmarkStoragePaths& storage_paths,
+    FlatBufferBuilder* builder) {
+  return CreateBenchmarkStoragePaths(
+      *builder, builder->CreateString(storage_paths.storage_file_path()),
+      builder->CreateString(storage_paths.data_directory_path()));
+}
+
+Offset<MinibenchmarkSettings> ConvertMinibenchmarkSettings(
+    const proto::MinibenchmarkSettings& settings, FlatBufferBuilder* builder) {
+  Offset<Vector<Offset<TFLiteSettings>>> settings_to_test = 0;
+  std::vector<Offset<TFLiteSettings>> settings_to_test_vec;
+  if (settings.settings_to_test_size() > 0) {
+    for (const auto& one : settings.settings_to_test()) {
+      settings_to_test_vec.push_back(ConvertTfliteSettings(one, builder));
+    }
+    settings_to_test =
+        builder->CreateVector<Offset<TFLiteSettings>>(settings_to_test_vec);
+  }
+
+  return CreateMinibenchmarkSettings(
+      *builder, settings_to_test,
+      ConvertModelFile(settings.model_file(), builder),
+      ConvertBenchmarkStoragePaths(settings.storage_paths(), builder));
+}
+
 const ComputeSettings* ConvertFromProto(
     const proto::ComputeSettings& proto_settings, FlatBufferBuilder* builder) {
   auto settings = CreateComputeSettings(
       *builder, ConvertExecutionPreference(proto_settings.preference()),
       ConvertTfliteSettings(proto_settings.tflite_settings(), builder),
       builder->CreateString(proto_settings.model_namespace_for_statistics()),
-      builder->CreateString(proto_settings.model_identifier_for_statistics()));
+      builder->CreateString(proto_settings.model_identifier_for_statistics()),
+      ConvertMinibenchmarkSettings(proto_settings.settings_to_test_locally(),
+                                   builder));
+  return flatbuffers::GetTemporaryPointer(*builder, settings);
+}
+
+const MinibenchmarkSettings* ConvertFromProto(
+    const proto::MinibenchmarkSettings& proto_settings,
+    flatbuffers::FlatBufferBuilder* builder) {
+  auto settings = ConvertMinibenchmarkSettings(proto_settings, builder);
   return flatbuffers::GetTemporaryPointer(*builder, settings);
 }
 

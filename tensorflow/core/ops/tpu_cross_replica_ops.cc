@@ -37,7 +37,7 @@ REGISTER_OP("AllToAll")
         return Status::OK();
       }
 
-      int64 rank = c->Rank(input);
+      int64_t rank = c->Rank(input);
       int concat_dimension;
       int split_dimension;
       int split_count;
@@ -59,7 +59,7 @@ REGISTER_OP("AllToAll")
       std::vector<DimensionHandle> dims;
       dims.resize(rank);
 
-      for (int32 i = 0; i < rank; ++i) {
+      for (int32_t i = 0; i < rank; ++i) {
         dims[i] = c->Dim(input, i);
         if (i == concat_dimension) {
           dims[i] = c->MakeDim(c->Value(dims[i]) * split_count);

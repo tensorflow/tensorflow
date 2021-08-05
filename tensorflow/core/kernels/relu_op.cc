@@ -74,8 +74,7 @@ TF_CALL_FLOAT_TYPES(REGISTER_ELU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 
 namespace functor {
 #define DECLARE_GPU_NO_MLIR_SPEC(T)                                            \

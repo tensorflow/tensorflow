@@ -89,7 +89,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeInt64) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
   NodeDef* int64_node = AddScalarConstNode<int64>(128, &graph);
-  int64 result;
+  int64_t result;
   EXPECT_TRUE(GetScalarConstNodeValue<int64>(*int64_node, &result).ok());
   EXPECT_EQ(result, 128);
 }
@@ -107,7 +107,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeErrorWithNonConst) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
   NodeDef* non_const = AddScalarPlaceholder(DT_INT64, &graph);
-  int64 result;
+  int64_t result;
   Status s = GetScalarConstNodeValue<int64>(*non_const, &result);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.error_message(),
@@ -136,7 +136,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeErrorWithVector) {
   tensor->mutable_tensor_shape()->mutable_dim()->Add()->set_size(1);
   tensor->add_int64_val(128);
 
-  int64 result;
+  int64_t result;
   Status s = GetScalarConstNodeValue<int64>(node, &result);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.error_message(),

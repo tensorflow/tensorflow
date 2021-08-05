@@ -111,6 +111,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
@@ -133,7 +134,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       bool replicate_inputs_outputs_by_default_for_xla_spmd,
       bool enable_cross_replica_sharding_mirrored_variables,
       bool enable_automatic_model_parallelism, bool enable_xla_param_broadcast,
-      bool enable_multicore_locking);
+      bool enable_multicore_locking, bool use_nd_sharding_ops);
 
   Status Run(const GraphOptimizationPassOptions& options) override;
 
@@ -145,10 +146,10 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   class ParameterInfo {
    public:
     ParameterInfo() {}
-    ParameterInfo(int64 num_replicas, int64 num_per_replica_args,
-                  int64 num_distributed_args, int64 num_broadcast_args,
-                  int64 num_variables, int64 num_guaranteed_constants,
-                  int64 num_retvals_per_replica)
+    ParameterInfo(int64_t num_replicas, int64_t num_per_replica_args,
+                  int64_t num_distributed_args, int64_t num_broadcast_args,
+                  int64_t num_variables, int64_t num_guaranteed_constants,
+                  int64_t num_retvals_per_replica)
         : num_replicas_(num_replicas),
           num_per_replica_args_(num_per_replica_args),
           num_distributed_args_(num_distributed_args),
@@ -171,29 +172,29 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
 
     int64 NumRetvalsPerReplica() const { return num_retvals_per_replica_; }
 
-    bool IsPerReplicaArg(int64 index) const {
+    bool IsPerReplicaArg(int64_t index) const {
       return index < num_per_replica_args_;
     }
 
-    bool IsDistributedArg(int64 index) const {
+    bool IsDistributedArg(int64_t index) const {
       return index >= num_per_replica_args_ &&
              index < (num_per_replica_args_ + num_distributed_args_);
     }
 
-    bool IsBroadcastArg(int64 index) const {
+    bool IsBroadcastArg(int64_t index) const {
       return (index >= num_per_replica_args_ + num_distributed_args_) &&
              index < (num_per_replica_args_ + num_distributed_args_ +
                       num_broadcast_args_);
     }
 
-    bool IsVariableArg(int64 index) const {
+    bool IsVariableArg(int64_t index) const {
       return index >= (num_per_replica_args_ + num_distributed_args_ +
                        num_broadcast_args_) &&
              index < (num_per_replica_args_ + num_distributed_args_ +
                       num_broadcast_args_ + num_variables_);
     }
 
-    bool IsConstantArg(int64 index) const {
+    bool IsConstantArg(int64_t index) const {
       return index >= (num_per_replica_args_ + num_distributed_args_ +
                        num_broadcast_args_ + num_variables_) &&
              index < (num_per_replica_args_ + num_distributed_args_ +
@@ -371,7 +372,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       int num_cores_per_replica, const string& compile_device,
       const xla::DeviceAssignment* xla_device_assignment,
       const std::vector<Node*>& dynamic_shape_nodes, Graph* graph,
-      Node** compile_node, int64 autotuner_thresh, int num_tasks);
+      Node** compile_node, int64_t autotuner_thresh, int num_tasks);
 
   // Builds a TPUCompileSucceededAssert node that verifies that compilation
   // succeeded and replaces the TPUCompilationStatus node in the graph.
@@ -568,7 +569,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       NodeToNodeReplicasMap* outside_compilation_node_images, Graph* graph,
       const GraphShapeInfo& shape_info,
       TPUReplicateDeviceNamesMapping* tpu_replicate_device_names_mapping,
-      int64 autotuner_thresh);
+      int64_t autotuner_thresh);
 
   // Performs host training loop optimization. For example, when TPUExecute
   // node is inside a while loop, then model weight variables can be sharded
@@ -598,6 +599,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   static bool enable_automatic_model_parallelism_;
   static bool enable_xla_param_broadcast_;
   static bool enable_multicore_locking_;
+  static bool use_nd_sharding_ops_;
 };
 
 }  // namespace tensorflow

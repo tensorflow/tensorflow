@@ -602,6 +602,43 @@ def test_decorated_function_with_defaults(a, b=2, c='Hello'):
     self.assertEqual(expected_stack[0][3], actual_stack[0][3])  # Function name
     self.assertEqual(expected_stack[1:], actual_stack[1:])
 
+  def testIsAnyTargetMethod(self):
+    class MyModule:
+
+      def f(self, a):
+        pass
+
+      def __call__(self):
+        pass
+
+    module = MyModule()
+    self.assertTrue(tf_inspect.isanytargetmethod(module))
+    f = module.f
+    self.assertTrue(tf_inspect.isanytargetmethod(f))
+    f = functools.partial(f, 1)
+    self.assertTrue(tf_inspect.isanytargetmethod(f))
+    f = test_decorator('tf_decorator1')(f)
+    self.assertTrue(tf_inspect.isanytargetmethod(f))
+    f = test_decorator('tf_decorator2')(f)
+    self.assertTrue(tf_inspect.isanytargetmethod(f))
+
+    class MyModule2:
+      pass
+    module = MyModule2()
+    self.assertFalse(tf_inspect.isanytargetmethod(module))
+    def f2():
+      pass
+    self.assertFalse(tf_inspect.isanytargetmethod(f2))
+    f2 = functools.partial(f2, 1)
+    self.assertFalse(tf_inspect.isanytargetmethod(f2))
+    f2 = test_decorator('tf_decorator1')(f2)
+    self.assertFalse(tf_inspect.isanytargetmethod(f2))
+    f2 = test_decorator('tf_decorator2')(f2)
+    self.assertFalse(tf_inspect.isanytargetmethod(f2))
+    self.assertFalse(tf_inspect.isanytargetmethod(lambda: None))
+    self.assertFalse(tf_inspect.isanytargetmethod(None))
+    self.assertFalse(tf_inspect.isanytargetmethod(1))
+
 
 class TfInspectGetCallArgsTest(test.TestCase):
 

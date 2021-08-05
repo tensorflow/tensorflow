@@ -942,12 +942,12 @@ func @pack3Tensors(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>, %arg2 : tensor<2x
 // CHECK: "tfl.pack"(%arg0, %arg1, %arg2) {axis = 1 : i32, values_count = 3 : i32} : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x3xi32>
 }
 
-func @packStringWithFlex(%arg0: tensor<2x!tf.string>, %arg1: tensor<2x!tf.string>) -> tensor<2x2x!tf.string> {
-  %0 = "tf.Pack"(%arg0, %arg1) : (tensor<2x!tf.string>, tensor<2x!tf.string>) -> tensor<2x2x!tf.string>
-  return %0 : tensor<2x2x!tf.string>
+func @packStringWithFlex(%arg0: tensor<2x!tf_type.string>, %arg1: tensor<2x!tf_type.string>) -> tensor<2x2x!tf_type.string> {
+  %0 = "tf.Pack"(%arg0, %arg1) : (tensor<2x!tf_type.string>, tensor<2x!tf_type.string>) -> tensor<2x2x!tf_type.string>
+  return %0 : tensor<2x2x!tf_type.string>
 
 // CHECK-LABEL: packStringWithFlex
-// CHECK: "tf.Pack"(%arg0, %arg1) : (tensor<2x!tf.string>, tensor<2x!tf.string>) -> tensor<2x2x!tf.string>
+// CHECK: "tf.Pack"(%arg0, %arg1) : (tensor<2x!tf_type.string>, tensor<2x!tf_type.string>) -> tensor<2x2x!tf_type.string>
 }
 
 func @packNegAxis(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>, %arg2 : tensor<2xi32>) -> tensor<2x3xi32> {
@@ -1256,11 +1256,11 @@ func @strided_slice_with_constant_attributes(%arg0: tensor<10x10x10xf32>, %arg1:
   // CHECK-NEXT: "tfl.strided_slice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 1 : i32} : (tensor<10x10x10xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<10x10xf32>
 }
 
-func @strided_slice_with_string(%arg0: tensor<12x2x2x5x!tf.string>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5x!tf.string> {
-  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<12x2x2x5x!tf.string>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5x!tf.string>
-  return %0 : tensor<1x2x2x5x!tf.string>
+func @strided_slice_with_string(%arg0: tensor<12x2x2x5x!tf_type.string>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5x!tf_type.string> {
+  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<12x2x2x5x!tf_type.string>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5x!tf_type.string>
+  return %0 : tensor<1x2x2x5x!tf_type.string>
   // CHECK-LABEL: strided_slice_with_string
-  // CHECK: "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5x!tf.string>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5x!tf.string>
+  // CHECK: "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5x!tf_type.string>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5x!tf_type.string>
 }
 
 func @strided_slice_with_unranked_input_and_i64_parameters(%arg0: tensor<*xf32>, %arg1: tensor<1xi64>, %arg2: tensor<1xi64>, %arg3: tensor<1xi64>) -> tensor<*xf32> {
@@ -2184,3 +2184,52 @@ func @broadcast_args_i64(%arg0: tensor<3xi64>, %arg1: tensor<1xi64>) -> tensor<3
 // CHECK-LABEL:broadcast_args_i64
 // CHECK:  "tfl.broadcast_args"(%arg0, %arg1) : (tensor<3xi64>, tensor<1xi64>) -> tensor<3xi64>
 }
+
+func @mul_with_high_dims_dynamic_shape(%arg0: tensor<8x7x6x5x4x3x2x1xf32>, %arg1: tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x4x3x2x1xf32> {
+  %0 = "tf.Mul"(%arg0, %arg1): (tensor<8x7x6x5x4x3x2x1xf32>, tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x4x3x2x1xf32>
+  return %0 : tensor<8x7x6x5x4x3x2x1xf32>
+
+  // CHECK-LABEL:mul_with_high_dims_dynamic_shape
+  // CHECK: %[[CST:.*]] = constant dense<[8, 7, 6, 5, 4, 3, 2, 1]> : tensor<8xi64>
+  // CHECK: %[[SHAPE:.*]] = "tfl.shape"(%arg1) : (tensor<?x3x2x1xf32>) -> tensor<4xi64>
+  // CHECK: %[[BROADCAST_ARGS:.*]] = "tfl.broadcast_args"(%[[CST]], %[[SHAPE]]) : (tensor<8xi64>, tensor<4xi64>) -> tensor<8xi64>
+  // CHECK: %[[BROADCAST_TO:.*]] = "tfl.broadcast_to"(%arg1, %[[BROADCAST_ARGS]]) : (tensor<?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x4x3x2x1xf32>
+  // CHECK: %[[MUL:.*]] = tfl.mul %arg0, %[[BROADCAST_TO]] {fused_activation_function = "NONE"} : tensor<8x7x6x5x4x3x2x1xf32>
+  // CHECK: return %[[MUL]] : tensor<8x7x6x5x4x3x2x1xf32>
+}
+
+func @mul_with_high_dims_dynamic_shape_both_sides(%arg0: tensor<8x7x6x5x?x3x2x1xf32>, %arg1: tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32> {
+  %0 = "tf.Mul"(%arg0, %arg1): (tensor<8x7x6x5x?x3x2x1xf32>, tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  return %0 : tensor<8x7x6x5x?x3x2x1xf32>
+
+  // CHECK-LABEL:mul_with_high_dims_dynamic_shape_both_sides
+  // CHECK: %[[SHAPE:.*]] = "tfl.shape"(%arg0) : (tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8xi64>
+  // CHECK: %[[SHAPE_1:.*]] = "tfl.shape"(%arg1) : (tensor<?x3x2x1xf32>) -> tensor<4xi64>
+  // CHECK: %[[BROADCAST_ARGS:.*]] = "tfl.broadcast_args"(%[[SHAPE]], %[[SHAPE_1]]) : (tensor<8xi64>, tensor<4xi64>) -> tensor<8xi64>
+  // CHECK: %[[BROADCAST_TO:.*]] = "tfl.broadcast_to"(%arg0, %[[BROADCAST_ARGS]]) : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  // CHECK: %[[BROADCAST_TO_1:.*]] = "tfl.broadcast_to"(%arg1, %[[BROADCAST_ARGS]]) : (tensor<?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  // CHECK: %[[MUL:.*]] = tfl.mul %[[BROADCAST_TO]], %[[BROADCAST_TO_1]] {fused_activation_function = "NONE"} : tensor<8x7x6x5x?x3x2x1xf32>
+  // CHECK: return %[[MUL]] : tensor<8x7x6x5x?x3x2x1xf32>
+}
+
+func @select_v2_with_high_dims_dynamic_shape_both_sides(%arg0: tensor<8x7x6x5x?x3x2x1xf32>, %arg1: tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32> {
+  %0 = "tf.Less"(%arg0, %arg1) : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xi1>
+  %1 = "tf.SelectV2"(%0, %arg0, %arg1) : (tensor<8x7x6x5x?x3x2x1xi1>, tensor<8x7x6x5x?x3x2x1xf32>, tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  return %1 : tensor<8x7x6x5x?x3x2x1xf32>
+
+  // CHECK-LABEL:select_v2_with_high_dims_dynamic_shape_both_sides
+  // CHECK: %[[SHAPE_0:.*]] = "tfl.shape"(%arg0) : (tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8xi64>
+  // CHECK: %[[SHAPE_1:.*]] = "tfl.shape"(%arg1) : (tensor<?x3x2x1xf32>) -> tensor<4xi64>
+  // CHECK: %[[BROADCAST_ARGS_0:.*]] = "tfl.broadcast_args"(%[[SHAPE_0]], %[[SHAPE_1]]) : (tensor<8xi64>, tensor<4xi64>) -> tensor<8xi64>
+  // CHECK: %[[BROADCAST_TO_0:.*]] = "tfl.broadcast_to"(%arg0, %[[BROADCAST_ARGS_0]]) : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  // CHECK: %[[BROADCAST_TO_1:.*]] = "tfl.broadcast_to"(%arg1, %[[BROADCAST_ARGS_0]]) : (tensor<?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  // CHECK: %[[LESS:.*]] = "tfl.less"(%[[BROADCAST_TO_0]], %[[BROADCAST_TO_1]]) : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xi1>
+  // CHECK: %[[SHAPE_2:.*]] = "tfl.shape"(%[[LESS]]) : (tensor<8x7x6x5x?x3x2x1xi1>) -> tensor<8xi64>
+  // CHECK: %[[BROADCAST_ARGS_1:.*]] = "tfl.broadcast_args"(%[[BROADCAST_ARGS_0]], %[[SHAPE_2]]) : (tensor<8xi64>, tensor<8xi64>) -> tensor<8xi64>
+  // CHECK: %[[BROADCAST_TO_2:.*]] = "tfl.broadcast_to"(%[[LESS]], %[[BROADCAST_ARGS_1]]) : (tensor<8x7x6x5x?x3x2x1xi1>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xi1>
+  // CHECK: %[[BROADCAST_TO_3:.*]] = "tfl.broadcast_to"(%arg0, %[[BROADCAST_ARGS_1]]) : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  // CHECK: %[[BROADCAST_TO_4:.*]] = "tfl.broadcast_to"(%arg1, %[[BROADCAST_ARGS_1]]) : (tensor<?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  // CHECK: %[[SELECT_V2:.*]] = "tfl.select_v2"(%[[BROADCAST_TO_2]], %[[BROADCAST_TO_3]], %[[BROADCAST_TO_4]]) : (tensor<8x7x6x5x?x3x2x1xi1>, tensor<8x7x6x5x?x3x2x1xf32>, tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  // CHECK: return %[[SELECT_V2]] : tensor<8x7x6x5x?x3x2x1xf32>
+}
+

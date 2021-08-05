@@ -24,7 +24,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.preprocessing import image as image_preprocessing
 from tensorflow.python.keras.utils import control_flow_util
@@ -99,7 +98,6 @@ class Resizing(base_layer.Layer):
     self._interpolation_method = get_interpolation(interpolation)
     self.input_spec = InputSpec(ndim=4)
     super(Resizing, self).__init__(**kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell('Resizing').set(True)
 
   def call(self, inputs):
     if self.crop_to_aspect_ratio:
@@ -155,7 +153,6 @@ class CenterCrop(base_layer.Layer):
     self.target_width = width
     self.input_spec = InputSpec(ndim=4)
     super(CenterCrop, self).__init__(**kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell('CenterCrop').set(True)
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
@@ -229,7 +226,6 @@ class RandomCrop(base_layer.Layer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomCrop, self).__init__(**kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomCrop').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -333,7 +329,6 @@ class Rescaling(base_layer.Layer):
     self.scale = scale
     self.offset = offset
     super(Rescaling, self).__init__(**kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell('Rescaling').set(True)
 
   def call(self, inputs):
     dtype = self._compute_dtype
@@ -387,7 +382,6 @@ class RandomFlip(base_layer.Layer):
                seed=None,
                **kwargs):
     super(RandomFlip, self).__init__(**kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomFlip').set(True)
     self.mode = mode
     if mode == HORIZONTAL:
       self.horizontal = True
@@ -530,8 +524,6 @@ class RandomTranslation(base_layer.Layer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomTranslation, self).__init__(**kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomTranslation').set(
-        True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -809,8 +801,6 @@ class RandomRotation(base_layer.Layer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomRotation, self).__init__(**kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomRotation').set(
-        True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -949,7 +939,6 @@ class RandomZoom(base_layer.Layer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomZoom, self).__init__(**kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomZoom').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -1088,8 +1077,6 @@ class RandomContrast(base_layer.Layer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomContrast, self).__init__(**kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomContrast').set(
-        True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -1171,7 +1158,6 @@ class RandomHeight(base_layer.Layer):
     self.seed = seed
     self._rng = make_generator(self.seed)
     super(RandomHeight, self).__init__(**kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomHeight').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -1266,7 +1252,6 @@ class RandomWidth(base_layer.Layer):
     self.seed = seed
     self._rng = make_generator(self.seed)
     super(RandomWidth, self).__init__(**kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomWidth').set(True)
 
   def call(self, inputs, training=True):
     if training is None:

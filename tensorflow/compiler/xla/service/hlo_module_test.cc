@@ -387,7 +387,7 @@ TEST_F(HloModuleTest, VerifyReplaceComputationsWithSortOp) {
   EXPECT_EQ(root->to_apply()->root_instruction()->comparison_direction(),
             ComparisonDirection::kLt);
 
-  std::unordered_map<HloComputation*, HloComputation*> replacement;
+  absl::flat_hash_map<HloComputation*, HloComputation*> replacement;
   replacement[root->to_apply()] = new_comp;
   module->ReplaceComputations(replacement);
 

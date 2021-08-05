@@ -41,7 +41,7 @@ class InTopK : public OpKernel {
     const auto& predictions_in = context->input(0);
     const auto& targets_in = context->input(1);
 
-    int64 k_value = k_;
+    int64_t k_value = k_;
     const Tensor* k_tensor = nullptr;
 
     if (context->num_inputs() == 3) {

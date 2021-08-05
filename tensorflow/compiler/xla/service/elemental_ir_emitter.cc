@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -65,11 +66,9 @@ int64 GlobalRandomValue() {
   return rng();
 }
 
-StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
-                                             llvm::Value* x,
-                                             int64 dest_exponent_bits,
-                                             int64 dest_mantissa_bits,
-                                             llvm::IRBuilder<>* b) {
+StatusOr<llvm::Value*> EmitReducePrecisionIR(
+    PrimitiveType src_ty, llvm::Value* x, int64 dest_exponent_bits,
+    int64 dest_mantissa_bits, bool quiet_nans, llvm::IRBuilder<>* b) {
   using llvm::APInt;
 
   if (!primitive_util::IsFloatingPointType(src_ty)) {
@@ -89,6 +88,19 @@ StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
 
   // Cast the input value to an integer for bitwise manipulation.
   llvm::Value* x_as_int = b->CreateBitCast(x, int_type);
+
+  // Clear the sign bit, it does not participate in rounding and we will restore
+  // it later.
+  APInt sign_bit_mask(nbits, 1);
+  sign_bit_mask <<= nbits - 1;
+  llvm::Value* x_abs_bits =
+      b->CreateAnd(x_as_int, llvm::ConstantInt::get(int_type, ~sign_bit_mask));
+
+  APInt exp_bits_mask(nbits, 1);
+  exp_bits_mask = ((exp_bits_mask << src_exponent_bits) - 1)
+                  << src_mantissa_bits;
+  auto x_is_nan = b->CreateICmpUGT(
+      x_abs_bits, llvm::ConstantInt::get(int_type, exp_bits_mask));
 
   if (dest_mantissa_bits < src_mantissa_bits) {
     // Last remaining mantissa bit.
@@ -112,19 +124,17 @@ StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
     // correct; the non-masked mantissa bits will all be zero, and the
     // exponent will be incremented by one.
     APInt truncation_mask = ~(last_mantissa_bit_mask - 1);
-    x_as_int = b->CreateAdd(x_as_int, x_rounding_bias);
-    x_as_int = b->CreateAnd(x_as_int,
-                            llvm::ConstantInt::get(int_type, truncation_mask));
+    llvm::Value* x_rounded = b->CreateAdd(x_as_int, x_rounding_bias);
+    x_rounded = b->CreateAnd(x_rounded,
+                             llvm::ConstantInt::get(int_type, truncation_mask));
+    if (quiet_nans) {
+      x_as_int = b->CreateSelect(x_is_nan, x_as_int, x_rounded);
+    } else {
+      x_as_int = x_rounded;
+    }
   }
 
   if (dest_exponent_bits < src_exponent_bits) {
-    APInt sign_bit_mask(nbits, 1);
-    sign_bit_mask <<= nbits - 1;
-
-    APInt exp_bits_mask(nbits, 1);
-    exp_bits_mask = ((exp_bits_mask << src_exponent_bits) - 1)
-                    << src_mantissa_bits;
-
     // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the most-
     // significant bit -- is equal to 1.0f for all exponent sizes.  Adding
     // 2^(n-1)-1 to this gives us the highest non-infinite exponent for a bit-
@@ -179,19 +189,23 @@ StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
   // is mandatory).  This logic also handles cases where mantissa-rounding
   // causes a NaN's mantissa to overflow into the exponent bits, which would
   // otherwise create an erroneous zero value.
-  //
-  // If the fast-math flags are set to assume no NaNs, the comparison is likely
-  // to be optimized away, so there's no point in even emitting it.
-  if (!b->getFastMathFlags().noNaNs()) {
-    llvm::Value* x_is_nan = b->CreateFCmpUNO(x, x);
 
-    if (dest_mantissa_bits > 0) {
-      result = b->CreateSelect(x_is_nan, x, result);
+  if (dest_mantissa_bits > 0) {
+    if (quiet_nans) {
+      APInt qnan_mask(nbits, 1);
+      qnan_mask <<= src_mantissa_bits - 1;
+      llvm::Value* x_with_qnan_bit_set =
+          b->CreateOr(x_as_int, llvm::ConstantInt::get(int_type, qnan_mask));
+      x_with_qnan_bit_set = b->CreateBitCast(x_with_qnan_bit_set, float_type);
+      result = b->CreateSelect(x_is_nan, x_with_qnan_bit_set, result);
     } else {
-      result = b->CreateSelect(
-          x_is_nan, llvm::ConstantFP::getInfinity(float_type), result);
+      result = b->CreateSelect(x_is_nan, x, result);
     }
+  } else {
+    result = b->CreateSelect(x_is_nan,
+                             llvm::ConstantFP::getInfinity(float_type), result);
   }
+
   return result;
 }
 
@@ -203,7 +217,7 @@ StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value,
           /*src_ty=*/F32, f32_value,
           /*dest_exponent_bits=*/primitive_util::ExponentWidth(BF16),
           /*dest_mantissa_bits=*/primitive_util::SignificandWidth(BF16) - 1,
-          b));
+          /*quiet_nans=*/true, b));
   auto as_int32 = b->CreateBitCast(reduced_precision, b->getInt32Ty());
   auto shifted = b->CreateLShr(as_int32, 16);
   auto truncated = b->CreateTrunc(shifted, b->getInt16Ty());
@@ -1571,7 +1585,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
   return EmitReducePrecisionIR(
       /*src_ty=*/hlo->operand(0)->shape().element_type(), x,
       /*dest_exponent_bits=*/hlo->exponent_bits(),
-      /*dest_mantissa_bits=*/hlo->mantissa_bits(), b_);
+      /*dest_mantissa_bits=*/hlo->mantissa_bits(),
+      /*quiet_nans=*/false, b_);
 }
 
 static llvm::Value* SaturateShiftIfNecessary(llvm::IRBuilder<>* b,
@@ -1892,31 +1907,28 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalClamp(
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     const HloInstruction* hlo,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
-    const llvm_ir::IrArray::Index& target_index) {
+    const llvm_ir::IrArray::Index& source_index) {
   const int64 concat_dim = hlo->dimensions(0);
-  auto source_index = target_index;
-
   llvm::BasicBlock* init_block = b_->GetInsertBlock();
 
-  // A terminator should be present iff we're emitting code
-  // into the middle (as opposed to the end) of a basic block.
-  CHECK_EQ(b_->GetInsertPoint() == init_block->end(),
-           init_block->getTerminator() == nullptr);
-
   llvm::BasicBlock* exit_block;
-  if (b_->GetInsertPoint() == init_block->end()) {
-    exit_block = llvm_ir::CreateBasicBlock(
-        /*insert_before=*/nullptr, IrName(hlo, "merge"), b_);
-  } else {
+  if (b_->GetInsertPoint() != init_block->end()) {
+    // Inserting into the middle.
+    CHECK(init_block->getTerminator());
     exit_block =
         init_block->splitBasicBlock(b_->GetInsertPoint(), IrName(hlo, "merge"));
     init_block->getTerminator()->eraseFromParent();
+  } else {
+    // Inserting at the end.
+    CHECK(!init_block->getTerminator());
+    exit_block = llvm_ir::CreateBasicBlock(
+        /*insert_before=*/nullptr, IrName(hlo, "merge"), b_);
   }
 
   llvm_ir::SetToFirstInsertPoint(exit_block, b_);
-  llvm::PHINode* output =
-      PHI(llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(), module_),
-          hlo->operands().size());
+  llvm::PHINode* output = b_->CreatePHI(
+      llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(), module_),
+      hlo->operands().size());
   auto prior_insert_point = b_->GetInsertPoint();
 
   b_->SetInsertPoint(init_block);
@@ -1926,7 +1938,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
   // for each operand.
   absl::flat_hash_map<const HloInstruction*, int64> to_unique_operand_id;
   std::vector<int64> operand_usage_count;
-  for (const auto* operand : hlo->operands()) {
+  for (const HloInstruction* operand : hlo->operands()) {
     if (to_unique_operand_id.contains(operand)) {
       ++operand_usage_count[to_unique_operand_id[operand]];
     } else {
@@ -1943,7 +1955,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
       to_unique_operand_id.size(), nullptr);
   std::vector<llvm::PHINode*> source_index_phis(to_unique_operand_id.size(),
                                                 nullptr);
-  for (const auto* operand : hlo->operands()) {
+  for (const HloInstruction* operand : hlo->operands()) {
     int64 operand_id = to_unique_operand_id[operand];
     if (emit_operand_blocks[operand_id] != nullptr) {
       continue;
@@ -1954,10 +1966,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     auto saved_insert_point = b_->GetInsertPoint();
     llvm_ir::SetToFirstInsertPoint(emit_operand_blocks[operand_id], b_);
     source_index_phis[operand_id] =
-        PHI(source_index.GetType(), operand_usage_count[operand_id]);
+        b_->CreatePHI(source_index.GetType(), operand_usage_count[operand_id]);
     std::vector<llvm::Value*> operand_multi_index = source_index.multidim();
-    operand_multi_index[concat_dim] =
-        NSWSub(operand_multi_index[concat_dim], source_index_phis[operand_id]);
+    operand_multi_index[concat_dim] = b_->CreateNSWSub(
+        operand_multi_index[concat_dim], source_index_phis[operand_id]);
 
     // Create the terminator of the block before calling operand generators,
     // because they require non-degenerate basic blocks.
@@ -1965,33 +1977,67 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
         exit_block, /*InsertAtEnd=*/emit_operand_blocks[operand_id]));
     llvm_ir::IrArray::Index operand_index(operand_multi_index, operand->shape(),
                                           source_index.GetType());
+
     TF_ASSIGN_OR_RETURN(llvm::Value * value,
                         operand_to_generator.at(operand)(operand_index));
     output->addIncoming(value, b_->GetInsertBlock());
     b_->SetInsertPoint(init_block, saved_insert_point);
   }
 
-  int64 concat_dim_size = 0;
-  for (int64 operand_idx = 0; operand_idx < hlo->operand_count();
-       ++operand_idx) {
-    const HloInstruction* operand = hlo->operand(operand_idx);
-    auto false_block = llvm_ir::CreateBasicBlock(
-        exit_block, StrCat("concat_index_not_from_operand", operand_idx), b_);
-    int64 operand_id = to_unique_operand_id[operand];
-    source_index_phis[operand_id]->addIncoming(
-        source_index.GetConstantWithIndexType(concat_dim_size),
-        b_->GetInsertBlock());
-    concat_dim_size += operand->shape().dimensions(concat_dim);
-    CondBr(ICmpULT(source_index[concat_dim],
-                   source_index.GetConstantWithIndexType(concat_dim_size)),
-           emit_operand_blocks[operand_id], false_block);
+  // We use bisection to select the input operand.
+  int64 current_offset = 0;
 
-    // Subtract the size of the concat dimension of the current operand
-    // from the source index.
-    b_->SetInsertPoint(false_block);
+  // Offset for every operand.
+  std::vector<std::pair<int64, const HloInstruction*>> cases;
+
+  cases.reserve(hlo->operand_count());
+  for (const HloInstruction* operand : hlo->operands()) {
+    cases.emplace_back(current_offset, operand);
+    current_offset += operand->shape().dimensions(concat_dim);
   }
+  CHECK_EQ(current_offset, hlo->shape().dimensions(concat_dim));
 
-  Unreachable();
+  std::function<llvm::BasicBlock*(
+      absl::Span<const std::pair<int64, const HloInstruction*>> operands)>
+      emit_tree = [&](absl::Span<const std::pair<int64, const HloInstruction*>>
+                          operands) {
+        llvm::IRBuilder<>::InsertPointGuard guard(*b_);
+        size_t mid = operands.size() / 2;
+        const std::pair<int64, const HloInstruction*>& pivot = operands[mid];
+        llvm::BasicBlock* block = llvm_ir::CreateBasicBlock(
+            exit_block, absl::StrCat("concatenate.pivot.", pivot.first, "."),
+            b_);
+        b_->SetInsertPoint(block);
+
+        // If there's only one element we're done. The range is contiguous so we
+        // can just jump to the block for it.
+        if (operands.size() == 1) {
+          const std::pair<int64, const HloInstruction*>& operand =
+              operands.back();
+          int64 operand_id = to_unique_operand_id[operand.second];
+
+          source_index_phis[operand_id]->addIncoming(
+              source_index.GetConstantWithIndexType(operand.first),
+              b_->GetInsertBlock());
+          b_->CreateBr(emit_operand_blocks[operand_id]);
+          return block;
+        }
+
+        // Take the middle element and recurse.
+        llvm::Constant* pivot_const = llvm::ConstantInt::get(
+            source_index[concat_dim]->getType(), pivot.first);
+        llvm::Value* comp =
+            b_->CreateICmpULT(source_index[concat_dim], pivot_const);
+
+        llvm::BasicBlock* left_block = emit_tree(operands.subspan(0, mid));
+        llvm::BasicBlock* right_block = emit_tree(operands.subspan(mid));
+
+        b_->CreateCondBr(comp, left_block, right_block);
+        return block;
+      };
+
+  Br(emit_tree(cases));
+
   b_->SetInsertPoint(exit_block, prior_insert_point);
   return output;
 }

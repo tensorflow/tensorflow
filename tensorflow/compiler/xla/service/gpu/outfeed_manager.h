@@ -34,7 +34,7 @@ namespace gpu {
 // notification when that triggers when the transfer is done.
 class OutfeedBuffer {
  public:
-  explicit OutfeedBuffer(int64 length) : length_(length) {}
+  explicit OutfeedBuffer(int64_t length) : length_(length) {}
 
   // Waits for the device transfer to be finished.
   void WaitUntilAvailable() { done_.WaitForNotification(); }

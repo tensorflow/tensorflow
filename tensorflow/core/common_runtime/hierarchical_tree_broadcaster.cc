@@ -80,7 +80,7 @@ Status HierarchicalTreeBroadcaster::InitializeCollectiveParams(
   CHECK_EQ(col_params->instance.impl_details.collective_name,
            "HierarchicalTreeBroadcast");
   const string& device_name =
-      col_params->group.device_names[col_params->default_rank];
+      col_params->group.devices[col_params->default_rank].name();
   // Start by counting the devices in each task.
   // Precondition: device_names must be sorted so that all devices in
   // the same task are adjacent.
@@ -135,13 +135,14 @@ Status HierarchicalTreeBroadcaster::InitializeCollectiveParams(
       if (source_task == ti) {
         // Source device belongs to this task.
         perm.push_back(col_params->source_rank);
-        participate = col_params->group.device_names[col_params->source_rank] ==
-                      device_name;
+        participate =
+            col_params->group.devices[col_params->source_rank].name() ==
+            device_name;
       } else {
         // Source does not belong to this task, choose dev 0.
         perm.push_back(device_count);
         participate =
-            col_params->group.device_names[device_count] == device_name;
+            col_params->group.devices[device_count].name() == device_name;
       }
       if (participate) col_params->subdiv_rank.push_back(ti);
       device_count += dev_per_task[ti];
@@ -165,7 +166,7 @@ Status HierarchicalTreeBroadcaster::InitializeCollectiveParams(
     int subdiv_source = 0;
     for (int di = 0; di < dev_per_task[ti]; di++) {
       perm.push_back(abs_di);
-      if (col_params->group.device_names[abs_di] == device_name) {
+      if (col_params->group.devices[abs_di].name() == device_name) {
         participate = true;
         col_params->subdiv_rank.push_back(di);
       }
@@ -417,10 +418,10 @@ void HierarchicalTreeBroadcaster::DispatchSend(int subdiv, int dst_rank,
       col_params_->instance.impl_details.subdiv_permutations[subdiv][dst_rank];
   VLOG(3) << "DispatchSend " << send_buf_key << " from_device "
           << col_ctx_->device_name << " to_device "
-          << col_params_->group.device_names[dst_idx] << " subdiv=" << subdiv
+          << col_params_->group.devices[dst_idx].name() << " subdiv=" << subdiv
           << " dst_rank=" << dst_rank << " dst_idx=" << dst_idx;
   col_ctx_->col_exec->remote_access()->PostToPeer(
-      col_params_->group.device_names[dst_idx],
+      col_params_->group.devices[dst_idx].name(),
       col_params_->group.task_names[dst_idx], send_buf_key, col_ctx_->device,
       col_ctx_->op_ctx->op_device_context(),
       col_ctx_->op_ctx->output_alloc_attr(0), src_tensor,
@@ -436,11 +437,11 @@ void HierarchicalTreeBroadcaster::DispatchRecv(int subdiv, int src_rank,
   int src_idx =
       col_params_->instance.impl_details.subdiv_permutations[subdiv][src_rank];
   VLOG(3) << "DispatchRecv " << recv_buf_key << " from_device "
-          << col_params_->group.device_names[src_idx] << " to_device "
+          << col_params_->group.devices[src_idx].name() << " to_device "
           << col_ctx_->device_name << " subdiv=" << subdiv
           << " src_rank=" << src_rank << " src_idx=" << src_idx;
   col_ctx_->col_exec->remote_access()->RecvFromPeer(
-      col_params_->group.device_names[src_idx],
+      col_params_->group.devices[src_idx].name(),
       col_params_->group.task_names[src_idx],
       col_params_->task.is_local[src_idx], recv_buf_key, col_ctx_->device,
       col_ctx_->op_ctx->op_device_context(),

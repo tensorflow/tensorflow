@@ -37,7 +37,7 @@ struct CudnnBatchNormConfig {
 
 CudnnBatchNormConfig GetCudnnBatchNormConfig(const HloInstruction *instr,
                                              float epsilon,
-                                             int64 feature_index);
+                                             int64_t feature_index);
 
 Status RunCudnnBatchNormForwardInference(
     const CudnnBatchNormConfig &config, se::DeviceMemoryBase operand,

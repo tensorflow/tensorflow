@@ -258,7 +258,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     return port::Status::OK();
   }
 
-  DeviceMemoryBase Allocate(uint64 size, int64 memory_space) override {
+  DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) override {
     SP_DeviceMemoryBase mem = {SP_DEVICE_MEMORY_BASE_STRUCT_SIZE};
     stream_executor_->allocate(&device_, size, memory_space, &mem);
     port::Status status = ValidateSPDeviceMemoryBase(mem);

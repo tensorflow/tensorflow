@@ -111,7 +111,7 @@ Tensor V(const float val) {
 }
 
 // A int32 val -> Tensor<int32>
-Tensor VI(const int32 val) {
+Tensor VI(const int32_t val) {
   Tensor tensor(DT_INT32, TensorShape({}));
   tensor.scalar<int32>()() = val;
   return tensor;

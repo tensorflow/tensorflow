@@ -343,6 +343,19 @@ cc_library(
     deps = ["//tensorflow/lite/c:common"],
 )
 
+cc_library(
+    name = "delegate_plugin",
+    hdrs = ["c/experimental/acceleration/configuration/delegate_plugin.h"],
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
+    ],
+)
+
 build_test(
     name = "c_api_build_test",
     targets = [

@@ -22,9 +22,11 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/data/dataset.pb.h"
+#include "tensorflow/core/data/service/auto_shard_rewriter.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_service.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/utils.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -48,6 +51,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/snappy.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -221,62 +226,28 @@ Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
   }
   task = absl::make_unique<Task>(task_def);
   VLOG(3) << "Began processing for task " << task_def.task_id()
-          << " with processing mode " << task_def.processing_mode();
+          << " with processing mode "
+          << task_def.processing_mode_def().DebugString();
   return Status::OK();
 }
 
 Status DataServiceWorkerImpl::EnsureTaskInitialized(
     DataServiceWorkerImpl::Task& task) {
+  if (task.task_def.worker_address() != worker_address_) {
+    return errors::Internal(absl::Substitute(
+        "Dispatcher's worker address $0 does not match worker's address $1.",
+        task.task_def.worker_address(), worker_address_));
+  }
+
   mutex_lock l(task.mu);
   if (task.initialized) {
     return Status::OK();
   }
-  standalone::Dataset::Params params;
-  std::unique_ptr<standalone::Dataset> dataset;
-  std::unique_ptr<standalone::Iterator> iterator;
-
-  switch (task.task_def.dataset_case()) {
-    case TaskDef::kDatasetDef:
-      TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
-          params, task.task_def.dataset_def().graph(), &dataset));
-      break;
-    case TaskDef::kPath: {
-      DatasetDef def;
-      Status s = ReadDatasetDef(task.task_def.path(), def);
-      if (!s.ok()) {
-        LOG(INFO) << "Failed to read dataset from " << task.task_def.path()
-                  << ": " << s << ". Falling back to reading from dispatcher.";
-        TF_RETURN_IF_ERROR(
-            dispatcher_->GetDatasetDef(task.task_def.dataset_id(), def));
-      }
-      TF_RETURN_IF_ERROR(
-          standalone::Dataset::FromGraph(params, def.graph(), &dataset));
-      break;
-    }
-    case TaskDef::DATASET_NOT_SET:
-      return errors::Internal("Unrecognized dataset case: ",
-                              task.task_def.dataset_case());
-  }
-  switch (task.task_def.processing_mode()) {
-    case DISTRIBUTED_EPOCH: {
-      std::vector<std::unique_ptr<SplitProvider>> split_providers;
-      split_providers.reserve(task.task_def.num_split_providers());
-      for (int i = 0; i < task.task_def.num_split_providers(); ++i) {
-        split_providers.push_back(absl::make_unique<DataServiceSplitProvider>(
-            config_.dispatcher_address(), config_.protocol(),
-            task.task_def.job_id(), i, config_.dispatcher_timeout_ms()));
-      }
-      TF_RETURN_IF_ERROR(
-          dataset->MakeIterator(std::move(split_providers), &iterator));
-      break;
-    }
-    case PARALLEL_EPOCHS:
-      TF_RETURN_IF_ERROR(dataset->MakeIterator(&iterator));
-      break;
-    default:
-      return errors::InvalidArgument("Unrecognized processing mode: ",
-                                     task.task_def.processing_mode());
-  }
+  TF_ASSIGN_OR_RETURN(DatasetDef dataset_def, GetDatasetDef(task.task_def));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<standalone::Dataset> dataset,
+                      MakeDataset(dataset_def, task.task_def));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<standalone::Iterator> iterator,
+                      MakeDatasetIterator(*dataset, task.task_def));
   auto task_iterator = absl::make_unique<StandaloneTaskIterator>(
       std::move(dataset), std::move(iterator));
   TF_RETURN_IF_ERROR(TaskRunner::Create(
@@ -285,6 +256,70 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
   task.initialized = true;
   VLOG(3) << "Created iterator for task " << task.task_def.task_id();
   return Status::OK();
+}
+
+StatusOr<DatasetDef> DataServiceWorkerImpl::GetDatasetDef(
+    const TaskDef& task_def) const {
+  switch (task_def.dataset_case()) {
+    case TaskDef::kDatasetDef:
+      return task_def.dataset_def();
+    case TaskDef::kPath: {
+      DatasetDef def;
+      Status s = ReadDatasetDef(task_def.path(), def);
+      if (!s.ok()) {
+        LOG(INFO) << "Failed to read dataset from " << task_def.path() << ": "
+                  << s << ". Falling back to reading from dispatcher.";
+        TF_RETURN_IF_ERROR(
+            dispatcher_->GetDatasetDef(task_def.dataset_id(), def));
+      }
+      return def;
+    }
+    case TaskDef::DATASET_NOT_SET:
+      return errors::Internal("Unrecognized dataset case: ",
+                              task_def.dataset_case());
+  }
+}
+
+StatusOr<std::unique_ptr<standalone::Dataset>>
+DataServiceWorkerImpl::MakeDataset(const DatasetDef& dataset_def,
+                                   const TaskDef& task_def) const {
+  TF_ASSIGN_OR_RETURN(AutoShardRewriter auto_shard_rewriter,
+                      AutoShardRewriter::Create(task_def));
+  // `ApplyAutoShardRewrite` does nothing if auto-sharding is disabled.
+  TF_ASSIGN_OR_RETURN(
+      GraphDef rewritten_graph,
+      auto_shard_rewriter.ApplyAutoShardRewrite(dataset_def.graph()));
+  std::unique_ptr<standalone::Dataset> dataset;
+  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
+      standalone::Dataset::Params(), rewritten_graph, &dataset));
+  return dataset;
+}
+
+StatusOr<std::unique_ptr<standalone::Iterator>>
+DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
+                                           const TaskDef& task_def) const {
+  std::unique_ptr<standalone::Iterator> iterator;
+  if (IsNoShard(task_def.processing_mode_def()) ||
+      IsStaticShard(task_def.processing_mode_def())) {
+    TF_RETURN_IF_ERROR(dataset.MakeIterator(&iterator));
+    return iterator;
+  }
+
+  if (IsDynamicShard(task_def.processing_mode_def())) {
+    std::vector<std::unique_ptr<SplitProvider>> split_providers;
+    split_providers.reserve(task_def.num_split_providers());
+    for (int i = 0; i < task_def.num_split_providers(); ++i) {
+      split_providers.push_back(absl::make_unique<DataServiceSplitProvider>(
+          config_.dispatcher_address(), config_.protocol(), task_def.job_id(),
+          i, config_.dispatcher_timeout_ms()));
+    }
+    TF_RETURN_IF_ERROR(
+        dataset.MakeIterator(std::move(split_providers), &iterator));
+    return iterator;
+  }
+
+  return errors::InvalidArgument("Unrecognized processing mode: ",
+                                 task_def.processing_mode_def().DebugString());
 }
 
 void DataServiceWorkerImpl::StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_) {
@@ -378,13 +413,13 @@ Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
 
 void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
   while (true) {
-    int64 next_heartbeat_micros =
+    int64_t next_heartbeat_micros =
         Env::Default()->NowMicros() + (config_.heartbeat_interval_ms() * 1000);
     {
       mutex_lock l(mu_);
       while (!cancelled_ &&
              Env::Default()->NowMicros() < next_heartbeat_micros) {
-        int64 time_to_wait_micros =
+        int64_t time_to_wait_micros =
             next_heartbeat_micros - Env::Default()->NowMicros();
         heartbeat_cv_.wait_for(l,
                                std::chrono::microseconds(time_to_wait_micros));
@@ -430,7 +465,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
       }
     }
     tasks_to_delete.reserve(task_ids_to_delete.size());
-    for (int64 task_id : task_ids_to_delete) {
+    for (int64_t task_id : task_ids_to_delete) {
       VLOG(3) << "Deleting task " << task_id
               << " at the request of the dispatcher";
       tasks_to_delete.push_back(std::move(tasks_[task_id]));

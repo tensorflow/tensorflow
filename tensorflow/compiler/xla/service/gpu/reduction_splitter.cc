@@ -49,8 +49,8 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
         << "Default layout should be enforced on reduction operand";
     // Verify that contiguous dimensions have been grouped by the
     // ReductionDimensionGrouper pass.
-    for (int64 i = 0; i < reduce->dimensions().size(); ++i) {
-      for (int64 j = i + 1; j < reduce->dimensions().size(); ++j) {
+    for (int64_t i = 0; i < reduce->dimensions().size(); ++i) {
+      for (int64_t j = i + 1; j < reduce->dimensions().size(); ++j) {
         CHECK(abs(reduce->dimensions(i) - reduce->dimensions(j)) > 1)
             << "Reduction dimensions must not be consecutive";
       }
@@ -59,10 +59,10 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
     // The reduce op has non-contiguous dimensions. Look for the dimension with
     // the largest shape dimension. Reducing along this dimension first will
     // reduce the output size most effectively.
-    int64 max_shape_dim = 0;
-    int64 max_reduce_dim = 0;
+    int64_t max_shape_dim = 0;
+    int64_t max_reduce_dim = 0;
     const auto &input_shape = reduce->operand(0)->shape();
-    for (int64 i = 0; i < reduce->dimensions().size(); ++i) {
+    for (int64_t i = 0; i < reduce->dimensions().size(); ++i) {
       if (input_shape.dimensions(reduce->dimensions(i)) > max_shape_dim) {
         max_reduce_dim = reduce->dimensions(i);
         max_shape_dim = input_shape.dimensions(max_reduce_dim);
@@ -94,7 +94,7 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
         std::remove(final_reduce_dims.begin(), final_reduce_dims.end(),
                     max_reduce_dim),
         final_reduce_dims.end());
-    for (int64 i = 0; i < final_reduce_dims.size(); ++i) {
+    for (int64_t i = 0; i < final_reduce_dims.size(); ++i) {
       if (final_reduce_dims[i] > max_reduce_dim) {
         final_reduce_dims[i]--;
       }

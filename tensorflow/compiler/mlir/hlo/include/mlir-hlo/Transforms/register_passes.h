@@ -20,12 +20,14 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+namespace hlo {
 
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Transforms/passes.h.inc"
 
-inline void registerAllTransformPasses() { registerLMHLOTransformsPasses(); }
+inline void registerAllHloPasses() { registerLMHLOTransformsPasses(); }
 
+}  // end namespace hlo
 }  // end namespace mlir
 
 #endif  // MLIR_HLO_TRANSFORMS_REGISTER_PASSES_H_

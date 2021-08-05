@@ -38,7 +38,7 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
     all_fusion_candidates_.clear();
     RecomputeReachability();
 
-    int64 index = 0;
+    int64_t index = 0;
     for (auto it : computation_->MakeInstructionPostOrder()) {
       candidates_.emplace_back(it);
       InsertOrDie(&candidates_index_, it, index++);
@@ -47,12 +47,13 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
     // Create the initial candidate list for each Node.
     for (auto& node : candidates_) {
       HloInstruction* instruction = node.hlo;
-      int64 instruction_id = get_candidate_id(instruction);
+      int64_t instruction_id = get_candidate_id(instruction);
       FusionCandidate& instr_node = candidates_[instruction_id];
       if (!IsFusible(instruction)) {
         continue;
       }
-      all_fusion_candidates_.push_back(instruction);
+      all_fusion_candidates_.emplace_back(instruction,
+                                          reachability_->GetIndex(instruction));
 
       std::vector<HloInstruction*> candidates;
       absl::flat_hash_set<HloInstruction*> candidates_set;
@@ -67,16 +68,16 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
         VLOG(10) << "Operand profitable: " << operand->name();
         // We don't look at all users of operands as it's quadratic. Only look
         // at one slice of users.
-        const int64 kUserSliceSize = 128;
+        const int64_t kUserSliceSize = 128;
 
-        const int64 user_slice_begin =
+        const int64_t user_slice_begin =
             RoundDownToNearest(operand->UserId(instruction), kUserSliceSize);
 
-        const int64 user_slice_end =
+        const int64_t user_slice_end =
             std::min(static_cast<int64>(operand->users().size()),
                      user_slice_begin + kUserSliceSize);
 
-        for (int64 i = user_slice_begin; i < user_slice_end; ++i) {
+        for (int64_t i = user_slice_begin; i < user_slice_end; ++i) {
           HloInstruction* user = operand->users()[i];
           VLOG(10) << "User: " << user->name();
           if (user == instruction || !IsFusible(user)) {
@@ -84,7 +85,7 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
                      << user->name();
             continue;
           }
-          int64 user_id = get_candidate_id(user);
+          int64_t user_id = get_candidate_id(user);
           if (is_connected(instruction, user)) {
             VLOG(10) << "User is connected: " << user->name();
             continue;
@@ -109,7 +110,7 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
       // Iterate over candidates rather than candidates_set to avoid
       // nondeterminism.
       for (auto candidate : candidates) {
-        int64 profit = GetProfit(instruction, candidate);
+        int64_t profit = GetProfit(instruction, candidate);
         if (profit > 0) {
           FusionCandidate& candidate_node =
               candidates_[get_candidate_id(candidate)];
@@ -164,17 +165,12 @@ HloInstruction* MultiOutputFusion::CreateFusion(HloInstruction* base,
           base->shape(), HloInstruction::FusionKind::kLoop, base));
 
   // Update candidate_ and all_fusion_candidates_.
-  int64 index;
-  if (candidates_index_.contains(input_fusion)) {
-    index = candidates_index_[input_fusion];
-  } else {
-    index = candidates_.size();
-    InsertOrDie(&candidates_index_, input_fusion, index);
-    candidates_.emplace_back(input_fusion);
-    all_fusion_candidates_.push_back(input_fusion);
-  }
-
+  int64_t index = candidates_.size();
+  InsertOrDie(&candidates_index_, input_fusion, index);
+  candidates_.emplace_back(input_fusion);
   reachability_->Replace(base, input_fusion);
+  all_fusion_candidates_.emplace_back(input_fusion,
+                                      reachability_->GetIndex(input_fusion));
   TF_CHECK_OK(computation()->ReplaceInstruction(base, input_fusion));
   return input_fusion;
 }
@@ -255,7 +251,7 @@ void MultiOutputFusion::UpdateBeforeFuse(HloInstruction* instr1,
   // Insert the newly created instruction (if any), to candidates_.
   for (auto use : fusion->users()) {
     if (candidates_index_.find(use) == candidates_index_.end()) {
-      int64 index = candidates_.size();
+      int64_t index = candidates_.size();
       candidates_.emplace_back(use);
       InsertOrDie(&candidates_index_, use, index++);
     }
@@ -272,7 +268,7 @@ void MultiOutputFusion::UpdateAfterFuse(
     bool new_fusion_node) {
   FusionCandidate& candidate_node = candidates_[candidates_index_[fusion]];
   for (auto it : new_fusibles) {
-    int64 profit = GetProfit(it.first, fusion);
+    int64_t profit = GetProfit(it.first, fusion);
     if (new_fusion_node) {
       // If `fusion' is a new fusion node, then add all fusibles.
       if (profit > 0) {
@@ -365,15 +361,17 @@ void MultiOutputFusion::RecomputeReachability() {
 
 void MultiOutputFusion::UpdateReachability(
     HloInstruction* instr1, HloInstruction* instr2,
-    absl::Span<HloInstruction* const> instrs_to_update,
+    absl::Span<const std::pair<HloInstruction*, HloReachabilityMap::Index>>
+        instrs_to_update,
     const std::function<bool(HloInstruction*)>& skip) {
   auto instr1_i = reachability_->GetIndex(instr1);
   auto instr2_i = reachability_->GetIndex(instr2);
-  for (auto instr : instrs_to_update) {
+  for (auto& instr_and_index : instrs_to_update) {
+    HloInstruction* instr = instr_and_index.first;
     if (skip != nullptr && skip(instr)) {
       continue;
     }
-    auto instr_i = reachability_->GetIndex(instr);
+    auto instr_i = instr_and_index.second;
     bool instr2_instr = reachability_->IsReachable(instr2_i, instr_i);
     bool instr1_instr = reachability_->IsReachable(instr1_i, instr_i);
     if (instr2_instr && instr1_instr) {
@@ -381,10 +379,10 @@ void MultiOutputFusion::UpdateReachability(
       continue;
     }
     if (instr2_instr) {
-      reachability_->FastSetReachabilityToUnion({instr, instr1}, instr);
+      reachability_->FastSetReachabilityToUnion({instr_i, instr1_i}, instr_i);
     }
     if (reachability_->IsReachable(instr1_i, instr_i)) {
-      reachability_->FastSetReachabilityToUnion({instr, instr2}, instr);
+      reachability_->FastSetReachabilityToUnion({instr_i, instr2_i}, instr_i);
     }
   }
 }

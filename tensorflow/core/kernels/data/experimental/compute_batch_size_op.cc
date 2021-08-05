@@ -74,7 +74,7 @@ bool IsDatasetNodeOfType(const NodeDef& node,
 
 const NodeDef* GetInputNode(const NodeDef& node,
                             const grappler::GraphView& graph,
-                            int64 input_index) {
+                            int64_t input_index) {
   if (node.input_size() == 0) return nullptr;
   grappler::GraphView::InputPort input_port =
       graph.GetInputPort(node.name(), input_index);
@@ -107,7 +107,7 @@ class ComputeBatchSizeOp : public OpKernel {
     const NodeDef* node = graph_view.GetNode(dataset_node_name);
     OP_REQUIRES(ctx, node != nullptr,
                 errors::InvalidArgument("Node does not exist in graph"));
-    int64 batch_size = GetBatchSize(*node, graph_view);
+    int64_t batch_size = GetBatchSize(*node, graph_view);
     Tensor* result;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
     result->scalar<int64>()() = batch_size;
@@ -116,7 +116,7 @@ class ComputeBatchSizeOp : public OpKernel {
  private:
   int64 GetBatchSizeFromBatchNode(const NodeDef& node,
                                   const grappler::GraphView& graph) {
-    int64 arg_index;
+    int64_t arg_index;
     if (node.op() == kMapAndBatchOp ||
         node.op() == kExperimentalMapAndBatchOp) {
       arg_index = node.input_size() - 3;
@@ -125,7 +125,7 @@ class ComputeBatchSizeOp : public OpKernel {
     }
 
     auto batch_size_node = GetInputNode(node, graph, arg_index);
-    int64 batch_size;
+    int64_t batch_size;
     auto s = GetScalarConstNodeValue(*batch_size_node, &batch_size);
     if (!s.ok()) {
       VLOG(1) << "Could not compute static batch size. Found batching dataset ("
@@ -158,7 +158,7 @@ class ComputeBatchSizeOp : public OpKernel {
     }
     if (IsDatasetNodeOfType(node, kMultipleInputDatasetOps)) {
       const NodeDef* input_0 = GetInputNode(node, graph, 0);
-      int64 batch_size_0 = GetBatchSize(*input_0, graph);
+      int64_t batch_size_0 = GetBatchSize(*input_0, graph);
       for (int i = 1; i < node.input_size(); ++i) {
         const NodeDef* input = GetInputNode(node, graph, i);
         auto batch_size_i = GetBatchSize(*input, graph);

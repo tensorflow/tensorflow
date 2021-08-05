@@ -30,8 +30,8 @@ namespace {
 
 class CollectiveOpsCseTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> RunPass(absl::string_view hlo_module,
-                                               int64 distance_threshold = 100) {
+  StatusOr<std::unique_ptr<HloModule>> RunPass(
+      absl::string_view hlo_module, int64_t distance_threshold = 100) {
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(
                                          hlo_module, GetModuleConfigForTest()));
     HloPassPipeline pipeline("all-gather-cse");

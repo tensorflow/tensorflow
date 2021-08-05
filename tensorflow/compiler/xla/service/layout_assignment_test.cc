@@ -54,7 +54,7 @@ class LayoutAssignmentTest : public HloTestBase {
   void AssignLayouts(HloModule* m, ComputationLayout* entry_computation_layout,
                      ChannelLayoutConstraints* channel_constraints = nullptr) {
     LayoutAssignment layout_assignment(
-        entry_computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+        entry_computation_layout,
         /*channel_constraints=*/channel_constraints);
     EXPECT_IS_OK(layout_assignment.Run(m).status());
   }
@@ -525,7 +525,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
     const HloInstruction* instruction = buffer.instruction();
 
     // Force the operands' layout to the output layout.
-    for (int64 operand_no = 0; operand_no < instruction->operand_count();
+    for (int64_t operand_no = 0; operand_no < instruction->operand_count();
          ++operand_no) {
       const HloInstruction* operand = instruction->operand(operand_no);
       if (instruction->shape().rank() != operand->shape().rank()) {
@@ -1329,9 +1329,8 @@ Status AssignLayoutsToComputation(
         ->mutable_result_layout()
         ->SetToDefaultLayout();
   }
-  LayoutAssignment layout_assignment(
-      m->mutable_entry_computation_layout(),
-      LayoutAssignment::InstructionCanChangeLayout, channel_constraints);
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
+                                     channel_constraints);
   return layout_assignment.Run(m).status();
 }
 
@@ -1524,7 +1523,7 @@ ENTRY main {
   std::cerr << computation_layout.ToString();
   ChannelLayoutConstraints channel_constraints;
   LayoutAssignment layout_assignment(
-      &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+      &computation_layout,
       /*channel_constraints=*/&channel_constraints,
       /* reverse_computation_order = */ true);
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());

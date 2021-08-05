@@ -275,4 +275,24 @@ int DefaultThreadPoolSize() {
   return tensorflow::port::MaxParallelism();
 }
 
+bool HasMajorToMinorLayout(PrimitiveType type, absl::Span<int64_t const> dims,
+                           absl::Span<int64_t const> byte_strides) {
+  CHECK_EQ(dims.size(), byte_strides.size());
+  // If the array is size 0, the strides are irrelevant.
+  if (absl::c_find(dims, 0) != dims.end()) {
+    return true;
+  }
+  int64_t stride = primitive_util::ByteWidth(type);
+  for (int i = static_cast<int>(dims.size()) - 1; i >= 0; --i) {
+    // If a dimension is of size 1, its stride is irrelevant.
+    if (dims[i] != 1) {
+      if (byte_strides[i] != stride) {
+        return false;
+      }
+      stride *= dims[i];
+    }
+  }
+  return true;
+}
+
 }  // namespace xla

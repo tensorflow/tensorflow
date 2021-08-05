@@ -57,6 +57,8 @@ cc_library(
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
         # tf_lib depending on the build platform.
+        ":metrics",
+        ":util",
         "@com_google_absl//absl/memory:memory",
         "//tensorflow/core:lib",
         "//tensorflow/core/util/tensor_bundle",
@@ -72,6 +74,7 @@ tf_cc_test(
     linkstatic = 1,
     deps = [
         ":constants",
+        ":metrics",
         ":reader",
         ":tag_constants",
         "//tensorflow/core:lib",
@@ -120,14 +123,14 @@ cc_library(
         ":loader_util",
         ":reader",
     ] + if_not_mobile([
+        ":metrics",
+        ":util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:naming",
-        "//tensorflow/cc/experimental/libexport:metrics",
-        "//tensorflow/cc/experimental/libexport:util",
     ]),
     alwayslink = 1,
 )
@@ -138,8 +141,9 @@ cc_library(
     hdrs = ["bundle_v2.h"],
     deps = [
         ":constants",
-        "//tensorflow/cc/experimental/libexport:metrics",
-        "//tensorflow/cc/experimental/libexport:util",
+        ":metrics",
+        ":reader",
+        ":util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:strcat",
@@ -168,7 +172,7 @@ tf_cc_test(
     linkstatic = 1,
     deps = [
         ":bundle_v2",
-        "//tensorflow/cc/experimental/libexport:metrics",
+        ":metrics",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -187,10 +191,10 @@ tf_cc_test(
     deps = [
         ":constants",
         ":loader",
+        ":metrics",
         ":reader",
         ":signature_constants",
         ":tag_constants",
-        "//tensorflow/cc/experimental/libexport:metrics",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
@@ -296,4 +300,69 @@ exports_files(
         "testdata/VarsAndArithmeticObjectGraph/**",
         "testdata/fuzz_generated/**",
     ]),
+)
+
+# Linked directly into ":tensorflow_framework".
+cc_library(
+    name = "metrics_impl",
+    srcs = [
+        "metrics.cc",
+        "metrics.h",
+    ],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    visibility = [
+        "//tensorflow/cc/saved_model:__subpackages__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/saved_model:__subpackages__",
+    ],
+    deps = if_static([
+        ":metrics_impl",
+    ]) + ["//tensorflow/core:lib"],
+)
+
+tf_cc_test(
+    name = "metrics_test",
+    size = "small",
+    srcs = ["metrics_test.cc"],
+    deps = [
+        ":metrics",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "util",
+    srcs = ["util.cc"],
+    hdrs = ["util.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "util_test",
+    size = "small",
+    srcs = ["util_test.cc"],
+    deps = [
+        ":util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
 )

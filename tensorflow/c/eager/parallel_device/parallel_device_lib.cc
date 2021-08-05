@@ -504,23 +504,36 @@ std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
 Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
   if (!shape_.has_value()) {
     TF_Status status;
-    PartialTensorShape first_shape;
-    TF_RETURN_IF_ERROR(unwrap(tensors_[0].get())->Shape(&first_shape));
+    PartialTensorShape combined_shape;
+    TF_RETURN_IF_ERROR(unwrap(tensors_[0].get())->Shape(&combined_shape));
 
-    // Verify that the TensorHandle's shape matches all of the component shapes.
     for (const TensorHandlePtr& component : tensors_) {
       PartialTensorShape component_shape;
       TF_RETURN_IF_ERROR(unwrap(component.get())->Shape(&component_shape));
-      if (!first_shape.IsIdenticalTo(component_shape)) {
+      if (combined_shape.dims() < 0 ||
+          combined_shape.dims() != component_shape.dims()) {
+        PartialTensorShape first_shape;
+        TF_RETURN_IF_ERROR(unwrap(tensors_[0].get())->Shape(&first_shape));
         return errors::Unimplemented(absl::StrCat(
             "Computing the shape of a ParallelTensor when the components do "
-            "not all have the same shapes is not supported. One tensor had "
+            "not all have the same rank is not supported. One tensor had "
             "shape ",
             first_shape.DebugString(), " and another had shape ",
             component_shape.DebugString()));
+      } else {
+        // Generalize differing axis lengths to "variable"/"unknown".
+        for (int axis_index = 0; axis_index < combined_shape.dims();
+             ++axis_index) {
+          int64_t axis_length = combined_shape.dim_size(axis_index);
+          if (axis_length != component_shape.dim_size(axis_index)) {
+            axis_length = -1;
+          }
+          TF_RETURN_IF_ERROR(
+              combined_shape.SetDimWithStatus(axis_index, axis_length));
+        }
       }
     }
-    auto dim_sizes = first_shape.dim_sizes();
+    auto dim_sizes = combined_shape.dim_sizes();
     shape_ = std::vector<int64_t>(dim_sizes.begin(), dim_sizes.end());
   }
   *shape = &*shape_;

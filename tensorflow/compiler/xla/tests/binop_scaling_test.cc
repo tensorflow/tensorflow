@@ -38,7 +38,7 @@ TEST_F(BinopScalingTest, MatrixPlusPseudoMatrixRowVector_32x4) {
   Add(lhs, rhs);
 
   auto aexpected = ReferenceUtil::MapWithIndexArray2D(
-      *alhs, [&](float lhs_value, int64 row, int64 col) {
+      *alhs, [&](float lhs_value, int64_t row, int64_t col) {
         return lhs_value + (*arhs)(0, col);
       });
   ComputeAndCompareR2<float>(&builder, *aexpected, {}, ErrorSpec(0.0001));
@@ -54,7 +54,7 @@ TEST_F(BinopScalingTest, MatrixPlusPseudoMatrixRowVector_129x129) {
   Add(lhs, rhs);
 
   auto aexpected = ReferenceUtil::MapWithIndexArray2D(
-      *alhs, [&](float lhs_value, int64 row, int64 col) {
+      *alhs, [&](float lhs_value, int64_t row, int64_t col) {
         return lhs_value + (*arhs)(0, col);
       });
   ComputeAndCompareR2<float>(&builder, *aexpected, {}, ErrorSpec(0.0001));
@@ -70,7 +70,7 @@ TEST_F(BinopScalingTest, MatrixPlusPseudoMatrixColVector_9x5) {
   Add(lhs, rhs);
 
   auto aexpected = ReferenceUtil::MapWithIndexArray2D(
-      *alhs, [&](float lhs_value, int64 row, int64 col) {
+      *alhs, [&](float lhs_value, int64_t row, int64_t col) {
         return lhs_value + (*arhs)(row, 0);
       });
   ComputeAndCompareR2<float>(&builder, *aexpected, {}, ErrorSpec(0.0001));
@@ -86,7 +86,7 @@ TEST_F(BinopScalingTest, MatrixPlusPseudoMatrixColVector_129x257) {
   Add(lhs, rhs);
 
   auto aexpected = ReferenceUtil::MapWithIndexArray2D(
-      *alhs, [&](float lhs_value, int64 row, int64 col) {
+      *alhs, [&](float lhs_value, int64_t row, int64_t col) {
         return lhs_value + (*arhs)(row, 0);
       });
   ComputeAndCompareR2<float>(&builder, *aexpected, {}, ErrorSpec(0.0001));

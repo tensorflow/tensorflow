@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// LINT.IfChange
 // This is the operation definition file for TensorFlow Lite.
 
 #ifndef TFL_OPS
@@ -173,6 +174,11 @@ class TFL_1DTensorOf<list<Type> allowedRuntimeTypes,
 class TFL_2DTensorOf<list<Type> allowedRuntimeTypes,
                      list<Type> allowedOpTypes = [AnyType]> :
   2DTensorOf<allowedOpTypes>, TFL_RuntimeType<TensorOf<allowedRuntimeTypes>>;
+
+class TFL_1DTensorOfOrNone<list<Type> allowedRuntimeTypes, string description = "",
+                         list<Type> allowedOpTypes = [AnyType]> :
+  AnyTypeOf<[TensorOf<allowedOpTypes>, NoneType], description>,
+  TFL_RuntimeType<AnyTypeOf<[TFL_1DTensorOf<allowedRuntimeTypes>, NoneType]>>;
 
 // This is used to represent the type of "ref tensors" or tensors that are
 // used as variables to track state.
@@ -980,7 +986,7 @@ def TFL_DepthwiseConv2DOp :
   let arguments = (
     ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
-    TFL_TensorOfOrNone<[F32, I32, I64]>:$bias,
+    TFL_1DTensorOfOrNone<[F32, I32, I64]>:$bias,
     I32Attr:$dilation_h_factor,
     I32Attr:$dilation_w_factor,
     TFL_AFAttr:$fused_activation_function,
@@ -1659,6 +1665,7 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
     AnyTensor:$output
   );
 
+  let hasFolder = 1;
   let hasOptions = 1;
 
   let customOption = "SqueezeOptions";
@@ -5062,3 +5069,5 @@ broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
 }
 
 #endif // TFL_OPS
+
+// LINT.ThenChange(//tensorflow/lite/tools/versioning/op_version.cc)

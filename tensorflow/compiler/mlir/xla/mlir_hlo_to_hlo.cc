@@ -76,12 +76,11 @@ using ::tensorflow::uint32;
 using ::tensorflow::uint64;
 using ::tensorflow::uint8;
 
-constexpr char kPaddingMapAttr[] = "mhlo.padding_map";
 constexpr char kShapeIndicesAttr[] = "shape_indices";
 constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
 constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
-constexpr char kRepicationAttr[] = "mhlo.is_same_data_across_replicas";
+constexpr char kReplicationAttr[] = "mhlo.is_same_data_across_replicas";
 
 // Array attribute. Same shape as infeed result, but contains a
 // minor_to_major array for every tensor.
@@ -645,7 +644,7 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(AllReduceScatterOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
   auto& valueMap = *ctx.values;
   xla::XlaOp operand;
   if (failed(GetXlaOp(op.operand(), valueMap, &operand, op))) return failure();
@@ -664,9 +663,9 @@ LogicalResult ExportXlaOp(AllReduceScatterOp op, OpLoweringContext ctx) {
   }
 
   valueMap[op] =
-      xla::AllReduceScatter(operand, computation, scatterDim, shardCount,
-                            Convert_replica_groups(op.replica_groups()),
-                            Convert_channel_handle(op.channel_handle()));
+      xla::ReduceScatter(operand, computation, scatterDim, shardCount,
+                         Convert_replica_groups(op.replica_groups()),
+                         Convert_channel_handle(op.channel_handle()));
   return success();
 }
 
@@ -842,10 +841,15 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   Value result = op.getResult(0);
   llvm::SmallVector<xla::XlaOp> args;
   if (failed(GetTuple(op, op.args(), ctx, args))) return failure();
+  auto xla_api_version = xla::ConvertCustomCallApiVersion(op.api_version());
+  if (!xla_api_version.ok()) return failure();
   auto& value_map = *ctx.values;
   value_map[result] = xla::CustomCall(
       ctx.builder, std::string(op.call_target_name()), args,
-      xla::TypeToShape(result.getType()), std::string(op.backend_config()));
+      xla::TypeToShape(result.getType()), std::string(op.backend_config()),
+      /*has_side_effect=*/false, /*output_operand_aliasing=*/{},
+      /*literal=*/nullptr, /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/*xla_api_version);
   return success();
 }
 
@@ -1598,7 +1602,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
     bool any_arg_replicated = false;
     entry_args_same_across_replicas.reserve(f.getNumArguments());
     for (int64_t i = 0; i < f.getNumArguments(); ++i) {
-      auto attr = f.getArgAttrOfType<mlir::UnitAttr>(i, kRepicationAttr);
+      auto attr = f.getArgAttrOfType<mlir::UnitAttr>(i, kReplicationAttr);
       entry_args_same_across_replicas.push_back(attr != nullptr);
       any_arg_replicated |= entry_args_same_across_replicas.back();
       // Pass the alias info to the builder so that it will build the alias info
@@ -1775,62 +1779,6 @@ LogicalResult ConvertToHloModule::LowerRegionAsComputation(
       /*arg_shardings=*/{}, /*ret_shardings=*/{}, func);
 }
 
-std::string PaddingMapBadArrayAttrMsg(llvm::StringRef attr_name, int index) {
-  return llvm::formatv(
-             "requires '{0}' array attribute in '{1}' dict at arg {2}",
-             attr_name, kPaddingMapAttr, index)
-      .str();
-}
-
-std::string PaddingMapMismatchedArraySizeMsg(int arg_index,
-                                             int shape_indices_size,
-                                             int padding_arg_indices_size) {
-  return llvm::formatv(
-             "requires '{0}' and '{1}' array attributes in '{2}' dic at arg "
-             "{3} to be of the same size, got sizes {4} and {5}",
-             kShapeIndicesAttr, kPaddingArgIndicesAttr, kPaddingMapAttr,
-             arg_index, shape_indices_size, padding_arg_indices_size)
-      .str();
-}
-
-std::string PaddingMapBadIntAttrMsg(llvm::StringRef attr_name, int arg_index,
-                                    int element_index) {
-  return llvm::formatv(
-             "requires element {0} in '{1}' array of '{2}' dict at arg {3} "
-             "to be an int attribute",
-             element_index, attr_name, kPaddingMapAttr, arg_index)
-      .str();
-}
-
-std::string PaddingMapBadIndexMsg(llvm::StringRef attr_name, int arg_index,
-                                  int element_index, int max, int32_t value) {
-  return llvm::formatv(
-             "requires element {0} in '{1}' array of '{2}' dict at arg {3} "
-             "to be in range [0, {4}), got {5}",
-             element_index, attr_name, kPaddingMapAttr, arg_index, max, value)
-      .str();
-}
-
-std::string PaddingMapNegativeShapeIndexMsg(int arg_index, int element_index,
-                                            int32_t value) {
-  return llvm::formatv(
-             "requires element {0} in '{1}' array of '{2}' dict at arg {3} to "
-             "be non-negative, got {4}",
-             element_index, kShapeIndicesAttr, kPaddingMapAttr, arg_index,
-             value)
-      .str();
-}
-
-std::string PaddingMapUniqueShapeIndexMsg(int arg_index, int element_index,
-                                          int32_t value) {
-  return llvm::formatv(
-             "requires elements in '{0}' array of '{1}' dict at arg {2} to be "
-             "unique, got duplicate element {3} at index {4}",
-             kShapeIndicesAttr, kPaddingMapAttr, arg_index, value,
-             element_index)
-      .str();
-}
-
 void AddDynamicParameterBindingEntry(xla::DynamicParameterBindingProto* binding,
                                      int arg_index, int32_t shape_index,
                                      int32_t padding_arg_index,
@@ -1846,98 +1794,6 @@ void AddDynamicParameterBindingEntry(xla::DynamicParameterBindingProto* binding,
     entry->set_target_param_num(arg_index);
     entry->set_dynamic_param_num(padding_arg_index);
   }
-}
-
-// Validates and populates dynamic parameter bindings from a module's entry
-// function `mhlo.padding_map` argument attributes to a `xla::HloModuleProto`
-// `DynamicParameterBindingProto`.
-LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
-                                          xla::HloModuleProto* hlo_module_proto,
-                                          bool use_tuple_args) {
-  auto entry_func = module.lookupSymbol<mlir::FuncOp>("main");
-  if (!entry_func) return success();
-
-  auto* dynamic_parameter_binding =
-      hlo_module_proto->mutable_dynamic_parameter_binding();
-  for (int i = 0, e = entry_func.getNumArguments(); i < e; ++i) {
-    auto padding_map_attr = entry_func.getArgAttr(i, kPaddingMapAttr);
-    if (!padding_map_attr) continue;
-    auto padding_map = padding_map_attr.dyn_cast<DictionaryAttr>();
-    if (!padding_map)
-      return entry_func.emitError() << "requires '" << kPaddingMapAttr
-                                    << "' dict attribute at arg " << i;
-
-    auto shape_indices =
-        padding_map.get(kShapeIndicesAttr).dyn_cast_or_null<ArrayAttr>();
-    if (!shape_indices)
-      return entry_func.emitError(
-          PaddingMapBadArrayAttrMsg(kShapeIndicesAttr, i));
-
-    auto padding_arg_indices =
-        padding_map.get(kPaddingArgIndicesAttr).dyn_cast_or_null<ArrayAttr>();
-    if (!padding_arg_indices)
-      return entry_func.emitError(
-          PaddingMapBadArrayAttrMsg(kPaddingArgIndicesAttr, i));
-
-    if (shape_indices.size() != padding_arg_indices.size())
-      return entry_func.emitError(PaddingMapMismatchedArraySizeMsg(
-          i, shape_indices.size(), padding_arg_indices.size()));
-
-    llvm::SmallDenseSet<int32_t, 4> used_shape_indices;
-    auto arg_type =
-        entry_func.getArgument(i).getType().dyn_cast<RankedTensorType>();
-    for (auto shape_and_padding : llvm::enumerate(llvm::zip(
-             shape_indices.getValue(), padding_arg_indices.getValue()))) {
-      const int element_index = shape_and_padding.index();
-      auto shape_index_attr =
-          std::get<0>(shape_and_padding.value()).dyn_cast<IntegerAttr>();
-      if (!shape_index_attr)
-        return entry_func.emitError(
-            PaddingMapBadIntAttrMsg(kShapeIndicesAttr, i, element_index));
-
-      auto padding_arg_index_attr =
-          std::get<1>(shape_and_padding.value()).dyn_cast<IntegerAttr>();
-      if (!padding_arg_index_attr)
-        return entry_func.emitError(
-            PaddingMapBadIntAttrMsg(kPaddingArgIndicesAttr, i, element_index));
-
-      const int32_t shape_index = shape_index_attr.getInt();
-      if (arg_type && (shape_index < 0 || shape_index >= arg_type.getRank()))
-        return entry_func.emitError(
-            PaddingMapBadIndexMsg(kShapeIndicesAttr, i, element_index,
-                                  arg_type.getRank(), shape_index));
-      else if (shape_index < 0)
-        return entry_func.emitError(
-            PaddingMapNegativeShapeIndexMsg(i, element_index, shape_index));
-
-      if (!used_shape_indices.insert(shape_index).second)
-        return entry_func.emitError(
-            PaddingMapUniqueShapeIndexMsg(i, element_index, shape_index));
-
-      const int32_t padding_arg_index = padding_arg_index_attr.getInt();
-      if (padding_arg_index < 0 || padding_arg_index >= e)
-        return entry_func.emitError(PaddingMapBadIndexMsg(
-            kPaddingArgIndicesAttr, i, element_index, e, padding_arg_index));
-
-      Type padding_arg_type =
-          entry_func.getArgument(padding_arg_index).getType();
-      if (auto tensor_type = padding_arg_type.dyn_cast<RankedTensorType>())
-        if (tensor_type.getRank() != 0)
-          return entry_func.emitError()
-                 << "requires arg " << padding_arg_index
-                 << " to be a scalar for use as a dynamic parameter";
-
-      if (!mlir::getElementTypeOrSelf(padding_arg_type).isSignlessInteger())
-        return entry_func.emitError()
-               << "requires arg " << padding_arg_index
-               << " to be of an int type for use as a dynamic parameter";
-
-      AddDynamicParameterBindingEntry(dynamic_parameter_binding, i, shape_index,
-                                      padding_arg_index, use_tuple_args);
-    }
-  }
-
-  return success();
 }
 
 // Runs the PrepareForExport pass on the ModuleOp.
@@ -1977,9 +1833,6 @@ Status ConvertMlirHloToHlo(
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
-  if (failed(AddDynamicParameterBindings(
-          module, hlo_proto->mutable_hlo_module(), use_tuple_args)))
-    return diag_handler.ConsumeStatus();
   return Status::OK();
 }
 

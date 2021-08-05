@@ -260,10 +260,8 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow/c:__subpackages__",
-        # copybara:uncomment_begin(google-only)
-        # "//tensorflow/cc/experimental/libtf:__pkg__",
-        # "//tensorflow/cc/experimental/libtf:__subpackages__",
-        # copybara:uncomment_end
+        "//tensorflow/cc/experimental/libtf:__pkg__",
+        "//tensorflow/cc/experimental/libtf:__subpackages__",
         "//tensorflow/compiler/mlir/tensorflow/c:__subpackages__",
     ],
     deps = select({

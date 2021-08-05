@@ -5,8 +5,8 @@
 func @dynamic_broadcast_i32_shape(%arg0 : tensor<?xi32>, %arg1 : tensor<*xf32>)
      -> index {
   // CHECK: %[[C0:.*]] = constant 0 : index
-  // CHECK: %[[DIM:.*]] = tensor.extract %arg0[%[[C0]]] : tensor<?xi32>
-  // CHECK: %[[RESULT:.*]] = index_cast %[[DIM]] : i32 to index
+  // CHECK: %[[CAST:.*]] = index_cast %arg0 : tensor<?xi32> to tensor<?xindex>
+  // CHECK: %[[RESULT:.*]] = tensor.extract %[[CAST]][%[[C0]]] : tensor<?xindex>
   // CHECK: return %[[RESULT]]
   %c0 = constant 0 : index
   %0 = "mhlo.dynamic_broadcast_in_dim"(%arg1, %arg0)
@@ -21,8 +21,8 @@ func @dynamic_broadcast_i32_shape(%arg0 : tensor<?xi32>, %arg1 : tensor<*xf32>)
 // CHECK-LABEL: @dynamic_iota_i32_shape
 func @dynamic_iota_i32_shape(%arg0 : tensor<?xi32>) -> index {
   // CHECK: %[[C0:.*]] = constant 0 : index
-  // CHECK: %[[DIM:.*]] = tensor.extract %arg0[%[[C0]]] : tensor<?xi32>
-  // CHECK: %[[RESULT:.*]] = index_cast %[[DIM]] : i32 to index
+  // CHECK: %[[CAST:.*]] = index_cast %arg0 : tensor<?xi32> to tensor<?xindex>
+  // CHECK: %[[RESULT:.*]] = tensor.extract %[[CAST]][%[[C0]]] : tensor<?xindex>
   // CHECK: return %[[RESULT]]
   %c0 = constant 0 : index
   %0 = "mhlo.dynamic_iota"(%arg0)
@@ -38,8 +38,8 @@ func @dynamic_iota_i32_shape(%arg0 : tensor<?xi32>) -> index {
 func @dynamic_reshape_i32_shape(%arg0 : tensor<?xi32>, %arg1 : tensor<*xf32>)
      -> index {
   // CHECK: %[[C0:.*]] = constant 0 : index
-  // CHECK: %[[DIM:.*]] = tensor.extract %arg0[%[[C0]]] : tensor<?xi32>
-  // CHECK: %[[RESULT:.*]] = index_cast %[[DIM]] : i32 to index
+  // CHECK: %[[CAST:.*]] = index_cast %arg0 : tensor<?xi32> to tensor<?xindex>
+  // CHECK: %[[RESULT:.*]] = tensor.extract %[[CAST]][%[[C0]]] : tensor<?xindex>
   // CHECK: return %[[RESULT]]
   %c0 = constant 0 : index
   %0 = "mhlo.dynamic_reshape"(%arg1, %arg0)

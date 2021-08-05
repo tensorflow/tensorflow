@@ -211,18 +211,13 @@ StatusOr<py::bytes> PyClient::SerializeExecutable(
 }
 
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
-    const std::string& serialized, std::shared_ptr<HloModule> hlo_module,
-    CompileOptions options) {
+    const std::string& serialized, CompileOptions options) {
   std::unique_ptr<PjRtExecutable> executable;
   absl::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
-    std::unique_ptr<HloModule> unique_module_copy =
-        hlo_module->Clone(hlo_module->config(), /*suffix=*/"");
-    TF_ASSIGN_OR_RETURN(
-        executable,
-        pjrt_client_->DeserializeExecutable(
-            serialized, std::move(unique_module_copy), std::move(options)));
+    TF_ASSIGN_OR_RETURN(executable, pjrt_client_->DeserializeExecutable(
+                                        serialized, std::move(options)));
     TF_ASSIGN_OR_RETURN(fingerprint,
                         pjrt_client_->ExecutableFingerprint(*executable));
   }
@@ -488,7 +483,7 @@ void CpuCallback::Call(void* result, void** arg_ptrs) {
           transpose_cache_.GetOrCreate(
               primitive_util::ByteWidth(results_[i].type), dims,
               results_[i].reversed_layout,
-              /*input_strides_in_bytes=*/strides);
+              /*input_layout=*/TransposePlan::Striding{strides});
       if (!plan.ok()) {
         throw std::runtime_error(plan.status().ToString());
       }

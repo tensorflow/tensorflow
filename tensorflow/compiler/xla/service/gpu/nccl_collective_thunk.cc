@@ -112,9 +112,6 @@ bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 #if XLA_ENABLE_XCCL
   VLOG(1) << absl::StreamFormat("Starting %s.", Thunk::KindToString(kind()));
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
-
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
 
@@ -142,11 +139,12 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
           << "\n";
 
   int device_ordinal = params.stream->parent()->device_ordinal();
+  NcclCliqueParticipantData participant(rendezvous_key, device_ordinal,
+                                        params.stream);
 
-  TF_ASSIGN_OR_RETURN(
-      LockedNcclClique locked_clique,
-      AcquireNcclClique(rendezvous_key, device_ordinal, params.stream,
-                        local_participants, params.nccl_unique_id_callback));
+  TF_ASSIGN_OR_RETURN(LockedNcclClique locked_clique,
+                      AcquireNcclClique(participant, local_participants,
+                                        params.nccl_unique_id_callback));
   ncclComm_t comm =
       locked_clique.clique.GetCommForDeviceOrdinal(device_ordinal);
 
@@ -188,6 +186,8 @@ bool IsTypeSupportedByNccl(PrimitiveType element_type) {
 #if defined(__CUDA_BF16_TYPES_EXIST__)
     case BF16:
 #endif
+    case C64:
+    case C128:
       return true;
     default:
       return false;

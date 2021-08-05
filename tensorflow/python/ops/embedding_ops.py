@@ -82,6 +82,16 @@ def _clip(params, ids, max_norm):
             else math_ops.range(ids_rank, params_rank)))
 
 
+def _colocate_with(param):
+  if ops.inside_function() and hasattr(param, "handle"):
+    # The `ops.colocate_with` will hard-code a device string if `param.device`
+    # is known, which will then break serving. We capture it here so that it
+    # produces a tensor without a device.
+    return ops.colocate_with(ops.get_default_graph().capture(param.handle))
+  else:
+    return ops.colocate_with(param)
+
+
 def _embedding_lookup_and_transform(params,
                                     ids,
                                     partition_strategy="mod",
@@ -133,14 +143,14 @@ def _embedding_lookup_and_transform(params,
       params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     ids = ops.convert_to_tensor(ids, name="ids")
     if np == 1 and (not transform_fn or ids.get_shape().ndims == 1):
-      with ops.colocate_with(params[0]):
+      with _colocate_with(params[0]):
         result = _clip(
             array_ops.gather(params[0], ids, name=name), ids, max_norm)
         if transform_fn:
           result = transform_fn(result)
       # Make sure the final result does not have colocation constraints on the
       # params. Similar to the case np > 1 where parallel_dynamic_stitch is
-      # outside the scioe of all with ops.colocate_with(params[p]).
+      # outside the scope of all with _colocate_with(params[p]).
       return array_ops.identity(result)
     else:
       # Flatten the ids. There are two cases where we need to do this.
@@ -173,7 +183,7 @@ def _embedding_lookup_and_transform(params,
             if param_p_dim is not None:
               dim_0_sizes.append(param_p_dim)
             else:
-              with ops.colocate_with(params[p]):
+              with _colocate_with(params[p]):
                 dim_0_sizes.append(array_ops.shape(params[p])[0])
           num_total_ids = math_ops.reduce_sum(
               math_ops.cast(array_ops.stack(dim_0_sizes), flat_ids.dtype))
@@ -205,7 +215,7 @@ def _embedding_lookup_and_transform(params,
       for p in xrange(np):
         pids = gather_ids[p]
         with ops.device_v2(None):
-          with ops.colocate_with(params[p]):
+          with _colocate_with(params[p]):
             result = array_ops.gather(params[p], pids)
             if transform_fn:
               # If transform_fn is provided, the clip_by_norm precedes
@@ -231,7 +241,7 @@ def _embedding_lookup_and_transform(params,
       elif transform_fn is None:
         # It's important that we compute params[0].shape on the right device
         # to avoid data motion.
-        with ops.colocate_with(params[0]):
+        with _colocate_with(params[0]):
           params_shape = array_ops.shape(params[0])
         element_shape_d = params_shape[1:]
       else:

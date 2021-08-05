@@ -403,6 +403,7 @@ cc_library(
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//tensorflow/core/kernels:required",
+        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
     ] + tf_additional_test_deps(),
 )
@@ -440,6 +441,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:logging.h",
         "//tensorflow/core/framework:lookup_interface.h",
         "//tensorflow/core/framework:memory_types.h",
+        "//tensorflow/core/framework:metrics.h",
         "//tensorflow/core/framework:node_def_builder.h",
         "//tensorflow/core/framework:node_def_util.h",
         "//tensorflow/core/framework:node_properties.h",
@@ -1047,6 +1049,8 @@ cc_library(
                   "//conditions:default": [],
               }) +
               tf_defines_nortti_if_lite_protos(),
+    # Using private headers from other libraries violates layering check.
+    features = ["-layering_check"],
     linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
     tags = [
         "manual",
@@ -1070,12 +1074,18 @@ cc_library(
 #         "//tensorflow:fuchsia": ["IS_MOBILE_PLATFORM"],
 #         "//conditions:default": [],
 #     }) + tf_defines_nortti_if_lite_protos(),
+#     features = ["-layering_check"],
 #     tags = [
 #         "manual",
 #         "notap",
 #     ],
 #     visibility = ["//visibility:public"],
 #     deps = [
+#         "@com_google_absl//absl/algorithm:container",
+#         "@com_google_absl//absl/base",
+#         "@com_google_absl//absl/meta:type_traits",
+#         "@com_google_absl//absl/strings",
+#         "@com_google_absl//absl/types:optional",
 #         "//tensorflow/core/util:managed_stack_trace",
 #         "//tensorflow/core/util:stats_calculator_portable",
 #         "//tensorflow/core:mobile_additional_lib_deps",
@@ -1099,7 +1109,8 @@ cc_library(
     name = "portable_tensorflow_lib",
     srcs = if_mobile([":portable_op_registrations_and_gradients"]),
     copts = tf_copts() + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
-    features = tf_features_nomodules_if_mobile(),
+    # Using private headers from other libraries violates layering check.
+    features = tf_features_nomodules_if_mobile() + ["-layering_check"],
     tags = [
         "manual",
         "notap",
@@ -1238,7 +1249,6 @@ filegroup(
         "//tensorflow/core/lib/hash:legacy_lib_internal_public_headers",
         "//tensorflow/core/lib/io:legacy_lib_internal_public_headers",
         "//tensorflow/core/lib/llvm_rtti:legacy_lib_core_all_headers",
-        "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_internal_public_headers",
         "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
         "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
         "//tensorflow/core/lib/wav:wav_io.h",
@@ -1554,7 +1564,6 @@ filegroup(
 filegroup(
     name = "framework_internal_public_headers",
     srcs = [
-        "//tensorflow/core/framework:metrics.h",
         "//tensorflow/core/framework:model.h",
         "//tensorflow/core/framework:op_segment.h",
         "//tensorflow/core/framework:rendezvous.h",  # only needed for tests

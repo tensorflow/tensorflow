@@ -74,8 +74,8 @@ class CTCDecodeHelper {
       return errors::InvalidArgument("inputs must not be empty");
     }
 
-    const int64 max_time = inputs_shape.dim_size(0);
-    const int64 batch_size = inputs_shape.dim_size(1);
+    const int64_t max_time = inputs_shape.dim_size(0);
+    const int64_t batch_size = inputs_shape.dim_size(1);
 
     if (max_time == 0) {
       return errors::InvalidArgument("max_time is 0");
@@ -120,7 +120,7 @@ class CTCDecodeHelper {
       OpOutputList* decoded_indices, OpOutputList* decoded_values,
       OpOutputList* decoded_shape) const {
     // Calculate the total number of entries for each path
-    const int64 batch_size = sequences.size();
+    const int64_t batch_size = sequences.size();
     std::vector<int64> num_entries(top_paths_, 0);
 
     // Calculate num_entries per path
@@ -136,7 +136,7 @@ class CTCDecodeHelper {
       Tensor* p_values = nullptr;
       Tensor* p_shape = nullptr;
 
-      const int64 p_num = num_entries[p];
+      const int64_t p_num = num_entries[p];
 
       Status s =
           decoded_indices->allocate(p, TensorShape({p_num, 2}), &p_indices);
@@ -150,12 +150,12 @@ class CTCDecodeHelper {
       auto values_t = p_values->vec<int64>();
       auto shape_t = p_shape->vec<int64>();
 
-      int64 max_decoded = 0;
-      int64 offset = 0;
+      int64_t max_decoded = 0;
+      int64_t offset = 0;
 
-      for (int64 b = 0; b < batch_size; ++b) {
+      for (int64_t b = 0; b < batch_size; ++b) {
         auto& p_batch = sequences[b][p];
-        int64 num_decoded = p_batch.size();
+        int64_t num_decoded = p_batch.size();
         max_decoded = std::max(max_decoded, num_decoded);
         if (num_decoded > 0) {
           DCHECK_NE(values_t.data(), nullptr)
@@ -165,7 +165,7 @@ class CTCDecodeHelper {
               << "offset should be smaller than values_t.size()";
           std::copy_n(p_batch.begin(), num_decoded, &values_t(offset));
         }
-        for (int64 t = 0; t < num_decoded; ++t, ++offset) {
+        for (int64_t t = 0; t < num_decoded; ++t, ++offset) {
           indices_t(offset, 0) = b;
           indices_t(offset, 1) = t;
         }
@@ -204,9 +204,9 @@ class CTCGreedyDecoderOp : public OpKernel {
     const TensorShape& inputs_shape = inputs->shape();
 
     std::vector<typename TTypes<T>::UnalignedConstMatrix> input_list_t;
-    const int64 max_time = inputs_shape.dim_size(0);
-    const int64 batch_size = inputs_shape.dim_size(1);
-    const int64 num_classes_raw = inputs_shape.dim_size(2);
+    const int64_t max_time = inputs_shape.dim_size(0);
+    const int64_t batch_size = inputs_shape.dim_size(1);
+    const int64_t num_classes_raw = inputs_shape.dim_size(2);
     OP_REQUIRES(
         ctx, FastBoundsCheck(num_classes_raw, std::numeric_limits<int>::max()),
         errors::InvalidArgument("num_classes cannot exceed max int"));
@@ -233,7 +233,7 @@ class CTCGreedyDecoderOp : public OpKernel {
 
     // Perform best path decoding
     std::vector<std::vector<std::vector<int> > > sequences(batch_size);
-    auto decode = [&](const int64 begin, const int64 end) {
+    auto decode = [&](const int64_t begin, const int64_t end) {
       for (int b = begin; b < end; ++b) {
         sequences[b].resize(1);
         auto &sequence = sequences[b][0];
@@ -253,8 +253,8 @@ class CTCGreedyDecoderOp : public OpKernel {
       }
     };
 
-    const int64 kCostPerUnit = 50 * max_time * num_classes;
-    const int64 total = batch_size;
+    const int64_t kCostPerUnit = 50 * max_time * num_classes;
+    const int64_t total = batch_size;
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *ctx->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, total,
@@ -312,9 +312,9 @@ class CTCBeamSearchDecoderOp : public OpKernel {
 
     const TensorShape& inputs_shape = inputs->shape();
 
-    const int64 max_time = inputs_shape.dim_size(0);
-    const int64 batch_size = inputs_shape.dim_size(1);
-    const int64 num_classes_raw = inputs_shape.dim_size(2);
+    const int64_t max_time = inputs_shape.dim_size(0);
+    const int64_t batch_size = inputs_shape.dim_size(1);
+    const int64_t num_classes_raw = inputs_shape.dim_size(2);
     OP_REQUIRES(
         ctx, FastBoundsCheck(num_classes_raw, std::numeric_limits<int>::max()),
         errors::InvalidArgument("num_classes cannot exceed max int"));

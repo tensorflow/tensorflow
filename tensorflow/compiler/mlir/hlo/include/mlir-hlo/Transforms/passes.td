@@ -18,6 +18,17 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+def BufferReuse : FunctionPass<"buffer-reuse"> {
+  let summary = "Reuses already allocated buffers to save allocation "
+                "operations if it is provably safe.";
+  let description = [{
+    This pass tries to reuse already allocated buffers if they have the same
+    size, are in the right appearance order and have no interference among
+    themselves.
+  }];
+  let constructor = "createBufferReusePass()";
+}
+
 def TestUserange : FunctionPass<"test-print-userange"> {
   let summary = "Test pass for checking userange intervals.";
   let constructor = "createTestUserangePass()";

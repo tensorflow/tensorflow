@@ -284,15 +284,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchOutliningPass();
 // TF::PartitionedCallOp.
 std::unique_ptr<OperationPass<ModuleOp>> CreateConvertLaunchFuncToTFCallPass();
 
-// Creates a pass that clusters ops into tf_device::ClusterOp regions
-// according to a policy specified by the pass options.
-//
-// See the documentation for the pass options in `tf_passes.td`.
-std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass();
-std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass(
-    ArrayRef<std::string> oplist, int min_cluster_size, StringRef algorithm,
-    StringRef policy_name);
-
 // A pass that decomposes composite resource operations into primitive ones like
 // ReadVariableOp, AssignVariableOp and other computations to facilitate
 // transformations like resource op lifting.
@@ -470,6 +461,10 @@ void CreateTPUBridgePipelineV1(OpPassManager& pm);
 // between hosts.
 std::unique_ptr<OperationPass<mlir::ModuleOp>>
 CreateTPUCompileOpReplicationPass();
+
+// Creates a pass that applies space to depth transform
+// for the first or frontier convolutions consume host inputs on TPU.
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUSpaceToDepthPass();
 
 }  // namespace TFTPU
 

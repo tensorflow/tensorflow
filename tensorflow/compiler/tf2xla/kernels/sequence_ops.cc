@@ -56,7 +56,7 @@ StatusOr<xla::XlaOp> CreateRangeTensor(const xla::LiteralSlice& start_literal,
           "Requires start >= limit when delta < 0: ", start, "/", limit);
     }
   }
-  int64 size =
+  int64_t size =
       (std::is_integral<T>::value
            ? ((std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta))
            : std::ceil(std::abs((limit - start) / delta)));
@@ -163,7 +163,7 @@ class LinSpaceOp : public XlaOpKernel {
                 errors::InvalidArgument("num must be a scalar, not shape ",
                                         num_in_shape.DebugString()));
 
-    int64 num;
+    int64_t num;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("num", &num));
     OP_REQUIRES(ctx, num > 0,
                 errors::InvalidArgument("Requires num > 0: ", num));

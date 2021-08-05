@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -96,7 +97,7 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
 
 namespace {
 
-void SetRunEnvironment(const XSpace& space, int32 accelerator_count,
+void SetRunEnvironment(const XSpace& space, int32_t accelerator_count,
                        RunEnvironment* env) {
   // Currently, we only support profiling one host and one program.
   env->set_host_count(1);
@@ -107,24 +108,6 @@ void SetRunEnvironment(const XSpace& space, int32 accelerator_count,
   }
   env->set_device_type(accelerator_count > 0 ? "GPU" : "CPU");
   env->set_device_core_count(accelerator_count);
-}
-
-void ProcessHostPlane(const XPlane* host_plane, bool use_device_step_events,
-                      const OpStatsOptions& options, OpMetricsDb* op_metrics_db,
-                      StepEvents* step_events) {
-  absl::flat_hash_map<int64, TfOp> tf_ops =
-      CollectTfOpsFromHostThreadsXPlane(*host_plane);
-  OpMetricsDbCombiner combiner(op_metrics_db);
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_plane);
-  plane.ForEachLine([&](const XLineVisitor& line) {
-    ConsumeTfMetricsDbData(
-        ConvertHostThreadsXLineToTfMetricsDbData(line, tf_ops), &combiner);
-    if (options.generate_step_db) {
-      CombineStepEvents(ConvertHostThreadsXLineToStepEvents(
-                            line, use_device_step_events, *step_events),
-                        step_events);
-    }
-  });
 }
 
 }  // namespace
@@ -176,8 +159,9 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       gpu_model = GpuModelName(GetDeviceCapFromXPlane(*device_trace));
     }
     if (options.generate_step_db) {
-      CombineStepEvents(ConvertDeviceTraceXPlaneToStepEvents(*device_trace),
-                        &step_events);
+      StepEvents device_step_events =
+          ConvertDeviceTraceXPlaneToStepEvents(*device_trace);
+      CombineStepEvents(device_step_events, &step_events);
     }
     if (options.generate_kernel_stats_db) {
       ConvertDeviceTraceXPlaneToKernelReports(*device_trace,
@@ -198,9 +182,18 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
 
   bool has_device = !device_planes.empty();
   // Convert a host plane.
-  if (host_plane && options.generate_op_metrics_db) {
-    ProcessHostPlane(host_plane, has_device, options,
-                     op_stats.mutable_host_op_metrics_db(), &step_events);
+  if (host_plane) {
+    if (options.generate_op_metrics_db) {
+      *op_stats.mutable_host_op_metrics_db() =
+          ConvertHostThreadsXPlaneToOpMetricsDb(*host_plane);
+    }
+    if (options.generate_step_db) {
+      const StepEvents* device_step_events =
+          has_device ? &step_events : nullptr;
+      StepEvents host_step_events =
+          ConvertHostThreadsXPlaneToStepEvents(*host_plane, device_step_events);
+      CombineStepEvents(host_step_events, &step_events);
+    }
   }
   if (options.generate_step_db) {
     StepEvents nonoverlapped_step_events =

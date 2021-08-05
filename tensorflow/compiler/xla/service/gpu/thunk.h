@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -63,7 +62,7 @@ class Thunk {
     kNcclAllReduce,
     kNcclAllReduceStart,
     kNcclAllReduceDone,
-    kNcclAllReduceScatter,
+    kNcclReduceScatter,
     kNcclAllToAll,
     kOutfeed,
     kReplicaId,
@@ -110,7 +109,6 @@ class Thunk {
     se::Stream* stream;
     se::Stream* async_comms_stream;
     RunId run_id;
-    HloExecutionProfiler* profiler;                               // never null
     const DeviceAssignment* device_assn;                          // never null
     std::vector<std::function<void()>>* deferred_host_callbacks;  // never null
     const std::vector<GlobalDeviceId>* gpu_global_device_ids;     // may be null
@@ -135,7 +133,7 @@ class Thunk {
   // after the copy has completed.
   template <typename T>
   void SafeH2DMemcpy(
-      se::DeviceMemory<T> dest, std::unique_ptr<T[]> buf, int64 count,
+      se::DeviceMemory<T> dest, std::unique_ptr<T[]> buf, int64_t count,
       se::Stream* stream,
       std::vector<std::function<void()>>* deferred_host_callbacks) {
     stream->ThenMemcpy(&dest, buf.get(), count * sizeof(T));

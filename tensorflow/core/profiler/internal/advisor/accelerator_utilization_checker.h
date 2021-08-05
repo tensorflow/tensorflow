@@ -53,7 +53,7 @@ class AcceleratorUtilizationChecker : public Checker {
   AdviceProto::Checker CheckInternal() {
     for (const auto& s : accelerator_exec_stats_) {
       const ExecStats& stat = s.second;
-      int64 total_micros = stat.end_micros - stat.start_micros;
+      int64_t total_micros = stat.end_micros - stat.start_micros;
       if (total_micros <= 0) continue;
       double utilization = 1.0 * stat.exec_micros / total_micros;
       if (utilization >= 0.5) {

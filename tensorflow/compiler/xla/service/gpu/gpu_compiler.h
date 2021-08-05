@@ -46,11 +46,6 @@ class GpuCompiler : public LLVMCompiler {
               const char* data_layout);
   ~GpuCompiler() override {}
 
-  // Bring in
-  // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-  //     std::vector<std::unique_ptr<HloModule>> modules,
-  //     std::vector<std::vector<se::StreamExecutor*>>
-  //        stream_execs)
   using LLVMCompiler::Compile;
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
@@ -121,7 +116,7 @@ class GpuCompiler : public LLVMCompiler {
       return ShapeUtil::ByteSizeOf(shape, pointer_size);
     }
     // Each dynamic dimension size is represented as a S32.
-    int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+    int64_t metadata_size = sizeof(int32) * shape.dimensions_size();
     return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
   }
 

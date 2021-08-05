@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/refcount.h"
@@ -28,7 +29,7 @@ limitations under the License.
 namespace tensorflow {
 
 FailTestRMA::FailTestRMA(const DeviceMgr* dev_mgr,
-                         DeviceResolverInterface* dev_resolver, int64 step_id)
+                         DeviceResolverInterface* dev_resolver, int64_t step_id)
     : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
       fail_after_(0) {}
 
@@ -43,8 +44,9 @@ bool FailTestRMA::MaybeFail(const StatusCallback& done) {
   if (fail_now) {
     auto error = errors::Internal("Deliberate failure");
     LOG(INFO) << "triggering failure " << error;
-    SchedNonBlockingClosureAfter(
-        1000, [this, error] { buf_rendezvous()->StartAbort(error); });
+    buf_rendezvous()->StartAbort(error);
+    // The current call hasn't reached BufRendezvous yet, so we need to call
+    // its done separately.
     done(error);
     return true;
   }
@@ -92,8 +94,8 @@ std::vector<std::unique_ptr<Device>> CreateCPUDevices(
   std::vector<std::unique_ptr<Device>> devices;
   for (int wi = 0; wi < num_workers; ++wi) {
     for (int di = 0; di < num_devices_per_worker; ++di) {
-      string dev_name =
-          strings::StrCat("/job:worker/replica:0/task:", wi, "/cpu:", di);
+      string dev_name = strings::StrCat("/job:worker/replica:0/task:", wi,
+                                        "/device:CPU:", di);
       devices.push_back(absl::make_unique<ThreadPoolDevice>(
           sess_opts, dev_name, mem_limit, dev_locality, cpu_allocator()));
     }
@@ -138,7 +140,11 @@ std::vector<std::unique_ptr<Device>> CreateGPUDevices() {
 std::unique_ptr<CollectiveTestEnv> CreateCollectiveTestEnv(
     int num_workers, int num_devices_per_worker, DeviceType device_type) {
   auto test_env = absl::make_unique<CollectiveTestEnv>();
-  test_env->col_exec_mgr = absl::make_unique<TestCollectiveExecutorMgr>();
+  test_env->param_resolver = absl::make_unique<TestParamResolver>();
+  // We don't create CollecticeExecutor from the CollecticeExecutorMgr so we
+  // don't need to pass rma.
+  test_env->col_exec_mgr = absl::make_unique<TestCollectiveExecutorMgr>(
+      test_env->param_resolver.get(), /*rma=*/nullptr);
   test_env->num_workers = num_workers;
   test_env->num_devices_per_worker = num_devices_per_worker;
   test_env->device_type = device_type;
@@ -210,12 +216,10 @@ core::RefCountPtr<CollectiveParams> CreateCollectiveParams(
     col_params->group.num_devices_per_task[task_name] =
         test_env.num_devices_per_worker;
     for (int di = 0; di < test_env.num_devices_per_worker; ++di) {
-      string dev_name = strings::StrCat(task_name, "/cpu:", di);
-      if (test_env.device_type == DEVICE_GPU) {
-        dev_name = strings::StrCat(
-            task_name, "/gpu:", di % test_env.device_mgr->NumDeviceType("GPU"));
-      }
-      col_params->group.device_names.push_back(dev_name);
+      DeviceAttributes device;
+      device.set_name(strings::StrCat(
+          task_name, "/device:", test_env.device_type.type_string(), ":", di));
+      col_params->group.devices.push_back(device);
       col_params->group.task_names.push_back(task_name);
       // Normally each device would set is_local to its own perspective but
       // this test runs in a single process so is_local is always true.
@@ -331,16 +335,16 @@ Status RunCollective(CollectiveTestEnv* test_env, CollectiveParams* col_params,
   TF_CHECK_OK(CollectiveRegistry::Lookup(
       col_params->instance.impl_details.collective_name, &collective_impl));
   core::ScopedUnref unref_collective_impl(collective_impl);
-  TF_CHECK_OK(collective_impl->InitializeCollectiveParams(col_params));
+  TF_RETURN_IF_ERROR(collective_impl->InitializeCollectiveParams(col_params));
 
   string exec_key = strings::StrCat(col_params->instance.instance_key, ":0:0");
   auto col_ctx = std::make_shared<CollectiveContext>(
       test_env->col_exec.get(), /*nccl_communicator*/ nullptr,
       test_env->device_mgr.get(), &ctx, &op_params, col_params, exec_key,
       kStepId, &input_buffer, &output_buffer);
-  TF_CHECK_OK(collective_impl->InitializeCollectiveContext(col_ctx));
+  TF_RETURN_IF_ERROR(collective_impl->InitializeCollectiveContext(col_ctx));
 
-  // Run the all-reduce.
+  // Run the collective.
   Status status;
   Notification n;
   collective_impl->Run([&status, &n](Status s) {

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
 #include "tensorflow/compiler/xla/python/absl_casters.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -98,13 +99,39 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(
     const pybind11::object& argument);
 
 // Converts a sequence of C++ ints to a Python tuple of ints.
-// Pybind11 by default converts a std::vector<int64> to a Python list;
+// Pybind11 by default converts a std::vector<T> to a Python list;
 // we frequently want a tuple instead e.g. for shapes.
-pybind11::tuple IntSpanToTuple(absl::Span<int64 const> xs);
-pybind11::tuple IntSpanToTuple(absl::Span<int const> xs);
+template <typename T>
+pybind11::tuple SpanToTuple(absl::Span<T const> xs) {
+  pybind11::tuple out(xs.size());
+  for (int i = 0; i < xs.size(); ++i) {
+    out[i] = pybind11::cast(xs[i]);
+  }
+  return out;
+}
+template <>
+pybind11::tuple SpanToTuple(absl::Span<int const> xs);
+template <>
+pybind11::tuple SpanToTuple(absl::Span<int64 const> xs);
 
-// Converts a Python sequence of integers to a std::vector<int64>
-std::vector<int64> IntSequenceToVector(const pybind11::object& sequence);
+// Converts a Python iterable/sequence of T to std::vector<T>
+template <typename T>
+std::vector<T> IterableToVector(const pybind11::iterable& iterable) {
+  std::vector<T> output;
+  for (auto item : iterable) {
+    output.push_back(item.cast<T>());
+  }
+  return output;
+}
+template <typename T>
+std::vector<T> SequenceToVector(const pybind11::sequence& sequence) {
+  std::vector<T> output;
+  output.reserve(sequence.size());
+  for (auto item : sequence) {
+    output.push_back(item.cast<T>());
+  }
+  return output;
+}
 
 // Private helper function used in the implementation of the type caster for
 // xla::BorrowingLiteral. Converts a Python array-like object into a buffer

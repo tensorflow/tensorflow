@@ -414,6 +414,14 @@ REGISTER_OP("GroupByWindowDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("GetElementAtIndex")
+    .Input("dataset: variant")
+    .Input("index: int64")
+    .Output("components: output_types")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
+
 REGISTER_OP("ExperimentalGroupByWindowDataset")
     .Input("input_dataset: variant")
     .Input("key_func_other_arguments: Tkey_func_other_arguments")
@@ -1250,6 +1258,7 @@ REGISTER_OP("RegisterDataset")
     .Input("protocol: string")
     .Output("dataset_id: int64")
     .Attr("external_state_policy: int")
+    .Attr("element_spec: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("InitializeTableFromDataset")

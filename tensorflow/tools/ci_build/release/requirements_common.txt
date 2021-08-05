@@ -29,6 +29,6 @@ tb-nightly ~= 2.6.0.a
 tf-estimator-nightly ~= 2.6.0.dev
 
 # Test dependencies
-grpcio ~= 1.38.0
+grpcio ~= 1.38.1
 portpicker ~= 1.4.0
 scipy ~= 1.5.4  # NOTE: not the latest version due to py3.6

@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -59,68 +60,11 @@ struct BlockArgumentInfo {
   unsigned num_users;
 };
 
-// A pass that applies automatic space to depth transform for the first or
-// frontier convolutions consume host inputs on TPU.
-// This is done by adding space to depth transform op after host input and
-// applying space to depth transform for the first convolution and its backprop
-// filter on TPU.
-//
-// Example: original program:
-//
-// module {
-//   func @while_body {
-//     %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}:
-//              -> tensor<2x224x224x3xf32>
-//     %device_launch = "tf_device.cluster_func"(%input,...) {func = @_func,...)
-//     return ...
-//   }
-//   func @_func(%input: tensor<2x224x224x3xf32>,
-//               %filter: tensor<7x7x3x64xf32>) {
-//     %6 = "tf.Conv2D"(%input, %filter)  {strides = [1, 2, 2, 1]}:
-//      (tensor<2x230x230x3xf32>, tensor<7x7x3x64xf32>) ->
-//      tensor<2x112x112x64xf32>
-//   }
-// }
-//
-// With this pass, the program will be transformed into:
-// module {
-//   func @while_body {
-//     %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}
-//               -> tensor<2x224x224x3xf32>
-//     %space_to_depth = "tf.SpaceToDepth"(%input) {block_size = 2, ...}:
-//        (tensor<2x224x224x3xf32>) -> tensor<2x112x112x12xf32>
-//     %device_launch = "tf_device.cluster_func"(%space_to_depth,...)
-//       {func = @_func,...)
-//     return ...
-//   }
-//   func @_func(%input: tensor<2x112x112x12xf32>,
-//               %filter: tensor<7x7x3x64xf32>) {
-//     %filter_transform = "tf.Pad/tf.Transpose/tf.Reshape"(%filter):
-//       tensor<7x7x3x64xf32>) -> tensor<4x4x12x64xf32>
-//     %conv = "tf.Conv2D"(%input, %filter_transfrom) {strides = [1, 1, 1, 1]}:
-//       (tensor<2x112x112x12xf32>, tensor<4x4x12x64xf32>) ->
-//       tensor<2x112x112x64xf32>
-//   }
-// }
-//
-// This way, the first convolution with 3 feature dimension will be transformed
-// to 12 feature dimension, which has better performance on TPU.
-//
 // TODO(wangtao): add a pass to check if it is profitable to space to depth
 // transform and invoke the transform if it is needed.
 struct TPUSpaceToDepthPass
-    : public PassWrapper<TPUSpaceToDepthPass, OperationPass<ModuleOp>> {
+    : public TF::TPUSpaceToDepthPassBase<TPUSpaceToDepthPass> {
   void runOnOperation() override;
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tf-tpu-space-to-depth-pass";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Adds ops that allow TPU program enable automaic space to depth for "
-           "the convolution determined at JIT compile time.";
-  }
 };
 
 // Updates func argument type to have the updated input shape.
@@ -757,8 +701,6 @@ void TPUSpaceToDepthPass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUSpaceToDepthPass() {
   return std::make_unique<TPUSpaceToDepthPass>();
 }
-
-static PassRegistration<TPUSpaceToDepthPass> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

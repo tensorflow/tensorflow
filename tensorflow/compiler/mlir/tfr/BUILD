@@ -7,8 +7,9 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 load(
-    "//third_party/mlir:tblgen.bzl",
+    "@llvm-project//mlir:tblgen.bzl",
     "gentbl_cc_library",
+    "td_library",
 )
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -22,7 +23,7 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["//third_party/mlir:subpackages"],
+    includes = ["@llvm-project//mlir:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/quantization/...",
         "//tensorflow/c/...",
@@ -32,22 +33,21 @@ package_group(
     ],
 )
 
-filegroup(
+td_library(
     name = "tfr_ops_td_files",
     srcs = [
         "ir/tfr_ops.td",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
-        "//tensorflow/compiler/mlir/tensorflow:ir/tf_op_base.td",
-        "//tensorflow/compiler/mlir/tensorflow:ir/tf_op_interfaces.td",
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectTdFiles",
-        "@llvm-project//mlir:include/mlir/Dialect/Shape/IR/ShapeBase.td",
-        "@llvm-project//mlir:include/mlir/Dialect/Shape/IR/ShapeOps.td",
-        "@llvm-project//mlir:include/mlir/IR/SymbolInterfaces.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
     ],
     compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "@llvm-project//mlir:CallInterfacesTdFiles",
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:ShapeOpsTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
+    ],
 )
 
 gentbl_cc_library(
@@ -65,8 +65,25 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfr_ops.td",
-    td_srcs = [
+    deps = [
         ":tfr_ops_td_files",
+    ],
+)
+
+gentbl_cc_library(
+    name = "tfr_decompose_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/generated_decompose.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/decompose_patterns.td",
+    deps = [
+        ":tfr_ops_td_files",
+        "@llvm-project//mlir:StdOpsTdFiles",
     ],
 )
 
@@ -85,6 +102,7 @@ cc_library(
         ":tfr_ops_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
@@ -120,7 +138,9 @@ cc_library(
     srcs = [
         "passes/canonicalize.cc",
         "passes/decompose.cc",
+        "passes/generated_decompose.inc",
         "passes/raise_to_tf.cc",
+        "passes/rewrite_quantized_io.cc",
     ],
     hdrs = [
         "passes/passes.h",

@@ -185,6 +185,19 @@ def HLOClient_BroadcastMulOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
+def HLOClient_BroadcastNextAfterOp : HLOClient_BroadcastBinaryElementwiseOp<
+    "broadcast_next_after",
+    [NoSideEffect, SameOperandsAndResultElementType]> {
+  string summary = "std::nextafter operator (with optional broadcasting)";
+
+  string description = [{
+    Returns the next representable value of `lhs` in the direction of `rhs`,
+    element-wise. It can also return a subnormal number.
+
+    Equivalent to the C++ std::nextafter function.
+  }];
+}
+
 def HLOClient_BroadcastPolygammaOp : HLOClient_BroadcastBinaryElementwiseOp<
     "broadcast_polygamma", [NoSideEffect, SameOperandsAndResultElementType]> {
   let summary = "Polygamma function (with optional broadcasting)";
@@ -355,6 +368,39 @@ def HLOClient_BroadcastXorOp : HLOClient_BroadcastBinaryLogicalElementwiseOp<
 // not part of the HLO compiler instructions as modelled by the MHLO dialect.
 //===----------------------------------------------------------------------===//
 
+def HLOClient_NextAfterOp : HLOClient_Op<"next_after", [NoSideEffect,
+    SameOperandsAndResultType]> {
+  let summary = "std::nextafter operator";
+  let description = [{
+    Returns the next representable value of `x` in the direction of `y`,
+    element-wise. It can also return a subnormal number.
+
+    Equivalent to the C++ std::nextafter function.
+  }];
+
+  let arguments = (ins HLO_FpTensor:$x, HLO_FpTensor:$y);
+  let results = (outs HLO_FpTensor:$result);
+
+  let assemblyFormat = [{
+    $x `,` $y attr-dict `:` type($x) `,` type($y) `->` type(results)
+  }];
+}
+
+def HLOClient_PolygammaOp : HLOClient_Op<"polygamma", [NoSideEffect,
+    SameOperandsAndResultType]> {
+  let summary = "Polygamma function";
+  let description = [{
+    Returns `Polygamma(operand, operand)` element-wise.
+  }];
+
+  let arguments = (ins HLO_FpTensor:$n, HLO_FpTensor:$x);
+  let results = (outs HLO_FpTensor:$result);
+
+  let assemblyFormat = [{
+    $n `,` $x attr-dict `:` type($n) `,` type($x) `->` type(results)
+  }];
+}
+
 def HLOClient_ZetaOp : HLOClient_Op<"zeta", [NoSideEffect,
     SameOperandsAndResultType]> {
   let summary = "Hurwitz zeta function";
@@ -371,21 +417,6 @@ def HLOClient_ZetaOp : HLOClient_Op<"zeta", [NoSideEffect,
 
   let assemblyFormat = [{
     $x `,` $q attr-dict `:` type($x) `,` type($q) `->` type(results)
-  }];
-}
-
-def HLOClient_PolygammaOp : HLOClient_Op<"polygamma", [NoSideEffect,
-    SameOperandsAndResultType]> {
-  let summary = "Polygamma function";
-  let description = [{
-    Returns `Polygamma(operand, operand)` element-wise.
-  }];
-
-  let arguments = (ins HLO_FpTensor:$n, HLO_FpTensor:$x);
-  let results = (outs HLO_FpTensor:$result);
-
-  let assemblyFormat = [{
-    $n `,` $x attr-dict `:` type($n) `,` type($x) `->` type(results)
   }];
 }
 

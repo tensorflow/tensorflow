@@ -18,18 +18,12 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/eigen_convolution_helpers.h"
 
-#if defined(EIGEN_VECTORIZE_ALTIVEC) || defined(EIGEN_VECTORIZE_VSX)
-#define TF_USE_CUSTOM_EIGEN_PACK 0
-#else
-#define TF_USE_CUSTOM_EIGEN_PACK 1
-#endif
-
 // Note this header is used in both TF and TFLite.
 namespace Eigen {
 
 namespace internal {
 
-#if TF_USE_CUSTOM_EIGEN_PACK
+#if !EIGEN_ALTIVEC_USE_CUSTOM_PACK
 // WARNING: Most of the code here implicitly assumes that the matrix is in
 // ColMajor layout. This is guaranteed by the tensor contraction (see
 // TensorContraction.h).
@@ -1239,6 +1233,15 @@ struct gemm_pack_rhs<
     }
 
     // copy the remaining columns one at a time (nr==1)
+#if defined(EIGEN_VECTORIZE_ALTIVEC) || defined(EIGEN_VECTORIZE_VSX)
+    // remaining columns are handled different for PPC
+    for (Index k = 0; k < depth; k++) {
+      for (Index j2 = packet_cols4; j2 < cols; ++j2) {
+        *block = rhs(k, j2);
+        block += 1;
+      }
+    }
+#else
     for (Index j2 = packet_cols4; j2 < cols; ++j2) {
       const SubMapper dm0 = rhs.getLinearMapper(0, j2);
       for (Index k = 0; k < depth; k++) {
@@ -1246,6 +1249,7 @@ struct gemm_pack_rhs<
         block += 1;
       }
     }
+#endif
   }
 };
 

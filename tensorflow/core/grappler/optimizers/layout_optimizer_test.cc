@@ -113,12 +113,12 @@ class LayoutOptimizerTest : public GrapplerTest {
     int filter_count = 2;
     int stride = 1;
     int dilation = dilated ? 2 : 1;
-    int64 padding_top = 1;
-    int64 padding_bottom = 2;
-    int64 padding_left = 3;
-    int64 padding_right = 4;
-    int64 output_height;
-    int64 output_width;
+    int64_t padding_top = 1;
+    int64_t padding_bottom = 2;
+    int64_t padding_left = 3;
+    int64_t padding_right = 4;
+    int64_t output_height;
+    int64_t output_width;
     Padding padding_enum;
     if (padding == "SAME") {
       padding_enum = SAME;

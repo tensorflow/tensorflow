@@ -16,16 +16,20 @@
 
 set -e
 
-go get github.com/golang/protobuf/proto
-go get github.com/golang/protobuf/protoc-gen-go
+go get google.golang.org/protobuf/cmd/protoc-gen-go
 
 if [ -z "${GOPATH}" ]
 then
   GOPATH=$(go env GOPATH)
 fi
 
+if [ -z "${GOOS}" ]
+then
+  GOOS=$(go env GOOS)
+fi
+
 # convert GOPATH's Windows style to UNIX style
-if [[ $1 == "win" ]]; then
+if [[ $GOOS == "windows" ]]; then
   # eg: convert "D:\go-14;D:\go-13" to "D\go-14;D\go-13"
   GOPATH=${GOPATH//:\\/\\}
   # eg: convert "D\go-14;D\go-13" to "\D\go-14:\D\go-13"

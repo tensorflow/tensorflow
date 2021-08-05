@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for legalizing HLO to TensorFlow.
 
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -154,9 +156,9 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
                                        .begin();
     for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
       int dim = i + 1;
-      tensorflow::int64 output_size;
-      tensorflow::int64 pad_low_int64;
-      tensorflow::int64 pad_high_int64;
+      int64_t output_size;
+      int64_t pad_low_int64;
+      int64_t pad_high_int64;
       tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
           conv_op.lhs().getType().cast<ShapedType>().getDimSize(
               *(input_spatial_dim_iter + i)),
@@ -1525,6 +1527,12 @@ class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
   LegalizeHloToTf() = default;
   LegalizeHloToTf(const LegalizeHloToTf &) {}
 
+  StringRef getArgument() const final { return "tf-legalize-hlo"; }
+
+  StringRef getDescription() const final {
+    return "Legalize from HLO to the TF dialect";
+  }
+
   /// Performs the legalization to the TF dialect.
   void runOnFunction() override;
 };
@@ -1703,6 +1711,53 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
   }
 };
 
+class ConvertWhileOp : public OpConversionPattern<mhlo::WhileOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::WhileOp while_op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    // HLO WhileOp should have two regions: cond and body.
+    if (while_op->getNumRegions() != 2) return failure();
+
+    // This rule doesn't support mhlo::WhileOp with tuple inputs.
+    for (auto type : while_op->getOperandTypes()) {
+      if (type.isa<TupleType>()) return failure();
+    }
+
+    // Creates a TF::WhileRegionOp to replace the mhlo::WhileOp. HLO WhileOp
+    // currently doesn't support stateless and shape invariant, so these
+    // parameters are set to the default values.
+    OpBuilder builder(while_op);
+    auto new_while = builder.create<TF::WhileRegionOp>(
+        while_op.getLoc(), while_op->getResultTypes(), while_op->getOperands(),
+        /*parallel_iterations=*/10,
+        /*is_stateless=*/false, /*shape_invariant=*/false);
+    new_while.cond().takeBody(while_op.getRegion(0));
+    new_while.body().takeBody(while_op.getRegion(1));
+    ReplaceReturnOp(new_while.cond(), rewriter);
+    ReplaceReturnOp(new_while.body(), rewriter);
+    rewriter.replaceOp(while_op, new_while.getResults());
+    return success();
+  }
+
+ private:
+  // Replaces mhlo::ReturnOp to TF::Yield.
+  static void ReplaceReturnOp(Region &region,
+                              ConversionPatternRewriter &rewriter) {
+    for (auto &block : region.getBlocks()) {
+      Operation *terminator = block.getTerminator();
+      auto return_op = llvm::dyn_cast_or_null<mhlo::ReturnOp>(terminator);
+      if (return_op == nullptr) continue;
+
+      OpBuilder builder(return_op);
+      builder.create<TF::YieldOp>(return_op.getLoc(), return_op->getOperands());
+      rewriter.eraseOp(return_op);
+    }
+  }
+};
+
 template <typename BinaryOp, typename TfOp>
 class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
  public:
@@ -1864,21 +1919,20 @@ void LegalizeHloToTf::runOnFunction() {
   }
 }
 
-static PassRegistration<LegalizeHloToTf> pass(
-    "tf-legalize-hlo", "Legalize from HLO to the TF dialect");
+static PassRegistration<LegalizeHloToTf> pass;
 
 }  // end namespace
 
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
-  patterns
-      ->insert<ConvertAvgPoolOp, ConvertConvOp, ConvertConvBackpropInputOp,
-               ConvertDynamicSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
-               ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
-               ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
-               ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
-               ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-               ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
+  patterns->insert<ConvertWhileOp, ConvertAvgPoolOp, ConvertConvOp,
+                   ConvertConvBackpropInputOp, ConvertDynamicSliceOp,
+                   ConvertGatherOp, ConvertMaxPoolOp, ConvertScatterAddOp,
+                   ConvertScatterMaxOp, ConvertScatterMinOp,
+                   ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
+                   ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
+                   ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
+                   ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
   populateWithGenerated(*patterns);
 }
 

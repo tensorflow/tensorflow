@@ -105,9 +105,9 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
           fast_tensor_util.AppendComplex64ArrayToTensorProto,
       np.complex128:
           fast_tensor_util.AppendComplex128ArrayToTensorProto,
-      np.object:
+      np.object_:
           fast_tensor_util.AppendObjectArrayToTensorProto,
-      np.bool:
+      np.bool_:
           fast_tensor_util.AppendBoolArrayToTensorProto,
       dtypes.qint8.as_numpy_dtype:
           fast_tensor_util.AppendInt8ArrayToTensorProto,
@@ -173,8 +173,8 @@ else:
       np.int16: SlowAppendIntArrayToTensorProto,
       np.complex64: SlowAppendComplex64ArrayToTensorProto,
       np.complex128: SlowAppendComplex128ArrayToTensorProto,
-      np.object: SlowAppendObjectArrayToTensorProto,
-      np.bool: SlowAppendBoolArrayToTensorProto,
+      np.object_: SlowAppendObjectArrayToTensorProto,
+      np.bool_: SlowAppendBoolArrayToTensorProto,
       dtypes.qint8.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
       dtypes.quint8.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
       dtypes.qint16.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
@@ -197,7 +197,7 @@ def GetNumpyAppendFn(dtype):
   # dtype with a single constant (np.string does not exist) to decide
   # dtype is a "string" type. We need to compare the dtype.type to be
   # sure it's a string type.
-  if dtype.type == np.string_ or dtype.type == np.unicode_:
+  if dtype.type == np.bytes_ or dtype.type == np.str_:
     if _FAST_TENSOR_UTIL_AVAILABLE:
       return fast_tensor_util.AppendObjectArrayToTensorProto
     else:
@@ -539,7 +539,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
 
     # At this point, values may be a list of objects that we could not
     # identify a common type for (hence it was inferred as
-    # np.object/dtypes.string).  If we are unable to convert it to a
+    # np.object_/dtypes.string).  If we are unable to convert it to a
     # string, we raise a more helpful error message.
     #
     # Ideally, we'd be able to convert the elements of the list to a
@@ -604,7 +604,7 @@ def MakeNdarray(tensor):
                           dtype=dtype).copy().reshape(shape))
 
   if tensor_dtype == dtypes.string:
-    # np.pad throws on these arrays of type np.object.
+    # np.pad throws on these arrays of type np.object_.
     values = list(tensor.string_val)
     padding = num_elements - len(values)
     if padding > 0:

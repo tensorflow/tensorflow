@@ -382,6 +382,8 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
       return IrExportStage::OPTIMIZED_HLO;
     } else if (s_stage == "optimized_hlo_serialized") {
       return IrExportStage::OPTIMIZED_HLO_SERIALIZED;
+    } else if (s_stage == "optimized_hlo_proto_serialized") {
+      return IrExportStage::OPTIMIZED_HLO_PROTO_SERIALIZED;
     } else if (s_stage == "optimized_hlo_dot") {
       return IrExportStage::OPTIMIZED_HLO_DOT;
     } else {
@@ -822,13 +824,13 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     // errors, deliberately ignore executor statuses in cleanup.
   });
   m.def(
-      "TFE_SetConfigKeyValue",
+      "TFE_InsertConfigKeyValue",
       [](py::handle& ctx, const char* config_key, const char* config_value) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
         Py_BEGIN_ALLOW_THREADS;
-        TFE_SetConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
-                              config_value, status.get());
+        TFE_InsertConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                                 config_value, status.get());
         Py_END_ALLOW_THREADS;
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
       },

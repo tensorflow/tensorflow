@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
@@ -132,8 +131,7 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
 
 Status GpuExecutable::ExecuteThunks(
     const ServiceExecutableRunOptions* run_options,
-    const BufferAllocations& buffer_allocations, bool block_host_until_done,
-    HloExecutionProfile* hlo_execution_profile) {
+    const BufferAllocations& buffer_allocations, bool block_host_until_done) {
   TF_RETURN_IF_ERROR(
       CheckCompatibilityWithServiceExecutableRunOptions(run_options));
   XlaDebugInfoManager::Get()->OnModuleStart(module_name_);
@@ -145,11 +143,6 @@ Status GpuExecutable::ExecuteThunks(
 
   StatusOr<StreamPool::Ptr> async_comms_stream =
       run_options->BorrowStream(executor->device_ordinal());
-
-  bool do_profile = hlo_execution_profile != nullptr;
-  if (do_profile) {
-    LOG(WARNING) << "PROFILING: profiling is enabled";
-  }
 
   // Stream 0 indicates `main_stream` and substreams start from stream 1.
   std::vector<StreamPool::Ptr> sub_streams;
@@ -163,8 +156,6 @@ Status GpuExecutable::ExecuteThunks(
     sub_streams.back()->ThenWaitFor(main_stream);
   }
 
-  HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
-                                sub_streams, entry_computation_profile_index_);
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
   tensorflow::profiler::TraceMe hlo_module_activity(
@@ -180,7 +171,7 @@ Status GpuExecutable::ExecuteThunks(
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
 
-    int32 stream_no = thunk_schedule_->StreamNumberForThunk(thunk.get());
+    int32_t stream_no = thunk_schedule_->StreamNumberForThunk(thunk.get());
     se::Stream* stream =
         (stream_no == 0 ? main_stream : sub_streams[stream_no - 1].get());
 
@@ -201,7 +192,6 @@ Status GpuExecutable::ExecuteThunks(
         stream,
         async_comms_stream.ok() ? async_comms_stream->get() : nullptr,
         run_options->run_options().run_id(),
-        &profiler,
         run_options->run_options().device_assignment(),
         &deferred_host_callbacks,
         gpu_options && gpu_options->gpu_global_device_ids()
@@ -237,7 +227,7 @@ Status GpuExecutable::ExecuteThunks(
   // the profiler state.
   // TODO(b/30100571): we could potentially postpone deallocating the temp
   // buffers until a different computation is executed.
-  if (do_profile || block_host_until_done) {
+  if (block_host_until_done) {
     Status block_status = main_stream->BlockHostUntilDone();
     if (!block_status.ok()) {
       return InternalError(
@@ -249,19 +239,12 @@ Status GpuExecutable::ExecuteThunks(
   // FinishExecution() blocks until main_stream has completed if profiling is
   // enabled; we therefore do not need to defer profile collection onto a
   // stream.
-  profiler.FinishExecution();
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 
   if (run_options->run_options().execution_profile()) {
     ExecutionProfile* profile = run_options->run_options().execution_profile();
     const double nanoseconds = (end_micros - start_micros) * 1000.0;
     profile->set_compute_time_ns(std::max(nanoseconds, 1.0));
-
-    // If hlo profiling was disabled then the cycle count is left empty.
-    if (do_profile) {
-      profile->set_compute_cycle_count(hlo_execution_profile->GetCyclesTakenBy(
-          entry_computation_profile_index_));
-    }
   }
 
   return Status::OK();
@@ -318,11 +301,11 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
     const BufferAllocation& allocation,
     se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,
-    int64 arg_idx) {
+    int64_t arg_idx) {
   if (allocation.is_thread_local()) {
     return se::DeviceMemoryBase{};
   } else if (allocation.is_entry_computation_parameter()) {
-    int64 param_no = allocation.parameter_number();
+    int64_t param_no = allocation.parameter_number();
     se::DeviceMemoryBase registered_buffer = [&] {
       if (auto unowned_shapedbuffers =
               absl::get_if<absl::Span<const ShapedBuffer* const>>(&arguments)) {
@@ -352,7 +335,7 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
   } else {
     // Allocate each allocation that might escape, or is the temp buffer.
     CHECK(allocation.maybe_live_out() || allocation.IsPreallocatedTempBuffer());
-    const int64 buffer_size = allocation.size();
+    const int64_t buffer_size = allocation.size();
     se::DeviceMemoryBase buffer_address;
     if (buffer_size > 0) {
       TF_ASSIGN_OR_RETURN(
@@ -366,7 +349,7 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
 
 static Status CheckAlignment(const BufferAllocation& allocation,
                              se::DeviceMemoryBase buffer, int arg_idx) {
-  const int64 expected_alignment = [&] {
+  const int64_t expected_alignment = [&] {
     if (allocation.is_entry_computation_parameter()) {
       return kEntryParameterAlignBytes;
     } else if (allocation.is_constant()) {
@@ -394,10 +377,10 @@ StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
       [&] { return std::string("Build buffer allocations"); },
       tensorflow::profiler::TraceMeLevel::kInfo);
 
-  const int64 num_buffers = allocations_.size();
+  const int64_t num_buffers = allocations_.size();
   std::vector<se::DeviceMemoryBase> buffers;
   buffers.reserve(num_buffers);
-  for (int64 i = 0; i < num_buffers; ++i) {
+  for (int64_t i = 0; i < num_buffers; ++i) {
     const BufferAllocation& allocation = allocations_[i];
     TF_ASSIGN_OR_RETURN(
         se::DeviceMemoryBase buffer,
@@ -413,23 +396,21 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments,
     HloExecutionProfile* hlo_execution_profile) {
-  return ExecuteAsyncOnStreamImpl(run_options, absl::MakeSpan(arguments),
-                                  hlo_execution_profile);
+  return ExecuteAsyncOnStreamImpl(run_options, absl::MakeSpan(arguments));
 }
 
 StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
-  TF_ASSIGN_OR_RETURN(
-      ExecutionOutput out,
-      ExecuteAsyncOnStreamImpl(run_options, arguments, hlo_execution_profile));
+  TF_ASSIGN_OR_RETURN(ExecutionOutput out,
+                      ExecuteAsyncOnStreamImpl(run_options, arguments));
   return out.ConsumeResult();
 }
 
 StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
-    const ServiceExecutableRunOptions* run_options, VariantArguments arguments,
-    HloExecutionProfile* hlo_execution_profile) {
+    const ServiceExecutableRunOptions* run_options,
+    VariantArguments arguments) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuExecutable::ExecuteAsyncOnStreamImpl(", module_name_, ")"));
   se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
@@ -533,7 +514,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         // buffer.
         VLOG(3) << "Using copy-protection: aliasing is specified, but the "
                    "buffer is not donated; allocating a fresh buffer";
-        int64 allocation_size =
+        int64_t allocation_size =
             ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(output_shape_, index));
         TF_ASSIGN_OR_RETURN(
             se::OwningDeviceMemory allocated_buffer,
@@ -567,9 +548,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   for (const std::unique_ptr<Thunk>& thunk : thunk_schedule_->TotalOrder()) {
     TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
   }
-  TF_RETURN_IF_ERROR(ExecuteThunks(run_options, buffer_allocations,
-                                   block_host_until_done,
-                                   hlo_execution_profile));
+  TF_RETURN_IF_ERROR(
+      ExecuteThunks(run_options, buffer_allocations, block_host_until_done));
 
   // Free all temporary allocations.
   TF_RETURN_IF_ERROR(
@@ -588,7 +568,7 @@ int64 GpuExecutable::SizeOfGeneratedCodeInBytes() const {
   if (binary().empty() && !text_.empty()) {
     return -1;
   }
-  int64 size = binary().size();
+  int64_t size = binary().size();
   for (BufferAllocation::Index i = 0; i < allocations_.size(); ++i) {
     const BufferAllocation& allocation = allocations_[i];
     if (allocation.is_constant()) {

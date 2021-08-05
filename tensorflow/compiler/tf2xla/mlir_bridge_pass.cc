@@ -111,21 +111,6 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
   }
 }
 
-namespace {
-
-// Log just once by default (on default log level), and let the user adjust
-// the log level for more detailed logging.
-#define LOG_AT_LEAST_ONCE(log_message)     \
-  {                                        \
-    if (VLOG_IS_ON(1)) {                   \
-      VLOG(1) << log_message;              \
-    } else {                               \
-      LOG_FIRST_N(INFO, 1) << log_message; \
-    }                                      \
-  }
-
-}  // namespace
-
 // This runs the first phase of the "bridge", transforming the graph in a form
 // that can be executed with delegation of some computations to an accelerator.
 // This builds on the model of XLA where a subset of the graph is encapsulated
@@ -146,8 +131,7 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
 
   // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
   if (!HasTPUDevicesAndOps(module)) {
-    LOG_AT_LEAST_ONCE(
-        "Skipping MLIR TPU Bridge, no TPU devices or TPU ops found");
+    VLOG(1) << "Skipping MLIR TPU Bridge, no TPU devices or TPU ops found";
     return Status::OK();
   }
 
@@ -205,8 +189,8 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
 
   // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
   if (!HasTPUDevicesAndOps(module)) {
-    LOG_AT_LEAST_ONCE(
-        "Skipping MLIR TPU Bridge V1 Compat, no TPU devices or TPU ops found");
+    VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, no TPU devices or TPU ops "
+               "found";
     return Status::OK();
   }
 

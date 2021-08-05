@@ -113,7 +113,6 @@ class Sequential(functional.Functional):
     # Skip the init in FunctionalModel since model doesn't have input/output yet
     super(functional.Functional, self).__init__(  # pylint: disable=bad-super-call
         name=name, autocast=False)
-    base_layer.keras_api_gauge.get_cell('Sequential').set(True)
     self.supports_masking = True
     self._compute_output_and_mask_jointly = True
     self._auto_track_sub_layers = False

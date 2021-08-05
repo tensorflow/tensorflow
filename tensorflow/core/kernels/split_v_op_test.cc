@@ -34,7 +34,7 @@ namespace tensorflow {
 // Generate "count" random positive integers (not including zero) with sum
 // "sum". Technique based on one from https://math.stackexchange.com/a/1276225
 // but simplified (especially for zero-based indexing).
-static std::vector<int64> GenerateRandomIntsWithSum(int64 sum, int count) {
+static std::vector<int64> GenerateRandomIntsWithSum(int64_t sum, int count) {
   CHECK_GE(count, 1);
   CHECK_GE(sum, count);
   std::vector<int64> temp(count);
@@ -49,7 +49,7 @@ static std::vector<int64> GenerateRandomIntsWithSum(int64 sum, int count) {
     ++result[i];
   }
   CHECK(std::all_of(result.begin(), result.end(),
-                    [sum](int64 x) { return x >= 1 && x <= sum; }));
+                    [sum](int64_t x) { return x >= 1 && x <= sum; }));
   CHECK_EQ(std::accumulate(result.begin(), result.end(), static_cast<int64>(0)),
            sum);
   CHECK_EQ(result.size(), count);

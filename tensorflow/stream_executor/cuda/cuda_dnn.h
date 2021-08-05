@@ -207,7 +207,6 @@ class CudnnSupport : public dnn::DnnSupport {
                      dnn::ProfileResult* output_profile_result) override;
 
   bool GetConvolveAlgorithms(
-      bool with_winograd_nonfused,
       CudaComputeCapability cuda_compute_capability,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
@@ -228,18 +227,17 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& bias_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
+      dnn::ActivationMode activation_mode,
       std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans);
 
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool GetConvolveBackwardDataAlgorithms(
-      bool with_winograd_nonfused,
       CudaComputeCapability cuda_compute_capability,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool GetConvolveBackwardFilterAlgorithms(
-      bool with_winograd_nonfused,
       CudaComputeCapability cuda_compute_capability,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
@@ -515,22 +513,22 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<float>* output_data) override;
 
   bool DoXYPad(Stream* stream, const dnn::BatchDescriptor& dimensions,
-               const DeviceMemory<float>& input_data, int64 left_pad,
-               int64 right_pad, int64 top_pad, int64 bottom_pad,
+               const DeviceMemory<float>& input_data, int64_t left_pad,
+               int64_t right_pad, int64_t top_pad, int64_t bottom_pad,
                DeviceMemory<float>* output_data) override;
 
   bool DoXYSlice(Stream* stream, const dnn::BatchDescriptor& dimensions,
-                 const DeviceMemory<float>& input_data, int64 left_trim,
-                 int64 right_trim, int64 top_trim, int64 bottom_trim,
+                 const DeviceMemory<float>& input_data, int64_t left_trim,
+                 int64_t right_trim, int64_t top_trim, int64_t bottom_trim,
                  DeviceMemory<float>* output_data) override;
 
   bool DoMemcpyD2HQuantized(Stream* stream,
                             const DeviceMemory<float>& device_unquantized_src,
                             dnn::QuantizedActivationMode mode, void* host_dst,
-                            int64 size) override;
+                            int64_t size) override;
 
   bool DoMemcpyH2DQuantized(
-      Stream* stream, const void* host_src, int64 size,
+      Stream* stream, const void* host_src, int64_t size,
       dnn::QuantizedActivationMode mode,
       DeviceMemory<float>* device_unquantized_dst) override;
 
@@ -593,40 +591,6 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
       DeviceMemory<U>* offset_backprop, DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator);
-
-  template <typename ScaleType>
-  port::Status DoFusedConvolveImpl(
-      Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
-      dnn::DataType bias_type, dnn::DataType output_type,
-      const dnn::BatchDescriptor& conv_input_descriptor,
-      DeviceMemoryBase conv_input_data, ScaleType conv_input_scale,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      DeviceMemoryBase side_input_data, ScaleType side_input_scale,
-      const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
-      dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data, dnn::DataType accumulator_type,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::ProfileResult* output_profile_result);
-
-  port::Status DoFusedConvolveWithExecutionPlanImpl(
-      Stream* stream, dnn::DataType element_type,
-      const dnn::BatchDescriptor& conv_input_descriptor,
-      DeviceMemoryBase conv_input_data, double conv_input_scale,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      DeviceMemoryBase side_input_data, double side_input_scale,
-      const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
-      dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data, dnn::DataType accumulator_type,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& plan_config,
-      dnn::ProfileResult* output_profile_result);
 
   template <class T>
   port::Status DoRnnForwardImpl(

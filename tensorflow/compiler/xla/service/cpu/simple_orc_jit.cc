@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
+#include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Operator.h"
@@ -171,7 +172,8 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
     return target_process_control.takeError();
   }
 
-  auto execution_session = std::make_unique<llvm::orc::ExecutionSession>();
+  auto execution_session = std::make_unique<llvm::orc::ExecutionSession>(
+      std::make_unique<llvm::orc::UnsupportedExecutorProcessControl>());
   return std::make_unique<SimpleOrcJIT>(
       std::move(*target_process_control), std::move(execution_session),
       target_options, opt_level, optimize_for_size, disable_expensive_passes,

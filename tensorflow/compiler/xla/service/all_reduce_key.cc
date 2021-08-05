@@ -24,7 +24,8 @@ namespace xla {
 // compatible with each other, and hence might be combined, or different if not.
 absl::optional<AllReduceKey> GetAllReduceKey(const HloInstruction* instruction,
                                              const HloDomainMap* domain_map) {
-  if (instruction->opcode() != HloOpcode::kAllReduce) {
+  if (instruction->opcode() != HloOpcode::kAllReduce &&
+      instruction->opcode() != HloOpcode::kReduceScatter) {
     return absl::nullopt;
   }
 
@@ -34,7 +35,7 @@ absl::optional<AllReduceKey> GetAllReduceKey(const HloInstruction* instruction,
     return absl::nullopt;
   }
 
-  const auto* ar = Cast<HloAllReduceInstruction>(instruction);
+  const auto* ar = Cast<HloAllReduceInstructionBase>(instruction);
 
   std::vector<std::vector<int64_t>> replica_groups;
   replica_groups.reserve(ar->replica_groups().size());
@@ -47,7 +48,7 @@ absl::optional<AllReduceKey> GetAllReduceKey(const HloInstruction* instruction,
   const HloInstruction* to_apply_root = ar->to_apply()->root_instruction();
   // Domain metadata id returned by `GetDomainMetadataId` is guaranteed to be >=
   // 0, so use -1 when we don't need to track domain metadata id.
-  int64 domain_metadata_id =
+  int64_t domain_metadata_id =
       domain_map ? domain_map->GetDomainMetadataId(ar) : -1;
   return AllReduceKey{
       to_apply_root->opcode(),     to_apply_root->shape().element_type(),

@@ -293,37 +293,37 @@ class DeviceDescriptionBuilder {
     device_description_->block_dim_limit_ = value;
   }
 
-  void set_threads_per_core_limit(int64 value) {
+  void set_threads_per_core_limit(int64_t value) {
     device_description_->threads_per_core_limit_ = value;
   }
-  void set_threads_per_block_limit(int64 value) {
+  void set_threads_per_block_limit(int64_t value) {
     device_description_->threads_per_block_limit_ = value;
   }
-  void set_threads_per_warp(int64 value) {
+  void set_threads_per_warp(int64_t value) {
     device_description_->threads_per_warp_ = value;
   }
 
-  void set_registers_per_core_limit(int64 value) {
+  void set_registers_per_core_limit(int64_t value) {
     device_description_->registers_per_core_limit_ = value;
   }
-  void set_registers_per_block_limit(int64 value) {
+  void set_registers_per_block_limit(int64_t value) {
     device_description_->registers_per_block_limit_ = value;
   }
 
-  void set_device_address_bits(int64 value) {
+  void set_device_address_bits(int64_t value) {
     device_description_->device_address_bits_ = value;
   }
-  void set_device_memory_size(int64 value) {
+  void set_device_memory_size(int64_t value) {
     device_description_->device_memory_size_ = value;
   }
-  void set_memory_bandwidth(int64 value) {
+  void set_memory_bandwidth(int64_t value) {
     device_description_->memory_bandwidth_ = value;
   }
 
-  void set_shared_memory_per_core(int64 value) {
+  void set_shared_memory_per_core(int64_t value) {
     device_description_->shared_memory_per_core_ = value;
   }
-  void set_shared_memory_per_block(int64 value) {
+  void set_shared_memory_per_block(int64_t value) {
     device_description_->shared_memory_per_block_ = value;
   }
 
@@ -375,14 +375,14 @@ bool ThreadDimOk(const DeviceDescription &device_description,
 
 // Equivalent to ceil(double(element_count) / threads_per_block).
 ABSL_DEPRECATED("Use MathUtil::CeilOfRatio directly instead.")
-int64 DivideCeil(int64 x, int64 y);
+int64 DivideCeil(int64_t x, int64_t y);
 
 // Calculate the number of threads/blocks required to process element_count
 // elements. Note that you can still end up with more threads than
 // element_count due to rounding, so kernels often start with an "is this
 // thread id in the element_count range?" test.
 void CalculateDimensionality(const DeviceDescription &device_description,
-                             int64 element_count, int64 *threads_per_block,
+                             int64_t element_count, int64 *threads_per_block,
                              int64 *block_count);
 
 }  // namespace stream_executor

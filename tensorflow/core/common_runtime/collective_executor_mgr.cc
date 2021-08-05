@@ -46,7 +46,7 @@ CollectiveExecutorMgr::~CollectiveExecutorMgr() {
   }
 }
 
-CollectiveExecutor* CollectiveExecutorMgr::FindOrCreate(int64 step_id) {
+CollectiveExecutor* CollectiveExecutorMgr::FindOrCreate(int64_t step_id) {
   CollectiveExecutor* ce = nullptr;
   {
     mutex_lock l(exec_mu_);
@@ -62,13 +62,13 @@ CollectiveExecutor* CollectiveExecutorMgr::FindOrCreate(int64 step_id) {
   return ce;
 }
 
-CollectiveExecutor* CollectiveExecutorMgr::Create(int64 step_id) {
+CollectiveExecutor* CollectiveExecutorMgr::Create(int64_t step_id) {
   CollectiveRemoteAccessLocal* rma =
       new CollectiveRemoteAccessLocal(dev_mgr_, dev_resolver_.get(), step_id);
   return new BaseCollectiveExecutor(this, rma, step_id, dev_mgr_, work_queue_);
 }
 
-void CollectiveExecutorMgr::Cleanup(int64 step_id) {
+void CollectiveExecutorMgr::Cleanup(int64_t step_id) {
   CollectiveExecutor* ce = nullptr;
   {
     mutex_lock l(exec_mu_);
@@ -89,7 +89,7 @@ void CollectiveExecutorMgr::GetStepSequenceAsync(
 }
 
 void CollectiveExecutorMgr::RefreshStepIdSequenceAsync(
-    int64 graph_key, const StatusCallback& done) {
+    int64_t graph_key, const StatusCallback& done) {
   done(errors::Internal(
       "CollectiveExecutorMgr does not implement RefreshStepIdSequence."));
 }

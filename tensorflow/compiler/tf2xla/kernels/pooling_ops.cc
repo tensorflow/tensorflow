@@ -15,6 +15,8 @@ limitations under the License.
 
 // XLA specific pooling ops.
 
+#include <string>
+
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -66,6 +68,9 @@ class PoolingOp : public XlaOpKernel {
     }
     Padding padding;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding));
+    OP_REQUIRES(ctx, padding != EXPLICIT,
+                errors::Unimplemented(
+                    "XLA does not support pooling ops with explicit padding."));
     padding_ = (padding == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
 
     OP_REQUIRES_OK(
@@ -155,17 +160,15 @@ class MaxPoolOp : public PoolingOp {
   MaxPoolOp(OpKernelConstruction* ctx, int num_spatial_dims)
       : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims,
                   /*reduction_type=*/ctx->input_type(0)) {
-    string data_format_str;
+    std::string data_format_str;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
     OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES(
-        ctx,
-        data_format_ != FORMAT_NCHW_VECT_C &&
-            data_format_ != FORMAT_NHWC_VECT_W,
-        errors::Unimplemented("XLA does not support the VECT_* data formats. "
-                              "Returning unimplemented from MaxPool to keep "
-                              "Tensorflow's intended optimized MaxPool here."));
+    OP_REQUIRES(ctx, data_format_ != FORMAT_NHWC_VECT_W,
+                errors::Unimplemented(
+                    "XLA does not support the VECT_NHWC_VECT_W data format. "
+                    "Returning unimplemented from MaxPool to keep "
+                    "Tensorflow's intended optimized MaxPool here."));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -177,15 +180,52 @@ class MaxPoolOp : public PoolingOp {
     OP_REQUIRES_OK(ctx, stride_or_error.status());
     std::vector<int64> stride = stride_or_error.ValueOrDie();
 
-    const TensorShape input_shape = ctx->InputShape(0);
-    OP_REQUIRES(ctx, input_shape.dims() == num_dims(),
+    xla::XlaOp input = ctx->Input(0);
+
+    StatusOr<xla::Shape> input_shape = ctx->builder()->GetShape(input);
+    OP_REQUIRES_OK(ctx, input_shape.status());
+
+    // For VECT_C max-pool ops, transpose to plain NCHW, do the max-pool, and
+    // transpose back.  This isn't necessarily the most efficient algorithm, but
+    // it's ok for starters.
+    absl::optional<int64> vect_width;
+    if (data_format_ == FORMAT_NCHW_VECT_C) {
+      vect_width = input_shape->dimensions().back();
+      input = xla::Collapse(xla::Transpose(input, {0, 1, 4, 2, 3}), {1, 2});
+
+      input_shape = ctx->builder()->GetShape(input);
+      OP_REQUIRES_OK(ctx, input_shape.status());
+    }
+
+    OP_REQUIRES(ctx, input_shape->dimensions_size() == num_dims(),
                 errors::InvalidArgument("Input to ", type_string(),
                                         " operator must have ", num_dims(),
                                         " dimensions"));
+    auto pooling = xla::MaxPool(
+        input, ksize, stride, padding_,
+        XlaTensorFormat(
+            data_format_ == FORMAT_NCHW_VECT_C ? FORMAT_NCHW : data_format_,
+            input_shape->dimensions_size() - 2));
 
-    auto pooling =
-        xla::MaxPool(ctx->Input(0), ksize, stride, padding_,
-                     XlaTensorFormat(data_format_, input_shape.dims() - 2));
+    if (data_format_ == FORMAT_NCHW_VECT_C) {
+      StatusOr<xla::Shape> result_shape = ctx->builder()->GetShape(pooling);
+      OP_REQUIRES_OK(ctx, result_shape.status());
+
+      int64 num_channels = result_shape->dimensions(1);
+      OP_REQUIRES(
+          ctx, num_channels % *vect_width == 0,
+          errors::FailedPrecondition("Result of NCHW_VECT_C op must have "
+                                     "channels multiple of ",
+                                     *vect_width, ", but was ", num_channels));
+
+      absl::InlinedVector<int64, 5> new_dims(result_shape->dimensions().begin(),
+                                             result_shape->dimensions().end());
+      new_dims[1] /= *vect_width;
+      new_dims.insert(new_dims.begin() + 2, *vect_width);
+      pooling =
+          xla::Transpose(xla::Reshape(pooling, new_dims), {0, 1, 3, 4, 2});
+    }
+
     ctx->SetOutput(0, pooling);
   }
 };
@@ -275,6 +315,9 @@ class MaxPoolGradOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_));
     }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    OP_REQUIRES(ctx, padding_ != EXPLICIT,
+                errors::Unimplemented(
+                    "XLA does not support maxpoolgrad with explicit padding."));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
@@ -328,7 +371,7 @@ class MaxPoolGradOp : public XlaOpKernel {
     // whether this is a good time/space tradeoff.
     auto input = ctx->Input(0);
     auto out_backprop = ctx->Input(2);
-
+    // We ensured padding_ is not EXPLICIT in the constructor.
     xla::Padding xla_padding =
         (padding_ == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
 
@@ -400,6 +443,9 @@ class AvgPoolGradOp : public XlaOpKernel {
                                         "specify ",
                                         num_dims(), " dimensions"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    OP_REQUIRES(ctx, padding_ != EXPLICIT,
+                errors::Unimplemented(
+                    "XLA does not support avgpoolgrad with explicit padding."));
     OP_REQUIRES(ctx, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
@@ -490,6 +536,10 @@ class MaxPoolGradGradOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_));
     }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    OP_REQUIRES(
+        ctx, padding_ != EXPLICIT,
+        errors::Unimplemented(
+            "XLA does not support maxpoolgradgrad with explicit padding."));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }

@@ -136,9 +136,13 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
            'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
            'rate': 0.5,
            'seed': 1},
+          {'op': math_ops.nextafter,
+           'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+           'x2': 0},
       ]
       )  # pyformat: disable
   def testUnaryElementwiseOp(self, x, op=math_ops.abs, **extra_args):
+    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x)
     result = op(x, **extra_args)
 
     # Run the wrapped op on the dense values, for comparison.
@@ -767,33 +771,35 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         'gather', 'identity', 'io.decode_base64', 'io.decode_compressed',
         'io.encode_base64', 'math.abs', 'math.acos', 'math.acosh', 'math.add_n',
         'math.add', 'math.angle', 'math.asin', 'math.asinh', 'math.atan2',
-        'math.atan', 'math.atanh', 'math.ceil', 'math.conj', 'math.cos',
-        'math.cosh', 'math.digamma', 'math.divide_no_nan', 'math.divide',
-        'math.equal', 'math.erf', 'math.erfc', 'math.exp', 'math.expm1',
-        'math.floor', 'math.floordiv', 'math.floormod', 'math.greater_equal',
-        'math.greater', 'math.imag', 'math.is_finite', 'math.is_inf',
-        'math.is_nan', 'math.less_equal', 'math.less', 'math.lgamma',
-        'math.log1p', 'math.log_sigmoid', 'math.log', 'math.logical_and',
-        'math.logical_not', 'math.logical_or', 'math.logical_xor',
-        'math.maximum', 'math.minimum', 'math.multiply', 'math.negative',
-        'math.not_equal', 'math.pow', 'math.real', 'math.reciprocal',
+        'math.atan', 'math.atanh', 'math.bessel_i0', 'math.bessel_i0e',
+        'math.bessel_i1', 'math.bessel_i1e', 'math.ceil', 'math.conj',
+        'math.cos', 'math.cosh', 'math.digamma', 'math.divide_no_nan',
+        'math.divide', 'math.equal', 'math.erf', 'math.erfc', 'math.erfcinv',
+        'math.erfinv', 'math.exp', 'math.expm1', 'math.floor', 'math.floordiv',
+        'math.floormod', 'math.greater_equal', 'math.greater', 'math.imag',
+        'math.is_finite', 'math.is_inf', 'math.is_nan', 'math.less_equal',
+        'math.less', 'math.lgamma', 'math.log1p', 'math.log_sigmoid',
+        'math.log', 'math.logical_and', 'math.logical_not', 'math.logical_or',
+        'math.logical_xor', 'math.maximum', 'math.minimum', 'math.multiply',
+        'math.negative', 'math.nextafter', 'math.not_equal', 'math.pow',
+        'math.real', 'math.reciprocal', 'math.reciprocal_no_nan',
         'math.reduce_any', 'math.reduce_max', 'math.reduce_mean',
         'math.reduce_variance', 'math.reduce_std', 'math.reduce_min',
         'math.reduce_prod', 'math.reduce_sum', 'math.rint', 'math.round',
         'math.rsqrt', 'math.sign', 'math.sigmoid', 'math.sin', 'math.sinh',
-        'math.sqrt', 'math.square', 'math.squared_difference', 'math.subtract',
-        'math.tan', 'math.truediv', 'math.unsorted_segment_max',
-        'math.unsorted_segment_mean', 'math.unsorted_segment_min',
-        'math.unsorted_segment_prod', 'math.unsorted_segment_sqrt_n',
-        'math.unsorted_segment_sum', 'one_hot', 'ones_like', 'rank', 'realdiv',
-        'math.reduce_all', 'size', 'squeeze', 'stack', 'strings.as_string',
-        'strings.join', 'strings.length', 'strings.reduce_join',
-        'strings.regex_full_match', 'strings.regex_replace', 'strings.strip',
-        'strings.substr', 'strings.to_hash_bucket_fast',
-        'strings.to_hash_bucket_strong', 'strings.to_hash_bucket',
-        'strings.to_number', 'strings.unicode_script', 'tile', 'truncatediv',
-        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse',
-        'nn.dropout', 'strings.format', 'print'
+        'math.softplus', 'math.sqrt', 'math.square', 'math.squared_difference',
+        'math.subtract', 'math.tan', 'math.tanh', 'math.truediv',
+        'math.unsorted_segment_max', 'math.unsorted_segment_mean',
+        'math.unsorted_segment_min', 'math.unsorted_segment_prod',
+        'math.unsorted_segment_sqrt_n', 'math.unsorted_segment_sum', 'one_hot',
+        'ones_like', 'rank', 'realdiv', 'math.reduce_all', 'size', 'squeeze',
+        'stack', 'strings.as_string', 'strings.join', 'strings.length',
+        'strings.reduce_join', 'strings.regex_full_match',
+        'strings.regex_replace', 'strings.strip', 'strings.substr',
+        'strings.to_hash_bucket_fast', 'strings.to_hash_bucket_strong',
+        'strings.to_hash_bucket', 'strings.to_number', 'strings.unicode_script',
+        'tile', 'truncatediv', 'truncatemod', 'zeros_like', 'dynamic_partition',
+        'reverse', 'nn.dropout', 'strings.format', 'print'
     ]
 
     # Ops that should be listed as supported in v1 only.

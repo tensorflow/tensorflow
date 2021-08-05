@@ -238,7 +238,31 @@ cc_library(
         "//tensorflow/core/grappler/optimizers/data",
         "//tensorflow/core/grappler/optimizers/data:function_utils",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
+        "//tensorflow/core/platform",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "rewrite_utils_test",
+    size = "small",
+    srcs = ["rewrite_utils_test.cc"],
+    deps = [
+        ":rewrite_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:function_proto_cc",
+        "//tensorflow/core/framework:function_testlib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/ops",
+        "@com_google_absl//absl/strings",
     ],
 )
 

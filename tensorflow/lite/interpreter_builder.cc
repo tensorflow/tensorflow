@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/model_builder.h"
@@ -207,6 +208,7 @@ InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
     : model_(model.GetModel()),
       op_resolver_(op_resolver),
       error_reporter_(ValidateErrorReporter(model.error_reporter())),
+      metadata_(model.ReadAllMetadata()),
       allocation_(model.allocation()) {}
 
 InterpreterBuilder::InterpreterBuilder(const ::tflite::Model* model,
@@ -506,14 +508,14 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
   if (signature_def_list == nullptr || signature_def_list->size() == 0) {
     return kTfLiteOk;
   }
-  std::vector<Interpreter::SignatureDef> signature_defs;
+  std::vector<internal::SignatureDef> signature_defs;
   signature_defs.reserve(signature_def_list->size());
   for (const auto fb_signature_def : *signature_def_list) {
     if (fb_signature_def == nullptr) {
       TF_LITE_REPORT_ERROR(error_reporter_, "NULL SignatureDef in the model.");
       return kTfLiteError;
     }
-    if (fb_signature_def->method_name() == nullptr) {
+    if (fb_signature_def->signature_key() == nullptr) {
       TF_LITE_REPORT_ERROR(error_reporter_,
                            "Missing exported method name for SignatureDef");
       return kTfLiteError;
@@ -521,23 +523,21 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
     if (fb_signature_def->inputs() == nullptr) {
       TF_LITE_REPORT_ERROR(error_reporter_,
                            "NULL SignatureDef inputs for exported method %s",
-                           fb_signature_def->method_name()->c_str());
+                           fb_signature_def->signature_key()->c_str());
       return kTfLiteError;
     }
     if (fb_signature_def->outputs() == nullptr) {
       TF_LITE_REPORT_ERROR(error_reporter_,
                            "NULL SignatureDef outputs for exported method %s",
-                           fb_signature_def->method_name()->c_str());
+                           fb_signature_def->signature_key()->c_str());
       return kTfLiteError;
     }
     signature_defs.resize(signature_defs.size() + 1);
     auto& signature_def = signature_defs.back();
     signature_def.inputs = GetMapFromTensorMap(fb_signature_def->inputs());
     signature_def.outputs = GetMapFromTensorMap(fb_signature_def->outputs());
-    signature_def.method_name = fb_signature_def->method_name()->c_str();
-    if (fb_signature_def->key() != nullptr) {
-      signature_def.signature_def_key = fb_signature_def->key()->c_str();
-    }
+    signature_def.signature_key = fb_signature_def->signature_key()->c_str();
+    signature_def.subgraph_index = fb_signature_def->subgraph_index();
   }
   interpreter->SetSignatureDef(std::move(signature_defs));
   return kTfLiteOk;
@@ -759,9 +759,9 @@ TfLiteStatus InterpreterBuilder::operator()(
         (*interpreter)->subgraph(subgraph_index);
     auto operators = subgraph->operators();
     auto tensors = subgraph->tensors();
-    if (!operators || !tensors) {
+    if (!tensors) {
       TF_LITE_REPORT_ERROR(error_reporter_,
-                           "Did not get operators or tensors in subgraph %d.\n",
+                           "Did not get tensors in subgraph %d.\n",
                            subgraph_index);
       return cleanup_and_error();
     }
@@ -780,7 +780,7 @@ TfLiteStatus InterpreterBuilder::operator()(
     // nodes.
     if (ParseTensors(buffers, tensors, modified_subgraph) != kTfLiteOk)
       return cleanup_and_error();
-    if (ParseNodes(operators, modified_subgraph) != kTfLiteOk)
+    if (operators && ParseNodes(operators, modified_subgraph) != kTfLiteOk)
       return cleanup_and_error();
 
     std::vector<int> variables;
@@ -798,6 +798,10 @@ TfLiteStatus InterpreterBuilder::operator()(
 
   if (ParseSignatureDefs(model_->signature_defs(), interpreter->get()) !=
       kTfLiteOk) {
+    return cleanup_and_error();
+  }
+
+  if ((*interpreter)->SetMetadata(metadata_) != kTfLiteOk) {
     return cleanup_and_error();
   }
 

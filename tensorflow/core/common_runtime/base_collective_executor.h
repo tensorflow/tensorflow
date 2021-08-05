@@ -75,8 +75,8 @@ class CollectiveAdapter {
   // need to pick a chunk size that preserves it.  Note than in extreme
   // cases (impractical, but possible with very small tensors) one or
   // more tail chunks can end up emptby.
-  static int64 AlignedChunkElts(int64 elt_bytes, int64 total_elts,
-                                int64 num_chunks);
+  static int64 AlignedChunkElts(int64_t elt_bytes, int64_t total_elts,
+                                int64_t num_chunks);
 };
 
 // Create a CollectiveAdaptor wrapping 'output', specialized to its
@@ -96,7 +96,7 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
 class BaseCollectiveExecutor : public CollectiveExecutor {
  public:
   BaseCollectiveExecutor(CollectiveExecutorMgrInterface* cem,
-                         CollectiveRemoteAccess* remote_access, int64 step_id,
+                         CollectiveRemoteAccess* remote_access, int64_t step_id,
                          const DeviceMgr* dev_mgr,
                          std::shared_ptr<UnboundedWorkQueue> work_queue)
       : CollectiveExecutor(cem),

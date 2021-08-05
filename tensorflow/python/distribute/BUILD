@@ -623,6 +623,7 @@ distribute_py_test(
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     tpu_tags = [
         "no_oss",
@@ -953,6 +954,7 @@ distribute_py_test(
     srcs = ["strategy_combinations_test.py"],
     disable_mlir_bridge = False,
     python_version = "PY3",
+    tags = ["no_cuda_asan"],  # b/195246941
     deps = [
         ":central_storage_strategy",
         ":collective_all_reduce_strategy",
@@ -1016,6 +1018,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":combinations",
@@ -1185,9 +1188,11 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_shape",
@@ -1454,10 +1459,12 @@ distribute_py_test(
 distribute_py_test(
     name = "custom_training_loop_input_test",
     srcs = ["custom_training_loop_input_test.py"],
+    disable_tfrt = False,
     main = "custom_training_loop_input_test.py",
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.
@@ -1614,6 +1621,7 @@ distribute_py_test(
     main = "metrics_v1_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":combinations",
@@ -1647,6 +1655,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",  #Re-enable when fixed
         "nomsan",  # b/154224457: Re-enable when fixed.
     ],
     # b/155301154 broken with XLA:GPU
@@ -1691,6 +1700,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",  #Re-enable when fixed.
     ],
     # b/141096229: Non-atomic AssignAdd
     xla_enable_strict_auto_jit = False,
@@ -1878,6 +1888,7 @@ distribute_py_test(
     main = "tf_function_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":combinations",

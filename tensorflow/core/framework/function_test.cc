@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -911,12 +912,12 @@ TEST(FunctionCallFrame, Void_Void) {
   FunctionCallFrame frame({}, {});
   TF_EXPECT_OK(frame.SetArgs({}));
   auto a = test::AsTensor<float>({100});
-  HasError(frame.SetArgs({a}), "Invalid argument");
+  EXPECT_EQ(frame.SetArgs({a}).code(), error::INVALID_ARGUMENT);
   const Tensor* v = nullptr;
-  HasError(frame.GetArg(0, &v), "Invalid argument");
+  EXPECT_EQ(frame.GetArg(0, &v).code(), error::INVALID_ARGUMENT);
   if (v != nullptr) {
     // v is null in certain environments.
-    HasError(frame.SetRetval(0, *v), "Invalid argument");
+    EXPECT_EQ(frame.SetRetval(0, *v).code(), error::INVALID_ARGUMENT);
   }
   std::vector<Tensor> rets;
   TF_EXPECT_OK(frame.GetRetvals(&rets));
@@ -925,27 +926,27 @@ TEST(FunctionCallFrame, Void_Void) {
 
 TEST(FunctionCallFrame, Float_Float_Float) {
   FunctionCallFrame frame({DT_FLOAT, DT_FLOAT}, {DT_FLOAT});
-  HasError(frame.SetArgs({}), "Invalid argument: Expects 2 arguments");
+  EXPECT_EQ(frame.SetArgs({}).code(), error::INVALID_ARGUMENT);
   auto a = test::AsTensor<float>({100});
   auto b = test::AsTensor<float>({200});
   auto c = test::AsTensor<int64>({300});
-  HasError(frame.SetArgs({a, c}),
-           "Invalid argument: Expects arg[1] to be float");
+  EXPECT_EQ(frame.SetArgs({a, c}).code(), error::INVALID_ARGUMENT);
   TF_EXPECT_OK(frame.SetArgs({a, b}));
 
   const Tensor* v;
-  HasError(frame.GetArg(-1, &v), "Invalid argument");
-  HasError(frame.GetArg(2, &v), "Invalid argument");
+
+  EXPECT_EQ(frame.GetArg(-1, &v).code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(frame.GetArg(2, &v).code(), error::INVALID_ARGUMENT);
   TF_EXPECT_OK(frame.GetArg(0, &v));
   test::ExpectTensorEqual<float>(a, *v);
   TF_EXPECT_OK(frame.GetArg(1, &v));
   test::ExpectTensorEqual<float>(b, *v);
 
   Tensor w = test::AsTensor<float>({-100});
-  HasError(frame.SetRetval(-1, w), "Invalid argument");
-  HasError(frame.SetRetval(1, w), "Invalid argument");
-  HasError(frame.SetRetval(0, test::AsTensor<int64>({-100})),
-           "Invalid argument: Expects ret[0] to be float");
+  EXPECT_EQ(frame.SetRetval(-1, w).code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(frame.SetRetval(1, w).code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(frame.SetRetval(0, test::AsTensor<int64>({-100})).code(),
+            error::INVALID_ARGUMENT);
 
   std::vector<Tensor> rets;
   HasError(frame.GetRetvals(&rets), "does not have value");

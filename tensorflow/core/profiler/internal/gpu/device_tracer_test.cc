@@ -141,17 +141,17 @@ TEST_F(DeviceTracerTest, StopBeforeStart) {
 TEST_F(DeviceTracerTest, CollectBeforeStart) {
   auto tracer = CreateGpuTracer();
   if (!tracer) return;
-  RunMetadata run_metadata;
-  TF_EXPECT_OK(tracer->CollectData(&run_metadata));
-  EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 0);
+  XSpace space;
+  TF_EXPECT_OK(tracer->CollectData(&space));
+  EXPECT_EQ(space.planes_size(), 0);
 }
 
 TEST_F(DeviceTracerTest, CollectBeforeStop) {
   auto tracer = CreateGpuTracer();
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Start());
-  RunMetadata run_metadata;
-  Status status = tracer->CollectData(&run_metadata);
+  XSpace space;
+  Status status = tracer->CollectData(&space);
   ExpectFailure(status, tensorflow::error::FAILED_PRECONDITION);
   TF_EXPECT_OK(tracer->Stop());
 }
@@ -195,34 +195,6 @@ TEST_F(DeviceTracerTest, RunWithTracer) {
   auto mat = outputs[0].matrix<float>();
   ASSERT_TRUE(outputs[0].IsInitialized());
   EXPECT_FLOAT_EQ(5.0, mat(0, 0));
-}
-
-TEST_F(DeviceTracerTest, TraceToStepStatsCollector) {
-  auto tracer = CreateGpuTracer();
-  if (!tracer) return;
-
-  Initialize({3, 2, -1, 0});
-  auto session = CreateSession();
-  ASSERT_TRUE(session != nullptr);
-  TF_ASSERT_OK(session->Create(def_));
-  std::vector<std::pair<string, Tensor>> inputs;
-
-  // Request two targets: one fetch output and one non-fetched output.
-  std::vector<string> output_names = {y_ + ":0"};
-  std::vector<string> target_nodes = {y_neg_};
-  std::vector<Tensor> outputs;
-
-  TF_ASSERT_OK(tracer->Start());
-  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
-  TF_ASSERT_OK(s);
-
-  TF_ASSERT_OK(tracer->Stop());
-  RunMetadata run_metadata;
-  TF_ASSERT_OK(tracer->CollectData(&run_metadata));
-  // Depending on whether this runs on CPU or GPU, we will have a
-  // different number of devices.
-  EXPECT_GE(run_metadata.step_stats().dev_stats_size(), 1)
-      << "Saw stats: " << run_metadata.DebugString();
 }
 
 TEST_F(DeviceTracerTest, RunWithTraceOption) {
@@ -506,11 +478,12 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
   });
 
   // Expect these CUDA API activities to be found.
-  EXPECT_TRUE(found_activity_memory_device);
   EXPECT_TRUE(found_activity_memset);
   EXPECT_TRUE(found_activity_memcpy);
+
+  EXPECT_FALSE(found_activity_memory_device);
 #if CUPTI_NVBUG_3299481_WAR
-  EXPECT_TRUE(found_activity_memory_host);
+  EXPECT_FALSE(found_activity_memory_host);
 #endif
 }
 

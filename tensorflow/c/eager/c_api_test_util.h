@@ -106,6 +106,19 @@ TFE_Op* ShapeOp(TFE_Context* ctx, TFE_TensorHandle* a);
 // Return an allreduce op adding up input tensor `in` from `group_size` workers.
 TFE_Op* AllReduceOp(TFE_Context* ctx, TFE_TensorHandle* in, int group_size);
 
+// Return a SendOp op `op_name` with send input tensor `in` and attributes
+// `send_device`, `recv_device`, and `send_device_incarnation` set.
+TFE_Op* SendOp(TFE_Context* ctx, TFE_TensorHandle* in,
+               const std::string& op_name, const std::string& send_device,
+               const std::string& recv_device,
+               tensorflow::uint64 send_device_incarnation);
+
+// Return a RecvOp op `op_name` with the attributes `send_device`,
+// `recv_device`, and `send_device_incarnation` set.
+TFE_Op* RecvOp(TFE_Context* ctx, const std::string& op_name,
+               const std::string& send_device, const std::string& recv_device,
+               tensorflow::uint64 send_device_incarnation);
+
 // Return an 1-D INT32 tensor containing a single value 1.
 TFE_TensorHandle* TestAxisTensorHandle(TFE_Context* ctx);
 
@@ -126,9 +139,12 @@ tensorflow::ServerDef GetServerDef(const tensorflow::string& job_name,
 // Create a ServerDef with job name "localhost" and add `num_tasks` tasks in it.
 tensorflow::ServerDef GetServerDef(int num_tasks);
 
-// Create a multi-client ServerDef with the given `job_name` and add `num_tasks`
-// tasks in it.
+// Create a multi-client ServerDef with the given `job_name`, add `num_tasks`
+// tasks and `num_virtual_gpus` virtual GPUs in it. Enable fetching of remote
+// devices during startup based on `fetch_remote_devices`.
 tensorflow::ServerDef GetMultiClientServerDef(const std::string& job_name,
-                                              int num_tasks);
+                                              int num_tasks,
+                                              bool fetch_remote_devices = false,
+                                              int num_virtual_gpus = 0);
 
 #endif  // TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_

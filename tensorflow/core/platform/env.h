@@ -415,7 +415,7 @@ class Env {
   virtual uint64 NowSeconds() const { return EnvTime::NowSeconds(); }
 
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
-  virtual void SleepForMicroseconds(int64 micros) = 0;
+  virtual void SleepForMicroseconds(int64_t micros) = 0;
 
   /// Returns the process ID of the calling process.
   int32 GetProcessId();
@@ -447,7 +447,7 @@ class Env {
   // of microseconds.
   //
   // NOTE(mrry): This closure must not block.
-  virtual void SchedClosureAfter(int64 micros,
+  virtual void SchedClosureAfter(int64_t micros,
                                  std::function<void()> closure) = 0;
 
   // \brief Load a dynamic library.
@@ -520,7 +520,7 @@ class EnvWrapper : public Env {
   }
 
   uint64 NowMicros() const override { return target_->NowMicros(); }
-  void SleepForMicroseconds(int64 micros) override {
+  void SleepForMicroseconds(int64_t micros) override {
     target_->SleepForMicroseconds(micros);
   }
   Thread* StartThread(const ThreadOptions& thread_options,
@@ -535,7 +535,8 @@ class EnvWrapper : public Env {
   void SchedClosure(std::function<void()> closure) override {
     target_->SchedClosure(closure);
   }
-  void SchedClosureAfter(int64 micros, std::function<void()> closure) override {
+  void SchedClosureAfter(int64_t micros,
+                         std::function<void()> closure) override {
     target_->SchedClosureAfter(micros, closure);
   }
   Status LoadDynamicLibrary(const char* library_filename,

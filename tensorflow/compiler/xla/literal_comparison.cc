@@ -171,7 +171,7 @@ Status MakeErrorStatus(complex128 lhs, complex128 rhs,
 //      found between expected and actual.
 template <typename NativeT>
 Status Equal(LiteralSlice expected, LiteralSlice actual,
-             absl::Span<int64> multi_index, int64 dimension,
+             absl::Span<int64> multi_index, int64_t dimension,
              Literal* mismatched = nullptr) {
   if (dimension == expected.shape().dimensions_size()) {
     NativeT expected_value = expected.Get<NativeT>(multi_index);
@@ -187,7 +187,7 @@ Status Equal(LiteralSlice expected, LiteralSlice actual,
   }
 
   Status result;
-  for (int64 i = 0; i < expected.shape().dimensions(dimension); ++i) {
+  for (int64_t i = 0; i < expected.shape().dimensions(dimension); ++i) {
     multi_index[dimension] = i;
     if (mismatched != nullptr) {
       result.Update(Equal<NativeT>(expected, actual, multi_index, dimension + 1,
@@ -204,9 +204,9 @@ Status Equal(LiteralSlice expected, LiteralSlice actual,
 // elements, but the sum of elements of each tuple element.
 int64 RecursiveElementCount(const Shape& shape) {
   if (shape.IsTuple()) {
-    const int64 tuple_elements = ShapeUtil::TupleElementCount(shape);
-    int64 total = 0;
-    for (int64 i = 0; i < tuple_elements; ++i) {
+    const int64_t tuple_elements = ShapeUtil::TupleElementCount(shape);
+    int64_t total = 0;
+    for (int64_t i = 0; i < tuple_elements; ++i) {
       total += RecursiveElementCount(ShapeUtil::GetTupleElementShape(shape, i));
     }
     return total;
@@ -388,7 +388,7 @@ class NearComparator {
   // Compares the two given elements from the expected and actual literals at
   // the given literal_index and keeps track of various mismatch statistics.
   template <typename T>
-  void CompareValues(T expected, T actual, int64 linear_index) {
+  void CompareValues(T expected, T actual, int64_t linear_index) {
     double abs_error;
     double rel_error;
     if (CompareEqual<T>(expected, actual, {linear_index})) {
@@ -477,7 +477,8 @@ class NearComparator {
   }
 
   // For complex types, we compare real and imaginary parts individually.
-  void CompareValues(complex64 expected, complex64 actual, int64 linear_index) {
+  void CompareValues(complex64 expected, complex64 actual,
+                     int64_t linear_index) {
     const auto both_parts_mismatch = num_mismatches_ + 2;
     CompareValues<float>(expected.real(), actual.real(), linear_index);
     CompareValues<float>(expected.imag(), actual.imag(), linear_index);
@@ -491,7 +492,7 @@ class NearComparator {
   }
 
   void CompareValues(complex128 expected, complex128 actual,
-                     int64 linear_index) {
+                     int64_t linear_index) {
     const auto both_parts_mismatch = num_mismatches_ + 2;
     CompareValues<double>(expected.real(), actual.real(), linear_index);
     CompareValues<double>(expected.imag(), actual.imag(), linear_index);
@@ -511,8 +512,8 @@ class NearComparator {
                           expected_.shape().layout())) {
       absl::Span<const NativeT> expected_data = expected_.data<NativeT>();
       absl::Span<const NativeT> actual_data = actual_.data<NativeT>();
-      const int64 len = expected_data.size();
-      for (int64 i = 0; i < len; ++i) {
+      const int64_t len = expected_data.size();
+      for (int64_t i = 0; i < len; ++i) {
         CompareValues(expected_data[i], actual_data[i], i);
       }
       return;
@@ -524,14 +525,14 @@ class NearComparator {
   // Slow path for CompareLiterals when 'actual' and 'expected' literals have
   // different layouts. In this case, multidimensional indices are constructed
   // and indexed for each element.
-  void CompareLiteralsSlow(int64 dimension, std::vector<int64>* multi_index) {
+  void CompareLiteralsSlow(int64_t dimension, std::vector<int64>* multi_index) {
     if (dimension == multi_index->size()) {
       CompareValues(expected_.Get<NativeT>(*multi_index),
                     actual_.Get<NativeT>(*multi_index),
                     IndexUtil::MultidimensionalIndexToLinearIndex(
                         actual_.shape(), *multi_index));
     } else {
-      for (int64 i = 0; i < expected_.shape().dimensions(dimension); ++i) {
+      for (int64_t i = 0; i < expected_.shape().dimensions(dimension); ++i) {
         (*multi_index)[dimension] = i;
         CompareLiteralsSlow(dimension + 1, multi_index);
       }
@@ -542,7 +543,7 @@ class NearComparator {
   // mismatches. Called after calling Run().
   string ErrorMessage() {
     string out;
-    int64 element_count = ShapeUtil::ElementsIn(actual_.shape());
+    int64_t element_count = ShapeUtil::ElementsIn(actual_.shape());
 
     auto percent_string = [](float a, float b) {
       float pct = b == 0.0 ? 0.0 : 100.0 * a / b;
@@ -572,8 +573,8 @@ class NearComparator {
     StrAppend(&out, "Absolute magnitude breakdown of actual values:\n");
     CHECK_EQ(abs_value_buckets_.size() + 1, kAbsValueBucketBounds.size());
     for (int i = 0; i < abs_value_buckets_.size(); ++i) {
-      const int64 bucket_size = abs_value_buckets_[i].first;
-      const int64 bucket_mismatches = abs_value_buckets_[i].second;
+      const int64_t bucket_size = abs_value_buckets_[i].first;
+      const int64_t bucket_mismatches = abs_value_buckets_[i].second;
       string mismatch_str =
           bucket_mismatches > 0
               ? absl::StrFormat(", mismatches %d", bucket_mismatches)
@@ -584,7 +585,7 @@ class NearComparator {
                       mismatch_str);
     }
 
-    auto print_accum_buckets = [&](const string& header, int64 total,
+    auto print_accum_buckets = [&](const string& header, int64_t total,
                                    absl::Span<const int64> buckets) {
       StrAppend(&out, header, ":\n");
       StrAppendFormat(&out, "  <  %-6g : %7d (%s)\n", kErrorBucketBounds[0],
@@ -644,7 +645,7 @@ class NearComparator {
 
   // The number of mismatches to report in the output, sorted by relative error
   // magnitude.
-  static constexpr int64 kTopRelativeErrorCount = 5;
+  static constexpr int64_t kTopRelativeErrorCount = 5;
 
   // The set of mismatches with the largest relative error. The size of this set
   // is bounded by kTopRelativeErrorCount.
@@ -780,7 +781,8 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
 
   if (expected.shape().IsTuple()) {
     Status return_status;
-    for (int64 i = 0; i < ShapeUtil::TupleElementCount(expected.shape()); ++i) {
+    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(expected.shape());
+         ++i) {
       const auto expected_element = LiteralSlice(expected, {i});
       const auto actual_element = LiteralSlice(actual, {i});
       ShapeIndex element_index = shape_index;
@@ -803,7 +805,7 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
     if (!return_status.ok() && shape_index.empty()) {
       // Emit a top-level error message containing the top-level shape in case
       // of mismatch.
-      int64 total_elements = RecursiveElementCount(actual.shape());
+      int64_t total_elements = RecursiveElementCount(actual.shape());
       return_status =
           InvalidArgument("\nMismatches in shape %s (%d elements):\n%s",
                           ShapeUtil::HumanString(actual.shape()),

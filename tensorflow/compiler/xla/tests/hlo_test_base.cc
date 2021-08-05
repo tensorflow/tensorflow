@@ -116,7 +116,7 @@ std::unique_ptr<HloModule> HloTestBase::CreateNewUnverifiedModule(
 }
 
 std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
-    const string& name, int64 replica_count) {
+    const string& name, int64_t replica_count) {
   return absl::make_unique<VerifiedHloModule>(
       name, GetModuleConfigForTest(replica_count), verifier_layout_sensitive_,
       allow_mixed_precision_in_hlo_verifier_,
@@ -125,7 +125,7 @@ std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
-                                          int64 replica_count,
+                                          int64_t replica_count,
                                           int64_t num_partitions) {
   return ParseAndReturnVerifiedModule(
       hlo_text, GetModuleConfigForTest(replica_count, num_partitions));
@@ -204,7 +204,7 @@ Literal HloTestBase::ExecuteAndTransfer(std::unique_ptr<HloModule> module,
 
 StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-    int64 num_replicas, bool use_threads, bool run_hlo_passes) {
+    int64_t num_replicas, bool use_threads, bool run_hlo_passes) {
   HloRunner::ReplicatedExecuteOptions options;
   options.num_replicas = num_replicas;
   options.run_hlo_passes = run_hlo_passes;
@@ -217,7 +217,7 @@ StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
 
 StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-    int64 num_replicas, DeviceAssignment* device_assignment,
+    int64_t num_replicas, DeviceAssignment* device_assignment,
     bool run_hlo_passes, bool use_threads) {
   HloRunner::ReplicatedExecuteOptions options;
   options.num_replicas = num_replicas;
@@ -231,10 +231,10 @@ StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
 }
 
 StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
-    std::function<Executable*(int64)> executable_provider,
-    std::function<int64(int64)> argument_count_provider,
-    std::function<const Literal*(int64, int64)> argument_provider,
-    int64 num_replicas, bool run_hlo_passes) {
+    std::function<Executable*(int64_t)> executable_provider,
+    std::function<int64(int64_t)> argument_count_provider,
+    std::function<const Literal*(int64_t, int64_t)> argument_provider,
+    int64_t num_replicas, bool run_hlo_passes) {
   HloRunner::ReplicatedExecuteOptions options;
   options.num_replicas = num_replicas;
   options.run_hlo_passes = run_hlo_passes;
@@ -416,7 +416,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 
 ::testing::AssertionResult HloTestBase::RunReplicated(string_view hlo_string,
                                                       bool run_hlo_passes,
-                                                      int64 num_replicas,
+                                                      int64_t num_replicas,
                                                       string backend_config) {
   auto module_or_status =
       ParseAndReturnVerifiedModule(hlo_string, num_replicas);

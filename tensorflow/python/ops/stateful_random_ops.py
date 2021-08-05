@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import enum  # pylint: disable=g-bad-import-order
-
 import six
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -31,7 +29,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.stateless_random_ops import Algorithm
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -61,12 +61,6 @@ STATE_TYPE = SEED_TYPE
 ALGORITHM_TYPE = STATE_TYPE
 PHILOX_STATE_SIZE = 3
 THREEFRY_STATE_SIZE = 2
-
-
-@tf_export("random.Algorithm", "random.experimental.Algorithm")
-class Algorithm(enum.Enum):
-  PHILOX = 1
-  THREEFRY = 2
 
 
 RNG_ALG_PHILOX = Algorithm.PHILOX.value
@@ -163,34 +157,6 @@ def _make_state_from_seed(seed, alg):
   return _make_1d_state(_get_state_size(alg), seed)
 
 
-def _convert_alg_to_int(alg):
-  """Converts algorithm to an integer.
-
-  Args:
-    alg: can be one of these types: integer, Algorithm, Tensor, string. Allowed
-      strings are "philox" and "threefry".
-
-  Returns:
-    An integer, unless the input is a Tensor in which case a Tensor is returned.
-  """
-  if isinstance(alg, six.integer_types):
-    return alg
-  if isinstance(alg, Algorithm):
-    return alg.value
-  if isinstance(alg, ops.Tensor):
-    return alg
-  if isinstance(alg, str):
-    if alg == "philox":
-      return RNG_ALG_PHILOX
-    elif alg == "threefry":
-      return RNG_ALG_THREEFRY
-    else:
-      raise ValueError("Unknown algorithm name: %s" % alg)
-  else:
-    raise TypeError("Can't convert algorithm %s of type %s to int" %
-                    (alg, type(alg)))
-
-
 @tf_export("random.create_rng_state", "random.experimental.create_rng_state")
 def create_rng_state(seed, alg):
   """Creates a RNG state from an integer or a vector.
@@ -211,7 +177,7 @@ def create_rng_state(seed, alg):
   Returns:
     a 1-D numpy array whose size depends on the algorithm.
   """
-  alg = _convert_alg_to_int(alg)
+  alg = stateless_random_ops.convert_alg_to_int(alg)
   return _make_state_from_seed(seed, alg)
 
 
@@ -370,7 +336,7 @@ class Generator(tracking.AutoTrackable):
     if alg is None:
       # TODO(b/170668986): more sophisticated algorithm selection
       alg = DEFAULT_ALGORITHM
-    alg = _convert_alg_to_int(alg)
+    alg = stateless_random_ops.convert_alg_to_int(alg)
     state = create_rng_state(seed, alg)
     return cls(state=state, alg=alg)
 
@@ -390,7 +356,7 @@ class Generator(tracking.AutoTrackable):
     if alg is None:
       # TODO(b/170668986): more sophisticated algorithm selection
       alg = DEFAULT_ALGORITHM
-    alg = _convert_alg_to_int(alg)
+    alg = stateless_random_ops.convert_alg_to_int(alg)
     state = non_deterministic_ints(shape=[_get_state_size(alg)],
                                    dtype=SEED_TYPE)
     return cls(state=state, alg=alg)
@@ -414,7 +380,7 @@ class Generator(tracking.AutoTrackable):
     """
     counter = _convert_to_state_tensor(counter)
     key = _convert_to_state_tensor(key)
-    alg = _convert_alg_to_int(alg)
+    alg = stateless_random_ops.convert_alg_to_int(alg)
     counter.shape.assert_is_compatible_with([_get_state_size(alg) - 1])
     key.shape.assert_is_compatible_with([])
     key = array_ops.reshape(key, [1])
@@ -461,11 +427,10 @@ class Generator(tracking.AutoTrackable):
       assert alg is not None and state is not None
       if ds_context.has_strategy():
         strat_name = type(ds_context.get_strategy()).__name__
-        # TODO(b/174610856): Support CentralStorageStrategy and
-        #   ParameterServerStrategy.
-        if "CentralStorage" in strat_name or "ParameterServer" in strat_name:
+        # TODO(b/174610856): Support ParameterServerStrategy.
+        if "ParameterServer" in strat_name:
           raise ValueError("%s is not supported yet" % strat_name)
-      alg = _convert_alg_to_int(alg)
+      alg = stateless_random_ops.convert_alg_to_int(alg)
       if isinstance(state, variables.Variable):
         _check_state_shape(state.shape, alg)
         self._state_var = state
@@ -601,7 +566,12 @@ class Generator(tracking.AutoTrackable):
           # Code that operates on all replicas of a variable cannot be saved
           # without retracing.
           values_util.mark_as_unsaveable()
+        if (ds_context.in_cross_replica_context() or
+            "CentralStorage" in type(self._distribution_strategy).__name__):
           # In cross-replica context we need to use strategy.extended.update.
+          # In CentralStorageStrategy we also need to use
+          # strategy.extended.update (even for replica context),
+          # because variable updates here must be within merge_call.
           return ds_context.get_strategy().extended.update(
               self.state, update_fn)
     return update_fn(self.state)

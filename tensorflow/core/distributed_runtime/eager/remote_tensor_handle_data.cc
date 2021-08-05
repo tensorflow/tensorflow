@@ -84,7 +84,7 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
 }
 }  // namespace
 
-RemoteTensorHandleData::RemoteTensorHandleData(int64 op_id, int output_num,
+RemoteTensorHandleData::RemoteTensorHandleData(int64_t op_id, int output_num,
                                                uint64 context_view_id,
                                                bool is_ready)
     : is_ready_(is_ready),
@@ -97,7 +97,7 @@ RemoteTensorHandleData::RemoteTensorHandleData(int64 op_id, int output_num,
       << ", Output num: " << output_num;
 }
 
-RemoteTensorHandleData::RemoteTensorHandleData(int64 op_id, int output_num,
+RemoteTensorHandleData::RemoteTensorHandleData(int64_t op_id, int output_num,
                                                const string& remote_task,
                                                EagerContext* ctx)
     : is_ready_(false),

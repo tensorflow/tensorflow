@@ -64,7 +64,7 @@ class BFloat16ConversionFoldingVisitor : public DfsHloVisitorWithDefault {
   // Folds the BF16 -> F32 conversion operand to the HLO.
   //
   // Precondition: the operand is a BF16 -> F32 conversion.
-  Status FoldOperandConversion(HloInstruction* hlo, int64 operand_index);
+  Status FoldOperandConversion(HloInstruction* hlo, int64_t operand_index);
 
   HloComputation* computation_;
   const BFloat16Support* bfloat16_support_;
@@ -86,7 +86,7 @@ Status BFloat16ConversionFoldingVisitor::FoldOutputConversions(
 }
 
 Status BFloat16ConversionFoldingVisitor::FoldOperandConversion(
-    HloInstruction* hlo, int64 operand_index) {
+    HloInstruction* hlo, int64_t operand_index) {
   // The operand is a convert from BF16 to F32.
   auto operand = hlo->mutable_operand(operand_index);
   CHECK_EQ(operand->opcode(), HloOpcode::kConvert);
@@ -119,7 +119,7 @@ Status BFloat16ConversionFoldingVisitor::TryFoldBF16Conversions(
     HloInstruction* hlo) {
   std::vector<int64> bf16_to_f32_operands;
   bool has_other_f32_operands = false;
-  for (int64 i = 0; i < hlo->operands().size(); ++i) {
+  for (int64_t i = 0; i < hlo->operands().size(); ++i) {
     auto operand = hlo->operand(i);
     if (operand->shape().element_type() == F32) {
       if (operand->opcode() == HloOpcode::kConvert &&
@@ -152,7 +152,7 @@ Status BFloat16ConversionFoldingVisitor::TryFoldBF16Conversions(
     TF_RETURN_IF_ERROR(FoldOutputConversions(hlo));
   }
 
-  for (int64 i : bf16_to_f32_operands) {
+  for (int64_t i : bf16_to_f32_operands) {
     TF_RETURN_IF_ERROR(FoldOperandConversion(hlo, i));
   }
   return Status::OK();
@@ -222,7 +222,7 @@ Status BFloat16ConversionFoldingVisitor::HandleAllReduce(HloInstruction* crs) {
     per_tuple_element_gtes[user->tuple_index()].push_back(user);
   }
 
-  for (int64 i = 0; i < crs->operand_count(); ++i) {
+  for (int64_t i = 0; i < crs->operand_count(); ++i) {
     // Fold conversions only when all the get-tuple-elements' users are
     // conversions from F32 to BF16.
     auto all_gte_users_are_bf16_convert = [&per_tuple_element_gtes, i]() {

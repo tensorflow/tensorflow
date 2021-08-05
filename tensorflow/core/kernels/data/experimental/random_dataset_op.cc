@@ -42,7 +42,7 @@ namespace experimental {
 
 class RandomDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 seed, int64 seed2)
+  Dataset(OpKernelContext* ctx, int64_t seed, int64_t seed2)
       : DatasetBase(DatasetContext(ctx)), seeds_(seed, seed2) {}
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
@@ -166,10 +166,10 @@ RandomDatasetOp::RandomDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {}
 
 void RandomDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
-  int64 seed;
+  int64_t seed;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "seed", &seed));
 
-  int64 seed2;
+  int64_t seed2;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "seed2", &seed2));
 
   *output = new Dataset(ctx, seed, seed2);

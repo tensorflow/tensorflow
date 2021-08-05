@@ -67,16 +67,19 @@ def LegalizeTanhToApproximationPass : FunctionPass<"mhlo-legalize-trigonometric-
   let constructor = "createLegalizeTrigonometricToApproximationPass()";
 }
 
-
 def HloLegalizeToLinalgPass : FunctionPass<"hlo-legalize-to-linalg"> {
   let summary = "Legalize from HLO dialect to Linalg dialect.";
   let constructor = "createLegalizeHloToLinalgPass()";
 }
 
-
 def LegalizeToStandardPass : FunctionPass<"mhlo-legalize-to-std"> {
   let summary = "Legalize from MHLO dialect to standard dialect.";
   let constructor = "createLegalizeToStdPass()";
+}
+
+def MarkShapeCalculationPass : Pass<"mhlo-mark-shape-calc", "ModuleOp"> {
+  let summary = "Identify and mark with an attribute operations performing shape calculation";
+  let constructor = "createMarkShapeCalcOpPass()";
 }
 
 def LowerComplexPass : FunctionPass<"mhlo-test-lower-complex"> {
@@ -131,6 +134,23 @@ def BroadcastPropagationPass : FunctionPass<"mhlo-broadcast-propagation"> {
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";
   let constructor = "createTestUnfuseBatchNormPass()";
+}
+
+def ExpandHloTuplesPass : Pass<"expand-hlo-tuples", "ModuleOp"> {
+  let summary = "Expand HLO tuple for the entry function of the module.";
+  let constructor = "CreateExpandHloTuplesPass()";
+  let options = [
+    Option<"entry_function_name_", "entry-function", "std::string",
+           /*default=*/"", "the name of entry function of the module">,
+  ];
+
+  let dependentDialects = ["mhlo::MhloDialect"];
+}
+
+def FlattenTuplePass : FunctionPass<"mhlo-flatten-tuple"> {
+  let summary = "Flatten tuples in operands and results of operators that "
+    "support both tuple and variadic type.";
+  let constructor = "createFlattenTuplePass()";
 }
 
 /// Rank specialization passes.

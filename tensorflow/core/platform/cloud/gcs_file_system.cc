@@ -645,7 +645,7 @@ class GcsWritableFile : public WritableFile {
     const string append_object_path = GetGcsPathWithObject(append_object);
     VLOG(3) << "AppendObject: " << append_object_path << " to " << GetGcsPath();
 
-    int64 generation = 0;
+    int64_t generation = 0;
     TF_RETURN_IF_ERROR(
         generation_getter_(GetGcsPath(), bucket_, object_, &generation));
 
@@ -835,7 +835,7 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache) {
   bucket_location_cache_.reset(new ExpiringLRUCache<string>(
       kCacheNeverExpire, kBucketLocationCacheMaxEntries));
 
-  int64 resolve_frequency_secs;
+  int64_t resolve_frequency_secs;
   if (GetEnvVar(kResolveCacheSecs, strings::safe_strto64,
                 &resolve_frequency_secs)) {
     dns_cache_.reset(new GcsDnsCache(resolve_frequency_secs));
@@ -895,7 +895,7 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache) {
     timeouts_.write = timeout_value;
   }
 
-  int64 token_value;
+  int64_t token_value;
   if (GetEnvVar(kThrottleRate, strings::safe_strto64, &token_value)) {
     GcsThrottleConfig config;
     config.enabled = true;
@@ -1201,7 +1201,7 @@ Status GcsFileSystem::RequestUploadSessionStatus(const string& session_uri,
 
     std::vector<int64> range_parts;
     for (const std::string& range_str : range_strs) {
-      int64 tmp;
+      int64_t tmp;
       if (strings::safe_strto64(range_str, &tmp)) {
         range_parts.push_back(tmp);
       } else {

@@ -125,8 +125,8 @@ class LiteralBase {
   NativeT Get(absl::Span<const int64> multi_index) const;
 
   // Get the dynamic size on dim_index in the literal at the given shape_index.
-  int32 GetDynamicSize(int64 dim_index, const ShapeIndex& shape_index) const;
-  int32 GetDynamicSize(int64 dim_index) const;
+  int32 GetDynamicSize(int64_t dim_index, const ShapeIndex& shape_index) const;
+  int32 GetDynamicSize(int64_t dim_index) const;
 
   // Returns the element value at index (0, ..., 0), however many zeroes are
   // required for that index.
@@ -208,7 +208,7 @@ class LiteralBase {
   // If value doesn't fit in this literal's type, returns false.  Values of 1/0
   // are considered equal to true/false; other values are not considered equal
   // to true. Also if this literal is not array-shaped false is returned.
-  bool IsAll(int8 value) const;
+  bool IsAll(int8_t value) const;
 
   // Like IsAll(const Literal&, int8), except we check whether the literal is
   // equal to a particular floating-point number.
@@ -346,7 +346,7 @@ class LiteralBase {
   // literal replicated four times.
   // This literal must be an array.
   template <typename NativeT>
-  Literal Replicate(int64 times) const;
+  Literal Replicate(int64_t times) const;
 
   // Creates a new Literal object with the shape specified as parameter.
   // The content of the literal values is the default value of the primitive
@@ -385,8 +385,8 @@ class LiteralBase {
     template <typename NativeT>
     void Set(absl::Span<const int64> index, NativeT value);
 
-    int32 GetDynamicSize(int64 dim_index) const;
-    void SetDynamicSize(int64 dim_index, int32 size);
+    int32 GetDynamicSize(int64_t dim_index) const;
+    void SetDynamicSize(int64_t dim_index, int32_t size);
     // Gets/sets the buffer holding the array data.
     char* buffer() const { return buffer_; }
     void set_buffer(char* buffer) { buffer_ = buffer; }
@@ -413,7 +413,7 @@ class LiteralBase {
     int64 element_count() const { return ShapeUtil::ElementsIn(subshape()); }
 
     // Returns the child piece at 'index' of this piece.
-    Piece& child(int64 index) { return children_[index]; }
+    Piece& child(int64_t index) { return children_[index]; }
 
     // Adds a child piece to this piece's children.
     void emplace_back(Piece child_piece) {
@@ -506,7 +506,7 @@ class LiteralBase {
     Status ForEachHelper(const Fn& func, const Piece& piece,
                          ShapeIndex* index) const {
       TF_RETURN_IF_ERROR(func(*index, piece));
-      for (int64 i = 0; i < piece.children_.size(); ++i) {
+      for (int64_t i = 0; i < piece.children_.size(); ++i) {
         index->push_back(i);
         TF_RETURN_IF_ERROR(ForEachHelper(func, piece.children_[i], index));
         index->pop_back();
@@ -519,7 +519,7 @@ class LiteralBase {
       if (!func(*index, piece)) {
         return false;
       }
-      for (int64 i = 0; i < piece.children_.size(); ++i) {
+      for (int64_t i = 0; i < piece.children_.size(); ++i) {
         index->push_back(i);
         if (!ForEachHelperBool(func, piece.children_[i], index)) {
           return false;
@@ -532,7 +532,7 @@ class LiteralBase {
     Status ForEachMutableHelper(const Fn& func, Piece* piece,
                                 ShapeIndex* index) {
       TF_RETURN_IF_ERROR(func(*index, piece));
-      for (int64 i = 0; i < piece->children_.size(); ++i) {
+      for (int64_t i = 0; i < piece->children_.size(); ++i) {
         index->push_back(i);
         TF_RETURN_IF_ERROR(
             ForEachMutableHelper(func, &piece->children_[i], index));
@@ -606,9 +606,9 @@ class MutableLiteralBase : public LiteralBase {
   Shape* mutable_shape_do_not_use() { return shape_.get(); }
 
   // Set the dynamic size on dim_index in the literal at the given shape_index.
-  void SetDynamicSize(int64 dim_index, const ShapeIndex& shape_index,
-                      int32 size);
-  void SetDynamicSize(int64 dim_index, int32 size);
+  void SetDynamicSize(int64_t dim_index, const ShapeIndex& shape_index,
+                      int32_t size);
+  void SetDynamicSize(int64_t dim_index, int32_t size);
 
   // Returns a pointer to the underlying buffer holding the array at the given
   // shape index. CHECKs if the subshape of the literal at the given ShapeIndex
@@ -664,7 +664,7 @@ class MutableLiteralBase : public LiteralBase {
 
   // As Set(), but truncates `value` to the literal element type before storing.
   // This literal must be an array.
-  Status SetIntegralAsS64(absl::Span<const int64> multi_index, int64 value);
+  Status SetIntegralAsS64(absl::Span<const int64> multi_index, int64_t value);
 
   // As Set(), but truncates `value` to the literal element type before storing.
   // This literal must be an array.
@@ -997,7 +997,7 @@ void LiteralBase::EachCell(
   std::vector<int64> indices(shape().rank(), 0);
 
   Shape shape_dynamic = shape();
-  for (int64 i = 0; i < shape_dynamic.rank(); ++i) {
+  for (int64_t i = 0; i < shape_dynamic.rank(); ++i) {
     shape_dynamic.set_dimensions(i, GetDynamicSize(i));
   }
   do {
@@ -1015,7 +1015,7 @@ void MutableLiteralBase::MutableEachCell(
   std::vector<int64> indices(shape().rank(), 0);
 
   Shape shape_dynamic = shape();
-  for (int64 i = 0; i < shape_dynamic.rank(); ++i) {
+  for (int64_t i = 0; i < shape_dynamic.rank(); ++i) {
     shape_dynamic.set_dimensions(i, GetDynamicSize(i));
   }
   do {
@@ -1042,14 +1042,14 @@ void MutableLiteralBase::PopulateR2(
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
 
-  const int64 dim0_size = values.size();
-  const int64 dim1_size = values.begin()->size();
+  const int64_t dim0_size = values.size();
+  const int64_t dim1_size = values.begin()->size();
   CHECK_EQ(dim0_size, shape().dimensions(0));
   CHECK_EQ(dim1_size, shape().dimensions(1));
 
-  int64 dim0 = 0;
+  int64_t dim0 = 0;
   for (auto inner_list : values) {
-    int64 dim1 = 0;
+    int64_t dim1 = 0;
     for (auto value : inner_list) {
       Set({dim0, dim1}, value);
       ++dim1;
@@ -1092,7 +1092,7 @@ template <typename NativeT, typename FnType>
 Status MutableLiteralBase::PopulateInternal(const FnType& generator,
                                             bool parallel) {
   const Shape& this_shape = shape();
-  const int64 rank = this_shape.rank();
+  const int64_t rank = this_shape.rank();
   TF_RET_CHECK(LayoutUtil::IsDenseArray(this_shape));
   TF_RET_CHECK(this_shape.element_type() ==
                primitive_util::NativeToPrimitiveType<NativeT>());
@@ -1100,15 +1100,15 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
   if (rank > 0) {
     StrideConfig stride_config(this_shape, this_shape,
                                AsInt64Slice(this_shape.dimensions()));
-    int64 minor_dimension_size =
+    int64_t minor_dimension_size =
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
     auto init_function = [&](absl::Span<const int64> indexes) {
       DimensionVector minor_scan_indexes(rank, 0);
-      const int64 index =
+      const int64_t index =
           IndexUtil::MultidimensionalIndexToLinearIndex(shape(), indexes);
       std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
-      for (int64 i = 0; i < minor_dimension_size; ++i) {
+      for (int64_t i = 0; i < minor_dimension_size; ++i) {
         minor_scan_indexes[stride_config.minor_dimension] = i;
         literal_data.at(index + i) = generator(minor_scan_indexes);
       }
@@ -1153,14 +1153,14 @@ void MutableLiteralBase::PopulateWithValue(NativeT value) {
 }
 
 template <typename NativeT>
-Literal LiteralBase::Replicate(int64 times) const {
+Literal LiteralBase::Replicate(int64_t times) const {
   DimensionVector bounds = {times};
   bounds.reserve(shape().dimensions_size() + 1);
-  for (int64 bound : shape().dimensions()) {
+  for (int64_t bound : shape().dimensions()) {
     bounds.push_back(bound);
   }
   Literal literal(ShapeUtil::MakeShape(shape().element_type(), bounds));
-  int64 elements = ShapeUtil::ElementsIn(literal.shape());
+  int64_t elements = ShapeUtil::ElementsIn(literal.shape());
   if (elements == 0) {
     return literal;
   }

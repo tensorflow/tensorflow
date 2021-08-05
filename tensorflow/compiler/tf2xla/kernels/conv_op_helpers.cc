@@ -47,10 +47,10 @@ namespace {
 // If `shape` is [H, W, ..., M, N] returns [H, W, ..., 1, M*N].
 xla::Shape GroupedFilterShapeForDepthwiseConvolution(
     const xla::Shape& filter_shape) {
-  int64 input_feature_dim = filter_shape.dimensions_size() - 2;
-  int64 output_feature_dim = filter_shape.dimensions_size() - 1;
-  int64 depthwise_multiplier = filter_shape.dimensions(output_feature_dim);
-  int64 input_feature = filter_shape.dimensions(input_feature_dim);
+  int64_t input_feature_dim = filter_shape.dimensions_size() - 2;
+  int64_t output_feature_dim = filter_shape.dimensions_size() - 1;
+  int64_t depthwise_multiplier = filter_shape.dimensions(output_feature_dim);
+  int64_t input_feature = filter_shape.dimensions(input_feature_dim);
 
   // Create a [H, W, ..., 1, M*N] reshape of the filter.
   xla::Shape grouped_filter_shape = filter_shape;
@@ -62,7 +62,7 @@ xla::Shape GroupedFilterShapeForDepthwiseConvolution(
 
 // Returns the transposed filter for use in BackpropInput of group convolution.
 xla::XlaOp TransposeFilterForGroupConvolutionBackpropInput(
-    xla::XlaOp filter, const xla::Shape& filter_shape, int64 num_groups,
+    xla::XlaOp filter, const xla::Shape& filter_shape, int64_t num_groups,
     int num_spatial_dims) {
   // 1. Reshape from [H, W, ..., filter_in_depth, out_depth] to [H, W, ...,
   // filter_in_depth, G, out_depth / G]
@@ -209,9 +209,9 @@ StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
   int batch_dim = GetTensorBatchDimIndex(num_dims, attrs.data_format);
   int feature_dim = GetTensorFeatureDimIndex(num_dims, attrs.data_format);
 
-  int64 filter_in_depth = filter_shape.dimensions(attrs.num_spatial_dims),
-        out_depth = filter_shape.dimensions(attrs.num_spatial_dims + 1),
-        in_depth = input_shape.dimensions(feature_dim);
+  int64_t filter_in_depth = filter_shape.dimensions(attrs.num_spatial_dims),
+          out_depth = filter_shape.dimensions(attrs.num_spatial_dims + 1),
+          in_depth = input_shape.dimensions(feature_dim);
   // The 'C' dimension for input is in_depth.
   // It must be a multiple of the filter's in_depth.
   if (in_depth % filter_in_depth != 0) {
@@ -219,7 +219,7 @@ StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
         "Depth of input must be a multiple of depth of filter: ", in_depth,
         " vs ", filter_in_depth);
   }
-  int64 feature_group_count = in_depth / filter_in_depth;
+  int64_t feature_group_count = in_depth / filter_in_depth;
   if (out_depth % feature_group_count != 0) {
     return errors::InvalidArgument(
         "Depth of output must be a multiple of the number of groups: ",
@@ -244,7 +244,8 @@ StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
   dims.set_kernel_output_feature_dimension(attrs.num_spatial_dims + 1);
   xla::PaddingType padding_type = xla::PaddingType::PADDING_INVALID;
   for (int i = 0; i < attrs.num_spatial_dims; ++i) {
-    const int64 dim = GetTensorSpatialDimIndex(num_dims, attrs.data_format, i);
+    const int64_t dim =
+        GetTensorSpatialDimIndex(num_dims, attrs.data_format, i);
     if (input_shape.is_dynamic_dimension(dim)) {
       TF_RET_CHECK(attrs.padding == VALID || attrs.padding == SAME)
           << "Dynamic convolution only supports valid and same padding";
@@ -266,7 +267,7 @@ StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
                     attrs.explicit_paddings.at(dim * 2 + 1)};
     }
 
-    int64 unused_output_size;
+    int64_t unused_output_size;
     TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerboseV2(
         input_shape.dimensions(dim), filter_shape.dimensions(i),
         rhs_dilation[i], window_strides[i], attrs.padding, &unused_output_size,
@@ -304,10 +305,10 @@ StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
   TF_ASSIGN_OR_RETURN(xla::Shape out_backprop_shape,
                       builder->GetShape(out_backprop));
 
-  int64 in_depth = input_shape.dimensions(feature_dim),
-        filter_in_depth = filter_shape.dimensions(attrs.num_spatial_dims),
-        feature_group_count =
-            attrs.depthwise ? filter_in_depth : in_depth / filter_in_depth;
+  int64_t in_depth = input_shape.dimensions(feature_dim),
+          filter_in_depth = filter_shape.dimensions(attrs.num_spatial_dims),
+          feature_group_count =
+              attrs.depthwise ? filter_in_depth : in_depth / filter_in_depth;
 
   xla::Shape grouped_filter_shape =
       attrs.depthwise ? GroupedFilterShapeForDepthwiseConvolution(filter_shape)
@@ -341,7 +342,7 @@ StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
   std::vector<int64> ones(attrs.num_spatial_dims, 1);
   xla::PaddingType padding_type = xla::PaddingType::PADDING_INVALID;
   for (int i = 0; i < attrs.num_spatial_dims; ++i) {
-    int64 dim = GetTensorSpatialDimIndex(num_dims, attrs.data_format, i);
+    int64_t dim = GetTensorSpatialDimIndex(num_dims, attrs.data_format, i);
     if (out_backprop_shape.is_dynamic_dimension(dim)) {
       TF_RET_CHECK(attrs.padding == VALID || attrs.padding == SAME)
           << "Dynamic convolution only supports valid and same padding";
@@ -428,10 +429,10 @@ StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
   int num_dims = attrs.num_spatial_dims + 2;
   int n_dim = GetTensorBatchDimIndex(num_dims, attrs.data_format);
   int c_dim = GetTensorFeatureDimIndex(num_dims, attrs.data_format);
-  int64 in_depth = input_shape.dimensions(c_dim),
-        filter_in_depth = filter_shape.dimensions(attrs.num_spatial_dims),
-        batch_group_count =
-            attrs.depthwise ? filter_in_depth : in_depth / filter_in_depth;
+  int64_t in_depth = input_shape.dimensions(c_dim),
+          filter_in_depth = filter_shape.dimensions(attrs.num_spatial_dims),
+          batch_group_count =
+              attrs.depthwise ? filter_in_depth : in_depth / filter_in_depth;
 
   std::vector<std::pair<int64, int64>> padding(attrs.num_spatial_dims);
   std::vector<int64> rhs_dilation(attrs.num_spatial_dims);
@@ -456,8 +457,8 @@ StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
     dnums.add_output_spatial_dimensions(i);
   }
   xla::PaddingType padding_type = xla::PaddingType::PADDING_INVALID;
-  for (int64 i = 0; i < attrs.num_spatial_dims; ++i) {
-    int64 dim = GetTensorSpatialDimIndex(num_dims, attrs.data_format, i);
+  for (int64_t i = 0; i < attrs.num_spatial_dims; ++i) {
+    int64_t dim = GetTensorSpatialDimIndex(num_dims, attrs.data_format, i);
     if (activations_shape.is_dynamic_dimension(dim)) {
       TF_RET_CHECK(attrs.padding == VALID || attrs.padding == SAME)
           << "Dynamic convolution only supports valid and same padding";
@@ -478,7 +479,7 @@ StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
     // The padded_in_rows should be such that when we convolve this with the
     // expanded_out_rows as a filter, we should get filter_rows back.
 
-    const int64 padded_in_size =
+    const int64_t padded_in_size =
         dims.spatial_dims[i].expanded_output_size +
         (dims.spatial_dims[i].filter_size - 1) * attrs.dilations[dim];
 
@@ -496,7 +497,7 @@ StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
     // and input "C" is not used at all.
     //
     // We apply negative padding in this case.
-    const int64 pad_total = padded_in_size - dims.spatial_dims[i].input_size;
+    const int64_t pad_total = padded_in_size - dims.spatial_dims[i].input_size;
 
     // + For the EXPLICIT padding, we pad the top/left side with the explicit
     //   padding and pad the bottom/right side with the remaining space.
@@ -508,11 +509,10 @@ StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
     // In addition, if the padded input size is smaller than the input size,
     // we need to ignore some training elements of the input. We do this by
     // applying negative padding on the right/bottom.
-    const int64 pad_before = attrs.padding == Padding::EXPLICIT
-                                 ? attrs.explicit_paddings[2 * dim]
-                                 : attrs.padding == Padding::SAME
-                                       ? std::max<int64>(pad_total / 2, 0)
-                                       : 0;
+    const int64_t pad_before =
+        attrs.padding == Padding::EXPLICIT ? attrs.explicit_paddings[2 * dim]
+        : attrs.padding == Padding::SAME   ? std::max<int64>(pad_total / 2, 0)
+                                           : 0;
     padding[i] = {pad_before, pad_total - pad_before};
   }
 

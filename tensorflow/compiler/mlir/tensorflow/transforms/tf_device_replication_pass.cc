@@ -36,6 +36,13 @@ class TFDeviceReplicationPass
     registry.insert<TF::TensorFlowDialect>();
   }
 
+  StringRef getArgument() const final { return "tf-device-replication"; }
+
+  StringRef getDescription() const final {
+    return "Hoists and replicates the tf_device.replicate inner ops once for "
+           "each associated device.";
+  }
+
   void runOnOperation() override {
     ModuleOp module = getOperation();
     const Dialect *tf_dialect = getContext().getLoadedDialect("tf");
@@ -118,10 +125,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTFDeviceReplicationPass() {
   return std::make_unique<TFDeviceReplicationPass>();
 }
 
-static PassRegistration<TFDeviceReplicationPass> pass(
-    "tf-device-replication",
-    "Hoists and replicates the tf_device.replicate "
-    "inner ops once for each associated device.");
+static PassRegistration<TFDeviceReplicationPass> pass;
 
 }  // namespace TFDevice
 }  // namespace mlir

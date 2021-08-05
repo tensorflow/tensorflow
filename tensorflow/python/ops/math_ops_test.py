@@ -403,7 +403,7 @@ class ApproximateEqualTest(test_util.TensorFlowTestCase):
     for dtype in [np.float32, np.double]:
       x = np.array([[[[-1, 2.00009999], [-3, 4.01]]]], dtype=dtype)
       y = np.array([[[[-1.001, 2], [-3.00009, 4]]]], dtype=dtype)
-      z = np.array([[[[False, True], [True, False]]]], dtype=np.bool)
+      z = np.array([[[[False, True], [True, False]]]], dtype=np.bool_)
       with test_util.device(use_gpu=True):
         z_tf = self.evaluate(math_ops.approximate_equal(x, y, tolerance=0.0001))
         self.assertAllEqual(z, z_tf)
@@ -1077,6 +1077,67 @@ class ErfcinvTest(test_util.TensorFlowTestCase):
     values = np.random.uniform(0.1, 1.9, size=int(1e4)).astype(np.float32)
     approx_id = math_ops.erfc(math_ops.erfcinv(values))
     self.assertAllClose(values, self.evaluate(approx_id))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class ArgMaxMinTest(test_util.TensorFlowTestCase):
+
+  def _generateRandomTensor(self, dtype, shape):
+    if dtype.is_integer:
+      array = np.random.default_rng().integers(
+          low=dtype.min, high=dtype.max, size=shape, endpoint=True)
+      return constant_op.constant(array, dtype=dtype)
+    else:
+      array = np.random.default_rng().uniform(low=-1.0, high=1.0, size=shape)
+      return constant_op.constant(array, dtype=dtype)
+
+  def _getValidDtypes(self):
+    return (dtypes.bfloat16, dtypes.float16, dtypes.float32, dtypes.float64,
+            dtypes.int32, dtypes.int64)
+
+  def testArgMax(self):
+    shape = (24, 8)
+    for dtype in self._getValidDtypes():
+      tf_values = self._generateRandomTensor(dtype, shape)
+      np_values = self.evaluate(tf_values)
+      for axis in range(0, len(shape)):
+        np_max = np.argmax(np_values, axis=axis)
+        tf_max = math_ops.argmax(tf_values, axis=axis)
+        self.assertAllEqual(tf_max, np_max)
+
+  def testArgMaxReturnsFirstOccurence(self):
+    for dtype in self._getValidDtypes():
+      values = constant_op.constant(
+          [[10, 11, 15, 15, 10], [12, 12, 10, 10, 12]], dtype=dtype)
+      self.assertAllEqual(
+          math_ops.argmax(values, axis=1),
+          np.argmax(self.evaluate(values), axis=1))
+
+      # Long tensor to ensure works with multithreading/GPU
+      values = array_ops.zeros(shape=(193681,), dtype=dtype)
+      self.assertAllEqual(math_ops.argmax(values), 0)
+
+  def testArgMin(self):
+    shape = (24, 8)
+    for dtype in self._getValidDtypes():
+      tf_values = self._generateRandomTensor(dtype, shape)
+      np_values = self.evaluate(tf_values)
+      for axis in range(0, len(shape)):
+        np_min = np.argmin(np_values, axis=axis)
+        tf_min = math_ops.argmin(tf_values, axis=axis)
+        self.assertAllEqual(tf_min, np_min)
+
+  def testArgMinReturnsFirstOccurence(self):
+    for dtype in self._getValidDtypes():
+      values = constant_op.constant(
+          [[10, 11, 15, 15, 10], [12, 12, 10, 10, 12]], dtype=dtype)
+      self.assertAllEqual(
+          math_ops.argmin(values, axis=1),
+          np.argmin(self.evaluate(values), axis=1))
+
+      # Long tensor to ensure works with multithreading/GPU
+      values = array_ops.zeros(shape=(193681,), dtype=dtype)
+      self.assertAllEqual(math_ops.argmin(values), 0)
 
 
 if __name__ == "__main__":

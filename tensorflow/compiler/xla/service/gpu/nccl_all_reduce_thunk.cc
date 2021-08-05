@@ -57,18 +57,21 @@ Status RunAllReduce(const NcclAllReduceConfig& config,
     void* recv_buffer =
         buffer_allocations.GetDeviceAddress(buffer.destination_buffer).opaque();
 
-    TF_ASSIGN_OR_RETURN(ncclDataType_t datatype,
-                        ToNcclDataType(config.config.operand_element_type[i]));
+    PrimitiveType element_type = config.config.operand_element_type[i];
+    TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
+                        ToNcclDataTypeAndCountMultiplier(element_type));
+    ncclDataType_t dtype = dtype_and_multiplier.first;
+    int element_count = buffer.element_count * dtype_and_multiplier.second;
 
     VLOG(3) << absl::StreamFormat(
         "Calling ncclAllReduce(send_buffer=%p, recv_buffer=%p, count=%d, "
         "comm=%p, stream=%p)",
-        send_buffer, recv_buffer, buffer.element_count,
-        static_cast<const void*>(comm), cu_stream);
+        send_buffer, recv_buffer, element_count, static_cast<const void*>(comm),
+        cu_stream);
 
     XLA_CUDA_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
-                                           buffer.element_count, datatype,
-                                           reduce_op, comm, *cu_stream));
+                                           element_count, dtype, reduce_op,
+                                           comm, *cu_stream));
   }
   return XLA_CUDA_STATUS(ncclGroupEnd());
 #else   // XLA_ENABLE_XCCL
@@ -130,7 +133,44 @@ StatusOr<mlir::Operation*> FindReductionOp(mlir::Block& block) {
   return reduction_op;
 }
 
-absl::optional<ReductionKind> MatchAllReduceComputation(
+}  // namespace
+
+namespace impl {
+
+template <typename OpT>
+bool CanImplement(OpT op) {
+  return absl::c_all_of(op.operands(), IsValidOperand) &&
+         NcclAllReduceThunkBase::MatchAllReduceComputation(op.computation())
+             .has_value();
+}
+
+template <typename OpT>
+NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
+  absl::optional<ReductionKind> reduction_kind =
+      NcclAllReduceThunkBase::MatchAllReduceComputation(op.computation());
+  CHECK(reduction_kind.has_value());
+
+  NcclAllReduceConfig config;
+  config.config =
+      GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids());
+  config.reduction_kind = *reduction_kind;
+  return config;
+}
+
+template <typename OpT>
+bool IsDegenerate(OpT op, int64_t replica_count, int64_t partition_count) {
+  return GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids())
+      .IsDegenerate(replica_count, partition_count);
+}
+
+template <typename OpT>
+CollectiveOpGroupMode GetGroupMode(OpT op) {
+  return GetNcclAllReduceConfig(op).config.group_mode;
+}
+
+}  // namespace impl
+
+absl::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
     mlir::Region& computation) {
   mlir::Block& block = computation.front();
   StatusOr<mlir::Operation*> reduction_op = FindReductionOp(block);
@@ -150,8 +190,15 @@ absl::optional<ReductionKind> MatchAllReduceComputation(
       default:
         return absl::nullopt;
     }
+  } else if (primitive_util::IsComplexType(type)) {
+    // Only addition is supported for complex types.
+    if (*opcode == HloOpcode::kAdd) {
+      return ReductionKind::SUM;
+    } else {
+      return absl::nullopt;
+    }
   } else {
-    switch (opcode.ValueOrDie()) {
+    switch (*opcode) {
       case HloOpcode::kAdd:
         return ReductionKind::SUM;
       case HloOpcode::kMultiply:
@@ -165,42 +212,6 @@ absl::optional<ReductionKind> MatchAllReduceComputation(
     }
   }
 }
-
-}  // namespace
-
-namespace impl {
-
-template <typename OpT>
-bool CanImplement(OpT op) {
-  return absl::c_all_of(op.operands(), IsValidOperand) &&
-         MatchAllReduceComputation(op.computation()).has_value();
-}
-
-template <typename OpT>
-NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
-  absl::optional<ReductionKind> reduction_kind =
-      MatchAllReduceComputation(op.computation());
-  CHECK(reduction_kind.has_value());
-
-  NcclAllReduceConfig config;
-  config.config =
-      GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids());
-  config.reduction_kind = *reduction_kind;
-  return config;
-}
-
-template <typename OpT>
-bool IsDegenerate(OpT op, int64 replica_count, int64 partition_count) {
-  return GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids())
-      .IsDegenerate(replica_count, partition_count);
-}
-
-template <typename OpT>
-CollectiveOpGroupMode GetGroupMode(OpT op) {
-  return GetNcclAllReduceConfig(op).config.group_mode;
-}
-
-}  // namespace impl
 
 NcclAllReduceThunkBase::NcclAllReduceThunkBase(Thunk::Kind kind,
                                                ThunkInfo thunk_info,
@@ -223,8 +234,8 @@ bool NcclAllReduceThunk::CanImplement(mlir::lmhlo::AllReduceOp op) {
 }
 
 bool NcclAllReduceThunk::IsDegenerate(mlir::lmhlo::AllReduceOp op,
-                                      int64 replica_count,
-                                      int64 partition_count) {
+                                      int64_t replica_count,
+                                      int64_t partition_count) {
   return impl::IsDegenerate(op, replica_count, partition_count);
 }
 
@@ -256,8 +267,8 @@ bool NcclAllReduceStartThunk::CanImplement(
 }
 
 bool NcclAllReduceStartThunk::IsDegenerate(mlir::lmhlo_gpu::AllReduceStartOp op,
-                                           int64 replica_count,
-                                           int64 partition_count) {
+                                           int64_t replica_count,
+                                           int64_t partition_count) {
   return impl::IsDegenerate(op, replica_count, partition_count);
 }
 
@@ -314,34 +325,34 @@ Status NcclAllReduceDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   return Status::OK();
 }
 
-NcclAllReduceScatterThunk::NcclAllReduceScatterThunk(
-    ThunkInfo thunk_info, mlir::lmhlo::AllReduceScatterOp op,
+NcclReduceScatterThunk::NcclReduceScatterThunk(
+    ThunkInfo thunk_info, mlir::lmhlo::ReduceScatterOp op,
     std::vector<NcclAllReduceThunk::Buffer> buffers)
-    : NcclAllReduceThunkBase(Thunk::kNcclAllReduceScatter, thunk_info,
+    : NcclAllReduceThunkBase(Thunk::kNcclReduceScatter, thunk_info,
                              impl::GetNcclAllReduceConfig(op),
                              std::move(buffers)) {}
 
-/*static*/ bool NcclAllReduceScatterThunk::CanImplement(
-    mlir::lmhlo::AllReduceScatterOp op) {
+/*static*/ bool NcclReduceScatterThunk::CanImplement(
+    mlir::lmhlo::ReduceScatterOp op) {
   return impl::CanImplement(op);
 }
 
-/*static*/ bool NcclAllReduceScatterThunk::IsDegenerate(
-    mlir::lmhlo::AllReduceScatterOp op, int64 replica_count,
-    int64 partition_count) {
+/*static*/ bool NcclReduceScatterThunk::IsDegenerate(
+    mlir::lmhlo::ReduceScatterOp op, int64_t replica_count,
+    int64_t partition_count) {
   return impl::IsDegenerate(op, replica_count, partition_count);
 }
 
-/*static*/ CollectiveOpGroupMode NcclAllReduceScatterThunk::GetGroupMode(
-    mlir::lmhlo::AllReduceScatterOp op) {
+/*static*/ CollectiveOpGroupMode NcclReduceScatterThunk::GetGroupMode(
+    mlir::lmhlo::ReduceScatterOp op) {
   return impl::GetGroupMode(op);
 }
 
-Status NcclAllReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
-                                                    ncclComm_t comm) {
+Status NcclReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
+                                                 ncclComm_t comm) {
 #if XLA_ENABLE_XCCL
   int device_ordinal = params.stream->parent()->device_ordinal();
-  VLOG(3) << "Performing all-reduce-scatter from device ordinal: "
+  VLOG(3) << "Performing reduce-scatter from device ordinal: "
           << device_ordinal;
 
   ncclRedOp_t reduce_op = ToNcclReduction(config_.reduction_kind);
@@ -362,16 +373,19 @@ Status NcclAllReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
         params.buffer_allocations->GetDeviceAddress(buffer.destination_buffer)
             .opaque();
 
-    TF_ASSIGN_OR_RETURN(ncclDataType_t datatype,
-                        ToNcclDataType(config_.config.operand_element_type[i]));
+    PrimitiveType element_type = config_.config.operand_element_type[i];
+    TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
+                        ToNcclDataTypeAndCountMultiplier(element_type));
+    ncclDataType_t dtype = dtype_and_multiplier.first;
+    int element_count = buffer.element_count * dtype_and_multiplier.second;
 
     // buffer.element_count is the source buffers element count. For
     // ncclReduceScatter, we need the destination buffers element count.
-    TF_RET_CHECK(buffer.element_count % num_participants == 0)
+    TF_RET_CHECK(element_count % num_participants == 0)
         << "Source buffer was not an exact multiple of the number of "
            "participants.";
 
-    int64 recv_count = buffer.element_count / num_participants;
+    int64_t recv_count = element_count / num_participants;
     VLOG(3) << absl::StreamFormat(
         "Calling ncclReduceScatter(send_buffer=%p, recv_buffer=%p, "
         "recvcount=%d, "
@@ -379,13 +393,12 @@ Status NcclAllReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
         send_buffer, recv_buffer, recv_count, static_cast<const void*>(comm),
         cu_stream);
     XLA_CUDA_RETURN_IF_ERROR(ncclReduceScatter(send_buffer, recv_buffer,
-                                               recv_count, datatype, reduce_op,
+                                               recv_count, dtype, reduce_op,
                                                comm, *cu_stream));
   }
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
-  VLOG(3) << "Done performing all-reduce-scatter for ordinal: "
-          << device_ordinal;
+  VLOG(3) << "Done performing reduce-scatter for ordinal: " << device_ordinal;
   return Status::OK();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(

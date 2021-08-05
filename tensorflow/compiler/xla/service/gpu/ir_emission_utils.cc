@@ -47,7 +47,7 @@ namespace gpu {
 namespace {
 
 // Return whether the given shape is rank 2 excluding the batch dimensions.
-bool IsRank2(const Shape& shape, int64 batch_dimensions_size) {
+bool IsRank2(const Shape& shape, int64_t batch_dimensions_size) {
   return shape.rank() == batch_dimensions_size + 2;
 }
 
@@ -63,7 +63,7 @@ std::array<int64, 3> PartitionShapeByMiddleDimensions(
   enum Segment { kMajor = 0, kMiddle = 1, kMinor = 2 };
   Segment cur_segment = kMinor;
 
-  for (int64 cur_dim : LayoutUtil::MinorToMajor(shape)) {
+  for (int64_t cur_dim : LayoutUtil::MinorToMajor(shape)) {
     if (cur_segment != kMajor) {
       // Handle change of segments.
       bool cur_dim_in_middle = absl::c_linear_search(dims_middle, cur_dim);
@@ -151,20 +151,13 @@ std::array<int64, 3> GetReductionTiling(
     int smallest_input_dtype_bits,
     se::CudaComputeCapability cuda_compute_capability) {
   if (reduction_dimensions.is_row_reduction) {
-    int64 tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
-    if (reduction_dimensions.dimensions[1] == 1) {
-      CHECK_EQ(reduction_dimensions.dimensions[0], 1);
-      return {tile_z, 1, 16};
-    }
-    if (reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
-        0) {
-      return {tile_z, 1, 64};
-    }
-    int unroll_x = 8;
-    if (cuda_compute_capability.major >= 6 && smallest_input_dtype_bits == 16) {
-      unroll_x = 16;
-    } else if (cuda_compute_capability.major >= 6 &&
-               smallest_input_dtype_bits == 8) {
+    int64_t tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
+    int unroll_x = 16;
+    if ((cuda_compute_capability.IsAtLeast(
+             se::CudaComputeCapability::PASCAL_) &&
+         smallest_input_dtype_bits == 8) ||
+        reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
+            0) {
       unroll_x = 64;
     }
     return {tile_z, 1, unroll_x};
@@ -229,7 +222,7 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
 static ReductionDimensions GetReductionKindAndContiguousComponentsImpl(
     const Shape& input_shape, absl::Span<const int64> dims_to_reduce) {
   DimensionVector dims_to_keep;
-  for (int64 dim = 0; dim < input_shape.rank(); ++dim) {
+  for (int64_t dim = 0; dim < input_shape.rank(); ++dim) {
     if (!absl::c_linear_search(dims_to_reduce, dim)) {
       dims_to_keep.push_back(dim);
     }
@@ -277,7 +270,7 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
 
   const HloInstruction* input = reduce.operand(0);
   std::vector<int64> dims_to_keep;
-  for (int64 dim = 0; dim < input->shape().dimensions().size(); ++dim) {
+  for (int64_t dim = 0; dim < input->shape().dimensions().size(); ++dim) {
     if (!absl::c_linear_search(reduce.dimensions(), dim)) {
       dims_to_keep.push_back(dim);
     }
@@ -388,7 +381,7 @@ Shape FusionLayoutAnalysis::GetShape(mlir::Value value) const {
 
 bool IsReductionFromOrToContiguousDimensions(
     mlir::Operation* reduce, const FusionLayoutAnalysis& layout_analysis) {
-  if (!mlir::isa<mlir::lmhlo::ReduceOp, mlir::mhlo::ReduceOp>(reduce)) {
+  if (!mlir::isa<mlir::mhlo::ReduceOp>(reduce)) {
     return false;
   }
   std::vector<mlir::Value> results = GetHloOutputs(reduce);
@@ -444,7 +437,7 @@ bool IsReductionFromOrToContiguousDimensions(
   }
 
   std::vector<int64> dims_to_keep;
-  for (int64 dim = 0; dim < operand_shape.dimensions().size(); ++dim) {
+  for (int64_t dim = 0; dim < operand_shape.dimensions().size(); ++dim) {
     if (!absl::c_linear_search(dimensions, dim)) {
       dims_to_keep.push_back(dim);
     }
@@ -857,7 +850,7 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     constant_name->clear();
   }
 
-  int64 size = GetMemRefSizeInBytes(v.getType().cast<mlir::MemRefType>());
+  int64_t size = GetMemRefSizeInBytes(v.getType().cast<mlir::MemRefType>());
 
   // We match the following patterns here:
   //  base := ViewOp(arg) | get_global_memref (global_memref) | arg

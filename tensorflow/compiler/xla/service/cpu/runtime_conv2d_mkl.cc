@@ -153,12 +153,13 @@ void MKLConvImpl(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_MKLConvF32(
     const void* run_options_ptr, float* out, float* lhs, float* rhs,
-    int64 input_batch, int64 input_rows, int64 input_cols, int64 input_channels,
-    int64 kernel_rows, int64 kernel_cols, int64 kernel_channels,
-    int64 kernel_filters, int64 output_rows, int64 output_cols,
-    int64 row_stride, int64 col_stride, int64 padding_top, int64 padding_bottom,
-    int64 padding_left, int64 padding_right, int64 lhs_row_dilation,
-    int64 lhs_col_dilation, int64 rhs_row_dilation, int64 rhs_col_dilation) {
+    int64_t input_batch, int64_t input_rows, int64_t input_cols,
+    int64_t input_channels, int64_t kernel_rows, int64_t kernel_cols,
+    int64_t kernel_channels, int64_t kernel_filters, int64_t output_rows,
+    int64_t output_cols, int64_t row_stride, int64_t col_stride,
+    int64_t padding_top, int64_t padding_bottom, int64_t padding_left,
+    int64_t padding_right, int64_t lhs_row_dilation, int64_t lhs_col_dilation,
+    int64_t rhs_row_dilation, int64_t rhs_col_dilation) {
 #ifdef ENABLE_MKL
   // Since MKL_DNN cannot handle transposed convolution, this is handled by
   // Eigen.

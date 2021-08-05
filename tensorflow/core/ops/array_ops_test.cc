@@ -378,6 +378,16 @@ TEST(ArrayOpsTest, GatherV2_ShapeFn) {
   INFER_OK(op, "[1,2,3];[5,6];[]", "[d0_0,d1_0,d1_1,d0_2]");
   axis_dim_t = test::AsScalar(-1);
   INFER_OK(op, "[1,2,3];[5,6];[]", "[d0_0,d0_1,d1_0,d1_1]");
+
+  // Batch dimensions > 0
+  // Create another node since we can't overwrite the original batch dims.
+  ShapeInferenceTestOp batch_op("GatherV2");
+  AddNodeAttr("batch_dims", 1, &batch_op.node_def);
+  INFER_OK(batch_op, "[1,4800,8];[1,28400];[]", "[?,?,?]");
+
+  ShapeInferenceTestOp batch_op_2("GatherV2");
+  AddNodeAttr("batch_dims", 2, &batch_op_2.node_def);
+  INFER_OK(batch_op_2, "[1,2,3,4,5];[1,2,3];[]", "[?,?,?,?,?]");
 }
 
 TEST(ArrayOpsTest, GatherNd_ShapeFn) {
@@ -628,14 +638,14 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
   op.input_tensors[1] = &dim_t;
 
   // Expand at front of tensor.
-  for (int32 idx : {0, -4}) {
+  for (int32_t idx : {0, -4}) {
     dim_t = test::AsScalar<int32>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[1,d0_0,d0_1,d0_2]");
   }
 
   // Expand at middle of tensor.
-  for (int32 idx : {1, -3}) {
+  for (int32_t idx : {1, -3}) {
     dim_t = test::AsScalar<int32>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,1,d0_1,d0_2]");
@@ -645,7 +655,7 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,1,d0_1,d0_2]");
   }
-  for (int32 idx : {2, -2}) {
+  for (int32_t idx : {2, -2}) {
     dim_t = test::AsScalar<int32>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,1,d0_2]");
@@ -656,7 +666,7 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
     INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,1,d0_2]");
   }
 
-  for (int32 idx : {3, -1}) {
+  for (int32_t idx : {3, -1}) {
     // Expand at the end.
     dim_t = test::AsScalar<int32>(idx);
     INFER_OK(op, "?;?", "?");
@@ -667,7 +677,7 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,d0_2,1]");
   }
-  for (int32 idx : {4, -5}) {
+  for (int32_t idx : {4, -5}) {
     // Invalid idx.
     dim_t = test::AsScalar<int32>(idx);
     INFER_ERROR("not in the interval [-4, 3]", op, "[5,?,7];?");
@@ -1143,7 +1153,8 @@ TEST(ArrayOpsTest, Squeeze_ShapeFn) {
 
 TEST(ArrayOpsTest, ReverseSequence_ShapeFn) {
   ShapeInferenceTestOp op("ReverseSequence");
-  auto rebuild_node_def = [&op](const int32 seq_dim, const int32 batch_dim) {
+  auto rebuild_node_def = [&op](const int32_t seq_dim,
+                                const int32_t batch_dim) {
     TF_ASSERT_OK(NodeDefBuilder("test", "ReverseSequence")
                      .Input("input", 0, DT_FLOAT)
                      .Input("seq_lengths", 1, DT_INT64)

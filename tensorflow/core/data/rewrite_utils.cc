@@ -19,18 +19,34 @@ limitations under the License.
 #if !defined(IS_MOBILE_PLATFORM)
 
 #include <algorithm>
+#include <functional>
+#include <map>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/graph_view.h"
@@ -40,17 +56,20 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
-
-constexpr char kDelimiter[] = "@@";
 
 constexpr char kOptimizerName[] = "tf_data_meta_optimizer";
 constexpr char kOptimizers[] = "optimizers";
@@ -73,15 +92,15 @@ void AddFakeSinks(FunctionDef* function_def) {
 
 void RemoveFakeSinks(FunctionDef* function_def) {
   // Map from identity node names to their input tensor strings
-  std::map<string, string> identity_map;
+  std::map<std::string, std::string> identity_map;
   for (const auto& node : function_def->node_def()) {
     if (node.op() == "Identity" && node.input_size() == 1) {
       identity_map[node.name()] = node.input(0);
     }
   }
   for (const auto& output_arg : function_def->signature().output_arg()) {
-    const string& tensor = function_def->ret().at(output_arg.name());
-    const string& output_node = tensor.substr(0, tensor.find(':'));
+    const std::string& tensor = function_def->ret().at(output_arg.name());
+    const std::string& output_node = tensor.substr(0, tensor.find(':'));
     if (identity_map.find(output_node) != identity_map.end()) {
       (*function_def->mutable_ret())[output_arg.name()] =
           identity_map.at(output_node);
@@ -91,47 +110,10 @@ void RemoveFakeSinks(FunctionDef* function_def) {
 
 Status ApplyRewrites(OpKernelContext* ctx,
                      const std::function<RewriterConfig(void)> config_factory,
-                     GraphDef* graph_def, string* output_node) {
-  // Add an identity node as the fetch node, otherwise we might get 'placeholder
-  // is both fed and fetched' errors in some cases when using input list with
-  // placeholder dataset nodes.
-  NodeDef* node = graph_def->mutable_node()->Add();
-  tensorflow::grappler::graph_utils::SetUniqueGraphNodeName("Sink", graph_def,
-                                                            node);
-  node->set_op("Identity");
-  node->add_input(*output_node);
-  (*node->mutable_attr())["T"].set_type(DT_VARIANT);
-  *output_node = node->name();
-
-  // Add fake sink node to graph and functions to allow rewriting the actual
-  // sink nodes.
-  //
-  // TODO(b/118820916): When MetaOptimizer adds provisions for function retvals
-  // to be optimizable, we will no longer need this.
-  for (auto& function_def : *graph_def->mutable_library()->mutable_function()) {
-    AddFakeSinks(&function_def);
-  }
-
-  // Create metagraph.
-  MetaGraphDef meta_graph_def;
-  (*meta_graph_def.mutable_graph_def()) = *graph_def;
-
-  // Grappler determines fetch ops from collection 'train_op'.
-  CollectionDef collection_def;
-  auto node_list = collection_def.mutable_node_list();
-  node_list->add_value(*output_node);
-  (*meta_graph_def.mutable_collection_def())["train_op"] = collection_def;
-
-  // Create Grappler item.
-  tensorflow::grappler::ItemConfig item_config;
-  item_config.apply_optimizations = true;
+                     GraphDef* graph_def, string* dataset_node) {
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
-      tensorflow::grappler::GrapplerItemFromMetaGraphDef(
-          "graph", meta_graph_def, item_config);
-  // Grappler should not optimize function library of tf.data graphs. The
-  // tf.data meta optimizer takes care of optimizing tf.data functions.
-  grappler_item->optimization_options().optimize_function_library = false;
-  std::unordered_map<string, tensorflow::DeviceProperties> device_map;
+      GetGrapplerItem(graph_def, dataset_node, /*add_fake_sinks=*/true);
+  std::unordered_map<std::string, tensorflow::DeviceProperties> device_map;
   tensorflow::grappler::VirtualCluster cluster(device_map);
 
   // Run data optimizer using grappler's meta optimizer.
@@ -150,7 +132,6 @@ Status ApplyRewrites(OpKernelContext* ctx,
 
   return Status::OK();
 }
-
 }  // anonymous namespace
 
 RewriterConfig CreateRewriterConfig(
@@ -260,6 +241,65 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
   }
 
   return Status::OK();
+}
+
+std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(
+    GraphDef* graph_def, std::string* dataset_node, bool add_fake_sinks) {
+  // Add an identity node as the fetch node, otherwise we might get 'placeholder
+  // is both fed and fetched' errors in some cases when using input list with
+  // placeholder dataset nodes.
+  NodeDef* node = graph_def->mutable_node()->Add();
+  tensorflow::grappler::graph_utils::SetUniqueGraphNodeName("Sink", graph_def,
+                                                            node);
+  node->set_op("Identity");
+  node->add_input(*dataset_node);
+  (*node->mutable_attr())["T"].set_type(DT_VARIANT);
+  *dataset_node = node->name();
+
+  if (add_fake_sinks) {
+    // Add fake sink node to graph and functions to allow rewriting the actual
+    // sink nodes.
+    //
+    // TODO(b/118820916): When MetaOptimizer adds provisions for function
+    // retvals to be optimizable, we will no longer need this.
+    for (auto& function_def :
+         *graph_def->mutable_library()->mutable_function()) {
+      AddFakeSinks(&function_def);
+    }
+  }
+
+  // Create metagraph.
+  MetaGraphDef meta_graph_def;
+  (*meta_graph_def.mutable_graph_def()) = *graph_def;
+
+  // Grappler determines fetch ops from collection 'train_op'.
+  CollectionDef collection_def;
+  auto node_list = collection_def.mutable_node_list();
+  node_list->add_value(*dataset_node);
+  (*meta_graph_def.mutable_collection_def())["train_op"] = collection_def;
+
+  // Create Grappler item.
+  tensorflow::grappler::ItemConfig item_config;
+  item_config.apply_optimizations = true;
+  std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
+      tensorflow::grappler::GrapplerItemFromMetaGraphDef(
+          "graph", meta_graph_def, item_config);
+  // Grappler should not optimize function library of tf.data graphs. The
+  // tf.data meta optimizer takes care of optimizing tf.data functions.
+  grappler_item->optimization_options().optimize_function_library = false;
+  return grappler_item;
+}
+
+StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def) {
+  // Symbolic `_Retval` node indicates which node corresponds to the dataset.
+  for (const auto& node : graph_def.node()) {
+    if (node.op() == "_Retval") {
+      return node.input(0);
+    }
+  }
+  return errors::NotFound(
+      absl::Substitute("Dataset node for graph is not found:\n$0",
+                       graph_def.ShortDebugString()));
 }
 
 }  // namespace data

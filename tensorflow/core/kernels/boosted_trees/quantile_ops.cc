@@ -60,7 +60,7 @@ using QuantileSummaryEntry =
 
 // Generates quantiles on a finalized QuantileStream.
 std::vector<float> GenerateBoundaries(const QuantileStream& stream,
-                                      const int64 num_boundaries) {
+                                      const int64_t num_boundaries) {
   std::vector<float> boundaries = stream.GenerateBoundaries(num_boundaries);
 
   // Uniquify elements as we may get dupes.
@@ -71,7 +71,7 @@ std::vector<float> GenerateBoundaries(const QuantileStream& stream,
 
 // Generates quantiles on a finalized QuantileStream.
 std::vector<float> GenerateQuantiles(const QuantileStream& stream,
-                                     const int64 num_quantiles) {
+                                     const int64_t num_quantiles) {
   // Do not de-dup boundaries. Exactly num_quantiles+1 boundary values
   // will be returned.
   std::vector<float> boundaries = stream.GenerateQuantiles(num_quantiles - 1);
@@ -79,7 +79,7 @@ std::vector<float> GenerateQuantiles(const QuantileStream& stream,
   return boundaries;
 }
 
-std::vector<float> GetBuckets(const int32 feature,
+std::vector<float> GetBuckets(const int32_t feature,
                               const OpInputList& buckets_list) {
   const auto& buckets = buckets_list[feature].flat<float>();
   std::vector<float> buckets_vector(buckets.data(),
@@ -115,7 +115,10 @@ class BoostedTreesCreateQuantileStreamResourceOp : public OpKernel {
 
     const Tensor* num_streams_t;
     OP_REQUIRES_OK(context, context->input(kNumStreamsName, &num_streams_t));
-    int64 num_streams = num_streams_t->scalar<int64>()();
+    int64_t num_streams = num_streams_t->scalar<int64>()();
+    OP_REQUIRES(context, num_streams >= 0,
+                errors::InvalidArgument(
+                    "Num_streams input cannot be a negative integer"));
 
     auto result =
         new QuantileStreamResource(epsilon, max_elements_, num_streams);
@@ -155,8 +158,8 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
                    context->input(kExampleWeightsName, &example_weights_t));
     DCHECK(float_features_list.size() > 0) << "Got empty feature list";
     auto example_weights = example_weights_t->flat<float>();
-    const int64 weight_size = example_weights.size();
-    const int64 batch_size = float_features_list[0].flat<float>().size();
+    const int64_t weight_size = example_weights.size();
+    const int64_t batch_size = float_features_list[0].flat<float>().size();
     OP_REQUIRES(
         context, weight_size == 1 || weight_size == batch_size,
         errors::InvalidArgument(strings::Printf(
@@ -169,13 +172,13 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->output_list(kSummariesName, &summaries_output_list));
 
-    auto do_quantile_summary_gen = [&](const int64 begin, const int64 end) {
+    auto do_quantile_summary_gen = [&](const int64_t begin, const int64_t end) {
       // Iterating features.
-      for (int64 index = begin; index < end; index++) {
+      for (int64_t index = begin; index < end; index++) {
         const auto feature_values = float_features_list[index].flat<float>();
         QuantileStream stream(epsilon, batch_size + 1);
         // Run quantile summary generation.
-        for (int64 j = 0; j < batch_size; j++) {
+        for (int64_t j = 0; j < batch_size; j++) {
           stream.PushEntry(feature_values(j), (weight_size > 1)
                                                   ? example_weights(j)
                                                   : example_weights(0));
@@ -200,7 +203,7 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
       }
     };
     // TODO(tanzheny): comment on the magic number.
-    const int64 kCostPerUnit = 500 * batch_size;
+    const int64_t kCostPerUnit = 500 * batch_size;
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, num_features_,
@@ -236,15 +239,16 @@ class BoostedTreesFlushQuantileSummariesOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->output_list(kSummariesName, &summaries_output_list));
 
-    auto do_quantile_summary_gen = [&](const int64 begin, const int64 end) {
+    auto do_quantile_summary_gen = [&](const int64_t begin, const int64_t end) {
       // Iterating features.
-      for (int64 index = begin; index < end; index++) {
+      for (int64_t index = begin; index < end; index++) {
         QuantileStream* stream = stream_resource->stream(index);
         stream->Finalize();
 
         const auto summary_list = stream->GetFinalSummary().GetEntryList();
         Tensor* output_t;
-        const int64 summary_list_size = static_cast<int64>(summary_list.size());
+        const int64_t summary_list_size =
+            static_cast<int64>(summary_list.size());
         OP_REQUIRES_OK(context, summaries_output_list.allocate(
                                     index, TensorShape({summary_list_size, 4}),
                                     &output_t));
@@ -259,7 +263,7 @@ class BoostedTreesFlushQuantileSummariesOp : public OpKernel {
       }
     };
     // TODO(tanzheny): comment on the magic number.
-    const int64 kCostPerUnit = 500 * num_features_;
+    const int64_t kCostPerUnit = 500 * num_features_;
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, num_features_,
@@ -294,12 +298,12 @@ class BoostedTreesQuantileStreamResourceAddSummariesOp : public OpKernel {
     OpInputList summaries_list;
     OP_REQUIRES_OK(context,
                    context->input_list(kSummariesName, &summaries_list));
-    int32 num_streams = stream_resource->num_streams();
+    int32_t num_streams = stream_resource->num_streams();
     CHECK_EQ(static_cast<int>(num_streams), summaries_list.size());
 
-    auto do_quantile_add_summary = [&](const int64 begin, const int64 end) {
+    auto do_quantile_add_summary = [&](const int64_t begin, const int64_t end) {
       // Iterating all features.
-      for (int64 feature_idx = begin; feature_idx < end; ++feature_idx) {
+      for (int64_t feature_idx = begin; feature_idx < end; ++feature_idx) {
         QuantileStream* stream = stream_resource->stream(feature_idx);
         if (stream->IsFinalized()) {
           VLOG(1) << "QuantileStream has already been finalized for feature"
@@ -309,11 +313,11 @@ class BoostedTreesQuantileStreamResourceAddSummariesOp : public OpKernel {
         const Tensor& summaries = summaries_list[feature_idx];
         const auto summary_values = summaries.matrix<float>();
         const auto& tensor_shape = summaries.shape();
-        const int64 entries_size = tensor_shape.dim_size(0);
+        const int64_t entries_size = tensor_shape.dim_size(0);
         CHECK_EQ(tensor_shape.dim_size(1), 4);
         std::vector<QuantileSummaryEntry> summary_entries;
         summary_entries.reserve(entries_size);
-        for (int64 i = 0; i < entries_size; i++) {
+        for (int64_t i = 0; i < entries_size; i++) {
           float value = summary_values(i, 0);
           float weight = summary_values(i, 1);
           float min_rank = summary_values(i, 2);
@@ -326,7 +330,7 @@ class BoostedTreesQuantileStreamResourceAddSummariesOp : public OpKernel {
     };
 
     // TODO(tanzheny): comment on the magic number.
-    const int64 kCostPerUnit = 500 * num_streams;
+    const int64_t kCostPerUnit = 500 * num_streams;
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, num_streams,
@@ -358,9 +362,9 @@ class BoostedTreesQuantileStreamResourceDeserializeOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input_list(kBucketBoundariesName,
                                                 &bucket_boundaries_list));
 
-    auto do_quantile_deserialize = [&](const int64 begin, const int64 end) {
+    auto do_quantile_deserialize = [&](const int64_t begin, const int64_t end) {
       // Iterating over all streams.
-      for (int64 stream_idx = begin; stream_idx < end; stream_idx++) {
+      for (int64_t stream_idx = begin; stream_idx < end; stream_idx++) {
         const Tensor& bucket_boundaries_t = bucket_boundaries_list[stream_idx];
         const auto& bucket_boundaries = bucket_boundaries_t.vec<float>();
         std::vector<float> result;
@@ -373,7 +377,7 @@ class BoostedTreesQuantileStreamResourceDeserializeOp : public OpKernel {
     };
 
     // TODO(tanzheny): comment on the magic number.
-    const int64 kCostPerUnit = 500 * num_features_;
+    const int64_t kCostPerUnit = 500 * num_features_;
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, num_features_,
@@ -409,12 +413,12 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
 
     const Tensor* num_buckets_t;
     OP_REQUIRES_OK(context, context->input(kNumBucketsName, &num_buckets_t));
-    const int64 num_buckets = num_buckets_t->scalar<int64>()();
-    const int64 num_streams = stream_resource->num_streams();
+    const int64_t num_buckets = num_buckets_t->scalar<int64>()();
+    const int64_t num_streams = stream_resource->num_streams();
 
-    auto do_quantile_flush = [&](const int64 begin, const int64 end) {
+    auto do_quantile_flush = [&](const int64_t begin, const int64_t end) {
       // Iterating over all streams.
-      for (int64 stream_idx = begin; stream_idx < end; ++stream_idx) {
+      for (int64_t stream_idx = begin; stream_idx < end; ++stream_idx) {
         QuantileStream* stream = stream_resource->stream(stream_idx);
         stream->Finalize();
         stream_resource->set_boundaries(
@@ -425,7 +429,7 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
     };
 
     // TODO(tanzheny): comment on the magic number.
-    const int64 kCostPerUnit = 500 * num_streams;
+    const int64_t kCostPerUnit = 500 * num_streams;
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, num_streams,
@@ -462,15 +466,15 @@ class BoostedTreesQuantileStreamResourceGetBucketBoundariesOp
     // Remove the reference at the end of this scope.
     mutex_lock l(*stream_resource->mutex());
 
-    const int64 num_streams = stream_resource->num_streams();
+    const int64_t num_streams = stream_resource->num_streams();
     CHECK_EQ(num_features_, num_streams);
     OpOutputList bucket_boundaries_list;
     OP_REQUIRES_OK(context, context->output_list(kBucketBoundariesName,
                                                  &bucket_boundaries_list));
 
-    auto do_quantile_get_buckets = [&](const int64 begin, const int64 end) {
+    auto do_quantile_get_buckets = [&](const int64_t begin, const int64_t end) {
       // Iterating over all streams.
-      for (int64 stream_idx = begin; stream_idx < end; stream_idx++) {
+      for (int64_t stream_idx = begin; stream_idx < end; stream_idx++) {
         const auto& boundaries = stream_resource->boundaries(stream_idx);
         Tensor* bucket_boundaries_t = nullptr;
         OP_REQUIRES_OK(context,
@@ -484,7 +488,7 @@ class BoostedTreesQuantileStreamResourceGetBucketBoundariesOp
     };
 
     // TODO(tanzheny): comment on the magic number.
-    const int64 kCostPerUnit = 500 * num_streams;
+    const int64_t kCostPerUnit = 500 * num_streams;
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, num_streams,
@@ -526,11 +530,12 @@ class BoostedTreesBucketizeOp : public OpKernel {
     OpOutputList buckets_list;
     OP_REQUIRES_OK(context, context->output_list(kBucketsName, &buckets_list));
 
-    auto do_quantile_get_quantiles = [&](const int64 begin, const int64 end) {
+    auto do_quantile_get_quantiles = [&](const int64_t begin,
+                                         const int64_t end) {
       // Iterating over all resources
-      for (int64 feature_idx = begin; feature_idx < end; feature_idx++) {
+      for (int64_t feature_idx = begin; feature_idx < end; feature_idx++) {
         const Tensor& values_tensor = float_features_list[feature_idx];
-        const int64 num_values = values_tensor.dim_size(0);
+        const int64_t num_values = values_tensor.dim_size(0);
 
         Tensor* output_t = nullptr;
         OP_REQUIRES_OK(context,
@@ -543,7 +548,7 @@ class BoostedTreesBucketizeOp : public OpKernel {
         auto flat_values = values_tensor.flat<float>();
         const auto& iter_begin = bucket_boundaries_vector.begin();
         const auto& iter_end = bucket_boundaries_vector.end();
-        for (int64 instance = 0; instance < num_values; instance++) {
+        for (int64_t instance = 0; instance < num_values; instance++) {
           if (iter_begin == iter_end) {
             output(instance) = 0;
             continue;
@@ -553,7 +558,7 @@ class BoostedTreesBucketizeOp : public OpKernel {
           if (bucket_iter == iter_end) {
             --bucket_iter;
           }
-          const int32 bucket = static_cast<int32>(bucket_iter - iter_begin);
+          const int32_t bucket = static_cast<int32>(bucket_iter - iter_begin);
           // Bucket id.
           output(instance) = bucket;
         }
@@ -561,7 +566,7 @@ class BoostedTreesBucketizeOp : public OpKernel {
     };
 
     // TODO(tanzheny): comment on the magic number.
-    const int64 kCostPerUnit = 500 * num_features_;
+    const int64_t kCostPerUnit = 500 * num_features_;
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, num_features_,

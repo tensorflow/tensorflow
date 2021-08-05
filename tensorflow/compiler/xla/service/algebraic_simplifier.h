@@ -118,7 +118,7 @@ class AlgebraicSimplifierOptions {
   }
 
   // Sets the size of a gather operand that can be unrolled into many selects.
-  void set_very_small_gather_size(int64 size) {
+  void set_very_small_gather_size(int64_t size) {
     very_small_gather_size_ = size;
   }
 

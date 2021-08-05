@@ -185,10 +185,10 @@ TEST(PARALLEL_DEVICE, TestDifferentShapes) {
   std::array<TFE_TensorHandle*, 2> components{size_two.get(), size_three.get()};
   TensorHandlePtr combined_value = CreatePerDeviceValues(
       context.get(), components, device_name, status.get());
-  // We can create the handle, but fetching the shape is an error at the moment.
   ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
-  TFE_TensorHandleNumDims(combined_value.get(), status.get());
-  ASSERT_TRUE(TF_GetCode(status.get()) == TF_UNIMPLEMENTED);
+  int num_axes = TFE_TensorHandleNumDims(combined_value.get(), status.get());
+  ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
+  EXPECT_EQ(num_axes, 1);
 }
 
 TEST(PARALLEL_DEVICE, TestNestedParallelDevices) {

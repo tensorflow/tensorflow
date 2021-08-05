@@ -38,14 +38,14 @@ class TpuCompilationCacheRpcLookup : public TpuCompilationCacheLookup {
   using StubType = tpu::grpc::TpuCompilationCacheService::Stub;
 
   TpuCompilationCacheRpcLookup(const string& server_address,
-                               int64 max_cache_size);
+                               int64_t max_cache_size);
   ~TpuCompilationCacheRpcLookup() override = default;
 
   Status Lookup(const string& proto_key,
                 std::unique_ptr<tpu::CompilationCacheEntryRef>* entry,
                 tpu::CompilationCacheFetchTarget fetch_target) override;
 
-  Status Lookup(int64 uid, int proto_index,
+  Status Lookup(int64_t uid, int proto_index,
                 std::unique_ptr<tpu::CompilationCacheEntryRef>* entry,
                 tpu::CompilationCacheFetchTarget fetch_target) override;
 

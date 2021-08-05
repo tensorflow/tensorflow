@@ -1,6 +1,6 @@
 path: "tensorflow.data.experimental.OptimizationOptions"
 tf_class {
-  is_instance: "<class \'tensorflow.python.data.experimental.ops.optimization_options.OptimizationOptions\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.options.OptimizationOptions\'>"
   is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
   is_instance: "<type \'object\'>"
   member {

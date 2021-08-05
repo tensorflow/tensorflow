@@ -43,14 +43,14 @@ Status CheckValidPadding(Padding padding_type,
           "explicit_paddings attribute must contain ", 2 * num_dims,
           " values, but got: ", explicit_paddings.size());
     }
-    for (int64 padding_value : explicit_paddings) {
+    for (int64_t padding_value : explicit_paddings) {
       if (padding_value < 0) {
         return errors::InvalidArgument(
             "All elements of explicit_paddings must be nonnegative");
       }
     }
-    const int32 batch_index = GetTensorBatchDimIndex(num_dims, data_format);
-    const int32 depth_index = GetTensorFeatureDimIndex(num_dims, data_format);
+    const int32_t batch_index = GetTensorBatchDimIndex(num_dims, data_format);
+    const int32_t depth_index = GetTensorFeatureDimIndex(num_dims, data_format);
     if (explicit_paddings[2 * batch_index] != 0 ||
         explicit_paddings[2 * batch_index + 1] != 0 ||
         explicit_paddings[2 * depth_index] != 0 ||

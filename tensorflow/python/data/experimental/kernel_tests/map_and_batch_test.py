@@ -39,6 +39,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -398,6 +400,20 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
             self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testCheckpointLargeBatches(self):
+    # Batches of size 512M
+    dataset = dataset_ops.Dataset.from_tensors(
+        array_ops.ones((64, 1024, 1024), dtype=dtypes.float32)).repeat()
+    dataset = dataset.map(lambda x: x+1, num_parallel_calls=5)
+    dataset = dataset.batch(2)
+    iterator = iter(dataset)
+    next(iterator)  # request an element to fill the buffer
+    ckpt = trackable_utils.Checkpoint(iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, self.get_temp_dir(), max_to_keep=1)
+    manager.save()
 
 
 class MapAndBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,

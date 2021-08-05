@@ -98,6 +98,7 @@ class SaveV2 : public OpKernel {
     const Tensor& shape_and_slices = context->input(2);
     ValidateInputs(true /* is save op */, context, prefix, tensor_names,
                    shape_and_slices);
+    if (!context->status().ok()) return;
 
     const int kFixedInputs = 3;  // Prefix, tensor names, shape_and_slices.
     const int num_tensors = static_cast<int>(tensor_names.NumElements());
@@ -177,6 +178,7 @@ class RestoreV2 : public OpKernel {
                                         " expected dtypes."));
     ValidateInputs(false /* not save op */, context, prefix, tensor_names,
                    shape_and_slices);
+    if (!context->status().ok()) return;
 
     const string& prefix_string = prefix.scalar<tstring>()();
 

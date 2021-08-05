@@ -83,7 +83,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
   CpuAotCompilationResult(
       ObjectFileData object_file_data,
       std::vector<cpu_function_runtime::BufferInfo> buffer_infos,
-      int64 result_buffer_index,
+      int64_t result_buffer_index,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
   ~CpuAotCompilationResult();
 

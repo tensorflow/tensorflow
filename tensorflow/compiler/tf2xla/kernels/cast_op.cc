@@ -75,7 +75,7 @@ class CastOp : public XlaOpKernel {
 
         // Bitcast to same-width integer, mask off the LSBs, bitcast back to the
         // source datatype.
-        int64 mask = ~((1L << mantissa_difference) - 1);
+        int64_t mask = ~((1L << mantissa_difference) - 1);
         xla::PrimitiveType same_width_int =
             xla::primitive_util::UnsignedIntegralTypeForBitWidth(src_bitwidth);
         OP_REQUIRES(ctx, same_width_int != xla::PRIMITIVE_TYPE_INVALID,
@@ -112,6 +112,7 @@ class BitcastOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* b = ctx->builder();
     xla::XlaOp input = ctx->Input(0);
     xla::XlaOp output;
 
@@ -135,7 +136,6 @@ class BitcastOp : public XlaOpKernel {
         xla::primitive_util::UnsignedIntegralTypeForBitWidth(output_bit_width);
 
     OP_REQUIRES(ctx,
-
                 output_bit_width % input_bit_width == 0 ||
                     input_bit_width % output_bit_width == 0,
                 errors::InvalidArgument(
@@ -157,23 +157,20 @@ class BitcastOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx, status_or_input.status());
       input = xla::BitcastConvertType(status_or_input.ConsumeValueOrDie(),
                                       input_logical_type);
-      auto xla_input_shape_status = ctx->builder()->GetShape(input);
+      auto xla_input_shape_status = b->GetShape(input);
       OP_REQUIRES_OK(ctx, xla_input_shape_status.status());
       auto xla_input_shape = xla_input_shape_status.ConsumeValueOrDie();
 
-      auto iota = xla::Iota(ctx->builder(), xla_input_shape,
-                            xla_input_shape.dimensions_size() - 1);
+      auto iota =
+          xla::Iota(b, xla_input_shape, xla_input_shape.dimensions_size() - 1);
       xla::XlaOp iota_m =
           xla::Mul(xla::ScalarLike(input, output_bit_width), iota);
       input = xla::And(xla::ShiftRightLogical(input, iota_m),
                        xla::ScalarLike(input, output_bit_width_mask));
       input = xla::ConvertElementType(input, output_logical_type);
     } else if (input_bit_width < output_bit_width) {
-      // Casting to a larger bit width results in removing the innermost
-      // dimension.
+      // Casting to a larger bit width results in removing the innermost dim.
       auto input_shape = ctx->InputShape(0);
-      xla::Shape input_xla_shape =
-          TensorShapeToXLAShape(dst_type_, input_shape);
       OP_REQUIRES(
           ctx,
           input_shape.dim_size(input_shape.dims() - 1) ==
@@ -181,18 +178,26 @@ class BitcastOp : public XlaOpKernel {
           errors::InvalidArgument(
               "Inner dimension of operand should be removed after cast."));
 
-      auto zero = XlaHelpers::Zero(ctx->builder(), dst_dtype_);
-      input = xla::ConvertElementType(input, dst_type_);
+      // Bitcast `input` to an unsigned integer type of the same width as
+      // dst_type_.
+      xla::PrimitiveType src_uint_ty =
+          xla::primitive_util::UnsignedIntegralTypeForBitWidth(
+              xla::primitive_util::BitWidth(src_type_));
+      xla::PrimitiveType dst_uint_ty =
+          xla::primitive_util::UnsignedIntegralTypeForBitWidth(
+              xla::primitive_util::BitWidth(dst_type_));
+      input = xla::BitcastConvertType(input, src_uint_ty);
+      input = xla::ConvertElementType(input, dst_uint_ty);
 
       // Shift bits and OR them together to reduce the inner dimension.
       xla::XlaOp iota_m =
-          xla::Mul(xla::ScalarLike(input, input_bit_width),
-                   xla::Iota(ctx->builder(), input_xla_shape,
-                             input_xla_shape.dimensions_size() - 1));
+          xla::Mul(xla::ConstantR0WithType(b, dst_uint_ty, input_bit_width),
+                   xla::Iota(b, TensorShapeToXLAShape(dst_uint_ty, input_shape),
+                             input_shape.dims() - 1));
       input = xla::ShiftLeft(input, iota_m);
-      input = xla::Reduce(input, zero,
-                          CreateScalarOrComputation(dst_type_, ctx->builder()),
-                          {input_xla_shape.dimensions_size() - 1});
+      input = xla::Reduce(input, xla::Zero(b, dst_uint_ty),
+                          CreateScalarOrComputation(dst_uint_ty, b),
+                          {input_shape.dims() - 1});
     }
 
     output = xla::BitcastConvertType(input, dst_type_);

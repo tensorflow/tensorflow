@@ -59,7 +59,7 @@ class ReaderBase : public ReaderInterface {
 
   // Produce up to num_records next key/value pairs from the current
   // work item, in the same manner of ReadLocked.
-  virtual Status ReadUpToLocked(int64 num_records, std::vector<tstring>* keys,
+  virtual Status ReadUpToLocked(int64_t num_records, std::vector<tstring>* keys,
                                 std::vector<tstring>* values, int64* num_read,
                                 bool* at_end);
 
@@ -115,7 +115,7 @@ class ReaderBase : public ReaderInterface {
 
   // Produces up to num_records.
   // In this implementation all the records come from the same work unit.
-  int64 ReadUpTo(const int64 num_records, QueueInterface* queue,
+  int64 ReadUpTo(const int64_t num_records, QueueInterface* queue,
                  std::vector<tstring>* keys, std::vector<tstring>* value,
                  OpKernelContext* context) override;
 

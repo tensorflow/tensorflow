@@ -29,6 +29,9 @@ class Operation;
 template <typename T>
 class OperationPass;
 class Pass;
+namespace lmhlo {
+class FusionOp;
+}
 
 namespace mhlo {
 
@@ -58,6 +61,9 @@ std::unique_ptr<FunctionPass> createLegalizeToMemrefPass();
 
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
+
+// Place shape calculating subgraph on cpu.
+std::unique_ptr<OperationPass<ModuleOp>> createMarkShapeCalcOpPass();
 
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
@@ -89,6 +95,11 @@ std::unique_ptr<FunctionPass> createLowerComplexPass();
 std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();
 std::unique_ptr<FunctionPass> createLegalizeEinsumToDotGeneralPass();
 std::unique_ptr<FunctionPass> createLegalizeGatherToTorchIndexSelectPass();
+std::unique_ptr<FunctionPass> createFlattenTuplePass();
+
+// Creates a pass for expanding mhlo.tuple ops.
+std::unique_ptr<OperationPass<ModuleOp>> CreateExpandHloTuplesPass(
+    const std::string& entry_function_name = "main");
 
 }  // namespace mhlo
 
@@ -127,6 +138,13 @@ std::unique_ptr<OperationPass<FuncOp>> createLhloFusionPass(
 
 // inline lmhlo.Fusion
 std::unique_ptr<OperationPass<FuncOp>> createLhloFusionInlinerPass();
+
+// Lowers the roots of lmhlo.fusion to parallel loops
+std::unique_ptr<OperationPass<FuncOp>>
+createLhloLegalizeRootsToParallelLoopsPass();
+
+// Input inline fusion pass for fusion codegen
+std::unique_ptr<OperationPass<lmhlo::FusionOp>> createInputInlineFusionPass();
 
 }  // namespace lmhlo
 

@@ -20,6 +20,7 @@ import tempfile
 import time
 from unittest import mock
 
+from absl.testing import parameterized
 import numpy as np
 import tensorflow as tf
 
@@ -196,12 +197,13 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
 
     root.f = func
     to_save = root.f.get_concrete_function()
-    return (to_save, calibration_gen)
+    return (root, to_save, calibration_gen)
 
   def test_conversion_from_frozen_graph_v2(self):
-    func, calibration_gen = self._getIntegerQuantizeModel()
+    model, func, calibration_gen = self._getIntegerQuantizeModel()
 
-    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func],
+                                                                         model)
     mock_metrics = mock.create_autospec(
         metrics.TFLiteConverterMetrics, instance=True)
     quantized_converter._tflite_metrics = mock_metrics
@@ -360,7 +362,8 @@ def mock_ngrams(data, width, axis=-1, string_separator=' ', name=None):
   return func(data)
 
 
-class ConverterErrorMetricTest(test_util.TensorFlowTestCase):
+class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
+                               parameterized.TestCase):
   """Testing conversion error metric."""
 
   def setUp(self):
@@ -397,7 +400,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase):
       self.assertIsNone(tflite_model)
     except ConverterError as converter_error:
       # pylint: disable=g-assert-in-except
-      self.assertEqual(len(converter_error.errors), 1)
+      self.assertLen(converter_error.errors, 1)
       location = converter_error.errors[0].location
       self.assertEqual(location.type, expected_type)
 
@@ -515,7 +518,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase):
       return tf.add(a, b, name='add')
 
     converter = tf.lite.TFLiteConverter.from_concrete_functions(
-        [model.get_concrete_function()])
+        [model.get_concrete_function()], model)
     self.convert_and_check_location_info(
         converter,
         converter_error_data_pb2.ConverterErrorData.CALLSITELOC,
@@ -549,7 +552,12 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase):
               'tensorflow/lite/python/metrics_nonportable_test.py',
           ])
 
-  def test_location_from_keras_model(self):
+  @parameterized.named_parameters(
+      ('_WithoutLoweringToSavedModel', False, None),
+      ('_WithLoweringToSavedModel', True,
+       'tensorflow/lite/python/metrics_nonportable_test.py'))
+  def test_location_from_keras_model(self, lower_to_saved_model,
+                                     expected_source):
     input_tensor1 = tf.keras.layers.Input(
         shape=[None, None, 2, 3, 3], dtype=tf.complex64)
     input_tensor2 = tf.keras.layers.Input(
@@ -563,13 +571,12 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase):
         metrics=['accuracy'])
 
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter.experimental_lower_to_saved_model = lower_to_saved_model
     # The location does not contain callsite to the current file.
     self.convert_and_check_location_info(
         converter,
         converter_error_data_pb2.ConverterErrorData.CALLSITELOC,
-        expected_sources=[
-            'keras/engine/functional.py',
-        ])
+        expected_sources=[expected_source] if expected_source else None)
 
 
 if __name__ == '__main__':

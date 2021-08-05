@@ -121,6 +121,8 @@ void AddSupportedFunctionalOps(MLIRContext* context,
   supported_ops->insert(
       OperationName(TF::XlaReduceWindowOp::getOperationName(), context));
   supported_ops->insert(
+      OperationName(TF::XlaRngBitGeneratorOp::getOperationName(), context));
+  supported_ops->insert(
       OperationName(TF::XlaScatterOp::getOperationName(), context));
   supported_ops->insert(
       OperationName(TF::XlaSelectAndScatterOp::getOperationName(), context));
@@ -128,6 +130,8 @@ void AddSupportedFunctionalOps(MLIRContext* context,
       OperationName(TF::SymbolicGradientOp::getOperationName(), context));
   supported_ops->insert(
       OperationName(TF::XlaVariadicReduceOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::XlaVariadicReduceV2Op::getOperationName(), context));
   supported_ops->insert(
       OperationName(TF::XlaVariadicSortOp::getOperationName(), context));
   supported_ops->insert(

@@ -30,24 +30,24 @@ using XStatValue = absl::variant<int64, uint64, absl::string_view>;
 
 XPlane* GetOrCreateHostXPlane(XSpace* space);
 
-XPlane* GetOrCreateGpuXPlane(XSpace* space, int32 device_ordinal);
+XPlane* GetOrCreateGpuXPlane(XSpace* space, int32_t device_ordinal);
 
 void CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
+    absl::string_view event_name, int64_t offset_ps, int64_t duration_ps,
     std::initializer_list<std::pair<StatType, XStatValue>> stats = {});
 
 void CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    HostEventType event_type, int64 offset_ps, int64 duration_ps,
+    HostEventType event_type, int64_t offset_ps, int64_t duration_ps,
     std::initializer_list<std::pair<StatType, XStatValue>> stats = {});
 
 void CreateTfFunctionCallEvent(XPlaneBuilder* plane_builder,
                                XLineBuilder* line_builder,
-                               absl::string_view function_name, int64 offset_ps,
-                               int64 duration_ps,
+                               absl::string_view function_name,
+                               int64_t offset_ps, int64_t duration_ps,
                                absl::string_view execution_mode,
-                               int64 tracing_count = -1);
+                               int64_t tracing_count = -1);
 }  // namespace profiler
 }  // namespace tensorflow
 

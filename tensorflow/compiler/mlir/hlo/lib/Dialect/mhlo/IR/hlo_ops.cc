@@ -197,11 +197,11 @@ Value MaybeCastTo(OpBuilder& b, Location loc, Value value, Type type) {
 }  // namespace
 
 //===----------------------------------------------------------------------===//
-// AllReduceScatterOp
+// ReduceScatterOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(AllReduceScatterOp op) {
-  return mlir::hlo::VerifyAllReduceScatter(
+static LogicalResult Verify(ReduceScatterOp op) {
+  return mlir::hlo::VerifyReduceScatter(
       op,
       /*operand_types=*/{op.operand().getType()},
       /*result_types=*/{op.getType()},
@@ -647,19 +647,7 @@ static Value castToIndexTensor(OpBuilder& builder, Location loc,
       builder.getContext(),
       shape_op.getType().cast<ShapedType>().getDimSize(0));
   if (shape_op.getType() == result_ty) return shape_op;  // Nothing to do.
-  // index_cast is not defined on tensors, so emit a tensor.generate instead.
-  return builder.create<tensor::GenerateOp>(
-      loc, result_ty,
-      result_ty.hasStaticShape()
-          ? ValueRange{}
-          : ValueRange{builder.create<tensor::DimOp>(loc, shape_op, 0)},
-      [&](OpBuilder& b, Location loc, ValueRange args) {
-        Value dim = args.front();
-        Value extent = b.create<tensor::ExtractOp>(loc, shape_op, dim);
-        Value casted =
-            b.create<IndexCastOp>(loc, extent, result_ty.getElementType());
-        b.create<tensor::YieldOp>(loc, casted);
-      });
+  return builder.create<IndexCastOp>(loc, shape_op, result_ty);
 }
 
 LogicalResult DynamicIotaOp::reifyReturnTypeShapes(
@@ -696,6 +684,26 @@ static LogicalResult Verify(DynamicUpdateSliceOp op) {
     }
   }
   return success();
+}
+
+OpFoldResult DynamicUpdateSliceOp::fold(ArrayRef<Attribute> operands) {
+  auto operand_shape = this->operand().getType().cast<RankedTensorType>();
+  auto update_shape = this->update().getType().cast<RankedTensorType>();
+
+  if (operand_shape != update_shape || !operand_shape.hasStaticShape()) {
+    return {};
+  }
+
+  // Ensure that indices are 0 constants. The 0 check mostly ensures
+  // correctness. For non-constants, the pattern does not fold to avoid hiding
+  // the behavior of incorrect user input.
+  for (Value index : this->start_indices()) {
+    DenseIntElementsAttr de_attr;
+    if (!matchPattern(index, m_Constant(&de_attr))) return {};
+    int start_val = de_attr.getSplatValue<IntegerAttr>().getInt();
+    if (start_val != 0) return {};
+  }
+  return this->update();
 }
 
 //===----------------------------------------------------------------------===//
@@ -768,6 +776,11 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   }
 
   return {};
+}
+
+void ConvertOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                            MLIRContext* context) {
+  results.insert<EliminateIdentityConvert>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2461,7 +2474,7 @@ LogicalResult ReduceOp::reifyReturnTypeShapes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult RngNormalOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   return rngInferReturnTypeComponents(context, location, operands, attributes,
@@ -2473,7 +2486,7 @@ LogicalResult RngNormalOp::inferReturnTypeComponents(
 //===----------------------------------------------------------------------===//
 
 LogicalResult RngUniformOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   return rngInferReturnTypeComponents(context, location, operands, attributes,
@@ -2555,11 +2568,28 @@ LogicalResult SelectOp::inferReturnTypes(
 }
 
 LogicalResult SelectOp::inferReturnTypeComponents(
-    mlir::MLIRContext*, llvm::Optional<mlir::Location>, mlir::ValueRange,
-    mlir::DictionaryAttr, mlir::RegionRange,
-    llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
-  // TODO(b/168772852)
-  return failure();
+    mlir::MLIRContext* ctx, llvm::Optional<mlir::Location> loc,
+    ValueShapeRange operands, mlir::DictionaryAttr attributes,
+    mlir::RegionRange regions,
+    llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&
+        inferredShapedTypeComponents) {
+  llvm::SmallVector<Type, 4> inferredReturnTypes;
+  const LogicalResult infer_types_status = inferReturnTypes(
+      ctx, loc, operands, attributes, regions, inferredReturnTypes);
+  if (infer_types_status.failed()) return infer_types_status;
+
+  if (inferredReturnTypes.size() != 1) return failure();
+
+  auto result_tensor_type =
+      inferredReturnTypes[0].dyn_cast_or_null<TensorType>();
+  if (!result_tensor_type) return failure();
+
+  mlir::Type element_type =
+      operands[1].getType().cast<TensorType>().getElementType();
+  inferredShapedTypeComponents.push_back(
+      {result_tensor_type.getShape(), element_type});
+
+  return success();
 }
 
 LogicalResult SelectOp::reifyReturnTypeShapes(
@@ -2645,11 +2675,11 @@ static LogicalResult Verify(PadOp op) {
   }
 
   for (int i = 0, e = input_shape.size(); i < e; i++) {
-    int padding_low_val = padding_low.getValue<IntegerAttr>(i).getInt();
-    int padding_high_val = padding_high.getValue<IntegerAttr>(i).getInt();
-    int padding_interior_val =
+    int64_t padding_low_val = padding_low.getValue<IntegerAttr>(i).getInt();
+    int64_t padding_high_val = padding_high.getValue<IntegerAttr>(i).getInt();
+    int64_t padding_interior_val =
         padding_interior.getValue<IntegerAttr>(i).getInt();
-    int expected_output =
+    int64_t expected_output =
         input_shape[i] + padding_low_val + padding_high_val +
         std::max<int64_t>(input_shape[i] - 1, 0LL) * padding_interior_val;
     if (expected_output != output_shape[i]) {
@@ -2878,8 +2908,8 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
                                             MLIRContext* context) {
-  results.insert<IdentityBroadcastReshape, IdentityBroadcastInDimReshape>(
-      context);
+  results.insert<IdentityBroadcastReshape, IdentityBroadcastInDimReshape,
+                 EliminateRedundantReshape, EliminateIdentityReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3846,11 +3876,13 @@ void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
 }
 
 LogicalResult CompareOp::inferReturnTypeComponents(
-    mlir::MLIRContext*, llvm::Optional<mlir::Location>, mlir::ValueRange,
-    mlir::DictionaryAttr, mlir::RegionRange,
-    llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
-  // TODO(b/168772852)
-  return failure();
+    mlir::MLIRContext* ctx, llvm::Optional<mlir::Location>,
+    ValueShapeRange operands, mlir::DictionaryAttr, mlir::RegionRange,
+    llvm::SmallVectorImpl<mlir::ShapedTypeComponents>& inferredReturnTypes) {
+  OpBuilder builder(ctx);
+  auto arg_ty = operands.front().getType().cast<TensorType>();
+  inferredReturnTypes.push_back({arg_ty.getShape(), builder.getI1Type()});
+  return success();
 }
 
 LogicalResult CompareOp::reifyReturnTypeShapes(

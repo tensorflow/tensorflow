@@ -34,7 +34,10 @@ using shape_inference::ShapeHandle;
 // number of chips on each host. Validates that all hosts have the same number
 // of chips, and that the chips are consistent with the topology set by
 // flags. Has a single output which is a proto describing the requested system
-// configuration, which is sent to all hosts.
+// configuration, which is sent to all hosts. Note that for multi-client setups
+// the input to _ConfigureDistributedTPU refers only to hosts controlled by the
+// local process/client; the topology set by flags determines the total number
+// of hosts across all clients, and this is reflected in the return value.
 //
 // 3 Run _InitializeHostForDistributedTPU on the TPU_SYSTEM of each host, taking
 // as input the output from ConfigureDistributedTPU. Has a single Tensor output

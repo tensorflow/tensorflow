@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 
 PropagatorState::PropagatorState(const ImmutableExecutorState& immutable_state,
-                                 int64 step_id, bool vlog)
+                                 int64_t step_id, bool vlog)
     : immutable_state_(immutable_state),
       step_id_(step_id),
       vlog_(vlog || VLOG_IS_ON(1)) {
@@ -678,7 +678,7 @@ PropagatorState::FrameState::IncrementIteration(TaggedNodeSeq* ready) {
 
 bool PropagatorState::FrameState::CleanupIterations(IterationState* iter_state,
                                                     TaggedNodeSeq* ready) {
-  int64 curr_iter = iter_state->iter_num;
+  int64_t curr_iter = iter_state->iter_num;
   while (curr_iter <= iteration_count && IsIterationDone(iter_state)) {
     delete iter_state;
     SetIteration(curr_iter, nullptr);
@@ -706,7 +706,7 @@ void PropagatorState::FrameState::InitializeFrameInfo(
   nodes = finfo.nodes.get();
 }
 
-void PropagatorState::FrameState::SetIteration(int64 iter,
+void PropagatorState::FrameState::SetIteration(int64_t iter,
                                                IterationState* state)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
   size_t index = iter % (max_parallel_iterations + 1);

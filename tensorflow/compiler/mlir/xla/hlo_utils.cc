@@ -63,7 +63,7 @@ StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
   }
   int64_t accumulated_stride = 1;
   llvm::SmallVector<int64_t, 4> strides(shape.rank(), 1);
-  for (int64 dim : LayoutUtil::MinorToMajor(shape)) {
+  for (int64_t dim : LayoutUtil::MinorToMajor(shape)) {
     strides[dim] = accumulated_stride;
     accumulated_stride *= shape.dimensions(dim);
   }

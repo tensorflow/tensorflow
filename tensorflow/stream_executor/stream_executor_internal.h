@@ -195,7 +195,7 @@ class StreamExecutorInterface {
 
   // Releases any state associated with the kernel.
   virtual void UnloadKernel(const KernelBase *kernel) {}
-  virtual DeviceMemoryBase Allocate(uint64 size, int64 memory_space) = 0;
+  virtual DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) = 0;
   DeviceMemoryBase Allocate(uint64 size) {
     return Allocate(size, /*memory_space=*/0);
   }

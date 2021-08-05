@@ -45,8 +45,8 @@ class ZlibOutputBuffer : public WritableFile {
   // output_buffer_bytes should be greater than 1.
   ZlibOutputBuffer(
       WritableFile* file,
-      int32 input_buffer_bytes,   // size of z_stream.next_in buffer
-      int32 output_buffer_bytes,  // size of z_stream.next_out buffer
+      int32_t input_buffer_bytes,   // size of z_stream.next_in buffer
+      int32_t output_buffer_bytes,  // size of z_stream.next_out buffer
       const ZlibCompressionOptions& zlib_options);
 
   ~ZlibOutputBuffer();

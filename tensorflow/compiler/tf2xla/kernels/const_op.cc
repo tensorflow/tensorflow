@@ -34,7 +34,7 @@ template <typename DstT,
           typename std::enable_if<std::is_same<DstT, Eigen::half>::value ||
                                   std::is_same<DstT, bfloat16>::value>::type* =
               nullptr>
-DstT CastTo(int32 src) {
+DstT CastTo(int32_t src) {
   return absl::bit_cast<DstT>(static_cast<uint16>(src));
 }
 

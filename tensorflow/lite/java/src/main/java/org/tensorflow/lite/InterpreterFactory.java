@@ -24,7 +24,7 @@ public class InterpreterFactory {
   public InterpreterFactory() {}
 
   /**
-   * Constructs an {@code InterpreterApi} instance, using the specified model and options. The model
+   * Constructs an {@link InterpreterApi} instance, using the specified model and options. The model
    * will be loaded from a file.
    *
    * @param modelFile A file containing a pre-trained TF Lite model.
@@ -33,22 +33,22 @@ public class InterpreterFactory {
    *     model.
    */
   public InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options) {
-    return new Interpreter(modelFile, new Interpreter.Options(options));
+    return new InterpreterImpl(modelFile, new InterpreterImpl.Options(options));
   }
 
   /**
-   * Constructs an {@code InterpreterApi} instance, using the specified model and options. The model
+   * Constructs an {@link InterpreterApi} instance, using the specified model and options. The model
    * will be read from a {@code ByteBuffer}.
    *
    * @param byteBuffer A pre-trained TF Lite model, in binary serialized form. The ByteBuffer should
-   *     not be modified after the construction of an {@code InterpreterApi} instance. The {@code
-   *     ByteBuffer} can be either a {@link MappedByteBuffer} that memory-maps a model file, or a
-   *     direct {@link ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   *     not be modified after the construction of an {@link InterpreterApi} instance. The {@code
+   *     ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
+   *     direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
    * @param options a set of options for customizing interpreter behavior.
-   * @throws IllegalArgumentException if {@code byteBuffer} is not a {@link MappedByteBuffer} nor a
-   *     direct {@link ByteBuffer} of nativeOrder.
+   * @throws IllegalArgumentException if {@code byteBuffer} is not a {@code MappedByteBuffer} nor a
+   *     direct {@code ByteBuffer} of nativeOrder.
    */
   public InterpreterApi create(@NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
-    return new Interpreter(byteBuffer, new Interpreter.Options(options));
+    return new InterpreterImpl(byteBuffer, new InterpreterImpl.Options(options));
   }
 }

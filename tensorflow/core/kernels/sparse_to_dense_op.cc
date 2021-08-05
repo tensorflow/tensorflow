@@ -58,8 +58,8 @@ Status CheckSparseToDenseShapes(const Tensor& indices,
         "got shape ",
         indices.shape().DebugString());
   }
-  const int64 num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
-  const int64 num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
+  const int64_t num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
+  const int64_t num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
 
   // output_shape
   if (!TensorShapeUtils::IsVector(output_shape.shape())) {
@@ -74,7 +74,7 @@ Status CheckSparseToDenseShapes(const Tensor& indices,
   }
 
   // sparse_values
-  const int64 num_values = sparse_values.NumElements();
+  const int64_t num_values = sparse_values.NumElements();
   if (sparse_values.dims() != 0 &&
       (sparse_values.dims() != 1 || num_values != num_elems)) {
     return errors::InvalidArgument("sparse_values has incorrect shape ",
@@ -108,8 +108,8 @@ class SparseToDense : public OpKernel {
     OP_REQUIRES_OK(c, CheckSparseToDenseShapes(indices, output_shape,
                                                sparse_values, default_value));
 
-    const int64 num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
-    const int64 num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
+    const int64_t num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
+    const int64_t num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
 
     auto output_shape_vec = output_shape.flat<Index>();
     TensorShape output_tensor_shape;

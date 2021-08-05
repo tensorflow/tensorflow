@@ -44,7 +44,7 @@ namespace xla {
 StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(int device_ordinal,
                                                          uint64 size,
                                                          bool retry_on_failure,
-                                                         int64 memory_space) {
+                                                         int64_t memory_space) {
   VLOG(2) << "Allocate(" << device_ordinal << ", " << size << ")";
   {
     tensorflow::mutex_lock lock(count_mutex_);

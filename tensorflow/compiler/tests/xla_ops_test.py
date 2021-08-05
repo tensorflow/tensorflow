@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import googletest
 
 
@@ -316,99 +317,25 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
               [[7, 7, 1, 7], [7, 7, 7, 7], [7, 7, 4, 7], [7, 7, 7, 7]],
               dtype=dtype))
 
-  def testPadShapeInference(self):
-    a = array_ops.placeholder(np.float32, shape=(2, 3))
+  @parameterized.parameters(stateless_random_ops.Algorithm.THREEFRY,
+                            stateless_random_ops.Algorithm.PHILOX,
+                            stateless_random_ops.Algorithm.AUTO_SELECT)
+  @test_util.disable_mlir_bridge('Not supported yet')
+  def testRngBitGeneratorIsDeterministic(self, algorithm):
+    dtype = np.uint32
+    key = np.array([1, 2], dtype=np.uint64)
+    shape = (10, 12)
 
-    c = xla.pad(
-        a,
-        padding_value=7,
-        padding_low=[2, 1],
-        padding_high=[1, 2],
-        padding_interior=[1, 4])
+    def rng_fun_is_deterministic(k):
+      res1 = xla.rng_bit_generator(algorithm, k, shape, dtype=dtype)
+      res2 = xla.rng_bit_generator(algorithm, k, shape, dtype=dtype)
+      return (res1[0] - res2[0], res1[1] - res2[1])
 
-    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 14]))
-
-    c = xla.pad(
-        a,
-        padding_value=7,
-        padding_low=[2, -2],
-        padding_high=[1, -2],
-        padding_interior=[1, 2])
-
-    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 3]))
-
-    c = xla.pad(
-        array_ops.placeholder(np.float32, shape=(None, 2)),
-        padding_value=7,
-        padding_low=[0, 1],
-        padding_high=[0, 2],
-        padding_interior=[0, 4])
-    self.assertEqual(c.shape.as_list(), [None, 9])
-
-    # 0-sized input dimension and interior padding
-    c = xla.pad(
-        array_ops.placeholder(np.float32, shape=(2, 0)),
-        padding_value=7,
-        padding_low=[2, 1],
-        padding_high=[1, 1],
-        padding_interior=[1, 2])
-
-    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 2]))
-
-    with self.assertRaisesRegex(
-        ValueError, 'padding_value input must be scalar, found rank 1 '):
-      xla.pad(
-          a,
-          padding_value=[0, 1],
-          padding_low=[0, 0],
-          padding_high=[0, 0],
-          padding_interior=[0, 0])
-
-    with self.assertRaisesRegex(ValueError,
-                                'padding_low must be a 1D tensor of size 2 '):
-      xla.pad(
-          a,
-          padding_value=7,
-          padding_low=[0, 0, 0],
-          padding_high=[0, 0],
-          padding_interior=[0, 0])
-
-    with self.assertRaisesRegex(ValueError,
-                                'padding_high must be a 1D tensor of size 2 '):
-      xla.pad(
-          a,
-          padding_value=7,
-          padding_low=[0, 0],
-          padding_high=[0, 0, 0],
-          padding_interior=[0, 0])
-
-    with self.assertRaisesRegex(
-        ValueError, 'padding_interior must be a 1D tensor of size 2 '):
-      xla.pad(
-          a,
-          padding_value=7,
-          padding_low=[0, 0],
-          padding_high=[0, 0],
-          padding_interior=[0])
-
-    with self.assertRaisesRegex(
-        ValueError,
-        'padding_interior must contain only non-negative values, found -2 '):
-      xla.pad(
-          a,
-          padding_value=7,
-          padding_low=[0, 0],
-          padding_high=[0, 0],
-          padding_interior=[-2, 0])
-
-    with self.assertRaisesRegex(
-        ValueError, 'resulting padded dimension has negative size -1 '):
-      xla.pad(
-          a,
-          padding_value=7,
-          padding_low=[-3, 0],
-          padding_high=[0, 0],
-          padding_interior=[0, 0])
+    self._assertOpOutputMatchesExpected(
+        rng_fun_is_deterministic,
+        args=(key,),
+        expected=(np.zeros(key.shape, dtype=key.dtype),
+                  np.zeros(shape, dtype=dtype)))
 
   @test_util.disable_mlir_bridge('Not supported yet')
   def testReduce(self):
@@ -462,7 +389,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           expected=np.array([0, 45, 120, 231], dtype=dtype))
 
   @test_util.disable_mlir_bridge('Not supported yet')
-  def testVariadicReduce(self):
+  def testVariadicReduceKahanSum(self):
     for dtype in set(self.numeric_types).intersection(
         set([np.float32, np.complex64])):
 
@@ -482,12 +409,10 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           reducer = kahan_sum_reducer.get_concrete_function(
               (arg, arg), (arg, arg))
 
-          return xla.variadic_reduce(
-              (x, array_ops.zeros_like(x)),
-              init_value=(arg, arg),
-              dimensions_to_reduce=dims,
-              reducer=reducer)[output_idx]
-
+          return xla.variadic_reduce((x, array_ops.zeros_like(x)),
+                                     init_values=(arg, arg),
+                                     dimensions_to_reduce=dims,
+                                     reducer=reducer)[output_idx]
         return fn
 
       xs = np.array([1e5, np.pi, -1e5, np.exp(1.)])
@@ -532,6 +457,92 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           kahan_sum_reduction(dims=[0, 1], output_idx=1),
           args=(xs,), expected=dtype(0),
           equality_fn=error_term_equality)
+
+  @test_util.disable_mlir_bridge('Not supported yet')
+  def testVariadicReduceV2SingleOp(self):
+
+    @def_function.function
+    def reducer_add(op_element, acc_val):
+      return (op_element + acc_val,)
+
+    for dtype in set(self.numeric_types):
+      values = np.array([[1, 3, 5], [4, 6, 8]], dtype=dtype)
+      init_val = np.array(0, dtype=dtype)
+      arg_spec = array_ops.zeros([], dtype)  # pylint: disable=cell-var-from-loop
+      reducer_func = reducer_add.get_concrete_function(arg_spec, arg_spec)
+
+      def reduce(values, *, dimensions_to_reduce):
+        return xla.variadic_reduce((values,), (init_val,),  # pylint: disable=cell-var-from-loop
+                                   dimensions_to_reduce=dimensions_to_reduce,
+                                   reducer=reducer_func)[0]  # pylint: disable=cell-var-from-loop
+      # Reduce dimension 0
+      self._assertOpOutputMatchesExpected(
+          functools.partial(reduce, dimensions_to_reduce=(0,)),
+          args=(values,),
+          expected=np.array([5, 9, 13], dtype=dtype))
+
+      # Reduce dimension 1
+      self._assertOpOutputMatchesExpected(
+          functools.partial(reduce, dimensions_to_reduce=(1,)),
+          args=(values,),
+          expected=np.array([9, 18], dtype=dtype))
+
+      # Reduce dimensions 0 and 1
+      self._assertOpOutputMatchesExpected(
+          functools.partial(reduce, dimensions_to_reduce=(0, 1)),
+          args=(values,),
+          expected=np.array(27, dtype=dtype))
+
+  @test_util.disable_mlir_bridge('Not supported yet')
+  def testVariadicReduceV2DifferentTypes(self):
+    # Two ops, with different dtypes
+    @def_function.function
+    def reducer_add(op_element_1, op_element_2, acc_val_1, acc_val_2):
+      return (op_element_1 + acc_val_1, op_element_2 + acc_val_2)
+
+    for dtype in set(self.numeric_types):
+      values_1 = np.array([[1, 3, 5], [4, 6, 8]], dtype=dtype)
+      values_2 = values_1.astype(np.int32)
+
+      init_val_1 = np.array(0, dtype=dtype)  # pylint: disable=cell-var-from-loop
+      init_val_2 = init_val_1.astype(np.int32)
+
+      arg_spec_1 = array_ops.zeros([], dtype)  # pylint: disable=cell-var-from-loop
+      arg_spec_2 = array_ops.zeros([], np.int32)
+      reducer_func = reducer_add.get_concrete_function(arg_spec_1, arg_spec_2,
+                                                       arg_spec_1, arg_spec_2)  # pylint: disable=cell-var-from-loop
+
+      def reduce(*values, dimensions_to_reduce):
+        return xla.variadic_reduce(values, (init_val_1, init_val_2,),  # pylint: disable=cell-var-from-loop
+                                   dimensions_to_reduce=dimensions_to_reduce,
+                                   reducer=reducer_func)  # pylint: disable=cell-var-from-loop
+
+      # Reduce dimension 0
+      self._assertOpOutputMatchesExpected(
+          functools.partial(reduce, dimensions_to_reduce=(0,)),
+          args=(values_1, values_2),
+          expected=(np.array([5, 9, 13],
+                             dtype=dtype), np.array([5, 9, 13],
+                                                    dtype=np.int32)))
+
+      # Reduce dimension 1
+      self._assertOpOutputMatchesExpected(
+          functools.partial(reduce, dimensions_to_reduce=(1,)),
+          args=(values_1, values_2),
+          expected=(np.array([9, 18],
+                             dtype=dtype), np.array([9, 18], dtype=np.int32)))
+
+      # Reduce dimensions 0 and 1
+      self._assertOpOutputMatchesExpected(
+          functools.partial(reduce, dimensions_to_reduce=(0, 1)),
+          args=(values_1, values_2),
+          expected=(np.array(27, dtype=dtype), np.array(27, dtype=np.int32)))
+
+      # Reduce not dimensions
+      self._assertOpOutputMatchesExpected(
+          functools.partial(reduce, dimensions_to_reduce=()),
+          args=(values_1, values_2),
+          expected=(values_1, values_2))
 
   @test_util.disable_mlir_bridge('Not supported yet')
   def testSelectAndScatter(self):
@@ -743,6 +754,275 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
 
     c = xla.dot_general(a, b, dim_nums)
     self.assertEqual(c.shape.as_list(), [2, 3])
+
+  def testDynamicSlice(self):
+    start = array_ops.placeholder(np.int32, shape=(2, 3, 4))
+
+    # If slice_sizes are known, the operand shape does not matter.
+    # The shape of the output is equal to slice_sizes.
+    slice_sizes = np.array([1, 2, 4], dtype=np.int32)
+    for a_shape in [(2, 3, 4), (None, 3, 4), None]:
+      a = array_ops.placeholder(np.float32, shape=a_shape)
+      res = xla.dynamic_slice(a, start, slice_sizes)
+      self.assertEqual(res.shape.as_list(), [1, 2, 4])
+
+    # The first two dimension slice sizes are known
+    slice_sizes = array_ops.stack([1, 2, array_ops.placeholder(np.int32, [])])
+    for a_shape in [(2, 3, 4), (None, 3, 4), None]:
+      a = array_ops.placeholder(np.float32, shape=a_shape)
+      res = xla.dynamic_slice(a, start, slice_sizes)
+      self.assertEqual(res.shape.as_list(), [1, 2, None])
+
+    # If slice_sizes has known rank and dimension, but is not a constant
+    # then output has the same rank, but with unknown dimensions.
+    slice_sizes = array_ops.placeholder(np.int32, [3])
+    for a_shape in [(2, 3, 4), (None, 3, 4), None]:
+      a = array_ops.placeholder(np.float32, shape=a_shape)
+      res = xla.dynamic_slice(a, start, slice_sizes)
+      self.assertEqual(res.shape.as_list(), [None, None, None])
+
+    # slice sizes has known rank, but unknown dimensions.
+    # then the output has the same rank as the operand, but with unknown
+    # dimensions.
+    slice_sizes = array_ops.placeholder(np.int32, [None])
+    for a_shape in [(2, 3, 4), (None, 3, 4)]:
+      a = array_ops.placeholder(np.float32, shape=a_shape)
+      res = xla.dynamic_slice(a, start, slice_sizes)
+      self.assertEqual(res.shape.as_list(), [None, None, None])
+
+    a = array_ops.placeholder(np.float32, shape=None)
+    slice_sizes = array_ops.placeholder(np.int32, [None])
+    res = xla.dynamic_slice(a, start, slice_sizes)
+    self.assertIsNone(res.shape.rank)
+
+  def testDynamicUpdateSlice(self):
+    a = array_ops.placeholder(np.float32, shape=(2, 3, 4))
+    upd = array_ops.placeholder(np.float32, shape=(1, 2, 3))
+    start_indices = array_ops.placeholder(np.int32, shape=(3,))
+
+    res = xla.dynamic_update_slice(a, upd, start_indices)
+    self.assertEqual(res.shape.as_list(), [2, 3, 4])
+
+    a = array_ops.placeholder(np.float32, shape=(None, 3, None))
+    res = xla.dynamic_update_slice(a, upd, start_indices)
+    self.assertEqual(res.shape.as_list(), [None, 3, None])
+
+  def testPadShapeInference(self):
+    a = array_ops.placeholder(np.float32, shape=(2, 3))
+
+    c = xla.pad(
+        a,
+        padding_value=7,
+        padding_low=[2, 1],
+        padding_high=[1, 2],
+        padding_interior=[1, 4])
+
+    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 14]))
+
+    c = xla.pad(
+        a,
+        padding_value=7,
+        padding_low=[2, -2],
+        padding_high=[1, -2],
+        padding_interior=[1, 2])
+
+    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 3]))
+
+    c = xla.pad(
+        array_ops.placeholder(np.float32, shape=(None, 2)),
+        padding_value=7,
+        padding_low=[0, 1],
+        padding_high=[0, 2],
+        padding_interior=[0, 4])
+    self.assertEqual(c.shape.as_list(), [None, 9])
+
+    # 0-sized input dimension and interior padding
+    c = xla.pad(
+        array_ops.placeholder(np.float32, shape=(2, 0)),
+        padding_value=7,
+        padding_low=[2, 1],
+        padding_high=[1, 1],
+        padding_interior=[1, 2])
+
+    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 2]))
+
+    with self.assertRaisesRegex(
+        ValueError, 'padding_value input must be scalar, found rank 1 '):
+      xla.pad(
+          a,
+          padding_value=[0, 1],
+          padding_low=[0, 0],
+          padding_high=[0, 0],
+          padding_interior=[0, 0])
+
+    with self.assertRaisesRegex(ValueError,
+                                'padding_low must be a 1D tensor of size 2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0, 0],
+          padding_high=[0, 0],
+          padding_interior=[0, 0])
+
+    with self.assertRaisesRegex(ValueError,
+                                'padding_high must be a 1D tensor of size 2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0],
+          padding_high=[0, 0, 0],
+          padding_interior=[0, 0])
+
+    with self.assertRaisesRegex(
+        ValueError, 'padding_interior must be a 1D tensor of size 2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0],
+          padding_high=[0, 0],
+          padding_interior=[0])
+
+    with self.assertRaisesRegex(
+        ValueError,
+        'padding_interior must contain only non-negative values, found -2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0],
+          padding_high=[0, 0],
+          padding_interior=[-2, 0])
+
+    with self.assertRaisesRegex(
+        ValueError, 'resulting padded dimension has negative size -1 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[-3, 0],
+          padding_high=[0, 0],
+          padding_interior=[0, 0])
+
+  def testVariadicReduceV2SingleArg(self):
+
+    @def_function.function
+    def reducer_add(op_element, acc_val):
+      return (op_element + acc_val,)
+
+    dtype = np.float32
+    arg_spec = array_ops.zeros([], dtype)  # pylint: disable=cell-var-from-loop
+    reducer_func = reducer_add.get_concrete_function(arg_spec, arg_spec)
+
+    res = xla.variadic_reduce(
+        (array_ops.placeholder(np.float32, shape=(3, 4, 5)),),
+        (array_ops.placeholder(np.float32, shape=()),),
+        dimensions_to_reduce=(1,),
+        reducer=reducer_func)
+    self.assertLen(res, 1)
+    self.assertEqual(res[0].shape, tensor_shape.TensorShape([3, 5]))
+
+  def testVariadicReduceV2MultipleArgs(self):
+
+    @def_function.function
+    def reducer_adds(op_element_1, op_element_2, op_element_3, acc_val_1,
+                     acc_val_2, acc_val_3):
+      return (op_element_1 + acc_val_1, op_element_2 + acc_val_2,
+              op_element_3 + acc_val_3)
+
+    dtype = np.float32
+    arg1_spec = array_ops.zeros([], dtype)  # pylint: disable=cell-var-from-loop
+    arg2_spec = array_ops.zeros([], np.int32)
+    arg3_spec = array_ops.zeros([], np.int32)
+    reducer_func = reducer_adds.get_concrete_function(arg1_spec, arg2_spec,
+                                                      arg3_spec, arg1_spec,
+                                                      arg2_spec, arg3_spec)
+
+    def reduce_with_shapes(shape1, shape2, shape3, dimensions_to_reduce=(1,)):
+      inputs = (array_ops.placeholder(np.float32, shape=shape1),
+                array_ops.placeholder(np.int32, shape=shape2),
+                array_ops.placeholder(np.int32, shape=shape3))
+      init_values = (array_ops.placeholder(np.float32, shape=()),
+                     array_ops.placeholder(np.int32, shape=()),
+                     array_ops.placeholder(np.int32, shape=()))
+
+      return xla.variadic_reduce(
+          inputs,
+          init_values,
+          dimensions_to_reduce=dimensions_to_reduce,
+          reducer=reducer_func)
+
+    def assert_output_shapes(output, expected_shape):
+      self.assertLen(output, 3)
+      self.assertEqual(output[0].shape.as_list(), list(expected_shape))
+      self.assertEqual(output[1].shape.as_list(), list(expected_shape))
+      self.assertEqual(output[2].shape.as_list(), list(expected_shape))
+
+    output = reduce_with_shapes((3, 4, 5), (3, 4, 5), (3, 4, 5))
+    assert_output_shapes(output, (3, 5))
+
+    output = reduce_with_shapes((3, 4, 5), (3, 4, 5), (3, 4, 5),
+                                dimensions_to_reduce=())
+    assert_output_shapes(output, (3, 4, 5))
+
+    output = reduce_with_shapes(None, (3, None, 5), (None, 4, 5))
+    assert_output_shapes(output, (3, 5))
+
+    output = reduce_with_shapes(None, (3, None, 5), None)
+    assert_output_shapes(output, (3, 5))
+
+    output = reduce_with_shapes(None, (None, None, 5), None)
+    assert_output_shapes(output, (None, 5))
+
+    output = reduce_with_shapes(None, None, None)
+    self.assertLen(output, 3)
+    self.assertIsNone(output[0].shape.rank)
+    self.assertIsNone(output[1].shape.rank)
+    self.assertIsNone(output[2].shape.rank)
+
+    with self.assertRaisesRegex(ValueError,
+                                'All inputs must have the same shape'):
+      reduce_with_shapes((3, 4, 5), (13, 4, 5), (3, 4, 5))
+
+    with self.assertRaisesRegex(ValueError,
+                                'All inputs must have the same shape'):
+      reduce_with_shapes((None, 4, 5), (3, None, 5), (13, 4, 5))
+
+    with self.assertRaisesRegex(ValueError,
+                                'All inputs must have the same shape'):
+      reduce_with_shapes((None, 4, 5), (3, None, 5), (13, 4, 5))
+
+  @parameterized.parameters(stateless_random_ops.Algorithm.THREEFRY,
+                            stateless_random_ops.Algorithm.PHILOX,
+                            stateless_random_ops.Algorithm.AUTO_SELECT)
+  def testRngBitGenerator(self, algorithm):
+    dtype = np.uint64
+    initial_state = array_ops.placeholder(np.uint64, shape=(2,))
+    shape = (2, 3)
+    res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
+
+    self.assertEqual(res[0].shape, initial_state.shape)
+    self.assertEqual(res[1].shape, shape)
+
+    # The initial_state has unknown dimension size
+    initial_state = array_ops.placeholder(np.uint64, shape=(None,))
+    shape = (2, 3)
+    res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
+
+    self.assertEqual(res[0].shape.as_list(), initial_state.shape.as_list())
+    self.assertEqual(res[1].shape, shape)
+
+    # The initial_state has unknown rank
+    initial_state = array_ops.placeholder(np.uint64, shape=None)
+    shape = (2, 3)
+    res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
+
+    self.assertEqual(res[0].shape.as_list(), [None])
+    self.assertEqual(res[1].shape, shape)
+
+    # The output shape has unknown dimension
+    initial_state = array_ops.placeholder(np.uint64, shape=(None,))
+    shape = (None, 3)
+    with self.assertRaisesRegex(TypeError,
+                                'Failed to convert object .* to Tensor'):
+      res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
 
 
 if __name__ == '__main__':

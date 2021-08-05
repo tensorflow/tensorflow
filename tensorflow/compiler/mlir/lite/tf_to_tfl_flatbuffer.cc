@@ -164,8 +164,26 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
 
-  if (failed(IsValidGraph(module)) || failed(pass_manager->run(module))) {
+  if (failed(IsValidGraph(module))) {
     return statusHandler.ConsumeStatus();
+  }
+
+  if (failed(pass_manager->run(module))) {
+    auto status = statusHandler.ConsumeStatus();
+    mlir::TFL::ErrorCollector* collector =
+        mlir::TFL::ErrorCollector::GetErrorCollector();
+    for (const auto& error_data : collector->CollectedErrors()) {
+      if (error_data.subcomponent() == "FreezeGlobalTensorsPass") {
+        // LINT.IfChange
+        return errors::InvalidArgument(
+            "Variable constant folding is failed. Please consider using "
+            "enabling `experimental_enable_resource_variables` flag in the "
+            "TFLite converter object. For example, "
+            "converter.experimental_enable_resource_variables = True");
+        // LINT.ThenChange(//tensorflow/lite/python/lite_v2_test.py)
+      }
+    }
+    return status;
   }
 
   if (export_to_mlir) {

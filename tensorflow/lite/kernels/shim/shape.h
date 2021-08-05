@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 
 namespace tflite {
 namespace shim {
@@ -41,6 +42,8 @@ class Shape {
   template <typename... Args>
   explicit Shape(Args&&... args)  // forward ctor args to that of std::vector
       : value_(std::forward<Args>(args)...), has_value_(true) {}
+  explicit Shape(const absl::Span<int> value)
+      : value_(value.data(), value.data() + value.size()), has_value_(true) {}
 
   // Accessors
   inline bool has_value() const { return has_value_; }
@@ -70,6 +73,7 @@ class Shape {
   // Strict equality of the shapes. Unknown dims or rank on one side will
   // result in false
   bool operator==(const Shape& rhs) const;
+  bool operator!=(const Shape& rhs) const;
 
   // Compatibility of the shapes. If there are two known and incompatible
   // dimensions it returns false

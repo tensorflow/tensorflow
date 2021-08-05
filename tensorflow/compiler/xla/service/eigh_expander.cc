@@ -191,7 +191,7 @@ void ApplyJacobiRotationOverCols(Eigh2x2 rotation, XlaOp& tl, XlaOp& tr,
 void PermuteRowsInColumn(XlaOp& top, XlaOp& bottom) {
   XlaBuilder* builder = top.builder();
   Shape shape = builder->GetShape(top).ValueOrDie();
-  int64 k = ShapeUtil::GetDimension(shape, -1);
+  int64_t k = ShapeUtil::GetDimension(shape, -1);
   if (k <= 1) {
     return;
   }
@@ -211,7 +211,7 @@ void PermuteRowsInColumn(XlaOp& top, XlaOp& bottom) {
 void PermuteColumnsInRow(XlaOp& left, XlaOp& right) {
   XlaBuilder* builder = left.builder();
   Shape shape = builder->GetShape(left).ValueOrDie();
-  int64 k = ShapeUtil::GetDimension(shape, -1);
+  int64_t k = ShapeUtil::GetDimension(shape, -1);
   if (k <= 1) {
     return;
   }
@@ -235,7 +235,7 @@ void PermuteColumnsInRow(XlaOp& left, XlaOp& right) {
 // implicit way of computing a tournament for n players such that each player
 // plays every other player exactly once in n - 1 rounds. See the Brent/Luk
 // paper for more details.
-Status ApplyRotations(int64 n, XlaOp& w_tl, XlaOp& w_tr, XlaOp& w_bl,
+Status ApplyRotations(int64_t n, XlaOp& w_tl, XlaOp& w_tr, XlaOp& w_bl,
                       XlaOp& w_br, XlaOp& v_tl, XlaOp& v_tr, XlaOp& v_bl,
                       XlaOp& v_br) {
   TF_ASSIGN_OR_RETURN(Eigh2x2 rotation,
@@ -271,7 +271,7 @@ StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w_tl, XlaOp w_tr,
                                                XlaOp w_bl, XlaOp w_br) {
   XlaBuilder* builder = w_tl.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w_tl));
-  const int64 num_dims = shape.rank();
+  const int64_t num_dims = shape.rank();
   auto square_norm = [](XlaOp x) -> XlaOp {
     return Real(x * MaybeConjugate(x, true));
   };
@@ -299,7 +299,7 @@ StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w_tl, XlaOp w_tr,
 }
 
 StatusOr<std::vector<XlaOp>> Sweeps(absl::Span<const XlaOp> initial_values,
-                                    int64 n, int max_iters,
+                                    int64_t n, int max_iters,
                                     PrimitiveType index_type,
                                     XlaBuilder* builder) {
   auto while_cond_fn = [&](absl::Span<const XlaOp> values,
@@ -355,7 +355,7 @@ Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
   XlaBuilder* builder = v.builder();
   TF_ASSIGN_OR_RETURN(Shape v_shape, builder->GetShape(v));
   TF_ASSIGN_OR_RETURN(Shape w_shape, builder->GetShape(w));
-  const int64 num_dims = v_shape.rank();
+  const int64_t num_dims = v_shape.rank();
   auto dimensions = v_shape.dimensions();
 
   std::vector<int64> broadcast_dims(num_dims - 1);
@@ -426,12 +426,12 @@ Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
 //     off_diag_norm = np.sqrt(frobenius_norm - diag_norm) * np.sqrt(
 //             frobenius_norm + diag_norm)
 //   return A, V
-XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol,
+XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
                               bool sort_eigenvalues) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    const int64 num_dims = a_shape.rank();
+    const int64_t num_dims = a_shape.rank();
     if (num_dims < 2) {
       return InvalidArgument(
           "Arguments to Eigen decomposition must have rank >= 2: got shape %s.",
@@ -446,8 +446,8 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol,
           a_shape.ToString());
     }
 
-    const int64 m = ShapeUtil::GetDimension(a_shape, -2);
-    const int64 n = ShapeUtil::GetDimension(a_shape, -1);
+    const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
+    const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
 
     if (m != n) {
       return InvalidArgument(
@@ -456,7 +456,7 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol,
           m, n);
     }
 
-    const int64 num_batch_dims = num_dims - 2;
+    const int64_t num_batch_dims = num_dims - 2;
     std::vector<int64> batch_dims(num_batch_dims);
     for (int i = 0; i < num_batch_dims; ++i) {
       batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
@@ -468,7 +468,7 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol,
 
     a = Symmetrize(a, lower);
 
-    const int64 k = CeilOfRatio(n, int64{2});
+    const int64_t k = CeilOfRatio(n, int64{2});
     // tl = A[:n // 2, :n // 2]
     // bl = A[n // 2:, :n // 2]
     // tr = A[:n // 2, n // 2:]
@@ -570,7 +570,7 @@ StatusOr<HloInstruction*> EighExpander::ExpandInstruction(
     std::vector<std::string> config_strs =
         absl::StrSplit(instruction->raw_backend_config_string(), ',');
     int lower;
-    int64 max_iter;
+    int64_t max_iter;
     int sort_eigenvalues;
     float tol;
     if (config_strs.size() != 4 || !absl::SimpleAtoi(config_strs[0], &lower) ||

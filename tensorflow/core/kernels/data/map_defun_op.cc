@@ -59,7 +59,7 @@ struct MapDefunOp::ComputeOptions {
   // different output shape.
   ComputeOptions(OpKernelContext* ctx, OpInputList args,
                  OpInputList captured_inputs,
-                 std::vector<TensorShape> arg_shapes, int64 batch_size,
+                 std::vector<TensorShape> arg_shapes, int64_t batch_size,
                  const std::vector<PartialTensorShape>& output_shapes_attr,
                  int max_parallelism)
       : args(args),
@@ -261,7 +261,7 @@ Status MapDefunOp::SetupArgs(OpKernelContext* ctx,
   OpInputList captured_inputs;
   TF_RETURN_IF_ERROR(ctx->input_list(kCapturedInputs, &captured_inputs));
 
-  int64 batch_size = arguments[0].dims() > 0 ? arguments[0].dim_size(0) : -1;
+  int64_t batch_size = arguments[0].dims() > 0 ? arguments[0].dim_size(0) : -1;
 
   for (size_t i = 0; i < arguments.size(); ++i) {
     if (arguments[i].dims() == 0) {

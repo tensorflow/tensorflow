@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_runner.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -50,8 +49,6 @@ CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
 Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   auto& buffer_allocations = *params.buffer_allocations;
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
   se::DeviceMemoryBase output_base =
       buffer_allocations.GetDeviceAddress(output_);
   se::DeviceMemoryBase operand = buffer_allocations.GetDeviceAddress(operand_);
@@ -99,8 +96,6 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
       buffer_allocations.GetDeviceAddress(output_inv_stddev_));
 
   se::DeviceMemory<float> null_device_ptr(nullptr);
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
   auto& stream = *params.stream;
   TF_RETURN_IF_ERROR(RunCudnnBatchNormForwardTraining(
       config_, operand, output_data, output_mean, output_inv_stddev,
@@ -147,8 +142,6 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
   se::DeviceMemory<float> output_grad_offset(
       buffer_allocations.GetDeviceAddress(output_grad_offset_));
 
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
   se::Stream* stream = params.stream;
   TF_RETURN_IF_ERROR(RunCudnnBatchNormBackward(
       config_, operand, output_grad_data, grad_output, output_grad_scale,

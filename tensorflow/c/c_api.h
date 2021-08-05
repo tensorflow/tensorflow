@@ -259,6 +259,15 @@ TF_CAPI_EXPORT extern void TF_GraphGetTensorShape(TF_Graph* graph,
                                                   int64_t* dims, int num_dims,
                                                   TF_Status* status);
 
+// Creates a new operation - see `TF_NewOperation` for more details.
+//
+// The lock for `graph` must be held when calling this function.
+//
+// Unless implementing advanced behavior, like custom gradient functions, you
+// most likely need to call `TF_NewOperation` instead.
+TF_CAPI_EXPORT extern TF_OperationDescription* TF_NewOperationLocked(
+    TF_Graph* graph, const char* op_type, const char* oper_name);
+
 // Operation will only be added to *graph when TF_FinishOperation() is
 // called (assuming TF_FinishOperation() does not return an error).
 // *graph must not be deleted until after TF_FinishOperation() is
@@ -409,6 +418,15 @@ TF_CAPI_EXPORT extern void TF_SetAttrValueProto(TF_OperationDescription* desc,
                                                 const void* proto,
                                                 size_t proto_len,
                                                 TF_Status* status);
+
+// Adds this operation to the graph - see `TF_FinishOperation` for more details.
+//
+// The lock for `graph` must be held when calling this function.
+//
+// Unless implementing advanced behavior, like custom gradient functions, you
+// most likely need to call `TF_FinishOperation` instead.
+TF_CAPI_EXPORT extern TF_Operation* TF_FinishOperationLocked(
+    TF_OperationDescription* desc, TF_Status* status);
 
 // If this function succeeds:
 //   * *status is set to an OK value,

@@ -4,7 +4,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
@@ -47,11 +47,29 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfjs_ops.td",
-    td_srcs = [
-        "ir/tfjs_ops.td",
+    deps = [
+        "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "@llvm-project//mlir:SideEffectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "tfjs_pass_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TFJS",
+            ],
+            "transforms/passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )
 
@@ -90,10 +108,10 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/optimize_pattern.td",
-    td_srcs = [
+    deps = [
         ":tfjs_ops_td_files",
-        "@llvm-project//mlir:StdOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "@llvm-project//mlir:StdOpsTdFiles",
     ],
 )
 
@@ -102,6 +120,8 @@ cc_library(
     srcs = [
         "transforms/generated_optimize.inc",
         "transforms/optimize.cc",
+        "transforms/passes.h.inc",
+        "transforms/passes_detail.h",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -241,6 +261,7 @@ tf_cc_binary(
     deps = [
         ":tensorflow_js",
         ":tensorflow_js_passes",
+        ":tfjs_optimize",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
         "//tensorflow/compiler/mlir/tensorflow",

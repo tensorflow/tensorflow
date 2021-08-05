@@ -38,8 +38,8 @@ class LayoutUtil {
   // convenience function for protobuf construction.)
   static Layout MakeLayout(absl::Span<const int64> minor_to_major,
                            absl::Span<const Tile> tiles = {},
-                           int64 element_size_in_bits = 0,
-                           int64 memory_space = 0);
+                           int64_t element_size_in_bits = 0,
+                           int64_t memory_space = 0);
 
   // Similar to MakeLayout, but take indices in reverse order.
   static Layout MakeLayoutFromMajorToMinor(
@@ -47,17 +47,17 @@ class LayoutUtil {
 
   // Returns a layout with descending ((i.e. {n-1, n-2, ... 0}) minor-to-major
   // dimensions.
-  static Layout MakeDescendingLayout(int64 rank);
+  static Layout MakeDescendingLayout(int64_t rank);
 
   // Returns a layout with ascending ((i.e. {0, 1, ... n-1}) minor-to-major
   // dimensions.
-  static Layout MakeAscendingLayout(int64 rank);
+  static Layout MakeAscendingLayout(int64_t rank);
 
   // Returns default layout for the given shape.
   static Layout GetDefaultLayoutForShape(const Shape& shape);
 
   // Helper functions that create default layouts for various ranks.
-  static Layout GetDefaultLayoutForRank(int64 rank);
+  static Layout GetDefaultLayoutForRank(int64_t rank);
   static Layout GetDefaultLayoutForR2();
   static Layout GetDefaultLayoutForR3();
   static Layout GetDefaultLayoutForR4();
@@ -138,11 +138,11 @@ class LayoutUtil {
   // the most major. Then Major(0) is the most major logical dimension, so Major
   // maps the physical dimension number 0 to the most major logical dimension
   // number Major(0).
-  static int64 Major(const Layout& layout, int64 physical_dimension_number);
+  static int64 Major(const Layout& layout, int64_t physical_dimension_number);
 
   // Minor(0) is the most minor logical dimension number, minor(1) is the
   // second-most-minor logical dimension number and so on.
-  static int64 Minor(const Layout& layout, int64 physical_dimension_number);
+  static int64 Minor(const Layout& layout, int64_t physical_dimension_number);
 
   // Returns the inverse mapping of the Major() function. More precisely, return
   // a vector v such that if l == Major(p), then v[l] == p.
@@ -183,7 +183,7 @@ class LayoutUtil {
 
   // Constructs a new layout by making the given dimension `dim` in the given
   // layout `layout` as the most major dimension.
-  static Layout MoveDimToMajor(const Layout& layout, int64 dim);
+  static Layout MoveDimToMajor(const Layout& layout, int64_t dim);
 
   // Compute a hash for `layout`.
   static size_t Hash(const Layout& layout);

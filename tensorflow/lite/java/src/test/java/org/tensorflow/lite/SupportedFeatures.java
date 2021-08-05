@@ -50,7 +50,7 @@ public final class SupportedFeatures {
    * True if the TF Lite implementation supports SignatureDef related methods.
    *
    * @see Interpreter#runSignature
-   * @see Interpreter#getSignatureDefNames
+   * @see Interpreter#getSignatureKeys
    * @see Interpreter#getSignatureInputs
    * @see Interpreter#getSignatureOutputs
    * @see Interpreter#getInputTensorFromSignature

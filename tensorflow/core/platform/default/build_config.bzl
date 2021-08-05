@@ -762,6 +762,12 @@ def tf_windows_aware_platform_deps(name):
 def tf_platform_deps(name, platform_dir = "//tensorflow/core/platform/"):
     return [platform_dir + "default:" + name]
 
+def tf_testing_deps(name, platform_dir = "//tensorflow/core/platform/"):
+    return tf_platform_deps(name, platform_dir)
+
+def tf_stream_executor_deps(name, platform_dir = "//tensorflow/core/platform/"):
+    return tf_platform_deps(name, platform_dir)
+
 def tf_platform_alias(name, platform_dir = "//tensorflow/core/platform/"):
     return [platform_dir + "default:" + name]
 
@@ -787,10 +793,7 @@ def tf_google_mobile_srcs_only_runtime():
     return []
 
 def if_llvm_aarch64_available(then, otherwise = []):
-    return select({
-        "//tensorflow:linux_aarch64": then,
-        "//conditions:default": otherwise,
-    })
+    return then
 
 def if_llvm_system_z_available(then, otherwise = []):
     return select({

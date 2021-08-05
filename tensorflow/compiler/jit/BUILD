@@ -507,6 +507,8 @@ cc_library(
         ":xla_launch_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

@@ -312,7 +312,9 @@ void InMemoryRunGraphRequest::set_graph_handle(const string& handle) {
 
 int64 InMemoryRunGraphRequest::step_id() const { return step_id_; }
 
-void InMemoryRunGraphRequest::set_step_id(int64 step_id) { step_id_ = step_id; }
+void InMemoryRunGraphRequest::set_step_id(int64_t step_id) {
+  step_id_ = step_id;
+}
 
 const ExecutorOpts& InMemoryRunGraphRequest::exec_opts() const {
   return exec_opts_;
@@ -389,7 +391,7 @@ void InMemoryRunGraphRequest::set_store_errors_in_response_body(
 
 int64 InMemoryRunGraphRequest::request_id() const { return request_id_; }
 
-void InMemoryRunGraphRequest::set_request_id(int64 request_id) {
+void InMemoryRunGraphRequest::set_request_id(int64_t request_id) {
   request_id_ = request_id;
 }
 
@@ -448,7 +450,7 @@ int64 MutableProtoRunGraphRequest::step_id() const {
   return request_.step_id();
 }
 
-void MutableProtoRunGraphRequest::set_step_id(int64 step_id) {
+void MutableProtoRunGraphRequest::set_step_id(int64_t step_id) {
   request_.set_step_id(step_id);
 }
 
@@ -537,7 +539,7 @@ int64 MutableProtoRunGraphRequest::request_id() const {
   return request_.request_id();
 }
 
-void MutableProtoRunGraphRequest::set_request_id(int64 request_id) {
+void MutableProtoRunGraphRequest::set_request_id(int64_t request_id) {
   request_.set_request_id(request_id);
 }
 

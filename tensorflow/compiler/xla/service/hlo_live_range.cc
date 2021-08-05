@@ -50,7 +50,7 @@ void HloLiveRange::NormalizeAliasedBuffers() {
                  std::forward_as_tuple(live_range2.start, live_range2.end);
         });
 
-    for (int64 i = 0; i + 1 < aliased_buffers.size(); ++i) {
+    for (int64_t i = 0; i + 1 < aliased_buffers.size(); ++i) {
       const HloValue* value1 = aliased_buffers[i];
       const HloValue* value2 = aliased_buffers[i + 1];
       TimeBound& live_range1 = buffer_live_ranges_[value1];
@@ -90,7 +90,7 @@ void HloLiveRange::NormalizeAliasedBuffers() {
 // FlattenSchedule walks through the computation and tracks down the ordinal
 // number of each instruction in the schedule.
 int64 HloLiveRange::FlattenSchedule(const HloComputation& computation,
-                                    int64 start_time) {
+                                    int64_t start_time) {
   if (!schedule_.is_computation_scheduled(&computation)) {
     total_order_scheduled_ = false;
     return start_time;
@@ -98,7 +98,7 @@ int64 HloLiveRange::FlattenSchedule(const HloComputation& computation,
 
   const HloInstructionSequence& instruction_sequence =
       schedule_.sequence(&computation);
-  int64 time = start_time;
+  int64_t time = start_time;
   for (HloInstruction* instruction : instruction_sequence.instructions()) {
     if (module_scoped_analysis_) {
       // Recurse into sub computations if running with module scoped analysis
@@ -136,9 +136,9 @@ void HloLiveRange::CalculateBufferStartEndMap() {
       continue;
     }
 
-    int64 buffer_start_time = instruction_schedule_[value->instruction()];
+    int64_t buffer_start_time = instruction_schedule_[value->instruction()];
 
-    int64 buffer_end_time = -1;
+    int64_t buffer_end_time = -1;
     for (const HloUse& use : value->uses()) {
       const HloInstruction* used = use.instruction;
       // As an optimization, we deem a while's init value's live range ends as
@@ -176,7 +176,7 @@ void HloLiveRange::CalculateBufferStartEndMap() {
     }
 
     HloPosition end_position;
-    int64 max_end_time = 0;
+    int64_t max_end_time = 0;
     for (const HloPosition& position : value->positions()) {
       if (instruction_schedule_[position.instruction] >= max_end_time) {
         max_end_time = instruction_schedule_[value->instruction()];
@@ -231,11 +231,11 @@ int64 HloLiveRange::ComputePeakMemoryMoment() const {
   }
   std::sort(events.begin(), events.end());
 
-  int64 memory_usage = 0;
-  int64 peak_usage = 0;
+  int64_t memory_usage = 0;
+  int64_t peak_usage = 0;
   absl::optional<int64> peak_time;
   for (const auto& event : events) {
-    int64 time;
+    int64_t time;
     bool is_end;
     const HloValue* value;
     std::tie(time, is_end, value) = event;
@@ -259,7 +259,7 @@ std::string HloLiveRange::ToString() const {
                         schedule_end_time_);
   absl::StrAppendFormat(&output, "  InstructionSequence:\n");
   auto& instructions = flattened_instruction_sequence().instructions();
-  for (int64 i = 0; i < instructions.size(); ++i) {
+  for (int64_t i = 0; i < instructions.size(); ++i) {
     absl::StrAppendFormat(&output, "    %d:%s\n", i, instructions[i]->name());
   }
 
@@ -274,7 +274,7 @@ std::string HloLiveRange::ToString() const {
     }
   }
 
-  int64 peak_moment = ComputePeakMemoryMoment();
+  int64_t peak_moment = ComputePeakMemoryMoment();
 
   absl::StrAppendFormat(&output, "  Live ranges at %lld (peak):\n",
                         peak_moment);
@@ -282,7 +282,7 @@ std::string HloLiveRange::ToString() const {
     auto it = buffer_live_ranges_.find(value);
     if (it != buffer_live_ranges_.end()) {
       if (it->second.start <= peak_moment && peak_moment <= it->second.end) {
-        int64 bytes = ShapeUtil::ByteSizeOf(value->instruction()->shape(), 8);
+        int64_t bytes = ShapeUtil::ByteSizeOf(value->instruction()->shape(), 8);
         absl::StrAppendFormat(&output, "    %s: %lld bytes\n",
                               value->instruction()->name(), bytes);
       }

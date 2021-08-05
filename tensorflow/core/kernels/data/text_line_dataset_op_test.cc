@@ -28,7 +28,7 @@ tstring LocalTempFilename() {
 class TextLineDatasetParams : public DatasetParams {
  public:
   TextLineDatasetParams(std::vector<tstring> filenames,
-                        CompressionType compression_type, int64 buffer_size,
+                        CompressionType compression_type, int64_t buffer_size,
                         string node_name)
       : DatasetParams({DT_STRING}, {PartialTensorShape({})},
                       std::move(node_name)),

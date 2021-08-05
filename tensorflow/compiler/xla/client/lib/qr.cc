@@ -43,8 +43,8 @@ QrDecomposition Qr(XlaOp a) {
           "Arguments to QR must have rank >= 2: got shape %s",
           a_shape.ToString());
     }
-    const int64 m = ShapeUtil::GetDimension(a_shape, -2);
-    const int64 n = ShapeUtil::GetDimension(a_shape, -1);
+    const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
+    const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
 
     std::vector<int64> taus_dims(a_shape.dimensions().begin(),
                                  a_shape.dimensions().end());
@@ -82,8 +82,8 @@ XlaOp ProductOfElementaryHouseholderReflectors(XlaOp a, XlaOp taus) {
           "%s and %s",
           taus_shape.ToString(), a_shape.ToString());
     }
-    const int64 m = ShapeUtil::GetDimension(a_shape, -2);
-    const int64 n = ShapeUtil::GetDimension(a_shape, -1);
+    const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
+    const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
     if (m < n) {
       return InvalidArgument(
           "Argument to product of elementary Householder "
@@ -96,7 +96,7 @@ XlaOp ProductOfElementaryHouseholderReflectors(XlaOp a, XlaOp taus) {
     absl::Span<const int64> taus_batch_dims = absl::MakeConstSpan(
         taus_shape.dimensions().begin(),
         taus_shape.dimensions().begin() + taus_shape.rank() - 1);
-    const int64 k = ShapeUtil::GetDimension(taus_shape, -1);
+    const int64_t k = ShapeUtil::GetDimension(taus_shape, -1);
     if (a_shape.element_type() != taus_shape.element_type() ||
         a_batch_dims != taus_batch_dims || k > n) {
       return InvalidArgument("Invalid shape for `taus`, got a=%s and taus=%s",
@@ -115,9 +115,9 @@ void QrExplicit(XlaOp a, bool full_matrices, XlaOp& q, XlaOp& r) {
     return;
   }
   Shape a_shape = a_shape_or.ValueOrDie();
-  const int64 m = ShapeUtil::GetDimension(a_shape, -2);
-  const int64 n = ShapeUtil::GetDimension(a_shape, -1);
-  const int64 p = std::min(m, n);
+  const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
+  const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
+  const int64_t p = std::min(m, n);
 
   auto qr = Qr(a);
   if (full_matrices) {

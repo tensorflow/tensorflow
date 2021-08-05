@@ -36,13 +36,16 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
 namespace data {
 namespace model {
 
 // A constant that can be used to enable auto-tuning.
-constexpr int64 kAutotune = -1;
+constexpr int64_t kAutotune = -1;
 constexpr char kParallelism[] = "parallelism";
 constexpr char kBufferSize[] = "buffer_size";
 
@@ -58,7 +61,7 @@ enum class TraversalOrder {
 // the performance model.
 struct SharedState {
  public:
-  SharedState(int64 value, std::shared_ptr<mutex> mu,
+  SharedState(int64_t value, std::shared_ptr<mutex> mu,
               std::shared_ptr<condition_variable> cond_var)
       : value(value),
         mu(std::move(mu)),
@@ -194,7 +197,7 @@ class Node {
   }
 
   // Increments the aggregate processing time by the given delta.
-  void add_processing_time(int64 delta) TF_LOCKS_EXCLUDED(mu_) {
+  void add_processing_time(int64_t delta) TF_LOCKS_EXCLUDED(mu_) {
     processing_time_ += delta;
   }
 
@@ -267,13 +270,17 @@ class Node {
   }
 
   // Records that the node consumed the given number of bytes.
-  void record_bytes_consumed(int64 num_bytes) { bytes_consumed_ += num_bytes; }
+  void record_bytes_consumed(int64_t num_bytes) {
+    bytes_consumed_ += num_bytes;
+  }
 
   // Records that the node produced the given number of bytes.
-  void record_bytes_produced(int64 num_bytes) { bytes_produced_ += num_bytes; }
+  void record_bytes_produced(int64_t num_bytes) {
+    bytes_produced_ += num_bytes;
+  }
 
   // Records the change in this node's buffer.
-  void record_buffer_event(int64 bytes_delta, int64 elements_delta) {
+  void record_buffer_event(int64_t bytes_delta, int64_t elements_delta) {
     buffered_bytes_ += bytes_delta;
     buffered_elements_ += elements_delta;
   }
@@ -284,13 +291,13 @@ class Node {
   }
 
   // Records that a node thread has started executing.
-  void record_start(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
+  void record_start(int64_t time_nanos) TF_LOCKS_EXCLUDED(mu_) {
     DCHECK_EQ(work_start_, 0);
     work_start_ = time_nanos;
   }
 
   // Records that a node thread has stopped executing.
-  void record_stop(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
+  void record_stop(int64_t time_nanos) TF_LOCKS_EXCLUDED(mu_) {
     // TODO(jsimsa): Use DCHECK_NE(work_start_, 0) here.
     if (work_start_ != 0) {
       processing_time_ += time_nanos - work_start_;
@@ -377,10 +384,10 @@ class Node {
   double TotalProcessingTime(NodeValues* processing_times)
       TF_LOCKS_EXCLUDED(mu_);
 
-  // Recursively produces a proto for this node and its subtree.
+  // Produces a proto for this node. Does not produce a proto for input nodes.
   virtual Status ToProto(ModelProto::Node* node_proto) const;
 
-  // Recursively restores a node and its subtree from the proto.
+  // Restores a node from the proto. Does not restore input nodes.
   static Status FromProto(ModelProto::Node node_proto,
                           std::shared_ptr<Node> output,
                           std::shared_ptr<Node>* node);
@@ -399,24 +406,24 @@ class Node {
 
     // Expects the total number of bytes consumed and records the delta since
     // last invocation.
-    void record_bytes_consumed(int64 total_bytes) {
-      int64 delta =
+    void record_bytes_consumed(int64_t total_bytes) {
+      int64_t delta =
           total_bytes - recorded_bytes_consumed_.exchange(total_bytes);
       bytes_consumed_counter_->IncrementBy(delta);
     }
 
     // Expects the total number of bytes produced and records the delta since
     // last invocation.
-    void record_bytes_produced(int64 total_bytes) {
-      int64 delta =
+    void record_bytes_produced(int64_t total_bytes) {
+      int64_t delta =
           total_bytes - recorded_bytes_produced_.exchange(total_bytes);
       bytes_produced_counter_->IncrementBy(delta);
     }
 
     // Expects the total number of elements produced and records the delta since
     // last invocation.
-    void record_num_elements(int64 total_elements) {
-      int64 delta =
+    void record_num_elements(int64_t total_elements) {
+      int64_t delta =
           total_elements - recorded_num_elements_.exchange(total_elements);
       num_elements_counter_->IncrementBy(delta);
     }
@@ -432,7 +439,7 @@ class Node {
 
   // Returns the number of inputs.
   int64 num_inputs() const TF_SHARED_LOCKS_REQUIRED(mu_) {
-    int64 num_inputs = 0;
+    int64_t num_inputs = 0;
     for (auto& input : inputs_) {
       // Inputs for which autotuning is disabled are excluded.
       if (input->autotune()) {
@@ -552,7 +559,7 @@ class Node {
   // particular thread at any time. Therefore if `n->record_start()` is called
   // on thread `t`, then `n->record_stop()` must be called before another call
   // to `Node::record_start()` (for any node).
-  static thread_local int64 work_start_;  // Will be initialized to zero.
+  static thread_local int64_t work_start_;  // Will be initialized to zero.
 
   mutable mutex mu_;
   const int64 id_;
@@ -640,50 +647,8 @@ class Model {
   using NodeValues = Node::NodeValues;
   using ParameterGradients = Node::ParameterGradients;
 
-  // Represents minimum necessary information to recreate an optimization run.
-  struct OptimizationSnapshot {
-    // Output node of the model being optimized.
-    std::shared_ptr<Node> output;
-    OptimizationParams params;
-
-    // Indicates whether this snapshot has been saved by `SaveLoop`.
-    bool saved;
-  };
-
-  // Buffer of snapshots and its mutex.
-  struct SnapshotBuffer {
-    std::shared_ptr<std::deque<OptimizationSnapshot>> snapshots;
-    std::shared_ptr<mutex> mu;
-  };
-
-  // Creates a new model.
-  Model()
-      : collect_resource_usage_(false),
-        optimization_period_ms_(kOptimizationPeriodMinMs),
-        snapshot_buffer_mu_(std::make_shared<mutex>()),
-        snapshot_buffer_(std::make_shared<std::deque<OptimizationSnapshot>>()) {
-    const char* save_dir = std::getenv("TF_DATA_AUTOTUNE_DEBUG_DIR");
-    if (save_dir) {
-      save_dir_ = string(save_dir);
-    }
-    {
-      mutex_lock l(*publish_mu());
-      (*snapshot_buffers())[this] = SnapshotBuffer{
-          std::shared_ptr<std::deque<OptimizationSnapshot>>(snapshot_buffer_),
-          std::shared_ptr<mutex>(snapshot_buffer_mu_)};
-    }
-  }
-
-  ~Model() {
-    if (!save_dir_.empty()) {
-      save_thread_cancelled_ = true;
-      save_cond_var_.notify_all();
-    }
-    {
-      mutex_lock l(*publish_mu());
-      (*snapshot_buffers()).erase(this);
-    }
-  }
+  Model();
+  ~Model();
 
   // Indicates whether to collect resource usage.
   bool collect_resource_usage() const { return collect_resource_usage_; }
@@ -694,30 +659,29 @@ class Model {
     return output_;
   }
 
-  // Indicates whether publishing mode is enabled.
-  static bool publish() {
-    tf_shared_lock l(*publish_mu());
-    return publish_;
-  }
-
   // Adds a node with the given name and given parent.
   void AddNode(Node::Factory factory, const string& name,
                std::shared_ptr<Node> parent, std::shared_ptr<Node>* out_node)
       TF_LOCKS_EXCLUDED(mu_);
+
+  // Returns a human-readable string representation of the model. This method
+  // can be invoked automatically by monitoring gauges and to avoid frequent
+  // recomputation, the implementation caches the result.
+  std::string DebugString();
 
   // Uses the given algorithm and resource budgets to periodically perform the
   // autotuning optimization.
   //
   // To terminate the execution of the optimization loop, the caller needs to
   // invoke `cancellation_mgr->StartCancel()`.
-  Status OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
-                      int64 ram_budget,
+  Status OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+                      int64_t ram_budget,
                       CancellationManager* cancellation_manager);
 
   // Uses the given algorithm and resource budgets to perform the autotuning
   // optimization.
-  void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget, int64 ram_budget,
-                double model_input_time,
+  void Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+                int64_t ram_budget, double model_input_time,
                 CancellationManager* cancellation_manager);
 
   // Collects the output time and if `gradients` is not `nullptr`, the output
@@ -746,45 +710,10 @@ class Model {
   static Status Load(const string& fname, std::unique_ptr<Model>* model,
                      OptimizationParams* optimization_params);
 
-  // Enables publishing mode in which each existing model keeps a number of the
-  // latest optimization snapshots in a buffer. The snapshots can be accessed
-  // using `PublishLatest`.
-  static void EnablePublishing() {
-    mutex_lock l(*publish_mu());
-    publish_ = true;
-  }
-
-  // If publishing is enabled, collects the latest optimization snapshot of each
-  // existing model and appends its proto to the given string.
-  static Status PublishLatest(absl::Cord* model);
-
  private:
-  static constexpr int64 kOptimizationPeriodMinMs = 10;
-  static constexpr int64 kOptimizationPeriodMaxMs =
+  static constexpr int64_t kOptimizationPeriodMinMs = 10;
+  static constexpr int64_t kOptimizationPeriodMaxMs =
       60 * EnvTime::kSecondsToMillis;
-
-  // Maximum number of optimization snapshots kept in a buffer for saving or
-  // publishing.
-  static constexpr int64 kMaxNumBufferedSnapshots = 1;
-
-  // Indicates whether publishing mode is enabled.
-  static bool publish_ TF_GUARDED_BY(*publish_mu());
-
-  // Used to coordinate (de)registering of optimization snapshot buffers for
-  // publishing.
-  static mutex* publish_mu() {
-    static mutex lock(LINKER_INITIALIZED);
-    return &lock;
-  }
-
-  // Mapping from all existing model pointers to their optimization snapshot
-  // buffers and locks required to access the buffers.
-  static absl::flat_hash_map<Model*, SnapshotBuffer>* snapshot_buffers()
-      TF_SHARED_LOCKS_REQUIRED(*publish_mu()) {
-    static absl::flat_hash_map<Model*, SnapshotBuffer>* const snapshot_buffers =
-        new absl::flat_hash_map<Model*, SnapshotBuffer>();
-    return snapshot_buffers;
-  }
 
   // Collects tunable parameters in the tree rooted in the given node, returning
   // a vector which contains pairs of node names and tunable parameters.
@@ -817,7 +746,7 @@ class Model {
   // Determines if we should stop the gradient descent optimization iterations
   // based on number of increasable parameters, CPU budget, RAM budget and
   // current resource usage.
-  bool ShouldStop(int64 cpu_budget, int64 ram_budget,
+  bool ShouldStop(int64_t cpu_budget, int64_t ram_budget,
                   const ModelParameters& parameters,
                   const ModelParameters& parallelism_parameters,
                   const ModelParameters& buffer_size_parameters,
@@ -836,15 +765,6 @@ class Model {
   // buffers were full.
   double TotalMaximumBufferedBytes(std::shared_ptr<Node> node);
 
-  // Starts a model saving thread if it hasn't started yet.
-  Status EnsureSaveLoopThreadStarted();
-
-  // Periodically saves the state of optimization that is kept in
-  // `snapshot_buffer_`.
-  //
-  // The saving loop is terminated when the model is destroyed.
-  Status SaveLoop();
-
   // Used for coordination between different input pipeline threads. Exclusive
   // access is required only when adding or removing nodes. Concurrent access to
   // existing nodes is protected by a node mutex.
@@ -852,7 +772,7 @@ class Model {
   // Used for coordinating the optimization loop and model modifications.
   condition_variable optimize_cond_var_;
   int64 id_counter_ TF_GUARDED_BY(mu_) = 1;
-  std::shared_ptr<Node> output_ TF_GUARDED_BY(mu_);
+  std::shared_ptr<Node> output_ TF_GUARDED_BY(mu_) = nullptr;
 
   // Indicates whether the modeling framework should collect resource usage
   // (e.g. CPU, memory). The logic for collecting this information assumes that
@@ -866,29 +786,15 @@ class Model {
   // running optimizations.
   int64 optimization_period_ms_ TF_GUARDED_BY(mu_);
 
-  // Thread that runs the model saving loop.
-  std::unique_ptr<Thread> save_thread_ TF_GUARDED_BY(snapshot_buffer_mu_);
-
-  // Used for coordinating the saving loop and model optimization.
-  condition_variable save_cond_var_;
-
-  // Indicates whether the save thread is cancelled.
-  bool save_thread_cancelled_ = false;
-
-  // Contains path to the model saving directory if saving is enabled, empty
-  // otherwise.
-  string save_dir_;
-
-  // Used for coordination of the optimization snapshot buffer access and
-  // updates.
-  std::shared_ptr<mutex> snapshot_buffer_mu_;
-
-  // Contains pairs of model snapshots and optimization parameters to be saved
-  // or published if the corresponding mode is enabled, empty otherwise. Buffer
-  // elements are pushed and popped by `OptimizeLoop`, and read by `SaveLoop`
-  // and `PublishLatest`.
-  std::shared_ptr<std::deque<OptimizationSnapshot>> snapshot_buffer_
-      TF_GUARDED_BY(snapshot_buffer_mu_);
+  // Gauge cell that can be used to collect the state of the model.
+  monitoring::GaugeCell<std::function<std::string()>>* model_gauge_cell_ =
+      nullptr;
+  // Time use for rate limitting the recomputation of human-readable string
+  // represention of the model.
+  absl::Time cache_until_ = absl::InfinitePast();
+  // Cached result of the `DebugString()` invocation used to implement rate
+  // limitting of the computation.
+  std::string cached_debug_string_ = "";
 };
 
 }  // namespace model

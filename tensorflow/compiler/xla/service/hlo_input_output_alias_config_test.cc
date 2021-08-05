@@ -34,7 +34,7 @@ namespace xla {
 namespace {
 class HloInputOutputAliasConfigTest : public HloTestBase {
  protected:
-  void expect_aliased(const ShapeIndex& output_index, int64 param_number,
+  void expect_aliased(const ShapeIndex& output_index, int64_t param_number,
                       const ShapeIndex& param_index,
                       const HloInputOutputAliasConfig& config) {
     absl::optional<ShapeIndex> aliased_output =
@@ -51,7 +51,7 @@ class HloInputOutputAliasConfigTest : public HloTestBase {
     EXPECT_EQ(aliased_param->parameter_index, param_index);
   }
 
-  void expect_not_aliased(const ShapeIndex& output_index, int64 param_number,
+  void expect_not_aliased(const ShapeIndex& output_index, int64_t param_number,
                           const ShapeIndex& param_index,
                           const HloInputOutputAliasConfig& config) {
     absl::optional<ShapeIndex> aliased_output =

@@ -24,9 +24,11 @@ limitations under the License.
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -220,29 +222,13 @@ LogicalResult InferReturnTypeComponentsForTFOp(
   // Collect an array with input values for constant operands and input shapes
   // for all the operands.
   const int num_operands = op->getNumOperands();
-  std::vector<const tensorflow::Tensor*> input_tensors(num_operands);
   std::vector<tensorflow::PartialTensorShape> input_shapes(num_operands);
-  std::vector<tensorflow::Tensor> tensors(num_operands);
   std::vector<std::unique_ptr<std::vector<
       std::pair<tensorflow::PartialTensorShape, tensorflow::DataType>>>>
       handle_shapes_and_types(num_operands);
   for (auto it : llvm::enumerate(op->getOperands())) {
     Value operand = it.value();
     size_t index = it.index();
-
-    // If the operand is constant, then convert it to Tensor.
-    if (auto attr = operand_as_constant_fn(operand)) {
-      tensorflow::Tensor* input_tensor = &tensors[index];
-      auto status =
-          tensorflow::ConvertToTensor(attr.cast<ElementsAttr>(), input_tensor);
-      if (status.ok()) {
-        input_tensors[index] = input_tensor;
-      } else {
-        LLVM_DEBUG(llvm::dbgs() << "Error converting input " << index
-                                << " of op '" << op_name << "' to Tensor: "
-                                << status.error_message() << "\n");
-      }
-    }
 
     Type operand_type = operand.getType();
     if (auto shape = GetShapeFromMlirType(operand_type)) {
@@ -256,48 +242,80 @@ LogicalResult InferReturnTypeComponentsForTFOp(
   // shapes. This object is abstracting the information that the ShapeInference
   // function operates on.
   InferenceContext c(graph_version, tensorflow::AttrSlice(&attributes),
-                     op_reg_data->op_def, input_shapes, input_tensors,
+                     op_reg_data->op_def, input_shapes, /*input_tensors*/ {},
                      /*input_tensors_as_shapes=*/{}, handle_shapes_and_types);
   auto status = c.Run(op_reg_data->shape_inference_fn);
   if (!status.ok())
     return EmitErrorFromShapeFunction(location, op_name,
                                       status.error_message());
 
+  std::vector<const tensorflow::Tensor*> input_tensors(num_operands);
+  std::vector<tensorflow::Tensor> tensors(num_operands);
+  std::vector<ShapeHandle> input_tensors_as_shapes(num_operands);
+
   // Determine if, during shape computation, the shape functions attempted to
-  // query an input operand as shape where the input was not known/constant.
-  bool requires_inputs =
-      any_of(llvm::seq<int>(0, c.num_inputs()), [&](int input) {
-        return c.requested_input_tensor_as_partial_shape(input) &&
-               !input_tensors[input];
-      });
-  if (requires_inputs) {
-    LLVM_DEBUG(llvm::dbgs() << "\trequired input\n");
-    std::vector<ShapeHandle> input_tensors_as_shapes;
+  // query the input or input as shape where the input wasn't available.
+  auto requires_inputs = [&]() {
+    return any_of(llvm::seq<int>(0, c.num_inputs()), [&](int input) {
+      return !input_tensors[input] &&
+             (c.requested_input_tensor(input) ||
+              c.requested_input_tensor_as_partial_shape(input));
+    });
+  };
+
+  // Iterate until no new inputs are requested. Some shape functions may not
+  // request all inputs upfront and can return early so this requires multiple
+  // iterations.
+  while (requires_inputs()) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "\tfeeding new inputs or input as partial shapes\n");
+
+    bool has_new_inputs = false;
     for (int input : llvm::seq<int>(0, c.num_inputs())) {
+      if (input_tensors[input]) continue;
+
+      if (c.requested_input_tensor(input)) {
+        if (auto attr = operand_as_constant_fn(op->getOperand(input))
+                            .dyn_cast_or_null<ElementsAttr>()) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "Requesting " << input << " as constant\n");
+          tensorflow::Tensor* input_tensor = &tensors.at(input);
+          auto status = tensorflow::ConvertToTensor(attr, input_tensor);
+          if (status.ok()) {
+            input_tensors.at(input) = input_tensor;
+            has_new_inputs = true;
+          } else {
+            LLVM_DEBUG(llvm::dbgs() << "Error converting input " << input
+                                    << " of op '" << op_name << "' to Tensor: "
+                                    << status.error_message() << "\n");
+          }
+        }
+      }
+
       if (c.requested_input_tensor_as_partial_shape(input) &&
-          !input_tensors[input]) {
+          !input_tensors[input] && !input_tensors_as_shapes[input].Handle()) {
         LLVM_DEBUG(llvm::dbgs() << "Requesting " << input << " as shape\n");
         auto op_result = op->getOperand(input).dyn_cast<OpResult>();
         if (!op_result) continue;
         // Resize on first valid shape computed.
-        input_tensors_as_shapes.resize(c.num_inputs());
         auto handle = op_result_as_shape_fn(c, op_result);
         LLVM_DEBUG(llvm::dbgs() << "Requested " << input << " as shape "
                                 << (handle.Handle() ? "found" : "not found"));
-        if (handle.Handle()) input_tensors_as_shapes[input] = handle;
+        if (handle.Handle()) {
+          input_tensors_as_shapes[input] = handle;
+          has_new_inputs = true;
+        }
       }
     }
 
-    // Attempt to compute the unknown operands as shapes.
-    // Note: in the case where no partial outputs could be computed, this
-    // would be empty.
-    if (!input_tensors_as_shapes.empty()) {
-      c.set_input_tensors_as_shapes(input_tensors_as_shapes);
-      auto status = c.Run(op_reg_data->shape_inference_fn);
-      if (!status.ok())
-        return EmitErrorFromShapeFunction(location, op_name,
-                                          status.error_message());
-    }
+    if (!has_new_inputs) break;
+
+    c.set_input_tensors(input_tensors);
+    c.set_input_tensors_as_shapes(input_tensors_as_shapes);
+    auto status = c.Run(op_reg_data->shape_inference_fn);
+    if (!status.ok())
+      return EmitErrorFromShapeFunction(location, op_name,
+                                        status.error_message());
   }
 
   // Update the shape for each of the operation result if the InferenceContext

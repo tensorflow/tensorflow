@@ -451,13 +451,13 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
   CheckFinalDataTypesSatisfied(*model);
 
   // Estimate and log the number of arithmetic ops
-  int64 ops_count = 0;
+  int64_t ops_count = 0;
   if (EstimateArithmeticOpsCount(*model, &ops_count)) {
     LOG(INFO) << "Estimated count of arithmetic ops: " << ops_count
               << " ops, equivalently " << ops_count / 2 << " MACs";
   }
   model->ops_count = ops_count;
-  int64 params_count = 0;
+  int64_t params_count = 0;
 
   // Compute and log the number of parameters
   for (const auto& array_pair : model->GetArrayMap()) {

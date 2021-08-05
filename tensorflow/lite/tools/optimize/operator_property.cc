@@ -1024,6 +1024,11 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.version = 2;
       property.quantizable_int16 = false;
       break;
+    case BuiltinOperator_REDUCE_PROD:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
       property.inputs = {{0, {}}};

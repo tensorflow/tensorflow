@@ -32,7 +32,8 @@ using absl::flat_hash_set;
 using absl::InlinedVector;
 
 struct InvariantInfo {
-  explicit InvariantInfo(int64 user_count) : remaining_user_count(user_count) {}
+  explicit InvariantInfo(int64_t user_count)
+      : remaining_user_count(user_count) {}
   // The transitive input size of all input operands, traced up to the while
   // loop parameter or leaf invariant ops.
   int64 transitive_input_size = 0;
@@ -231,14 +232,14 @@ StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
       }
     }
 
-    int64 num_blocking_operands = 0;
+    int64_t num_blocking_operands = 0;
     // Check that hoisting the instruction doesn't cause a significant memory
     // blow-up. LICM extends the live-range of the output of the hoisted
     // instruction to be the entire while loop, which may be problematic on
     // platforms where memory is limited. This can be especially harmful if
     // the instruction has a significantly larger output than its input, e.g.
     // kIota, kBroadcast or kConstant.
-    int64 output_size = 0;
+    int64_t output_size = 0;
 
     for (auto* operand : instruction->operands()) {
       auto& operand_info = invariant_instructions.at(operand);

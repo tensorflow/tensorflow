@@ -584,8 +584,17 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   PyObject* shape = PyTuple_New(n);
   if (PyErr_Occurred()) return nullptr;
   for (int i = 0; i < n; ++i) {
-    PyObject* dim =
-        PyLong_FromLongLong(TFE_TensorHandleDim(handle, i, &self->status));
+    int64_t dim_c_value = TFE_TensorHandleDim(handle, i, &self->status);
+    PyObject* dim;
+    // The C++ convention is -1 for unknown/variable axis lengths. Translate
+    // that to the Python "None" convention. Unknown axis lengths are unusual
+    // for eager tensors.
+    if (dim_c_value < 0) {
+      Py_IncRef(Py_None);
+      dim = Py_None;
+    } else {
+      dim = PyLong_FromLongLong(dim_c_value);
+    }
     code = TF_GetCode(&self->status);
     if (code != TF_OK || dim == nullptr ||
         PyTuple_SetItem(shape, i, dim) != 0) {
@@ -981,8 +990,8 @@ tensorflow::DataType PyEagerTensor_Dtype(const PyObject* tensor) {
 tensorflow::int64 PyEagerTensor_NumElements(PyObject* tensor) {
   DCHECK(EagerTensor_CheckExact(tensor));
   EagerTensor* as_c_eager_tensor = reinterpret_cast<EagerTensor*>(tensor);
-  tensorflow::int64 result = TFE_TensorHandleNumElements(
-      as_c_eager_tensor->handle, &as_c_eager_tensor->status);
+  int64_t result = TFE_TensorHandleNumElements(as_c_eager_tensor->handle,
+                                               &as_c_eager_tensor->status);
 
   if (MaybeRaiseExceptionFromTFStatus(&as_c_eager_tensor->status,
                                       PyExc_ValueError)) {
@@ -1219,7 +1228,7 @@ PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor) {
   int rank = TFE_TensorDebugInfoOnDeviceNumDims(debug_info);
   PyObject* shape = PyTuple_New(rank);
   for (int i = 0; i < rank; ++i) {
-    tensorflow::int64 dim_size = TFE_TensorDebugInfoOnDeviceDim(debug_info, i);
+    int64_t dim_size = TFE_TensorDebugInfoOnDeviceDim(debug_info, i);
     PyTuple_SET_ITEM(shape, i, PyLong_FromLongLong(dim_size));
   }
   TFE_DeleteTensorDebugInfo(debug_info);

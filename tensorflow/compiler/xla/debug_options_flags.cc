@@ -133,8 +133,8 @@ static void AllocateFlags() {
 
   // Returns a lambda that calls "member_setter" on "flag_values" with the
   // argument passed in to the lambda.
-  auto int32_setter_for = [](void (DebugOptions::*member_setter)(int32)) {
-    return [member_setter](int32 value) {
+  auto int32_setter_for = [](void (DebugOptions::*member_setter)(int32_t)) {
+    return [member_setter](int32_t value) {
       (flag_values->*member_setter)(value);
       return true;
     };
@@ -212,7 +212,7 @@ static void AllocateFlags() {
       }
       const auto& pass = pass_and_fuel[0];
       const auto& fuel_str = pass_and_fuel[1];
-      int64 fuel;
+      int64_t fuel;
       if (!absl::SimpleAtoi(fuel_str, &fuel)) {
         LOG(ERROR) << absl::StreamFormat(
             "Illegal value for --xla_fuel. Saw %s, but expected token %s to be "
@@ -644,9 +644,15 @@ static void AllocateFlags() {
       bool_setter_for(&DebugOptions::set_xla_dump_disable_metadata),
       flag_values->xla_dump_disable_metadata(),
       "Disable dumping HLO metadata in HLO dumps."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_hlo_pipeline_re",
+      string_setter_for(&DebugOptions::set_xla_dump_hlo_pipeline_re),
+      flag_values->xla_dump_hlo_pipeline_re(),
+      "If specified, dumps HLO before and after optimization passes in the "
+      "pass pipelines that match this regular expression."));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
-}
+}  // NOLINT(readability/fn_size)
 
 void AppendDebugOptionsFlags(std::vector<tensorflow::Flag>* flag_list) {
   absl::call_once(flags_init, &AllocateFlags);
@@ -686,7 +692,7 @@ bool ConsumeFuel(absl::string_view pass, bool* just_ran_out) {
   std::atomic<bool>& fuel_has_been_consumed = fuel_ever_consumed->at(pass);
   fuel_has_been_consumed = true;
 
-  int64 remaining = remaining_fuel.fetch_sub(1);
+  int64_t remaining = remaining_fuel.fetch_sub(1);
   if (just_ran_out != nullptr) {
     *just_ran_out = remaining == 0;
   }

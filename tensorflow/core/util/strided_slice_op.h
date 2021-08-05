@@ -64,8 +64,8 @@ struct StridedSliceShapeSpec {
 Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
-    int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
-    int32 new_axis_mask, int32 shrink_axis_mask,
+    int32_t begin_mask_spec, int32_t end_mask_spec, const int32_t ellipsis_mask,
+    int32_t new_axis_mask, int32_t shrink_axis_mask,
     PartialTensorShape* processing_shape, PartialTensorShape* final_shape,
     bool* is_identity, bool* is_simple_slice, bool* slice_dim0,
     gtl::InlinedVector<int64, 4>* begin, gtl::InlinedVector<int64, 4>* end,
@@ -76,11 +76,12 @@ Status ValidateStridedSliceOp(
 Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
-    int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
-    int32 new_axis_mask, int32 shrink_axis_mask, TensorShape* processing_shape,
-    TensorShape* final_shape, bool* is_identity, bool* is_simple_slice,
-    bool* slice_dim0, gtl::InlinedVector<int64, 4>* begin,
-    gtl::InlinedVector<int64, 4>* end, gtl::InlinedVector<int64, 4>* strides,
+    int32_t begin_mask_spec, int32_t end_mask_spec, const int32_t ellipsis_mask,
+    int32_t new_axis_mask, int32_t shrink_axis_mask,
+    TensorShape* processing_shape, TensorShape* final_shape, bool* is_identity,
+    bool* is_simple_slice, bool* slice_dim0,
+    gtl::InlinedVector<int64, 4>* begin, gtl::InlinedVector<int64, 4>* end,
+    gtl::InlinedVector<int64, 4>* strides,
     StridedSliceShapeSpec* shape_spec = nullptr);
 
 }  // namespace tensorflow

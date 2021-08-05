@@ -87,6 +87,10 @@ class SubComponent(enum.Enum):
   CONVERT_KERAS_TO_SAVED_MODEL = SubComponentItem(
       "CONVERT_KERAS_TO_SAVED_MODEL", Component.PREPARE_TF_MODEL)
 
+  # Save Concrete functions to SavedModel.
+  CONVERT_CONCRETE_FUNCTIONS_TO_SAVED_MODEL = SubComponentItem(
+      "CONVERT_CONCRETE_FUNCTIONS_TO_SAVED_MODEL", Component.PREPARE_TF_MODEL)
+
   # Convert a Keras model to a frozen graph.
   FREEZE_KERAS_MODEL = SubComponentItem("FREEZE_KERAS_MODEL",
                                         Component.PREPARE_TF_MODEL)

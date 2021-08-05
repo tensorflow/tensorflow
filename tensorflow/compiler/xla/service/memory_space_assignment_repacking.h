@@ -24,7 +24,7 @@ namespace xla {
 // An interface to define allocation repacking algorithms.
 class MemorySpaceAssignmentRepacker {
  public:
-  MemorySpaceAssignmentRepacker(int64 max_size, int64 alignment)
+  MemorySpaceAssignmentRepacker(int64_t max_size, int64_t alignment)
       : max_size_(max_size), alignment_(alignment) {}
   virtual ~MemorySpaceAssignmentRepacker() = default;
 

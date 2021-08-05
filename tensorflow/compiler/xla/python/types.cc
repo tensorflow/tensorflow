@@ -306,19 +306,13 @@ static py::tuple IntSpanToTupleHelper(absl::Span<IntType const> xs) {
   return out;
 }
 
-py::tuple IntSpanToTuple(absl::Span<int64 const> xs) {
+template <>
+pybind11::tuple SpanToTuple(absl::Span<int const> xs) {
   return IntSpanToTupleHelper(xs);
 }
-py::tuple IntSpanToTuple(absl::Span<int const> xs) {
+template <>
+pybind11::tuple SpanToTuple(absl::Span<int64 const> xs) {
   return IntSpanToTupleHelper(xs);
-}
-
-std::vector<int64> IntSequenceToVector(const py::object& sequence) {
-  std::vector<int64> output;
-  for (auto item : sequence) {
-    output.push_back(item.cast<int64>());
-  }
-  return output;
 }
 
 absl::optional<CastToArrayResult> CastToArray(py::handle h) {

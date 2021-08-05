@@ -17,6 +17,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -505,27 +506,19 @@ void ReducedPrecisionAccuracyTest::DoIt(
   for (const auto& test_value : test_values) {
     // Add positive values.
     input_values.push_back(absl::bit_cast<Fp>(test_value[0]));
-    expected_values.push_back(absl::bit_cast<Fp>(test_value[operation_index]));
     // Add negative values.  We do this in the bitwise representation so as to
     // avoid problems with NaN handling.
     input_values.push_back(absl::bit_cast<Fp, Uint>(test_value[0] ^ sign_bit));
-    expected_values.push_back(
-        absl::bit_cast<Fp, Uint>(test_value[operation_index] ^ sign_bit));
   }
-
-  // This is required for proper handling of NaN values.
-  SetFastMathDisabled(true);
 
   XlaBuilder builder(TestName());
 
   Literal a_literal = LiteralUtil::CreateR1<Fp>({input_values});
-  std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(a_literal).ConsumeValueOrDie();
   auto a = Parameter(&builder, 0, a_literal.shape(), "a");
 
   ReducePrecision(a, exponent_bits, mantissa_bits);
 
-  ComputeAndCompareR1<Fp>(&builder, expected_values, {a_data.get()});
+  ComputeAndCompare(&builder, {std::move(a_literal)});
 }
 
 INSTANTIATE_TEST_CASE_P(ReducedPrecisionAccuracyTest,

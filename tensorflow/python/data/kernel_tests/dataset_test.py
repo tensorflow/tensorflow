@@ -25,11 +25,11 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import graph_pb2
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import optional_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -63,7 +63,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         lambda _: random_ops.random_uniform(()))
     with self.assertRaises(errors.FailedPreconditionError):
       self.evaluate(
-          dataset._as_serialized_graph(external_state_policy=distribute_options
+          dataset._as_serialized_graph(external_state_policy=options_lib
                                        .ExternalStatePolicy.FAIL))
 
   @combinations.generate(
@@ -587,6 +587,18 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         str(dataset.element_spec),
         "DatasetSpec(Foo(a=TensorSpec(shape=(), dtype=tf.int32, name=None), "
         "b=TensorSpec(shape=(), dtype=tf.string, name=None)), TensorShape([]))")
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testIterationError(self):
+
+    @def_function.function(autograph=False)
+    def fn(ds):
+      for _ in ds:
+        pass
+
+    dataset = dataset_ops.Dataset.range(10)
+    with self.assertRaises(ValueError):
+      self.evaluate(fn(dataset))
 
 
 class DebugDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
