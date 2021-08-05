@@ -204,6 +204,11 @@ class SharedBatchScheduler
  private:
   explicit SharedBatchScheduler(const Options& options);
 
+  void GetNextWorkItem_Locked(
+      internal::Queue<TaskType>** queue_for_batch_out,
+      std::unique_ptr<Batch<TaskType>>* batch_to_process_out)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   // The code executed in 'batch_threads_'. Obtains a batch to process from the
   // queue pointed to by 'next_queue_to_schedule_', and processes it. If that
   // queue declines to provide a batch to process, moves onto the next queue. If
@@ -535,6 +540,48 @@ SharedBatchScheduler<TaskType>::SharedBatchScheduler(const Options& options)
 }
 
 template <typename TaskType>
+void SharedBatchScheduler<TaskType>::GetNextWorkItem_Locked(
+    internal::Queue<TaskType>** queue_for_batch_out,
+    std::unique_ptr<Batch<TaskType>>* batch_to_process_out) {
+  std::unique_ptr<Batch<TaskType>> batch_to_process;
+  internal::Queue<TaskType>* queue_for_batch = nullptr;
+  const int num_queues = queues_.size();
+  for (int num_queues_tried = 0;
+       batch_to_process == nullptr && num_queues_tried < num_queues;
+       ++num_queues_tried) {
+    DCHECK(next_queue_to_schedule_ != queues_.end());
+
+    // If a closed queue responds to ScheduleBatch() with nullptr, the queue
+    // will never yield any further batches so we can drop it. To avoid a
+    // race, we take a snapshot of the queue's closedness state *before*
+    // calling ScheduleBatch().
+    const bool queue_closed = (*next_queue_to_schedule_)->closed();
+
+    // Ask '*next_queue_to_schedule_' if it wants us to process a batch.
+    batch_to_process = (*next_queue_to_schedule_)->ScheduleBatch();
+    if (batch_to_process != nullptr) {
+      queue_for_batch = next_queue_to_schedule_->get();
+    }
+
+    // Advance 'next_queue_to_schedule_'.
+    if (queue_closed && (*next_queue_to_schedule_)->IsEmpty() &&
+        batch_to_process == nullptr) {
+      // We've encountered a closed queue with no work to do. Drop it.
+      DCHECK_NE(queue_for_batch, next_queue_to_schedule_->get());
+      next_queue_to_schedule_ = queues_.erase(next_queue_to_schedule_);
+    } else {
+      ++next_queue_to_schedule_;
+    }
+    if (next_queue_to_schedule_ == queues_.end() && !queues_.empty()) {
+      // We've hit the end. Wrap to the first queue.
+      next_queue_to_schedule_ = queues_.begin();
+    }
+  }
+  *queue_for_batch_out = queue_for_batch;
+  *batch_to_process_out = std::move(batch_to_process);
+}
+
+template <typename TaskType>
 void SharedBatchScheduler<TaskType>::ThreadLogic() {
   // A batch to process next (or nullptr if no work to do).
   std::unique_ptr<Batch<TaskType>> batch_to_process;
@@ -542,47 +589,15 @@ void SharedBatchScheduler<TaskType>::ThreadLogic() {
   internal::Queue<TaskType>* queue_for_batch = nullptr;
   {
     mutex_lock l(mu_);
-
-    const int num_queues = queues_.size();
-    for (int num_queues_tried = 0;
-         batch_to_process == nullptr && num_queues_tried < num_queues;
-         ++num_queues_tried) {
-      DCHECK(next_queue_to_schedule_ != queues_.end());
-
-      // If a closed queue responds to ScheduleBatch() with nullptr, the queue
-      // will never yield any further batches so we can drop it. To avoid a
-      // race, we take a snapshot of the queue's closedness state *before*
-      // calling ScheduleBatch().
-      const bool queue_closed = (*next_queue_to_schedule_)->closed();
-
-      // Ask '*next_queue_to_schedule_' if it wants us to process a batch.
-      batch_to_process = (*next_queue_to_schedule_)->ScheduleBatch();
-      if (batch_to_process != nullptr) {
-        queue_for_batch = next_queue_to_schedule_->get();
-      }
-
-      // Advance 'next_queue_to_schedule_'.
-      if (queue_closed && (*next_queue_to_schedule_)->IsEmpty() &&
-          batch_to_process == nullptr) {
-        // We've encountered a closed queue with no work to do. Drop it.
-        DCHECK_NE(queue_for_batch, next_queue_to_schedule_->get());
-        next_queue_to_schedule_ = queues_.erase(next_queue_to_schedule_);
-      } else {
-        ++next_queue_to_schedule_;
-      }
-      if (next_queue_to_schedule_ == queues_.end() && !queues_.empty()) {
-        // We've hit the end. Wrap to the first queue.
-        next_queue_to_schedule_ = queues_.begin();
-      }
-    }
-
-    if (batch_to_process == nullptr) {
+    while (true) {
+      GetNextWorkItem_Locked(&queue_for_batch, &batch_to_process);
+      if (batch_to_process != nullptr) break;
+      if (queues_.empty()) return;
       // We couldn't find any work to do. Wait until a new batch becomes
       // schedulable, or some time has elapsed, before checking again.
       const int64_t kTimeoutMillis =
           1;  // The smallest accepted granule of time.
       WaitForMilliseconds(&l, &schedulable_batch_cv_, kTimeoutMillis);
-      return;
     }
   }
 
