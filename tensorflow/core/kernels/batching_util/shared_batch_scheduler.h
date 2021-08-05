@@ -300,12 +300,9 @@ class Queue {
   // BatchScheduler::Schedule().
   Status Schedule(std::unique_ptr<TaskType>* task);
 
-  // Enqueue task as it is.
-  Status ScheduleWithoutSplit(std::unique_ptr<TaskType>* task);
-
-  // Enqueue `task`, and split it inline (eagerly) to form batches to be
+  // Enqueue `task` as it is OR split it inline (eagerly) to form batches to be
   // processed by `Queue<TaskType>::ProcessBatch`
-  Status ScheduleWithEagerSplit(std::unique_ptr<TaskType>* task);
+  Status ScheduleWithoutOrEagerSplit(std::unique_ptr<TaskType>* task);
 
   // Enqueue `task` along with the batch queue metadata.
   // Batches are formed by the time `ScheduleWithLazySplit` returns; and each
@@ -720,56 +717,8 @@ Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   }
   if (options_.enable_lazy_split) {
     return ScheduleWithLazySplit(std::move(task));
-  } else if (options_.enable_large_batch_splitting) {
-    return ScheduleWithEagerSplit(std::move(task));
-  } else {
-    return ScheduleWithoutSplit(std::move(task));
   }
-}
-
-template <typename TaskType>
-Status Queue<TaskType>::ScheduleWithoutSplit(std::unique_ptr<TaskType>* task) {
-  bool notify_of_schedulable_batch = false;
-  {
-    mutex_lock l(mu_);
-
-    DCHECK(!closed_);
-
-    if (batches_.back()->size() + (*task)->size() >
-        options_.input_batch_size_limit) {
-      if (batches_.size() >= options_.max_enqueued_batches) {
-        return errors::Unavailable(
-            "The batch scheduling queue to which this task was submitted is "
-            "full");
-      }
-      StartNewBatch();
-    }
-    if (batches_.back()->empty()) {
-      open_batch_start_time_micros_ = env_->NowMicros();
-    }
-    profiler::TraceMeProducer trace_me(
-        [task] {
-          return profiler::TraceMeEncode(
-              "ScheduleWithoutSplit",
-              {{"batching_input_task_size", (*task)->size()}});
-        },
-        profiler::ContextType::kSharedBatchScheduler,
-        batches_.back()->traceme_context_id());
-    batches_.back()->AddTask(std::move(*task));
-
-    if (!schedulable_batch_) {
-      if (batches_.size() > 1 || IsOpenBatchSchedulable()) {
-        schedulable_batch_ = true;
-        notify_of_schedulable_batch = true;
-      }
-    }
-  }
-
-  if (notify_of_schedulable_batch) {
-    schedulable_batch_callback_();
-  }
-
-  return Status::OK();
+  return ScheduleWithoutOrEagerSplit(std::move(task));
 }
 
 template <typename TaskType>
@@ -841,21 +790,19 @@ Status Queue<TaskType>::ScheduleWithLazySplit(std::unique_ptr<TaskType>* task) {
   return Status::OK();
 }
 
-// TODO(b/154140947):
-// Merge `ScheduleWithEagerSplit` and `ScheduleWithoutSplit` into `Schedule`.
-// Two variants are created so original path (ScheduleWithoutSplit) is kept as
-// it is.
+// TODO(b/194294263):
+// Merge `ScheduleWithoutOrEagerSplit` and `ScheduleWithLazySplit` into
+// `Schedule`.
 template <typename TaskType>
-Status Queue<TaskType>::ScheduleWithEagerSplit(
+Status Queue<TaskType>::ScheduleWithoutOrEagerSplit(
     std::unique_ptr<TaskType>* task) {
-  profiler::TraceMe trace_me([task] {
+  const bool large_batch_splitting = options_.enable_large_batch_splitting;
+  profiler::TraceMe trace_me([task, large_batch_splitting] {
     return profiler::TraceMeEncode(
-        "ScheduleWithEagerSplit",
+        large_batch_splitting ? "ScheduleWithEagerSplit"
+                              : "ScheduleWithoutSplit",
         {{"batching_input_task_size", (*task)->size()}});
   });
-
-  // The max size to be enqueued.
-  const int max_execution_batch_size = options_.max_execution_batch_size;
 
   bool notify_of_schedulable_batch = false;
   {
@@ -877,13 +824,14 @@ Status Queue<TaskType>::ScheduleWithEagerSplit(
     }
 
     const int64_t open_batch_remaining_slot =
-        max_execution_batch_size - batches_.back()->size();
+        options_.max_execution_batch_size - batches_.back()->size();
 
     const int64_t input_task_size = (*task)->size();
 
     std::vector<std::unique_ptr<TaskType>> output_tasks;
 
-    if (input_task_size <= open_batch_remaining_slot) {
+    if (input_task_size <= open_batch_remaining_slot ||
+        !large_batch_splitting) {
       // This is the fast path when input doesn't need to be split.
       output_tasks.push_back(std::move(*task));
     } else {
