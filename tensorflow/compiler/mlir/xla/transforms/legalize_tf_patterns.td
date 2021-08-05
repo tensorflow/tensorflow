@@ -345,7 +345,7 @@ def : Pat<(TF_PadV2Op $input, (ConstantLikeMatcher ElementsAttr:$padding), $c),
 // Identity op patterns.
 //===----------------------------------------------------------------------===//
 
-foreach src = [TF_IdentityOp, TF_StopGradientOp] in
+foreach src = [TF_IdentityOp, TF_StopGradientOp, TF__EagerConstOp] in
   def : Pat<(src $op), (replaceWithValue $op)>;
 
 // TODO(b/32223192): Support CheckNumerics in HLO.

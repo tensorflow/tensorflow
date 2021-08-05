@@ -315,6 +315,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::CumsumOp>(),
     TypeID::get<TF::DepthwiseConv2dNativeOp>(),
     TypeID::get<TF::DynamicStitchOp>(),
+    TypeID::get<TF::_EagerConstOp>(),
     TypeID::get<TF::EmptyOp>(),
     TypeID::get<TF::ExpandDimsOp>(),
     TypeID::get<TF::FillOp>(),
