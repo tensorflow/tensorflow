@@ -664,6 +664,8 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
   if (c->ValueKnown(input_depth_dim) && c->ValueKnown(filter_input_depth_dim)) {
     int64 input_depth_value = c->Value(input_depth_dim),
           filter_input_depth_value = c->Value(filter_input_depth_dim);
+    if (filter_input_depth_value == 0)
+      return errors::InvalidArgument("Depth of filter must not be 0");
     if (input_depth_value % filter_input_depth_value != 0)
       return errors::InvalidArgument(
           "Depth of input (", input_depth_value,
@@ -673,6 +675,8 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
       int64 num_groups = input_depth_value / filter_input_depth_value;
       if (c->ValueKnown(output_depth_dim)) {
         int64 output_depth_value = c->Value(output_depth_dim);
+        if (num_groups == 0)
+          return errors::InvalidArgument("Number of groups must not be 0");
         if (output_depth_value % num_groups != 0)
           return errors::InvalidArgument(
               "Depth of output (", output_depth_value,
@@ -803,6 +807,8 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
   if (c->ValueKnown(input_depth_dim) && c->ValueKnown(filter_input_depth_dim)) {
     int64 input_depth_value = c->Value(input_depth_dim),
           filter_input_depth_value = c->Value(filter_input_depth_dim);
+    if (filter_input_depth_value == 0)
+      return errors::InvalidArgument("Depth of filter must not be 0");
     if (input_depth_value % filter_input_depth_value != 0)
       return errors::InvalidArgument(
           "Depth of input (", input_depth_value,
@@ -812,6 +818,8 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
       int64 num_groups = input_depth_value / filter_input_depth_value;
       if (c->ValueKnown(output_depth_dim)) {
         int64 output_depth_value = c->Value(output_depth_dim);
+        if (num_groups == 0)
+          return errors::InvalidArgument("Number of groups must not be 0");
         if (output_depth_value % num_groups != 0)
           return errors::InvalidArgument(
               "Depth of output (", output_depth_value,
@@ -2424,6 +2432,9 @@ Status SparseReduceShapeFn(InferenceContext* c) {
 
     int64 ndims = shape_vec.size();
     absl::flat_hash_set<int64> axes;
+    if (ndims == 0)
+      return errors::InvalidArgument(
+          "Number of dims in shape tensor must not be 0");
     for (int i = 0; i < axes_vec.size(); i++) {
       axes.insert((axes_vec(i) + ndims) % ndims);
     }
