@@ -1620,7 +1620,6 @@ cc_library(
         ":mangling_util",
         ":tensorflow_attributes",
         ":tensorflow_types",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
