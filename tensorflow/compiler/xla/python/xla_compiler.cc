@@ -346,6 +346,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       }))
       .def("get_hlo_module", &GetHloModule)
       .def("program_shape", &XlaComputation::GetProgramShape)
+      .def("name", &XlaComputation::name)
       .def("as_serialized_hlo_module_proto", &GetComputationSerializedProto)
       .def("as_hlo_text", &GetComputationHloText)
       .def("as_hlo_dot_graph", &GetComputationHloDotGraph)
