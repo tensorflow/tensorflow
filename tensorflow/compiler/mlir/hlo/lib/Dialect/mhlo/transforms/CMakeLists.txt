@@ -71,6 +71,7 @@ add_mlir_library(MhloPasses
   test_infer_shaped_type_pass.cc
   unfuse_batch_norm.cc
   unfuse_batch_norm_pass.cc
+  mhlo_flatten_tuple.cc
 
   DEPENDS
   MLIRDiscRalPassIncGen
