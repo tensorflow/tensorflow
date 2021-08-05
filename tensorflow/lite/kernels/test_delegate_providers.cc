@@ -29,6 +29,8 @@ constexpr char KernelTestDelegateProviders::kUseSimpleAllocator[];
 
 KernelTestDelegateProviders::KernelTestDelegateProviders()
     : delegate_list_util_(&params_) {
+  TFLITE_TOOLS_CHECK(delegate_list_util_.GetCount() > 0)
+    << "There are no available delegates for the test run, aborting!";
   delegate_list_util_.AddAllDelegateParams();
   params_.AddParam(kUseSimpleAllocator, tools::ToolParam::Create<bool>(false));
 }
