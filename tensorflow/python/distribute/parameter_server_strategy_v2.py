@@ -548,6 +548,8 @@ class ParameterServerStrategyV2Extended(
     self._used_with_coordinator = False
     self._being_scheduled = False
     self._set_num_gpus()
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_gpus_per_worker").set(self._num_gpus_per_worker)
 
     # Don't canonicalize the devices here since this code is executed on Chief,
     # but we want the reduce evaluation to be done on each worker. Placer will
