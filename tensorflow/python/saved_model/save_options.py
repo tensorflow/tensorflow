@@ -110,7 +110,7 @@ class SaveOptions(object):
                function_aliases=None,
                experimental_io_device=None,
                experimental_variable_policy=None,
-               experimental_custom_gradients=False):
+               experimental_custom_gradients=True):
     """Creates an object that stores options for SavedModel saving.
 
     Args:
@@ -160,7 +160,7 @@ class SaveOptions(object):
         default policy.
       experimental_custom_gradients: Boolean. When True, will save traced
         gradient functions for the functions decorated by `tf.custom_gradient`.
-        Defaults to `False`.
+        Defaults to `True`.
     """
     self.namespace_whitelist = _validate_namespace_whitelist(
         namespace_whitelist)

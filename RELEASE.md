@@ -117,6 +117,8 @@
     *   Promoting `tf.data.Options.experimental_deterministic` API to
         `tf.data.Options.deterministic` and deprecating the experimental
         endpoint.
+*   TF SavedModel:
+    *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
 *   XLA:
     * Added a new API that allows custom call functions to signal errors. The
       old API will be deprecated in a future release. See
