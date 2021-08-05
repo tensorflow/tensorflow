@@ -447,7 +447,6 @@ def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id):
         momentum=0.999,
         name=prefix + 'expand_BN')(
             x)
-    x = layers.ReLU(6., name=prefix + 'expand_relu')(x)
   else:
     prefix = 'expanded_conv_'
 
