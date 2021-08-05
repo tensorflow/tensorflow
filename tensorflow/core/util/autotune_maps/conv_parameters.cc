@@ -39,8 +39,7 @@ ConvParameters::ConvParameters(
     const absl::Span<const int64_t> dilation,
     const absl::Span<const int64_t> stride,
     const absl::Span<const int64_t> padding, DataType dtype, int device_id,
-    int group_count, bool has_side_input,
-    stream_executor::dnn::ActivationMode activation_mode)
+    int group_count, absl::optional<ConvParameters::FusionInfo> fusion_info)
     : device_id_(device_id) {
   proto_.set_batch(batch);
   proto_.set_in_depths(in_depths);
@@ -53,8 +52,13 @@ ConvParameters::ConvParameters(
   *proto_.mutable_padding() = {padding.begin(), padding.end()};
   proto_.set_dtype(dtype);
   proto_.set_group_count(group_count);
-  proto_.mutable_fusion()->set_has_side_input(has_side_input);
-  proto_.mutable_fusion()->set_activation_mode(activation_mode);
+  if (fusion_info.has_value()) {
+    ConvParametersProto::Fusion fusion_proto;
+    fusion_proto.set_has_side_input(fusion_info.value().has_side_input);
+    fusion_proto.set_activation_mode(fusion_info.value().activation_mode);
+    fusion_proto.set_is_contrib(fusion_info.value().is_contrib);
+    *proto_.mutable_fusion() = fusion_proto;
+  }
   proto_.set_device_identifier(
       autotune_maps_utils::DeviceIdToIdentifier(device_id));
   hash_code_ = ComputeHash(device_id_, proto_);

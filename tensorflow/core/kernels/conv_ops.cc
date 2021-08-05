@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -760,14 +761,6 @@ int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
   return default_value_in_bytes;
 }
 
-// A dummy type to group forward convolution autotune results together.
-struct ConvAutotuneGroup {
-  static string name() { return "Conv"; }
-};
-
-typedef AutotuneSingleton<ConvAutotuneGroup, ConvParameters,
-                          se::dnn::AlgorithmConfig>
-    AutotuneConv;
 
 template <typename T>
 void LaunchConv2DOp<GPUDevice, T>::operator()(

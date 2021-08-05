@@ -21,9 +21,9 @@ package(
 )
 
 cc_library(
-    name = "fused_conv_bias_activation_autotune_map",
+    name = "conv_autotune_maps",
     hdrs = [
-        "fused_conv_bias_activation_autotune_map.h",
+        "conv_autotune_maps.h",
     ],
     deps = [
         "//tensorflow/core/kernels:gpu_util_hdrs",
@@ -65,6 +65,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

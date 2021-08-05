@@ -24,9 +24,7 @@ package tensorflow;
 import "tensorflow/core/util/autotune_maps/conv_parameters.proto";
 import "tensorflow/stream_executor/dnn.proto";
 
-// TODO(ruochengw): Merge autotune maps of Conv, FusedConv and
-// FusedConvBiasActivation.
-message ConvBiasActivationMapProto {
+message ConvMapProto {
   message Entry {
     tensorflow.ConvParametersProto key = 1;
     stream_executor.dnn.AlgorithmConfigProto value = 2;
@@ -37,5 +35,5 @@ message ConvBiasActivationMapProto {
 
 // TODO(b/189530096): Support autotune maps for more ops.
 message AutotuneMapsProto {
-  ConvBiasActivationMapProto conv_bias_activation_map = 1;
+  ConvMapProto conv_map = 2;
 }

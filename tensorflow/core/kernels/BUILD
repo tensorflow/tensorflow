@@ -3917,6 +3917,7 @@ tf_kernel_library(
         ":gpu_utils",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
+        "//tensorflow/core/util/autotune_maps:conv_autotune_maps",
     ]),
 )
 

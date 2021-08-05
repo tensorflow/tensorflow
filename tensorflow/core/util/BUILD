@@ -955,11 +955,10 @@ tf_cuda_library(
     deps = [
         ":autotune_map_proto_cc",
         "//tensorflow/core:framework",
-        "//tensorflow/core/kernels:conv_ops_gpu_hdrs",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/util/autotune_maps:conv_autotune_maps",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto_cc",
-        "//tensorflow/core/util/autotune_maps:fused_conv_bias_activation_autotune_map",
         "//tensorflow/stream_executor:stream_header",
     ],
 )
@@ -972,8 +971,8 @@ tf_cuda_only_cc_test(
         ":autotune_serialize",
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/gpu:gpu_init",
+        "//tensorflow/core/util/autotune_maps:conv_autotune_maps",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto_cc",
-        "//tensorflow/core/util/autotune_maps:fused_conv_bias_activation_autotune_map",
     ],
 )

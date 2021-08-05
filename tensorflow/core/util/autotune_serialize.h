@@ -37,7 +37,7 @@ namespace tensorflow {
 Status LoadSerializedAutotuneMaps(absl::string_view s);
 
 // Serializes all the autotune maps into a string that can be decoded by
-// LoadSerializeAutotuneMaps.
+// LoadSerializedAutotuneMaps.
 Status SerializeAutotuneMaps(std::string* output);
 
 }  // namespace tensorflow

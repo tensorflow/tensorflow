@@ -37,16 +37,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-// TODO(ruochengw): Merge autotune maps of Conv, FusedConv and
-// FusedConvBiasActivation.
-
 // A dummy type to group forward convolution autotune results together.
-struct ConvBiasActivationAutotuneGroup {
-  static string name() { return "ConvBiasActivation"; }
+struct ConvAutotuneGroup {
+  static string name() { return "Conv"; }
 };
-typedef AutotuneSingleton<ConvBiasActivationAutotuneGroup, ConvParameters,
+
+typedef AutotuneSingleton<ConvAutotuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
-    AutotuneConvBiasActivation;
+    AutotuneConv;
 
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -18,15 +18,14 @@ limitations under the License.
 
 #include <map>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include "tensorflow/core/util/activation_mode.h"
 #include "tensorflow/core/util/autotune_map.pb.h"
 #include "tensorflow/core/util/autotune_maps/autotune_maps_utils.h"
+#include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
-#include "tensorflow/core/util/autotune_maps/fused_conv_bias_activation_autotune_map.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/dnn.pb.h"
 
@@ -39,20 +38,19 @@ using stream_executor::dnn::AlgorithmConfigProto;
 using stream_executor::dnn::AlgorithmDesc;
 using stream_executor::dnn::AlgorithmProto;
 
-ConvBiasActivationMapProto ConvBiasActivationMapToProto() {
-  ConvBiasActivationMapProto proto;
+ConvMapProto ConvMapToProto() {
+  ConvMapProto proto;
 
   // Deterministically sort the entries in autotune maps
   // according to the serialized string of ConvParametersProto in order to
   // enable deterministic serialization. The actual order is meaningless.
   //
-
   // This step also filters out dupilicate entries (only device_id's are
   // different) in the autotune maps. So that there is only one entry for a
   // convolution operation with a specific GPU device type.
-  std::map<string, ConvBiasActivationMapProto::Entry> sorted_map;
+  std::map<string, ConvMapProto::Entry> sorted_map;
 
-  for (auto const &p : AutotuneConvBiasActivation::GetInstance()->GetMap()) {
+  for (auto const &p : AutotuneConv::GetInstance()->GetMap()) {
     const AlgorithmConfig &config = p.second;
     // Skip entries that use cuDNN Frontend API because currently they cannot be
     // serialized.
@@ -62,7 +60,7 @@ ConvBiasActivationMapProto ConvBiasActivationMapToProto() {
     const ConvParameters &params = p.first;
     const ConvParametersProto &params_proto = params.proto();
 
-    ConvBiasActivationMapProto::Entry kv;
+    ConvMapProto::Entry kv;
     VLOG(1) << "Reading: " << p.first.ToString();
     *kv.mutable_key() = params_proto;
     *kv.mutable_value() = config.ToProto();
@@ -71,21 +69,20 @@ ConvBiasActivationMapProto ConvBiasActivationMapToProto() {
   }
 
   for (auto const &p : sorted_map) {
-    ConvBiasActivationMapProto::Entry *kv = proto.add_kv_pairs();
+    ConvMapProto::Entry *kv = proto.add_kv_pairs();
     *kv = p.second;
   }
   return proto;
 }
 
-void PopulateConvBiasActivationMap(const ConvBiasActivationMapProto &m) {
+void PopulateConvMap(const ConvMapProto &m) {
   // Map device_id's to corresponding device_identifiers.
   std::vector<string> device_ids_map =
       autotune_maps_utils::GetDeviceIdToIdentifierMap();
   // Map device_identifiers to device_ids whose corresponding GPU devices have
   // the given device_identifier.
   std::unordered_map<string, std::vector<int>> device_identifiers_map;
-
-  for (const ConvBiasActivationMapProto::Entry &kv : m.kv_pairs()) {
+  for (const ConvMapProto::Entry &kv : m.kv_pairs()) {
     const ConvParametersProto &params_proto = kv.key();
     const AlgorithmConfigProto &algorithm_config_proto = kv.value();
     auto iter = device_identifiers_map.find(params_proto.device_identifier());
@@ -102,7 +99,7 @@ void PopulateConvBiasActivationMap(const ConvBiasActivationMapProto &m) {
       device_ids = iter->second;
     }
     for (int device_id : device_ids) {
-      AutotuneConvBiasActivation::GetInstance()->Insert(
+      AutotuneConv::GetInstance()->Insert(
           ConvParameters(device_id, params_proto),
           AlgorithmConfig(algorithm_config_proto));
     }
@@ -115,7 +112,7 @@ void PopulateConvBiasActivationMap(const ConvBiasActivationMapProto &m) {
 Status SerializeAutotuneMaps(std::string *output) {
   AutotuneMapsProto proto;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  *proto.mutable_conv_bias_activation_map() = ConvBiasActivationMapToProto();
+  *proto.mutable_conv_map() = ConvMapToProto();
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   *output = autotune_maps_utils::SerializeProtoDeterministic(proto);
   return Status::OK();
@@ -131,9 +128,8 @@ Status LoadSerializedAutotuneMaps(absl::string_view s) {
     return errors::InvalidArgument(
         "Failed to parse the autotune maps from string.");
   }
-
-  PopulateConvBiasActivationMap(proto.conv_bias_activation_map());
-  // TODO(b/189530096) Populate autotune maps for more ops.
+  PopulateConvMap(proto.conv_map());
+  // TODO(b/189530096): Populate autotune maps for more ops.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return Status::OK();
 }
