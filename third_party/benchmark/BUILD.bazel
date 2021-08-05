@@ -25,8 +25,9 @@ config_setting(
 config_setting(
     name = "macos",
     constraint_values = [
-        "@bazel_tools//platforms:osx",
+        "@platforms//os:macos",
     ],
+    visibility = [":__subpackages__"],
 )
 
 cc_library(
