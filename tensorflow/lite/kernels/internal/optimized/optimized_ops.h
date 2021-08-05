@@ -1191,21 +1191,7 @@ inline void Mean(const tflite::MeanParams& op_params,
   }
 }
 
-template <typename T, typename U>
-inline bool MeanGeneral(const T* input_data, const int* input_dims,
-                        const int input_num_dims, T* output_data,
-                        const int* output_dims, const int output_num_dims,
-                        const int* axis, const int num_axis_dimensions,
-                        bool keep_dims, int* temp_index, int* resolved_axis,
-                        U* temp_sum) {
-  return reference_ops::Mean(input_data, input_dims, input_num_dims,
-                             output_data, output_dims, output_num_dims, axis,
-                             num_axis_dimensions, keep_dims, temp_index,
-                             resolved_axis, temp_sum);
-}
-
-template <>
-inline bool MeanGeneral<float, float>(
+inline bool MeanGeneral(
     const float* input_data, const int* input_dims, const int input_num_dims,
     float* output_data, const int* output_dims, const int output_num_dims,
     const int* axis, const int num_axis_dimensions, bool keep_dims,
