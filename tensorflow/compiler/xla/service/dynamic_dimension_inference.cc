@@ -1300,7 +1300,6 @@ Status DynamicDimensionInferenceVisitor::HandleConditional(
       hlo->shape());
 
   bool need_rewrite = false;
-
   for (int64_t branch_index = 0; branch_index < hlo->branch_count();
        ++branch_index) {
     std::vector<HloInstruction*> operands_to_add;
@@ -1374,35 +1373,77 @@ Status DynamicDimensionInferenceVisitor::HandleConditional(
             << dynamic_parameter_binding;
     TF_RETURN_IF_ERROR(DynamicDimensionInferenceVisitor::Run(
         new_computation, dynamic_parameter_binding, parent_));
+
+    new_branch_computations.push_back(new_computation);
+    new_operands.push_back(new_operand);
+  }
+  int64_t tuple_count = hlo->shape().tuple_shapes_size();
+  // The dynamism of the output of branches can be different.
+  // E.g.,
+  //   true_branch  (s32[<=4])
+  //   false_branch (s32[4])
+  //
+  // The following loop populates dynamic_output_mapping and account for
+  // dynamism across all branches.
+  ShapeUtil::ForEachSubshape(
+      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (!subshape.IsArray()) {
+          return;
+        }
+        for (int64 i = 0; i < subshape.rank(); ++i) {
+          for (int64 j = 0; j < new_branch_computations.size(); ++j) {
+            HloInstruction* dynamic_size = parent_->GetDynamicSize(
+                new_branch_computations[j]->root_instruction(), index, i);
+            if (dynamic_size) {
+              if (dynamic_output_mapping.element(index).contains(i)) {
+                continue;
+              }
+              dynamic_output_mapping.mutable_element(index)->emplace(
+                  i, tuple_count++);
+            }
+          }
+        }
+      });
+  for (int64_t branch_index = 0; branch_index < hlo->branch_count();
+       ++branch_index) {
     std::vector<HloInstruction*> hlos_to_add_in_root;
-    int64_t original_tuple_count = hlo->shape().tuple_shapes_size();
     // There may be some dynamic dimensions coming out of the computation, wire
     // that into the root instruction as additional tuple elements.
-    TF_RETURN_IF_ERROR(ForEachDynamicDimension(
-        new_computation->root_instruction(),
-        [&](ShapeIndex index, int64_t dim,
-            HloInstruction* dynamic_size) -> Status {
-          TF_RET_CHECK(hlo->shape().IsTuple())
-              << "Only tuple typed conditionals can have dynamic dimension. "
-                 "Please file a bug against XLA team.";
-          dynamic_output_mapping.mutable_element(index)->emplace(
-              dim, original_tuple_count++);
-          hlos_to_add_in_root.push_back(dynamic_size);
-          return Status::OK();
-        }));
+    ShapeUtil::ForEachSubshape(hlo->shape(), [&](const Shape& subshape,
+                                                 const ShapeIndex& index) {
+      if (!subshape.IsArray()) {
+        return;
+      }
+      for (int64 i = 0; i < subshape.rank(); ++i) {
+        if (dynamic_output_mapping.element(index).contains(i)) {
+          HloInstruction* dynamic_size = parent_->GetDynamicSize(
+              new_branch_computations[branch_index]->root_instruction(), index,
+              i);
+          if (dynamic_size) {
+            hlos_to_add_in_root.push_back(dynamic_size);
+          } else {
+            HloInstruction* constant_size =
+                new_branch_computations[branch_index]->AddInstruction(
+                    HloInstruction::CreateConstant(
+                        LiteralUtil::CreateR0<int32>(subshape.dimensions(i))));
+            hlos_to_add_in_root.push_back(constant_size);
+          }
+        }
+      }
+    });
 
     VLOG(2) << "hlos_to_add_in_root:" << hlos_to_add_in_root.size();
     if (!hlos_to_add_in_root.empty()) {
       need_rewrite = true;
       HloInstruction* new_branch_root = TupleUtil::AppendSuffix(
-          new_computation->root_instruction(), hlos_to_add_in_root);
-      new_computation->set_root_instruction(new_branch_root,
-                                            /*accept_different_shape=*/true);
+          new_branch_computations[branch_index]->root_instruction(),
+          hlos_to_add_in_root);
+      new_branch_computations[branch_index]->set_root_instruction(
+          new_branch_root,
+          /*accept_different_shape=*/true);
     }
-
-    new_branch_computations.push_back(new_computation);
-    new_operands.push_back(new_operand);
   }
+
   if (!need_rewrite) {
     return Status::OK();
   }

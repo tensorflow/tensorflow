@@ -2366,6 +2366,29 @@ TEST_F(ShapeInferenceTest, ConditionalIndexed) {
               HasSubstr("!branch_computations.empty()"));
 }
 
+TEST_F(ShapeInferenceTest, ConditionalDynamic) {
+  auto r0s32 = ShapeUtil::MakeShape(S32, {});
+  auto static_shape = ShapeUtil::MakeShape(S32, {4}, {false});
+  auto dynamic_shape = ShapeUtil::MakeShape(S32, {4}, {true});
+  auto inferred_status0 = ShapeInference::InferConditionalShape(
+      r0s32,
+      {ShapeUtil::MakeProgramShape({vector_32_}, static_shape),
+       ShapeUtil::MakeProgramShape({vector_64_}, dynamic_shape),
+       ShapeUtil::MakeProgramShape({vector_64_}, dynamic_shape)},
+      {vector_32_, vector_64_, vector_64_});
+  EXPECT_IS_OK(inferred_status0.status());
+  EXPECT_TRUE(ShapeUtil::Equal(dynamic_shape, inferred_status0.ValueOrDie()));
+
+  auto inferred_status1 = ShapeInference::InferConditionalShape(
+      r0s32,
+      {ShapeUtil::MakeProgramShape({vector_32_}, dynamic_shape),
+       ShapeUtil::MakeProgramShape({vector_64_}, static_shape),
+       ShapeUtil::MakeProgramShape({vector_64_}, dynamic_shape)},
+      {vector_32_, vector_64_, vector_64_});
+  EXPECT_IS_OK(inferred_status1.status());
+  EXPECT_TRUE(ShapeUtil::Equal(dynamic_shape, inferred_status1.ValueOrDie()));
+}
+
 TEST_F(ShapeInferenceTest, BadSlice) {
   auto arg = ShapeUtil::MakeShape(F32, {4});
   StatusOr<Shape> statusor =
