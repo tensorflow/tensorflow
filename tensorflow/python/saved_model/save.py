@@ -22,6 +22,7 @@ import collections
 import functools
 import gc
 import os
+import re
 import sys
 
 from absl import logging
@@ -478,6 +479,26 @@ def _map_captures_to_created_tensors(original_captures, resource_map):
   return export_captures
 
 
+def _to_safe_name_scope(signature_key, user_input_name):
+  """Creates a sanitized name scope from user signature and input names.
+
+  Concatenates signature and input names, sanitizing as needed to be a valid
+  scope name.
+
+  Args:
+    signature_key: The user-provided key for the signature.
+    user_input_name: The user-provided name for the input placeholder.
+
+  Returns:
+    A name scope that is safe to be used in tf.name_scope().
+  """
+  name_scope = "{}_{}".format(signature_key, user_input_name)
+  if re.match(r"^[A-Za-z0-9.][A-Za-z0-9_.\\-]*$", name_scope):
+    return name_scope
+  invalid_prefix_stripped = re.sub(r"^[^A-Za-z0-9.]*", "", name_scope)
+  return re.sub(r"[^A-Za-z0-9_.\\-]", "_", invalid_prefix_stripped)
+
+
 def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
                                               function_name):
   """Creates exterior placeholders in the exported graph for function arguments.
@@ -541,7 +562,7 @@ def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
     arg_placeholder = array_ops.placeholder(
         shape=placeholder.shape,
         dtype=placeholder.dtype,
-        name="{}_{}".format(signature_key, user_input_name))
+        name=_to_safe_name_scope(signature_key, user_input_name))
     exterior_argument_placeholders[user_input_name] = arg_placeholder
     mapped_inputs.append(arg_placeholder)
   return mapped_inputs, exterior_argument_placeholders
