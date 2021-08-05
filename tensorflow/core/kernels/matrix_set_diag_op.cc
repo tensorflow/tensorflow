@@ -70,6 +70,9 @@ class MatrixSetDiagOp : public OpKernel {
                   errors::InvalidArgument(
                       "diag_index must be a scalar or vector, received shape: ",
                       diag_index.shape().DebugString()));
+      OP_REQUIRES(
+          context, diag_index.NumElements() > 0,
+          errors::InvalidArgument("diag_index must have at least one element"));
       lower_diag_index = diag_index.flat<int32>()(0);
       upper_diag_index = lower_diag_index;
       if (TensorShapeUtils::IsVector(diag_index.shape())) {
