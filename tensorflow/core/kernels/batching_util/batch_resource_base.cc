@@ -32,6 +32,7 @@ namespace tensorflow {
 namespace serving {
 namespace {
 
+// TODO(b/181883417): Replace with RecordPaddingSizeV2.
 void RecordPaddingSize(int32_t padding_size, const string& model_name,
                        int32_t execution_batch_size, const string& op_name) {
   static auto* cell = tensorflow::monitoring::PercentileSampler<3>::New(
@@ -41,6 +42,20 @@ void RecordPaddingSize(int32_t padding_size, const string& model_name,
        "model_name", "execution_batch_size", "op_name"},
       /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
       /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
+  cell->GetCell(model_name, absl::StrCat(execution_batch_size), op_name)
+      ->Add(static_cast<double>(padding_size));
+}
+
+void RecordPaddingSizeV2(int32_t padding_size, const string& model_name,
+                         int32_t execution_batch_size, const string& op_name) {
+  static auto* cell = tensorflow::monitoring::Sampler<3>::New(
+      {"/tensorflow/serving/batching/padding_size_v2",
+       "Tracks the padding size distribution on batches by model_name (if "
+       "available).",
+       "model_name", "execution_batch_size", "op_name"},
+      // It's 14 buckets with the last bucket being 2^13 to DBL_MAX;
+      // so the limits are [1, 2, 4, 8, ..., 8 * 1024, DBL_MAX].
+      monitoring::Buckets::Exponential(1, 2, 14));
   cell->GetCell(model_name, absl::StrCat(execution_batch_size), op_name)
       ->Add(static_cast<double>(padding_size));
 }
@@ -95,6 +110,7 @@ void RecordProcessedBatchSizeV2(int32_t batch_size, const string& model_name,
       ->IncrementBy(1);
 }
 
+// TODO(b/181883417): Replace with RecordBatchDelayUsV2.
 void RecordBatchDelayUs(int64_t batch_delay_us, const string& model_name,
                         const string& op_name) {
   static auto* cell = monitoring::PercentileSampler<2>::New(
@@ -104,6 +120,19 @@ void RecordBatchDelayUs(int64_t batch_delay_us, const string& model_name,
        "model_name", "op_name"},
       /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
       /*max_samples=*/1024, monitoring::UnitOfMeasure::kTime);
+  cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_delay_us));
+}
+
+void RecordBatchDelayUsV2(int64_t batch_delay_us, const string& model_name,
+                          const string& op_name) {
+  static auto* cell = tensorflow::monitoring::Sampler<2>::New(
+      {"/tensorflow/serving/batching/batch_delay_us_v2",
+       "Tracks the batching delay (in microseconds) for inputs by model_name "
+       "(if available).",
+       "model_name", "op_name"},
+      // It's 27 buckets with the last bucket being 2^26 to DBL_MAX;
+      // so the limits are [1, 2, 4, 8, ..., 64 * 1024 * 1024, DBL_MAX].
+      monitoring::Buckets::Exponential(1, 2, 27));
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_delay_us));
 }
 
@@ -361,6 +390,8 @@ Status BatchResourceBase::ConcatInputTensors(
   });
   RecordPaddingSize(padding_amount, GetModelName(context), padded_batch_size,
                     context->op_kernel().name_view().data());
+  RecordPaddingSizeV2(padding_amount, GetModelName(context), padded_batch_size,
+                      context->op_kernel().name());
   RecordProcessedBatchSize(padded_batch_size, GetModelName(context),
                            context->op_kernel().name_view().data());
   RecordProcessedBatchSizeV2(padded_batch_size, GetModelName(context),
@@ -641,6 +672,8 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
     RecordBatchDelayUs((current_time - batch->task(i).start_time) * 1e-3,
                        model_name,
                        last_task_context->op_kernel().name_view().data());
+    RecordBatchDelayUsV2((current_time - batch->task(i).start_time) * 1e-3,
+                         model_name, last_task_context->op_kernel().name());
   }
   // Releases the cleanup method here, because the callback of the function
   // library runtime will handle it now.
