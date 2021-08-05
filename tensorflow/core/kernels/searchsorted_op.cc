@@ -86,6 +86,10 @@ class UpperBoundOp : public OpKernel {
     const Tensor& sorted_inputs_t = ctx->input(0);
     const Tensor& values_t = ctx->input(1);
 
+    // inputs must be at least a matrix
+    OP_REQUIRES(
+        ctx, sorted_inputs_t.shape().dims() >= 2,
+        errors::InvalidArgument("sorted input argument must be a matrix"));
     // must have same batch dim_size for both
     OP_REQUIRES(ctx, sorted_inputs_t.dim_size(0) == values_t.dim_size(0),
                 Status(error::INVALID_ARGUMENT,
@@ -127,6 +131,10 @@ class LowerBoundOp : public OpKernel {
     const Tensor& sorted_inputs_t = ctx->input(0);
     const Tensor& values_t = ctx->input(1);
 
+    // inputs must be at least a matrix
+    OP_REQUIRES(
+        ctx, sorted_inputs_t.shape().dims() >= 2,
+        errors::InvalidArgument("sorted input argument must be a matrix"));
     // must have same batch dim_size for both
     OP_REQUIRES(ctx, sorted_inputs_t.dim_size(0) == values_t.dim_size(0),
                 Status(error::INVALID_ARGUMENT,
