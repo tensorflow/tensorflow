@@ -129,9 +129,6 @@ Status Conv2DShapeWithExplicitPadding(shape_inference::InferenceContext* c);
 // padding.
 Status Conv2DShape(shape_inference::InferenceContext* c);
 
-// Shape function for QuantizedConv2D-like operations
-Status QuantizedConv2DShape(shape_inference::InferenceContext* c);
-
 // Shape function for Conv3D-like operations.
 Status Conv3DShape(shape_inference::InferenceContext* c);
 
@@ -143,10 +140,6 @@ Status DepthwiseConv2DNativeShapeWithExplicitPadding(
 // Shape function for DepthwiseConv2D-like operations that do not support
 // explicit padding.
 Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c);
-
-// Shape function for QuantizedDepthwiseConv2DNative-like operations
-Status QuantizedDepthwiseConv2DNativeShape(
-    shape_inference::InferenceContext* c);
 
 // Shape function for Conv2DBackpropInput.
 Status Conv2DBackpropInputShape(shape_inference::InferenceContext* c);
@@ -282,6 +275,18 @@ Status SparseReduceShapeFn(InferenceContext* c);
 
 // Shape function for QuantizedConv2D op.
 Status QuantizedConv2DShape(InferenceContext* c);
+
+Status QuantizedConv2DPerChannelShape(InferenceContext* c);
+
+Status QuantizedConv2DAndRequantizeShape(InferenceContext* c);
+
+Status QuantizedConv2DWithBiasShape(InferenceContext* c);
+
+Status QuantizedConv2DWithBiasAndRequantizeShape(InferenceContext* c);
+
+// Shape function for QuantizedDepthwiseConv2DNative-like operations
+Status QuantizedDepthwiseConv2DNativeShape(
+    shape_inference::InferenceContext* c);
 
 // Shape function for QuantizedAvgPool op
 Status QuantizedAvgPoolShape(InferenceContext* c);

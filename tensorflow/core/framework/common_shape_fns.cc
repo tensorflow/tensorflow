@@ -705,8 +705,12 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
     if (!s.ok() && !errors::IsNotFound(s)) {
       return s;
     }
-    TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
-                                         /*num_dims=*/4, data_format));
+    // Due to historical reasons, some QuantizedConv2D-like ops are allowed to
+    // have non-empty padding_list attribute if the padding attribute is Valid
+    if (!(padding == Padding::VALID && padding_attr_name == "padding_list")) {
+      TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
+                                           /*num_dims=*/4, data_format));
+    }
   } else {
     CHECK(padding != Padding::EXPLICIT);  // Crash ok.
   }
@@ -751,11 +755,6 @@ Status Conv2DShapeWithExplicitPadding(shape_inference::InferenceContext* c) {
 // padding.
 Status Conv2DShape(shape_inference::InferenceContext* c) {
   return Conv2DShapeImpl(c, false);
-}
-
-// Shape function for QuantizedConv2D-like operations
-Status QuantizedConv2DShape(shape_inference::InferenceContext* c) {
-  return Conv2DShapeImpl(c, true, "padding_list");
 }
 
 // TODO(mjanusz): Unify all conv/pooling shape functions.
@@ -1050,8 +1049,13 @@ Status DepthwiseConv2DNativeShapeImpl(
     if (!status.ok() && !errors::IsNotFound(status)) {
       return status;
     }
-    TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
-                                         /*num_dims=*/4, data_format));
+    // Due to historical reasons, some QuantizedDepthwiseConv2D-like ops are
+    // allowed to have non-empty padding_list attribute if the padding
+    // attribute is Valid
+    if (!(padding == Padding::VALID && padding_attr_name == "padding_list")) {
+      TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
+                                           /*num_dims=*/4, data_format));
+    }
   } else {
     DCHECK(padding != Padding::EXPLICIT);
   }
@@ -1096,11 +1100,6 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
 Status DepthwiseConv2DNativeShapeWithExplicitPadding(
     shape_inference::InferenceContext* c) {
   return DepthwiseConv2DNativeShapeImpl(c, true);
-}
-
-Status QuantizedDepthwiseConv2DNativeShape(
-    shape_inference::InferenceContext* c) {
-  return DepthwiseConv2DNativeShapeImpl(c, true, "padding_list");
 }
 
 Status AvgPoolShape(shape_inference::InferenceContext* c) {
@@ -2507,8 +2506,9 @@ Status SparseReduceShapeFn(InferenceContext* c) {
   return UnknownShape(c);
 }
 
+// Shape function for QuantizedConv2D-like operations
 Status QuantizedConv2DShape(InferenceContext* c) {
-  TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
+  TF_RETURN_IF_ERROR(shape_inference::Conv2DShapeImpl(c, true, "padding_list"));
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
   TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
@@ -2517,6 +2517,66 @@ Status QuantizedConv2DShape(InferenceContext* c) {
   c->set_output(1, c->Scalar());
   c->set_output(2, c->Scalar());
   return Status::OK();
+}
+
+Status QuantizedConv2DPerChannelShape(InferenceContext* c) {
+  TF_RETURN_IF_ERROR(shape_inference::Conv2DShapeImpl(c, true, "padding_list"));
+  ShapeHandle unused, channel;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+  TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(4), 1, &channel));
+  TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
+  c->set_output(1, channel);
+  c->set_output(2, channel);
+  return Status::OK();
+}
+
+Status QuantizedConv2DAndRequantizeShape(InferenceContext* c) {
+  TF_RETURN_IF_ERROR(shape_inference::Conv2DShapeImpl(c, true, "padding_list"));
+  ShapeHandle unused, channel;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+  TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(4), 1, &channel));
+  TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
+  c->set_output(1, c->Scalar());
+  c->set_output(2, c->Scalar());
+  return Status::OK();
+}
+
+Status QuantizedConv2DWithBiasShape(InferenceContext* c) {
+  TF_RETURN_IF_ERROR(shape_inference::Conv2DShapeImpl(c, true, "padding_list"));
+  ShapeHandle unused, channel;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+  TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
+  TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
+  c->set_output(1, channel);
+  c->set_output(2, channel);
+  return Status::OK();
+}
+
+Status QuantizedConv2DWithBiasAndRequantizeShape(InferenceContext* c) {
+  TF_RETURN_IF_ERROR(shape_inference::Conv2DShapeImpl(c, true, "padding_list"));
+  ShapeHandle unused, channel;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+  TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
+  TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
+  c->set_output(1, c->Scalar());
+  c->set_output(2, c->Scalar());
+  return Status::OK();
+}
+
+// Shape function for QuantizedDepthwiseConv2DNative-like operations
+Status QuantizedDepthwiseConv2DNativeShape(
+    shape_inference::InferenceContext* c) {
+  return DepthwiseConv2DNativeShapeImpl(c, true, "padding_list");
 }
 
 Status QuantizedAvgPoolShape(InferenceContext* c) {

@@ -1498,6 +1498,7 @@ REGISTER_OP("QuantizedConv2D")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn(shape_inference::QuantizedConv2DShape);
 
 REGISTER_OP("QuantizedMaxPool")
@@ -2667,19 +2668,7 @@ REGISTER_OP("QuantizedConv2DAndRequantize")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("padding_list: list(int) = []")
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::QuantizedConv2DShape(c));
-      ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
-      c->set_output(1, c->Scalar());
-      c->set_output(2, c->Scalar());
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::QuantizedConv2DAndRequantizeShape);
 
 // Fusion of Quantized Conv2D and BiasAdd.
 REGISTER_OP("QuantizedConv2DWithBias")
@@ -2700,18 +2689,7 @@ REGISTER_OP("QuantizedConv2DWithBias")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("padding_list: list(int) = []")
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::QuantizedConv2DShape(c));
-      ShapeHandle unused, channel;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
-      c->set_output(1, channel);
-      c->set_output(2, channel);
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::QuantizedConv2DWithBiasShape);
 
 REGISTER_OP("QuantizedConv2DWithBiasAndRequantize")
     .Input("input: Tinput")
@@ -2734,20 +2712,7 @@ REGISTER_OP("QuantizedConv2DWithBiasAndRequantize")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("padding_list: list(int) = []")
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::QuantizedConv2DShape(c));
-      ShapeHandle unused, channel;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
-      c->set_output(1, c->Scalar());
-      c->set_output(2, c->Scalar());
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::QuantizedConv2DWithBiasAndRequantizeShape);
 
 // Fusion of Quantized Conv2D and Relu.
 REGISTER_OP("QuantizedConv2DAndRelu")
@@ -2767,17 +2732,7 @@ REGISTER_OP("QuantizedConv2DAndRelu")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("padding_list: list(int) = []")
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::QuantizedConv2DShape(c));
-      ShapeHandle unused, channel;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(4), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
-      c->set_output(1, channel);
-      c->set_output(2, channel);
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::QuantizedConv2DPerChannelShape);
 
 REGISTER_OP("QuantizedConv2DAndReluAndRequantize")
     .Input("input: Tinput")
@@ -2798,19 +2753,7 @@ REGISTER_OP("QuantizedConv2DAndReluAndRequantize")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("padding_list: list(int) = []")
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::QuantizedConv2DShape(c));
-      ShapeHandle unused, channel;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(4), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
-      c->set_output(1, c->Scalar());
-      c->set_output(2, c->Scalar());
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::QuantizedConv2DAndRequantizeShape);
 
 // Fusion of Quantized Conv2D, BiasAdd and Relu.
 REGISTER_OP("QuantizedConv2DWithBiasAndRelu")
@@ -2831,18 +2774,7 @@ REGISTER_OP("QuantizedConv2DWithBiasAndRelu")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("padding_list: list(int) = []")
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::QuantizedConv2DShape(c));
-      ShapeHandle unused, channel;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
-      c->set_output(1, channel);
-      c->set_output(2, channel);
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::QuantizedConv2DWithBiasShape);
 
 // Fusion of Quantized Conv2D, BiasAdd, Relu, and Requantize.
 REGISTER_OP("QuantizedConv2DWithBiasAndReluAndRequantize")
@@ -2866,20 +2798,7 @@ REGISTER_OP("QuantizedConv2DWithBiasAndReluAndRequantize")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("padding_list: list(int) = []")
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::QuantizedConv2DShape(c));
-      ShapeHandle unused, channel;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
-      c->set_output(1, c->Scalar());
-      c->set_output(2, c->Scalar());
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::QuantizedConv2DWithBiasAndRequantizeShape);
 
 // Fusion of Quantized Conv2D, BiasAdd, Sum, and Relu.
 REGISTER_OP("QuantizedConv2DWithBiasSumAndRelu")
@@ -2901,18 +2820,7 @@ REGISTER_OP("QuantizedConv2DWithBiasSumAndRelu")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("padding_list: list(int) = []")
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::QuantizedConv2DShape(c));
-      ShapeHandle unused, channel;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
-      c->set_output(1, channel);
-      c->set_output(2, channel);
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::QuantizedConv2DWithBiasShape);
 
 REGISTER_OP("QuantizedConv2DWithBiasSumAndReluAndRequantize")
     .Input("input: Tinput")
@@ -2939,20 +2847,7 @@ REGISTER_OP("QuantizedConv2DWithBiasSumAndReluAndRequantize")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("padding_list: list(int) = []")
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::QuantizedConv2DShape(c));
-      ShapeHandle unused, channel;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
-      c->set_output(1, c->Scalar());
-      c->set_output(2, c->Scalar());
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::QuantizedConv2DWithBiasAndRequantizeShape);
 
 REGISTER_OP("QuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
     .Input("input: Tinput")
@@ -2979,22 +2874,7 @@ REGISTER_OP("QuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("padding_list: list(int) = []")
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::QuantizedConv2DShape(c));
-      ShapeHandle unused, channel;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
-      // Since activations are not requantized per channel, `min_output`
-      // and `max_output` are scalars.
-      c->set_output(1, c->Scalar());
-      c->set_output(2, c->Scalar());
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::QuantizedConv2DWithBiasAndRequantizeShape);
 
 // Fusion of Quantized MatMul and BiasAdd.
 REGISTER_OP("QuantizedMatMulWithBias")
@@ -3176,17 +3056,8 @@ REGISTER_OP("QuantizedConv2DPerChannel")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::QuantizedConv2DShape(c));
-      ShapeHandle unused, channel;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(4), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
-      c->set_output(1, channel);
-      c->set_output(2, channel);
-      return Status::OK();
-    });
+    .Attr("padding_list: list(int) = []")
+    .SetShapeFn(shape_inference::QuantizedConv2DPerChannelShape);
 
 REGISTER_OP("QuantizedDepthwiseConv2D")
     .Input("input: Tinput")
