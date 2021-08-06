@@ -116,7 +116,7 @@ class TPUVariableMixin(object):
       return super(TPUVariableMixin, self).__getattr__(name)
     else:
       raise AttributeError(
-          "'{}' not accessible within a TPU context.".format(name))
+          f"`TPUVariableMixin.{name}` not accessible within a TPU context.")
 
   def get(self):
     if tpu_util.enclosing_tpu_context() is None:
