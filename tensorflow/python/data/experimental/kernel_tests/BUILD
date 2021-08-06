@@ -335,7 +335,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_and_batch_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_and_batch_test.py"],
     shard_count = 4,
     deps = [
