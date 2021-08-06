@@ -804,7 +804,7 @@ def tf_native_cc_binary(
                 "-lpthread",
                 "-lm",
             ],
-        }) + linkopts + _rpath_linkopts(name),
+        }) + linkopts + _rpath_linkopts(name) + lrt_if_needed(),
         **kwargs
     )
 
