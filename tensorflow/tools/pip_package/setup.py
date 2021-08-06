@@ -75,8 +75,6 @@ if '--project_name' in sys.argv:
 # comment the versioning scheme.
 # NOTE: Please add test only packages to `TEST_PACKAGES` below.
 REQUIRED_PACKAGES = [
-    # NOTE: As numpy has releases that break semver guarantees and several other
-    # deps depend on numpy without an upper bound, we must install numpy before
     # everything else. So make sure that the correct version of NumPy
     # is already installed before calling pip or setup.py
     'numpy',
