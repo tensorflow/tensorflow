@@ -3096,8 +3096,10 @@ cuda_py_test(
     timeout = "long",
     srcs = ["depthwise_conv_op_test.py"],
     shard_count = 3,
-    # TODO(b/118842098): Re-enable this test in Kokoro.
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
+        "notap",  # TOOD(b/195753631): Re-enable when not flaky
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
