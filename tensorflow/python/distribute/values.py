@@ -1199,6 +1199,17 @@ class SyncOnReadVariable(DistributedVariable):
   def _update_replica(self, update_fn, value, **kwargs):
     return update_fn(self._get_on_device_or_primary(), value, **kwargs)
 
+  def _get(self):
+    """Returns the value of SyncOnReadVariable based on surrounding context.
+
+    If called under a non-default replica-context, returns the corresponding
+    variable on that replica.
+    If called under default replica-context or cross-replica context, returns
+    the synced value.
+    """
+    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+      return super(SyncOnReadVariable, self)._get()
+
   # TODO(b/154017756): Make assign behaivor in cross replica context consistent
   # with MirroredVariable.
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
