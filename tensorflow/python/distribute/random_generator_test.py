@@ -52,8 +52,23 @@ def get_num_local_replicas(strat, values=None):
     return strat.num_replicas_in_sync
 
 
+ps_strategies = [
+    strategy_combinations.parameter_server_strategy_fn(
+        "ParameterServer3Worker2PSCPUNoShard",
+        num_workers=3, num_ps=2, variable_partitioner=None),
+    strategy_combinations.parameter_server_strategy_fn(
+        "ParameterServer1Worker2PSCPUNoShard",
+        num_workers=1, num_ps=2, variable_partitioner=None),
+    strategy_combinations.parameter_server_strategy_fn(
+        "ParameterServer3Worker2PS1GPUNoShard",
+        num_workers=3, num_ps=2, required_gpus=1, variable_partitioner=None),
+    strategy_combinations.parameter_server_strategy_fn(
+        "ParameterServer1Worker2PS1GPUNoShard",
+        num_workers=1, num_ps=2, required_gpus=1, variable_partitioner=None),
+]
 all_strategies = (strategy_combinations.all_strategies +
-                  strategy_combinations.multiworker_strategies)
+                  strategy_combinations.multiworker_strategies +
+                  ps_strategies)
 
 
 class GeneratorTest(test.TestCase, parameterized.TestCase):
@@ -131,6 +146,19 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
 
   @ds_combinations.generate(
       combinations.combine(
+          strat=[
+              strategy_combinations.parameter_server_strategy_1worker_2ps_cpu
+          ],
+          mode=["eager"]))
+  def testShardedError(self, strat):
+    """Tests error about sharding is raised."""
+    with strat.scope():
+      with self.assertRaisesRegex(
+          ValueError, "state is sharded, which is not allowed"):
+        rng.Generator.from_seed(1234)
+
+  @ds_combinations.generate(
+      combinations.combine(
           strat=all_strategies,
           mode=["eager"],
           jit_replica_fn=[False, True]))
@@ -173,7 +201,7 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
           jit_replica_fn=[False, True],
           mode=["eager"]) +
       combinations.combine(
-          strat1=strategy_combinations.multiworker_strategies,
+          strat1=strategy_combinations.multiworker_strategies + ps_strategies,
           strat2=[None],
           jit_replica_fn=[False, True],
           mode=["eager"]))
@@ -219,7 +247,7 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
 
   @ds_combinations.generate(
       combinations.combine(
-          strat=strategy_combinations.all_strategies,
+          strat=all_strategies,
           mode=["eager"],
           is_save_in_scope=[True, False]))
   def testSavedModel(self, strat, is_save_in_scope):

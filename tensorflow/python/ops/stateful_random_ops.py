@@ -21,6 +21,7 @@ from __future__ import print_function
 import six
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -260,9 +261,6 @@ class Generator(tracking.AutoTrackable):
   When creating a generator inside a `tf.distribute.Strategy` scope, each
   replica will get a different stream of random numbers.
 
-  Note: `tf.distribute.experimental.CentralStorageStrategy` and
-  `tf.distribute.experimental.ParameterServerStrategy` are not supported yet.
-
   For example, in this code:
 
   ```
@@ -297,6 +295,25 @@ class Generator(tracking.AutoTrackable):
   while another has made two RNG calls). We don't have such guarantee if the
   generator is saved in a strategy scope and restored outside of any strategy
   scope, or vice versa.
+
+  When a generator is created within the scope of
+  `tf.distribute.experimental.ParameterServerStrategy`, the workers
+  will share the generator's state (placed on one of the parameter
+  servers). In this way the workers will still get different
+  random-number streams, as stated above. (This is similar to replicas
+  in a `tf.distribute.MirroredStrategy` sequentially accessing a
+  generator created outside the strategy.) Each RNG call on a worker
+  will incur a round-trip to a parameter server, which may have
+  performance impacts. When creating a
+  `tf.distribute.experimental.ParameterServerStrategy`, please make
+  sure that the `variable_partitioner` argument won't shard small
+  variables of shape `[2]` or `[3]` (because generator states must not
+  be sharded). Ways to avoid sharding small variables include setting
+  `variable_partitioner` to `None` or to
+  `tf.distribute.experimental.partitioners.MinSizePartitioner` with a
+  large enough `min_shard_bytes` (see
+  `tf.distribute.experimental.ParameterServerStrategy`'s documentation
+  for more details).
   """
 
   @classmethod
@@ -425,11 +442,6 @@ class Generator(tracking.AutoTrackable):
       self._alg = copy_from.algorithm
     else:
       assert alg is not None and state is not None
-      if ds_context.has_strategy():
-        strat_name = type(ds_context.get_strategy()).__name__
-        # TODO(b/174610856): Support ParameterServerStrategy.
-        if "ParameterServer" in strat_name:
-          raise ValueError("%s is not supported yet" % strat_name)
       alg = stateless_random_ops.convert_alg_to_int(alg)
       if isinstance(state, variables.Variable):
         _check_state_shape(state.shape, alg)
@@ -451,7 +463,20 @@ class Generator(tracking.AutoTrackable):
     Returns:
       The created variable.
     """
-    return variables.Variable(*args, **kwargs)
+    v = variables.Variable(*args, **kwargs)
+    if isinstance(v, sharded_variable.ShardedVariable):
+      # RNG state is an atomic entity representing a 128-bit or
+      # 192-bit value, so it mustn't be sharded.
+      raise ValueError(
+          "tf.random.Generator state is sharded, which is not allowed. When "
+          "creating a tf.distribute.experimental.ParameterServerStrategy, "
+          "please make sure that the `variable_partitioner` "
+          "argument won't shard a "
+          "small variable of shape [2] or [3]. Ways to avoid sharding small "
+          "variables include setting `variable_partitioner` to None or to "
+          "tf.distribute.experimental.partitioners.MinSizePartitioner with a "
+          "large enough `min_shard_bytes`.")
+    return v
 
   def reset(self, state):
     """Resets the generator by a new state.
