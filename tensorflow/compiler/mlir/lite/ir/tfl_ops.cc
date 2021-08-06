@@ -2978,6 +2978,21 @@ LogicalResult Verify(StridedSliceOp op) {
   if (!ranked_input_type) return success();
   int num_input_dims = ranked_input_type.getRank();
 
+  if (auto begin_type = op.begin().getType().dyn_cast<RankedTensorType>()) {
+    if (begin_type.getRank() != 1) return failure();
+    if (begin_type.getDimSize(0) > num_input_dims) return failure();
+  }
+
+  if (auto end_type = op.end().getType().dyn_cast<RankedTensorType>()) {
+    if (end_type.getRank() != 1) return failure();
+    if (end_type.getDimSize(0) > num_input_dims) return failure();
+  }
+
+  if (auto strides_type = op.strides().getType().dyn_cast<RankedTensorType>()) {
+    if (strides_type.getRank() != 1) return failure();
+    if (strides_type.getDimSize(0) > num_input_dims) return failure();
+  }
+
   // The kernel will reshape the input tensor with new axis, it only supports
   // this reshaped tensor up to 5D.
   uint32_t ellipsis_mask = op.ellipsis_mask();
