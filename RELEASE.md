@@ -329,6 +329,9 @@ This release contains contributions from many people at Google, as well as:
         `tf.data.ThreadingOptions` and deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.unique` API to
         `tf.data.Dataset.unique` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.rejection_resample` API to
+        `tf.data.Dataset.rejection_resample` and deprecating the experimental
+        endpoint.
     *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and
         `choose_from_datasets`. Setting `stop_on_empty_dataset=True` will stop
         sampling if it encounters an empty dataset. This preserves the sampling

@@ -764,6 +764,27 @@ cuda_py_test(
 )
 
 tf_py_test(
+    name = "rejection_resample_test",
+    size = "medium",
+    srcs = ["rejection_resample_test.py"],
+    shard_count = 10,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
+    ],
+)
+
+tf_py_test(
     name = "repeat_test",
     size = "small",
     srcs = ["repeat_test.py"],
