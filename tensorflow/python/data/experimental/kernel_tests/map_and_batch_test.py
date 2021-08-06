@@ -22,6 +22,7 @@ import math
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -403,6 +404,8 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeBatches(self):
+    if pywrap_sanitizers.is_tsan_enabled():
+      self.skipTest("Creating a large buffer causes OOM when using tsan.")
     # Batches of size 512M
     dataset = dataset_ops.Dataset.from_tensors(
         array_ops.ones((64, 1024, 1024), dtype=dtypes.float32)).repeat()
