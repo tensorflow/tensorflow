@@ -860,6 +860,13 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
     const auto& config = server_def.default_session_config();
     const bool enable_coordination =
         !config.experimental().coordination_service().empty();
+    const bool fetch_remote_devices =
+        config.experimental().fetch_remote_devices_in_multi_client();
+    // TODO(haoyuzhang): Consider unify the two solutions for fetching remote
+    // devices in multi-client cluster setup
+    assert(!(enable_coordination && fetch_remote_devices) &&
+           "Use one of the coordination service or all-gather solutions to "
+           "fetch remote device attributes.");
     if (enable_coordination) {
       // For coordination leader: start the service instance
       const std::string& leader =
@@ -876,9 +883,7 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
           coordination_service_agent_.get()));
     }
     LOG_AND_RETURN_IF_ERROR(server->Start());
-    if (server_def.default_session_config()
-            .experimental()
-            .fetch_remote_devices_in_multi_client()) {
+    if (fetch_remote_devices || enable_coordination) {
       auto session_name = strings::StrCat("eager_", context_->GetContextId());
       std::shared_ptr<WorkerSession> worker_session;
       LOG_AND_RETURN_IF_ERROR(server->worker_env()->session_mgr->CreateSession(
@@ -901,25 +906,34 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
           }));
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Connect());
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->WaitForAllTasks());
+
+      // Add remote devices to eager context.
+      std::vector<std::unique_ptr<Device>> remote_devices;
+      for (const auto& d :
+           coordination_service_agent_->GetClusterDeviceAttributes()) {
+        bool is_local;
+        LOG_AND_RETURN_IF_ERROR(IsLocalDevice(d.name(), server_def, &is_local));
+        if (!is_local) {
+          remote_devices.emplace_back(NewRemoteDevice(context_->TFEnv(), d));
+        }
+      }
+      LOG_AND_RETURN_IF_ERROR(context_->AddDevices(std::move(remote_devices)));
     }
 
     LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
         std::move(new_server), server->worker_env()->device_mgr,
         server->worker_env()->collective_executor_mgr.get()));
+    if (fetch_remote_devices) {
+      std::vector<DeviceAttributes> local_devices;
+      context_->ListDevices(&local_devices);
+      LOG_AND_RETURN_IF_ERROR(
+          UpdateDeviceManager(context_, server_def, local_devices));
+    }
   } else {
     LOG_AND_RETURN_IF_ERROR(server->UpdateServerDef(server_def));
     LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
         /*new_server=*/nullptr, server->worker_env()->device_mgr,
         server->worker_env()->collective_executor_mgr.get()));
-  }
-
-  if (server_def.default_session_config()
-          .experimental()
-          .fetch_remote_devices_in_multi_client()) {
-    std::vector<DeviceAttributes> local_devices;
-    context_->ListDevices(&local_devices);
-    LOG_AND_RETURN_IF_ERROR(
-        UpdateDeviceManager(context_, server_def, local_devices));
   }
 #undef LOG_AND_RETURN_IF_ERROR
   return Status::OK();
