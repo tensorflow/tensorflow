@@ -19,6 +19,13 @@
     replaced to raise a `RuntimeError` as they can be abused to cause arbitrary
     code execution. It is recommended to use JSON serialization instead of YAML,
     or, a better alternative, serialize to H5.
+  * `LinearModel` and `WideDeepModel` are moved to the
+    `tf.compat.v1.keras.models.`
+    namespace (`tf.compat.v1.keras.models.LinearModel`
+    and `tf.compat.v1.keras.models.WideDeepModel`),
+    and their `experimental` endpoints
+    (`tf.keras.experimental.models.LinearModel` and
+    `tf.keras.experimental.models.WideDeepModel`) are being deprecated.
 
 * `tf.lite`:
   * Rename fields `SignatureDef` table in schema to maximize the parity with
