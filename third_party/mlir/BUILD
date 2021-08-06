@@ -1493,6 +1493,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Affine",
+        ":DialectUtils",
         ":IR",
         ":MemRefDialect",
         ":Pass",
@@ -6414,6 +6415,7 @@ cc_library(
         ":TosaInterfacesIncGen",
         ":TosaPassIncGen",
         ":TransformUtils",
+        "@llvm-project//llvm:Support",
     ],
 )
 
