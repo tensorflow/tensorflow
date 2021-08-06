@@ -3255,10 +3255,11 @@ filegroup(
         "//tensorflow/core/data/service:server_lib",  # server_lib
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
-        "//tensorflow/core:op_gen_lib",  # tf_session, tf_text
+        "//tensorflow/core:op_gen_lib",  # tf_session
         "//tensorflow/core/common_runtime/eager:context",  # tfe
         "//tensorflow/core/common_runtime/eager:tensor_handle",  # tfe
         "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
+        "//tensorflow/core/framework:attr_value_proto_cc_impl",  # tf_text
         "//tensorflow/core/grappler:devices",  # tf_cluster
         "//tensorflow/core/grappler:grappler_item",  # tf_item
         "//tensorflow/core/grappler:grappler_item_builder",  # tf_item

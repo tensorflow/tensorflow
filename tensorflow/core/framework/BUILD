@@ -1556,6 +1556,11 @@ tf_proto_library(
         ":tensor_shape_proto",
         ":types_proto",
     ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/security/fuzzing:__subpackages__",
+    ],
 )
 
 tf_proto_library(
