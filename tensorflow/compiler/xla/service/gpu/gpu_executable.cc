@@ -378,7 +378,7 @@ static Status CheckAlignment(const BufferAllocation& allocation,
   if (!buffer.is_null() &&
       reinterpret_cast<uintptr_t>(buffer.opaque()) % expected_alignment != 0) {
     return InternalError(
-        "Address of buffer %d must be a multiple of %x, but "
+        "Address of buffer %d must be a multiple of 0x%x, but "
         "was %p",
         arg_idx, expected_alignment, buffer.opaque());
   }
