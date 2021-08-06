@@ -2159,11 +2159,11 @@ func @convert_gather_transpose(%arg0: tensor<128x256xf32>, %arg1: tensor<4x1xi32
 // CHECK-SAME:                                %[[VAL_2:.*]]: tensor<i32>) -> tensor<4x2xf32> {
 // CHECK:           %[[VAL_3:.*]] = "tf.Const"{{.*}}value = dense<0> : tensor<i32>
 // CHECK:           %[[VAL_4:.*]] = "tf.Const"{{.*}}value = dense<3> : tensor<i32>
-// CHECK:           %[[VAL_5:.*]] = "tf.Minimum"(%[[VAL_3]], %[[VAL_4]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-// CHECK:           %[[VAL_6:.*]] = "tf.Maximum"(%[[VAL_5]], %[[VAL_1]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK:           %[[VAL_5:.*]] = "tf.Minimum"(%[[VAL_1]], %[[VAL_4]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK:           %[[VAL_6:.*]] = "tf.Maximum"(%[[VAL_5]], %[[VAL_3]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
 // CHECK:           %[[VAL_7:.*]] = "tf.Const"{{.*}}value = dense<1> : tensor<i32>
-// CHECK:           %[[VAL_8:.*]] = "tf.Minimum"(%[[VAL_3]], %[[VAL_7]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-// CHECK:           %[[VAL_9:.*]] = "tf.Maximum"(%[[VAL_8]], %[[VAL_2]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK:           %[[VAL_8:.*]] = "tf.Minimum"(%[[VAL_2]], %[[VAL_7]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK:           %[[VAL_9:.*]] = "tf.Maximum"(%[[VAL_8]], %[[VAL_3]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
 // CHECK:           %[[VAL_10:.*]] = "tf.Pack"(%[[VAL_6]], %[[VAL_9]]) {axis = 0 : i64} : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
 // CHECK:           %[[VAL_11:.*]] = "tf.Const"{{.*}}value = dense<[4, 2]> : tensor<2xi64>
 // CHECK:           %[[VAL_12:.*]] = "tf.Slice"(%[[VAL_0]], %[[VAL_10]], %[[VAL_11]]) : (tensor<7x3xf32>, tensor<2xi32>, tensor<2xi64>) -> tensor<4x2xf32>

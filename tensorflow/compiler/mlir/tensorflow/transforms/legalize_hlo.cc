@@ -622,8 +622,8 @@ class ConvertDynamicSliceOp : public OpConversionPattern<mhlo::DynamicSliceOp> {
                                   input_type.getShape()[i] -
                                       op.slice_sizes().getValue<int64_t>({i})));
       Value clamped_index = rewriter.create<mhlo::ClampOp>(
-          op.getLoc(), op.start_indices()[i].getType(), op.start_indices()[i],
-          clamp_min, clamp_max);
+          op.getLoc(), op.start_indices()[i].getType(), clamp_min,
+          op.start_indices()[i], clamp_max);
       start_indices_vector.push_back(clamped_index);
     }
 
