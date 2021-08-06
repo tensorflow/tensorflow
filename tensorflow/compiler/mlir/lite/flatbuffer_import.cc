@@ -991,20 +991,23 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
   func.walk([&](tfl::QConstOp cst) {
     Value value = cst.getResult();
     Value full_range_const = value;
+    auto qtype = mlir::quant::UniformQuantizedType::getQuantizedElementType(
+        value.getType());
+    // Only the 8-bit constants are imported with narrow range.
+    if (!qtype || qtype.getStorageTypeIntegralWidth() != 8 ||
+        !(qtype.isa<mlir::quant::UniformQuantizedType>() ||
+          qtype.isa<mlir::quant::UniformQuantizedPerAxisType>())) {
+      return;
+    }
     for (auto& use : value.getUses()) {
       Operation* user = use.getOwner();
-      if (user->hasTrait<mlir::OpTrait::IsTerminator>()) return;
-      auto qtype = mlir::quant::UniformQuantizedType::getQuantizedElementType(
-          value.getType());
-      // Only the 8-bit constants are imported with narrow range.
-      if (!qtype || qtype.getStorageTypeIntegralWidth() != 8) return;
+      if (user->hasTrait<mlir::OpTrait::IsTerminator>()) continue;
 
       auto affine_user = llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(user);
       if (affine_user &&
           affine_user.GetAffineOperandIndex() == use.getOperandNumber() &&
           affine_user.RequiredNarrowRangeAffineOperand())
-        return;
-
+        continue;
       // Create a fully range quantized constant.
       if (full_range_const == value) {
         mlir::quant::QuantizedType new_qtype;
@@ -1023,7 +1026,7 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
               per_tensor.getZeroPoint(), per_tensor.getStorageTypeMin() - 1,
               per_tensor.getStorageTypeMax());
         } else {
-          return;
+          return;  // Should not reach here, as it's already checked.
         }
         auto new_output_type = new_qtype.castFromExpressedType(
             mlir::quant::UniformQuantizedType::castToExpressedType(
