@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/testing.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/error_spec.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_comparison.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
@@ -36,7 +37,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
 #include "tensorflow/compiler/xla/tools/prepare_reference_module.h"
+#include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
@@ -116,6 +119,7 @@ Status RunAndCompare(
     const std::string& hlo_filename, const std::string& test_platform_name,
     const std::string& reference_platform_name, std::minstd_rand0* engine,
     const RunHloModuleOptions& options,
+    xla::RunHloModuleIterationLiterals* iteration_literals_proto,
     std::function<Status(const HloModule&,
                          const ::stream_executor::Platform::Id&, HloModule*)>
         reference_module_modifier_hook,
@@ -156,6 +160,11 @@ Status RunAndCompare(
                 << args[i].ToString() << "\n";
     }
   }
+  if (iteration_literals_proto != nullptr) {
+    for (int i = 0; i < args.size(); ++i) {
+      *iteration_literals_proto->add_arguments() = args[i].ToProto();
+    }
+  }
 
   std::unique_ptr<HloModule> reference_module;
   if (reference_platform != nullptr) {
@@ -174,6 +183,10 @@ Status RunAndCompare(
               << " **\n"
               << test_result.ToString() << "\n";
   }
+  if (iteration_literals_proto != nullptr) {
+    LiteralProto test_result_proto = test_result.ToProto();
+    iteration_literals_proto->mutable_result()->Swap(&test_result_proto);
+  }
 
   if (reference_module == nullptr) {
     std::cerr << "Skipping reference platform\n";
@@ -188,6 +201,11 @@ Status RunAndCompare(
     std::cout << "\n** Result on reference platform "
               << reference_platform->Name() << " **\n"
               << reference_result.ToString() << "\n";
+  }
+  if (iteration_literals_proto != nullptr) {
+    LiteralProto reference_result_proto = reference_result.ToProto();
+    iteration_literals_proto->mutable_reference_result()->Swap(
+        &reference_result_proto);
   }
   ErrorSpec error_spec(static_cast<float>(options.abs_error_bound),
                        static_cast<float>(options.rel_error_bound));
