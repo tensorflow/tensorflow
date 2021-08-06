@@ -833,9 +833,9 @@ cc_library(
     testonly = True,
     hdrs = ["test_benchmark.h"],
     deps = [
-        ":platform",
         "@com_google_benchmark//:benchmark",
-    ],
+        ":platform",
+    ] + tf_testing_deps("test_benchmark"),
 )
 
 cc_library(
