@@ -515,7 +515,7 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<const llvm_ir::IrArray> result_ir_arrays,
       absl::Span<HloComputation* const> reducers,
       const llvm_ir::IrArray::Index& index,
-      const ReductionCodegenInfo& reduction_info, int64_t x_iter_num,
+      const ReductionCodegenState& reduction_info, int64_t x_iter_num,
       const FusionLayoutAnalysis& layout_analysis);
 
   // Prepares for the code generation for a tile block of a reduction kernel.
@@ -527,7 +527,7 @@ class IrEmitterUnnested : public IrEmitter {
       HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
       absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
       absl::Span<const llvm_ir::IrArray> result_ir_arrays,
-      ReductionCodegenInfo* reduction_info,
+      ReductionCodegenState* reduction_info,
       const FusionLayoutAnalysis& layout_analysis);
 
   // Wraps up the code generation for a tile block of a reduction kernel:
@@ -537,7 +537,7 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<const int> instr_index_group,
       absl::Span<const llvm_ir::IrArray> result_ir_arrays,
       absl::Span<HloComputation* const> reducers,
-      const ReductionCodegenInfo& reduction_info,
+      const ReductionCodegenState& reduction_info,
       const TilingKernelInfo& tiling_kernel_info,
       const FusionLayoutAnalysis& layout_analysis);
 
@@ -548,7 +548,7 @@ class IrEmitterUnnested : public IrEmitter {
                           FusedIrEmitter* fused_emitter,
                           absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
                           absl::Span<const llvm_ir::IrArray> result_ir_arrays,
-                          ReductionCodegenInfo* reduction_info,
+                          ReductionCodegenState* reduction_info,
                           const Shape& input_shape,
                           const FusionLayoutAnalysis& layout_anaysis);
 

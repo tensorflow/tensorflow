@@ -38,8 +38,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-static constexpr int64_t kBatchedAtomicFreeBound = 8;
-
 // Returns the square root of the input rounded up to the nearest square.
 static int64 SqrtOfRoundUpToNearestSquare(int64_t input) {
   return static_cast<int64>(std::ceil(std::sqrt(input)));
@@ -90,7 +88,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Case (1): batched dimension does not fit.
     if (reduce_batch_dimension &&
-        input_shape.dimensions(0) > kBatchedAtomicFreeBound) {
+        input_shape.dimensions(0) > kBatchedReductionRaceFreeBound) {
       VLOG(2) << "Splitting batched dimension reduce into a separate reduction";
       VLOG(1) << "Input: " << hlo->ToString();
       return RewriteBatchDimensionLargerThanTile(hlo, reduction_dimensions,
@@ -99,13 +97,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     }
     bool is_row_reduction = reduction_dimensions.is_row_reduction;
 
-    int64_t atomic_free_bound =
-        is_row_reduction ? (kMinThreadsXRowReduction * reduction_tiling[2])
-                         : (kWarpSize * reduction_tiling[1]);
-    VLOG(3) << "atomic_free_bound: " << atomic_free_bound;
-
     // Base case: everything fits.
-    if (input_shape.dimensions(reduced_input_dimension) <= atomic_free_bound) {
+    if (ReductionIsRaceFree(reduction_dimensions, reduction_tiling)) {
       VLOG(3) << "Base case: dimensions fit";
       return Status::OK();
     }

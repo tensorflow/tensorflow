@@ -151,7 +151,8 @@ std::array<int64, 3> GetReductionTiling(
     int smallest_input_dtype_bits,
     se::CudaComputeCapability cuda_compute_capability) {
   if (reduction_dimensions.is_row_reduction) {
-    int64_t tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
+    int64_t tile_z = std::min(reduction_dimensions.dimensions[0],
+                              kBatchedReductionRaceFreeBound);
     int unroll_x = 16;
     if ((cuda_compute_capability.IsAtLeast(
              se::CudaComputeCapability::PASCAL_) &&
@@ -934,6 +935,18 @@ Shape GetShape(mlir::Value value) {
   }
   LOG(FATAL) << "Unexpected value type to get shape for";
   return {};
+}
+
+bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
+                         const std::array<int64_t, 3>& reduction_tiling) {
+  return (reduction_dimensions.is_row_reduction &&
+          reduction_dimensions.dimensions[2] <=
+              kMinThreadsXRowReduction * reduction_tiling[2] &&
+          reduction_dimensions.dimensions[0] <=
+              kBatchedReductionRaceFreeBound) ||
+         (!reduction_dimensions.is_row_reduction &&
+          reduction_dimensions.dimensions[1] <=
+              kWarpSize * reduction_tiling[1]);
 }
 
 }  // namespace gpu

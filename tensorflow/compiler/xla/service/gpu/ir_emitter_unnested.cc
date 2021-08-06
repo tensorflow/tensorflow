@@ -3765,7 +3765,7 @@ void IrEmitterUnnested::EmitPrologueForReduction(
     HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
     absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
     absl::Span<const llvm_ir::IrArray> result_ir_arrays,
-    ReductionCodegenInfo* reduction_info,
+    ReductionCodegenState* reduction_info,
     const FusionLayoutAnalysis& layout_analysis) {
   VLOG(10) << "Emit prologue for reduction: " << MlirToString(unnested_hlo);
   mlir::Operation* first_reduce = nullptr;
@@ -3910,7 +3910,7 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
 // with the dimensions being reduced moved.
 static llvm::Value* GetUntransposedOutputLinearAddress(
     llvm::IRBuilder<>* b, const llvm_ir::IrArray::Index& index,
-    const ReductionCodegenInfo& reduction_info) {
+    const ReductionCodegenState& reduction_info) {
   const KernelMappingScheme& kernel_mapping_scheme =
       reduction_info.GetKernelMappingScheme();
   if (reduction_info.IsRowReduction()) {
@@ -3929,7 +3929,7 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
     absl::Span<const int> instr_index_group,
     absl::Span<const llvm_ir::IrArray> result_ir_arrays,
     absl::Span<HloComputation* const> reducers,
-    const ReductionCodegenInfo& reduction_info,
+    const ReductionCodegenState& reduction_info,
     const TilingKernelInfo& tiling_kernel_info,
     const FusionLayoutAnalysis& layout_analysis) {
   const KernelMappingScheme& mapping_scheme =
@@ -3959,7 +3959,7 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
 
   int num_partial_results = reduction_info.GetNumPartialResults();
 
-  // Emit an atomic operation that accumulates the partial reduction to the
+  // Emit an operation that accumulates the partial reduction to the
   // output element. For row reduction, this is only for lane 0 due to the
   // if-statement emitted above.
   //
@@ -4028,6 +4028,7 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
       llvm::Type* element_type =
           partial_result_addresses[i]->getType()->getElementType();
       if (reduction_info.IsRowReduction()) {
+        // TODO(cheshire): Move these to separate functions.
         EmitFullWarpShuffleDownLoopForReduce(
             reducers[i], element_type, current_output,
             mapping_scheme.GetThreadsPerBlock());
@@ -4040,6 +4041,8 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
           b_.CreateStore(b_.CreateLoad(current_output), shmem_output_addr);
         });
 
+        // TODO(cheshire): Don't we want to sync it once for everything in the
+        // output? Not once per each?
         EmitSyncThreads();
         ksl.If("inter_warp_reduce", is_zero(warp_id), [&] {
           llvm::Value* block_accum_addr = shared_to_global(b_.CreateInBoundsGEP(
@@ -4062,10 +4065,17 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
               reducers[i], element_type,
               /*block_accum_addr*/ selected_value,
               mapping_scheme.GetThreadsPerBlock());
-          ksl.If("reduction_atomic_update", is_zero(thread_id_info.thread_id_x),
+          ksl.If("reduction_write_output", is_zero(thread_id_info.thread_id_x),
                  [&] {
-                   TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-                       *reducers[i], output_address, block_accum_addr));
+                   if (reduction_info.IsRaceFree()) {
+                     VLOG(10) << "Using deterministic reductions: writing out "
+                                 "the value directly";
+                     b_.CreateStore(b_.CreateLoad(block_accum_addr, "output"),
+                                    output_address);
+                   } else {
+                     TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+                         *reducers[i], output_address, block_accum_addr));
+                   }
                  });
         });
 
@@ -4102,10 +4112,18 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
             b_.CreateICmpULT(thread_id_info.thread_id_x,
                              tiling_kernel_info.output_tile_bounds[kDimY]));
 
-        ksl.If("reduction_atomic_update",
+        ksl.If("reduction_write_output",
                b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
-                 TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-                     *reducers[i], output_address, shmem_transposed_addr));
+                 if (reduction_info.IsRaceFree()) {
+                   VLOG(10) << "Using deterministic reductions: writing out "
+                               "the value directly";
+                   b_.CreateStore(
+                       b_.CreateLoad(shmem_transposed_addr, "output_value"),
+                       output_address);
+                 } else {
+                   TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+                       *reducers[i], output_address, shmem_transposed_addr));
+                 }
                });
       }
     }
@@ -4150,7 +4168,7 @@ void IrEmitterUnnested::EmitTileElementForReduction(
     absl::Span<const llvm_ir::IrArray> result_ir_arrays,
     absl::Span<HloComputation* const> reducers,
     const llvm_ir::IrArray::Index& index,
-    const ReductionCodegenInfo& reduction_info, int64_t x_iter_num,
+    const ReductionCodegenState& reduction_info, int64_t x_iter_num,
     const FusionLayoutAnalysis& layout_analysis) {
   VLOG(10) << "Emit tile element for reduce " << MlirToString(unnested_hlo);
   int partial_result_index = reduction_info.IsRowReduction() ? 0 : x_iter_num;
@@ -4915,8 +4933,10 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       {reduction_tiling[0], reduction_tiling[1] * num_threads_y,
        reduction_tiling[2] * num_threads_x},
       num_threads_y, num_threads_x, indexing_order, vector_size);
-  return ReductionCodegenInfo(mapping_scheme, num_partial_results,
-                              reduction_dimensions.is_row_reduction);
+  return ReductionCodegenInfo(
+      mapping_scheme, num_partial_results,
+      reduction_dimensions.is_row_reduction,
+      ReductionIsRaceFree(reduction_dimensions, reduction_tiling));
 }
 
 void IrEmitterUnnested::EmitIRForReduction(
@@ -4924,7 +4944,7 @@ void IrEmitterUnnested::EmitIRForReduction(
     HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
     absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
     absl::Span<const llvm_ir::IrArray> result_ir_arrays,
-    ReductionCodegenInfo* reduction_info, const Shape& input_shape,
+    ReductionCodegenState* reduction_info, const Shape& input_shape,
     const FusionLayoutAnalysis& layout_analysis) {
   std::vector<HloComputation*> reducers;
   for (auto index : instr_index_group) {
@@ -5057,23 +5077,6 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
 
   int num_reduces = fusion.getFusionResults().size();
 
-  VLOG(10) << "Emitting reduction to vector " << MlirToString(unnested_hlo);
-
-  // Build an initializer thunk to initialize each reduction output.
-  ThunkSequence thunks;
-  for (int i = 0; i < num_reduces; ++i) {
-    mlir::Operation* output_instruction =
-        GetReduceFromUnnestedMlir(unnested_hlo, i);
-    if (!IsReductionFromOrToContiguousDimensions(output_instruction,
-                                                 layout_analysis)) {
-      continue;
-    }
-
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> initializer_thunk,
-                        BuildFusedInitializerThunk(fusion, i));
-    thunks.push_back(std::move(initializer_thunk));
-  }
-
   // Build a kernel thunk to compute all the outputs.
   mlir::Operation* first_reduce = nullptr;
   for (int i = 0; i < num_reduces; ++i) {
@@ -5164,6 +5167,9 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
   result_ir_arrays = absl::MakeSpan(ir_arrays).subspan(
       fused_computation->num_parameters(), num_reduces);
 
+  ReductionCodegenInfo reduction_codegen_info =
+      ComputeReductionCodegenInfo(unnested_hlo, first_reduce, layout_analysis);
+
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
   for (size_t i = 0; i < instr_index_groups.size(); ++i) {
     // Create a new ReductionCodegenInfo instance as it contains states for
@@ -5172,8 +5178,8 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
     // all the reductions are required to have the same shape and layout as
     // verified by `IsFusedReductionOutputConsistent()`. We can loosen the
     // constraint later when the needs arise.
-    ReductionCodegenInfo reduction_info = ComputeReductionCodegenInfo(
-        unnested_hlo, first_reduce, layout_analysis);
+    ReductionCodegenState reduction_info =
+        ReductionCodegenState(reduction_codegen_info);
     auto emit_reduction_func = [&] {
       EmitIRForReduction(unnested_hlo, instr_index_groups[i], fused_computation,
                          fused_emitter, operand_ir_arrays, result_ir_arrays,
@@ -5192,10 +5198,35 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
     ksl.If(StrCat("reduce-group-", i), guarding_cond, emit_reduction_func);
   }
 
+  if (hlo_module_config_.debug_options().xla_gpu_deterministic_reductions() &&
+      !reduction_codegen_info.IsRaceFree()) {
+    return InternalError(
+        "All reductions should be race-free if deterministic reductions are "
+        "enabled");
+  }
+
+  // Build an initializer thunk to initialize each reduction output.
+  ThunkSequence thunks;
+  for (int i = 0; i < num_reduces; ++i) {
+    mlir::Operation* output_instruction =
+        GetReduceFromUnnestedMlir(unnested_hlo, i);
+    if (!IsReductionFromOrToContiguousDimensions(output_instruction,
+                                                 layout_analysis)) {
+      // Elemental IR emitter is used.
+      continue;
+    } else if (reduction_codegen_info.IsRaceFree()) {
+      VLOG(5) << "We do not need initialization: using tree reductions";
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> initializer_thunk,
+                        BuildFusedInitializerThunk(fusion, i));
+    thunks.push_back(std::move(initializer_thunk));
+  }
+
   thunks.push_back(std::move(kernel_thunk));
-  std::unique_ptr<SequentialThunk> sequential_thunk =
-      absl::make_unique<SequentialThunk>(GetThunkInfo(unnested_hlo),
-                                         std::move(thunks));
+  auto sequential_thunk = absl::make_unique<SequentialThunk>(
+      GetThunkInfo(unnested_hlo), std::move(thunks));
   AddThunkToThunkSequence(std::move(sequential_thunk));
 
   return Status::OK();
