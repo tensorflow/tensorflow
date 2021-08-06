@@ -101,7 +101,7 @@ class XlaExecutableClosure {
   const XlaCompiler::CompilationResult* compilation_result() const {
     return compilation_result_;
   }
-  const ResourceVarsSnapshot& resource_var_snapshots() const {
+  ResourceVarsSnapshot& resource_var_snapshots() {
     return resource_var_snapshots_;
   }
   int num_constant_args() const { return num_constant_args_; }
@@ -419,11 +419,16 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
                                         inputs, resources_, &variable_infos));
     OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(variable_infos)));
 
-    // Do not alias resource updates as locking variables in XlaCompile and
-    // unlocking them in XlaRun may lead to deadlocks.
+    // We turn on the `may_alias_resource_update` using the following strategy.
+    // In XalRunOp, if we observe the resource variables have been written, we
+    // use the snapshot tensors as inputs to ensure the shape consistency. On
+    // the other hands, if the resource variables have not been written, we
+    // could choose to perform in-place update. Since there is a buffer donation
+    // mechanism, which guarantees correctness given either case, we always
+    // set `may_alias_resource_update` to true.
     Status status = CompileToLocalExecutable(
         ctx, function_, has_ref_vars_, platform_info_, inputs, variable_infos,
-        constants_, compile_mode, /*may_alias_resource_update=*/false, &client,
+        constants_, compile_mode, /*may_alias_resource_update=*/true, &client,
         &kernel, &executable);
     OP_REQUIRES_OK(ctx, SnapshotResourceVariables(ctx, resources_,
                                                   variable_infos, &variables));
@@ -503,13 +508,26 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
       /*allocate_xla_tensors=*/platform_info_.is_on_xla_device(),
       /*use_multiple_streams=*/platform_info_.UseMultipleStreams());
 
+  // Gather variables for updates.
+  StatusOr<std::vector<VariableInfo>> variable_infos = GatherVariableInfo(
+      ctx, *closure.compilation_result(), closure.num_constant_args());
+  OP_REQUIRES_OK(ctx, variable_infos.status());
+  OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(*variable_infos)));
+  std::map<int, const Tensor*> resource_var_ptrs;
+  for (int i = 0; i < variable_infos->size(); i++) {
+    // Normalized back to the indices as seen by XlaCompileOp.
+    int compile_time_idx =
+        (*variable_infos)[i].index() + closure.num_constant_args();
+    resource_var_ptrs[compile_time_idx] = (*variable_infos)[i].var()->tensor();
+  }
+
   // We're missing the must-be-constant inputs, tell `PopulateInputs`
   // about this.  We don't actually need these inputs because they've
   // already been baked into the compiled kernel.
   const xla::HloInputOutputAliasConfig& input_output_alias =
       closure.executable()->executable()->module().input_output_alias_config();
   StatusOr<std::vector<xla::ExecutionInput>> execution_inputs;
-  std::map<int, const Tensor*> snapshot_ptrs;
+  std::map<int, const Tensor*> snapshot_or_var_tensors;
   {
     tensorflow::profiler::TraceMe hlo_module_activity(
         [&] {
@@ -520,11 +538,25 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
         tensorflow::profiler::TraceMeLevel::kInfo);
 
     for (auto& p : closure.resource_var_snapshots()) {
-      snapshot_ptrs.emplace(p.first,
-                            p.second.has_value() ? &p.second.value() : nullptr);
+      const Tensor* tensor_ptr = nullptr;
+      if (p.second.has_value()) {
+        if (resource_var_ptrs.count(p.first) &&
+            resource_var_ptrs[p.first]->SharesBufferWith(p.second.value())) {
+          // If a snapshot has the same TensorBuffer as the resource var has,
+          // release the snapshot and directly use the tensor from resource.
+          // This will expose the opportunity to reuse the buffer.
+          p.second.reset();
+          tensor_ptr = resource_var_ptrs[p.first];
+        } else {
+          // Use the snapshot for other cases.
+          tensor_ptr = &p.second.value();
+        }
+      }
+      snapshot_or_var_tensors.emplace(p.first, tensor_ptr);
     }
+
     execution_inputs = launch_context.PopulateInputs(
-        ctx, closure.compilation_result(), snapshot_ptrs,
+        ctx, closure.compilation_result(), snapshot_or_var_tensors,
         /*missing_ctx_input_prefix=*/closure.num_constant_args(),
         input_output_alias);
     OP_REQUIRES_OK(ctx, execution_inputs.status());
@@ -558,16 +590,13 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
       },
       tensorflow::profiler::TraceMeLevel::kInfo);
 
-  StatusOr<std::vector<VariableInfo>> variable_infos = GatherVariableInfo(
-      ctx, *closure.compilation_result(), closure.num_constant_args());
-  OP_REQUIRES_OK(ctx, variable_infos.status());
-  OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(*variable_infos)));
   OP_REQUIRES_OK(
       ctx,
       launch_context.PopulateOutputs(
           ctx, closure.compilation_result(), execution_output->ConsumeResult(),
           /*missing_ctx_input_prefix=*/closure.num_constant_args(),
-          absl::MakeSpan(*variable_infos), input_output_alias, snapshot_ptrs));
+          absl::MakeSpan(*variable_infos), input_output_alias,
+          snapshot_or_var_tensors));
 }
 
 XlaMergeOp::XlaMergeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
