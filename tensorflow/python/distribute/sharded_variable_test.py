@@ -429,9 +429,15 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
       load.load(save_dir)
 
   def test_validation_errors(self):
-    with self.assertRaisesRegex(ValueError, 'Expected a list of '):
+    with self.assertRaisesRegex(TypeError, 'should be a non-empty list of'):
+      sharded_variable.ShardedVariable(None)
+
+    with self.assertRaisesRegex(TypeError, 'should be a non-empty list of'):
       sharded_variable.ShardedVariable(
           [variables_lib.Variable([0]), 'not-a-variable'])
+
+    with self.assertRaisesRegex(TypeError, 'should be a non-empty list of'):
+      sharded_variable.ShardedVariable([])
 
     with self.assertRaisesRegex(ValueError, 'must have the same dtype'):
       sharded_variable.ShardedVariable([

@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import copy
 import math
+from typing import Sequence
 import numpy as np
 
 from tensorflow.python.framework import composite_tensor
@@ -147,13 +148,14 @@ class MinSizePartitioner(Partitioner):
         an estimate of how large each string is.
     """
     if min_shard_bytes < 1:
-      raise ValueError('min_shard_bytes must be positive, got: %r' %
-                       min_shard_bytes)
+      raise ValueError('Argument `min_shard_bytes` must be positive. '
+                       f'Recieved: {min_shard_bytes}')
     if max_shards < 1:
-      raise ValueError('max_shards must be positive, got: %r' % max_shards)
+      raise ValueError('Argument `max_shards` must be positive. '
+                       f'Recieved: {max_shards}')
     if bytes_per_string < 1:
-      raise ValueError('bytes_per_string must be positive, got: %r' %
-                       bytes_per_string)
+      raise ValueError('Argument `bytes_per_string` must be positive. '
+                       f'Recieved: {bytes_per_string}')
     self._min_shard_bytes = min_shard_bytes
     self._max_shards = max_shards
     self._bytes_per_string = bytes_per_string
@@ -206,13 +208,14 @@ class MaxSizePartitioner(Partitioner):
         an estimate of how large each string is.
     """
     if max_shard_bytes < 1:
-      raise ValueError('max_shard_bytes must be positive, got: %r' %
-                       max_shard_bytes)
+      raise ValueError('Argument `max_shard_bytes` must be positive. '
+                       f'Recieved {max_shard_bytes}')
     if max_shards and max_shards < 1:
-      raise ValueError('max_shards must be positive, got: %r' % max_shards)
+      raise ValueError('Argument `max_shards` must be positive. '
+                       f'Recieved {max_shards}')
     if bytes_per_string < 1:
-      raise ValueError('bytes_per_string must be positive, got: %r' %
-                       bytes_per_string)
+      raise ValueError('Argument `bytes_per_string` must be positive. '
+                       f'Recieved: {bytes_per_string}')
 
     self._max_shard_bytes = max_shard_bytes
     self._max_shards = max_shards
@@ -256,7 +259,9 @@ class ShardedVariableMixin(trackable.Trackable):
   # TODO(b/170877138): Remove this mixin once fixed. This mixin is required
   # since TPUShardedVariable can't be a CompositeTensor.
 
-  def __init__(self, variables, name='ShardedVariable'):
+  def __init__(self,
+               variables: Sequence[variables_lib.Variable],
+               name='ShardedVariable'):
     """Treats `variables` as shards of a larger Variable.
 
 
@@ -282,25 +287,27 @@ class ShardedVariableMixin(trackable.Trackable):
     self._variables = variables
     self._name = name
 
-    first_var = variables[0]
-
-    if any(not isinstance(v, variables_lib.Variable) for v in variables):
-      raise ValueError(
-          'Expected a list of `Variable`s, found: {}'.format(variables))
+    if not isinstance(variables, Sequence) or not variables or any(
+        not isinstance(v, variables_lib.Variable) for v in variables):
+      raise TypeError('Argument `variables` should be a non-empty list of '
+                      f'`variables.Variable`s. Recieved {variables}')
 
     var_dtypes = {v.dtype for v in variables}
     if len(var_dtypes) > 1:
       raise ValueError(
-          'All `Variable`s must have the same dtype, found: {}'.format(
-              [v.dtype for v in variables]))
+          'All elements in argument `variables` must have the same dtype. '
+          f'Recieved dtypes: {[v.dtype for v in variables]}')
+
+    first_var = variables[0]
     self._dtype = first_var.dtype
 
     # All variables must have the same shape for axes > 0.
     higher_dim_shapes = {tuple(v.shape.as_list()[1:]) for v in variables}
     if len(higher_dim_shapes) > 1:
       raise ValueError(
-          'All `Variables`s must have the same shapes except for the first '
-          'axis, found {}'.format([v.shape for v in variables]))
+          'All elements in argument `variables` must have the same shapes '
+          'except for the first axis. '
+          f'Recieved shapes: {[v.shape for v in variables]}')
     first_dim = sum(int(v.shape.as_list()[0]) for v in variables)
     self._shape = tensor_shape.TensorShape([first_dim] +
                                            first_var.shape.as_list()[1:])
@@ -314,10 +321,11 @@ class ShardedVariableMixin(trackable.Trackable):
 
     save_slice_info = [v._get_save_slice_info() for v in variables]  # pylint: disable=protected-access
     if any(slice_info is not None for slice_info in save_slice_info):
-      raise ValueError('`SaveSliceInfo` should not be set for `Variable`s. '
-                       '`ShardedVariable` will infer `SaveSliceInfo` according '
-                       'to the order of the `Variable`s in the list passed to '
-                       'the constructor. Found {}'.format(save_slice_info))
+      raise ValueError(
+          '`SaveSliceInfo` should not be set for all elements in argument '
+          '`variables`. `ShardedVariable` will infer `SaveSliceInfo` according '
+          'to the order of the elements `variables`. '
+          f'Recieved save slice info {save_slice_info}')
 
     # We create an uninitialized saving_variable with the full shape, which can
     # be later captured in signatures so that the signatures can treat this
@@ -387,7 +395,8 @@ class ShardedVariableMixin(trackable.Trackable):
       if s < 0:
         s += self._shape[0]
       if s < 0 or s >= self._shape[0]:
-        raise IndexError('slice index %d of dimension 0 out of bounds.' % s)
+        raise IndexError(
+            f'ShardedVariable: slice index {s} of dimension 0 out of bounds.')
       for i in range(len(self._variables)):
         if i == len(self._variables) - 1 or (s > self._var_offsets[i][0] and
                                              s < self._var_offsets[i + 1][0]):
@@ -496,9 +505,9 @@ class ShardedVariableMixin(trackable.Trackable):
 
   @property
   def _type_spec(self):
-    return ShardedVariableSpec(*(
-        resource_variable_ops.VariableSpec(v.shape, v.dtype)
-        for v in self._variables))
+    return ShardedVariableSpec(
+        *(resource_variable_ops.VariableSpec(v.shape, v.dtype)
+          for v in self._variables))
 
   @property
   def variables(self):
@@ -543,8 +552,8 @@ class ShardedVariableMixin(trackable.Trackable):
     """Decompose a global 1D indices into a list of per-variable indices."""
     if indices.shape.rank != 1:
       raise ValueError(
-          'ShardedVariable: indices must be 1D Tensor for sparse operations, '
-          'got: %d' % indices.shape.rank)
+          'ShardedVariable: indices must be 1D Tensor for sparse operations. '
+          f'Recieved shape: {indices.shape}')
 
     base = self._shape[0] // len(self._variables)
     extra = self._shape[0] % len(self._variables)
@@ -775,9 +784,9 @@ class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
 
   @property
   def _type_spec(self):
-    return ShardedVariableSpec(*(
-        resource_variable_ops.VariableSpec(v.shape, v.dtype)
-        for v in self._variables))
+    return ShardedVariableSpec(
+        *(resource_variable_ops.VariableSpec(v.shape, v.dtype)
+          for v in self._variables))
 
   @classmethod
   def _overload_all_operators(cls):
