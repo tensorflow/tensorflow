@@ -75,9 +75,7 @@ if '--project_name' in sys.argv:
 # comment the versioning scheme.
 # NOTE: Please add test only packages to `TEST_PACKAGES` below.
 REQUIRED_PACKAGES = [
-    # everything else. So make sure that the correct version of NumPy
-    # is already installed before calling pip or setup.py
-    'numpy',
+    'numpy >=1.19.2, <1.22.0',
     # Install other dependencies
     'absl-py ~= 0.10',
     'astunparse ~= 1.6.3',
