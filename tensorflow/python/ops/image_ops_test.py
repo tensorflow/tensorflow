@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import colorsys
+import contextlib
 import functools
 import itertools
 import math
@@ -1593,16 +1594,21 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
                                 "Shape must be rank 0 but is rank 1"):
       image_ops.adjust_contrast(x_np, [2.0])
 
-  @test_util.run_gpu_only
   @test_util.run_all_in_graph_and_eager_modes
   def testDeterminismUnimplementedExceptionThrowing(self):
-    config.enable_deterministic_ops(True)
-    with self.session(), test_util.force_gpu():
+    """Test d9m-unimplemented exception-throwing when op-determinism is enabled.
+
+    This test depends upon other tests, tests which do not enable
+    op-determinism, to ensure that determinism-unimplemented exceptions are not
+    erroneously thrown when op-determinism is not enabled.
+    """
+    with self.session(), test_util.deterministic_ops():
       input_shape = (1, 2, 2, 1)
-      # AdjustContrastOp seems to now be inaccessible via the Python API.
-      # AdjustContrastOpv2 only suports float16 and float32 on GPU, but the
+      on_gpu = len(config.list_physical_devices('GPU'))
+      # AdjustContrast seems to now be inaccessible via the Python API.
+      # AdjustContrastv2 only suports float16 and float32 on GPU, but the
       # following types are converted to and from float32 at the Python level
-      # before AdjustContrastOpv2 is called.
+      # before AdjustContrastv2 is called.
       for dtype in [
           dtypes.uint8, dtypes.int8, dtypes.int16, dtypes.int32, dtypes.float16,
           dtypes.float32, dtypes.float64]:
@@ -1610,8 +1616,8 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
         contrast_factor = 1.
         with self.assertRaisesRegex(
             errors.UnimplementedError,
-            'A deterministic GPU implementation of AdjustContrastOpv2 is not' +
-            ' currently available.'):
+            'A deterministic GPU implementation of AdjustContrastv2 is not' +
+            ' currently available.') if on_gpu else contextlib.suppress():
           output_images = image_ops.adjust_contrast(
               input_images, contrast_factor)
           self.evaluate(output_images)

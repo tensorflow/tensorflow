@@ -69,8 +69,8 @@ class AdjustContrastOp : public OpKernel {
       OP_REQUIRES(
           context, !OpDeterminismRequired(),
           errors::Unimplemented(
-              "A deterministic GPU implementation of AdjustContrastOp"
-              " is not currently available."));
+              "A deterministic GPU implementation of AdjustContrast is not"
+              " currently available."));
     }
 
     Tensor* output = nullptr;
@@ -426,8 +426,8 @@ class AdjustContrastOpv2<GPUDevice, T> : public AdjustContrastOpV2Base {
     OP_REQUIRES(
         context, !OpDeterminismRequired(),
         errors::Unimplemented(
-            "A deterministic GPU implementation of AdjustContrastOpv2"
-            " is not currently available."));
+            "A deterministic GPU implementation of AdjustContrastv2 is not"
+            " currently available."));
 
     functor::AdjustContrastv2<GPUDevice, T>()(
         context->eigen_device<GPUDevice>(), options.input->shaped<T, 4>(shape),
