@@ -421,11 +421,11 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
 
     // We turn on the `may_alias_resource_update` using the following strategy.
     // In XalRunOp, if we observe the resource variables have been written, we
-    // use the snapshot tensors as inputs to ensure the shape consistency. On
-    // the other hands, if the resource variables have not been written, we
-    // could choose to perform in-place update. Since there is a buffer donation
-    // mechanism, which guarantees correctness given either case, we always
-    // set `may_alias_resource_update` to true.
+    // use the snapshotted tensors as inputs to the XLA executable to ensure the
+    // shape consistency. In contrast, if the resource variables have not been
+    // written, we could perform in-place updates to the resource var (without
+    // using the snapshotted tensors). With this strategy, we store the snapshot
+    // here for its potential use.
     Status status = CompileToLocalExecutable(
         ctx, function_, has_ref_vars_, platform_info_, inputs, variable_infos,
         constants_, compile_mode, /*may_alias_resource_update=*/true, &client,
@@ -544,11 +544,11 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
             resource_var_ptrs[p.first]->SharesBufferWith(p.second.value())) {
           // If a snapshot has the same TensorBuffer as the resource var has,
           // release the snapshot and directly use the tensor from resource.
-          // This will expose the opportunity to reuse the buffer.
+          // This will expose the opportunity to enable the `buffer_donation`.
           p.second.reset();
           tensor_ptr = resource_var_ptrs[p.first];
         } else {
-          // Use the snapshot for other cases.
+          // Otherwise, Use the snapshot.
           tensor_ptr = &p.second.value();
         }
       }
