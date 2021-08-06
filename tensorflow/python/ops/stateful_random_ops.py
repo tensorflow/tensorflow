@@ -136,7 +136,10 @@ def _get_counter_size(alg):
   elif alg == RNG_ALG_THREEFRY:
     return 1
   else:
-    raise ValueError("Unsupported algorithm id: %s" % alg)
+    raise ValueError(
+        f"Argument `alg` got unsupported value {alg}. Supported values are "
+        f"{RNG_ALG_PHILOX} for the Philox algorithm and {RNG_ALG_THREEFRY} for "
+        f"the ThreeFry algorithm.")
 
 
 def _get_state_size(alg):
@@ -145,7 +148,10 @@ def _get_state_size(alg):
   elif alg == RNG_ALG_THREEFRY:
     return THREEFRY_STATE_SIZE
   else:
-    raise ValueError("Unsupported algorithm id: %s" % alg)
+    raise ValueError(
+        f"Argument `alg` got unsupported value {alg}. Supported values are "
+        f"{RNG_ALG_PHILOX} for the Philox algorithm and {RNG_ALG_THREEFRY} for "
+        f"the ThreeFry algorithm.")
 
 
 def _check_state_shape(shape, alg):
@@ -555,7 +561,10 @@ class Generator(tracking.AutoTrackable):
     if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
       return self._state_var[-1]
     else:
-      raise ValueError("Unsupported algorithm id: %s" % alg)
+      raise ValueError(
+          f"This generator uses an unsupported algorithm {alg}. Supported "
+          f"values are {RNG_ALG_PHILOX} for the Philox algorithm and "
+          f"{RNG_ALG_THREEFRY} for the ThreeFry algorithm.")
 
   def _skip_single_var(self, var, delta):
     # TODO(wangpeng): Cache the cast algorithm instead of casting everytime.
@@ -892,7 +901,10 @@ class Generator(tracking.AutoTrackable):
       zeros = array_ops.zeros_like(keys)
       return array_ops.stack([keys, zeros])
     else:
-      raise ValueError("Unsupported algorithm id: %s" % alg)
+      raise ValueError(
+          f"This generator uses an unsupported algorithm {alg}. Supported "
+          f"values are {RNG_ALG_PHILOX} for the Philox algorithm and "
+          f"{RNG_ALG_THREEFRY} for the ThreeFry algorithm.")
 
   def split(self, count=1):
     """Returns a list of independent `Generator` objects.
@@ -942,7 +954,10 @@ class Generator(tracking.AutoTrackable):
       return [Generator(state=_key_to_state(alg, key), alg=alg)
               for key in array_ops.unstack(keys, num=count)]
     else:
-      raise ValueError("Unsupported algorithm id: %s" % alg)
+      raise ValueError(
+          f"This generator uses an unsupported algorithm {alg}. Supported "
+          f"values are {RNG_ALG_PHILOX} for the Philox algorithm and "
+          f"{RNG_ALG_THREEFRY} for the ThreeFry algorithm.")
 
 
 # It's not safe to create TF ops before `init_google` is called, so this is
