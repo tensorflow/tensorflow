@@ -541,6 +541,24 @@ class IrEmitterUnnested : public IrEmitter {
       const TilingKernelInfo& tiling_kernel_info,
       const FusionLayoutAnalysis& layout_analysis);
 
+  // `current_output`: the value the tile has calculated.
+  // `output_address`: address where the output value has to be written.
+  void EmitEpilogueForRowReduction(
+      HloComputation* reducer,
+      const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
+      const ReductionCodegenState& reduction_info, llvm::Type* element_type,
+      llvm::Type* index_ty, llvm::Value* current_output,
+      llvm::Value* output_address, int reduction_idx, int partial_result_idx);
+
+  // Same arguments as EmitEpilogueForRowReduction.
+  void EmitEpilogueForColumnReduction(
+      HloComputation* reducer,
+      const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
+      const ReductionCodegenState& reduction_info, llvm::Type* element_type,
+      llvm::Type* index_ty, llvm::Value* current_output,
+      llvm::Value* output_address, int reduction_idx, int partial_result_idx,
+      const TilingKernelInfo& tiling_kernel_info);
+
   // Emits code for reductions in the output_instructions.
   void EmitIRForReduction(mlir::Operation* unnested_hlo,
                           absl::Span<const int> instr_index_group,
@@ -642,6 +660,10 @@ class IrEmitterUnnested : public IrEmitter {
       absl::string_view fmt, absl::Span<llvm::Value* const> arguments,
       absl::optional<int64> thread_id_filter = absl::nullopt,
       absl::optional<int64> block_id_filter = absl::nullopt);
+
+  // __shared__ memory uses a different address space, so we cast it to
+  // global address space before writing or reading.
+  llvm::Value* CastSharedToGlobal(llvm::Value* input, llvm::Twine name = "");
 
   StatusOr<HloComputation*> GetOrCreateSubComputationFromRegion(
       mlir::Region* region, bool is_fusion);

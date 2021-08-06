@@ -3957,22 +3957,19 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
   absl::Span<llvm::AllocaInst* const> partial_result_addresses =
       reduction_info.GetPartialResultAddresses();
 
-  int num_partial_results = reduction_info.GetNumPartialResults();
+  int reduction_idx = -1;
 
-  // Emit an operation that accumulates the partial reduction to the
-  // output element. For row reduction, this is only for lane 0 due to the
-  // if-statement emitted above.
-  //
-  // `i` is the compacted index for contiguous-dimension reductions. It's used
-  // for accessing `reduction_info` and `reducers`, which are also compacted.
-  int i = -1;
-  for (int index : instr_index_group) {
+  // `instruction_idx` is indexing over all instructions in a group, some of
+  // them might not be unnested reductions.
+  for (int instruction_idx : instr_index_group) {
     mlir::Operation* reduce_hlo =
-        GetReduceFromUnnestedMlir(unnested_hlo, index);
+        GetReduceFromUnnestedMlir(unnested_hlo, instruction_idx);
+    llvm_ir::IrArray output_array = result_ir_arrays[instruction_idx];
     if (!IsReductionFromOrToContiguousDimensions(reduce_hlo, layout_analysis)) {
       continue;
     }
-    i++;
+    reduction_idx++;
+
     Shape operand_shape = layout_analysis.GetShape(reduce_hlo->getOperand(0));
     Shape reduction_kept_element_shape = ShapeUtil::FilterDimensions(
         [&](int64_t dim) {
@@ -3982,10 +3979,15 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
               dim);
         },
         operand_shape);
-    for (int j = 0; j < num_partial_results; ++j) {
+
+    for (int partial_result_idx = 0;
+         partial_result_idx < reduction_info.GetNumPartialResults();
+         ++partial_result_idx) {
       llvm::Value* untransposed_output_linear_address =
           GetUntransposedOutputLinearAddress(
-              &b_, start_offset.AddOffsetToDim(constant(j), kDimX, &b_),
+              &b_,
+              start_offset.AddOffsetToDim(constant(partial_result_idx), kDimX,
+                                          &b_),
               reduction_info);
 
       // A reduction is allowed to transpose its output.  For example, suppose
@@ -3996,7 +3998,6 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
       // At this point in the function we have a "partial sum" of input elements
       // (stored in partial_result_addresses), and we need to accumulate it into
       // the correct output element.
-      auto output_array = result_ir_arrays[index];
       IrArray::Index element_index(
           /*linear=*/untransposed_output_linear_address,
           reduction_kept_element_shape, &b_);
@@ -4006,125 +4007,21 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
       llvm::Value* output_address = output_array.EmitArrayElementAddress(
           output_index, &b_, "output_element_address");
       llvm::Value* current_output = b_.CreateInBoundsGEP(
-          partial_result_addresses[i], {constant(j)}, "current_output");
+          partial_result_addresses[reduction_idx],
+          {constant(partial_result_idx)}, "current_output");
 
-      llvm::GlobalVariable* shared_cache = reduction_info.GetSharedCache()[i];
-
-      // __shared__ memory uses a different address space, so we cast it to
-      // global address space before writing or reading.
-      auto shared_to_global = [&](llvm::Value* input, llvm::Twine name = "") {
-        return b_.CreateAddrSpaceCast(
-            input,
-            llvm::PointerType::get(input->getType()->getPointerElementType(),
-                                   /*AddressSpace=*/0),
-            name);
-      };
-
-      auto is_zero = [&](llvm::Value* value) {
-        return b_.CreateICmpEQ(value, constant(0));
-      };
-
-      KernelSupportLibrary ksl(&b_);
       llvm::Type* element_type =
-          partial_result_addresses[i]->getType()->getElementType();
+          partial_result_addresses[reduction_idx]->getType()->getElementType();
       if (reduction_info.IsRowReduction()) {
-        // TODO(cheshire): Move these to separate functions.
-        EmitFullWarpShuffleDownLoopForReduce(
-            reducers[i], element_type, current_output,
-            mapping_scheme.GetThreadsPerBlock());
-        llvm::Value* warp_id =
-            b_.CreateUDiv(thread_id_info.thread_id_x, constant(kWarpSize));
-        ksl.If("intra_warp_reduce_write", is_zero(thread_id_info.lane_id), [&] {
-          llvm::Value* shmem_output_addr =
-              shared_to_global(b_.CreateInBoundsGEP(
-                  shared_cache, {b_.getInt32(0), constant(j), warp_id}));
-          b_.CreateStore(b_.CreateLoad(current_output), shmem_output_addr);
-        });
-
-        // TODO(cheshire): Don't we want to sync it once for everything in the
-        // output? Not once per each?
-        EmitSyncThreads();
-        ksl.If("inter_warp_reduce", is_zero(warp_id), [&] {
-          llvm::Value* block_accum_addr = shared_to_global(b_.CreateInBoundsGEP(
-              shared_cache,
-              {b_.getInt32(0), constant(j), thread_id_info.lane_id}));
-          llvm::Value* initial_value = reduction_info.GetInitialValues()[i];
-          llvm::Value* initial_value_addr =
-              shared_to_global(llvm_ir::EmitAllocaAtFunctionEntry(
-                  element_type, "initial_value_addr", &b_));
-          b_.CreateStore(initial_value, initial_value_addr);
-
-          llvm::Value* warp_exists = b_.CreateICmpULT(
-              thread_id_info.thread_id_x,
-              constant(mapping_scheme.GetNumThreadsX() / kWarpSize));
-
-          llvm::Value* selected_value = b_.CreateSelect(
-              warp_exists, block_accum_addr, initial_value_addr);
-
-          EmitFullWarpShuffleDownLoopForReduce(
-              reducers[i], element_type,
-              /*block_accum_addr*/ selected_value,
-              mapping_scheme.GetThreadsPerBlock());
-          ksl.If("reduction_write_output", is_zero(thread_id_info.thread_id_x),
-                 [&] {
-                   if (reduction_info.IsRaceFree()) {
-                     VLOG(10) << "Using deterministic reductions: writing out "
-                                 "the value directly";
-                     b_.CreateStore(b_.CreateLoad(block_accum_addr, "output"),
-                                    output_address);
-                   } else {
-                     TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-                         *reducers[i], output_address, block_accum_addr));
-                   }
-                 });
-        });
-
+        EmitEpilogueForRowReduction(reducers[reduction_idx], thread_id_info,
+                                    reduction_info, element_type, index_ty,
+                                    current_output, output_address,
+                                    reduction_idx, partial_result_idx);
       } else {
-        llvm::Value* shmem_output_addr = shared_to_global(
-            b_.CreateInBoundsGEP(shared_cache, {b_.getInt32(0), constant(j),
-                                                thread_id_info.thread_id_x,
-                                                thread_id_info.thread_id_y}),
-            "shmem_output_address");
-        llvm::Value* current_output_value = b_.CreateLoad(current_output);
-        b_.CreateStore(current_output_value, shmem_output_addr);
-
-        EmitSyncThreads();
-
-        // Get transposed element from shared memory.
-        llvm::Value* shmem_transposed_addr =
-            shared_to_global(b_.CreateInBoundsGEP(
-                shared_cache,
-                {b_.getInt32(0), constant(j), thread_id_info.thread_id_y,
-                 thread_id_info.thread_id_x},
-                "shmem_transposed_addr"));
-
-        EmitFullWarpShuffleDownLoopForReduce(
-            reducers[i], element_type, shmem_transposed_addr,
-            mapping_scheme.GetThreadsPerBlock());
-
-        // Some threads in the block are completely outside of the bound of the
-        // tensor, so they should not write any output at all.
-        llvm::Value* has_output = b_.CreateAnd(
-            b_.CreateICmpULT(
-                GetStartOffsetX(mapping_scheme, thread_id_info.thread_id_y,
-                                index_ty, &b_),
-                tiling_kernel_info.output_tile_bounds[kDimX]),
-            b_.CreateICmpULT(thread_id_info.thread_id_x,
-                             tiling_kernel_info.output_tile_bounds[kDimY]));
-
-        ksl.If("reduction_write_output",
-               b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
-                 if (reduction_info.IsRaceFree()) {
-                   VLOG(10) << "Using deterministic reductions: writing out "
-                               "the value directly";
-                   b_.CreateStore(
-                       b_.CreateLoad(shmem_transposed_addr, "output_value"),
-                       output_address);
-                 } else {
-                   TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-                       *reducers[i], output_address, shmem_transposed_addr));
-                 }
-               });
+        EmitEpilogueForColumnReduction(
+            reducers[reduction_idx], thread_id_info, reduction_info,
+            element_type, index_ty, current_output, output_address,
+            reduction_idx, partial_result_idx, tiling_kernel_info);
       }
     }
   }
@@ -4158,6 +4055,145 @@ void IrEmitterUnnested::EmitPrintfWithThreadId(
     xla::gpu::EmitPrintf(absl::StrCat("[TID=%d,BID=%d] ", fmt, "\n"),
                          updated_arguments, &b_);
   });
+}
+llvm::Value* IrEmitterUnnested::CastSharedToGlobal(llvm::Value* input,
+                                                   llvm::Twine name) {
+  return b_.CreateAddrSpaceCast(
+      input,
+      llvm::PointerType::get(input->getType()->getPointerElementType(),
+                             /*AddressSpace=*/0),
+      name);
+}
+
+void IrEmitterUnnested::EmitEpilogueForRowReduction(
+    HloComputation* reducer,
+    const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
+    const ReductionCodegenState& reduction_info, llvm::Type* element_type,
+    llvm::Type* index_ty, llvm::Value* current_output,
+    llvm::Value* output_address, int reduction_idx, int partial_result_idx) {
+  auto constant = [&](uint64 c) -> llvm::Constant* {
+    return llvm::ConstantInt::get(index_ty, c);
+  };
+  auto is_zero = [&](llvm::Value* value) {
+    return b_.CreateICmpEQ(value, constant(0));
+  };
+  llvm::GlobalVariable* shared_cache =
+      reduction_info.GetSharedCache()[reduction_idx];
+  KernelSupportLibrary ksl(&b_);
+  const KernelMappingScheme& mapping_scheme =
+      reduction_info.GetKernelMappingScheme();
+
+  EmitFullWarpShuffleDownLoopForReduce(reducer, element_type, current_output,
+                                       mapping_scheme.GetThreadsPerBlock());
+  llvm::Value* warp_id =
+      b_.CreateUDiv(thread_id_info.thread_id_x, constant(kWarpSize));
+  ksl.If("intra_warp_reduce_write", is_zero(thread_id_info.lane_id), [&] {
+    llvm::Value* shmem_output_addr = CastSharedToGlobal(b_.CreateInBoundsGEP(
+        shared_cache, {b_.getInt32(0), constant(partial_result_idx), warp_id}));
+    b_.CreateStore(b_.CreateLoad(current_output), shmem_output_addr);
+  });
+
+  // TODO(cheshire): Don't we want to sync it once for everything in the
+  // output? Not once per each?
+  EmitSyncThreads();
+  ksl.If("inter_warp_reduce", is_zero(warp_id), [&] {
+    llvm::Value* block_accum_addr = CastSharedToGlobal(b_.CreateInBoundsGEP(
+        shared_cache, {b_.getInt32(0), constant(partial_result_idx),
+                       thread_id_info.lane_id}));
+    llvm::Value* initial_value =
+        reduction_info.GetInitialValues()[reduction_idx];
+    llvm::Value* initial_value_addr =
+        CastSharedToGlobal(llvm_ir::EmitAllocaAtFunctionEntry(
+            element_type, "initial_value_addr", &b_));
+    b_.CreateStore(initial_value, initial_value_addr);
+
+    llvm::Value* warp_exists =
+        b_.CreateICmpULT(thread_id_info.thread_id_x,
+                         constant(mapping_scheme.GetNumThreadsX() / kWarpSize));
+
+    llvm::Value* selected_value =
+        b_.CreateSelect(warp_exists, block_accum_addr, initial_value_addr);
+
+    EmitFullWarpShuffleDownLoopForReduce(reducer, element_type,
+                                         /*block_accum_addr*/ selected_value,
+                                         mapping_scheme.GetThreadsPerBlock());
+    ksl.If("reduction_write_output", is_zero(thread_id_info.thread_id_x), [&] {
+      if (reduction_info.IsRaceFree()) {
+        VLOG(10) << "Using deterministic reductions: writing out "
+                    "the value directly";
+        b_.CreateStore(b_.CreateLoad(block_accum_addr, "output"),
+                       output_address);
+      } else {
+        TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+            *reducer, output_address, block_accum_addr));
+      }
+    });
+  });
+}
+
+void IrEmitterUnnested::EmitEpilogueForColumnReduction(
+    HloComputation* reducer,
+    const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
+    const ReductionCodegenState& reduction_info, llvm::Type* element_type,
+    llvm::Type* index_ty, llvm::Value* current_output,
+    llvm::Value* output_address, int reduction_idx, int partial_result_idx,
+    const TilingKernelInfo& tiling_kernel_info) {
+  KernelSupportLibrary ksl(&b_);
+  llvm::GlobalVariable* shared_cache =
+      reduction_info.GetSharedCache()[reduction_idx];
+  auto constant = [&](uint64 c) -> llvm::Constant* {
+    return llvm::ConstantInt::get(index_ty, c);
+  };
+  auto is_zero = [&](llvm::Value* value) {
+    return b_.CreateICmpEQ(value, constant(0));
+  };
+  const KernelMappingScheme& mapping_scheme =
+      reduction_info.GetKernelMappingScheme();
+  llvm::Value* shmem_output_addr = CastSharedToGlobal(
+      b_.CreateInBoundsGEP(
+          shared_cache,
+          {b_.getInt32(0), constant(partial_result_idx),
+           thread_id_info.thread_id_x, thread_id_info.thread_id_y}),
+      "shmem_output_address");
+  llvm::Value* current_output_value = b_.CreateLoad(current_output);
+  b_.CreateStore(current_output_value, shmem_output_addr);
+
+  EmitSyncThreads();
+
+  // Get transposed element from shared memory.
+  llvm::Value* shmem_transposed_addr = CastSharedToGlobal(b_.CreateInBoundsGEP(
+      shared_cache,
+      {b_.getInt32(0), constant(partial_result_idx), thread_id_info.thread_id_y,
+       thread_id_info.thread_id_x},
+      "shmem_transposed_addr"));
+
+  EmitFullWarpShuffleDownLoopForReduce(reducer, element_type,
+                                       shmem_transposed_addr,
+                                       mapping_scheme.GetThreadsPerBlock());
+
+  // Some warps in the block are completely outside of the bound of the
+  // tensor, so they should not write any output at all.
+  llvm::Value* has_output = b_.CreateAnd(
+      b_.CreateICmpULT(
+          GetStartOffsetX(mapping_scheme, thread_id_info.thread_id_y, index_ty,
+                          &b_),
+          tiling_kernel_info.output_tile_bounds[kDimX]),
+      b_.CreateICmpULT(thread_id_info.thread_id_x,
+                       tiling_kernel_info.output_tile_bounds[kDimY]));
+
+  ksl.If("reduction_write_output",
+         b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
+           if (reduction_info.IsRaceFree()) {
+             VLOG(10) << "Using deterministic reductions: writing out "
+                         "the value directly";
+             b_.CreateStore(
+                 b_.CreateLoad(shmem_transposed_addr, "output_value"),
+                 output_address);
+           } else {
+             TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+                 *reducer, output_address, shmem_transposed_addr));
+           }
+         });
 }
 
 void IrEmitterUnnested::EmitTileElementForReduction(
@@ -5155,8 +5191,8 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
 
   CHECK_LT(fused_computation->num_parameters(), ir_arrays.size());
   for (int i = 0; i < fused_computation->num_parameters(); i++) {
-    auto ir_array = ir_arrays[i];
-    auto fused_operand = fused_computation->parameter_instruction(i);
+    llvm_ir::IrArray ir_array = ir_arrays[i];
+    HloInstruction* fused_operand = fused_computation->parameter_instruction(i);
     fused_emitter->BindGenerator(
         fused_operand,
         [this, ir_array, fused_operand](const llvm_ir::IrArray::Index& index) {
