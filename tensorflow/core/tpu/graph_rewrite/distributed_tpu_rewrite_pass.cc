@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/escaping.h"
 #include "tensorflow/compiler/jit/encapsulate_util.h"
@@ -647,6 +648,19 @@ struct ShardedInputIndex {
   }
 };
 
+struct ShardedPerHostInputIndex {
+  string host_device;
+  int argument_index;
+  bool operator<(const ShardedPerHostInputIndex& rhs) const {
+    return std::tie(host_device, argument_index) <
+           std::tie(rhs.host_device, rhs.argument_index);
+  }
+  bool operator==(const ShardedPerHostInputIndex& rhs) const {
+    return (argument_index == rhs.argument_index) &&
+           (host_device == rhs.host_device);
+  }
+};
+
 struct ShardedInputInfo {
   // Split node that would be connected to tiled input Node.
   Node* split_node;
@@ -1103,8 +1117,9 @@ xla::StatusOr<ShardedInputInfo> CreateOrGetXlaSplitNodeForVariableArg(
 
   ShardedInputInfo sharded_input_info{nullptr, std::move(sharded_inputs_list)};
   for (int replica = 0; replica < num_replicas; ++replica) {
-    (*arg_index_to_sharded_input_map)[{replica, orig_arg_num}] =
-        sharded_input_info;
+    ShardedInputIndex idx{replica, orig_arg_num};
+    // Refrain from overwriting, if dummy inputs were already placed instead.
+    arg_index_to_sharded_input_map->insert({idx, sharded_input_info});
   }
   return sharded_input_info;
 }
@@ -2614,15 +2629,13 @@ bool XlaBroadcastKindSupported(
 bool EnableXlaParamBroadcast(
     bool enable_xla_param_broadcast,
     const DistributedTPURewritePass::ParameterInfo& params_info, int param_num,
-    DataType dtype, int num_cores_per_replica) {
+    DataType dtype) {
   // Conditions necessary to use XLA collectives for arg broadcast:
   // 1. Globally enabled via enable_xla_param_broadcast.
   // 2. DataType must be supported.
   // 3. Parameter must be a variable, and not distributed or broadcasted.
-  // 4. Model parallelism is not currently supported.
   return enable_xla_param_broadcast && XlaBroadcastTypeSupported(dtype) &&
-         XlaBroadcastKindSupported(params_info, param_num) &&
-         (num_cores_per_replica == 1);
+         XlaBroadcastKindSupported(params_info, param_num);
 }
 
 }  // namespace
@@ -2643,7 +2656,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
     int num_cores_per_replica, const string& compile_device,
     const xla::DeviceAssignment* xla_device_assignment,
     const std::vector<Node*>& dynamic_shape_nodes, Graph* graph,
-    Node** compile_node, int64_t autotuner_thresh, int num_tasks) {
+    Node** compile_node, int64_t autotuner_thresh) {
   VLOG(1) << "BuildCompileNode";
 
   tpu::TPUCompileMetadataProto proto;
@@ -2708,13 +2721,11 @@ Status DistributedTPURewritePass::BuildCompileNode(
       }
     }
 
-    // Use XLA collective primitives to distribute variables to all replicas,
-    // for multi-host systems.
+    // Use XLA collective primitives to distribute variables to all replicas.
     arg->set_requires_xla_broadcast(
-        num_tasks > 1 &&
+        params_info.NumReplicas() > 1 &&
         EnableXlaParamBroadcast(enable_xla_param_broadcast_, params_info, i,
-                                arg_shape.handle_type /*arg.dtype?*/,
-                                num_cores_per_replica));
+                                arg_shape.handle_type /*arg.dtype?*/));
 
     // As long as the argument is not a per-replica one, it should have the same
     // value for all replicas. For clarity, we keep the (redundant) checks for
@@ -3018,53 +3029,50 @@ Status DistributedTPURewritePass::BuildVariableWrites(
 
 namespace {
 
+// Computes the shape of the sharded tensor and modifies in place.
+Status ComputeShardedArgShapes(TensorShape* shape,
+                               const xla::OpSharding& sharding) {
+  if (sharding.type() != xla::OpSharding::OTHER) {
+    return Status::OK();
+  }
+  if (!shape->IsFullyDefined()) {
+    return errors::Internal(
+        "Arg shape must be fully defined before sharded shape inference.");
+  }
+  int sharded_rank = sharding.tile_assignment_dimensions_size();
+  if (sharding.replicate_on_last_tile_dim()) {
+    sharded_rank--;
+  }
+  for (int dim_idx = 0; dim_idx < sharded_rank; ++dim_idx) {
+    auto sharded_dim = tensorflow::MathUtil::CeilOfRatio<int64>(
+        shape->dim_size(dim_idx), sharding.tile_assignment_dimensions(dim_idx));
+    shape->set_dim(dim_idx, sharded_dim);
+  }
+  if (sharded_rank != shape->dims()) {
+    LOG(WARNING) << "Rank of sharded arg should match sharding spec.  Rank: "
+                 << sharded_rank << ", tiled shape: " << shape->DebugString()
+                 << ", sharding: " << sharding.DebugString();
+  }
+
+  return Status::OK();
+}
+
 // Creates nodes for zero-initialized dummy arguments for TPUExecute nodes.
-xla::StatusOr<Node*> MaybeCreatePerHostDummyArgs(
-    const std::vector<InferredShape>& arg_shapes, const string& host_cpu_device,
-    const DistributedTPURewritePass::ParameterInfo& params_info, Node* var_read,
-    int var_num, int num_cores_per_replica, Graph* graph) {
+xla::StatusOr<Node*> CreateTpuExecuteDummyArg(const TensorShape& var_shape,
+                                              const DataType& dtype,
+                                              const string& host_cpu_device,
+                                              Node* var_read, int replica_id,
+                                              Graph* graph) {
   Status status;
-
-  if (num_cores_per_replica > 1) {
-    LOG_FIRST_N(WARNING, 1) << "XLA parameter broadcast is not supported for "
-                               "model-partitioned parameters. Falling back to "
-                               "non-broadcast mode for all parameters.";
-    return var_read;
-  }
-
-  DataType dtype;
-  TF_RETURN_IF_ERROR(GetNodeAttr(var_read->def(), "dtype", &dtype));
-
-  DeviceNameUtils::ParsedName parsed_device;
-  TF_RET_CHECK(DeviceNameUtils::ParseFullName(host_cpu_device, &parsed_device));
-  TF_RET_CHECK(parsed_device.has_task);
-
-  // Task 0 behaves as the primary task, where variables are assigned. Use the
-  // variable reads as arguments to TPUExecute.
-  // For other tasks, create dummies if the graph meets preconditions.
-  int64_t orig_arg_num = var_num + params_info.NumPerReplicaArgs() +
-                         params_info.NumDistributedArgs() +
-                         params_info.NumBroadcastArgs();
-  if (parsed_device.task == 0 ||
-      !EnableXlaParamBroadcast(/*enable_xla_param_broadcast=*/true, params_info,
-                               orig_arg_num, dtype, num_cores_per_replica)) {
-    return var_read;
-  }
-
-  auto raw_var_shape = arg_shapes[orig_arg_num];
-  TensorShape var_shape;
-  if (!raw_var_shape.handle_shape.AsTensorShape(&var_shape) &&
-      !raw_var_shape.shape.AsTensorShape(&var_shape)) {
-    return Status(error::FAILED_PRECONDITION, "Failed to read arg shape.");
-  }
 
   // Const - shape_as_tensor
   const std::string name_prefix = strings::StrCat(
-      var_read->name(), absl::StrFormat("/dummy_%d", parsed_device.task));
+      var_read->name(), absl::StrFormat("/dummy_%d", replica_id));
   NodeDef shape_tensor_def;
   shape_tensor_def.set_op("Const");
   shape_tensor_def.set_name(graph->NewName(
       strings::StrCat(name_prefix, "/Initializer/zeros/shape_as_tensor")));
+  shape_tensor_def.set_device(host_cpu_device);
   AddNodeAttr("dtype", DT_INT32, &shape_tensor_def);
   TensorProto tensorshape_proto;
   tensorshape_proto.set_dtype(DT_INT32);
@@ -3082,6 +3090,7 @@ xla::StatusOr<Node*> MaybeCreatePerHostDummyArgs(
   init_val_def.set_op("Const");
   init_val_def.set_name(graph->NewName(
       strings::StrCat(name_prefix, "/Initializer/zeros/const_val")));
+  init_val_def.set_device(host_cpu_device);
   TensorProto tensor_proto;
   tensor_proto.set_dtype(dtype);
   if (dtype == DT_FLOAT) {
@@ -3119,6 +3128,63 @@ xla::StatusOr<Node*> MaybeCreatePerHostDummyArgs(
   return fill_node;
 }
 
+// Creates dummy inputs for partitioned variables that are using XLA broadcast
+// for inputs.
+Status CreatePartitionedDummyVarArgs(
+    const xla::OpSharding& sharding, const int num_replicas,
+    const int replica_id, const InferredShape& raw_shape, Node* orig_var_read,
+    const int orig_arg_num, DataType dtype, const string& device, Graph* graph,
+    const std::vector<std::vector<string>>& tpu_device_names,
+    absl::btree_map<ShardedPerHostInputIndex, Node*>* per_host_index,
+    std::map<ShardedInputIndex, ShardedInputInfo>*
+        arg_index_to_sharded_input_map) {
+  ShardedInputIndex input_index{replica_id, orig_arg_num};
+  auto iter = arg_index_to_sharded_input_map->find(input_index);
+  if (iter != arg_index_to_sharded_input_map->end()) {
+    return Status::OK();
+  }
+  const int repeat = sharding.replicate_on_last_tile_dim()
+                         ? *sharding.tile_assignment_dimensions().rbegin()
+                         : 1;
+  const int num_shards = sharding.tile_assignment_devices_size() / repeat;
+
+  TensorShape var_shape;
+  if (!raw_shape.handle_shape.AsTensorShape(&var_shape) &&
+      !raw_shape.shape.AsTensorShape(&var_shape)) {
+    return errors::FailedPrecondition("Failed to read arg shape.");
+  }
+  TF_RETURN_IF_ERROR(ComputeShardedArgShapes(&var_shape, sharding));
+
+  for (int replica = 1; replica < num_replicas; ++replica) {
+    std::vector<NodeOut> sharded_inputs_list(
+        sharding.tile_assignment_devices_size());
+    for (int i = 0; i < num_shards; ++i) {
+      for (int j = 0; j < repeat; ++j) {
+        const int index = i * repeat + j;
+        const int core = sharding.tile_assignment_devices(index);
+        string host_device;
+        TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
+            tpu_device_names[replica][core], &host_device));
+        ShardedPerHostInputIndex idx{host_device, orig_arg_num};
+        if (!per_host_index->contains(idx)) {
+          TF_ASSIGN_OR_RETURN(
+              auto dummy_node,
+              CreateTpuExecuteDummyArg(var_shape, dtype, host_device,
+                                       orig_var_read, replica, graph));
+          (*per_host_index)[idx] = dummy_node;
+        }
+        sharded_inputs_list[core] = {(*per_host_index)[idx], /*index=*/0};
+      }
+    }
+    ShardedInputInfo sharded_input_info{nullptr,
+                                        std::move(sharded_inputs_list)};
+    (*arg_index_to_sharded_input_map)[{replica, orig_arg_num}] =
+        sharded_input_info;
+  }
+
+  return Status::OK();
+}
+
 // Helper that creates an IdentityN node containing all of the variables
 // values on CPU device 'device', except for those that will be split across
 // cores. (For split variables, this may cause additional cross-host data
@@ -3146,7 +3212,7 @@ xla::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
     const DistributedTPURewritePass::ParameterInfo& params_info,
     const std::vector<xla::OpSharding>& arg_shardings,
     const Node& replicate_node, const bool enable_xla_param_broadcast,
-    const int num_cores_per_replica,
+    const int num_cores_per_replica, int replica_id,
     const std::vector<InferredShape>& arg_shapes,
     absl::flat_hash_map<string, std::vector<NodeOut>>* per_host_var_copies,
     Graph* graph) {
@@ -3189,22 +3255,36 @@ xla::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
   id_node->set_assigned_device_name(host_cpu_device);
 
   for (int64_t i = 0; i < variable_reads.size(); ++i) {
+    Node* read = variable_reads[i];
+    int64_t orig_arg_num = i + params_info.NumPerReplicaArgs() +
+                           params_info.NumDistributedArgs() +
+                           params_info.NumBroadcastArgs();
+    DataType dtype = read->output_type(0);
+    bool use_xla_broadcast =
+        EnableXlaParamBroadcast(enable_xla_param_broadcast, params_info,
+                                orig_arg_num, dtype) &&
+        replica_id != 0;
     if (index_mapping[i].node == nullptr) {
       // Fill index_mapping with the actual IdentityN node.
       index_mapping[i].node = id_node;
-      if (!enable_xla_param_broadcast) {
+      if (!use_xla_broadcast) {
         // Add the variable read edge to id_node.
         graph->AddEdge(variable_reads[i], 0, id_node, index_mapping[i].index);
       } else {
         // XLA param broadcast mode is enabled.  Create zero-valued dummy
         // tensors to use as variable args in the TPUExecuteOp, instead of
         // original variable reads.
+        TensorShape var_shape;
+        auto inferred_shape = arg_shapes[orig_arg_num];
+        if (!inferred_shape.handle_shape.AsTensorShape(&var_shape) &&
+            !inferred_shape.shape.AsTensorShape(&var_shape)) {
+          return errors::FailedPrecondition("Failed to read arg shape.");
+        }
         TF_ASSIGN_OR_RETURN(
-            Node * var_read,
-            MaybeCreatePerHostDummyArgs(arg_shapes, host_cpu_device,
-                                        params_info, variable_reads[i], i,
-                                        num_cores_per_replica, graph));
-        graph->AddEdge(var_read, 0, id_node, index_mapping[i].index);
+            Node * dummy_read,
+            CreateTpuExecuteDummyArg(var_shape, dtype, host_cpu_device,
+                                     variable_reads[i], replica_id, graph));
+        graph->AddEdge(dummy_read, 0, id_node, index_mapping[i].index);
       }
     }
   }
@@ -3411,6 +3491,10 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   // TPUExecute node to its corresponding Split node and its output index
   // from which sharded input will be fed into TPUExecute node.
   std::map<ShardedInputIndex, ShardedInputInfo> input_index_to_sharded_inputs;
+
+  // Additional map of {host, arg_num} to dummy input. Per-task copies of the
+  // inputs reduces cross-task communication and allows sharing across replicas.
+  absl::btree_map<ShardedPerHostInputIndex, Node*> sharded_per_host_index;
 
   // Builds one TPUExecute node per core per replica.
   std::vector<std::vector<Node*>> execute_nodes(params_info.NumReplicas());
@@ -3624,11 +3708,22 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
                 CreateOrGetPerHostVariableCopy(
                     device, variable_num, variable_reads, params_info,
                     arg_shardings, replicate_node, enable_xla_param_broadcast_,
-                    num_cores_per_replica, arg_shapes, &per_host_var_copies,
-                    graph));
+                    num_cores_per_replica, replica, arg_shapes,
+                    &per_host_var_copies, graph));
 
             if (arg_shardings[orig_arg_num].type() == xla::OpSharding::OTHER) {
               ShardedInputInfo sharded_input_info;
+
+              if (EnableXlaParamBroadcast(enable_xla_param_broadcast_,
+                                          params_info, orig_arg_num, dtype)) {
+                // Populates the sharded dummy vars for non-zero replicas.
+                TF_RETURN_IF_ERROR(CreatePartitionedDummyVarArgs(
+                    arg_shardings[orig_arg_num], params_info.NumReplicas(),
+                    replica, arg_shapes[orig_arg_num], var_data.node,
+                    orig_arg_num, dtype, device, graph, tpu_device_names,
+                    &sharded_per_host_index, &input_index_to_sharded_inputs));
+              }
+
               if (use_nd_sharding_ops_) {
                 TF_ASSIGN_OR_RETURN(
                     sharded_input_info,
@@ -4787,7 +4882,7 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
       arg_types, guaranteed_constant_nodes, session_handle, arg_sharding,
       arg_fast_mem, arg_names, retval_sharding, num_cores_per_replica,
       /*compile_device=*/tpu_compilation_device, xla_device_assignment.get(),
-      dynamic_shape_nodes, graph, &compile_node, autotuner_thresh, num_tasks));
+      dynamic_shape_nodes, graph, &compile_node, autotuner_thresh));
 
   // Compilation must be sequenced after the control node if the TPU computation
   // in a control-flow construct, such as a loop.
