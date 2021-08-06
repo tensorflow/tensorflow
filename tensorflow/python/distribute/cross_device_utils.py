@@ -237,9 +237,9 @@ class CollectiveKeys(object):
     with self._lock:
       group = self._instance_key_table.get(group_key, None)
       if group is None:
-        raise ValueError('group {} not found'.format(group_key))
+        raise ValueError(f'Group {group_key} is not found.')
       if device not in group:
-        raise ValueError('{} not in group {}'.format(device, group_key))
+        raise ValueError(f'Device {device} is not present in group {group_key}')
       v = group[device]
       group[device] += 1
       return v
@@ -460,7 +460,7 @@ class CollectiveReplicaLauncher(object):
       RuntimeError: if called in eager mode.
     """
     if context.executing_eagerly():
-      raise RuntimeError('all_gather in eager mode is not supported')
+      raise RuntimeError('all_gather is not supported in eager mode.')
 
     with ops.device(self._device), \
          ops.control_dependencies([array_ops.identity(input_tensor)]):
@@ -523,7 +523,7 @@ class CollectiveReplicaLauncher(object):
     """
     if context.executing_eagerly():
       raise RuntimeError(
-          'all_reduce_indexed_slices in eager mode is not supported')
+          'all_reduce_indexed_slices is not supported in eager mode.')
 
     # Current CollectiveAllGather implementations require input IndexedSlices to
     # have consistent length across the board, we handle the reduction of
