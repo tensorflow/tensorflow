@@ -36,6 +36,8 @@ declare_mlir_python_extension(MLIRHLOPythonExtensions.Main
     ${CMAKE_CURRENT_SOURCE_DIR}/MlirHloModule.cpp
   EMBED_CAPI_LINK_LIBS
     MLIRHLOCAPIDialects
+  PRIVATE_LINK_LIBS
+    LLVMSupport
 )
 
 ################################################################################
