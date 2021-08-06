@@ -1425,7 +1425,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         r"Trying to concat list with only uninitialized tensors "
-        r"but element_shape_except_first_dim_ is not fully defined"):
+        r"but element_shape_except_first_dim is not fully defined"):
       t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
