@@ -26,14 +26,18 @@ from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.module import module
 from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
+
+FLAGS = flags.FLAGS
 
 
 class CustomModel(module.Module):
@@ -149,6 +153,8 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
     train_step(input_iterator)
 
   def test_keras_model_optimizer_run_loop(self, distribution):
+    if config.list_physical_devices("TPU") and FLAGS.tpu_use_tfrt:
+      self.skipTest("Shape mismatch error, see b/195717155")
     dataset = _get_dataset()
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
