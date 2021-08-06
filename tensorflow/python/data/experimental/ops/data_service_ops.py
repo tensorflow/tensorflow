@@ -233,7 +233,8 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         in-processs tf.data service workers. `"AUTO"` works well for most cases,
         while users can specify other targets. For example, `"LOCAL"` helps
         avoid RPCs and data copy if every TF worker colocates with a tf.data
-        service worker. Defaults to `"AUTO"`.
+        service worker. Consumers of a shared job must use the same
+        `target_workers`. Defaults to `"AUTO"`.
     """
     processing_mode = _serialize(
         _get_validated_sharding_policy(processing_mode))
@@ -423,7 +424,8 @@ def _distribute(processing_mode,
       tf.data service workers. `"AUTO"` works well for most cases, while users
       can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
       data copy if every TF worker colocates with a tf.data service worker.
-      Defaults to `"AUTO"`.
+      Consumers of a shared job must use the same `target_workers`. Defaults
+      to `"AUTO"`.
 
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
@@ -679,7 +681,8 @@ def distribute(processing_mode,
       tf.data service workers. `"AUTO"` works well for most cases, while users
       can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
       data copy if every TF worker colocates with a tf.data service worker.
-      Defaults to `"AUTO"`.
+      Consumers of a shared job must use the same `target_workers`. Defaults
+      to `"AUTO"`.
 
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
@@ -865,7 +868,8 @@ def _from_dataset_id(processing_mode,
       tf.data service workers. `"AUTO"` works well for most cases, while users
       can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
       data copy if every TF worker colocates with a tf.data service worker.
-      Defaults to `"AUTO"`.
+      Consumers of a shared job must use the same `target_workers`. Defaults
+      to `"AUTO"`.
 
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.
@@ -1044,7 +1048,8 @@ def from_dataset_id(processing_mode,
       tf.data service workers. `"AUTO"` works well for most cases, while users
       can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
       data copy if every TF worker colocates with a tf.data service worker.
-      Defaults to `"AUTO"`.
+      Consumers of a shared job must use the same `target_workers`. Defaults
+      to `"AUTO"`.
 
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.

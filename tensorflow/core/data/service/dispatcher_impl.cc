@@ -609,6 +609,15 @@ Status DataServiceDispatcherImpl::ValidateMatchingJob(
         "processing mode <",
         job->processing_mode.ShortDebugString(), ">");
   }
+
+  if (job->target_workers != request.target_workers()) {
+    return errors::InvalidArgument(
+        "Tried to create job with name ", job_name, " and target_workers <",
+        TargetWorkersToString(request.target_workers()),
+        ">, but there is already an existing job "
+        "with that name using target_workers <",
+        TargetWorkersToString(job->target_workers), ">.");
+  }
   return Status::OK();
 }
 
@@ -638,6 +647,7 @@ Status DataServiceDispatcherImpl::CreateJob(
       GetOrCreateJobRequest::kNumConsumers) {
     create_job->set_num_consumers(request.num_consumers());
   }
+  create_job->set_target_workers(request.target_workers());
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
   return Status::OK();

@@ -102,7 +102,7 @@ message JobKey {
   int64 job_name_index = 2;
 }
 
-// Next tag: 9
+// Next tag: 10
 message GetOrCreateJobRequest {
   reserved 2, 3, 4;
   // The id of the dataset to create a job for.
@@ -117,6 +117,8 @@ message GetOrCreateJobRequest {
   oneof optional_num_consumers {
     int64 num_consumers = 7;
   }
+  // Specifies which workers the client of this job reads from.
+  TargetWorkers target_workers = 9;
 }
 
 // Next tag: 2

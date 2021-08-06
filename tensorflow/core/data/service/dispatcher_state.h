@@ -142,12 +142,14 @@ class DispatcherState {
                  const ProcessingModeDef& processing_mode,
                  int64_t num_split_providers,
                  absl::optional<NamedJobKey> named_job_key,
-                 absl::optional<int64> num_consumers)
+                 absl::optional<int64> num_consumers,
+                 TargetWorkers target_workers)
         : job_id(job_id),
           dataset_id(dataset_id),
           processing_mode(processing_mode),
           named_job_key(named_job_key),
-          num_consumers(num_consumers) {
+          num_consumers(num_consumers),
+          target_workers(target_workers) {
       if (IsDynamicShard(processing_mode)) {
         distributed_epoch_state = DistributedEpochState(num_split_providers);
       }
@@ -168,7 +170,8 @@ class DispatcherState {
     const ProcessingModeDef processing_mode;
     const absl::optional<NamedJobKey> named_job_key;
     absl::optional<DistributedEpochState> distributed_epoch_state;
-    absl::optional<int64> num_consumers;
+    const absl::optional<int64> num_consumers;
+    const TargetWorkers target_workers;
     std::queue<PendingTask> pending_tasks;
     int64 num_clients = 0;
     int64 last_client_released_micros = -1;
