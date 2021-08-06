@@ -149,13 +149,13 @@ class MinSizePartitioner(Partitioner):
     """
     if min_shard_bytes < 1:
       raise ValueError('Argument `min_shard_bytes` must be positive. '
-                       f'Recieved: {min_shard_bytes}')
+                       f'Received: {min_shard_bytes}')
     if max_shards < 1:
       raise ValueError('Argument `max_shards` must be positive. '
-                       f'Recieved: {max_shards}')
+                       f'Received: {max_shards}')
     if bytes_per_string < 1:
       raise ValueError('Argument `bytes_per_string` must be positive. '
-                       f'Recieved: {bytes_per_string}')
+                       f'Received: {bytes_per_string}')
     self._min_shard_bytes = min_shard_bytes
     self._max_shards = max_shards
     self._bytes_per_string = bytes_per_string
@@ -209,13 +209,13 @@ class MaxSizePartitioner(Partitioner):
     """
     if max_shard_bytes < 1:
       raise ValueError('Argument `max_shard_bytes` must be positive. '
-                       f'Recieved {max_shard_bytes}')
+                       f'Received {max_shard_bytes}')
     if max_shards and max_shards < 1:
       raise ValueError('Argument `max_shards` must be positive. '
-                       f'Recieved {max_shards}')
+                       f'Received {max_shards}')
     if bytes_per_string < 1:
       raise ValueError('Argument `bytes_per_string` must be positive. '
-                       f'Recieved: {bytes_per_string}')
+                       f'Received: {bytes_per_string}')
 
     self._max_shard_bytes = max_shard_bytes
     self._max_shards = max_shards
@@ -290,13 +290,13 @@ class ShardedVariableMixin(trackable.Trackable):
     if not isinstance(variables, Sequence) or not variables or any(
         not isinstance(v, variables_lib.Variable) for v in variables):
       raise TypeError('Argument `variables` should be a non-empty list of '
-                      f'`variables.Variable`s. Recieved {variables}')
+                      f'`variables.Variable`s. Received {variables}')
 
     var_dtypes = {v.dtype for v in variables}
     if len(var_dtypes) > 1:
       raise ValueError(
           'All elements in argument `variables` must have the same dtype. '
-          f'Recieved dtypes: {[v.dtype for v in variables]}')
+          f'Received dtypes: {[v.dtype for v in variables]}')
 
     first_var = variables[0]
     self._dtype = first_var.dtype
@@ -307,7 +307,7 @@ class ShardedVariableMixin(trackable.Trackable):
       raise ValueError(
           'All elements in argument `variables` must have the same shapes '
           'except for the first axis. '
-          f'Recieved shapes: {[v.shape for v in variables]}')
+          f'Received shapes: {[v.shape for v in variables]}')
     first_dim = sum(int(v.shape.as_list()[0]) for v in variables)
     self._shape = tensor_shape.TensorShape([first_dim] +
                                            first_var.shape.as_list()[1:])
@@ -325,7 +325,7 @@ class ShardedVariableMixin(trackable.Trackable):
           '`SaveSliceInfo` should not be set for all elements in argument '
           '`variables`. `ShardedVariable` will infer `SaveSliceInfo` according '
           'to the order of the elements `variables`. '
-          f'Recieved save slice info {save_slice_info}')
+          f'Received save slice info {save_slice_info}')
 
     # We create an uninitialized saving_variable with the full shape, which can
     # be later captured in signatures so that the signatures can treat this
@@ -553,7 +553,7 @@ class ShardedVariableMixin(trackable.Trackable):
     if indices.shape.rank != 1:
       raise ValueError(
           'ShardedVariable: indices must be 1D Tensor for sparse operations. '
-          f'Recieved shape: {indices.shape}')
+          f'Received shape: {indices.shape}')
 
     base = self._shape[0] // len(self._variables)
     extra = self._shape[0] % len(self._variables)
