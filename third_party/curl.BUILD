@@ -40,6 +40,8 @@ cc_library(
         "lib/asyn-ares.c",
         "lib/asyn.h",
         "lib/base64.c",
+        "lib/bufref.c",
+        "lib/bufref.h",
         "lib/c-hyper.c",
         "lib/c-hyper.h",
         "lib/config-amigaos.h",
