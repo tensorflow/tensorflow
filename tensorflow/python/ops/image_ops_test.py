@@ -1606,9 +1606,9 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
       input_shape = (1, 2, 2, 1)
       on_gpu = len(config.list_physical_devices('GPU'))
       # AdjustContrast seems to now be inaccessible via the Python API.
-      # AdjustContrastv2 only suports float16 and float32 on GPU, but the
-      # following types are converted to and from float32 at the Python level
-      # before AdjustContrastv2 is called.
+      # AdjustContrastv2 only supports float16 and float32 on GPU, and other
+      # types are converted to and from float32 at the Python level before
+      # AdjustContrastv2 is called.
       for dtype in [
           dtypes.uint8, dtypes.int8, dtypes.int16, dtypes.int32, dtypes.float16,
           dtypes.float32, dtypes.float64]:
