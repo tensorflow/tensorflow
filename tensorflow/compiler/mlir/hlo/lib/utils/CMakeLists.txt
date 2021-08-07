@@ -26,6 +26,7 @@ add_mlir_library(MLIRMhloUtils
   MLIRLLVMIR
   MLIRMemRef
   MLIRPass
+  MLIRShape
   MLIRStandard
   MLIRSupport
   )
