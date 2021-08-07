@@ -1,5 +1,9 @@
 # Release 2.5.1
 
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
+# Release 2.5.1
+
 This release introduces several vulnerability fixes:
 
 * Fixes a heap out of bounds access in sparse reduction operations ([CVE-2021-37635](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37635))
