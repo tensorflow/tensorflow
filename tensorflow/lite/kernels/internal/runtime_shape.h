@@ -24,6 +24,12 @@ limitations under the License.
 
 namespace tflite {
 
+template <int N>
+struct Dims {
+  int sizes[N];
+  int strides[N];
+};
+
 class RuntimeShape {
  public:
   // Shapes with dimensions up to 5 are stored directly in the structure, while
