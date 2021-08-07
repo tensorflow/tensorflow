@@ -230,7 +230,8 @@ static void LogPtxasTooOld(const std::string& ptxas_path, int cc_major,
 
   absl::MutexLock lock(mutex);
 
-  if (already_logged->insert({ptxas_path, cc_major, cc_minor}).second) {
+  if (already_logged->insert(std::make_tuple(ptxas_path, cc_major, cc_minor))
+          .second) {
     LOG(WARNING) << "Falling back to the CUDA driver for PTX compilation; "
                     "ptxas does not support CC "
                  << cc_major << "." << cc_minor;

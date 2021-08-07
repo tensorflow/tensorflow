@@ -106,7 +106,7 @@ class Object : public Handle {
  public:
   Object() : Handle(TaggedValue::Dict()) {}
 
-  static const String* parent_;
+  static const String& ParentKey();
 
   // Get a object member attribute named `key`. Does lookup in referenced
   // object named "__parent__" if key not found locally.
@@ -119,7 +119,7 @@ class Object : public Handle {
       return Cast<T>(Handle(it->second));
     } else {
       // Lookup in object stored by reference in attribute  "__parent__".
-      auto it_class = dict.find(parent_->value_);
+      auto it_class = dict.find(ParentKey().value_);
       if (it_class != dict.end()) {
         auto& class_dict_maybe = it_class->second;
         if (class_dict_maybe.type() == TaggedValue::DICT) {
@@ -175,8 +175,7 @@ class Integer final : public Handle {
  public:
   explicit Integer(Handle h) : Handle(h.value_) {}
   explicit Integer(int64_t i) : Handle(TaggedValue(i)) {}
-  int64_t& get() { return value_.i64(); }
-  const int64_t& get() const { return value_.i64(); }
+  int64_t get() const { return value_.i64().get(); }
 
  private:
   // Private since it is in general unsafe.
@@ -189,8 +188,7 @@ class Float final : public Handle {
  public:
   explicit Float(Handle h) : Handle(h.value_) {}
   explicit Float(float i) : Handle(TaggedValue(i)) {}
-  float& get() { return value_.f32(); }
-  const float& get() const { return value_.f32(); }
+  float get() const { return value_.f32().get(); }
 
  private:
   // Private since it is in general unsafe.

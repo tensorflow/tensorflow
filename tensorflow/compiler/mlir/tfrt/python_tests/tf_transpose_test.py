@@ -19,60 +19,64 @@ import numpy as np
 import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
 
+specializations = [
+    tf_cpurt.Specialization.ENABLED,
+    tf_cpurt.Specialization.DISABLED,
+    tf_cpurt.Specialization.ALWAYS,
+]
+
 cpurt = tf_cpurt.TfCpurtExecutor()
 
 
 class TfTransposeTest(googletest.TestCase):
 
   def test_transpose_2d(self):
-    mlir_function = """
-      func @test(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
-        %0 = "tf.Const"() { value = dense<[1, 0]> : tensor<2xi32> }
-             : () -> tensor<2xi32>
-        %1 = "tf.Transpose"(%arg0, %0)
-             : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
-        return %1 : tensor<?x?xf32>
-      }"""
+    for specialize in specializations:
+      mlir_function = """
+        func @test(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+          %0 = "tf.Const"() { value = dense<[1, 0]> : tensor<2xi32> }
+               : () -> tensor<2xi32>
+          %1 = "tf.Transpose"(%arg0, %0)
+               : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+          return %1 : tensor<?x?xf32>
+        }"""
 
-    # TODO(ezhulenev): Make it work with default executable.
-    compiled = cpurt.compile(mlir_function, 'test',
-                             tf_cpurt.Specialization.ALWAYS)
+      compiled = cpurt.compile(mlir_function, 'test', specialize)
 
-    d0 = np.random.randint(1, 10)
-    d1 = np.random.randint(1, 10)
+      d0 = np.random.randint(1, 10)
+      d1 = np.random.randint(1, 10)
 
-    arg0 = np.random.uniform(0, 10.0, size=(d0, d1)).astype(np.float32)
+      arg0 = np.random.uniform(0, 10.0, size=(d0, d1)).astype(np.float32)
 
-    [res] = cpurt.execute(compiled, [arg0])
-    np.testing.assert_allclose(res, np.transpose(arg0), atol=0.0)
+      [res] = cpurt.execute(compiled, [arg0])
+      np.testing.assert_allclose(res, np.transpose(arg0), atol=0.0)
 
   def test_transpose_3d(self):
-    mlir_function = """
-      func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
-        %0 = "tf.Const"() { value = dense<[0, 2, 1]> : tensor<3xi32> }
-             : () -> tensor<3xi32>
-        %1 = "tf.Const"() { value = dense<[2, 1, 0]> : tensor<3xi32> }
-             : () -> tensor<3xi32>
-        %2 = "tf.Transpose"(%arg0, %0)
-             : (tensor<?x?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
-        %3 = "tf.Transpose"(%2, %1)
-             : (tensor<?x?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
-        return %3 : tensor<?x?x?xf32>
-      }"""
+    for specialize in specializations:
+      mlir_function = """
+        func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+          %0 = "tf.Const"() { value = dense<[0, 2, 1]> : tensor<3xi32> }
+               : () -> tensor<3xi32>
+          %1 = "tf.Const"() { value = dense<[2, 1, 0]> : tensor<3xi32> }
+               : () -> tensor<3xi32>
+          %2 = "tf.Transpose"(%arg0, %0)
+               : (tensor<?x?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+          %3 = "tf.Transpose"(%2, %1)
+               : (tensor<?x?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+          return %3 : tensor<?x?x?xf32>
+        }"""
 
-    # TODO(ezhulenev): Make it work with default executable.
-    compiled = cpurt.compile(mlir_function, 'test',
-                             tf_cpurt.Specialization.ALWAYS)
+      compiled = cpurt.compile(mlir_function, 'test', specialize)
 
-    d0 = np.random.randint(1, 10)
-    d1 = np.random.randint(1, 10)
-    d2 = np.random.randint(1, 10)
+      d0 = np.random.randint(1, 10)
+      d1 = np.random.randint(1, 10)
+      d2 = np.random.randint(1, 10)
 
-    arg0 = np.random.uniform(0, 10.0, size=(d0, d1, d2)).astype(np.float32)
+      arg0 = np.random.uniform(0, 10.0, size=(d0, d1, d2)).astype(np.float32)
 
-    [res] = cpurt.execute(compiled, [arg0])
-    ref = np.transpose(np.transpose(arg0, (0, 2, 1)), (2, 1, 0))
-    np.testing.assert_allclose(res, ref, atol=0.0)
+      [res] = cpurt.execute(compiled, [arg0])
+      ref = np.transpose(np.transpose(arg0, (0, 2, 1)), (2, 1, 0))
+      np.testing.assert_allclose(res, ref, atol=0.0)
 
   # Without value specialization, the below tf.Transpose won't compile because
   # the permutation vector must be statically shaped.

@@ -584,10 +584,10 @@ func @ZerosLike_unranked(%arg0: tensor<*xi32>) -> tensor<*xi32> {
 }
 
 // CHECK-LABEL: func @ZerosLike_variant
-func @ZerosLike_variant(%arg0: tensor<!tf.variant<tensor<2xi32>>>) -> tensor<!tf.variant<tensor<2xi32>>> {
+func @ZerosLike_variant(%arg0: tensor<!tf_type.variant<tensor<2xi32>>>) -> tensor<!tf_type.variant<tensor<2xi32>>> {
   // CHECK: tf.ZerosLike
-  %0 = "tf.ZerosLike"(%arg0) : (tensor<!tf.variant<tensor<2xi32>>>) -> tensor<!tf.variant<tensor<2xi32>>>
-  return %0 : tensor<!tf.variant<tensor<2xi32>>>
+  %0 = "tf.ZerosLike"(%arg0) : (tensor<!tf_type.variant<tensor<2xi32>>>) -> tensor<!tf_type.variant<tensor<2xi32>>>
+  return %0 : tensor<!tf_type.variant<tensor<2xi32>>>
 }
 
 // CHECK-LABEL: func @OnesLike_unranked
@@ -639,10 +639,10 @@ func @addN_5(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %
 }
 
 // CHECK-LABEL: func @addN_variant
-func @addN_variant(%arg0: tensor<!tf.variant<tensor<2xf32>>>, %arg1: tensor<!tf.variant<tensor<2xf32>>>, %arg2: tensor<!tf.variant<tensor<2xf32>>>) -> tensor<!tf.variant<tensor<2xf32>>> {
+func @addN_variant(%arg0: tensor<!tf_type.variant<tensor<2xf32>>>, %arg1: tensor<!tf_type.variant<tensor<2xf32>>>, %arg2: tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant<tensor<2xf32>>> {
   // CHECK: tf.AddN
-  %0 = "tf.AddN"(%arg0, %arg1, %arg2) : (tensor<!tf.variant<tensor<2xf32>>>, tensor<!tf.variant<tensor<2xf32>>>, tensor<!tf.variant<tensor<2xf32>>>) -> tensor<!tf.variant<tensor<2xf32>>>
-  return %0 : tensor<!tf.variant<tensor<2xf32>>>
+  %0 = "tf.AddN"(%arg0, %arg1, %arg2) : (tensor<!tf_type.variant<tensor<2xf32>>>, tensor<!tf_type.variant<tensor<2xf32>>>, tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant<tensor<2xf32>>>
+  return %0 : tensor<!tf_type.variant<tensor<2xf32>>>
 }
 
 // CHECK-LABEL: func @DynamicStitch_simple

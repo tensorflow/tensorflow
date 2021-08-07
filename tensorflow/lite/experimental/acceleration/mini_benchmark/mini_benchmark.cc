@@ -32,6 +32,9 @@ class NoopMiniBenchmark : public MiniBenchmark {
   std::vector<MiniBenchmarkEventT> MarkAndGetEventsToLog() override {
     return {};
   }
+  // We return -1 as this no-op instance doesn't have the overall
+  // mini-benchmark-related setup properly initialized.
+  int NumRemainingAccelerationTests() override { return -1; }
 };
 }  // namespace
 

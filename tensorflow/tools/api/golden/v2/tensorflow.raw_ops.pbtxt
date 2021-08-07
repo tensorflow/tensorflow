@@ -1278,11 +1278,11 @@ tf_module {
   }
   member_method {
     name: "Dropout"
-    argspec: "args=[\'input\', \'rate\', \'noise_shape\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'rate\', \'noise_shape\', \'seed1\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "DropoutGrad"
-    argspec: "args=[\'gradients\', \'rate\', \'noise_shape\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'gradients\', \'rate\', \'noise_shape\', \'seed1\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "DummyIterationCounter"

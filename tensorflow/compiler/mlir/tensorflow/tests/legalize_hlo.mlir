@@ -2350,3 +2350,13 @@ func @convert_argmin(%arg0: tensor<4x32x256xf32>) -> tuple<tensor<4x32xf32>, ten
   return %4 : tuple<tensor<4x32xf32>, tensor<4x32xi32>>
 }
 
+// CHECK-LABEL:   func @convert_not(
+// CHECK-SAME:                      %[[VAL_0:.*]]: tensor<5x3x1xi1>) -> tensor<5x3x1xi1> {
+// CHECK:           %[[VAL_1:.*]] = "tf.LogicalNot"(%[[VAL_0]]) : {{.*}} -> tensor<5x3x1xi1>
+// CHECK:           return %[[VAL_1]] : tensor<5x3x1xi1>
+// CHECK:         }
+func @convert_not(%arg0: tensor<5x3x1xi1>) -> tensor<5x3x1xi1> {
+  %0 = "mhlo.not"(%arg0): (tensor<5x3x1xi1>) -> (tensor<5x3x1xi1>)
+  return %0 : tensor<5x3x1xi1>
+}
+

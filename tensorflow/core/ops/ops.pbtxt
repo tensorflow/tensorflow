@@ -52484,7 +52484,6 @@ op {
       }
     }
   }
-  is_stateful: true
 }
 op {
   name: "StatelessRandomGetKeyCounterAlg"

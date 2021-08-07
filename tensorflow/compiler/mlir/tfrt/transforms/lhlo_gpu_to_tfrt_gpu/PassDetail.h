@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LHLO_GPU_TO_TFRT_CUDA_PASSDETAIL_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LHLO_GPU_TO_TFRT_CUDA_PASSDETAIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LHLO_GPU_TO_TFRT_GPU_PASSDETAIL_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LHLO_GPU_TO_TFRT_GPU_PASSDETAIL_H_
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Pass/Pass.h"
-#include "tfrt/basic_kernels/opdefs/tfrt_base.h"
-#include "tfrt/gpu/kernels/gpu_ops.h"
+#include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
+#include "tfrt/basic_kernels/opdefs/tfrt_base.h"  // from @tf_runtime
 
 namespace tensorflow {
 
@@ -27,4 +27,4 @@ namespace tensorflow {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LHLO_GPU_TO_TFRT_CUDA_PASSDETAIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LHLO_GPU_TO_TFRT_GPU_PASSDETAIL_H_

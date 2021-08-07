@@ -139,7 +139,6 @@ Status GpuTracer::DoStart() {
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMCPY);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMCPY2);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_OVERHEAD);
-  options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMORY);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMSET);
 
 // CUDA/CUPTI 10 have issues (leaks and crashes) with CuptiFinalize.

@@ -108,23 +108,32 @@ class DropoutOp : public OpKernel {
     const Tensor& in3 = ctx->input(3);
     OP_REQUIRES(
         ctx, in3.dims() == 0,
-        errors::InvalidArgument("Dropout seed must be a scalar tensor."));
-    int64 seed = 0;
+        errors::InvalidArgument("Dropout seed1 must be a scalar tensor."));
+    int64 seed1 = 0;
     if (in3.dtype() == DT_INT32)
-      seed = in3.scalar<int32>()();
+      seed1 = in3.scalar<int32>()();
     else
-      seed = in3.scalar<int64>()();
+      seed1 = in3.scalar<int64>()();
+
+    const Tensor& in4 = ctx->input(4);
+    OP_REQUIRES(
+        ctx, in4.dims() == 0,
+        errors::InvalidArgument("Dropout seed2 must be a scalar tensor."));
+    int64 seed2 = 0;
+    if (in4.dtype() == DT_INT32)
+      seed2 = in4.scalar<int32>()();
+    else
+      seed2 = in4.scalar<int64>()();
+
     // don't reset the seed for every call unless it is explicitly non-0
-    if (seed != 0) 
-      generator_.ResetSeeds(seed, 0);
-    else
-      generator_.ResetSeeds(random::New64(), 0);
+    generator_.ResetSeeds((seed1 != 0) ? seed1 : random::New64(), seed2);
 
     typedef random::UniformDistribution<random::PhiloxRandom, float>
         Distribution;
     Distribution dist;
     random::PhiloxRandom gen =
         generator_.ReserveRandomOutputs(in0.NumElements(), 256);
+    bool seeded = (seed1 != 0);
 
     if (std::is_same<Device, CPUDevice>::value) {
       Tensor rng_data;
@@ -141,14 +150,14 @@ class DropoutOp : public OpKernel {
                                 mask->flat<uint8>().data(),
                                 in0.flat<T>().data(),
                                 rng_flat.data(), rate, in0.NumElements(), gen,
-                                seed != 0);
+                                seeded);
     } else {
       ApplyDropout<Device, T>()(ctx->eigen_device<Device>(),
                                 output->flat<T>().data(),
                                 mask->flat<uint8>().data(),
                                 in0.flat<T>().data(),
                                 nullptr, rate, in0.NumElements(), gen,
-                                seed != 0);
+                                seeded);
     }
   }
 };
@@ -170,7 +179,8 @@ typedef Eigen::GpuDevice GPUDevice;
                               .Device(DEVICE_GPU)         \
                               .TypeConstraint<TYPE>("T")  \
                               .HostMemory("rate")         \
-                              .HostMemory("seed")         \
+                              .HostMemory("seed1")        \
+                              .HostMemory("seed2")        \
                               .HostMemory("noise_shape"), \
                           DropoutOp<GPUDevice, TYPE>);
 

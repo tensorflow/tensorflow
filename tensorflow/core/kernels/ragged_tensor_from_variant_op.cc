@@ -174,7 +174,23 @@ Status NestedStackRaggedTensors(
   auto output_values_flat =
       output_ragged->mutable_values()->flat_outer_dims<VALUE_TYPE, 2>();
   int values_index = 0;
+
+  TensorShape expected_value_shape = component_values_shape;
+  expected_value_shape.RemoveDim(0);
+
   for (int i = 0; i < ragged_components.size(); i++) {
+    // Check that the flat_values tensor shape is compatible.
+    TensorShape value_shape = ragged_components[i].values().shape();
+    value_shape.RemoveDim(0);
+    if (value_shape != expected_value_shape) {
+      return errors::InvalidArgument(
+          "All flat_values must have compatible shapes.  Shape at index 0: ",
+          expected_value_shape, ".  Shape at index ", i, ": ", value_shape,
+          ".  If you are using tf.map_fn, then you may need to specify an "
+          "explicit fn_output_signature with appropriate ragged_rank, and/or "
+          "convert output tensors to RaggedTensors.");
+    }
+
     auto component_values_flat =
         ragged_components[i].values().flat_outer_dims<VALUE_TYPE, 2>();
     int num_inner_elements = ragged_components[i].values().NumElements();

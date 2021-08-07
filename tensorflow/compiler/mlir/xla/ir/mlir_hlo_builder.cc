@@ -156,7 +156,11 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
   auto op = builder_.create<mlir::mhlo::CustomCallOp>(
       loc_, ty, GetValues(operands), builder_.getStringAttr(call_target_name),
       /*has_side_effect=*/builder_.getBoolAttr(has_side_effect),
-      builder_.getStringAttr(opaque));
+      builder_.getStringAttr(opaque),
+      /*api_version=*/
+      mlir::mhlo::CustomCallApiVersionAttr::get(
+          builder_.getContext(),
+          mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL));
   return MakeXlaOp(op.getResult(0));
 }
 

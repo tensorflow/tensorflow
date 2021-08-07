@@ -259,10 +259,11 @@ class TensorArrayTest(xla_test.XLATestCase):
       self.assertAllEqual(convert([[2.0, 201.0]]), d1)
       self.assertAllEqual(convert([[3.0, 301.0]]), d2)
 
-  @test_util.disable_control_flow_v2("b/122315872 (split)")
-  def testTensorArraySplitRead(self):
-    for dtype in self.numeric_tf_types:
-      self._testTensorArraySplitRead(dtype)
+  # Disable temporarily due to b/195023333
+  # @test_util.disable_control_flow_v2("b/122315872 (split)")
+  # def testTensorArraySplitRead(self):
+  #   for dtype in self.numeric_tf_types:
+  #     self._testTensorArraySplitRead(dtype)
 
   @test_util.disable_control_flow_v2("TensorArray.grad is not supported in v2")
   def testTensorGradArrayWriteRead(self):
@@ -1046,11 +1047,12 @@ class TensorArrayTest(xla_test.XLATestCase):
       self.assertAllEqual(convert([1.0, -1.0]), read_vals[0])
       self.assertAllEqual(convert([10.0, -10.0]), read_vals[1])
 
-  @test_util.disable_control_flow_v2("b/122315734 (scatter)")
-  def testTensorArrayScatterRead(self):
-    for dtype in self.numeric_tf_types:
-      self._testTensorArrayScatterRead(dtype)
-    self._testTensorArrayScatterRead(dtypes.bool)
+  # Disable temporarily due to b/195023333
+  # @test_util.disable_control_flow_v2("b/122315734 (scatter)")
+  # def testTensorArrayScatterRead(self):
+  #   for dtype in self.numeric_tf_types:
+  #     self._testTensorArrayScatterRead(dtype)
+  #   self._testTensorArrayScatterRead(dtypes.bool)
 
   @test_util.disable_control_flow_v2("b/122315734 (scatter)")
   def testTensorArrayScatterReadAndGradients(self):

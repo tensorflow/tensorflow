@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/TypeUtilities.h"
-#include "tfrt/basic_kernels/opdefs/types.h"
+#include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 
 namespace mlir {
 namespace tf_cpurt {

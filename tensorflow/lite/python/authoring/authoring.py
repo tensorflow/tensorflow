@@ -45,6 +45,7 @@ _CUSTOM_OPS_HDR = "Custom ops: "
 _TF_OPS_HDR = "TF Select ops: "
 _AUTHORING_ERROR_HDR = "COMPATIBILITY ERROR"
 _AUTHORING_WARNING_HDR = "COMPATIBILITY WARNING"
+_FUNC_GRAPH_SRC_PATH = "tensorflow/python/framework/func_graph.py"
 
 
 class CompatibilityError(Exception):
@@ -152,6 +153,9 @@ class _Compatible:
       for single_call in locations[i].call:
         if (locations[i].type ==
             converter_error_data_pb2.ConverterErrorData.CALLSITELOC):
+          # Stop showing CallSite after func_graph.py which isn't meaningful.
+          if _FUNC_GRAPH_SRC_PATH in single_call.source.filename:
+            break
           callstack.append(
               f"  - {single_call.source.filename}:{single_call.source.line}")
         else:

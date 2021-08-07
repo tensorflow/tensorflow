@@ -122,12 +122,16 @@ TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
   return tf_op;
 }
 
-std::vector<absl::string_view> ParseTfNameScopes(const TfOp& tf_op) {
+std::vector<absl::string_view> ParseTfNameScopes(absl::string_view tf_op_name) {
   std::vector<absl::string_view> name_scopes =
-      absl::StrSplit(tf_op.name, kNameScopeSeparator);
+      absl::StrSplit(tf_op_name, kNameScopeSeparator);
   // The last element is an op name not TF name scope.
   if (!name_scopes.empty()) name_scopes.pop_back();
   return name_scopes;
+}
+
+std::vector<absl::string_view> ParseTfNameScopes(const TfOp& tf_op) {
+  return ParseTfNameScopes(tf_op.name);
 }
 
 std::string TfOpEventName(const TfOp& tf_op) {

@@ -31,7 +31,7 @@ namespace mlir {
 namespace TFR {
 
 class RewriteQuantizedIOPass
-    : public PassWrapper<RewriteQuantizedIOPass, FunctionPass> {
+    : public PassWrapper<RewriteQuantizedIOPass, OperationPass<ModuleOp>> {
  public:
   StringRef getArgument() const final { return "tfr-rewrite-quantized-io"; }
 
@@ -39,71 +39,77 @@ class RewriteQuantizedIOPass
     return "Replaces operands and results that has quantized type with their "
            "storage types.";
   }
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void RewriteQuantizedIOPass::runOnFunction() {
-  FuncOp func = getFunction();
-  OpBuilder builder(func);
-  Block& block = func.front();
-  Operation* terminator = block.getTerminator();
+void RewriteQuantizedIOPass::runOnOperation() {
+  void runOnOperation();
 
-  // Replace input_arg(tensor<quant_type>) -> tfr.cast
-  // with input_arg(tensor<storage_type>) -> tfr.cast
-  for (BlockArgument arg : block.getArguments()) {
-    Type arg_type = arg.getType();
-    if (auto quant_type = arg_type.cast<TensorType>()
-                              .getElementType()
-                              .dyn_cast<quant::QuantizedType>()) {
-      if (arg.hasOneUse() && llvm::isa<TFR::CastOp>(*arg.user_begin())) {
-        arg.setType(
-            arg_type.cast<TensorType>().clone(quant_type.getStorageType()));
+  ModuleOp module = getOperation();
+  OpBuilder builder(module);
+  module.walk([&](FuncOp func) {
+    Block& block = func.front();
+    Operation* terminator = block.getTerminator();
+
+    // Replace input_arg(tensor<quant_type>) -> tfr.cast
+    // with input_arg(tensor<storage_type>) -> tfr.cast
+    for (BlockArgument arg : block.getArguments()) {
+      Type arg_type = arg.getType();
+      if (auto quant_type = arg_type.cast<TensorType>()
+                                .getElementType()
+                                .dyn_cast<quant::QuantizedType>()) {
+        if (arg.hasOneUse() && llvm::isa<TFR::CastOp>(*arg.user_begin())) {
+          arg.setType(
+              arg_type.cast<TensorType>().clone(quant_type.getStorageType()));
+        } else {
+          std::string error_message;
+          llvm::raw_string_ostream os{error_message};
+          os << "The argument with type ";
+          arg.getType().print(os);
+          os << " should have one user, which should be tfr.cast.";
+          func->emitError(error_message);
+          return;
+        }
+      }
+    }
+
+    builder.setInsertionPoint(terminator);
+    // Replace tfr.cast(tensor<quant_type>) -> output
+    // with tfr.cast(tensor<storage_type>) -> output
+    for (OpOperand& returned_value : terminator->getOpOperands()) {
+      auto returned_type =
+          returned_value.get().getType().dyn_cast<TensorType>();
+      if (!returned_type ||
+          !returned_type.getElementType().isa<quant::QuantizedType>()) {
+        continue;
+      }
+
+      if (auto returned_op =
+              returned_value.get().getDefiningOp<TFR::CastOp>()) {
+        auto new_type = returned_type.clone(returned_type.getElementType()
+                                                .cast<quant::QuantizedType>()
+                                                .getStorageType());
+        auto new_op = builder.create<TFR::CastOp>(returned_op->getLoc(),
+                                                  new_type, returned_op.arg());
+        returned_value.set(new_op.getResult());
+        if (returned_op.use_empty()) {
+          returned_op.erase();
+        }
       } else {
-        std::string error_message;
-        llvm::raw_string_ostream os{error_message};
-        os << "The argument with type ";
-        arg.getType().print(os);
-        os << " should have one user, which should be tfr.cast.";
-        func->emitError(error_message);
+        returned_value.get().getDefiningOp()->emitError(
+            "The producer of quantized type result should be a tfr.cast op.");
         return;
       }
     }
-  }
 
-  builder.setInsertionPoint(terminator);
-  // Replace tfr.cast(tensor<quant_type>) -> output
-  // with tfr.cast(tensor<storage_type>) -> output
-  for (OpOperand& returned_value : terminator->getOpOperands()) {
-    auto returned_type = returned_value.get().getType().dyn_cast<TensorType>();
-    if (!returned_type ||
-        !returned_type.getElementType().isa<quant::QuantizedType>()) {
-      continue;
-    }
-
-    if (auto returned_op = returned_value.get().getDefiningOp<TFR::CastOp>()) {
-      auto new_type = returned_type.clone(returned_type.getElementType()
-                                              .cast<quant::QuantizedType>()
-                                              .getStorageType());
-      auto new_op = builder.create<TFR::CastOp>(returned_op->getLoc(), new_type,
-                                                returned_op.arg());
-      returned_value.set(new_op.getResult());
-      if (returned_op.use_empty()) {
-        returned_op.erase();
-      }
-    } else {
-      returned_value.get().getDefiningOp()->emitError(
-          "The producer of quantized type result should be a tfr.cast op.");
-      return;
-    }
-  }
-
-  auto new_func_type = builder.getFunctionType(block.getArgumentTypes(),
-                                               terminator->getOperandTypes());
-  func.setType(new_func_type);
+    auto new_func_type = builder.getFunctionType(block.getArgumentTypes(),
+                                                 terminator->getOperandTypes());
+    func.setType(new_func_type);
+  });
 }
 
 // Creates an instance of the pass to decompose the TF ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateRewriteQuantizedIOPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateRewriteQuantizedIOPass() {
   return std::make_unique<RewriteQuantizedIOPass>();
 }
 

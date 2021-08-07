@@ -398,6 +398,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "unimplemented_operation_parser",
+    hdrs = ["unimplemented_operation_parser.h"],
+    deps = [
+        ":operation_parser",
+        ":status",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
+    ],
+)
+
 cc_test(
     name = "util_test",
     srcs = ["util_test.cc"],

@@ -160,7 +160,8 @@ inline bool InitTensorDataForReduce(const int* dims, const int num_dims,
   for (int idx = 0; idx < num_dims; ++idx) {
     size_t current = static_cast<size_t>(dims[idx]);
     // Overflow prevention.
-    if (num_elements > std::numeric_limits<size_t>::max() / current) {
+    if (current > 0 &&
+        num_elements > std::numeric_limits<size_t>::max() / current) {
       return false;
     }
     num_elements *= current;
@@ -181,15 +182,18 @@ inline bool ReduceGeneric(const T* input_data, const int* input_dims,
                           bool keep_dims, int* temp_index, int* resolved_axis,
                           T init_value,
                           T reducer(const T current, const T in)) {
-  // Return early when input shape has zero dim.
-  for (int i = 0; i < input_num_dims; ++i) {
-    if (input_dims[i] == 0) return true;
-  }
-
   // Reset output data.
   if (!InitTensorDataForReduce(output_dims, output_num_dims, init_value,
                                output_data)) {
     return false;
+  }
+
+  // Return early when input shape has zero dim. This is done after initializing
+  // data for output tensor because there are cases that the input tensor is
+  // empty but output tensor is not. In that case, output tensor should be
+  // filled with init_value.
+  for (int i = 0; i < input_num_dims; ++i) {
+    if (input_dims[i] == 0) return true;
   }
 
   // Resolve axis.
@@ -400,6 +404,14 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
   for (size_t idx = 0; idx < num_outputs; ++idx) {
     output_data[idx] = T();
     temp_sum[idx] = U();
+  }
+
+  // Return early when input shape has zero dim. This is done after initializing
+  // data for output tensor because there are cases that the input tensor is
+  // empty but output tensor is not. In that case, output tensor should be
+  // filled with init_value.
+  for (int i = 0; i < input_num_dims; ++i) {
+    if (input_dims[i] == 0) return true;
   }
 
   // Resolve axis.

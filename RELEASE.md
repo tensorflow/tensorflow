@@ -15,6 +15,9 @@
     *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
         Previously, when called within `name_scope("")` or `name_scope(None)`
         contexts, it returned None; now it returns the empty string.
+    *   `tensorflow/core/ir/` contains a new MLIR-based Graph dialect that is
+        isomorphic to GraphDef and will be used to replace GraphDef-based (e.g.,
+        Grappler) optimizations.
 
 ## Known Caveats
 
@@ -36,9 +39,15 @@
     `tf.debugging.disable_traceback_filtering()`, and can be re-enabled via
     `tf.debugging.enable_traceback_filtering()`. If you are debugging a
     TensorFlow-internal issue (e.g. to prepare a TensorFlow PR), make sure
-    to disable traceback filtering.
+    to disable traceback filtering. You can check whether this feature is
+    currently enabled by calling
+    `tf.debugging.is_traceback_filtering_enabled()`.
 
     Note that this feature is only available with Python 3.7 or higher.
+
+  * Improve the informativeness of error messages raised by Keras
+    `Layer.__call__()`, by adding the full list of argument values passed to the
+    layer in every exception.
 
 *   TF1 -> TF2 Migration
     * Introduced the `tf.compat.v1.keras.utils.track_tf1_style_variables`
@@ -57,6 +66,24 @@
         Static sharding (auto-sharding) requires the number of tf.data service
         workers be fixed. Users need to specify the worker addresses in
         `tensorflow.data.experimental.DispatcherConfig`.
+*  Keras:
+  *  `tf.keras.layers.Conv` now includes a public `convolution_op` method.
+      This method can be used to simplify the implementation of Conv subclasses.
+      There are two primary ways to use this new method.  The first is to use the method directly in your own `call` method:
+      ```
+        class StandardizedConv2D(tf.keras.layers.Conv2D):
+          def call(self, inputs):
+            mean, var = tf.nn.moments(self.kernel, axes=[0, 1, 2], keepdims=True)
+            return self.convolution_op(inputs, (self.kernel - mean) / tf.sqrt(var + 1e-10))
+      ```
+      Alternatively, you can override `convolution_op`:
+      ```
+        class StandardizedConv2D(tf.keras.Layer):
+          def convolution_op(self, inputs, kernel):
+            mean, var = tf.nn.moments(kernel, axes=[0, 1, 2], keepdims=True)
+            # Author code uses std + 1e-5
+            return super().convolution_op(inputs, (kernel - mean) / tf.sqrt(var + 1e-10))
+      ```
 
 ## Bug Fixes and Other Changes
 
@@ -65,7 +92,11 @@
 *<NOTES SHOULD BE GROUPED PER AREA>
 *   TF Core:
     *   Added argument `alg` to `tf.random.stateless_*` functions to explicitly select the RNG algorithm.
-
+    *   Added `tf.nn.experimental.stateless_dropout`, a stateless version of `tf.nn.dropout`.
+*   `tf.data`:
+    *   Promoting `tf.data.Options.experimental_deterministic` API to
+        `tf.data.Options.deterministic` and deprecating the experimental
+        endpoint.
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
@@ -114,6 +145,10 @@ This release contains contributions from many people at Google, as well as:
       Users who experience unwanted regressions should reset their
       `while_loop`'s `parallel_iterations` value to 1, which is consistent with
       prior behavior.
+
+* `tf.keras`:
+  * The `trainable` argument when creating a Keras Layer must now be a boolean
+    (previously there was no validation and `None` values were allowed).
 
 ## Major Features and Improvements
 

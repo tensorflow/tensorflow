@@ -27,6 +27,7 @@ from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
@@ -283,8 +284,8 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
         count).interleave(
             lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x),
             cycle_length, block_length, num_parallel_calls)
-    options = dataset_ops.Options()
-    options.experimental_deterministic = False
+    options = options_lib.Options()
+    options.deterministic = False
     dataset = dataset.with_options(options)
     expected_output = [
         element for element in _interleave(
@@ -349,8 +350,8 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
           cycle_length=10,
           num_parallel_calls=10,
           deterministic=local_determinism)
-      opts = dataset_ops.Options()
-      opts.experimental_deterministic = global_determinism
+      opts = options_lib.Options()
+      opts.deterministic = global_determinism
       dataset = dataset.with_options(opts)
       return dataset
 

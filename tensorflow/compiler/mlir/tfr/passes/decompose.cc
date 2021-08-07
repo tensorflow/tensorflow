@@ -199,6 +199,13 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
           attribute =
               compose_func.getArgAttr(arg.index(), kAttrArgumentDefaultAttr);
         }
+        if (!attribute && attr_name.getValue() == "out_type") {
+          auto type = op->getResult(0).getType();
+          if (type.isa<TensorType>()) {
+            type = type.cast<TensorType>().getElementType();
+          }
+          attribute = TypeAttr::get(type);
+        }
         Value attr_cst;
         // Wrap these special attributes as a special TFR constant, so the SSA
         // value has a valid type to be used as TFR function argument. These

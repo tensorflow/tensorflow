@@ -16,7 +16,6 @@ limitations under the License.
 // This file implements lowering of TF dialect to TFRT data kernels.
 #include "tensorflow/compiler/mlir/tfrt/transforms/tf_to_tfrt_data.h"
 
-#include "tfrt/data/opdefs/types.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 #include "tfrt/data/opdefs/data_ops.h"  // from @tf_runtime
+#include "tfrt/data/opdefs/types.h"  // from @tf_runtime
 
 #define DEBUG_TYPE "tf-to-tfrt-data"
 

@@ -130,6 +130,10 @@ auto* tf_data_model_gauge =
     monitoring::Gauge<std::function<std::string()>, 1>::New(
         "/tensorflow/data/model", "tf.data autotuning model proto.", "id");
 
+auto* tf_data_auto_shard = monitoring::Gauge<int64, 2>::New(
+    "/tensorflow/data/autoshard", "tf.data autoshard statistics.", "id",
+    "name");
+
 auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
     "The number of dense features parsed by ops for parsing tf.Example.");
@@ -252,7 +256,14 @@ void RecordTFDataFilename(const string& name, const string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
 }
 
-void RecordParseDenseFeature(int64_t num_features) {
+void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
+                           int64 num_workers, int64 num_replicas) {
+  tf_data_auto_shard->GetCell(id, "policy")->Set(static_cast<int64>(policy));
+  tf_data_auto_shard->GetCell(id, "num_workers")->Set(num_workers);
+  tf_data_auto_shard->GetCell(id, "num_replicas")->Set(num_replicas);
+}
+
+void RecordParseDenseFeature(int64 num_features) {
   static auto* parse_dense_feature_counter_cell =
       parse_dense_feature_counter->GetCell();
   parse_dense_feature_counter_cell->IncrementBy(num_features);

@@ -20,7 +20,10 @@ limitations under the License.
 namespace tf {
 namespace libtf {
 
-const String* Object::parent_ = new String("__parent__");
+const String& Object::ParentKey() {
+  static const String* key = new String("__parent__");
+  return *key;
+}
 
 }  // namespace libtf
 }  // namespace tf

@@ -32,12 +32,13 @@ namespace tensorflow {
 class DeviceProfilerSession {
  public:
   // Creates a DeviceProfilerSession and starts tracing.
-  // If gpu_only is true, traces a GPU device but not a TPU device.
-  static std::unique_ptr<DeviceProfilerSession> Create(bool gpu_only = false) {
+  // Traces GPU devices if present.
+  // Does not trace TPU devices (not supported).
+  static std::unique_ptr<DeviceProfilerSession> Create() {
 #if !defined(IS_MOBILE_PLATFORM)
     ProfileOptions options = ProfilerSession::DefaultOptions();
     options.set_host_tracer_level(0);
-    if (gpu_only) options.set_device_type(ProfileOptions::GPU);
+    options.set_device_type(ProfileOptions::GPU);
     return absl::WrapUnique(new DeviceProfilerSession(options));
 #else
     return nullptr;

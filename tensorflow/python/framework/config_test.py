@@ -851,6 +851,17 @@ class DeviceTest(test.TestCase):
     self.assertEqual(['CollectiveReduce'],
                      new_rewrite_options.scoped_allocator_opts.enable_op)
 
+  def testDeterminism(self):
+    # This does not test any ops are deterministic, because that is tested by
+    # many kernel tests.
+    try:
+      config.enable_deterministic_ops(False)
+      self.assertFalse(config.deterministic_ops_enabled())
+      config.enable_deterministic_ops(True)
+      self.assertTrue(config.deterministic_ops_enabled())
+    finally:
+      config.enable_deterministic_ops(False)
+
 
 class TensorFloat32Test(test.TestCase):
 

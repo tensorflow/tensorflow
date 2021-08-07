@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s
+// RUN: mlir-hlo-opt %s -pass-pipeline='builtin.func(canonicalize)' | FileCheck %s
 
 // CHECK-LABEL: add_fold
 func @add_fold() -> tensor<4xi64> {
@@ -142,16 +142,6 @@ func @concatenate_remove_operand(%arg0: tensor<4xi32>, %arg1: tensor<0xi32>) -> 
 
   // CHECK: return [[ARG0]]
   return %0 : tensor<4xi32>
-}
-
-// CHECK-LABEL: concatenate_forward
-func @concatenate_forward(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<12xi32> {
-  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<4xi32>, tensor<4xi32>) -> tensor<8xi32>
-  %1 = mhlo.constant dense<[0, 1, 2, 3]> : tensor<4xi32>
-  // CHECK: "mhlo.concatenate"(%0, %arg0, %arg1) {dimension = 0 : i64} : (tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<12xi32>
-  %2 = "mhlo.concatenate"(%0, %1) { dimension = 0 : i64 } : (tensor<8xi32>, tensor<4xi32>) -> tensor<12xi32>
-
-  return %2 : tensor<12xi32>
 }
 
 // CHECK-LABEL: concatenate_empty_bool

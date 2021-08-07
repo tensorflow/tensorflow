@@ -2475,7 +2475,8 @@ HloSelectAndScatterInstruction::CloneWithNewOperandsImpl(
 
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    absl::string_view custom_call_target, string opaque)
+    absl::string_view custom_call_target, string opaque,
+    CustomCallApiVersion api_version)
     : HloInstruction(HloOpcode::kCustomCall, shape),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
       feature_group_count_(1),
@@ -2483,7 +2484,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       layout_constrained_(false),
       padding_type_(PaddingType::PADDING_INVALID),
       custom_call_has_side_effect_(false),
-      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE) {
+      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE),
+      api_version_(api_version) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2493,7 +2495,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* to_apply, absl::string_view custom_call_target,
-    string opaque)
+    string opaque, CustomCallApiVersion api_version)
     : HloInstruction(HloOpcode::kCustomCall, shape),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
       feature_group_count_(1),
@@ -2501,7 +2503,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       layout_constrained_(false),
       padding_type_(PaddingType::PADDING_INVALID),
       custom_call_has_side_effect_(false),
-      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE) {
+      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE),
+      api_version_(api_version) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2513,7 +2516,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::Span<HloComputation* const> called_computations,
-    absl::string_view custom_call_target, string opaque)
+    absl::string_view custom_call_target, string opaque,
+    CustomCallApiVersion api_version)
     : HloInstruction(HloOpcode::kCustomCall, shape),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
       feature_group_count_(1),
@@ -2521,7 +2525,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       layout_constrained_(false),
       padding_type_(PaddingType::PADDING_INVALID),
       custom_call_has_side_effect_(false),
-      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE) {
+      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE),
+      api_version_(api_version) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2534,7 +2539,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target, string opaque,
-    absl::Span<const Shape> operand_shapes_with_layout)
+    absl::Span<const Shape> operand_shapes_with_layout,
+    CustomCallApiVersion api_version)
     : HloInstruction(HloOpcode::kCustomCall, shape),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
       feature_group_count_(1),
@@ -2544,7 +2550,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       operand_shapes_with_layout_(operand_shapes_with_layout.begin(),
                                   operand_shapes_with_layout.end()),
       custom_call_has_side_effect_(false),
-      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE) {
+      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE),
+      api_version_(api_version) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2586,6 +2593,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
     }
   }
   proto.set_custom_call_schedule(custom_call_schedule_);
+  proto.set_custom_call_api_version(api_version_);
   return proto;
 }
 
@@ -2646,6 +2654,10 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
   if (custom_call_schedule_ != CustomCallSchedule::SCHEDULE_NONE) {
     extra.push_back(
         StrCat("schedule=", CustomCallSchedule_Name(custom_call_schedule_)));
+  }
+  if (api_version_ != CustomCallApiVersion::API_VERSION_ORIGINAL) {
+    extra.push_back(
+        StrCat("api_version=", CustomCallApiVersion_Name(api_version_)));
   }
   return extra;
 }
@@ -2734,7 +2746,7 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   auto cloned = absl::make_unique<HloCustomCallInstruction>(
       shape, new_operands, called_computations(), custom_call_target(),
-      opaque());
+      opaque(), api_version_);
   if (layout_constrained()) {
     cloned->layout_constrained_ = true;
     cloned->operand_shapes_with_layout_ = operand_shapes_with_layout();

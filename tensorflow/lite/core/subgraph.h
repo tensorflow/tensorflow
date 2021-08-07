@@ -32,10 +32,14 @@ limitations under the License.
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
+#include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
+
+class SingleOpModel;  // Class for friend declarations.
+
 namespace delegates {
 namespace test_utils {
 class TestDelegate;  // Class for friend declarations.
@@ -45,6 +49,7 @@ class TestDelegate;  // Class for friend declarations.
 class Subgraph {
  public:
   friend class Interpreter;
+  friend class SingleOpModel;
 
   Subgraph(ErrorReporter* error_reporter,
            TfLiteExternalContext** external_contexts,
@@ -646,6 +651,9 @@ class Subgraph {
   // condition and body subgraphs.
   bool OpMightHaveSideEffect(const TfLiteNode* node,
                              const TfLiteRegistration* registration) const;
+
+  // Returns new GraphInfo object based on the current Subgraph.
+  std::unique_ptr<GraphInfo> CreateGraphInfo();
 
   // Store a ptr to the model metadata owned by the Interpreter.
   // Since the lifetime of the Interpreter exceeds the Subgraph, metadata

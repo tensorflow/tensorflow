@@ -23,11 +23,11 @@ import sys
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
@@ -178,9 +178,9 @@ class IgnoreErrorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     dataset = dataset_ops.Dataset.from_tensor_slices(components)
     dataset = dataset.map(lambda x: array_ops.check_numerics(x, "message"))
     dataset = dataset.apply(error_ops.ignore_errors())
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_external_state_policy = (
-        distribute_options.ExternalStatePolicy.IGNORE)
+        options_lib.ExternalStatePolicy.IGNORE)
     return dataset.with_options(options)
 
   @combinations.generate(

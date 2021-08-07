@@ -48,9 +48,11 @@ def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
                  "Unrolling in each tile dimension", "llvm::cl::ZeroOrMore, "
                  "llvm::cl::MiscFlags::CommaSeparated">,
       Option<"max_supported_rank_", "max-supported-rank", "int64_t",
-           /*default=*/"", "Max rank that this kernel supports">,
-      Option<"cpu_codegen_", "cpu-codegen", "bool",
-           /*default=*/"", "CPU codegen (false implies GPU)">,
+             /*default=*/"", "Max rank that this kernel supports">,
+      Option<"enable_ftz_", "enable-ftz", "bool", /*default=*/"",
+             "Enable the denormal flush to zero mode when generating code">,
+      Option<"cpu_codegen_", "cpu-codegen", "bool", /*default=*/"",
+             "CPU codegen (false implies GPU)">,
   ];
 }
 

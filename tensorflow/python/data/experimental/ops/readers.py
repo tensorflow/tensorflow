@@ -28,6 +28,7 @@ from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
@@ -571,8 +572,8 @@ def make_csv_dataset_v2(
   if num_parallel_reads == dataset_ops.AUTOTUNE:
     dataset = dataset.interleave(
         filename_to_dataset, num_parallel_calls=num_parallel_reads)
-    options = dataset_ops.Options()
-    options.experimental_deterministic = not sloppy
+    options = options_lib.Options()
+    options.deterministic = not sloppy
     dataset = dataset.with_options(options)
   else:
     # Read files sequentially (if num_parallel_reads=1) or in parallel
@@ -1023,8 +1024,8 @@ def make_batched_features_dataset_v2(file_pattern,
     dataset = dataset.interleave(
         lambda filename: reader(filename, *reader_args),
         num_parallel_calls=reader_num_threads)
-    options = dataset_ops.Options()
-    options.experimental_deterministic = not sloppy_ordering
+    options = options_lib.Options()
+    options.deterministic = not sloppy_ordering
     dataset = dataset.with_options(options)
   else:
     # Read files sequentially (if reader_num_threads=1) or in parallel

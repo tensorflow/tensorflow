@@ -6,7 +6,6 @@ load(
     "rocm_gpu_architectures",
     "rocm_version_number",
 )
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
@@ -104,7 +103,6 @@ def _gen_mlir_op(op, type, platform, output_type):
             type = type,
             output_type = output_type,
         ),
-        compatible_with = get_compatible_with_cloud(),
         output_type = output_type,
         platform = platform,
         template = "op_definitions/{op}.mlir.tmpl".format(op = op),
@@ -306,7 +304,6 @@ def _gen_kernel_library(
                     type = type,
                     output_type = output_type,
                 ),
-                compatible_with = get_compatible_with_cloud(),
                 cpu_codegen = enable_cpu,
                 data_type = type,
                 extra_args = extra_args,
@@ -378,7 +375,6 @@ def _gen_kernel_library(
         ]),
         linkstatic = 1,
         tags = tags,
-        compatible_with = get_compatible_with_cloud(),
     )
 
 def gpu_kernel_library(name, **kwargs):

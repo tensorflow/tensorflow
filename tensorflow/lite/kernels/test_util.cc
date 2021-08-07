@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/simple_planner.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/logging.h"
@@ -191,6 +192,10 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   uint8_t* buffer_pointer = builder_.GetBufferPointer();
   UpdateOpVersion(buffer_pointer);
 
+  bool use_simple_allocator =
+      tflite::KernelTestDelegateProviders::Get()->ConstParams().Get<bool>(
+          tflite::KernelTestDelegateProviders::kUseSimpleAllocator);
+
   if (!resolver_) {
     // If we have a manually-set TfLite delegate, we assume the intention of
     // the test is to test against the particular delegate, hence bypassing
@@ -205,7 +210,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
       }
     }
     MutableOpResolver* resolver =
-        bypass_default_delegates
+        (bypass_default_delegates || use_simple_allocator)
             ? new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates()
             : new ops::builtin::BuiltinOpResolver();
     for (const auto& reg : custom_registrations_) {
@@ -217,6 +222,16 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
             &interpreter_, num_threads) == kTfLiteOk);
 
   CHECK(interpreter_ != nullptr);
+
+  if (use_simple_allocator) {
+    LOG(INFO) << "Use SimplePlanner.\n";
+    tflite::Subgraph& primary_subgraph = interpreter_->primary_subgraph();
+    auto memory_planner = new SimplePlanner(
+        &primary_subgraph.context_,
+        std::unique_ptr<GraphInfo>(primary_subgraph.CreateGraphInfo()));
+    primary_subgraph.memory_planner_.reset(memory_planner);
+    memory_planner->PlanAllocations();
+  }
 
   for (size_t i = 0; i < input_shapes.size(); ++i) {
     const int input_idx = interpreter_->inputs()[i];

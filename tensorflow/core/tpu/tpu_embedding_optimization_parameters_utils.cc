@@ -33,6 +33,8 @@ std::string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
   switch (alg) {
     case OptimizationAlgorithm::kAdagrad:
       return "Adagrad";
+    case OptimizationAlgorithm::kAdagradMomentum:
+      return "AdagradMomentum";
     case OptimizationAlgorithm::kBoundedAdagrad:
       return "BoundedAdagrad";
     case OptimizationAlgorithm::kStochasticGradientDescent:
@@ -73,6 +75,8 @@ std::string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
   switch (alg) {
     case OptimizationAlgorithm::kAdagrad:
       return "Adagrad";
+    case OptimizationAlgorithm::kAdagradMomentum:
+      return "Adagrad with Momentum";
     case OptimizationAlgorithm::kBoundedAdagrad:
       return "Bounded Adagrad";
     case OptimizationAlgorithm::kStochasticGradientDescent:
@@ -117,6 +121,9 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
   switch (params.parameters_case()) {
     case OptimizationAlgorithm::kAdagrad:
       *count = 1;
+      return Status::OK();
+    case OptimizationAlgorithm::kAdagradMomentum:
+      *count = 2;
       return Status::OK();
     case OptimizationAlgorithm::kBoundedAdagrad:
       *count = 1;
@@ -265,6 +272,12 @@ Status GetOptimizationAlgorithmStateVariables(
       add_state_variable("accumulators");
       break;
     }
+    case OptimizationAlgorithm::kAdagradMomentum: {
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
+      add_state_variable("momenta");
+      break;
+    }
     case OptimizationAlgorithm::kBoundedAdagrad: {
       add_state_variable("parameters");
       add_state_variable("accumulators");
@@ -379,6 +392,7 @@ Status GetOptimizationAlgorithmStateVariables(
 std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
   return {
       OptimizationAlgorithm::kAdagrad,
+      OptimizationAlgorithm::kAdagradMomentum,
       OptimizationAlgorithm::kBoundedAdagrad,
       OptimizationAlgorithm::kStochasticGradientDescent,
       OptimizationAlgorithm::kFtrl,

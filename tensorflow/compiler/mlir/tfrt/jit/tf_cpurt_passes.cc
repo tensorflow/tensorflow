@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_passes.h"
 
+#include <functional>
 #include <memory>
+#include <string>
 
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Dialect/Async/IR/Async.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -678,21 +681,34 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
 
 void ClusteringPass::runOnFunction() {
   ClusteringPolicySet policies;
-  populateTfCpurtClusteringPolicies(policies);
 
-  // Accept only operations explicitly added to the oplist.
+  // Parse clustering tier and operations filter from the oplist.
   llvm::DenseSet<llvm::StringRef> opset;
-  for (const auto& op : oplist) opset.insert(op);
+  llvm::Optional<CpurtClusteringTier> tier;
 
-  std::function<bool(mlir::Operation * op)> filter;
-  // Recall that {"all"} is a special input meaning "no filter".
-  // Note: check oplist.size() instead of opset.size() to make sure that only
-  // {"all"} is special-cased. That is, {"all", "all"} should not be special.
-  if (!(opset.contains("all") && oplist.size() == 1)) {
-    filter = [&opset](mlir::Operation* op) {
-      return opset.find(op->getName().getStringRef()) != opset.end();
-    };
+  for (const auto& op : oplist) {
+    if (op == "tier1") {
+      tier = CpurtClusteringTier::kTier1;
+    } else if (op == "all") {
+      tier = CpurtClusteringTier::kAll;
+    } else {
+      opset.insert(op);
+    }
   }
+
+  // Run clustering only if the clustering tier or supported operations are
+  // explicitly defined by the oplist.
+  if (!tier.hasValue() && opset.empty()) return;
+
+  // If the clustering tier is not defined, it means that the opset will later
+  // filter supported operations, so it's ok to use `all` tier.
+  populateTfCpurtClusteringPolicies(policies,
+                                    tier.getValueOr(CpurtClusteringTier::kAll));
+
+  // If opset is not empty restrict operations that are enabled for clustering.
+  auto filter = [&](mlir::Operation* op) -> bool {
+    return opset.empty() || opset.contains(op->getName().getStringRef());
+  };
 
   // Annotate all formed clusters with an attribute.
   auto policy = mlir::StringAttr::get(&getContext(), "tfrt.auto-fusion");

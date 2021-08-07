@@ -21,15 +21,6 @@ limitations under the License.
 
 #include <utility>
 
-#include "tfrt/dtype/dtype.h"
-#include "tfrt/host_context/async_value_ref.h"
-#include "tfrt/host_context/host_context.h"
-#include "tfrt/support/error_util.h"
-#include "tfrt/support/forward_decls.h"
-#include "tfrt/support/ref_count.h"
-#include "tfrt/tensor/dense_host_tensor.h"
-#include "tfrt/tensor/tensor.h"
-#include "tfrt/tensor/tensor_shape.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "tensorflow/c/tf_datatype.h"
@@ -41,6 +32,15 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
+#include "tfrt/dtype/dtype.h"  // from @tf_runtime
+#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/support/error_util.h"  // from @tf_runtime
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
+#include "tfrt/support/ref_count.h"  // from @tf_runtime
+#include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/tensor_shape.h"  // from @tf_runtime
 
 namespace tensorflow {
 

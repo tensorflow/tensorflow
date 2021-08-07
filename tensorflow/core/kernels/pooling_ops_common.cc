@@ -171,6 +171,8 @@ PoolParameters::PoolParameters(OpKernelContext* context,
     pad_depth = 0;
     out_depth = depth;
   } else {
+    OP_REQUIRES(context, depth_window > 0,
+                errors::InvalidArgument("depth_window must not be 0"));
     // Our current version of depthwise max pooling does not support
     // any padding, and expects the depth_window to equal the
     // depth_stride (no overlapping).

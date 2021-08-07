@@ -3056,7 +3056,7 @@ HloModule TestModule
   %copy.1 = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %get-tuple-element.5)
   %constant.1 = s32[] constant(0)
   %broadcast.6 = s32[2] broadcast(constant.1), dimensions={}
-  dynamic-update-slice.5 = s32[2] dynamic-update-slice(%copy.1, %broadcast.6, %constant.1)
+  dynamic-update-slice.5 = s32[2]{0:T(128)} dynamic-update-slice(%copy.1, %broadcast.6, %constant.1)
   %add.1 = s32[2]{0:T(128)} add(dynamic-update-slice.5, %copy.1)
   ROOT tuple.6 = (s32[2]{0:T(128)}) tuple(%add.1)
  }
@@ -3067,17 +3067,13 @@ ENTRY TestComputation {
   %parameter.3 = s32[2]{0:T(128)} parameter(2), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
   %tuple.1 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.3)
   %tuple.3 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.2)
-  %conditional.18 = (s32[2]{0:T(128)}) conditional(s32[]{:T(128)} %parameter.1, (s32[2]{0:T(128)}) %tuple.1, (s32[2]{0:T(128)}) %tuple.3), branch_computations={%branch_0_comp.5.clone, %branch_1_comp.12.clone}, metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
+  %conditional.18 = (s32[2]{0:T(128)}) conditional(s32[]{:T(128)} %parameter.1, (s32[2]{0:T(128)}) %tuple.1, (s32[2]{0:T(128)}) %tuple.3), branch_computations={%branch_0_comp.5.clone, %branch_1_comp.12.clone}
   %gte.1 = s32[2]{0:T(128)} get-tuple-element(conditional.18), index=0
   ROOT tuple.4 = (s32[2]{0:T(128)},s32[2]{0:T(128)}) tuple(parameter.2, gte.1)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  // TODO(b/189898980): the region based live range analysis currently
-  // does not enforce a strict ordering of the merged live ranges. This wil
-  // cause the following invocation to fail when run under UNDEBUG mode.
-#if 0
   CopyInsertion copy_insertion(nullptr,
                                /*use_region_based_live_range_analysis=*/true);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -3091,7 +3087,6 @@ ENTRY TestComputation {
   auto dus = add1->operand(0);
   auto copy1 = dus->operand(0);
   CHECK_EQ(copy1->opcode(), HloOpcode::kCopy);
-#endif
 }
 
 TEST_F(CopyInsertionTest, ConditionalBranchMustCopy3) {

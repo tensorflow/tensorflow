@@ -167,13 +167,13 @@ def Dot(
     lhs: XlaOp,
     rhs: XlaOp,
     precision_config: PrecisionConfig_Precision = ...,
-    preferred_element_type: Optional[PrimitiveType]) -> XlaOp: ...
+    preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
 def DotGeneral(
     lhs: XlaOp,
     rhs: XlaOp,
     dimensions_numbers: _DotDimensionNumbers,
     precision_config: PrecisionConfig_Precision = ...,
-    preferred_element_type: Optional[PrimitiveType]) -> XlaOp: ...
+    preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
 def DynamicReshape(
     operand: XlaOp,
     dim_sizes: Sequence[XlaOp],

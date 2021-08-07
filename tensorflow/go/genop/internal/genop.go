@@ -46,7 +46,8 @@ import (
 	"text/template"
 	"unsafe"
 
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/encoding/prototext"
+	"google.golang.org/protobuf/proto"
 	adpb "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/api_def_go_proto"
 	odpb "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/op_def_go_proto"
 )
@@ -573,7 +574,8 @@ func isListAttr(attrdef *odpb.OpDef_AttrDef) bool {
 // proto.CompactTextString) will print "b:true", or "i:7" etc. This function
 // strips out the leading "b:" or "i:".
 func stripLeadingColon(m proto.Message) string {
-	x := proto.CompactTextString(m)
+	o := prototext.MarshalOptions{Multiline: false}
+	x := o.Format(m)
 	y := strings.SplitN(x, ":", 2)
 	if len(y) < 2 {
 		return x

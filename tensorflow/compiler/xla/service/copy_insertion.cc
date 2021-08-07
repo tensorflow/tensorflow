@@ -1161,10 +1161,12 @@ class CopyRemover {
           }
           for (const HloValue* value_b : buffer.values()) {
             if (value_a != value_b) {
-              DCHECK(ordering_->LiveRangeStrictlyBefore(*value_a, *value_b,
-                                                        dataflow_) ||
-                     ordering_->LiveRangeStrictlyBefore(*value_b, *value_a,
-                                                        dataflow_))
+              DCHECK(ordering_->LiveRangeStrictlyBefore(
+                         *value_a, *value_b, dataflow_,
+                         /*use_is_always_before_def_in_same_instr=*/true) ||
+                     ordering_->LiveRangeStrictlyBefore(
+                         *value_b, *value_a, dataflow_,
+                         /*use_is_always_before_def_in_same_instr=*/true))
                   << value_a->ToString() << " and " << value_b->ToString()
                   << " are not ordered";
             }
@@ -1534,7 +1536,9 @@ class CopyRemover {
   // range of 'b'.
   //
   // We cannot use LiveRangeStrictlyBefore because HloValue::uses() is not
-  // updated as copies are removed.
+  // updated as copies are removed. Also here because the result is used
+  // to directly drive copy elision, use_is_always_before_def_in_same_instr is
+  // set to false.
   bool LiveRangeBefore(const ValueNode& a, const ValueNode& b) {
     if (a.uses.empty()) {
       VLOG(2) << "Empty uses for " << *a.value;
@@ -1542,7 +1546,9 @@ class CopyRemover {
     }
     VLOG(3) << "Checking live ranges before :" << ValueListToString(&a)
             << " vs " << ValueListToString(&b) << "\n";
-    return ordering_->UsesBeforeValueDefinition(a.uses, *b.value, dataflow_);
+    return ordering_->UsesBeforeValueDefinition(
+        a.uses, *b.value, dataflow_,
+        /* use_is_always_before_def_in_same_instr=*/false);
   }
 
   // Returns whether 'node' is the last node in its list.

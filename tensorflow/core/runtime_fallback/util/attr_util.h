@@ -15,12 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_UTIL_ATTR_UTIL_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_UTIL_ATTR_UTIL_H_
 
-#include "tfrt/bef/bef_encoding.h"
-#include "tfrt/core_runtime/op_attr_type.h"
-#include "tfrt/core_runtime/op_attrs.h"
-#include "tfrt/host_context/host_context.h"
-#include "tfrt/host_context/kernel_utils.h"
-#include "tfrt/support/forward_decls.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -28,8 +22,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
+#include "tfrt/bef/bef_encoding.h"  // from @tf_runtime
+#include "tfrt/core_runtime/op_attr_type.h"  // from @tf_runtime
 #include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {

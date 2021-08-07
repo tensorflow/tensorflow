@@ -22,6 +22,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
@@ -30,7 +31,7 @@ class AutotuneBufferSizesTest(test_base.DatasetTestBase,
                               parameterized.TestCase):
 
   def _enable_autotune_buffers(self, dataset):
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.autotune_buffers = True
     return dataset.with_options(options)
 
@@ -103,7 +104,7 @@ class AutotuneBufferSizesTest(test_base.DatasetTestBase,
     dataset = dataset.apply(testing.assert_next(["Map", "FiniteTake"]))
     dataset = dataset.map(lambda x: x + 1).take(50)
     dataset = self._enable_autotune_buffers(dataset)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.map_parallelization = False
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, range(1, 51))

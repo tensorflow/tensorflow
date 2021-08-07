@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/metrics.h"
+#include "tensorflow/cc/saved_model/util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -99,15 +101,26 @@ Status ReadSavedModel(const string& export_dir, SavedModel* saved_model_proto) {
 
   const string saved_model_pb_path =
       io::JoinPath(export_dir, kSavedModelFilenamePb);
+
   if (Env::Default()->FileExists(saved_model_pb_path).ok()) {
-    return ReadBinaryProto(Env::Default(), saved_model_pb_path,
-                           saved_model_proto);
+    Status result =
+        ReadBinaryProto(Env::Default(), saved_model_pb_path, saved_model_proto);
+    if (result.ok()) {
+      metrics::SavedModelRead(saved_model::GetWriteVersion(*saved_model_proto))
+          .IncrementBy(1);
+    }
+    return result;
   }
   const string saved_model_pbtxt_path =
       io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
   if (Env::Default()->FileExists(saved_model_pbtxt_path).ok()) {
-    return ReadTextProto(Env::Default(), saved_model_pbtxt_path,
-                         saved_model_proto);
+    Status result = ReadTextProto(Env::Default(), saved_model_pbtxt_path,
+                                  saved_model_proto);
+    if (result.ok()) {
+      metrics::SavedModelRead(saved_model::GetWriteVersion(*saved_model_proto))
+          .IncrementBy(1);
+    }
+    return result;
   }
   return Status(error::Code::NOT_FOUND,
                 "Could not find SavedModel .pb or .pbtxt at supplied export "

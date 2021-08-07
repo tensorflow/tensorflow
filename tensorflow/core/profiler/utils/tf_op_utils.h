@@ -49,7 +49,8 @@ struct TfOp {
 };
 TfOp ParseTfOpFullname(absl::string_view tf_op_fullname);
 
-// Returns a vector of TF name scopes extracted from tf_op_full_name.
+// Returns a vector of TF name scopes extracted from a TF op name.
+std::vector<absl::string_view> ParseTfNameScopes(absl::string_view tf_op_name);
 std::vector<absl::string_view> ParseTfNameScopes(const TfOp& tf_op);
 
 // Trace event name for TF ops is the op type so they have the same color in

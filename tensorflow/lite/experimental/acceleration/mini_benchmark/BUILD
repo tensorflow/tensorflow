@@ -640,6 +640,29 @@ embedded_binary(
     binary = "//tensorflow/lite/experimental/acceleration/mini_benchmark/metrics:mobilenet_float_with_validation.tflite",
 )
 
+cc_library(
+    name = "mini_benchmark_test_helper",
+    testonly = 1,
+    srcs = ["mini_benchmark_test_helper.cc"],
+    hdrs = ["mini_benchmark_test_helper.h"],
+    linkopts = select({
+        # We will use dlopen on Android.
+        clean_dep("//tensorflow:android"): ["-ldl"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "@com_google_googletest//:gtest",
+        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
+        "//tensorflow/lite/tools:logging",
+    ] + select({
+        clean_dep("//tensorflow:android"): [
+            ":embedded_runner_executable",
+            ":embedded_validator_runner_so_for_tests",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
 cc_test(
     name = "mini_benchmark_test",
     srcs = [
@@ -654,22 +677,16 @@ cc_test(
         ":embedded_mobilenet_float_validation_model",
         ":mini_benchmark",
         ":mini_benchmark_implementation",
+        ":mini_benchmark_test_helper",
         ":status_codes",
-        "@com_google_googletest//:gtest_main",
-        "@com_google_absl//absl/time",
-        "@flatbuffers",
-        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_cc_proto",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:proto_to_flatbuffer",
         "//tensorflow/lite/experimental/acceleration/configuration:xnnpack_plugin",
-    ] + select({
-        clean_dep("//tensorflow:android"): [
-            ":embedded_runner_executable",
-            ":embedded_validator_runner_so_for_tests",
-        ],
-        "//conditions:default": [],
-    }),
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
+    ],
 )
 
 #
@@ -718,6 +735,7 @@ cc_test(
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
             ":embedded_runner_unit_test_entry_points",
+            ":mini_benchmark_test_helper",
         ],
         "//conditions:default": [
             ":runner_unit_test_entry_points_library",
@@ -785,11 +803,11 @@ cc_test(
     deps = [
         ":embedded_mobilenet_validation_model",
         ":embedded_mobilenet_model",
+        ":mini_benchmark_test_helper",
         ":status_codes",
         ":validator",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
-        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
     ] + select({
@@ -810,6 +828,7 @@ cc_test(
     ],
     deps = [
         ":embedded_mobilenet_validation_model",
+        ":mini_benchmark_test_helper",
         ":status_codes",
         ":validator_runner",
         "@com_google_googletest//:gtest_main",
@@ -820,8 +839,6 @@ cc_test(
     ] + select({
         clean_dep("//tensorflow:android"): [
             "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin",
-            ":embedded_runner_executable",
-            ":embedded_validator_runner_so_for_tests",
         ],
         "//conditions:default": [
             ":validator_runner_entrypoint",

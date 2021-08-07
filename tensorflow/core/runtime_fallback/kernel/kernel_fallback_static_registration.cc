@@ -17,7 +17,7 @@ limitations under the License.
 // kernels in this directory.  This can be used to simplify clients that don't
 // care about selective registration of kernels.
 
-#include "tfrt/host_context/kernel_registry.h"
+#include "tfrt/host_context/kernel_registry.h"  // from @tf_runtime
 
 namespace tensorflow {
 

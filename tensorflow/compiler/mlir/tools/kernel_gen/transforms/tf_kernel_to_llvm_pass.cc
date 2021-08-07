@@ -224,7 +224,7 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
         loc, kTfWrapperLibaryLaunchHelperName, function_type);
   }
   rewriter.create<LLVM::CallOp>(
-      loc, llvm_void_type_, rewriter.getSymbolRefAttr(function),
+      loc, TypeRange(), rewriter.getSymbolRefAttr(function),
       ArrayRef<Value>{
           context_arg, module_blob, kernel_name_global, adaptor.gridSizeX(),
           adaptor.gridSizeY(), adaptor.gridSizeZ(), adaptor.blockSizeX(),

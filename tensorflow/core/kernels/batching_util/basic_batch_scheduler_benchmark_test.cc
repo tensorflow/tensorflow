@@ -23,12 +23,16 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
 namespace serving {
 namespace {
 
 using ::tensorflow::histogram::Histogram;
+
+// Fixed duration to run latency benchmark.
+static int latency_benchmark_duration_secs = 100;
 
 // An abstract class for injecting load into a system at a specific rate.
 class LoadInjector {
@@ -189,7 +193,7 @@ class LatencyBenchmark {
   LatencyBenchmark& operator=(const LatencyBenchmark&) = delete;
 
   // Perform the benchmark run, based on the parameters supplied to the ctor.
-  void RunBenchmark();
+  void RunBenchmark(::testing::benchmark::State& state);
 
  private:
   // Resets all mutable state, including the scheduler and latency measurements.
@@ -234,15 +238,19 @@ LatencyBenchmark::LatencyBenchmark(
       task_injection_interval_micros_(task_injection_interval_micros),
       batch_cpu_cost_(batch_cpu_cost) {}
 
-void LatencyBenchmark::RunBenchmark() {
+void LatencyBenchmark::RunBenchmark(::testing::benchmark::State& state) {
   ResetState();
 
-  // Arrange to inject tasks at the specified rate, for a fixed total time
-  // duration.
-  const int kTimeDurationMicros = 100 * 1000 * 1000 /* 100 seconds */;
+  // Arrange to inject tasks at the specified rate, for a total duration of
+  // of kTimeDurationMicros.
+  const int kTimeDurationMicros = latency_benchmark_duration_secs * 1000 * 1000;
   const int kNumTasks = kTimeDurationMicros / task_injection_interval_micros_;
-  CHECK_GE(kNumTasks, 100000)
-      << "Not enough tasks to report meaningful 99.9% latency";
+  if (kNumTasks <= 10000) {
+    LOG(WARNING) << "Not enough tasks (" << kNumTasks << ")"
+                 << " to report meaningful 99.9% latency!"
+                 << " duration: " << kTimeDurationMicros
+                 << " interval: " << task_injection_interval_micros_;
+  }
 
   const int64_t start_time_micros = Env::Default()->NowMicros();
 
@@ -279,12 +287,9 @@ void LatencyBenchmark::RunBenchmark() {
   // Report benchmark measurements.
   {
     mutex_lock l(mu_);
-    std::cout << "\t"
-              << "99.9% latency: "
-              << task_latency_millis_histogram_.Percentile(99.9) << "ms"
-              << "\t"
-              << "99% batch size: " << batch_size_histogram_.Percentile(99)
-              << std::endl;
+    state.SetLabel(absl::StrCat(
+        "lat_p99.9=", task_latency_millis_histogram_.Percentile(99.9),
+        "ms,batchsz_p99=", batch_size_histogram_.Percentile(99)));
   }
 }
 
@@ -386,49 +391,82 @@ BENCHMARK(ThroughputBM_LargeTimeout)
     ->Arg(32)
     ->Arg(64);
 
-static void RunLatencyBenchmark(int64_t task_injection_interval_micros,
+static void RunLatencyBenchmark(::testing::benchmark::State& state,
+                                int64_t task_injection_interval_micros,
+                                int64_t batch_threads,
                                 int64_t batch_timeout_micros) {
   BasicBatchScheduler<BenchmarkBatchTask>::Options scheduler_options;
   const int kMaxBatchSize = 100;
   scheduler_options.max_batch_size = kMaxBatchSize;
   scheduler_options.batch_timeout_micros = batch_timeout_micros;
-  const int kNumBatchThreads = 2;
-  scheduler_options.num_batch_threads = kNumBatchThreads;
+  scheduler_options.num_batch_threads = batch_threads;
   scheduler_options.max_enqueued_batches = INT_MAX;  // Unbounded queue.
   const int kBatchCpuCost = 10 * 1000 * 1000;
   LatencyBenchmark benchmark(scheduler_options, task_injection_interval_micros,
                              kBatchCpuCost);
-  benchmark.RunBenchmark();
-}
-
-static void RunLatencyBenchmarks() {
-  for (const int64_t batch_timeout_micros : {0, 1 * 1000, 2 * 1000, 5 * 1000}) {
-    for (const int64_t task_injection_interval_micros : {1000, 50, 20}) {
-      std::cout << "Latency benchmark w/ batch timeout "
-                << batch_timeout_micros / 1000.0 << "ms"
-                << "; "
-                << "task injection rate "
-                << 1000000.0 / task_injection_interval_micros << "/sec"
-                << "\t...";
-      RunLatencyBenchmark(task_injection_interval_micros, batch_timeout_micros);
-    }
-    std::cout << std::endl;
+  for (auto s : state) {
+    benchmark.RunBenchmark(state);
   }
 }
+
+#define LATENCY_BM(type, timeout)                                             \
+  static void LatencyBM_##type##Timeout(::testing::benchmark::State& state) { \
+    RunLatencyBenchmark(state, state.range(0), state.range(1), (timeout));    \
+  }                                                                           \
+  /* Run benchmark for a pair of <inject_interval_micros, num_threads> */     \
+  BENCHMARK(LatencyBM_##type##Timeout)                                        \
+      ->UseRealTime()                                                         \
+      ->ArgPair(20, 2)                                                        \
+      ->ArgPair(20, 4)                                                        \
+      ->ArgPair(20, 8)                                                        \
+      ->ArgPair(20, 16)                                                       \
+      ->ArgPair(50, 2)                                                        \
+      ->ArgPair(50, 4)                                                        \
+      ->ArgPair(50, 8)                                                        \
+      ->ArgPair(50, 16)                                                       \
+      ->ArgPair(1000, 2)                                                      \
+      ->ArgPair(1000, 4)                                                      \
+      ->ArgPair(1000, 8)                                                      \
+      ->ArgPair(1000, 16)
+
+LATENCY_BM(Zero, 0);
+LATENCY_BM(Small, 2000 /* 2ms timeout */);
+LATENCY_BM(Large, 5000 /* 5ms timeout */);
 
 }  // namespace
 }  // namespace serving
 }  // namespace tensorflow
 
 int main(int argc, char** argv) {
+  const std::vector<tensorflow::Flag> flag_list = {tensorflow::Flag(
+      "scheduler_latency_bm_fixed_duration_secs",
+      &tensorflow::serving::latency_benchmark_duration_secs,
+      "Fixed duration that the latency benchmark must be run.")};
+  if (!tensorflow::Flags::Parse(&argc, argv, flag_list)) {
+    std::cout << tensorflow::Flags::Usage(argv[0], flag_list);
+    return -1;
+  }
+
   tensorflow::port::InitMain(argv[0], &argc, &argv);
   std::setprecision(5);
 
-  // Run latency benchmarks (outside of tensorflow benchmark framework).
-  tensorflow::serving::RunLatencyBenchmarks();
-
-  // Run throughput benchmarks (via tensorflow benchmark framework).
+#ifdef PLATFORM_GOOGLE
+  // Latency benchmark is a long running fixed interval (by time) benchmark, and
+  // should only be run once, as we measure and report latency over this fixed
+  // interval. Running for more than once will take very long time to complete.
+  const auto min_iters = absl::GetFlag(FLAGS_benchmark_min_iters);
+  const auto max_iters = absl::GetFlag(FLAGS_benchmark_max_iters);
+  absl::SetFlag(&FLAGS_benchmark_min_iters, 1);
+  absl::SetFlag(&FLAGS_benchmark_max_iters, 1);
+  absl::SetFlag(&FLAGS_benchmark_filter, ".*Latency.*");
   tensorflow::testing::RunBenchmarks();
+  absl::SetFlag(&FLAGS_benchmark_min_iters, min_iters);
+  absl::SetFlag(&FLAGS_benchmark_max_iters, max_iters);
+  absl::SetFlag(&FLAGS_benchmark_filter, ".*Through.*");
+  tensorflow::testing::RunBenchmarks();
+#else
+  tensorflow::testing::RunBenchmarks();
+#endif
 
   return 0;
 }

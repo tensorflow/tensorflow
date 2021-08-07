@@ -350,8 +350,9 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
           << " with handle: " << handle;
   profiler::TraceMe trace_me(
       [&] {
-        return absl::StrCat("RemoteCallOp#func_name=", func_name,
-                            ",device=", target_device, "#");
+        return profiler::TraceMeEncode(
+            "RemoteCallOp",
+            {{"func_name", func_name}, {"device", target_device}});
       },
       profiler::TraceMeLevel::kInfo);
   lib->Run(
@@ -360,8 +361,9 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
        target_device = std::move(function_target.first)](const Status& status) {
         profiler::TraceMe activity(
             [&] {
-              return absl::StrCat("RemoteCallOpDone#func_name=", func_name,
-                                  ",device=", target_device, "#");
+              return profiler::TraceMeEncode(
+                  "RemoteCallOpDone",
+                  {{"func_name", func_name}, {"device", target_device}});
             },
             profiler::TraceMeLevel::kInfo);
         if (!status.ok()) {

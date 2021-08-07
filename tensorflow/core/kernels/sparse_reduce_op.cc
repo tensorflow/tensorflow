@@ -219,7 +219,20 @@ class SparseReduceOp : public OpKernel {
     sp.Reorder<T>(reduction.reorder_dims);
     for (const auto &g : sp.group(reduction.group_by_dims)) {
       Op::template Run<T>(ctx, reduced_val, g.template values<T>());
+      OP_REQUIRES(ctx,
+                  output_strides.empty() ||
+                  (g.group().size() == output_strides.size()),
+                  errors::Internal(
+                      "Expected group size and output_strides size to match",
+                      ", but got ", g.group().size(), " and ",
+                      output_strides.size()));
       const int64_t idx = CoordinatesToFlatIndex(g.group(), output_strides);
+      OP_REQUIRES(ctx,
+                  idx >= 0 && idx < out_flat.size(),
+                  errors::Internal(
+                      "Obtained a write index of ", idx,
+                      " which is outside of bounds of [0, ",
+                      out_flat.size(), ")"));
       out_flat(idx) = reduced_val();
       VLOG(2) << "coords: " << absl::StrJoin(g.group(), ",")
               << "; idx: " << idx << "; group " << Op::Name() << ": "

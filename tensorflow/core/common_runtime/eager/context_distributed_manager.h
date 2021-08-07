@@ -43,6 +43,11 @@ class EagerContextDistributedManager
 
   Status EnableCollectiveOps(const ServerDef& server_def) override;
 
+  Status EnableCoordinationService(const std::string& service_type,
+                                   const WorkerEnv* worker_env,
+                                   const ServerDef& server_def,
+                                   WorkerCacheInterface* worker_cache) override;
+
   Status CheckRemoteAlive(const std::string& remote_task_name,
                           bool* is_alive) override;
 

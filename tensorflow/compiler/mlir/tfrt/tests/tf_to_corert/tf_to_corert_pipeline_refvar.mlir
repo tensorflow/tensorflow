@@ -8,10 +8,10 @@
 // CHECK-NEXT: [[out_ch:%.*]] = tfrt.merge.chains [[arg1_th]], [[o_chain]], [[o_chain_0]]
 // CHECK-NEXT: tfrt.return [[out_ch]], [[o2]] : !tfrt.chain, !corert.tensorhandle
 module attributes {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0"], tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 679 : i32}}  {
-  func @__inference_pruned_131(%arg0: tensor<*x!tf.resource>) -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "variable", outputs = "identity_retval_RetVal"}} {
+  func @__inference_pruned_131(%arg0: tensor<*x!tf_type.resource>) -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "variable", outputs = "identity_retval_RetVal"}} {
     %0 = tf_executor.graph {
-      %outputs, %control = tf_executor.island wraps "tf.VariableV2"() {container = "", device = "/job:localhost/replica:0/task:0/device:CPU:0", shape = #tf.shape<>, shared_name = "v_load_44"} : () -> tensor<!tf.f32ref>
-      %outputs_0, %control_1 = tf_executor.island wraps "tf.Identity"(%outputs) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<!tf.f32ref>) -> tensor<*xf32>
+      %outputs, %control = tf_executor.island wraps "tf.VariableV2"() {container = "", device = "/job:localhost/replica:0/task:0/device:CPU:0", shape = #tf_type.shape<>, shared_name = "v_load_44"} : () -> tensor<!tf_type.f32ref>
+      %outputs_0, %control_1 = tf_executor.island wraps "tf.Identity"(%outputs) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<!tf_type.f32ref>) -> tensor<*xf32>
       tf_executor.fetch %outputs_0 : tensor<*xf32>
     }
     return %0 : tensor<*xf32>

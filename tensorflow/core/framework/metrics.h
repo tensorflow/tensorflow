@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -100,6 +101,14 @@ void RecordTFDataServiceWorkerCreated();
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
 void RecordTFDataFilename(const string& name, const string& filename);
+
+// Records statistics of tf.data auto sharding.
+//
+// The `id` is a unique identifier of the input pipeline. The `policy`
+// identifies the auto-sharding policy used, the `num_workers` identifies the
+// number of workers, and `num_replicas` identifies the number of replicas.
+void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
+                           int64 num_workers, int64 num_replicas);
 
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);

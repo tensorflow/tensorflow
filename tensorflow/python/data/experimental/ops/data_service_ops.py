@@ -25,11 +25,12 @@ from tensorflow.core.protobuf import data_service_pb2
 from tensorflow.python import tf2
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import compression_ops
-from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
-from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.data.experimental.service import _pywrap_utils
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.data.ops.options import AutoShardPolicy
+from tensorflow.python.data.ops.options import ExternalStatePolicy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -58,19 +59,25 @@ class ShardingPolicy(enum.IntEnum):
   OFF: No sharding will be performed. Each worker produces the entire dataset
   without any sharding. With this mode, the best practice is to shuffle the
   dataset nondeterministically so that workers process the dataset in different
-  orders.
+  orders. If workers are restarted or join the cluster mid-job, they will begin
+  processing the dataset from the beginning.
 
   DYNAMIC: The input dataset is dynamically split among workers at runtime. Each
   worker gets the next split when it reads data from the dispatcher. Data is
   produced non-deterministically in this mode. Dynamic sharding works well with
   varying-sized tf.data service clusters, e.g., when you need to auto-scale your
-  workers.
+  workers. Dynamic sharding provides at-most once visitation guarantees. No
+  examples will be repeated, but some may be missed if a tf.data service worker
+  gets restarted while processing a file.
 
   The following are static sharding policies. The semantics are similar to
   `tf.data.experimental.AutoShardPolicy`. These policies require:
-  * The tf.data service cluster has a fixed size, and you need to specify the
-    workers in DispatcherConfig.
+  * The tf.data service cluster is configured with a fixed list of workers
+    in DispatcherConfig.
   * Each client only reads from the local tf.data service worker.
+
+  If a worker is restarted while performing static sharding, the worker will
+  begin processing its shard again from the beginning.
 
   FILE: Shards by input files (i.e. each worker will get a fixed set of files to
   process). When this option is selected, make sure that there is at least as
@@ -89,21 +96,67 @@ class ShardingPolicy(enum.IntEnum):
   placeholder to replace with `shard(num_workers, worker_index)`.
   """
 
+  # LINT.IfChange(tf_data_service_sharding_policy)
   OFF = 0
   DYNAMIC = 1
   FILE = 2
   DATA = 3
   FILE_OR_DATA = 4
   HINT = 5
+  # LINT.ThenChange()
+
+  def _to_proto(self):
+    """Converts the policy to ProcessingModeDef proto enum."""
+
+    if self == ShardingPolicy.OFF:
+      return data_service_pb2.ProcessingModeDef.OFF
+    if self == ShardingPolicy.DYNAMIC:
+      return data_service_pb2.ProcessingModeDef.DYNAMIC
+    if self == ShardingPolicy.FILE:
+      return data_service_pb2.ProcessingModeDef.FILE
+    if self == ShardingPolicy.DATA:
+      return data_service_pb2.ProcessingModeDef.DATA
+    if self == ShardingPolicy.FILE_OR_DATA:
+      return data_service_pb2.ProcessingModeDef.FILE_OR_DATA
+    if self == ShardingPolicy.HINT:
+      return data_service_pb2.ProcessingModeDef.HINT
+    raise ValueError(
+        f"Unable to convert sharding policy {self!r} to proto. Please verify "
+        "the policy mapping.")
 
 
 def _get_validated_sharding_policy(processing_mode):
-  if processing_mode == _PARALLEL_EPOCHS:
-    return ShardingPolicy.OFF
-  if processing_mode == _DISTRIBUTED_EPOCH:
-    return ShardingPolicy.DYNAMIC
+  """Validates `processing_mode` and converts it to ShardingPolicy."""
+
   if isinstance(processing_mode, ShardingPolicy):
     return processing_mode
+  if compat.forward_compatible(2021, 8, 24):
+    if processing_mode == _PARALLEL_EPOCHS:
+      return ShardingPolicy.OFF
+    if processing_mode == _DISTRIBUTED_EPOCH:
+      return ShardingPolicy.DYNAMIC
+  elif processing_mode in [_PARALLEL_EPOCHS, _DISTRIBUTED_EPOCH]:
+    return processing_mode
+
+  raise ValueError(
+      "tf.data service processing mode should be a ShardingPolicy, "
+      "`\"parallel_epochs\"`, or `\"distributed_epoch\"`. Got "
+      f"{processing_mode!r}.")
+
+
+def _serialize(processing_mode):
+  """Serializes `processing_mode`."""
+
+  processing_mode = _get_validated_sharding_policy(processing_mode)
+  if isinstance(processing_mode, ShardingPolicy):
+    # pylint: disable=protected-access
+    processing_mode_def = data_service_pb2.ProcessingModeDef(
+        sharding_policy=_get_validated_sharding_policy(
+            processing_mode)._to_proto())
+    return processing_mode_def.SerializeToString()
+  if processing_mode in [_PARALLEL_EPOCHS, _DISTRIBUTED_EPOCH]:
+    return processing_mode
+
   raise ValueError(
       "tf.data service processing mode should be a ShardingPolicy, "
       "`\"parallel_epochs\"`, or `\"distributed_epoch\"`. Got "
@@ -182,8 +235,8 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         avoid RPCs and data copy if every TF worker colocates with a tf.data
         service worker. Defaults to `"AUTO"`.
     """
-    processing_mode_def = data_service_pb2.ProcessingModeDef(
-        sharding_policy=_get_validated_sharding_policy(processing_mode))
+    processing_mode = _serialize(
+        _get_validated_sharding_policy(processing_mode))
     if consumer_index is None != num_consumers is None:
       raise ValueError(
           "Must either set both consumer_index and num_consumers, or neither. ",
@@ -202,9 +255,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     self._dataset_id = ops.convert_to_tensor(
         dataset_id, dtype=dtypes.int64, name="dataset_id")
     self._processing_mode = ops.convert_to_tensor(
-        processing_mode_def.SerializeToString(),
-        dtype=dtypes.string,
-        name="processing_mode")
+        processing_mode, dtype=dtypes.string, name="processing_mode")
     self._address = ops.convert_to_tensor(
         address, dtype=dtypes.string, name="address")
     self._protocol = ops.convert_to_tensor(
@@ -890,7 +941,7 @@ def _from_dataset_id(processing_mode,
 
   # Disable autosharding for shared jobs.
   if job_name is not None:
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.auto_shard_policy = AutoShardPolicy.OFF
     dataset = dataset.with_options(options)
   return dataset

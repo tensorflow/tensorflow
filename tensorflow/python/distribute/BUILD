@@ -954,6 +954,7 @@ distribute_py_test(
     srcs = ["strategy_combinations_test.py"],
     disable_mlir_bridge = False,
     python_version = "PY3",
+    tags = ["no_cuda_asan"],  # b/195246941
     deps = [
         ":central_storage_strategy",
         ":collective_all_reduce_strategy",

@@ -3917,7 +3917,9 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
     token_parts[2] = partition_entry.GetFingerprint();
     token_parts[3] = partition_entry.GetFingerprint();
     // TODO(b/172238515): get token size from header instead of hardcoding.
-    std::vector<uint8_t> nnapi_cache_token(32, 0);
+    // Allocate one extra 'null' byte to avoid bugs with backends that might
+    // be doing strlen() on the token ptr.
+    std::vector<uint8_t> nnapi_cache_token(33, 0);
     // Copy the token bits.
     uint8_t* p = reinterpret_cast<uint8_t*>(token_parts);
     for (int i = 0; i < 4 * sizeof(uint64_t); i++) {

@@ -19,12 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
-#include "tfrt/cpu/jit/cpurt.h"
-#include "tfrt/host_context/host_context.h"
 #include "llvm/ADT/DenseMap.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
+#include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 

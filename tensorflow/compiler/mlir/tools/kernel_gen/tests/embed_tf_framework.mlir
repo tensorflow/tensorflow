@@ -82,6 +82,8 @@ func @jit_compile_from_str(%ctx : !tf_framework.op_kernel_context)
     -> !tf_framework.jit_callable attributes {tf_entry} {
   // CHECK: %[[RES:.*]] = tf_framework.jit_compile_from_str %[[CTX]], "placeholder"
   // CHECK: return %[[RES]]
-  %0 = tf_framework.jit_compile_from_str "placeholder"
+  %0 = tf_framework.jit_compile_from_str "placeholder" { tileSizes = [1, 2, 3],
+      unrollFactors = [4], maxSupportedRank = 3 : i64, enableFtz = false,
+      cpuCodegen = false }
   return %0 : !tf_framework.jit_callable
 }
