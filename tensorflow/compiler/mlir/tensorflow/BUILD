@@ -14,7 +14,6 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["@llvm-project//mlir:subpackages"],
     packages = [
         "//platforms/darwinn/tools/mlir_fuzzer/...",
         "//tensorflow/compiler/...",
@@ -23,6 +22,7 @@ package_group(
         "//tensorflow/core/tfrt/utils/...",
         "//tensorflow/cc/...",
         "//tensorflow/python/...",
+        "//tensorflow/tools/pip_package/...",
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/dtensor/...",

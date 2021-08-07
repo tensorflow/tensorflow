@@ -11,6 +11,7 @@ package(
     default_visibility = [
         # TODO(jpienaar): Make the visibility more restrictive.
         ":friends",
+        "//tensorflow/lite/experimental/mlir:__subpackages__",
         "//tensorflow/lite/experimental/tf_runtime:__subpackages__",
     ],
     licenses = ["notice"],
@@ -18,7 +19,6 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["@llvm-project//mlir:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/mlir/...",

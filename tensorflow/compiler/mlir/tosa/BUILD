@@ -14,7 +14,6 @@ package(
 
 package_group(
     name = "internal",
-    includes = ["@llvm-project//mlir:subpackages"],
     packages = [
         "//tensorflow/compiler/mlir/...",
     ],
