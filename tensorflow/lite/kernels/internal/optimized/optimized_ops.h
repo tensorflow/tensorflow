@@ -3563,14 +3563,16 @@ inline bool AveragePool32(const PoolParams& params,
   return true;
 }
 
-inline void AveragePool(const PoolParams& params,
+inline bool AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape,
                         const uint8* input_data,
                         const RuntimeShape& output_shape, uint8* output_data) {
   if (params.filter_height * params.filter_width > 16 * 16) {
-    AveragePool32(params, input_shape, input_data, output_shape, output_data);
+    return AveragePool32(params, input_shape, input_data, output_shape,
+                         output_data);
   } else {
-    AveragePool16(params, input_shape, input_data, output_shape, output_data);
+    return AveragePool16(params, input_shape, input_data, output_shape,
+                         output_data);
   }
 }
 
