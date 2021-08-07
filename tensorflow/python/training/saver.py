@@ -25,6 +25,7 @@ from __future__ import print_function
 
 import collections
 import os.path
+import threading
 import time
 
 import numpy as np
@@ -46,6 +47,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import training_util
@@ -64,6 +66,22 @@ latest_checkpoint = checkpoint_management.latest_checkpoint
 checkpoint_exists = checkpoint_management.checkpoint_exists
 get_checkpoint_mtimes = checkpoint_management.get_checkpoint_mtimes
 remove_checkpoint = checkpoint_management.remove_checkpoint
+
+
+# Captures the timestamp of the first Saver object instantiation or end of a
+# save operation. Can be accessed by multiple Saver instances.
+_END_TIME_OF_LAST_WRITE = None
+_END_TIME_OF_LAST_WRITE_LOCK = threading.Lock()
+
+# API label for cell name used in checkpoint metrics.
+_SAVER_LABEL = "saver_v1"
+
+
+def _get_duration_microseconds(start_time_seconds, end_time_seconds):
+  if end_time_seconds < start_time_seconds:
+    # Avoid returning negative value in case of clock skew.
+    return 0
+  return round((end_time_seconds - start_time_seconds) * 1000000)
 
 
 class BaseSaverBuilder(object):
@@ -861,6 +879,11 @@ class Saver(object):
     saving. These APIs will load checkpoints written by `Saver`.
     @end_compatibility
     """
+    global _END_TIME_OF_LAST_WRITE
+    with _END_TIME_OF_LAST_WRITE_LOCK:
+      if _END_TIME_OF_LAST_WRITE is None:
+        _END_TIME_OF_LAST_WRITE = time.time()
+
     if defer_build and var_list:
       raise ValueError(
           "If `var_list` is provided then build cannot be deferred. "
@@ -1205,6 +1228,7 @@ class Saver(object):
       RuntimeError: If save and restore ops weren't built.
     """
     # pylint: enable=line-too-long
+    start_time = time.time()
     if not self._is_built and not context.executing_eagerly():
       raise RuntimeError(
           "`build()` should be called before save if defer_build==True")
@@ -1269,6 +1293,18 @@ class Saver(object):
               "Parent directory of {} doesn't exist, can't save.".format(
                   save_path))
         raise exc
+
+    end_time = time.time()
+    metrics.AddCheckpointWriteDuration(
+        api_label=_SAVER_LABEL,
+        microseconds=_get_duration_microseconds(start_time, end_time))
+    global _END_TIME_OF_LAST_WRITE
+    with _END_TIME_OF_LAST_WRITE_LOCK:
+      metrics.AddTrainingTimeSaved(
+          api_label=_SAVER_LABEL,
+          microseconds=_get_duration_microseconds(_END_TIME_OF_LAST_WRITE,
+                                                  end_time))
+      _END_TIME_OF_LAST_WRITE = end_time
 
     if write_meta_graph:
       meta_graph_filename = checkpoint_management.meta_graph_filename(
@@ -1349,6 +1385,7 @@ class Saver(object):
     Raises:
       ValueError: If save_path is None or not a valid checkpoint.
     """
+    start_time = time.time()
     if self._is_empty:
       return
     if save_path is None:
@@ -1402,6 +1439,9 @@ class Saver(object):
       # We add a more reasonable error message here to help users (b/110263146)
       raise _wrap_restore_error_with_msg(
           err, "a mismatch between the current graph and the graph")
+    metrics.AddCheckpointReadDuration(
+        api_label=_SAVER_LABEL,
+        microseconds=_get_duration_microseconds(start_time, time.time()))
 
   @staticmethod
   def _add_collection_def(meta_graph_def, key, export_scope=None):

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/string_view.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 
@@ -25,7 +26,7 @@ namespace py = pybind11;
 void DefineMetricsModule(py::module main_module) {
   auto m = main_module.def_submodule("metrics");
 
-  m.doc() = "Python bindings for TensorFlow SavedModel Metrics";
+  m.doc() = "Python bindings for TensorFlow SavedModel and Checkpoint Metrics.";
 
   m.def(
       "IncrementWrite",
@@ -95,6 +96,68 @@ void DefineMetricsModule(py::module main_module) {
       },
       py::doc("Get value of '/tensorflow/core/saved_model/read/api' "
               "counter for `api_label` cell."));
+
+  m.def(
+      "AddCheckpointReadDuration",
+      [](const char* api_label, double microseconds) {
+        metrics::CheckpointReadDuration(api_label).Add(microseconds);
+      },
+      py::kw_only(), py::arg("api_label"), py::arg("microseconds"),
+      py::doc("Add `microseconds` to the cell `api_label`for "
+              "'/tensorflow/core/checkpoint/read/read_durations'."));
+
+  m.def(
+      "GetCheckpointReadDurations",
+      [](const char* api_label) {
+        // This function is called sparingly in unit tests, so protobuf
+        // (de)-serialization round trip is not an issue.
+        return py::bytes(metrics::CheckpointReadDuration(api_label)
+                             .value()
+                             .SerializeAsString());
+      },
+      py::kw_only(), py::arg("api_label"),
+      py::doc("Get serialized HistogramProto of `api_label` cell for "
+              "'/tensorflow/core/checkpoint/read/read_durations'."));
+
+  m.def(
+      "AddCheckpointWriteDuration",
+      [](const char* api_label, double microseconds) {
+        metrics::CheckpointWriteDuration(api_label).Add(microseconds);
+      },
+      py::kw_only(), py::arg("api_label"), py::arg("microseconds"),
+      py::doc("Add `microseconds` to the cell `api_label` for "
+              "'/tensorflow/core/checkpoint/write/write_durations'."));
+
+  m.def(
+      "GetCheckpointWriteDurations",
+      [](const char* api_label) {
+        // This function is called sparingly, so protobuf (de)-serialization
+        // round trip is not an issue.
+        return py::bytes(metrics::CheckpointWriteDuration(api_label)
+                             .value()
+                             .SerializeAsString());
+      },
+      py::kw_only(), py::arg("api_label"),
+      py::doc("Get serialized HistogramProto of `api_label` cell for "
+              "'/tensorflow/core/checkpoint/write/write_durations'."));
+
+  m.def(
+      "AddTrainingTimeSaved",
+      [](const char* api_label, double microseconds) {
+        metrics::TrainingTimeSaved(api_label).IncrementBy(microseconds);
+      },
+      py::kw_only(), py::arg("api_label"), py::arg("microseconds"),
+      py::doc("Add `microseconds` to the cell `api_label` for "
+              "'/tensorflow/core/checkpoint/write/training_time_saved'."));
+
+  m.def(
+      "GetTrainingTimeSaved",
+      [](const char* api_label) {
+        return metrics::TrainingTimeSaved(api_label).value();
+      },
+      py::kw_only(), py::arg("api_label"),
+      py::doc("Get cell `api_label` for "
+              "'/tensorflow/core/checkpoint/write/training_time_saved'."));
 }
 
 }  // namespace python
