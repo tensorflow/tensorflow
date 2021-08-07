@@ -1285,6 +1285,12 @@ Status FusedBatchNormGradShape(shape_inference::InferenceContext* c) {
 Status FusedBatchNormGradExShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(FusedBatchNormGradShape(c));
 
+  int num_side_inputs;
+  TF_RETURN_IF_ERROR(c->GetAttr("num_side_inputs", &num_side_inputs));
+  if (num_side_inputs == 0) {
+    return Status::OK();
+  }
+
   string data_format_str;
   TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
   TensorFormat data_format;
