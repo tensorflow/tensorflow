@@ -15,10 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/no_op_cost_measurement.h"
 
+#include "absl/strings/string_view.h"
+
 namespace tensorflow {
+
+namespace {
+constexpr char kNoOpCostName[] = "no_op";
+}  // namespace
 
 absl::Duration NoOpCostMeasurement::GetTotalCost() { return absl::Duration(); }
 
-REGISTER_COST_MEASUREMENT("no_op_cost_measurement", NoOpCostMeasurement);
+absl::string_view NoOpCostMeasurement::GetCostType() const {
+  return kNoOpCostName;
+}
+
+REGISTER_COST_MEASUREMENT(kNoOpCostName, NoOpCostMeasurement);
 
 }  // namespace tensorflow

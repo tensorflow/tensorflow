@@ -23,6 +23,7 @@ namespace {
 TEST(NoOpTpuMeasurementTest, Basic) {
   NoOpCostMeasurement measurement;
   EXPECT_EQ(measurement.GetTotalCost(), absl::ZeroDuration());
+  EXPECT_EQ(measurement.GetCostType(), "no_op");
 }
 
 }  // namespace
