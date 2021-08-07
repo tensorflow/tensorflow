@@ -146,27 +146,6 @@ struct Dims {
   int strides[N];
 };
 
-// Converts inference-style shape to legacy tflite::Dims<4>.
-inline tflite::Dims<4> ToRuntimeDims(const tflite::RuntimeShape& array_shape) {
-  tflite::Dims<4> result;
-  const int dimensions_count = array_shape.DimensionsCount();
-  TFLITE_CHECK_LE(dimensions_count, 4);
-  int cum_prod = 1;
-  for (int i = 0; i < 4; i++) {
-    const int new_dim =
-        (i < dimensions_count) ? array_shape.Dims(dimensions_count - 1 - i) : 1;
-    result.sizes[i] = new_dim;
-    result.strides[i] = cum_prod;
-    cum_prod *= new_dim;
-  }
-  return result;
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-inline RuntimeShape DimsToShape(const tflite::Dims<4>& dims) {
-  return RuntimeShape(
-      {dims.sizes[3], dims.sizes[2], dims.sizes[1], dims.sizes[0]});
-}
 
 // Gets next index to iterate through a multidimensional array.
 inline bool NextIndex(const int num_dims, const int* dims, int* current) {
@@ -228,43 +207,6 @@ inline size_t ReducedOutputOffset(const int num_dims, const int* dims,
 // allow that as long as the corresponding index is also 0. It is upto the
 // calling ops to ensure that they perform verification checks on tensor shapes
 // if they don't support a particular behavior.
-
-inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3) {
-  TFLITE_DCHECK_EQ(shape.DimensionsCount(), 4);
-  const int* dims_data = reinterpret_cast<const int*>(shape.DimsDataUpTo5D());
-  TFLITE_DCHECK((dims_data[0] == 0 && i0 == 0) ||
-                (i0 >= 0 && i0 < dims_data[0]));
-  TFLITE_DCHECK((dims_data[1] == 0 && i1 == 0) ||
-                (i1 >= 0 && i1 < dims_data[1]));
-  TFLITE_DCHECK((dims_data[2] == 0 && i2 == 0) ||
-                (i2 >= 0 && i2 < dims_data[2]));
-  TFLITE_DCHECK((dims_data[3] == 0 && i3 == 0) ||
-                (i3 >= 0 && i3 < dims_data[3]));
-  return ((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3;
-}
-
-inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3,
-                  int i4) {
-  TFLITE_DCHECK_EQ(shape.DimensionsCount(), 5);
-  const int* dims_data = reinterpret_cast<const int*>(shape.DimsDataUpTo5D());
-  TFLITE_DCHECK((dims_data[0] == 0 && i0 == 0) ||
-                (i0 >= 0 && i0 < dims_data[0]));
-  TFLITE_DCHECK((dims_data[1] == 0 && i1 == 0) ||
-                (i1 >= 0 && i1 < dims_data[1]));
-  TFLITE_DCHECK((dims_data[2] == 0 && i2 == 0) ||
-                (i2 >= 0 && i2 < dims_data[2]));
-  TFLITE_DCHECK((dims_data[3] == 0 && i3 == 0) ||
-                (i3 >= 0 && i3 < dims_data[3]));
-  TFLITE_DCHECK((dims_data[4] == 0 && i4 == 0) ||
-                (i4 >= 0 && i4 < dims_data[4]));
-  return (((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3) *
-             dims_data[4] +
-         i4;
-}
-
-inline int Offset(const RuntimeShape& shape, int* index) {
-  return Offset(shape, index[0], index[1], index[2], index[3]);
-}
 
 inline int Offset(const Dims<4>& dims, int i0, int i1, int i2, int i3) {
   TFLITE_DCHECK((i0 == 0 && dims.sizes[0] == 0) ||
