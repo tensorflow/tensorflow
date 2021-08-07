@@ -402,11 +402,11 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ port::Status GpuDriver::LaunchKernel(
-    GpuContext* context, hipFunction_t function, unsigned int grid_dim_x,
-    unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,
-    unsigned int block_dim_y, unsigned int block_dim_z,
-    unsigned int shared_mem_bytes, GpuStreamHandle stream, void** kernel_params,
-    void** extra) {
+    GpuContext* context, absl::string_view kernel_name, hipFunction_t function,
+    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
+    unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_mem_bytes,
+    GpuStreamHandle stream, void** kernel_params, void** extra) {
   ScopedActivateContext activation{context};
   VLOG(2) << "launching kernel: " << function << "; gdx: " << grid_dim_x
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
@@ -416,7 +416,9 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                            function, grid_dim_x, grid_dim_y, grid_dim_z,
                            block_dim_x, block_dim_y, block_dim_z,
                            shared_mem_bytes, stream, kernel_params, extra),
-                       "Failed to launch ROCM kernel");
+                       "Failed to launch ROCm kernel: ", kernel_name,
+                       " with block dimensions: ", block_dim_x, "x",
+                       block_dim_y, "x", block_dim_z);
   VLOG(2) << "successfully launched kernel";
   return port::Status::OK();
 }

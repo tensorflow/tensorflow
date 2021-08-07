@@ -336,8 +336,8 @@ port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                     HIP_LAUNCH_PARAM_BUFFER_SIZE, &size, HIP_LAUNCH_PARAM_END};
 
   return GpuDriver::LaunchKernel(
-      GetGpuContext(stream), hipfunc, block_dims.x, block_dims.y, block_dims.z,
-      thread_dims.x, thread_dims.y, thread_dims.z,
+      GetGpuContext(stream), kernel.name(), hipfunc, block_dims.x, block_dims.y,
+      block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
       args.number_of_shared_bytes(), hipstream, nullptr, (void**)&config);
 }
 
