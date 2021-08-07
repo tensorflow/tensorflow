@@ -362,8 +362,8 @@ class IrEmitterUnnested : public IrEmitter {
   // complicating the index calculation in the code generation of the reduce
   // instructions. In other words, a block_id_y is assigned to a group and so
   // different groups can be run in parallel.
-  Status EmitReductionFromOrToContiguousDimensions(
-      mlir::Operation* op, const FusionLayoutAnalysis& layout_analysis);
+  Status EmitUnnestedReduction(mlir::Operation* unnested_hlo,
+                               const FusionLayoutAnalysis& layout_analysis);
 
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
   // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo
@@ -511,7 +511,6 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::Operation* unnested_hlo, const Shape& reduction_operand_shape,
       absl::Span<const int> instr_index_group,
       HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
-      absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
       absl::Span<const llvm_ir::IrArray> result_ir_arrays,
       absl::Span<HloComputation* const> reducers,
       const llvm_ir::IrArray::Index& index,
@@ -525,7 +524,6 @@ class IrEmitterUnnested : public IrEmitter {
   void EmitPrologueForReduction(
       mlir::Operation* unnested_hlo, absl::Span<const int> instr_index_group,
       HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
-      absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
       absl::Span<const llvm_ir::IrArray> result_ir_arrays,
       ReductionCodegenState* reduction_info,
       const FusionLayoutAnalysis& layout_analysis);
@@ -564,11 +562,10 @@ class IrEmitterUnnested : public IrEmitter {
                           absl::Span<const int> instr_index_group,
                           HloComputation* fused_computation,
                           FusedIrEmitter* fused_emitter,
-                          absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
                           absl::Span<const llvm_ir::IrArray> result_ir_arrays,
                           ReductionCodegenState* reduction_info,
                           const Shape& input_shape,
-                          const FusionLayoutAnalysis& layout_anaysis);
+                          const FusionLayoutAnalysis& layout_analysis);
 
   // For each reducer, emits the shuffle-down loop to accumulate the partial
   // result to the global result.
