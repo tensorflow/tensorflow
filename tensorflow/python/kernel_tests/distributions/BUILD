@@ -61,6 +61,7 @@ cuda_py_test(
     size = "small",
     srcs = ["beta_test.py"],
     tags = [
+        "no_oss",
         "notsan",  # b/173653918
     ],
     xla_tags = [
