@@ -116,7 +116,7 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_parallelization = True
     if apply_autotune is not None:
-      options.experimental_optimization.autotune = apply_autotune
+      options.autotune.enabled = apply_autotune
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[2, 3, 4, 5])
 

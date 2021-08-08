@@ -23,6 +23,7 @@ removing existing functionality.
 See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 
 @@AutoShardPolicy
+@@AutotuneOptions
 @@CheckpointInputPipelineHook
 @@Counter
 @@CsvDataset
@@ -148,6 +149,7 @@ from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 from tensorflow.python.data.ops.optional_ops import OptionalSpec as OptionalStructure
 from tensorflow.python.data.ops.options import AutoShardPolicy
+from tensorflow.python.data.ops.options import AutotuneOptions
 from tensorflow.python.data.ops.options import DistributeOptions
 from tensorflow.python.data.ops.options import ExternalStatePolicy
 from tensorflow.python.data.ops.options import OptimizationOptions

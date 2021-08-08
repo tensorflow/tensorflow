@@ -124,6 +124,10 @@
     *   Promoting `tf.data.Options.experimental_deterministic` API to
         `tf.data.Options.deterministic` and deprecating the experimental
         endpoint.
+    *   Moving autotuning options from
+        `tf.data.Options.experimental_optimization.autotune*` to a newly created
+        `tf.data.Options.autotune.*` and removing support for
+        `tf.data.Options.experimental_optimization.autotune_buffers`.
 *   TF SavedModel:
     *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
 *   XLA:
