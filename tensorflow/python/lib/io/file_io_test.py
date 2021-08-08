@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os.path
+import unittest
 
 from absl.testing import parameterized
 import numpy as np
@@ -187,6 +188,20 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     dir_path = os.path.join(self._base_dir, "dir_(special)")
     file_io.create_dir(dir_path)
     files = ["file1.txt", "file(2).txt"]
+    for name in files:
+      file_path = os.path.join(dir_path, name)
+      file_io.FileIO(file_path, mode="w").write("testing")
+    expected_match = [os.path.join(dir_path, name) for name in files]
+    glob_pattern = os.path.join(dir_path, "*")
+    self.assertItemsEqual(
+        file_io.get_matching_files(glob_pattern), expected_match)
+
+  @unittest.expectedFailure
+  def testGetMatchingFilesWhenContainsGlob(self):
+    # https://git.io/JR8jL (#35489)
+    dir_path = os.path.join(self._base_dir, "dir_[special]")
+    file_io.create_dir(dir_path)
+    files = ["file1.txt", "file*2?].txt"]
     for name in files:
       file_path = os.path.join(dir_path, name)
       file_io.FileIO(file_path, mode="w").write("testing")
