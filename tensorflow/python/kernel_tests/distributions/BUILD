@@ -63,6 +63,9 @@ cuda_py_test(
     size = "small",
     srcs = ["beta_test.py"],
     tfrt_enabled = True,
+    tags = [
+        "no_oss",
+    ],
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
