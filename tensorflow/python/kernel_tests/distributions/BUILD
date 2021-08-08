@@ -60,6 +60,9 @@ cuda_py_test(
     name = "beta_test",
     size = "small",
     srcs = ["beta_test.py"],
+    tags = [
+        "no_oss",
+    ],
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
