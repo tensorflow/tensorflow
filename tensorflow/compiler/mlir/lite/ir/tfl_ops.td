@@ -2100,6 +2100,7 @@ def TFL_MaximumOp : TFL_Op<"maximum", [
 def TFL_MeanOp : TFL_Op<"mean", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    SameOperandsAndResultsScale,
     NoSideEffect]> {
   let summary = "Mean operator";
 
