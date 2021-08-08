@@ -200,7 +200,7 @@ Status NestedStackRaggedTensors(
 
   for (int i = 0; i < ragged_components.size(); i++) {
     // Check that the flat_values tensor shape is compatible.
-    TensorShape value_shape = ragged_components[i].values().shape();
+    TensorShape value_shape = ragged_components[i].values.shape();
     value_shape.RemoveDim(0);
     if (value_shape != expected_value_shape) {
       return errors::InvalidArgument(
