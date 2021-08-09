@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_BENCHMARK_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_BENCHMARK_H_
 
+#define EIGEN_USE_THREADS
+
 #include <memory>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -44,6 +46,7 @@ using ::tfrt::cpu::jit::MemrefDesc;
 using ::tfrt::cpu::jit::Type;
 
 std::unique_ptr<HostContext> CreateSingleThreadedHostContext();
+std::unique_ptr<HostContext> CreateMultiThreadedHostContext(int num_threads);
 
 // Generate random Eigen Tensor of the given dimensions:
 //   (rand<T>() + offset) * scale

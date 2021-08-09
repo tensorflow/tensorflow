@@ -37,6 +37,16 @@ std::unique_ptr<HostContext> CreateSingleThreadedHostContext() {
       tfrt::CreateMallocAllocator(), tfrt::CreateSingleThreadedWorkQueue());
 }
 
+std::unique_ptr<HostContext> CreateMultiThreadedHostContext(int num_threads) {
+  return std::make_unique<HostContext>(
+      [](const tfrt::DecodedDiagnostic& diag) {
+        LOG(FATAL) << "Runtime error: " << diag.message << "\n";
+      },
+      tfrt::CreateMallocAllocator(),
+      tfrt::CreateMultiThreadedWorkQueue(num_threads,
+                                         /*num_blocking_threads=*/1));
+}
+
 mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,
                                        RemainingResults results,
                                        unsigned result_index, const Type* type,
@@ -65,7 +75,8 @@ JitExecutable& CreateJitExecutable(const HostContext& host,
   // records in the perf profile.
   static auto* cache = new llvm::StringMap<std::unique_ptr<JitExecutable>>();
 
-  std::string key = llvm::formatv("{0}", function_name);
+  std::string key =
+      llvm::formatv("{0}/{1}", mlir_input.data(), opts.num_worker_threads);
 
   // Compile and cache MLIR function.
   auto it = cache->find(key);
