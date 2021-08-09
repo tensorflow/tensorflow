@@ -1853,9 +1853,11 @@ Optional<std::string> Translator::TranslateInternal() {
     std::string flex_ops_summary =
         GetOpsSummary(flex_ops_, /*summary_title=*/"Flex");
     LOG(WARNING) << "TFLite interpreter needs to link Flex delegate in order "
-                    "to run the model since it contains the following flex "
+                    "to run the model since it contains the following Select TF"
                     "op(s):\n"
-                 << flex_ops_summary;
+                 << flex_ops_summary
+                 << "\nSee instructions: "
+                    "https://www.tensorflow.org/lite/guide/ops_select";
   }
 
   if (!custom_ops_.empty()) {
@@ -1863,7 +1865,9 @@ Optional<std::string> Translator::TranslateInternal() {
         GetOpsSummary(custom_ops_, /*summary_title=*/"Custom");
     LOG(WARNING) << "The following operation(s) need TFLite custom op "
                     "implementation(s):\n"
-                 << custom_ops_summary;
+                 << custom_ops_summary
+                 << "\nSee instructions: "
+                    "https://www.tensorflow.org/lite/guide/ops_custom";
   }
 
   if (first_failed_func != -1) {
