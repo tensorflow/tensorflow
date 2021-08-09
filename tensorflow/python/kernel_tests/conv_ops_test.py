@@ -164,6 +164,8 @@ def GetTestConfigs():
 class Conv2DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
+    if test_util.IsMklEnabled():
+      return [dtypes.float32]
     # double datatype is currently not supported for convolution ops
     # on the ROCm platform
     optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
@@ -835,15 +837,10 @@ class Conv2DTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testConv2DGroupConvFwd(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       data_formats = ["NHWC", "NCHW"]
-    # TODO(Intel-tf) Remove this check once group conv is implemented in the
-    # oneDNN based conv2d op kernel.
-    elif (not test_util.IsMklEnabled() and
-          os.getenv("TF_ENABLE_ONEDNN_OPTS", "0") == "0"):
-      data_formats = ["NHWC"]
     else:
-      data_formats = []
+      data_formats = ["NHWC"]
     for data_format in data_formats:
       for dilation in [1, 2]:
         for stride in [1, 2]:
