@@ -419,8 +419,8 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
                                         inputs, resources_, &variable_infos));
     OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(variable_infos)));
 
-    // We turn on the `may_alias_resource_update` using the following strategy.
-    // In XalRunOp, if we observe the resource variables have been written, we
+    // We turn on `may_alias_resource_update` using the following strategy.
+    // In XlaRunOp, if we observe the resource variables have been written, we
     // use the snapshotted tensors as inputs to the XLA executable to ensure the
     // shape consistency. In contrast, if the resource variables have not been
     // written, we could perform in-place updates to the resource var (without
@@ -513,7 +513,7 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
       ctx, *closure.compilation_result(), closure.num_constant_args());
   OP_REQUIRES_OK(ctx, variable_infos.status());
   OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(*variable_infos)));
-  std::map<int, const Tensor*> resource_var_ptrs;
+  absl::flat_hash_map<int, const Tensor*> resource_var_ptrs;
   for (int i = 0; i < variable_infos->size(); i++) {
     // Normalized back to the indices as seen by XlaCompileOp.
     int compile_time_idx =
