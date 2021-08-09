@@ -155,6 +155,10 @@ class Conv3DOp : public BinaryOp<T> {
                 errors::InvalidArgument(
                     "Input depth must be evenly divisible by filter depth: ",
                     in_depth, " vs ", filter_depth));
+    OP_REQUIRES(
+        context, filter.NumElements() > 0,
+        errors::InvalidArgument("filter must not have zero elements "
+                                "(i.e. all dimensions must be non-zero)"));
 
     // Dimension order for these arrays is: z, y, x.
     std::array<int64, 3> input_size = {
