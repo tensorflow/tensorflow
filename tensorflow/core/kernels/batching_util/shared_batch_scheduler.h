@@ -163,6 +163,9 @@ class SharedBatchScheduler
     // If this limit is reached, Schedule() will return an UNAVAILABLE error.
     // See the class documentation above for guidelines on how to tune this
     // parameter.
+    //
+    // Must be positive, or else invalid argument error will be returned at
+    // queue creation time.
     size_t max_enqueued_batches = 10;
 
     // If true, queue implementation would split one input batch task into
@@ -538,9 +541,9 @@ Status SharedBatchScheduler<TaskType>::AddQueue(
         "batch_timeout_micros must be non-negative; was ",
         options.batch_timeout_micros);
   }
-  if (options.max_enqueued_batches < 0) {
+  if (options.max_enqueued_batches == 0) {
     return errors::InvalidArgument(
-        "max_enqueued_batches must be non-negative; was ",
+        "max_enqueued_batches must be positive; was ",
         options.max_enqueued_batches);
   }
 
@@ -897,10 +900,13 @@ size_t Queue<TaskType>::SchedulingCapacity() const {
 template <typename TaskType>
 size_t Queue<TaskType>::SchedulingCapacityInternal() const {
   const int64 num_new_batches_schedulable =
-      options_.max_enqueued_batches - this->num_enqueued_batches();
+      static_cast<int64>(options_.max_enqueued_batches) -
+      this->num_enqueued_batches();
   const int64 execution_batch_size_limit = max_execution_batch_size();
   const int64 open_batch_capacity =
       execution_batch_size_limit - this->tail_batch_task_size();
+  // Note the returned value is guaranteed to be not negative, since
+  // enqueue operation could only happen if queue has enough capacity.
   return (num_new_batches_schedulable * execution_batch_size_limit) +
          open_batch_capacity;
 }
