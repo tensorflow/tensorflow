@@ -33,6 +33,7 @@ yes "" | $PYTHON_BIN_PATH configure.py
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test \
       -k \
+      --config=no_tfrt \
       --test_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-no_rocm,-benchmark-test,-v1only \
       --jobs=${N_BUILD_JOBS} \
       --local_test_jobs=${N_BUILD_JOBS} \
