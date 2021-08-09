@@ -30,16 +30,15 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/intrusive_ptr.h"
 #include "tensorflow/core/platform/statusor.h"
 
-// TODO(ccrusius): Move all value objects into `impl`. Currently only values
+// TODO(b/195578409): Move all value objects into `impl`. Currently only values
 // that do not reference TaggedValue are there.
 #include "tensorflow/cc/experimental/libtf/impl/none.h"
 #include "tensorflow/cc/experimental/libtf/impl/scalars.h"
 #include "tensorflow/cc/experimental/libtf/impl/string.h"
+#include "tensorflow/cc/experimental/libtf/impl/tensor_spec.h"
 
 namespace tf {
 namespace libtf {
@@ -58,13 +57,6 @@ using DictPtr = std::shared_ptr<Dict>;
 using TuplePtr = std::shared_ptr<Tuple>;
 using Func =
     std::function<tensorflow::StatusOr<TaggedValue>(TaggedValue, TaggedValue)>;
-struct TensorSpec {
-  tensorflow::PartialTensorShape shape;
-  tensorflow::DataType dtype;
-  bool operator==(const TensorSpec& o) const {
-    return dtype == o.dtype && shape.IsIdenticalTo(o.shape);
-  }
-};
 // A capsule holds a pointer and a destructor for the pointer (i.e. a generic
 // shared_ptr to void with a custom deleter).
 using Capsule = std::shared_ptr<void>;
@@ -299,7 +291,7 @@ class TaggedValue final {
         return data_.dict == o.data_.dict;
         break;
       case FUNC:
-        // TODO(b/187536093):  This is definitely wrong beacuse the exact ptr of
+        // TODO(b/187536093):  This is definitely wrong because the exact ptr of
         // the function pointer is almost always different, because we hold
         // it by value. Two tagged values that hold the same std::function
         // will have different std::function ptrs. operator== is not defined
@@ -560,10 +552,6 @@ inline size_t TaggedValueHash<Tuple>::operator()(const Tuple& t) const {
 class TaggedValueHashVisitor {
  public:
   size_t operator()(const TaggedValueTensor& v) {
-    assert(false);
-    return 0;
-  }
-  size_t operator()(const TensorSpec& v) {
     assert(false);
     return 0;
   }

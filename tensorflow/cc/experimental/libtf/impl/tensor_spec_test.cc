@@ -12,31 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Specializations of ostream::operator<< for API values. These are defined here
-// so that they don't need to be linked in executables that need to be kept
-// small (and don't use the functionality).
-#include <iostream>
 
-#include "tensorflow/cc/experimental/libtf/impl/none.h"
-#include "tensorflow/cc/experimental/libtf/impl/string.h"
 #include "tensorflow/cc/experimental/libtf/impl/tensor_spec.h"
+
+#include "absl/hash/hash_testing.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tf {
 namespace libtf {
 namespace impl {
 
-std::ostream& operator<<(std::ostream& o, const None& none) {
-  return o << "None";
-}
+TEST(TensorSpecTest, TestSupportsAbslHash) {
+  tensorflow::PartialTensorShape unknown_shape;
+  TensorSpec ts1;
+  ts1.shape = unknown_shape;
+  ts1.dtype = tensorflow::DT_FLOAT;
 
-std::ostream& operator<<(std::ostream& o, const String& str) {
-  return o << str.str();
-}
+  TensorSpec ts2;
+  ts2.shape = tensorflow::PartialTensorShape({2});
+  ts2.dtype = tensorflow::DT_FLOAT;
 
-std::ostream& operator<<(std::ostream& o, const TensorSpec& x) {
-  o << "TensorSpec(shape = " << x.shape.DebugString() << ", dtype = " << x.dtype
-    << ")";
-  return o;
+  TensorSpec ts3;
+  ts3.shape = tensorflow::PartialTensorShape({1, 2});
+  ts3.dtype = tensorflow::DT_FLOAT;
+
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({ts1, ts2, ts3}));
 }
 
 }  // namespace impl

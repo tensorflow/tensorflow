@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/cc/experimental/libtf/impl/none.h"
 #include "tensorflow/cc/experimental/libtf/impl/scalars.h"
 #include "tensorflow/cc/experimental/libtf/impl/string.h"
+#include "tensorflow/cc/experimental/libtf/impl/tensor_spec.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tf {
@@ -46,6 +47,15 @@ TEST(OStreamTest, TestNone) {
   std::stringstream stream;
   stream << None::GetInstance();
   ASSERT_EQ(stream.str(), "None");
+}
+
+TEST(OStreamTest, TestTensorSpec) {
+  std::stringstream stream;
+  TensorSpec tensor_spec;
+  tensor_spec.shape = tensorflow::PartialTensorShape({2});
+  tensor_spec.dtype = tensorflow::DT_FLOAT;
+  stream << tensor_spec;
+  ASSERT_EQ(stream.str(), "TensorSpec(shape = [2], dtype = 1)");
 }
 
 }  // namespace impl
