@@ -34,13 +34,13 @@ class TestCostMeasurement : public CostMeasurement {
 REGISTER_COST_MEASUREMENT(kTestCostName, TestCostMeasurement);
 
 TEST(CostMeasurementRegistryTest, Basic) {
-  std::unique_ptr<const CostMeasurement> test_cost_messurement =
+  std::unique_ptr<const CostMeasurement> test_cost_measurement =
       CostMeasurementRegistry::CreateByNameOrNull("unregistered");
-  EXPECT_EQ(test_cost_messurement, nullptr);
+  EXPECT_EQ(test_cost_measurement, nullptr);
 
-  test_cost_messurement =
+  test_cost_measurement =
       CostMeasurementRegistry::CreateByNameOrNull(kTestCostName);
-  EXPECT_NE(test_cost_messurement, nullptr);
+  EXPECT_NE(test_cost_measurement, nullptr);
 }
 
 TEST(CostMeasurementRegistryDeathTest, CrashWhenRegisterTwice) {
