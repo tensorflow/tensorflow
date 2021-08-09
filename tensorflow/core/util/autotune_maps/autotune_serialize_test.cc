@@ -16,7 +16,7 @@ limitations under the License.
 // For Google-internal use only.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "tensorflow/core/util/autotune_serialize.h"
+#include "tensorflow/core/util/autotune_maps/autotune_serialize.h"
 
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"

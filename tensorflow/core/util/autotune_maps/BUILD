@@ -12,11 +12,12 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
     "tf_cuda_library",
+    "tf_cuda_only_cc_test",
 )
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
-    features = ["layering_check"],
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -84,4 +85,54 @@ tf_cuda_library(
             "//tensorflow/stream_executor/gpu:gpu_driver_header",
         ],
     ),
+)
+
+tf_proto_library(
+    name = "autotune_map_proto",
+    srcs = [
+        "autotune_map.proto",
+    ],
+    cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
+        "//tensorflow/stream_executor:dnn_proto",
+    ],
+)
+
+tf_cuda_library(
+    name = "autotune_serialize",
+    srcs = [
+        "autotune_serialize.cc",
+    ],
+    hdrs = [
+        "autotune_serialize.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":autotune_map_proto_cc",
+        ":autotune_maps_utils",
+        ":conv_autotune_maps",
+        ":conv_parameters",
+        ":conv_parameters_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/stream_executor:dnn_proto_cc",
+        "//tensorflow/stream_executor:stream_header",
+    ],
+)
+
+tf_cuda_only_cc_test(
+    name = "autotune_serialize_test",
+    size = "small",
+    srcs = ["autotune_serialize_test.cc"],
+    deps = [
+        ":autotune_serialize",
+        ":conv_autotune_maps",
+        ":conv_parameters",
+        ":conv_parameters_proto_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/gpu:gpu_driver_header",
+    ],
 )
