@@ -2,6 +2,8 @@
 # Java Native Interface (JNI) library intended for implementing the
 # TensorFlow Lite Java API using the TensorFlow Lite CC library.
 
+# LINT.IfChange
+
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite")
 
@@ -38,7 +40,6 @@ cc_library_with_tflite(
 cc_library_with_tflite(
     name = "native_stable_framework_only",
     srcs = [
-        "default/jni_utils.cc",
         "jni_utils.cc",
         "nativeinterpreterwrapper_jni.cc",
         "tensor_jni.cc",
@@ -55,6 +56,7 @@ cc_library_with_tflite(
         "//tensorflow/lite/core/shims:create_op_resolver_header",
         "//tensorflow/lite/core/shims:framework_stable",
         "//tensorflow/lite/core/shims:jni_initialization",
+        "//tensorflow/lite/core/shims:jni_utils",
     ],
     deps = [
         "//tensorflow/lite:minimal_logging",
@@ -116,3 +118,5 @@ exports_files(
         "version_script.lds",
     ],
 )
+
+# LINT.ThenChange(//tensorflow/lite/java/src/main/native/BUILD.oss)
