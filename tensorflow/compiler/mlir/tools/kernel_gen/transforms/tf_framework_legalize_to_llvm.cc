@@ -312,8 +312,9 @@ class JITCompileFromStrOpConverter
     JITCompileFromStrOp::Adaptor transformed(operands);
     if (transformed.ctx() == nullptr) return failure();
     auto loc = op.getLoc();
+    std::string zero_terminated_code = op.code().str() + '\00';
     Value jit_module_code = CreateOrFindGlobalStringConstant(
-        loc, rewriter, kJITCodeGlobalBaseName, op.code());
+        loc, rewriter, kJITCodeGlobalBaseName, zero_terminated_code);
     std::pair<Value, Value> architectures =
         ConvertStrArrayAttrToStackAllocatedArray(loc, rewriter.getI64Type(),
                                                  op.architectures(), &rewriter);
