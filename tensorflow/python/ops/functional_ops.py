@@ -103,7 +103,8 @@ def foldl(fn,
     ```
   """
   if not callable(fn):
-    raise TypeError("fn must be callable.")
+    raise TypeError(
+        f"{fn.__name__} is not callable. Please provide a callable function.")
 
   def create_ta(elem):
     return tensor_array_ops.TensorArray(
@@ -298,7 +299,8 @@ def foldr(fn,
     ```
   """
   if not callable(fn):
-    raise TypeError("fn must be callable.")
+    raise TypeError(
+        f"{fn.__name__} is not callable. Please provide a callable function.")
 
   def create_ta(elem):
     return tensor_array_ops.TensorArray(
@@ -541,7 +543,8 @@ def scan(fn,
     ```
   """
   if not callable(fn):
-    raise TypeError("fn must be callable.")
+    raise TypeError(
+        f"{fn.__name__} is not callable. Please provide a callable function.")
 
   input_is_sequence = nest.is_sequence(elems)
   input_flatten = lambda x: nest.flatten(x) if input_is_sequence else [x]
@@ -949,16 +952,18 @@ def While(input_, cond, body, name=None, hostmem=None):
     A list of output tensors whose types are T.
   """
   if cond.captured_inputs:
-    raise ValueError("While op 'cond' argument must be a function "
-                     "without implicitly captured inputs.")
+    raise ValueError(
+        "The 'cond' argument can not have implicitly captured inputs. Received "
+        f"captured_inputs: {cond.captured_inputs}")
 
   cond_input_types = _GetInputDtypes(cond)
   body_input_types = _GetInputDtypes(body)
 
   if cond_input_types != body_input_types:
     raise ValueError(
-        "While op 'cond' and 'body' signatures do not match. %r vs %r" %
-        (cond_input_types, body_input_types))
+        "The 'cond' and 'body' signatures do not match. Received: "
+        f"cond_input_types={cond_input_types}, body_input_types="
+        f"{body_input_types}")
 
   if body.captured_inputs:
     cond_dtypes = list(body_input_types) + [
