@@ -17,7 +17,6 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -28,8 +27,9 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_solvers.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -115,7 +115,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
     }
 
     // Allocate output.
-    std::unique_ptr<CudaSolver> solver = std::make_unique<CudaSolver>(context);
+    std::unique_ptr<GpuSolver> solver = std::make_unique<GpuSolver>(context);
     Tensor* output;
     OP_REQUIRES_OK_ASYNC(context,
                          context->forward_input_or_allocate_output(
@@ -216,8 +216,8 @@ class CholeskyOpGpu : public AsyncOpKernel {
       }
       done();
     };
-    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-                                                    std::move(info_checker));
+    GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                   std::move(info_checker));
   }
 };
 
