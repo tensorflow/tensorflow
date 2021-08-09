@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
-#include "tensorflow/core/platform/threadpool_options.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
@@ -153,8 +152,9 @@ class SavedModel {
     // will be raised upon mismatch.
     bool validate_input_specs = false;
 
-    // Threadpool options used for this request.
-    tensorflow::thread::ThreadPoolOptions threadpool_options;
+    // The thread pool used for this run. If it is nullptr, a default one set
+    // in the tensorflow::tfrt_stub::Runtime will be used.
+    tensorflow::tfrt_stub::WorkQueueInterface* work_queue = nullptr;
   };
 
   explicit SavedModel(tensorflow::tfrt_stub::Runtime* runtime)
