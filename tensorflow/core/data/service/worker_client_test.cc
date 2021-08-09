@@ -79,7 +79,7 @@ class WorkerClientTest : public ::testing::Test {
     int64_t job_client_id = 0;
     TF_RETURN_IF_ERROR(dispatcher_client_->GetOrCreateJob(
         dataset_id, processing_mode, /*job_key=*/absl::nullopt,
-        /*num_consumers=*/absl::nullopt, job_client_id));
+        /*num_consumers=*/absl::nullopt, job_client_id, TARGET_WORKERS_AUTO));
     return job_client_id;
   }
 

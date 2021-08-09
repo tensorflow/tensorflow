@@ -26,6 +26,8 @@ from six.moves import zip
 
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
@@ -137,6 +139,30 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         return x * self.z + y
 
     return BasicModel()
+
+  def _getMultiFunctionModelWithSharedWeight(self):
+
+    class BasicModelWithSharedWeight(tracking.AutoTrackable):
+      """Model with multiple functions and a shared weight."""
+
+      def __init__(self):
+        self.weight = constant_op.constant([1.0],
+                                           shape=(1, 512, 512, 1),
+                                           dtype=dtypes.float32)
+
+      @def_function.function
+      def add(self, x):
+        return x + self.weight
+
+      @def_function.function
+      def sub(self, x):
+        return x - self.weight
+
+      @def_function.function
+      def mul(self, x):
+        return x * self.weight
+
+    return BasicModelWithSharedWeight()
 
   def _assertValidDebugInfo(self, debug_info):
     """Verify the DebugInfo is valid."""

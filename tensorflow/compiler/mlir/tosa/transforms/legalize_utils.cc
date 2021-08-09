@@ -313,21 +313,21 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
 
 // Create a vector from a 32-bit value tensor.  Returns the size of
 // the new vector or -1 on error.
-int getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec) {
+LogicalResult getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec) {
   int i = 0;
 
   ElementsAttr elems;
 
   vec.clear();
 
-  if (!matchPattern(val, m_Constant(&elems))) return -1;
+  if (!matchPattern(val, m_Constant(&elems))) return failure();
 
   for (auto idx : elems.getValues<IntegerAttr>()) {
     vec.push_back(idx.getInt());
     i++;
   }
 
-  return i;
+  return success();
 }
 
 // Calculates the TOSA padding values based on TF operators padded with

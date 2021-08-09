@@ -271,6 +271,18 @@ class FractionalAvgPoolGradOp : public OpKernel {
     const int64_t in_rows = orig_input_tensor_shape_flat(1);
     const int64_t in_cols = orig_input_tensor_shape_flat(2);
     const int64_t in_depth = orig_input_tensor_shape_flat(3);
+    OP_REQUIRES(
+        context, in_batch != 0,
+        errors::InvalidArgument("Batch dimension of input must not be 0"));
+    OP_REQUIRES(
+        context, in_rows != 0,
+        errors::InvalidArgument("Rows dimension of input must not be 0"));
+    OP_REQUIRES(
+        context, in_cols != 0,
+        errors::InvalidArgument("Columns dimension of input must not be 0"));
+    OP_REQUIRES(
+        context, in_depth != 0,
+        errors::InvalidArgument("Depth dimension of input must not be 0"));
 
     constexpr int tensor_in_and_out_dims = 4;
     // Transform orig_input_tensor_shape into TensorShape

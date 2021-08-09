@@ -139,11 +139,12 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
           << "\n";
 
   int device_ordinal = params.stream->parent()->device_ordinal();
+  NcclCliqueParticipantData participant(rendezvous_key, device_ordinal,
+                                        params.stream);
 
-  TF_ASSIGN_OR_RETURN(
-      LockedNcclClique locked_clique,
-      AcquireNcclClique(rendezvous_key, device_ordinal, params.stream,
-                        local_participants, params.nccl_unique_id_callback));
+  TF_ASSIGN_OR_RETURN(LockedNcclClique locked_clique,
+                      AcquireNcclClique(participant, local_participants,
+                                        params.nccl_unique_id_callback));
   ncclComm_t comm =
       locked_clique.clique.GetCommForDeviceOrdinal(device_ordinal);
 

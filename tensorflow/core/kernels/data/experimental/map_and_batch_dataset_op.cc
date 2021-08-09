@@ -616,7 +616,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ReadStatus(prefix(),
                                     strings::StrCat(batch_prefix, "_", kStatus),
                                     reader, &result->status));
-      RecordBufferEnqueue(ctx, result->output);
+      if (result->output_allocated) {
+        RecordBufferEnqueue(ctx, result->output);
+      }
       return Status::OK();
     }
 
@@ -670,7 +672,10 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // Counts the total number of calls.
     int64 call_counter_ TF_GUARDED_BY(*mu_) = 0;
     std::unique_ptr<IteratorBase> input_impl_;
-    // Buffer for storing the (intermediate) batch results.
+    // Buffer for storing the (intermediate) batch results. Whenever an
+    // output-allocated batch result is added to or removed from
+    // `batch_results_`, call `RecordBufferEnqueue` or `RecordBufferDequeue`
+    // respectively.
     std::deque<std::shared_ptr<BatchResult>> batch_results_ TF_GUARDED_BY(*mu_);
     // Background thread used for coordinating input processing.
     std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);

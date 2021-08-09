@@ -35,6 +35,10 @@ class TensorFlowDialect final : public Dialect {
 
   static StringRef getDialectNamespace() { return "tf"; }
 
+  // Overrides to redirect to tf_type dialect.
+  Attribute parseAttribute(DialectAsmParser &parser, Type type) const override;
+  Type parseType(DialectAsmParser &parser) const override;
+
   // Gradient attribute ("tf.gradient") in the list of NamedAttributes in a
   // function references to its gradient function. This attribute in TensorFlow
   // Dialect is used to model TF GradientDef. GetGradientAttrName() returns the

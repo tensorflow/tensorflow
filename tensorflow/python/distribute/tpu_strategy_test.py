@@ -159,8 +159,6 @@ class TPUTest(test.TestCase):
                         "/job:localhost/replica:0/task:0/device:TPU:0")
 
   def test_on_demand_op_with_dynamic_output(self):
-    if FLAGS.tpu_use_tfrt:
-      self.skipTest("Support dynamic output in TFRT, see b/192576400")
     with ops.device("/device:TPU:0"):
       where_output = array_ops.where([True, False, True])
     self.assertAllEqual(where_output, [[0], [2]])
@@ -449,8 +447,6 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(2.0, v.numpy())
 
   def test_cluster_conditional_with_dynamic_shape(self, enable_packed_var):
-    if FLAGS.tpu_use_tfrt:
-      self.skipTest("Support dynamic output in TFRT, see b/192576400")
     strategy = get_tpu_strategy(enable_packed_var)
 
     @def_function.function

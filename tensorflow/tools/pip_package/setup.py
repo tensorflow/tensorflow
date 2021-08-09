@@ -339,13 +339,12 @@ setup(
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
         # TODO(angerson) Add IFTTT when possible
-        'Environment :: GPU :: NVIDIA CUDA :: 11.0',
+        'Environment :: GPU :: NVIDIA CUDA :: 11.2',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',

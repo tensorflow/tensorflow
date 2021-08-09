@@ -55,7 +55,6 @@ class KernelThunk : public Thunk {
   ~KernelThunk() override = default;
 
   std::string ToStringExtra(int indent) const override;
-  const string& kernel_name() const { return kernel_name_; }
 
   Status Initialize(const GpuExecutable& executable,
                     se::StreamExecutor* executor) override;

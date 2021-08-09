@@ -887,7 +887,7 @@ def HLO_CaseOp: HLO_Op<"case", [
 
 def HLO_WhileOp: HLO_Op<"while", [
       RecursiveSideEffects,
-      SameOperandsAndResultType,
+      HLO_PairwiseSameOperandAndResultType,
       SingleBlockImplicitTerminator<"ReturnOp">
     ]> {
   let summary = "While operator";

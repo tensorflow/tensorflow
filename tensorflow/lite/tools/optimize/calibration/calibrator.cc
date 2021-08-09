@@ -342,6 +342,26 @@ class Reader : public CalibrationReader {
   const TfLiteContext* context_;
 };
 
+bool HasInputs(BuiltinOperator code) {
+  switch (code) {
+    case BuiltinOperator_CALL_ONCE:
+    case BuiltinOperator_VAR_HANDLE:
+      return false;
+    default:
+      return true;
+  }
+}
+
+bool HasOutputs(BuiltinOperator code) {
+  switch (code) {
+    case BuiltinOperator_ASSIGN_VARIABLE:
+    case BuiltinOperator_CALL_ONCE:
+      return false;
+    default:
+      return true;
+  }
+}
+
 }  // namespace
 
 TfLiteStatus BuildLoggingInterpreter(
@@ -395,9 +415,21 @@ TfLiteStatus BuildLoggingInterpreter(
 
       auto op_inputs = op->inputs();
       auto op_outputs = op->outputs();
-      op_info.inputs = std::vector<int>(op_inputs->begin(), op_inputs->end());
-      op_info.outputs =
-          std::vector<int>(op_outputs->begin(), op_outputs->end());
+      if (op_inputs) {
+        op_info.inputs = std::vector<int>(op_inputs->begin(), op_inputs->end());
+      } else if (HasInputs(op_info.builtin_op_code)) {
+        TF_LITE_REPORT_ERROR(error_reporter, "Op %s missing inputs",
+                             op_info.name.c_str());
+        return kTfLiteError;
+      }
+      if (op_outputs) {
+        op_info.outputs =
+            std::vector<int>(op_outputs->begin(), op_outputs->end());
+      } else if (HasOutputs(op_info.builtin_op_code)) {
+        TF_LITE_REPORT_ERROR(error_reporter, "Op %s missing outputs",
+                             op_info.name.c_str());
+        return kTfLiteError;
+      }
       op_info.loggable_inputs =
           GetLoggableTensorIndices(op_info.inputs, tensors, tensor_buffers);
       op_info.loggable_outputs =

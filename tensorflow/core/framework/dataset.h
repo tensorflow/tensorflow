@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/function.h"
@@ -379,6 +380,7 @@ class IteratorContext {
     explicit Params(IteratorContext* ctx)
         : allocator_getter(ctx->allocator_getter()),
           cancellation_manager(ctx->cancellation_manager()),
+          collective_executor(ctx->collective_executor()),
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
@@ -393,7 +395,9 @@ class IteratorContext {
           thread_pool(ctx->thread_pool()) {}
 
     explicit Params(OpKernelContext* ctx)
-        : env(ctx->env()), flr(ctx->function_library()) {
+        : collective_executor(ctx->collective_executor()),
+          env(ctx->env()),
+          flr(ctx->function_library()) {
       // NOTE: need reinterpret_cast because function.h forward-declares Device.
       DeviceBase* device =
           reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
@@ -432,6 +436,9 @@ class IteratorContext {
 
     // The CancellationManager to be used to cancel execution of ops.
     CancellationManager* cancellation_manager;
+
+    // Collective support.
+    CollectiveExecutor* collective_executor = nullptr;
 
     // Interface to operating system functionality.
     Env* env = nullptr;
@@ -491,6 +498,10 @@ class IteratorContext {
 
   CancellationManager* cancellation_manager() {
     return params_.cancellation_manager;
+  }
+
+  CollectiveExecutor* collective_executor() {
+    return params_.collective_executor;
   }
 
   Env* env() const { return params_.env; }
@@ -672,9 +683,8 @@ class IteratorBase {
   // output will be stored in `*out_tensors` and `false` will be
   // stored in `*end_of_sequence`.
   //
-  // If no more outputs remain in this iterator's range, `true` will
-  // be stored in `*end_of_sequence`, and the content of
-  // `*out_tensors` will be undefined.
+  // If no more outputs remain in this iterator's range, `true` will be stored
+  // in `*end_of_sequence`, and `*out_tensors` will be empty.
   //
   // Implementations should never return `OutOfRange` error. If at end of
   // sequence, set `*end_of_sequence = true` and return `Status::OK()`.
@@ -969,6 +979,10 @@ class DatasetBase : public core::RefCounted {
   // state. Otherwise, the method returns `Status::OK()`.
   virtual Status CheckExternalState() const = 0;
 
+  // Return the element at a particular index for a randomly accessible dataset.
+  virtual Status Get(OpKernelContext* ctx, int64 index,
+                     std::vector<Tensor>* out_tensors);
+
   // Wrapper around a GraphDefBuilder which provides support for serializing
   // Datasets as GraphDefs.
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
@@ -1092,7 +1106,8 @@ class DatasetBaseIterator : public IteratorBase {
   // Internal implementation of GetNext that is wrapped in tracing logic.
   //
   // See the docstring of `GetNext` method regaring the contract for
-  // `out_tensors` and `end_of_sequence`.
+  // `out_tensors` and `end_of_sequence`. Implementations may assume that
+  // `*out_tensors` is empty.
   virtual Status GetNextInternal(IteratorContext* ctx,
                                  std::vector<Tensor>* out_tensors,
                                  bool* end_of_sequence) = 0;
@@ -1137,6 +1152,8 @@ class DatasetBaseIterator : public IteratorBase {
                            const std::vector<Tensor>& element) {
     if (collect_resource_usage(ctx)) {
       node_->record_buffer_event(-GetAllocatedBytes(element), -1);
+
+      DCHECK_GE(node_->buffered_elements(), 0);
     }
   }
 

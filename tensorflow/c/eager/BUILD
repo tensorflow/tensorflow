@@ -821,31 +821,6 @@ tf_cuda_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
-    name = "c_api_multi_client_test",
-    size = "small",
-    srcs = [
-        "c_api_multi_client_test.cc",
-    ],
-    deps = [
-        ":c_api",
-        ":c_api_experimental",
-        ":c_api_internal",
-        ":c_api_test_util",
-        ":tfe_context_internal",
-        ":tfe_tensorhandle_internal",
-        "//tensorflow/c:c_api_experimental",
-        "//tensorflow/c:c_test_util",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/core/platform:env",
-    ],
-)
-
 cc_library(
     name = "graph_function",
     srcs = ["graph_function.cc"],

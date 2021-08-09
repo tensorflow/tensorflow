@@ -324,9 +324,6 @@ class InferenceContext {
   Status output(StringPiece output_name,
                 std::vector<ShapeHandle>* output) const;
 
-  ABSL_DEPRECATED("Use `GetAttribute` instead.")
-  const AttrSlice& attrs() const { return attrs_; }
-
   // Returns the value for attribute named `attr_name`.
   Status GetAttr(StringPiece attr_name, const AttrValue** attr_value) const {
     return attrs_.Find(attr_name, attr_value);

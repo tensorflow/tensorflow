@@ -2323,17 +2323,6 @@ class ConvertIdentityNOp : public OpRewritePattern<TF::IdentityNOp> {
   }
 };
 
-// Bypass _EagerConst
-class ConvertEagerConstOp : public OpRewritePattern<TF::_EagerConstOp> {
- public:
-  using OpRewritePattern<TF::_EagerConstOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(TF::_EagerConstOp op,
-                                PatternRewriter &rewriter) const override {
-    rewriter.replaceOp(op, op.getOperand());
-    return success();
-  }
-};
-
 template <typename OpTy>
 class ConvertFFTOp : public OpRewritePattern<OpTy> {
  public:
@@ -7347,6 +7336,9 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     // within MLIR.
     TypeID::get<TF::ConstOp>(),
 
+    // AssertOp with string types are not supported by the fallback.
+    TypeID::get<TF::AssertOp>(),
+
     // TF2XLA fallback pattern doesn't support these op as MLIR hlo builder
     // doesn't override the necessary builder methods. These ops have simple
     // lowering pattern so this should be safe.
@@ -7486,7 +7478,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertFusedBatchNormV3Op,
     ConvertInfeedDequeueTupleOp,
     ConvertIdentityNOp,
-    ConvertEagerConstOp,
     ConvertInplaceUpdateOp,
     ConvertLinSpaceOp,
     ConvertMaxOp,

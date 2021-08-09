@@ -3932,6 +3932,7 @@ tf_kernel_library(
         ":gpu_utils",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
+        "//tensorflow/core/util/autotune_maps:conv_autotune_maps",
     ]),
 )
 
@@ -4345,6 +4346,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/util:determinism_for_kernels",
         "//third_party/eigen3",
     ],
 )
@@ -4388,6 +4390,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util:determinism_for_kernels",
         "//third_party/eigen3",
     ],
 )
@@ -6736,7 +6739,7 @@ cc_library(
 )
 
 build_test(
-    name = "android_tensorflow_kernels_build_test",
+    name = "portable_tensorflow_kernels_build_test",
     targets = [":portable_tensorflow_kernels"],
 )
 

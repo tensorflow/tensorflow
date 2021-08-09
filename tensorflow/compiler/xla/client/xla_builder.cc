@@ -1897,7 +1897,7 @@ XlaOp XlaBuilder::CustomCall(
         output_operand_aliasing,
     const Literal* literal, absl::optional<Window> window,
     absl::optional<ConvolutionDimensionNumbers> dnums,
-    CustomCallSchedule schedule) {
+    CustomCallSchedule schedule, CustomCallApiVersion api_version) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (absl::StartsWith(call_target_name, "$")) {
       return InvalidArgument(
@@ -1931,7 +1931,7 @@ XlaOp XlaBuilder::CustomCall(
     return CustomCallInternal(call_target_name, operands, shape, opaque,
                               operand_shapes_with_layout, has_side_effect,
                               output_operand_aliasing, literal, window, dnums,
-                              schedule);
+                              schedule, api_version);
   });
 }
 
@@ -1944,7 +1944,7 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
         output_operand_aliasing,
     const Literal* literal, absl::optional<Window> window,
     absl::optional<ConvolutionDimensionNumbers> dnums,
-    CustomCallSchedule schedule) {
+    CustomCallSchedule schedule, CustomCallApiVersion api_version) {
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
   instr.set_custom_call_target(call_target_name);
@@ -1976,6 +1976,7 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     *instr.mutable_convolution_dimension_numbers() = *dnums;
   }
   instr.set_custom_call_schedule(schedule);
+  instr.set_custom_call_api_version(api_version);
   return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
 }
 
@@ -1986,7 +1987,8 @@ XlaOp XlaBuilder::CustomCall(
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing,
-    const Literal* literal, CustomCallSchedule schedule) {
+    const Literal* literal, CustomCallSchedule schedule,
+    CustomCallApiVersion api_version) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (absl::StartsWith(call_target_name, "$")) {
@@ -2038,6 +2040,7 @@ XlaOp XlaBuilder::CustomCall(
       }
     }
     instr.set_custom_call_schedule(schedule);
+    instr.set_custom_call_api_version(api_version);
     return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
   });
 }
@@ -4275,12 +4278,13 @@ XlaOp CustomCall(
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing,
-    const Literal* literal, CustomCallSchedule schedule) {
+    const Literal* literal, CustomCallSchedule schedule,
+    CustomCallApiVersion api_version) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
                              /*operand_shapes_with_layout=*/absl::nullopt,
                              has_side_effect, output_operand_aliasing, literal,
                              /*window=*/absl::nullopt, /*dnums=*/absl::nullopt,
-                             schedule);
+                             schedule, api_version);
 }
 
 XlaOp CustomCallWithComputation(
@@ -4289,11 +4293,12 @@ XlaOp CustomCallWithComputation(
     const Shape& shape, const string& opaque, bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing,
-    const Literal* literal, CustomCallSchedule schedule) {
+    const Literal* literal, CustomCallSchedule schedule,
+    CustomCallApiVersion api_version) {
   return builder->CustomCall(
       call_target_name, operands, computation, shape, opaque,
       /*operand_shapes_with_layout=*/absl::nullopt, has_side_effect,
-      output_operand_aliasing, literal, schedule);
+      output_operand_aliasing, literal, schedule, api_version);
 }
 
 XlaOp CustomCallWithLayout(
@@ -4303,11 +4308,12 @@ XlaOp CustomCallWithLayout(
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing,
-    const Literal* literal, CustomCallSchedule schedule) {
+    const Literal* literal, CustomCallSchedule schedule,
+    CustomCallApiVersion api_version) {
   return builder->CustomCall(
       call_target_name, operands, shape, opaque, operand_shapes_with_layout,
       has_side_effect, output_operand_aliasing, literal,
-      /*window=*/absl::nullopt, /*dnums=*/absl::nullopt, schedule);
+      /*window=*/absl::nullopt, /*dnums=*/absl::nullopt, schedule, api_version);
 }
 
 XlaOp CustomCallWithConvDnums(
@@ -4318,7 +4324,7 @@ XlaOp CustomCallWithConvDnums(
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing,
     const Literal* literal, Window window, ConvolutionDimensionNumbers dnums,
-    CustomCallSchedule schedule) {
+    CustomCallSchedule schedule, CustomCallApiVersion api_version) {
   absl::optional<absl::Span<const Shape>> maybe_operand_shapes;
   if (!operand_shapes_with_layout.empty()) {
     maybe_operand_shapes = operand_shapes_with_layout;
@@ -4326,7 +4332,7 @@ XlaOp CustomCallWithConvDnums(
   return builder->CustomCall(call_target_name, operands, shape, opaque,
                              maybe_operand_shapes, has_side_effect,
                              output_operand_aliasing, literal, window, dnums,
-                             schedule);
+                             schedule, api_version);
 }
 
 XlaOp Complex(const XlaOp lhs, const XlaOp rhs,

@@ -111,7 +111,12 @@ absl::Status GreedyBySizeAssignment(
           AlignByN(cur_offset + usage_records[allocated_id].tensor_size,
                    base_addr_align_bytes));
     }
-    if (assignment->total_size < prev_offset) {
+    // prev_offset should be no more than the total size with additional
+    // alignment boundary introduced in AlignByN. Per object alignment added is
+    // no more than (base_addr_align_bytes - 1).
+    if (assignment->total_size +
+            ordered_allocs.size() * (base_addr_align_bytes - 1) <
+        prev_offset) {
       return absl::InternalError("Total size is wrong.");
     }
 

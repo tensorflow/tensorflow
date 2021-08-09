@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -47,17 +48,6 @@ Status ValidateProcessingMode(const ProcessingModeDef& processing_mode);
 // internal error if `sharding_policy` is not supported.
 StatusOr<AutoShardPolicy> ToAutoShardPolicy(
     ProcessingModeDef::ShardingPolicy sharding_policy);
-
-// Specifies which tf.data service workers to read from.
-enum class TargetWorkers : int64 {
-  UNSET = 0,
-  // tf.data service runtime decides which workers to read from.
-  AUTO = 1,
-  // Reads from any available worker.
-  ANY = 2,
-  // Only reads from local workers. If no local worker is found, it is an error.
-  LOCAL = 3,
-};
 
 // Parses a string representing a `TargetWorkers` (case-insensitive).
 // Returns InvalidArgument if the string is not recognized.

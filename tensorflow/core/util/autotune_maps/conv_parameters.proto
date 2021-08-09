@@ -33,6 +33,16 @@ message ConvParametersProto {
   // This stores the information for fused convolution operations where an
   // activation and a side input might follow the convolution.
   message Fusion {
+    // If true, this proto corresponds to a FusedConvBiasActivation operation
+    // implemented in the contrib library, otherwise this proto corresponds to
+    // the FusedConv operation implemented in the core library.
+    // Compared with FusedConv, FusedConvBiasActivation supports more types of
+    // activation function (including no activation) as well as the side_input.
+    // For now they have same type of keys in autotune maps, but the semantics
+    // of some fields (like padding) are different. So we add this field to
+    // distinguish them.
+    // TODO(b/177365158) Remove this field once these two operations are merged.
+    bool is_contrib = 1;
     stream_executor.dnn.ActivationMode activation_mode = 2;
     bool has_side_input = 3;
   }

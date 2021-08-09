@@ -150,6 +150,7 @@ cc_library(
         "data_service.h",
     ],
     deps = [
+        ":common_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",

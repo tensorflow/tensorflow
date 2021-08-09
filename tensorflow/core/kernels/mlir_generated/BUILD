@@ -193,7 +193,7 @@ tf_kernel_library(
     srcs = if_mlir_generated_cpu_kernels_enabled([
     ]) + if_mlir_generated_experimental_kernels_enabled([
         "cpu_op_abs.cc",
-        ":cpu_op_angle.cc",
+        "cpu_op_angle.cc",
         "cpu_op_ceil.cc",
         "cpu_op_cos.cc",
         "cpu_op_floor.cc",
@@ -1502,6 +1502,8 @@ cpu_kernel_library(
         "f16",
         "f32",
         "f64",
+        "i8",
+        "i16",
         "i32",
         "i64",
         "c64",
@@ -1521,11 +1523,6 @@ cpu_kernel_library(
             "i16",
             "i32",
             "i64",
-            # TODO(b/172804967): Enable once fixed.
-            # "ui8",
-            # "ui16",
-            # "ui32",
-            # "ui64",
         ],
         unroll_factors = "4",
     )
@@ -1534,9 +1531,25 @@ cpu_kernel_library(
         "bitwise_or",
         "bitwise_xor",
         "left_shift",
-        "right_shift",
     ]
 ]
+
+cpu_kernel_library(
+    name = "cpu_right_shift_kernels",
+    op = "right_shift",
+    tile_size = "1024",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
+    unroll_factors = "4",
+)
 
 gpu_kernel_library(
     name = "gpu_xlogy_kernels",

@@ -117,6 +117,7 @@ cc_library(
     name = "shared_batch_scheduler_hdrs",
     hdrs = ["shared_batch_scheduler.h"],
     deps = [
+        ":batch_input_task",
         ":batch_scheduler_hdrs",
         ":periodic_function_dynamic",
         "//tensorflow/core:framework_headers_lib",
@@ -129,6 +130,7 @@ cc_library(
     name = "shared_batch_scheduler",
     hdrs = ["shared_batch_scheduler.h"],
     deps = [
+        ":batch_input_task",
         ":batch_scheduler",
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
@@ -142,6 +144,7 @@ cc_library(
 
 tf_cc_test(
     name = "shared_batch_scheduler_test",
+    size = "small",
     srcs = ["shared_batch_scheduler_test.cc"],
     deps = [
         ":fake_clock_env",
@@ -150,6 +153,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/time",

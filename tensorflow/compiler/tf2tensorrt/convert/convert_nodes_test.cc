@@ -692,10 +692,6 @@ class ConverterTest : public ::testing::Test {
     return converter_->GetWeightRange(weights, out_min, out_max);
   }
 
-  void PropagateQuantizationRanges() {
-    converter_->PropagateQuantizationRanges();
-  }
-
   int batch_size() const { return converter_->batch_size_; }
 
   std::unordered_map<ITensorProxyPtr*, float>& quantization_ranges_proxy() {
@@ -1016,8 +1012,7 @@ TEST_F(ConverterTest, ProvideQuantizationRange) {
 }
 
 TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
-  // input -> infer1 -> infer2 -> infer3
-  ITensorProxyPtr input, infer_1, infer_2, infer_3;
+  ITensorProxyPtr input;
   ITensorProxyPtr not_infer;
   Logger& logger = *Logger::GetLogger();
   auto int8_converter = Converter::Create(TrtPrecisionMode::INT8,
@@ -1027,56 +1022,12 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
                             .ValueOrDie();
   int8_converter->ProvideQuantizationRange(&input, -5.0f, 5.0f);
   int8_converter->ProvideQuantizationRange(&not_infer, -100.0f, 100.0f);
-  int8_converter->MarkQuantizationRangesAsInferrable(&input, &infer_1);
-  int8_converter->MarkQuantizationRangesAsInferrable(&infer_1, &infer_2);
-  int8_converter->MarkQuantizationRangesAsInferrable(&infer_2, &infer_3);
 
-  // Input range should be inferred along the chain and applied to tensors.
   int8_converter->MaybeApplyQuantizationRanges();
-#if IS_TRT_VERSION_GE(8, 0, 0, 0)
   EXPECT_EQ(input->getDynamicRangeMax(), 5.0f);
-  EXPECT_EQ(infer_1->getDynamicRangeMax(), 5.0f);
-  EXPECT_EQ(infer_2->getDynamicRangeMax(), 5.0f);
-  EXPECT_EQ(infer_3->getDynamicRangeMax(), 5.0f);
   EXPECT_EQ(not_infer->getDynamicRangeMax(), 100.0f);
-  EXPECT_EQ(input->getDynamicRangeMin(), -5.0f);
-  EXPECT_EQ(infer_1->getDynamicRangeMin(), -5.0f);
-  EXPECT_EQ(infer_2->getDynamicRangeMin(), -5.0f);
-  EXPECT_EQ(infer_3->getDynamicRangeMin(), -5.0f);
-  EXPECT_EQ(not_infer->getDynamicRangeMin(), -100.0f);
-#else
-  EXPECT_EQ(input->getDynamicRange(), 5.0f);
-  EXPECT_EQ(infer_1->getDynamicRange(), 5.0f);
-  EXPECT_EQ(infer_2->getDynamicRange(), 5.0f);
-  EXPECT_EQ(infer_3->getDynamicRange(), 5.0f);
-  EXPECT_EQ(not_infer->getDynamicRange(), 100.0f);
-#endif
 
   VerifyTrtLayerNameNotEmpty(int8_converter->network());
-}
-
-TEST_F(ConverterTest, PropagateQuantizationRanges) {
-  // infer0 <-> infer1 <-> infer2 <-> infer3
-  //              |
-  //            infer4 <-> infer5
-  ITensorProxyPtr infer[6];
-  ITensorProxyPtr not_infer;
-  converter_->ProvideQuantizationRange(&infer[4], -5.0f, 5.0f);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[0], &infer[1]);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[1], &infer[2]);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[3], &infer[2]);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[4], &infer[1]);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[4], &infer[5]);
-
-  // Input range should be inferred along the chain.
-  PropagateQuantizationRanges();
-  auto ranges = quantization_ranges_proxy();
-  for (int i = 0; i < 6; ++i) {
-    EXPECT_EQ(5.0f, ranges[&infer[i]]);
-  }
-  EXPECT_EQ(ranges.count(&not_infer), 0);
-
-  VerifyTrtLayerNameNotEmpty(converter_->network());
 }
 
 TEST_F(ConverterTest, GetTrtBroadcastShape) {
@@ -1665,9 +1616,6 @@ class OpConverterTest : public ::testing::Test {
     return converter_->quantization_ranges_;
   }
 
-  void PropagateQuantizationRanges() {
-    converter_->PropagateQuantizationRanges();
-  }
   std::unique_ptr<Converter> converter_;
 
  private:
@@ -3739,15 +3687,6 @@ TEST_P(OpConverter_FP32_Test, ConvertActivation) {
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_unary", &output));
-
-    // Certain activations should set quantization range automatically.
-    auto ranges = quantization_ranges();
-    if (op_name == "Relu6") {
-      EXPECT_EQ(ranges[output.tensor()->trt_tensor()], 6.0f);
-    } else if (op_name == "Sigmoid" || op_name == "Tanh" ||
-               op_name == "Softsign") {
-      EXPECT_EQ(ranges[output.tensor()->trt_tensor()], 1.0f);
-    }
   }
 }
 
@@ -7606,11 +7545,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPad) {
     TF_EXPECT_OK(GetTensorOrWeights("my_pad", &output));
     ITensorProxyPtr input_tensor = input.tensor();
     converter_->ProvideQuantizationRange(&input_tensor, -5.0f, 5.0f);
-    // Input range should be inferred across pad.
-    PropagateQuantizationRanges();
     auto ranges = quantization_ranges();
     EXPECT_EQ(5.0f, ranges[input.tensor()->trt_tensor()]);
-    EXPECT_EQ(5.0f, ranges[output.tensor()->trt_tensor()]);
   }
 
   std::vector<PadTestParams> params{

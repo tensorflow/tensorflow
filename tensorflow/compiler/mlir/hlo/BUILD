@@ -14,7 +14,6 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["@llvm-project//mlir:subpackages"],
     packages = [
         "//babelfish/device/...",
         "//learning/brain/experimental/dtensor/...",
@@ -1496,6 +1495,25 @@ cc_library(
 )
 
 cc_library(
+    name = "mhlo_flatten_tuple",
+    srcs = ["lib/Dialect/mhlo/transforms/mhlo_flatten_tuple.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":pass_details",
+        ":transforms_pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "lhlo_fusion",
     srcs = ["lib/Dialect/mhlo/transforms/lhlo_fusion.cc"],
     deps = [
@@ -1557,6 +1575,25 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo_patterns.td",
     deps = [":hlo_ops_td_files"],
+)
+
+cc_library(
+    name = "expand_hlo_tuples",
+    srcs = [
+        "lib/Dialect/mhlo/transforms/expand_hlo_tuples.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":pass_details",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+    ],
 )
 
 cc_library(
@@ -1627,6 +1664,7 @@ cc_library(
         ":broadcast_propagation",
         ":buffer_reuse",
         ":chlo_legalize_to_hlo",
+        ":expand_hlo_tuples",
         ":hlo_legalize_to_lhlo",
         ":hlo_legalize_to_memref",
         ":input_inline_fusion",
@@ -1647,6 +1685,7 @@ cc_library(
         ":lhlo_legalize_to_parallel_loops",
         ":mhlo_canonicalize_reduction",
         ":mhlo_control_flow_to_scf",
+        ":mhlo_flatten_tuple",
         ":mhlo_fusion",
         ":mhlo_mark_shape_calc",
         ":mhlo_to_mhlo_lowering_patterns",

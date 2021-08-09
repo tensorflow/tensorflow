@@ -364,10 +364,9 @@ const string* AssignedOrRequestedDeviceName(const Node& node) {
   return &node.requested_device();
 }
 
-Status SetArgShape(
-    const std::unordered_map<int, DtypeAndPartialTensorShape>&
-        input_resource_dtypes_and_shapes,
-    const std::vector<Node*>& arg_nodes) {
+Status SetArgShape(const std::unordered_map<int, DtypeAndPartialTensorShape>&
+                       input_resource_dtypes_and_shapes,
+                   const std::vector<Node*>& arg_nodes) {
   for (Node* n : arg_nodes) {
     int index;
     TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
@@ -1190,7 +1189,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
       // When target device has private thread pool, use the target device
       // runner
       thread::ThreadPool* pool = flr->device()->tensorflow_device_thread_pool();
-      opts_copy.runner = (pool == nullptr) ? opts_copy.runner : flr->runner();
+      opts_copy.runner = (pool == nullptr) ? opts.runner : flr->runner();
 
       VLOG(1) << "Running component function on device " << target << " from "
               << data->function_name_ << " with handle " << handle;
@@ -1371,25 +1370,24 @@ ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
     std::vector<std::unique_ptr<CleanUpItem>>* items,
     FunctionLibraryRuntime::DoneCallback done, const int64_t step_id,
     const Rendezvous* created_rendezvous) const {
-  return
-      [this, items, done = std::move(done), step_id,
-       created_rendezvous](const Status& status) {
-        if (created_rendezvous) {
-          DCHECK(rendezvous_factory_);
-          created_rendezvous->Unref();
-          Status s = rendezvous_factory_.CleanUp(step_id);
-          if (!s.ok()) {
-            LOG(ERROR) << s;
-          }
-        }
-        auto* local_status = new Status(status);
-        CleanUp(items, [local_status, done](const Status& cleanup_status) {
-          local_status->Update(cleanup_status);
-          done(*local_status);
-          delete local_status;
-        });
-        delete items;
-      };
+  return [this, items, done = std::move(done), step_id,
+          created_rendezvous](const Status& status) {
+    if (created_rendezvous) {
+      DCHECK(rendezvous_factory_);
+      created_rendezvous->Unref();
+      Status s = rendezvous_factory_.CleanUp(step_id);
+      if (!s.ok()) {
+        LOG(ERROR) << s;
+      }
+    }
+    auto* local_status = new Status(status);
+    CleanUp(items, [local_status, done](const Status& cleanup_status) {
+      local_status->Update(cleanup_status);
+      done(*local_status);
+      delete local_status;
+    });
+    delete items;
+  };
 }
 
 Status ProcessFunctionLibraryRuntime::CreateRendezvous(

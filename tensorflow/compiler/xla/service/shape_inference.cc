@@ -2909,7 +2909,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     TF_RET_CHECK(!branch_computations.empty());
   }
   TF_RET_CHECK(branch_computations.size() == branch_operands.size());
-
+  Shape result = branch_computations[0].result();
   for (int j = 0; j < branch_computations.size(); ++j) {
     if (branch_computations[j].parameters_size() != 1) {
       return InvalidArgument(
@@ -2943,7 +2943,30 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           j, shape_string());
     }
   }
-  return branch_computations[0].result();
+  // For each subshape, If any of the branch is dynamic, we say result is
+  // dynamic:
+  //
+  //   true_branch  (s32[<=4])
+  //   false_branch (s32[4])
+  //
+  // Result is s32[<=4].
+  ShapeUtil::ForEachMutableSubshape(
+      &result, [&](Shape* subshape, const ShapeIndex& index) {
+        if (!subshape->IsArray()) {
+          return;
+        }
+        for (int j = 0; j < branch_computations.size(); ++j) {
+          auto branch_subshape =
+              ShapeUtil::GetSubshape(branch_computations[j].result(), index);
+          for (int64 i = 0; i < branch_subshape.rank(); ++i) {
+            if (branch_subshape.is_dynamic_dimension(i)) {
+              subshape->set_dynamic_dimension(i, true);
+            }
+          }
+        }
+      });
+
+  return result;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(

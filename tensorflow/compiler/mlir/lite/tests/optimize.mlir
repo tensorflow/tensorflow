@@ -1444,13 +1444,12 @@ func @DontConvertSqueezeToReshape(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:  return %[[RESULT]]
 }
 
-func @DontConvertSqueezeToReshapeOnMultiDynamicDims(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func @ConvertSqueezeToReshapeOnMultiDynamicDims(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %0 = "tfl.squeeze"(%arg0) {squeeze_dims = [0]}: (tensor<?x?xf32>) -> tensor<?x?xf32>
   return %0: tensor<?x?xf32>
 
-// CHECK-LABEL: DontConvertSqueezeToReshapeOnMultiDynamicDims
-// CHECK: %[[RESULT:.*]] = "tfl.squeeze"(%arg0)
-// CHECK:  return %[[RESULT]]
+// CHECK-LABEL: ConvertSqueezeToReshapeOnMultiDynamicDims
+// CHECK:  return %arg0
 }
 
 func @ConvertPow1ToIdentity(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {

@@ -49,6 +49,7 @@ std::unique_ptr<FunctionPass> CreateBufferReusePass();
 // Pass to rewrite all TF operations to JIT invocations through the TF
 // framework.
 std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass(
+    llvm::ArrayRef<std::string> architectures = {},
     llvm::ArrayRef<int64_t> tile_sizes = {},
     llvm::ArrayRef<int64_t> unroll_factors = {}, int64_t max_supported_rank = 5,
     bool enable_ftz = false, bool cpu_codegen = false);
@@ -117,6 +118,9 @@ std::unique_ptr<FunctionPass> CreateVectorizationPass();
 
 // Pass to remove unneeded code generated in VectorizationPass.
 std::unique_ptr<FunctionPass> CreateVectorizationCleanupPass();
+
+// Pass to remove copies which are consumed by a GenericOp.
+std::unique_ptr<FunctionPass> CreateCopyCleanupPass();
 
 }  // namespace transforms
 

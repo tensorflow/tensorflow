@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for legalizing HLO to TensorFlow.
 
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -620,8 +622,8 @@ class ConvertDynamicSliceOp : public OpConversionPattern<mhlo::DynamicSliceOp> {
                                   input_type.getShape()[i] -
                                       op.slice_sizes().getValue<int64_t>({i})));
       Value clamped_index = rewriter.create<mhlo::ClampOp>(
-          op.getLoc(), op.start_indices()[i].getType(), op.start_indices()[i],
-          clamp_min, clamp_max);
+          op.getLoc(), op.start_indices()[i].getType(), clamp_min,
+          op.start_indices()[i], clamp_max);
       start_indices_vector.push_back(clamped_index);
     }
 
@@ -1709,6 +1711,53 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
   }
 };
 
+class ConvertWhileOp : public OpConversionPattern<mhlo::WhileOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::WhileOp while_op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    // HLO WhileOp should have two regions: cond and body.
+    if (while_op->getNumRegions() != 2) return failure();
+
+    // This rule doesn't support mhlo::WhileOp with tuple inputs.
+    for (auto type : while_op->getOperandTypes()) {
+      if (type.isa<TupleType>()) return failure();
+    }
+
+    // Creates a TF::WhileRegionOp to replace the mhlo::WhileOp. HLO WhileOp
+    // currently doesn't support stateless and shape invariant, so these
+    // parameters are set to the default values.
+    OpBuilder builder(while_op);
+    auto new_while = builder.create<TF::WhileRegionOp>(
+        while_op.getLoc(), while_op->getResultTypes(), while_op->getOperands(),
+        /*parallel_iterations=*/10,
+        /*is_stateless=*/false, /*shape_invariant=*/false);
+    new_while.cond().takeBody(while_op.getRegion(0));
+    new_while.body().takeBody(while_op.getRegion(1));
+    ReplaceReturnOp(new_while.cond(), rewriter);
+    ReplaceReturnOp(new_while.body(), rewriter);
+    rewriter.replaceOp(while_op, new_while.getResults());
+    return success();
+  }
+
+ private:
+  // Replaces mhlo::ReturnOp to TF::Yield.
+  static void ReplaceReturnOp(Region &region,
+                              ConversionPatternRewriter &rewriter) {
+    for (auto &block : region.getBlocks()) {
+      Operation *terminator = block.getTerminator();
+      auto return_op = llvm::dyn_cast_or_null<mhlo::ReturnOp>(terminator);
+      if (return_op == nullptr) continue;
+
+      OpBuilder builder(return_op);
+      builder.create<TF::YieldOp>(return_op.getLoc(), return_op->getOperands());
+      rewriter.eraseOp(return_op);
+    }
+  }
+};
+
 template <typename BinaryOp, typename TfOp>
 class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
  public:
@@ -1876,14 +1925,14 @@ static PassRegistration<LegalizeHloToTf> pass;
 
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
-  patterns
-      ->insert<ConvertAvgPoolOp, ConvertConvOp, ConvertConvBackpropInputOp,
-               ConvertDynamicSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
-               ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
-               ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
-               ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
-               ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-               ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
+  patterns->insert<ConvertWhileOp, ConvertAvgPoolOp, ConvertConvOp,
+                   ConvertConvBackpropInputOp, ConvertDynamicSliceOp,
+                   ConvertGatherOp, ConvertMaxPoolOp, ConvertScatterAddOp,
+                   ConvertScatterMaxOp, ConvertScatterMinOp,
+                   ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
+                   ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
+                   ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
+                   ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
   populateWithGenerated(*patterns);
 }
 

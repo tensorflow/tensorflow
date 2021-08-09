@@ -3007,12 +3007,13 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       PadOpOnTensorsConversion>(type_converter, context);
   // clang-format on
   patterns->insert<ReduceRegionXLAOpConversion<mhlo::AddOp>,
-                   ReduceRegionXLAOpConversion<mhlo::MinOp>,
-                   ReduceRegionXLAOpConversion<mhlo::MaxOp>,
                    ReduceRegionXLAOpConversion<mhlo::AndOp>,
+                   ReduceRegionXLAOpConversion<mhlo::CompareOp>,
+                   ReduceRegionXLAOpConversion<mhlo::MaxOp>,
+                   ReduceRegionXLAOpConversion<mhlo::MinOp>,
+                   ReduceRegionXLAOpConversion<mhlo::MulOp>,
                    ReduceRegionXLAOpConversion<mhlo::OrOp>,
                    ReduceRegionXLAOpConversion<mhlo::SelectOp>,
-                   ReduceRegionXLAOpConversion<mhlo::CompareOp>,
                    ReduceRegionReturnOpConversion>(context,
                                                    PatternBenefit(1000));
 }

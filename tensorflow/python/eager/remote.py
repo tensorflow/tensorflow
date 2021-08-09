@@ -182,6 +182,12 @@ def connect_to_cluster(cluster_spec_or_resolver,
     # to connect with local.
     job_def.tasks[0] = "localhost:{}".format(local_port)
 
+  if context.context().coordination_service is None:
+    # Maybe enable coordination service for the communication protocol
+    coordination_service = remote_utils.coordination_service_type(protocol)
+    if coordination_service:
+      context.context().enable_coordination_service(coordination_service)
+
   server_def = ServerDef(
       cluster=cluster_def,
       job_name=job_name,

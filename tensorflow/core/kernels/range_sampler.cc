@@ -206,12 +206,12 @@ UnigramSampler::UnigramSampler(int64_t range)
 }
 
 int64 UnigramSampler::Sample(random::SimplePhilox* rnd) const {
-  mutex_lock lock(mu_);  // could use reader lock
+  tf_shared_lock lock(mu_);
   return unsafe_sampler_.Sample(rnd);
 }
 
 float UnigramSampler::Probability(int64_t value) const {
-  mutex_lock lock(mu_);  // could use reader lock
+  tf_shared_lock lock(mu_);
   return unsafe_sampler_.Probability(value);
 }
 
@@ -221,7 +221,7 @@ void UnigramSampler::SampleBatchGetExpectedCountAvoid(
     MutableArraySlice<float> batch_expected_count, ArraySlice<int64> extras,
     MutableArraySlice<float> extras_expected_count,
     ArraySlice<int64> avoided_values) const {
-  mutex_lock lock(mu_);  // could use reader lock
+  tf_shared_lock lock(mu_);
   unsafe_sampler_.SampleBatchGetExpectedCountAvoid(
       rnd, unique, batch, batch_expected_count, extras, extras_expected_count,
       avoided_values);

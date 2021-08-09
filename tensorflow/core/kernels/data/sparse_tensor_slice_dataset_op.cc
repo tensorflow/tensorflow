@@ -241,6 +241,17 @@ class SparseTensorSliceDatasetOp : public DatasetOpKernel {
                 errors::InvalidArgument(
                     "Input indices should be a matrix but received shape ",
                     indices->shape().DebugString()));
+
+    const auto num_indices = indices->NumElements();
+    const auto num_values = values->NumElements();
+    if (num_indices == 0 || num_values == 0) {
+      OP_REQUIRES(ctx, num_indices == num_values,
+                  errors::InvalidArgument(
+                      "If indices or values are empty, the other one must also "
+                      "be. Got indices of shape ",
+                      indices->shape().DebugString(), " and values of shape ",
+                      values->shape().DebugString()));
+    }
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(values->shape()),
                 errors::InvalidArgument(
                     "Input values should be a vector but received shape ",

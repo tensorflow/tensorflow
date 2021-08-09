@@ -98,6 +98,9 @@ std::unordered_set<string> PopulateRealValueOpSet(
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       OperatorT* op = subgraph->operators[op_idx].get();
+      if (op->outputs.empty()) {
+        continue;
+      }
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property =
           GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
@@ -452,6 +455,9 @@ TfLiteStatus ApplyConstraints(
     // Iterate backward to avoid messing with index.
     for (int op_idx = subgraph->operators.size() - 1; op_idx >= 0; op_idx--) {
       OperatorT* op = subgraph->operators[op_idx].get();
+      if (op->outputs.empty()) {
+        continue;
+      }
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property =
           GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
@@ -1033,6 +1039,9 @@ TfLiteStatus QuantizeWeightsInputOutput(
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
           GetBuiltinCode(model->operator_codes[op->opcode_index].get());
+      if (op->outputs.empty()) {
+        continue;
+      }
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property = GetOperatorProperty(
           operator_names, model, subgraph_idx, op_idx, operator_name,
@@ -1099,6 +1108,9 @@ TfLiteStatus QuantizeBiases(ModelT* model,
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
           GetBuiltinCode(model->operator_codes[op->opcode_index].get());
+      if (op->outputs.empty()) {
+        continue;
+      }
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property = GetOperatorProperty(
           operator_names, model, subgraph_idx, op_idx, operator_name,
@@ -1184,6 +1196,9 @@ TfLiteStatus FillQuantizationParams(
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       OperatorT* op = subgraph->operators[op_idx].get();
+      if (op->outputs.empty()) {
+        continue;
+      }
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property = GetOperatorProperty(
           operator_names, model, subgraph_idx, op_idx, operator_name,
@@ -1295,6 +1310,9 @@ TfLiteStatus EnsureBiasScaleCompatibility(
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       OperatorT* op = subgraph->operators[op_idx].get();
+      if (op->outputs.empty()) {
+        continue;
+      }
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property = GetOperatorProperty(
           operator_names, model, subgraph_idx, op_idx, operator_name,

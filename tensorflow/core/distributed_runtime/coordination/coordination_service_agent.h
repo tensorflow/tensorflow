@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
+class DeviceAttributes;
 class WorkerEnv;
 class ServerDef;
 
@@ -51,6 +52,8 @@ class CoordinationServiceAgent {
       const WorkerEnv* worker_env, const ServerDef& server_def,
       std::unique_ptr<CoordinationClientCache> client_cache,
       StatusCallback error_fn) = 0;
+  // Return true if the coordination service agent has been initialized.
+  virtual bool IsInitialized() = 0;
 
   // Connect to coordination service with the following steps:
   //   - connect to service address specified in the config of `server_def`
@@ -61,6 +64,9 @@ class CoordinationServiceAgent {
   // Wait for all tasks to be up and registered. The call blocks until all tasks
   // in the cluster are up, or some error occurs.
   virtual Status WaitForAllTasks() = 0;
+
+  // Get the device attributes of tasks from remote tasks in the cluster.
+  virtual const std::vector<DeviceAttributes>& GetClusterDeviceAttributes() = 0;
 
   // State transition in coordination service agent:
   //

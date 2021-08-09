@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -221,8 +222,9 @@ TEST_F(ResizeBicubicOpTest, TestBicubic2x2To0x0) {
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
 
   Status s = RunOpKernel();
-  EXPECT_TRUE(absl::StrContains(
-      s.ToString(), "Invalid argument: output dimensions must be positive"))
+  EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                "output dimensions must be positive"))
       << s;
 }
 

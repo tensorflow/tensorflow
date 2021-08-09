@@ -31,8 +31,6 @@ class CoordinatedReadFTTest(data_service_test_base.TestBase,
   def testAddWorkers(self, workers_to_add):
     starting_workers = 3
     cluster = data_service_test_base.TestCluster(num_workers=starting_workers)
-    # Round robin reads can cause slow cluster shutdown.
-    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
     num_consumers = 7
     ds = self.make_coordinated_read_dataset(cluster, num_consumers)
 
@@ -55,6 +53,7 @@ class CoordinatedReadFTTest(data_service_test_base.TestBase,
       results.append(self.evaluate(get_next()))
 
     self.checkCoordinatedReadGroups(results, num_consumers)
+    cluster.stop_workers()
 
   @combinations.generate(test_base.eager_only_combinations())
   def testRestartWorker(self):
@@ -63,8 +62,6 @@ class CoordinatedReadFTTest(data_service_test_base.TestBase,
     # through a round.
     cluster = data_service_test_base.TestCluster(
         num_workers, worker_shutdown_quiet_period_ms=2000)
-    # Round robin reads can cause slow cluster shutdown.
-    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
     num_consumers = 5
     ds = self.make_coordinated_read_dataset(cluster, num_consumers)
 
@@ -80,8 +77,8 @@ class CoordinatedReadFTTest(data_service_test_base.TestBase,
     while results[-1] != 0:
       results.append(self.evaluate(get_next()))
     self.read(get_next, results, 20)
-
     self.checkCoordinatedReadGroups(results, num_consumers)
+    cluster.stop_workers()
 
   @combinations.generate(test_base.eager_only_combinations())
   def testMultiStartStop(self):
@@ -90,8 +87,6 @@ class CoordinatedReadFTTest(data_service_test_base.TestBase,
     # through a round.
     cluster = data_service_test_base.TestCluster(
         num_workers, worker_shutdown_quiet_period_ms=2000)
-    # Round robin reads can cause slow cluster shutdown.
-    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
     num_consumers = 5
     ds = self.make_coordinated_read_dataset(cluster, num_consumers)
 
@@ -112,7 +107,7 @@ class CoordinatedReadFTTest(data_service_test_base.TestBase,
     self.read(get_next, results, 20)
 
     self.checkCoordinatedReadGroups(results, num_consumers)
-
+    cluster.stop_workers()
 
 if __name__ == "__main__":
   test.main()

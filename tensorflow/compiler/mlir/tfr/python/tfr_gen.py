@@ -1232,7 +1232,11 @@ class TFRGen(transformer.CodeGenerator):
     """emit mlir constant statement from default value of the ArgDef proto."""
     name = self._ssa_name('cst')
     cst_ty = _get_type_from_proto(None, attr_def)
-    cst_val = _get_val_from_proto(cst_ty, attr_def.default_value)
+    try:
+      cst_val = _get_val_from_proto(cst_ty, attr_def.default_value)
+    except AttributeError:
+      raise AttributeError(
+          f'attribute "{attr_def.name}" does not have default_value')
     if cst_ty == TFRTypes.ATTR:
       self._emit_with_loc('\n{} = tfr.constant {} -> {}'.format(
           name, cst_val, cst_ty))

@@ -207,6 +207,21 @@ XLA_TEST_F(CustomCallTest, TupleOutput) {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(CustomCallTest, AcceptsStatusIsNotImplemented) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      ShapeUtil::MakeShape(F32, {}), {}, "Doesn'tExist",
+      /*opaque=*/"",
+      /*api_version=*/CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
+
+  module->AddEntryComputation(builder.Build());
+
+  auto result = Execute(std::move(module), {});
+  ASSERT_EQ(result.status().code(), tensorflow::error::UNIMPLEMENTED);
+}
+
 class CustomCallClientAPITest : public ClientLibraryTestBase {};
 
 // When using the client API, CustomCall targets can't begin with '$' -- these

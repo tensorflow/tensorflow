@@ -594,17 +594,74 @@ func @test_slice(%arg0: tensor<13x21x3xf32>) -> tensor<4x11x1xf32> {
 
 // -----
 
-// CHECK-LABEL: test_strided_slice
+// CHECK-LABEL: test_strided_slice_simple
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [9, 21, 2], start = [4, 0, 1]}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [9, 1, 7, 3, 2, 1]}
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.slice"(%[[VAR1]]) {size = [9, 1, 7, 1, 2, 1], start = [0, 0, 0, 0, 0, 0]}
 // CHECK: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [9, 7, 2]}
-func @test_strided_slice(%arg0: tensor<13x21x3xf32>) -> tensor<9x7x2xf32> {
+func @test_strided_slice_simple(%arg0: tensor<13x21x3xf32>) -> tensor<9x7x2xf32> {
   %cst = constant dense<[4, 0, 1]> : tensor<3xi32>
   %cst_0 = constant dense<[13, 21, 3]> : tensor<3xi32>
   %cst_1 = constant dense<[1, 3, 1]> : tensor<3xi32>
   %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<9x7x2xf32>
   return %0 : tensor<9x7x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_strided_slice_unstrided
+// CHECK: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [9, 21, 2], start = [4, 0, 1]}
+// CHECK: %[[VAR1:.*]] = tensor.cast %0 : tensor<9x21x2xf32> to tensor<?x?x?xf32>
+// CHECK: return %[[VAR1]]
+func @test_strided_slice_unstrided(%arg0: tensor<13x21x3xf32>) -> tensor<?x?x?xf32> {
+  %cst = constant dense<[4, 0, 1]> : tensor<3xi32>
+  %cst_0 = constant dense<[13, 21, 3]> : tensor<3xi32>
+  %cst_1 = constant dense<[1, 1, 1]> : tensor<3xi32>
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_strided_slice_unstrided_shorter
+// CHECK: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [9, 21, 3], start = [4, 0, 0]}
+// CHECK: %[[VAR1:.*]] = tensor.cast %0 : tensor<9x21x3xf32> to tensor<?x?x?xf32>
+// CHECK: return %[[VAR1]]
+func @test_strided_slice_unstrided_shorter(%arg0: tensor<13x21x3xf32>) -> tensor<?x?x?xf32> {
+  %cst = constant dense<[4, 0]> : tensor<2xi32>
+  %cst_0 = constant dense<[13, 21]> : tensor<2xi32>
+  %cst_1 = constant dense<[1, 1]> : tensor<2xi32>
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_strided_slice_dynamic_masked
+// CHECK: %[[VAR0:.*]] = tensor.cast %arg0 : tensor<10x?x?xf32> to tensor<*xf32>
+// CHECK: return %[[VAR0]]
+func @test_strided_slice_dynamic_masked(%arg0: tensor<10x?x?xf32>, %arg1: tensor<3xi32>) -> tensor<*xf32> {
+  %cst_0 = constant dense<[13, -1, 3]> : tensor<3xi32>
+  %cst_1 = constant dense<[1, 1, 1]> : tensor<3xi32>
+  %0 = "tfl.strided_slice"(%arg0, %arg1, %cst_0, %cst_1)  {begin_mask = 7 : i32, ellipsis_mask = 0 : i32, end_mask = 7 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+// Its possible that the begin mask is not set but the begin index is 0, which
+// is equivalent to being at the beginning. However as we are bypassing the
+// entire operation the operand type may not match and will need to be cast to
+// the result type. These casts can be removed during shape inference.
+// CHECK-LABEL: test_strided_slice_dynamic_begin
+func @test_strided_slice_dynamic_begin(%arg0: tensor<10x?x?xf32>) -> tensor<*xf32> {
+  %cst = constant dense<[0, 2, 0]> : tensor<3xi32>
+  %cst_0 = constant dense<[13, -1, 3]> : tensor<3xi32>
+  %cst_1 = constant dense<[1, 1, 1]> : tensor<3xi32>
+  // CHECK: %[[VAR0:.*]] = tensor.cast %arg0 : tensor<10x?x?xf32> to tensor<*xf32>
+  // CHECK: return %[[VAR0]]
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 7 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
 }
 
 // -----
@@ -1148,8 +1205,7 @@ func @test_resize_bilinear_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%[[VAR1]]) {new_shape = [1, 2]}
 // CHECK-DAG: %[[VAR5:.*]] = "tosa.mul"(%[[VAR3]], %[[VAR4]]) {shift = 0 : i32}
 // CHECK-DAG: %[[VAR6:.*]] = "tosa.reduce_sum"(%[[VAR5]]) {axis = 1 : i64}
-// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [1, 42]}
-// CHECK-DAG: %[[VAR8:.*]] = "tosa.gather"(%[[VAR2]], %[[VAR7]])
+// CHECK-DAG: %[[VAR8:.*]] = "tosa.gather"(%[[VAR2]], %[[VAR6]])
 // CHECK: %[[VAR9:.*]] = "tosa.reshape"(%[[VAR8]]) {new_shape = [6, 7, 3]}
 func @test_gather_nd(%arg0: tensor<13x21x3xf32>, %arg1: tensor<6x7x2xi32>) -> tensor<6x7x3xf32> {
   %1 = "tfl.gather_nd"(%arg0, %arg1) : (tensor<13x21x3xf32>, tensor<6x7x2xi32>) -> tensor<6x7x3xf32>

@@ -128,9 +128,13 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
   }
   std::vector<const XPlane*> device_planes =
       FindPlanesWithPrefix(xspace, kGpuPlanePrefix);
-  // We don't expect GPU and TPU planes to be present in the same XSpace.
+  // We don't expect GPU and TPU planes and custom devices to be present in the
+  // same XSpace.
   if (device_planes.empty()) {
     device_planes = FindPlanesWithPrefix(xspace, kTpuPlanePrefix);
+  }
+  if (device_planes.empty()) {
+    device_planes = FindPlanesWithPrefix(xspace, kCustomPlanePrefix);
   }
   for (const XPlane* device_plane : device_planes) {
     XPlaneVisitor xplane = CreateTfXPlaneVisitor(device_plane);

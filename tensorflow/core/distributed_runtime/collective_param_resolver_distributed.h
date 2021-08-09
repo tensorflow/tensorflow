@@ -38,8 +38,8 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
                            CancellationManager* cancel_mgr,
                            const StatusCallback& done) override;
 
-  void CompleteGroupAsync(const CompleteGroupRequest* request,
-                          CompleteGroupResponse* response,
+  void CompleteGroupAsync(const DeviceAttributes& device,
+                          CollGroupParams* group_params,
                           CancellationManager* cancel_mgr,
                           const StatusCallback& done) override;
 
@@ -65,9 +65,9 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
   // Semantics are like those of CompleteGroupLocal but will make a
   // remote call to the group leader if necessary.
   void CompleteGroupDistributed(const DeviceAttributes& device,
-                                CollectiveParams* cp,
+                                CollGroupParams* group_params,
                                 CancellationManager* cancel_mgr,
-                                const GroupRecCallback& done);
+                                const StatusCallback& done);
 
   // Returns true iff there's an entry for this instance_key in the
   // local instance_table_.
@@ -75,18 +75,17 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
       TF_LOCKS_EXCLUDED(instance_mu_);
 
   // Updates instance_table_ with contents of resp.
-  Status UpdateInstanceCache(const GroupRec* gr, CollectiveParams* cp,
+  Status UpdateInstanceCache(CollectiveParams* cp,
                              const CompleteInstanceResponse& resp)
-      TF_LOCKS_EXCLUDED(instance_mu_, gr->mu, group_mu_);
+      TF_LOCKS_EXCLUDED(instance_mu_, group_mu_);
 
   // Finish populating *cp.  Semantics are like those of
   // CompleteInstanceLocal but will make a remote call to the group
   // leader if necessary.
-  void CompleteInstanceDistributed(const string& device, const GroupRec* gr,
-                                   CollectiveParams* cp,
+  void CompleteInstanceDistributed(const string& device, CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    const StatusCallback& done)
-      TF_LOCKS_EXCLUDED(instance_mu_, gr->mu, group_mu_);
+      TF_LOCKS_EXCLUDED(instance_mu_, group_mu_);
 
   WorkerCacheInterface* worker_cache_;  // Not owned
   const string group_leader_;

@@ -416,8 +416,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // flattened.
   pipeline.AddPass<FlattenCallGraph>();
   pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout(),
-      LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
+      module->mutable_entry_computation_layout(), target_machine_features);
 
   pipeline.AddPass<CpuInstructionFusion>();
 

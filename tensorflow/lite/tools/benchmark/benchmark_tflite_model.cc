@@ -58,9 +58,9 @@ namespace {
 
 // Backward compat with previous approach to enabling op profiling.
 #if defined(TFLITE_PROFILING_ENABLED)
-constexpr int kOpProfilingEnabledDefault = true;
+constexpr bool kOpProfilingEnabledDefault = true;
 #else
-constexpr int kOpProfilingEnabledDefault = false;
+constexpr bool kOpProfilingEnabledDefault = false;
 #endif
 
 // Dumps ruy profiling events if the ruy profiler is enabled.
@@ -403,6 +403,8 @@ void BenchmarkTfLiteModel::LogParams() {
 }
 
 TfLiteStatus BenchmarkTfLiteModel::ValidateParams() {
+  TF_LITE_ENSURE_STATUS(BenchmarkModel::ValidateParams());
+
   if (params_.Get<std::string>("graph").empty()) {
     TFLITE_LOG(ERROR)
         << "Please specify the name of your TF Lite input file with --graph";
@@ -675,12 +677,10 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     params_.Set<int32_t>("max_profiling_buffer_entries",
                          total_nodes + kProfilingBufferHeadrooms);
   }
-  profiling_listener_ = MayCreateProfilingListener();
-  if (profiling_listener_) AddListener(profiling_listener_.get());
 
-  interpreter_state_printer_ = std::unique_ptr<BenchmarkListener>(
-      new InterpreterStatePrinter(interpreter_.get()));
-  AddListener(interpreter_state_printer_.get());
+  AddOwnedListener(MayCreateProfilingListener());
+  AddOwnedListener(std::unique_ptr<BenchmarkListener>(
+      new InterpreterStatePrinter(interpreter_.get())));
 
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
@@ -793,8 +793,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     return kTfLiteError;
   }
 
-  ruy_profiling_listener_.reset(new RuyProfileListener());
-  AddListener(ruy_profiling_listener_.get());
+  AddOwnedListener(
+      std::unique_ptr<BenchmarkListener>(new RuyProfileListener()));
 
   return kTfLiteOk;
 }

@@ -791,6 +791,7 @@ Status InstantiatedCapturedFunction::Run(
   f_opts.create_rendezvous = ShouldCreateRendezvous();
   CancellationManager cancellation_manager(ctx->cancellation_manager());
   f_opts.cancellation_manager = &cancellation_manager;
+  f_opts.collective_executor = ctx->collective_executor();
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (node || ctx->stats_aggregator()) {
@@ -854,6 +855,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   f_opts.create_rendezvous = ShouldCreateRendezvous();
   CancellationManager cancellation_manager(ctx->cancellation_manager());
   f_opts.cancellation_manager = &cancellation_manager;
+  f_opts.collective_executor = ctx->collective_executor();
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (node || ctx->stats_aggregator()) {
@@ -957,6 +959,7 @@ void InstantiatedCapturedFunction::RunAsync(
   auto cancellation_manager =
       absl::make_unique<CancellationManager>(ctx->cancellation_manager());
   f_opts.cancellation_manager = cancellation_manager.get();
+  f_opts.collective_executor = ctx->collective_executor();
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (node || ctx->stats_aggregator()) {

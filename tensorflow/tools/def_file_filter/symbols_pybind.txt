@@ -224,16 +224,9 @@ tensorflow::ImportFunction
 
 [//tensorflow/core:op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
-tensorflow::AttrValue::CopyFrom  # tf_text
-tensorflow::AttrValue::MergeFrom
-tensorflow::AttrValue::SetCachedSize
-tensorflow::AttrValue::GetMetadata
-tensorflow::AttrValue::New
-tensorflow::AttrValue::Clear
-tensorflow::AttrValue::IsInitialized
-tensorflow::AttrValue::ByteSizeLong
-tensorflow::AttrValue::GetCachedSize
-tensorflow::AttrValue::~AttrValue
+
+[//tensorflow/core/framework:attr_value_proto_cc_impl] # tf_text
+tensorflow::AttrValue::`vftable'
 
 [//tensorflow/core/common_runtime:graph_constructor] # tf_session
 tensorflow::ShapeRefiner::~ShapeRefiner

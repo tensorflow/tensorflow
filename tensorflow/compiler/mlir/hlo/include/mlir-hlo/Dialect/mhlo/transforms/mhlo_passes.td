@@ -136,6 +136,23 @@ def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "FuncOp"> {
   let constructor = "createTestUnfuseBatchNormPass()";
 }
 
+def ExpandHloTuplesPass : Pass<"expand-hlo-tuples", "ModuleOp"> {
+  let summary = "Expand HLO tuple for the entry function of the module.";
+  let constructor = "CreateExpandHloTuplesPass()";
+  let options = [
+    Option<"entry_function_name_", "entry-function", "std::string",
+           /*default=*/"", "the name of entry function of the module">,
+  ];
+
+  let dependentDialects = ["mhlo::MhloDialect"];
+}
+
+def FlattenTuplePass : FunctionPass<"mhlo-flatten-tuple"> {
+  let summary = "Flatten tuples in operands and results of operators that "
+    "support both tuple and variadic type.";
+  let constructor = "createFlattenTuplePass()";
+}
+
 /// Rank specialization passes.
 
 def RankSpecializationClusterPass

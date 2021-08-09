@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow.data;
 
+import "tensorflow/core/data/service/common.proto";
 import "tensorflow/core/protobuf/data_service.proto";
 
 // Message representing journaled dispatcher metadata updates. When we apply
@@ -44,7 +45,7 @@ message NamedJobKeyDef {
   int64 index = 2;
 }
 
-// Next tag: 10
+// Next tag: 11
 message CreateJobUpdate {
   reserved 3, 5, 6;
   int64 job_id = 1;
@@ -58,6 +59,8 @@ message CreateJobUpdate {
   oneof optional_num_consumers {
     int64 num_consumers = 7;
   }
+  // Specifies which workers the client of this job reads from.
+  TargetWorkers target_workers = 10;
 }
 
 // Next tag: 5

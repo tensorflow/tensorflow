@@ -27,13 +27,17 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import flags
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
+
+FLAGS = flags.FLAGS
 
 
 class TFFunctionTest(test.TestCase, parameterized.TestCase):
@@ -107,6 +111,9 @@ class TFFunctionTest(test.TestCase, parameterized.TestCase):
           run_functions_eagerly=[True, False]
       ))
   def testReadVariableInsideFunction(self, distribution, run_functions_eagerly):
+    if not run_functions_eagerly and config.list_physical_devices(
+        "TPU") and FLAGS.tpu_use_tfrt:
+      self.skipTest("TFRT does not support XlaLocalLaunch, see b/194517185")
 
     def_function.run_functions_eagerly(run_functions_eagerly)
 

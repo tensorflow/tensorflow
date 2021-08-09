@@ -22,6 +22,7 @@ import collections
 import functools
 import gc
 import os
+import re
 import sys
 
 from absl import logging
@@ -48,7 +49,6 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import nested_structure_coder
@@ -479,6 +479,26 @@ def _map_captures_to_created_tensors(original_captures, resource_map):
   return export_captures
 
 
+def _to_safe_name_scope(signature_key, user_input_name):
+  """Creates a sanitized name scope from user signature and input names.
+
+  Concatenates signature and input names, sanitizing as needed to be a valid
+  scope name.
+
+  Args:
+    signature_key: The user-provided key for the signature.
+    user_input_name: The user-provided name for the input placeholder.
+
+  Returns:
+    A name scope that is safe to be used in tf.name_scope().
+  """
+  name_scope = "{}_{}".format(signature_key, user_input_name)
+  if re.match(r"^[A-Za-z0-9.][A-Za-z0-9_.\\-]*$", name_scope):
+    return name_scope
+  invalid_prefix_stripped = re.sub(r"^[^A-Za-z0-9.]*", "", name_scope)
+  return re.sub(r"[^A-Za-z0-9_.\\-]", "_", invalid_prefix_stripped)
+
+
 def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
                                               function_name):
   """Creates exterior placeholders in the exported graph for function arguments.
@@ -542,7 +562,7 @@ def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
     arg_placeholder = array_ops.placeholder(
         shape=placeholder.shape,
         dtype=placeholder.dtype,
-        name="{}_{}".format(signature_key, user_input_name))
+        name=_to_safe_name_scope(signature_key, user_input_name))
     exterior_argument_placeholders[user_input_name] = arg_placeholder
     mapped_inputs.append(arg_placeholder)
   return mapped_inputs, exterior_argument_placeholders
@@ -859,18 +879,6 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
       concrete_function.add_to_graph()
     if save_custom_gradients:
       _trace_gradient_functions(exported_graph, saveable_view)
-    elif save_custom_gradients is None:
-      # Trace anyways to warn the user if there are any issues with the custom
-      # gradients.
-      try:
-        _trace_gradient_functions(exported_graph, saveable_view)
-      except Exception:  # pylint: disable=broad-except
-        tf_logging.warning(
-            "Your model contains untraceable custom gradients. This warning "
-            "may become an error in the future. Please set the option "
-            "tf.saved_model.SaveOption(experimental_custom_gradients=True) "
-            "to get the full error message.")
-
     saver_def = saver.to_proto()
     meta_graph_def.saver_def.CopyFrom(saver_def)
   graph_def = exported_graph.as_graph_def(add_shapes=True)

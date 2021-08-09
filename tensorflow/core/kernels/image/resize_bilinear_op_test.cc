@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -493,8 +494,9 @@ TEST_P(ResizeBilinearOpTest, TestInvalidOutputSize) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
   Status s = RunOpKernel();
-  EXPECT_TRUE(absl::StrContains(
-      s.ToString(), "Invalid argument: output dimensions must be positive"))
+  EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                "output dimensions must be positive"))
       << s;
 }
 
@@ -502,8 +504,9 @@ TEST_P(ResizeBilinearOpTest, TestInvalidInputShape) {
   AddInputFromArray<float>(TensorShape({2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {4, 4});
   Status s = RunOpKernel();
-  EXPECT_TRUE(absl::StrContains(
-      s.ToString(), "Invalid argument: input must be 4-dimensional"))
+  EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "input must be 4-dimensional"))
       << s;
 }
 
@@ -511,8 +514,9 @@ TEST_P(ResizeBilinearOpTest, TestInvalidSizeDim) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2, 1}), {4, 4});
   Status s = RunOpKernel();
-  EXPECT_TRUE(absl::StrContains(
-      s.ToString(), "Invalid argument: shape_t must be 1-dimensional"))
+  EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "shape_t must be 1-dimensional"))
       << s;
 }
 
@@ -520,8 +524,9 @@ TEST_P(ResizeBilinearOpTest, TestInvalidSizeElements) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({3}), {4, 4, 1});
   Status s = RunOpKernel();
-  EXPECT_TRUE(absl::StrContains(
-      s.ToString(), "Invalid argument: shape_t must have two elements"))
+  EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "shape_t must have two elements"))
       << s;
 }
 

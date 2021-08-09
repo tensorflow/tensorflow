@@ -46,11 +46,6 @@ class GpuCompiler : public LLVMCompiler {
               const char* data_layout);
   ~GpuCompiler() override {}
 
-  // Bring in
-  // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-  //     std::vector<std::unique_ptr<HloModule>> modules,
-  //     std::vector<std::vector<se::StreamExecutor*>>
-  //        stream_execs)
   using LLVMCompiler::Compile;
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(

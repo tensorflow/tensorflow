@@ -426,7 +426,6 @@ cc_library(
         "utils/TableGen/GlobalISel/*.h",
     ]),
     deps = [
-        ":MC",
         ":Support",
         ":TableGen",
         ":config",
@@ -2898,6 +2897,7 @@ cc_library(
     deps = [
         ":BinaryFormat",
         ":DebugInfoCodeView",
+        ":ProfileData",
         ":Support",
         ":config",
     ],
@@ -4249,7 +4249,6 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
-        ":MC",
         ":Support",
         ":config",
     ],

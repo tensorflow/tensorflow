@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 
 namespace tensorflow {
@@ -900,7 +901,7 @@ TEST(TensorBundleTest, Error) {
   }
   {  // Not found.
     BundleReader reader(Env::Default(), Prefix("nonexist"));
-    EXPECT_TRUE(absl::StrContains(reader.status().ToString(), "Not found"));
+    EXPECT_EQ(reader.status().code(), error::NOT_FOUND);
   }
 }
 

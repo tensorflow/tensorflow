@@ -43,6 +43,7 @@ extern llvm::cl::opt<std::string> select_user_tf_ops;
 extern llvm::cl::opt<bool> allow_all_select_tf_ops;
 extern llvm::cl::opt<bool> unfold_batchmatmul;
 extern llvm::cl::opt<bool> unfold_large_splat_constant;
+extern llvm::cl::opt<bool> guarantee_all_funcs_one_use;
 
 // Import saved model.
 extern llvm::cl::opt<bool> import_saved_model_object_graph;

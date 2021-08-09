@@ -45,27 +45,6 @@ static constexpr StringRef kCInterfaceJITExecute =
 static constexpr StringRef kJITCodeGlobalBaseName = "jit_module_code";
 static constexpr StringRef kErrorMessageGlobalBaseName = "error_message";
 
-Value CreateOrFindGlobalStringConstant(Location loc, OpBuilder &builder,
-                                       StringRef base_name, StringRef str) {
-  auto module =
-      builder.getInsertionBlock()->getParentOp()->getParentOfType<ModuleOp>();
-  std::string global_name =
-      llvm::formatv("{0}_{1}", base_name, llvm::hash_value(str));
-  Operation *global_constant =
-      SymbolTable::lookupNearestSymbolFrom(module, global_name);
-  if (global_constant) {
-    Value global_ptr = builder.create<LLVM::AddressOfOp>(
-        loc, cast<LLVM::GlobalOp>(global_constant));
-    Value c0 = builder.create<LLVM::ConstantOp>(loc, builder.getI64Type(),
-                                                builder.getIndexAttr(0));
-    return builder.create<LLVM::GEPOp>(
-        loc, LLVM::LLVMPointerType::get(builder.getIntegerType(8)), global_ptr,
-        ValueRange{c0, c0});
-  }
-  return LLVM::createGlobalString(loc, builder, global_name, str,
-                                  LLVM::Linkage::Internal);
-}
-
 /// Base class for patterns converting TF Framework ops to function calls.
 template <typename OpTy>
 class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
@@ -91,6 +70,65 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
  protected:
   virtual StringRef GetFuncName() const = 0;
   virtual Type GetFuncType() const = 0;
+
+  Value CreateOrFindGlobalStringConstant(Location loc, OpBuilder &builder,
+                                         StringRef base_name,
+                                         StringRef str) const {
+    auto module =
+        builder.getInsertionBlock()->getParentOp()->getParentOfType<ModuleOp>();
+    std::string global_name =
+        llvm::formatv("{0}_{1}", base_name, llvm::hash_value(str));
+    Operation *global_constant =
+        SymbolTable::lookupNearestSymbolFrom(module, global_name);
+    if (global_constant) {
+      Value global_ptr = builder.create<LLVM::AddressOfOp>(
+          loc, cast<LLVM::GlobalOp>(global_constant));
+      Value c0 = builder.create<LLVM::ConstantOp>(loc, builder.getI64Type(),
+                                                  builder.getIndexAttr(0));
+      return builder.create<LLVM::GEPOp>(
+          loc, LLVM::LLVMPointerType::get(builder.getIntegerType(8)),
+          global_ptr, ValueRange{c0, c0});
+    }
+    return LLVM::createGlobalString(loc, builder, global_name, str,
+                                    LLVM::Linkage::Internal);
+  }
+
+  std::pair<Value, Value> ConvertIntegerArrayAttrToStackAllocatedArray(
+      Location loc, Type size_ty, Type element_ty,
+      llvm::Optional<ArrayAttr> attr,
+      ConversionPatternRewriter *rewriter) const {
+    assert(size_ty.isa<IntegerType>() && "expect integer size type");
+    assert(element_ty.isa<IntegerType>() && "expect integer element type");
+    Type element_ptr_ty = LLVM::LLVMPointerType::get(element_ty);
+
+    // If the attribute is missing or empty, set the element count to 0 and
+    // return NULL.
+    if (!attr.hasValue() || attr.getValue().empty()) {
+      Value zero = rewriter->create<LLVM::ConstantOp>(
+          loc, size_ty, rewriter->getIntegerAttr(size_ty, 0));
+      Value null_ptr = rewriter->create<LLVM::NullOp>(loc, element_ptr_ty);
+      return std::make_pair(zero, null_ptr);
+    }
+
+    // Allocate array to store the elements.
+    auto &array_attr = attr.getValue();
+    Value array_size = rewriter->create<LLVM::ConstantOp>(
+        loc, size_ty, rewriter->getIntegerAttr(size_ty, array_attr.size()));
+    Value array_ptr = rewriter->create<LLVM::AllocaOp>(
+        loc, element_ptr_ty, array_size, /*alignment=*/0);
+    for (auto &e : llvm::enumerate(array_attr)) {
+      Value index = rewriter->create<LLVM::ConstantOp>(
+          loc, size_ty, rewriter->getIntegerAttr(size_ty, e.index()));
+      Value element_ptr =
+          rewriter->create<LLVM::GEPOp>(loc, element_ptr_ty, array_ptr, index);
+      Value element = rewriter->create<LLVM::ConstantOp>(
+          loc, element_ty,
+          rewriter->getIntegerAttr(element_ty,
+                                   e.value().cast<IntegerAttr>().getInt()));
+      rewriter->create<LLVM::StoreOp>(loc, element, element_ptr);
+    }
+    return std::make_pair(array_size, array_ptr);
+  }
 };
 
 class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
@@ -128,8 +166,10 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
                                        : -1));
 
     // Convert `candidate_input_indices`.
-    auto candidates_count_and_ptr = ConvertI32ArrayAttrToStackAllocatedArray(
-        loc, tf_alloc_op.input_indices(), &rewriter);
+    auto candidates_count_and_ptr =
+        ConvertIntegerArrayAttrToStackAllocatedArray(
+            loc, rewriter.getI32Type(), rewriter.getI32Type(),
+            tf_alloc_op.input_indices(), &rewriter);
 
     // Insert function call.
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
@@ -204,42 +244,6 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     }
     return memref_desc;
   }
-
-  std::pair<Value, Value> ConvertI32ArrayAttrToStackAllocatedArray(
-      Location loc, llvm::Optional<ArrayAttr> attr,
-      ConversionPatternRewriter *rewriter) const {
-    Type llvm_i32_type = IntegerType::get(getDialect().getContext(), 32);
-    Type llvm_i32_ptr_type = LLVM::LLVMPointerType::get(llvm_i32_type);
-
-    // If the attribute is missing or empty, set the element count to 0 and
-    // return NULL.
-    if (!attr.hasValue() || attr.getValue().empty()) {
-      Value zero = rewriter->create<LLVM::ConstantOp>(
-          loc, llvm_i32_type, rewriter->getI32IntegerAttr(0));
-      Value null_ptr = rewriter->create<LLVM::NullOp>(loc, llvm_i32_ptr_type);
-      return std::make_pair(zero, null_ptr);
-    }
-
-    // Allocate array to store the elements.
-    auto &array_attr = attr.getValue();
-    Value array_size = rewriter->create<LLVM::ConstantOp>(
-        loc, llvm_i32_type, rewriter->getI32IntegerAttr(array_attr.size()));
-    Value array_ptr = rewriter->create<LLVM::AllocaOp>(
-        loc, llvm_i32_ptr_type, array_size, /*alignment=*/0);
-
-    for (auto &dim : llvm::enumerate(array_attr)) {
-      Value index = rewriter->create<LLVM::ConstantOp>(
-          loc, llvm_i32_type, rewriter->getI32IntegerAttr(dim.index()));
-      Value elem_ptr = rewriter->create<LLVM::GEPOp>(loc, llvm_i32_ptr_type,
-                                                     array_ptr, index);
-      Value elem = rewriter->create<LLVM::ConstantOp>(
-          loc, llvm_i32_type,
-          rewriter->getI32IntegerAttr(
-              dim.value().cast<IntegerAttr>().getInt()));
-      rewriter->create<LLVM::StoreOp>(loc, elem, elem_ptr);
-    }
-    return std::make_pair(array_size, array_ptr);
-  }
 };
 
 class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
@@ -282,12 +286,30 @@ class JITCompileFromStrOpConverter
       ConversionPatternRewriter &rewriter) const override {
     JITCompileFromStrOp::Adaptor transformed(operands);
     if (transformed.ctx() == nullptr) return failure();
+    auto loc = op.getLoc();
     Value jit_module_code = CreateOrFindGlobalStringConstant(
-        op.getLoc(), rewriter, kJITCodeGlobalBaseName, op.code());
+        loc, rewriter, kJITCodeGlobalBaseName, op.code());
+    std::pair<Value, Value> tile_sizes =
+        ConvertIntegerArrayAttrToStackAllocatedArray(loc, rewriter.getI64Type(),
+                                                     rewriter.getI64Type(),
+                                                     op.tileSizes(), &rewriter);
+    std::pair<Value, Value> unroll_factors =
+        ConvertIntegerArrayAttrToStackAllocatedArray(
+            loc, rewriter.getI64Type(), rewriter.getI64Type(),
+            op.unrollFactors(), &rewriter);
+    Value max_supported_rank = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI64Type(), op.maxSupportedRankAttr());
+    Value enable_ftz = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI1Type(), op.enableFtzAttr());
+    Value cpu_codegen = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI1Type(), op.cpuCodegenAttr());
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, getVoidPtrType(), tf_func_ref,
-        llvm::makeArrayRef({transformed.ctx(), jit_module_code}));
+        llvm::makeArrayRef({transformed.ctx(), jit_module_code,
+                            tile_sizes.first, tile_sizes.second,
+                            unroll_factors.first, unroll_factors.second,
+                            max_supported_rank, enable_ftz, cpu_codegen}));
     return success();
   }
 
@@ -295,10 +317,20 @@ class JITCompileFromStrOpConverter
   StringRef GetFuncName() const override { return kCInterfaceJITCompile; }
 
   Type GetFuncType() const override {
-    auto i8_ptr_type =
+    auto i8_ptr_ty =
         LLVM::LLVMPointerType::get(IntegerType::get(getContext(), 8));
-    return LLVM::LLVMFunctionType::get(getVoidPtrType(),
-                                       {getVoidPtrType(), i8_ptr_type});
+    auto i64_ty = IntegerType::get(getContext(), 64);
+    Type i64_ptr_ty = LLVM::LLVMPointerType::get(i64_ty);
+    auto i1_ty = IntegerType::get(getContext(), 1);
+    return LLVM::LLVMFunctionType::get(
+        getVoidPtrType(), {getVoidPtrType(), /*char* code*/ i8_ptr_ty,
+                           /*int64_t num_tile_sizes*/ i64_ty,
+                           /*int64_t* tile_sizes_ptr*/ i64_ptr_ty,
+                           /*int64_t num_unroll_factors*/ i64_ty,
+                           /*int64_t* unroll_factors_ptr*/ i64_ptr_ty,
+                           /*int64_t max_supported_rank*/ i64_ty,
+                           /*bool enable_ftz*/ i1_ty,
+                           /*bool cpu_codegen*/ i1_ty});
   }
 };
 
@@ -417,6 +449,7 @@ class ReportErrorOpConverter
       err_stream << " at ";
       loc.print(err_stream);
     }
+    err_stream << '\00';
     StringRef generated_error(err_stream.str());
     return CreateOrFindGlobalStringConstant(
         loc, builder, kErrorMessageGlobalBaseName, generated_error);

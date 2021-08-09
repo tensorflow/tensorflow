@@ -371,34 +371,11 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithPowerOf2OutputElementsUnrolled) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
-  std::string decl = is_built_with_rocm_ ? R"(
-; CHECK-LABEL: define amdgpu_kernel void @fusion
-)" : R"(
-; CHECK-LABEL: define void @fusion
+  const char *expected_ir = R"(
+; CHECK: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, float addrspace(1)
 )";
-
-  auto expected_ir1 = decl + R"(
-; CHECK: atomicrmw fadd float
-; CHECK: atomicrmw fadd float
-; CHECK-NOT: atomicrmw fadd float
-; CHECK: }
-)";
-
-  auto expected_ir2 = decl + R"(
-; CHECK-LABEL: atomicrmw.start{{[0-9]*}}:
-; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
-; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
-; CHECK: %{{.*}} = cmpxchg i32 addrspace(1)* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
-; CHECK-LABEL: atomicrmw.start{{[0-9]*}}:
-; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
-; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
-; CHECK: %{{.*}} = cmpxchg i32 addrspace(1)* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
-  CHECK-NOT: cmpxchg
-; CHECK: }
-)";
-
-  CompileAndVerifyIr(std::move(hlo_module),
-                     std::vector<std::string>{expected_ir1, expected_ir2},
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
   // Check that the kernel runs correctly.
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1.0e-5, 1.0e-5}));
@@ -438,29 +415,11 @@ TEST_F(GpuKernelTilingTest,
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
-  std::string decl = is_built_with_rocm_ ? R"(
-; CHECK-LABEL: define amdgpu_kernel void @fusion
-)" : R"(
-; CHECK-LABEL: define void @fusion
+  const char *expected_ir = R"(
+; CHECK: store float %{{.*}}, float addrspace(1)
+; CHECK-NOT: store float %{{.*}}, float addrspace(1)
 )";
-
-  auto expected_ir1 = decl + R"(
-; CHECK: atomicrmw fadd float
-; CHECK-NOT: atomicrmw fadd float
-; CHECK: }
-)";
-
-  auto expected_ir2 = decl + R"(
-; CHECK-LABEL: atomicrmw.start{{[0-9]*}}:
-; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
-; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
-; CHECK: %{{.*}} = cmpxchg i32 addrspace(1)* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
-  CHECK-NOT: cmpxchg
-; CHECK: }
-)";
-
-  CompileAndVerifyIr(std::move(hlo_module),
-                     std::vector<std::string>{expected_ir1, expected_ir2},
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
   // Check that the kernel runs correctly.
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1.0e-5, 1.0e-5}));
@@ -499,40 +458,18 @@ TEST_F(GpuKernelTilingTest, ColumnReductionMOFUnrolled) {
   })";
 
   // Check that four calls to llvm.nvvm.atomic are generated.
-  auto hlo_module =
+  std::unique_ptr<VerifiedHloModule> hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
-  std::string decl = is_built_with_rocm_ ? R"(
-; CHECK-LABEL: define amdgpu_kernel void @fusion
-)" : R"(
+  const char *expected_ir = R"(
 ; CHECK-LABEL: define void @fusion
+; CHECK: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, float addrspace(1)
+; CHECK-NOT: store float %{{.*}}, float addrspace(1)
 )";
-
-  auto expected_ir1 = decl + R"(
-; CHECK: atomicrmw fadd float
-; CHECK: atomicrmw fadd float
-; CHECK: atomicrmw fadd float
-; CHECK: atomicrmw fadd float
-; CHECK-NOT: atomicrmw fadd float
-; CHECK: }
-)";
-  auto expected_ir2 = decl + R"(
-; CHECK-LABEL: atomicrmw.start{{[0-9]*}}:
-; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
-; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
-; CHECK: %{{.*}} = cmpxchg i32 addrspace(1)* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
-;
-; CHECK-LABEL: atomicrmw.start{{[0-9]*}}:
-; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
-; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
-; CHECK: %{{.*}} = cmpxchg i32 addrspace(1)* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
-;
-; CHECK-NOT: cmpxchg
-;
-; CHECK: }
-)";
-  CompileAndVerifyIr(std::move(hlo_module), 
-                     std::vector<std::string>{expected_ir1, expected_ir2},
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
   // Check that the kernel runs correctly.
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1.0e-5, 1.0e-5}));
@@ -558,26 +495,12 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
-  std::string decl = is_built_with_rocm_ ? R"(
-; CHECK-LABEL: define amdgpu_kernel void @
-)" : R"(
+  const char *expected_ir = R"(
 ; CHECK-LABEL: define void @
-)";
-
-  auto expected_ir1 = decl + R"(
-; CHECK: atomicrmw fadd float
+; CHECK: store float %{{.*}}, float addrspace(1)
 ; CHECK: }
 )";
-
-  auto expected_ir2 = decl + R"(
-; CHECK-LABEL: atomicrmw.start{{[0-9]*}}:
-; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
-; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
-; CHECK: %{{.*}} = cmpxchg i32 addrspace(1)* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
-)";
-
-  CompileAndVerifyIr(std::move(hlo_module), 
-                     std::vector<std::string>{expected_ir1, expected_ir2},
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
@@ -642,26 +565,13 @@ TEST_F(GpuKernelTilingTest,
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
-  std::string decl = is_built_with_rocm_ ? R"(
-; CHECK-LABEL: define amdgpu_kernel void @reduce
-)" : R"(
+  const char *expected_ir = R"(
 ; CHECK-LABEL: define void @reduce
-)";
-
-  auto expected_ir1 = decl + R"(
-; CHECK: atomicrmw fadd float
+; CHECK: store float %{{.*}}, float addrspace(1)
 ; CHECK: }
 )";
-  auto expected_ir2 = decl + R"(
-; CHECK-LABEL: atomicrmw.start:
-; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
-; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
-; CHECK: %{{.*}} = cmpxchg i32 addrspace(1)* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
-; CHECK: }
-)";
-  CompileAndVerifyIr(std::move(hlo_module),
-      std::vector<string>{expected_ir1, expected_ir2},
-      /*match_optimized_ir=*/true);
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+                     /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
@@ -701,20 +611,14 @@ TEST_F(GpuKernelTilingTest, ColumnReductionSmallTileSizeX) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
-  auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK-LABEL: define amdgpu_kernel void @fusion
-; CHECK-NOT: reduce.0.loop_header
-; CHECK: }
-)"
-                                         : R"(
-; CHECK-LABEL: define void @fusion
+  const char *expected_ir = R"(
 ; CHECK-NOT: reduce.0.loop_header
 ; CHECK: }
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
   // Check that the kernel runs correctly.
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1.0e-5, 1.0e-5}));
+  EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{1.0e-5, 1.0e-5}));
 }
 
 TEST_F(GpuKernelTilingTest, RowReductionWithSmallDimensionNotTiled) {
@@ -770,8 +674,9 @@ TEST_F(GpuKernelTilingTest, RowReductionRequiring64BitIndex) {
     ROOT out = f32[] reduce(parameter, init_value), dimensions={0}, to_apply=Sum
   }
   )";
-  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
-  auto expected_ir = R"(
+  std::unique_ptr<VerifiedHloModule> hlo_module =
+      ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
+  const char *expected_ir = R"(
 ; CHECK: i64
   )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,

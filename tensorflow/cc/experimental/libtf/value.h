@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Tagged union for holding values in the TensorFlow Lite C++ API.
+// Tagged union for holding values in the TensorFlow C++ API.
 #ifndef TENSORFLOW_CC_EXPERIMENTAL_LIBTF_VALUE_H_
 #define TENSORFLOW_CC_EXPERIMENTAL_LIBTF_VALUE_H_
 
@@ -30,6 +30,7 @@ limitations under the License.
 
 // TODO(ccrusius): Move all value objects into `impl`. Currently only values
 // that do not reference TaggedValue are there.
+#include "tensorflow/cc/experimental/libtf/impl/none.h"
 #include "tensorflow/cc/experimental/libtf/impl/scalars.h"
 #include "tensorflow/cc/experimental/libtf/impl/string.h"
 
@@ -37,7 +38,6 @@ namespace tf {
 namespace libtf {
 namespace impl {
 // Necessary forward declares.
-class None {};
 class TaggedValue;
 class Tuple;
 template <class T>
@@ -122,7 +122,6 @@ class TaggedValue final {
   explicit TaggedValue(const char* s) : type_(STRING), data_(s) {}
   static TaggedValue None() {
     TaggedValue v;
-    new (&v.data_.none) impl::None();
     v.type_ = NONE;
     return v;
   }
@@ -172,15 +171,16 @@ class TaggedValue final {
   // Destroy tagged union properly. Shared pointers in unions must be explicitly
   // deleted.
   void destroy() {
-    // Explicitly run the destructor on the correct type.
-    visit<void>([](auto& x) {
-      using T = typename std::decay<decltype(x)>::type;
-      x.~T();
-    });
-    // Make the type None, whenever we destroy so we always have an initialized
-    // value.
-    type_ = NONE;
-    new (&data_.none) impl::None();
+    if (type_ != NONE) {
+      // Explicitly run the destructor on the correct type.
+      visit<void>([](auto& x) {
+        using T = typename std::decay<decltype(x)>::type;
+        x.~T();
+      });
+      // Make the type None, whenever we destroy so we always have an
+      // initialized value.
+      type_ = NONE;
+    }
   }
   ~TaggedValue() { destroy(); }
 
@@ -300,7 +300,7 @@ class TaggedValue final {
       case CAPSULE:
         return visitor(data_.capsule);
       case NONE:
-        return visitor(data_.none);
+        return visitor(impl::None::GetInstance());
     }
   }
 
@@ -328,7 +328,7 @@ class TaggedValue final {
       case CAPSULE:
         return visitor(data_.capsule);
       case NONE:
-        return visitor(data_.none);
+        return visitor(impl::None::GetInstance());
     }
   }
 
@@ -346,10 +346,12 @@ class TaggedValue final {
   void MoveIntoUnion(TaggedValue&& v) {
     assert(type_ == NONE);
     type_ = v.type_;
-    visit<void>([&v](auto& left) -> void {
-      using T = typename std::decay<decltype(left)>::type;
-      new (&left) T(std::move(UnionAccess<T>::unsafe_reference(v)));
-    });
+    if (type_ != NONE) {
+      visit<void>([&v](auto& left) -> void {
+        using T = typename std::decay<decltype(left)>::type;
+        new (&left) T(std::move(UnionAccess<T>::unsafe_reference(v)));
+      });
+    }
     // Destroy the source r-value reference (making it None)
     v.destroy();
   }
@@ -359,13 +361,15 @@ class TaggedValue final {
   void CopyIntoUnion(const TaggedValue& v) {
     assert(type_ == NONE);
     type_ = v.type_;
-    visit<void>([&v](auto& left) -> void {
-      using T = typename std::decay<decltype(left)>::type;
-      new (&left) T(UnionAccess<T>::unsafe_reference(v));
-    });
+    if (type_ != NONE) {
+      visit<void>([&v](auto& left) -> void {
+        using T = typename std::decay<decltype(left)>::type;
+        new (&left) T(UnionAccess<T>::unsafe_reference(v));
+      });
+    }
   }
 
-  // the union type. in principle this could be incorporated into the union
+  // The union type. In principle this could be incorporated into the union
   // for pointer types and non-64bit values, but then int64 and float64 values
   // would need to be indirected.  This means that we are aiming for a total
   // data type size of <=16 bytes. One pointer and one type.
@@ -397,7 +401,6 @@ class TaggedValue final {
     std::shared_ptr<impl::Tuple> tuple;
     impl::Capsule capsule;
     TaggedValueTensor tensor;
-    impl::None none;
     TensorSpec tensor_spec;
   } data_;
   friend std::ostream& operator<<(std::ostream& o, const TaggedValue& v);
@@ -441,12 +444,22 @@ TF_UNION_ACCESS_INSTANCE(impl::Int64, i64);
 TF_UNION_ACCESS_INSTANCE(impl::ListPtr, list);
 TF_UNION_ACCESS_INSTANCE(impl::TuplePtr, tuple);
 TF_UNION_ACCESS_INSTANCE(impl::DictPtr, dict);
-TF_UNION_ACCESS_INSTANCE(impl::None, none);
 TF_UNION_ACCESS_INSTANCE(impl::Func, func);
 TF_UNION_ACCESS_INSTANCE(impl::String, s);
 TF_UNION_ACCESS_INSTANCE(impl::TaggedValueTensor, tensor);
 TF_UNION_ACCESS_INSTANCE(impl::TensorSpec, tensor_spec);
 #undef TF_UNION_ACCESS_INSTANCE
+
+// Define union accessor for `NoneType`.
+template <>
+struct TaggedValue::UnionAccess<impl::None> {
+  static impl::None& unsafe_reference(TaggedValue& t) {
+    return None::GetInstance();
+  }
+  static const impl::None& unsafe_reference(const TaggedValue& t) {
+    return None::GetInstance();
+  }
+};
 
 // Need to wrap vector in Tuple otherwise variant has duplicate types.
 class Tuple {
@@ -479,7 +492,6 @@ inline size_t TaggedValueHash<Tuple>::operator()(const Tuple& t) const {
 
 class TaggedValueHashVisitor {
  public:
-  size_t operator()(const None& v) { return 38383827; }
   size_t operator()(const TaggedValueTensor& v) {
     assert(false);
     return 0;

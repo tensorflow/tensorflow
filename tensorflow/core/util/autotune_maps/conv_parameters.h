@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_AUTOTUNE_MAPS_CONV_PARAMETERS_H_
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
 
@@ -27,27 +28,36 @@ namespace tensorflow {
 // This can serve as a hashtable key, where the value might be the autotuned
 // algorithm we choose for the conv.
 //
-// All of the data in this class is stored in the ConvParametersProto, so it can
-// be easily serialized (for the purposes of ahead-of-time autotuning).
+// All of the data in this class other than the device_id is stored in the
+// ConvParametersProto, so it can be easily serialized (for the purposes of
+// ahead-of-time autotuning).
 //
-// Note: The device_id (in the dense range 0, 1, ...) passed to the constructor
-// is translated into a "device model" string that's stored in the proto.  This
-// means that if GPUs X and Y are of the same model, two otherwise identical
-// ConvParameters with different device_ids X and Y will compare equal.
+// When using the cudnn frontend API, two autotuning results for two different
+// GPUs of the same model are not interchangeable, because an autotuning result
+// includes a cudnn execution plan, which is tied to the GPU.  As a result, we
+// need to create separate ConvParameters objects for them.
 class ConvParameters {
  public:
-  ConvParameters(int64_t batch, int64_t in_depths, absl::Span<const int64_t> in,
-                 int data_format, int64_t out_depths,
-                 absl::Span<const int64_t> filter,
-                 absl::Span<const int64_t> dilation,
-                 absl::Span<const int64_t> stride,
-                 absl::Span<const int64_t> padding, DataType dtype,
-                 int device_id, int group_count = 1,
-                 bool has_side_input = false,
-                 stream_executor::dnn::ActivationMode activation_mode =
-                     stream_executor::dnn::ActivationMode::kNone);
+  struct FusionInfo {
+    bool has_side_input = false;
+    stream_executor::dnn::ActivationMode activation_mode;
+    bool is_contrib;
+  };
 
-  explicit ConvParameters(const ConvParametersProto& proto);
+  // We have three kinds of convolutions today.  Vanilla unfused convolutions,
+  // fused convolutions, and fused convolutions as implemented in the `contrib`
+  // directory.  The two fused convolutions ultimately correspond to the same
+  // cudnn calls, but have slightly different semantics (e.g. they interpret
+  // padding differently).
+  ConvParameters(
+      int64_t batch, int64_t in_depths, absl::Span<const int64_t> in,
+      int data_format, int64_t out_depths, absl::Span<const int64_t> filter,
+      absl::Span<const int64_t> dilation, absl::Span<const int64_t> stride,
+      absl::Span<const int64_t> padding, DataType dtype, int device_id,
+      int group_count,
+      absl::optional<FusionInfo> fusion_info = absl::optional<FusionInfo>());
+
+  ConvParameters(int device_id, const ConvParametersProto& proto);
 
   bool operator==(const ConvParameters& other) const;
 
@@ -61,8 +71,9 @@ class ConvParameters {
   const ConvParametersProto& proto() const { return proto_; }
 
  private:
-  uint64 hash_code_;
+  int device_id_;
   ConvParametersProto proto_;
+  uint64 hash_code_;
 };
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

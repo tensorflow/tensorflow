@@ -331,7 +331,7 @@ class HloModuleConfig {
   // Index (v) corresponding to current passes being added for phase ordering.
   // This is the variable that stores state to allow us to use the same
   // config across functions during compilation.
-  int phase_index_;
+  int phase_index_ = 0;
 };
 
 }  // namespace xla

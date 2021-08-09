@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -52,12 +53,12 @@ TEST(TensorSliceTest, Serialization) {
     // versions of gcc that breaks when you use raw string literals
     // inside macro expansions.
     //   See: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=55971
-    const char* ptxt = R"PROTO(
-      extent { }
+    const char* ptxt = R"pb(
+      extent {}
       extent { start: 0 length: 10 }
       extent { start: 14 length: 1 }
-      extent { }
-    )PROTO";
+      extent {}
+    )pb";
     ASSERT_TRUE(protobuf::TextFormat::ParseFromString(ptxt, &proto));
     TensorSlice s(proto);
     EXPECT_EQ("-:0,10:14,1:-", s.DebugString());
@@ -82,20 +83,20 @@ TEST(TensorSliceTest, Serialization) {
   {
     TensorSlice slice;
     Status s = TensorSlice::Parse("-:-:1,3:4:5", &slice);
-    EXPECT_EQ(
-        "Invalid argument: "
-        "Expected a pair of numbers or '-' but got '4': "
-        "string = -:-:1,3:4:5",
-        s.ToString());
+    EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+    EXPECT_TRUE(
+        absl::StrContains(s.error_message(),
+                          "Expected a pair of numbers or '-' but got '4': "
+                          "string = -:-:1,3:4:5"));
   }
   {
     TensorSlice slice;
     Status s = TensorSlice::Parse("-:-1,3", &slice);
-    EXPECT_EQ(
-        "Invalid argument: "
+    EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+    EXPECT_TRUE(absl::StrContains(
+        s.error_message(),
         "Expected non-negative start and positive length but got "
-        "start = -1, length = 3: string = -:-1,3",
-        s.ToString());
+        "start = -1, length = 3: string = -:-1,3"));
   }
 
   // int64 parsing
@@ -115,11 +116,12 @@ TEST(TensorSliceTest, Serialization) {
     TensorSlice slice;
     Status s =
         TensorSlice::Parse("19223372036854775808,19223372036854775808", &slice);
-    EXPECT_EQ(
-        "Invalid argument: Expected a pair of numbers or '-' but got "
+    EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+    EXPECT_TRUE(absl::StrContains(
+        s.error_message(),
+        "Expected a pair of numbers or '-' but got "
         "'19223372036854775808,19223372036854775808': string = "
-        "19223372036854775808,19223372036854775808",
-        s.ToString());
+        "19223372036854775808,19223372036854775808"));
   }
 }
 
@@ -194,11 +196,11 @@ TEST(TensorSliceTest, SliceTensorShape) {
     TensorSlice a = TensorSlice::ParseOrDie("1,1:1,4:-:-");
     TensorShape x({2, 4, 5, 8});
     TensorShape y;
-    EXPECT_EQ(
-        "Internal: "
-        "Extent in dimension 1 out of bounds: "
-        "shape = [2,4,5,8], slice = 1,1:1,4:-:-",
-        a.SliceTensorShape(x, &y).ToString());
+    Status s = a.SliceTensorShape(x, &y);
+    EXPECT_EQ(s.code(), error::INTERNAL);
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "Extent in dimension 1 out of bounds: "
+                                  "shape = [2,4,5,8], slice = 1,1:1,4:-:-"));
     EXPECT_EQ("[]", y.DebugString());
   }
 }
@@ -230,12 +232,12 @@ TEST(TensorSliceTest, ExtentLength) {
   // versions of gcc that breaks when you use raw string literals
   // inside macro expansions.
   //   See: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=55971
-  const char* ptxt = R"PROTO(
-    extent { }
+  const char* ptxt = R"pb(
+    extent {}
     extent { start: 0 length: 10 }
     extent { start: 14 length: 1 }
-    extent { }
-  )PROTO";
+    extent {}
+  )pb";
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(ptxt, &proto));
   EXPECT_FALSE(TensorSlice::HasExtentLength(proto.extent(0)));
   EXPECT_TRUE(TensorSlice::HasExtentLength(proto.extent(1)));

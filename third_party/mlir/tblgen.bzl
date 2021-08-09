@@ -147,17 +147,13 @@ def _gentbl_rule_impl(ctx):
         ctx.attr.deps,
     )
 
-    # Note that we have two types of includes here. The deprecated ones expanded
-    # only by "_prefix_roots" are already relative to the execution root, i.e.
-    # may contain an `external/<workspace_name>` prefix if the current workspace
-    # is not the main workspace (where workspace_name is something configured
-    # per-project and therefore generally not known). Note that dirname also
-    # already includes this prefix. The new style of includes have it prepended
-    # automatically by `_resolve_includes` to avoid BUILD files having to depend
-    # on project specific configurations and Bazel implementation details.
+    # Note that the td_file.dirname is already relative to the execution root,
+    # i.e. may contain an `external/<workspace_name>` prefix if the current
+    # workspace is not the main workspace. Therefore it is not included in the
+    # _resolve_includes call that prepends this prefix.
     trans_includes = _get_transitive_includes(
         _resolve_includes(ctx, ctx.attr.includes + ["/"]) +
-        _prefix_roots(ctx, ctx.attr.td_includes + [td_file.dirname]),
+        _prefix_roots(ctx, [td_file.dirname]),
         ctx.attr.deps,
     )
 
@@ -223,13 +219,6 @@ gentbl_rule = rule(
                   " directories). The execution roots themselves and the " +
                   " directory of td_file are always added.",
         ),
-        "td_includes": attr.string_list(
-            doc = "Include paths to add to the TableGen invocation. Paths are" +
-                  " interpreted as relative to the current label's workspace" +
-                  " root and applied from all roots available in the" +
-                  " execution environment (source, genfiles, and bin" +
-                  " directories). Deprecated. Use `includes` instead.",
-        ),
     },
 )
 
@@ -237,17 +226,13 @@ gentbl_rule = rule(
 def _gentbl_test_impl(ctx):
     td_file = ctx.file.td_file
 
-    # Note that we have two types of includes here. The deprecated ones expanded
-    # only by "_prefix_roots" are already relative to the execution root, i.e.
-    # may contain an `external/<workspace_name>` prefix if the current workspace
-    # is not the main workspace (where workspace_name is something configured
-    # per-project and therefore generally not known). Note that dirname also
-    # already includes this prefix. The new style of includes have it prepended
-    # automatically by `_resolve_includes` to avoid BUILD files having to depend
-    # on project specific configurations and Bazel implementation details.
+    # Note that the td_file.dirname is already relative to the execution root,
+    # i.e. may contain an `external/<workspace_name>` prefix if the current
+    # workspace is not the main workspace. Therefore it is not included in the
+    # _resolve_includes call that prepends this prefix.
     trans_includes = _get_transitive_includes(
         _resolve_includes(ctx, ctx.attr.includes + ["/"]) +
-        _prefix_roots(ctx, ctx.attr.td_includes + [td_file.dirname]),
+        _prefix_roots(ctx, [td_file.dirname]),
         ctx.attr.deps,
     )
 
@@ -312,7 +297,6 @@ gentbl_test = rule(
         "deps": attr.label_list(doc = "See gentbl_rule.deps"),
         "opts": attr.string_list(doc = "See gentbl_rule.opts"),
         "includes": attr.string_list(doc = "See gentbl_rule.includes"),
-        "td_includes": attr.string_list(doc = "See gentbl_rule.td_includes"),
     },
 )
 
@@ -322,7 +306,6 @@ def gentbl_filegroup(
         td_file,
         tbl_outs,
         td_srcs = [],
-        td_includes = [],
         includes = [],
         deps = [],
         test = False,
@@ -341,21 +324,12 @@ def gentbl_filegroup(
         corresponding output file produced.
       td_srcs: See gentbl_rule.td_srcs
       includes: See gentbl_rule.includes
-      td_includes: See gentbl_rule.td_includes
       deps: See gentbl_rule.deps
       test: Whether to create a shell test that invokes the tool too.
       skip_opts: Files generated using these opts in tbl_outs will be excluded
         from the generated filegroup.
       **kwargs: Extra keyword arguments to pass to all generated rules.
     """
-
-    llvm_project_execroot_path = Label("@llvm-project//mlir:tblgen.bzl").workspace_root
-
-    # TODO(gcmn): Update callers to td_library and explicit includes and drop
-    # this hardcoded include.
-    hardcoded_includes = [
-        paths.join(llvm_project_execroot_path, "mlir/include"),
-    ]
 
     for (opts, out) in tbl_outs:
         first_opt = opts[0] if opts else ""
@@ -372,7 +346,6 @@ def gentbl_filegroup(
             td_srcs = td_srcs,
             deps = deps,
             includes = includes,
-            td_includes = td_includes + hardcoded_includes,
             out = out,
             **kwargs
         )
@@ -389,7 +362,6 @@ def gentbl_filegroup(
                 td_srcs = td_srcs,
                 deps = deps,
                 includes = includes,
-                td_includes = td_includes + hardcoded_includes,
                 # Shell files not executable on Windows.
                 # TODO(gcmn): Support windows.
                 tags = ["no_windows"],
@@ -409,7 +381,6 @@ def gentbl_cc_library(
         td_file,
         tbl_outs,
         td_srcs = [],
-        td_includes = [],
         includes = [],
         deps = [],
         strip_include_prefix = None,
@@ -428,7 +399,6 @@ def gentbl_cc_library(
         corresponding output file produced.
       td_srcs: See gentbl_rule.td_srcs
       includes: See gentbl_rule.includes
-      td_includes: See gentbl_rule.td_includes
       deps: See gentbl_rule.deps
       strip_include_prefix: attribute to pass through to cc_library.
       test: whether to create a shell test that invokes the tool too.
@@ -442,7 +412,6 @@ def gentbl_cc_library(
         td_file = td_file,
         tbl_outs = tbl_outs,
         td_srcs = td_srcs,
-        td_includes = td_includes,
         includes = includes,
         deps = deps,
         test = test,

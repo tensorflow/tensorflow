@@ -541,7 +541,6 @@ func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> 
 // CHECK:  ROOT
 // CHECK-SAME:  f32[1,2,3] custom-call(f32[2,3] [[VAL_1]], f32[5,5] [[VAL_2]])
 // CHECK-SAME:  custom_call_target="foo"
-// CHECK-SAME:  api_version=API_VERSION_UNSPECIFIED
 // CHECK-SAME:  backend_config="bar"
 
 // -----
@@ -1206,7 +1205,6 @@ func @main(%arg0: tensor<16x16xf32>) -> tensor<16x16xf32> {
 // CHECK:  %[[ARG0:.*]] = f32[16,16] parameter(0)
 // CHECK:  ROOT %[[RESULT:.*]] = f32[16,16] custom-call(f32[16,16] %[[ARG0]])
 // CHECK-SAME: custom_call_target="Sharding"
-// CHECK-SAME: api_version=API_VERSION_UNSPECIFIED
 // CHECK-SAME: sharding={devices=[1,2]0,1}
 
 // -----

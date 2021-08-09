@@ -164,15 +164,15 @@ class KernelMappingScheme {
   const bool is_row_contiguous_;
 };
 
-// Information to support the code generation for a tiled reduction kernel.
-using AddressVector = absl::InlinedVector<llvm::AllocaInst*, 1>;
 class ReductionCodegenInfo {
  public:
   explicit ReductionCodegenInfo(KernelMappingScheme mapping_scheme,
-                                int num_partial_results, bool is_row_reduction)
+                                int num_partial_results, bool is_row_reduction,
+                                bool is_race_free)
       : mapping_scheme_(mapping_scheme),
         num_partial_results_(num_partial_results),
-        is_row_reduction_(is_row_reduction) {
+        is_row_reduction_(is_row_reduction),
+        is_race_free_(is_race_free) {
     if (num_partial_results > 1) {
       CHECK_EQ(num_partial_results, (mapping_scheme.GetTileSizeX() /
                                      mapping_scheme.GetNumThreadsX()));
@@ -181,6 +181,30 @@ class ReductionCodegenInfo {
 
   const KernelMappingScheme& GetKernelMappingScheme() const {
     return mapping_scheme_;
+  }
+
+  bool IsRaceFree() const { return is_race_free_; }
+
+ private:
+  friend class ReductionCodegenState;
+
+  const KernelMappingScheme mapping_scheme_;
+  int num_partial_results_;
+  bool is_row_reduction_;
+  bool is_race_free_;
+};
+
+// Information to support the code generation for a tiled reduction kernel.
+using AddressVector = absl::InlinedVector<llvm::AllocaInst*, 1>;
+
+class ReductionCodegenState {
+ public:
+  explicit ReductionCodegenState(
+      const ReductionCodegenInfo& reduction_codegen_info)
+      : reduction_codegen_info_(reduction_codegen_info) {}
+
+  const KernelMappingScheme& GetKernelMappingScheme() const {
+    return reduction_codegen_info_.mapping_scheme_;
   }
 
   // Gets writeable pointer to the address (or addresses) used to store
@@ -213,8 +237,15 @@ class ReductionCodegenInfo {
     return reduction_input_addresses_;
   }
 
-  int GetNumPartialResults() const { return num_partial_results_; }
-  bool IsRowReduction() const { return is_row_reduction_; }
+  int GetNumPartialResults() const {
+    return reduction_codegen_info_.num_partial_results_;
+  }
+
+  bool IsRowReduction() const {
+    return reduction_codegen_info_.is_row_reduction_;
+  }
+
+  bool IsRaceFree() const { return reduction_codegen_info_.IsRaceFree(); }
 
   // Gets a pointer to a mutable shared cache used by reduction.
   std::vector<llvm::GlobalVariable*>* GetMutableSharedCache() {
@@ -227,13 +258,11 @@ class ReductionCodegenInfo {
   }
 
  private:
+  ReductionCodegenInfo reduction_codegen_info_;
   std::vector<llvm::GlobalVariable*> shared_cache_;
   std::vector<llvm::Value*> initial_values_;
-  const KernelMappingScheme mapping_scheme_;
   AddressVector partial_result_addresses_;
   AddressVector reduction_input_addresses_;
-  int num_partial_results_;
-  bool is_row_reduction_;
 };
 
 }  // end namespace gpu

@@ -447,6 +447,7 @@ py_strict_library(
     deps = [
         ":function_deserialization",
         ":loader",
+        ":pywrap_saved_model",
         ":signature_serialization",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:composite_tensor",
@@ -461,7 +462,6 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:lift_to_graph",
         "//tensorflow/python/eager:wrap_function",
-        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/training:monitored_session",
         "//tensorflow/python/training/tracking",
     ],
@@ -697,7 +697,10 @@ tf_python_pybind_extension(
     ],
     features = ["-layering_check"],
     module_name = "pywrap_saved_model",
-    visibility = ["//tensorflow/python/saved_model:__subpackages__"],
+    visibility = [
+        "//tensorflow/python/saved_model:__subpackages__",
+        "//tensorflow/python/training:__subpackages__",
+    ],
     deps = [
         ":pywrap_saved_model_headers",
         "//tensorflow/cc/experimental/libexport:save",
