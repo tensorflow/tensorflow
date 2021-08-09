@@ -380,11 +380,15 @@ tensorflow::grappler::AnalyticalCostEstimator::PredictCosts
 tensorflow::grappler::CostAnalyzer::CostAnalyzer
 tensorflow::grappler::CostAnalyzer::GenerateReport
 
-[//tensorflow/cc/saved_model:metrics_impl] # SavedModel metrics
+[//tensorflow/cc/saved_model:metrics_impl] # SavedModel and Checkpoint metrics
 tensorflow::metrics::SavedModelWrite
 tensorflow::metrics::SavedModelRead
 tensorflow::metrics::SavedModelWriteApi
 tensorflow::metrics::SavedModelReadApi
+tensorflow::metrics::CheckpointReadDuration
+tensorflow::metrics::CheckpointWriteDuration
+tensorflow::metrics::TrainingTimeSaved
+
 
 [//tensorflow/compiler/jit:flags] # tfe
 tensorflow::IsXlaEnabled
