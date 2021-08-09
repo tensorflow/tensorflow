@@ -46,6 +46,11 @@ Status ReadFloatFromEnvVar(StringPiece env_var_name, float default_val,
 Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
                             std::string* value);
 
+// Returns a comma separated string into "value" from the environmental variable
+// "env_var_name". If it is unset, the default value is comma split and used.
+Status ReadStringsFromEnvVar(StringPiece env_var_name, StringPiece default_val,
+                             std::vector<std::string>* value);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_ENV_VAR_H_
