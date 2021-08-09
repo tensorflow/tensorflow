@@ -1121,7 +1121,11 @@ class ConvertBiasAddOp : public OpRewritePattern<TF::BiasAddOp> {
         data_format, op.value().getType().cast<RankedTensorType>());
     auto bias_broadcast = Broadcast1DToFeatureDim(loc, op.value(), op.bias(),
                                                   feature_dim, rewriter);
-    rewriter.replaceOpWithNewOp<AddOp>(op, op.value(), bias_broadcast);
+    Value add = rewriter.create<AddOp>(loc, op.value(), bias_broadcast);
+    if (add.getType() != op.getType()) {
+      add = rewriter.create<tensor::CastOp>(loc, op.getType(), add);
+    }
+    rewriter.replaceOp(op, {add});
     return success();
   }
 };
