@@ -335,7 +335,7 @@ must be enabled by adding extra Bazel flags when building TensorFlow Lite.
 operators using signed quantization schema. This schema is used by models
 produced by [Model Optimization Toolkit](https://www.tensorflow.org/model_optimization)
 through either post-training integer quantization or quantization-aware
-training. Post-training dynamic range quantization is not supported in XNNPACK.
+training.
 
 * `--define xnn_enable_qu8=true` flag enables XNNPACK inference for quantized
 operators using unsigned quantization schema, produced via the legacy TensorFlow
@@ -384,6 +384,12 @@ Below is the list of currently supported quantized operators:
 * Inputs and outputs must be in 8-bit quantized format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+XNNPACK supports post-training dynamic range quantization: quantized weights
+are being unpacked, and then inference is performed with floating-point
+precision. By default, this feature is disabled. It can be enabled by adding
+`--copt=-DENABLE_TFLITE_XNNPACK_DEQUANTIZED_INT8_WEIGHTS` extra Bazel flag
+when building TensorFlow Lite.
 
 ### Sparse Inference
 
