@@ -235,19 +235,25 @@ func @jit_execute(%ctx: !tf_framework.op_kernel_context,
     %callable : !tf_framework.jit_callable, %arg : memref<*xf32>)
     -> memref<*xf32> {
   // CHECK: %[[T0:.*]] = llvm.mlir.undef
-  // CHECK: %[[T1:.*]] = llvm.insertvalue %arg2, %[[T0]][0]
-  // CHECK: %[[ARG:.*]] = llvm.insertvalue %arg3, %[[T1]][1]
-  // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : index)
+  // CHECK: %[[T1:.*]] = llvm.insertvalue %[[RANK]], %[[T0]][0]
+  // CHECK: %[[ARG:.*]] = llvm.insertvalue %[[ARG_DESCR]], %[[T1]][1]
+  // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : i64)
   // CHECK: %[[RESULT_PTR:.*]] = llvm.alloca %[[C1]] x !llvm.struct<(i64, ptr<i8>)>
   // CHECK: %[[RESULT_PTR_:.*]] = llvm.bitcast %[[RESULT_PTR]]
-  // CHECK: %[[RANK:.*]] = llvm.extractvalue %[[ARG]][0]
-  // CHECK: %[[ARG_DESCR:.*]] = llvm.extractvalue %[[ARG]][1]
-  // CHECK: llvm.call @_mlir_ciface_tf_jit_execute(%[[CTX]], %[[CALLABLE]], %[[RESULT_PTR_]], %[[RANK]], %[[ARG_DESCR]])
+
+  // Copy argument(s) to stack-allocated buffer.
+  // CHECK: %[[NUM_ARGS:.*]] = llvm.mlir.constant(1 : i64)
+  // CHECK: %[[ARGS_PTR:.*]] = llvm.alloca %[[NUM_ARGS]] x !llvm.struct<(i64, ptr<i8>)>
+  // CHECK: %[[C0:.*]] = llvm.mlir.constant(0 : i64)
+  // CHECK: %[[ARGS0_PTR:.*]] = llvm.getelementptr %[[ARGS_PTR]][%[[C0]]]
+  // CHECK: llvm.store %[[ARG]], %[[ARGS0_PTR]]
+  // CHECK: %[[ARGS_PTR_:.*]] = llvm.bitcast %[[ARGS_PTR]]
+  // CHECK: llvm.call @_mlir_ciface_tf_jit_execute(%[[CTX]], %[[CALLABLE]], %[[RESULT_PTR_]], %[[NUM_ARGS]], %[[ARGS_PTR_]])
   // CHECK: %[[RESULT:.*]] = llvm.load %[[RESULT_PTR]]
 
   // Copy unranked memref descriptor to stack-allocated memory.
   // ...
-  // CHECK: %[[RESULT_DESCR_SIZE:.*]] = llvm.add %13, %17
+  // CHECK: %[[RESULT_DESCR_SIZE:.*]] = llvm.add %16, %20
   // CHECK: %[[FALSE:.*]] = llvm.mlir.constant(false)
   // CHECK: %[[STACK_RESULT_DESCR:.*]] = llvm.alloca %[[RESULT_DESCR_SIZE]] x i8
   // CHECK: %[[RESULT_DESCR:.*]] = llvm.extractvalue %[[RESULT]][1]
@@ -260,7 +266,7 @@ func @jit_execute(%ctx: !tf_framework.op_kernel_context,
 
   // Copy unranked memref descriptor to heap-allocated memory for return.
   // ...
-  // CHECK: %[[RESULT_DESCR_SIZE:.*]] = llvm.add %30, %34
+  // CHECK: %[[RESULT_DESCR_SIZE:.*]] = llvm.add %33, %37
   // CHECK: %[[FALSE:.*]] = llvm.mlir.constant(false)
   // CHECK: %[[HEAP_RESUKT_DESCR:.*]] = llvm.call @malloc(%[[RESULT_DESCR_SIZE]])
   // CHECK: %[[STACK_RESULT_DESCR:.*]] = llvm.extractvalue %[[RESULT]][1]

@@ -40,8 +40,8 @@ extern "C" MLIR_RUNNERUTILS_EXPORT void* _mlir_ciface_tf_jit_compile(
     int64_t max_supported_rank, bool enable_ftz, bool cpu_codegen);
 
 extern "C" MLIR_RUNNERUTILS_EXPORT void _mlir_ciface_tf_jit_execute(
-    void* op_kernel_ctx, void* callable, void* result, int64_t arg_rank,
-    void* arg_descr);
+    void* op_kernel_ctx, void* callable, void* result, int64_t num_args,
+    void* args_ptr);
 
 }  // namespace tf_framework
 }  // namespace kernel_gen

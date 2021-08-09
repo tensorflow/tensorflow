@@ -220,12 +220,23 @@ extern "C" void* _mlir_ciface_tf_jit_compile(
 }
 
 extern "C" void _mlir_ciface_tf_jit_execute(void* op_kernel_ctx, void* callable,
-                                            void* result, int64_t arg_rank,
-                                            void* arg_descr) {
-  ::UnrankedMemRefType<void> arg = {arg_rank, arg_descr};
+                                            void* result, int64_t num_args,
+                                            void* args_ptr) {
+  // The ExecutionEngine expects pointers for each of the arguments. In most
+  // cases, we can simply create these on the fly. However, as the buffer
+  // arguments are an array of pointers themselves, we must first initialize all
+  // of the first-level pointers individually to then be able to point to them.
+  llvm::SmallVector<void*> packed_operands = {&result, &op_kernel_ctx};
+  llvm::SmallVector<::UnrankedMemRefType<void>*> individual_arg_ptrs;
+  auto* typed_args_ptr = static_cast<::UnrankedMemRefType<void>*>(args_ptr);
+  for (int i = 0; i < num_args; ++i) {
+    individual_arg_ptrs.push_back(&typed_args_ptr[i]);
+    packed_operands.push_back(&individual_arg_ptrs[i]);
+  }
+
   llvm::Error invocation_result =
-      static_cast<ExecutionEngine*>(callable)->invoke("main", result,
-                                                      op_kernel_ctx, &arg);
+      static_cast<ExecutionEngine*>(callable)->invokePacked("_mlir_ciface_main",
+                                                            packed_operands);
   if (invocation_result)
     ReportError(op_kernel_ctx, ErrorCode::UNKNOWN, "JIT invocation failed.");
 }

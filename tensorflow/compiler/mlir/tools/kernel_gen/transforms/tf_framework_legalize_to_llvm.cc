@@ -354,7 +354,8 @@ class JITCompileFromStrOpConverter
     Type i64_ptr_ty = LLVM::LLVMPointerType::get(i64_ty);
     auto i1_ty = IntegerType::get(getContext(), 1);
     return LLVM::LLVMFunctionType::get(
-        getVoidPtrType(), {getVoidPtrType(), /*char* code*/ i8_ptr_ty,
+        getVoidPtrType(), {/*void* op_kernel_ctx*/ getVoidPtrType(),
+                           /*char* code*/ i8_ptr_ty,
                            /*int64_t num_architectures*/ i64_ty,
                            /*int64_t* architectures_ptr*/ i8_ptr_ptr_ty,
                            /*int64_t num_tile_sizes*/ i64_ty,
@@ -374,38 +375,50 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
   LogicalResult matchAndRewrite(
       JITExecuteOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    // Currently, only unary ops are supported.
-    // The TF context must be known for a succesful lowering.
-    // TODO(frgossen): Generalize this runtime interface to n-ary kernels.
+    // The TF context must be known for a succesful lowering. Also, we support
+    // only one result.
     JITExecuteOp::Adaptor transformed(operands, op->getAttrDictionary());
-    if (transformed.ctx() == nullptr || op.operands().size() != 1 ||
-        op.getNumResults() != 1) {
+    if (transformed.ctx() == nullptr || op.operands().empty() ||
+        op.getNumResults() != 1)
       return failure();
-    }
 
     // Allocate result on stack.
     auto loc = op.getLoc();
     Type result_ty =
         getTypeConverter()->convertType(op->getResultTypes().front());
     Type result_ptr_ty = LLVM::LLVMPointerType::get(result_ty);
-    Value c1 = rewriter.create<LLVM::ConstantOp>(
-        loc, rewriter.getI64Type(),
-        rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
+    Type i64_ty = rewriter.getI64Type();
+    Value one = rewriter.create<LLVM::ConstantOp>(
+        loc, i64_ty, rewriter.getI64IntegerAttr(1));
     auto result_ptr =
-        rewriter.create<LLVM::AllocaOp>(loc, result_ptr_ty, c1, llvm::None);
+        rewriter.create<LLVM::AllocaOp>(loc, result_ptr_ty, one, llvm::None);
+    Type void_ptr_ty = getVoidPtrType();
     auto result_void_ptr =
-        rewriter.create<LLVM::BitcastOp>(loc, getVoidPtrType(), result_ptr);
+        rewriter.create<LLVM::BitcastOp>(loc, void_ptr_ty, result_ptr);
 
-    // Find all the operands and unpack the one argument.
-    SmallVector<Value, 8> forward_operands = {
-        transformed.ctx(), transformed.callable(), result_void_ptr};
-    UnrankedMemRefDescriptor::unpack(
-        rewriter, loc, transformed.operands().front(), forward_operands);
+    // Pass the buffer arguments as a stack-allocated array.
+    Type arg_ptr_ty =
+        LLVM::LLVMPointerType::get(transformed.operands().front().getType());
+    Value num_args = rewriter.create<LLVM::ConstantOp>(
+        loc, i64_ty, rewriter.getI64IntegerAttr(transformed.operands().size()));
+    Value args_ptr = rewriter.create<LLVM::AllocaOp>(loc, arg_ptr_ty, num_args,
+                                                     /*alignment=*/0);
+    for (auto it : llvm::enumerate(transformed.operands())) {
+      Value index = rewriter.create<LLVM::ConstantOp>(
+          loc, i64_ty, rewriter.getI64IntegerAttr(it.index()));
+      Value element_ptr =
+          rewriter.create<LLVM::GEPOp>(loc, arg_ptr_ty, args_ptr, index);
+      rewriter.create<LLVM::StoreOp>(loc, it.value(), element_ptr);
+    }
+    auto args_void_ptr =
+        rewriter.create<LLVM::BitcastOp>(loc, void_ptr_ty, args_ptr);
 
-    // Materialize call.
+    // Materialize runtime call.
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
-    rewriter.create<LLVM::CallOp>(loc, llvm::None, tf_func_ref,
-                                  forward_operands);
+    rewriter.create<LLVM::CallOp>(
+        loc, llvm::None, tf_func_ref,
+        ValueRange{transformed.ctx(), transformed.callable(), result_void_ptr,
+                   num_args, args_void_ptr});
 
     // Copy result (including the descriptor) to a stack-allocated buffer and
     // free the old descriptor.
@@ -426,9 +439,13 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
 
   Type GetFuncType() const override {
     auto i64_ty = IntegerType::get(getContext(), 64);
-    return LLVM::LLVMFunctionType::get(
-        getVoidType(), {getVoidPtrType(), getVoidPtrType(), getVoidPtrType(),
-                        i64_ty, getVoidPtrType()});
+    auto void_ptr_ty = getVoidPtrType();
+    return LLVM::LLVMFunctionType::get(getVoidType(),
+                                       {/*void* op_kernel_ctx*/ void_ptr_ty,
+                                        /*void* callable*/ void_ptr_ty,
+                                        /*void* result*/ void_ptr_ty,
+                                        /*int64_t num_args*/ i64_ty,
+                                        /*void* args_ptr*/ void_ptr_ty});
   }
 };
 
