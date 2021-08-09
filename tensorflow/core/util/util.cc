@@ -102,7 +102,7 @@ string PrintMemory(const char* ptr, size_t n) {
   return ret;
 }
 
-string SliceDebugString(const TensorShape& shape, const int64 flat) {
+string SliceDebugString(const TensorShape& shape, const int64_t flat) {
   // Special case rank 0 and 1
   const int dims = shape.dims();
   if (dims == 0) return "";

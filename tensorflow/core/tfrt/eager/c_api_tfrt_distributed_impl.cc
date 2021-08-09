@@ -93,10 +93,15 @@ class DistributedManagerContextImpl
   tensorflow::Status EnableCollectiveOps(
       const tensorflow::ServerDef& server_def) override;
 
+  tensorflow::Status EnableCoordinationService(
+      const std::string& service_type, const tensorflow::WorkerEnv* worker_env,
+      const tensorflow::ServerDef& server_def,
+      tensorflow::WorkerCacheInterface* worker_cache) override;
+
   tensorflow::Status CheckRemoteAlive(const std::string& remote_task_name,
                                       bool* is_alive) override;
 
-  tensorflow::CoordinationServiceInterface* GetCoordinationService() override;
+  tensorflow::CoordinationServiceAgent* GetCoordinationServiceAgent() override;
 
   void UpdateRequestContextBuilder(RequestContextBuilder* builder) override;
   void PopulateRemoteDevices(tensorflow::DeviceSet* dev_set) override;
@@ -182,14 +187,22 @@ tensorflow::Status DistributedManagerContextImpl::EnableCollectiveOps(
       "EnableCollectiveOps in open source is not yet implemented.");
 }
 
+tensorflow::Status DistributedManagerContextImpl::EnableCoordinationService(
+    const std::string& service_type, const tensorflow::WorkerEnv* worker_env,
+    const tensorflow::ServerDef& server_def,
+    tensorflow::WorkerCacheInterface* worker_cache) {
+  return tensorflow::errors::Unimplemented(
+      "EnableCoordinationService in TFRT is not yet implemented.");
+}
+
 tensorflow::Status DistributedManagerContextImpl::CheckRemoteAlive(
     const std::string& remote_task_name, bool* is_alive) {
   return tensorflow::errors::Unimplemented(
       "CheckRemoteAlive in TFRT is not yet implemented.");
 }
 
-tensorflow::CoordinationServiceInterface*
-DistributedManagerContextImpl::GetCoordinationService() {
+tensorflow::CoordinationServiceAgent*
+DistributedManagerContextImpl::GetCoordinationServiceAgent() {
   TFRT_LOG(FATAL) << "Coordination service in TFRT is not yet enabled.";
   return nullptr;
 }

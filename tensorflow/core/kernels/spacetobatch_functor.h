@@ -51,10 +51,10 @@ namespace spacetobatch {
 
 template <typename InputType, typename OutputType>
 void SubtleMustCopyFlatHelper(const Tensor& t, OutputType* output) {
-  const int64 num_elements = t.shape().num_elements();
+  const int64_t num_elements = t.shape().num_elements();
   output->resize(num_elements);
   auto eigen_vec = t.flat<InputType>();
-  for (int64 i = 0; i < num_elements; ++i) {
+  for (int64_t i = 0; i < num_elements; ++i) {
     (*output)[i] = SubtleMustCopy(eigen_vec(i));
   }
 }

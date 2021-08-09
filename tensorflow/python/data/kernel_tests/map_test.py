@@ -28,9 +28,11 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
@@ -1289,8 +1291,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
           map_function,
           num_parallel_calls=2,
           deterministic=local_determinism)
-      opts = dataset_ops.Options()
-      opts.experimental_deterministic = global_determinism
+      opts = options_lib.Options()
+      opts.deterministic = global_determinism
       dataset = dataset.with_options(opts)
       return dataset
 
@@ -1311,6 +1313,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeBuffer(self):
+    if pywrap_sanitizers.is_tsan_enabled():
+      self.skipTest("Creating a large buffer causes OOM when using tsan.")
     # Tensor of size 512M
     dataset = dataset_ops.Dataset.from_tensors(
         array_ops.ones((128, 1024, 1024), dtype=dtypes.float32))

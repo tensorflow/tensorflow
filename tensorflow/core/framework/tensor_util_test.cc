@@ -215,10 +215,10 @@ TEST(TensorUtil, DeepCopySliceVariant) {
 TEST(TensorUtil, Concat) {
   std::vector<int64> sizes = {1, 4, 5};
   std::vector<Tensor> to_concat;
-  int64 total_size = 0;
+  int64_t total_size = 0;
   int offset = 0;
   for (size_t entry = 0; entry < sizes.size(); ++entry) {
-    const int64 size = sizes[entry];
+    const int64_t size = sizes[entry];
     Tensor tensor(DT_INT32, TensorShape({size, 2}));
     for (int i = offset; i < offset + size; ++i) {
       for (int j = 0; j < 2; ++j) {
@@ -255,7 +255,7 @@ TEST(TensorUtil, Split) {
 
   int offset = 0;
   for (size_t entry = 0; entry < splits.size(); ++entry) {
-    const int64 size = sizes[entry];
+    const int64_t size = sizes[entry];
     const Tensor& split = splits[entry];
 
     ASSERT_EQ(TensorShape({size, 2}), split.shape());
@@ -549,21 +549,21 @@ void CompareTensorValues(const TensorProto& x, const TensorProto& y) {
 }
 
 template <typename T>
-void ConstantTailTest(int64 length, int64 tail_length, bool as_field) {
+void ConstantTailTest(int64_t length, int64_t tail_length, bool as_field) {
   using TensorProtoHelper = tensor::internal::TensorProtoHelper<T>;
   using FieldType = typename TensorProtoHelper::FieldType;
   const float kMinCompressionRatio = 2.0;
-  const int64 kMinSize = 64;
+  const int64_t kMinSize = 64;
   TensorProto tensor_proto =
       as_field ? CreateAsProtoField<T>(length, tail_length)
                : CreateAsProtoTensorContent<T>(length, tail_length);
   TensorProto original_tensor_proto = tensor_proto;
-  int64 original_size =
+  int64_t original_size =
       length * (as_field ? (is_complex<T>::value ? 2 : 1) * sizeof(FieldType)
                          : sizeof(T));
-  int64 size_as_tensor_content = length * sizeof(T);
-  int64 size_as_field = std::min(length, (length - tail_length + 1)) *
-                        (is_complex<T>::value ? 2 : 1) * sizeof(FieldType);
+  int64_t size_as_tensor_content = length * sizeof(T);
+  int64_t size_as_field = std::min(length, (length - tail_length + 1)) *
+                          (is_complex<T>::value ? 2 : 1) * sizeof(FieldType);
   bool will_compress = std::min(size_as_tensor_content, size_as_field) <=
                        static_cast<int64>(original_size / kMinCompressionRatio);
 

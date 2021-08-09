@@ -106,8 +106,7 @@ namespace functor {
       typename TTypes<T>::Tensor backprops);                         \
   extern template struct SoftplusGrad<GPUDevice, T>;
 
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_SOFTPLUS_GPU_SPEC);
 #endif
 

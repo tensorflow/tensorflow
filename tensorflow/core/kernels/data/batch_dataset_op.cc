@@ -47,7 +47,7 @@ constexpr char kBatchDataset[] = "BatchDataset";
 
 class BatchDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 batch_size, bool drop_remainder,
+  Dataset(OpKernelContext* ctx, int64_t batch_size, bool drop_remainder,
           bool parallel_copy, const DatasetBase* input, int op_version)
       : DatasetBase(DatasetContext(ctx)),
         batch_size_(batch_size),
@@ -110,7 +110,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+    int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -263,7 +263,7 @@ BatchDatasetOp::BatchDatasetOp(OpKernelConstruction* ctx)
 
 void BatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                  DatasetBase** output) {
-  int64 batch_size = 0;
+  int64_t batch_size = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kBatchSize, &batch_size));
   OP_REQUIRES(ctx, batch_size > 0,
               errors::InvalidArgument("Batch size must be greater than zero."));

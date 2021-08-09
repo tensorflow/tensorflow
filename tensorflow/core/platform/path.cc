@@ -270,7 +270,7 @@ string CreateURI(StringPiece scheme, StringPiece host, StringPiece path) {
 // Returns a unique number every time it is called.
 int64 UniqueId() {
   static mutex mu(LINKER_INITIALIZED);
-  static int64 id = 0;
+  static int64_t id = 0;
   mutex_lock l(mu);
   return ++id;
 }

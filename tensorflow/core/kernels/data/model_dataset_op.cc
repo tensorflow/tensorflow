@@ -48,14 +48,14 @@ constexpr double kRamBudgetShare = 0.5;
 class ModelDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
-          model::AutotuneAlgorithm algorithm, int64 cpu_budget,
-          int64 ram_budget)
+          model::AutotuneAlgorithm algorithm, int64_t cpu_budget,
+          int64_t ram_budget)
       : Dataset(DatasetContext(ctx), input, algorithm, cpu_budget, ram_budget) {
   }
 
   Dataset(DatasetContext&& ctx, const DatasetBase* input,
-          model::AutotuneAlgorithm algorithm, int64 cpu_budget,
-          int64 ram_budget)
+          model::AutotuneAlgorithm algorithm, int64_t cpu_budget,
+          int64_t ram_budget)
       : DatasetBase(std::move(ctx)),
         input_(input),
         algorithm_(algorithm),
@@ -234,7 +234,7 @@ void ModelDatasetOp::MakeDatasetFromOptions(OpKernelContext* ctx,
 ModelDatasetOp::ModelDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
   if (ctx->HasAttr(kAlgorithm)) {
-    int64 algorithm;
+    int64_t algorithm;
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kAlgorithm, &algorithm));
     algorithm_ = model::AutotuneAlgorithm(algorithm);
   } else {

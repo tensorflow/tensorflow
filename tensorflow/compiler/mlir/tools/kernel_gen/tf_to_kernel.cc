@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
           "enable the denormal flush to zero mode when generating code."),
       llvm::cl::init(false));
   llvm::cl::opt<bool> jit_compile(
-      "jit-compile", llvm::cl::desc("Generate only a JIT compiler invocation."),
+      "jit", llvm::cl::desc("Generate only a JIT compiler invocation."),
       llvm::cl::init(false));
   llvm::cl::list<std::string> architectures(
       "arch", llvm::cl::desc("target architectures (e.g. sm_70 or compute_75)"),

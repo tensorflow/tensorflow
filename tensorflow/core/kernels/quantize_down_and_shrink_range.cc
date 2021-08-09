@@ -51,9 +51,9 @@ class QuantizeDownAndShrinkRangeOp : public OpKernel {
 
     // See QuantizationRangeOp as well, which has a copy of this logic.
     auto input_array = input.flat<T1>();
-    const int32 input_lowest_quantized =
+    const int32_t input_lowest_quantized =
         static_cast<int32>(Eigen::NumTraits<T1>::lowest());
-    const int32 input_highest_quantized =
+    const int32_t input_highest_quantized =
         static_cast<int32>(Eigen::NumTraits<T1>::highest());
     T1 actual_min_quantized = input_highest_quantized;
     T1 actual_max_quantized = input_lowest_quantized;

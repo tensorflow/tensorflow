@@ -22,9 +22,9 @@ namespace data {
 
 class TakeDataset : public DatasetBase {
  public:
-  TakeDataset(OpKernelContext* ctx, int64 count, const DatasetBase* input);
+  TakeDataset(OpKernelContext* ctx, int64_t count, const DatasetBase* input);
 
-  TakeDataset(DatasetContext::Params params, int64 count,
+  TakeDataset(DatasetContext::Params params, int64_t count,
               const DatasetBase* input);
 
   ~TakeDataset() override;

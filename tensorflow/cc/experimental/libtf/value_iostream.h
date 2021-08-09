@@ -51,10 +51,7 @@ class TaggedValueIOStreamVisitor {
 
  public:
   explicit TaggedValueIOStreamVisitor(std::ostream& o) : o_(o) {}
-  std::ostream& operator()(const None& x) {
-    o_ << "None";
-    return o_;
-  }
+
   std::ostream& operator()(const ListPtr& x) {
     OutList(o_, x->begin(), x->end(), '[', ']');
     return o_;
@@ -69,10 +66,6 @@ class TaggedValueIOStreamVisitor {
   }
   std::ostream& operator()(const Capsule& x) {
     o_ << "Capsule(" << x.get() << ")";
-    return o_;
-  }
-  std::ostream& operator()(const WeakCapsule& x) {
-    o_ << "WeakCapsule(" << x.lock().get() << ")";
     return o_;
   }
   std::ostream& operator()(const Func& x) {

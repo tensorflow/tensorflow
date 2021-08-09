@@ -6,6 +6,9 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pytype_library")
+
 package(
     default_visibility = [
         "//learning/pathways/data_parallel/jax:__subpackages__",
@@ -14,12 +17,15 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+pytype_library(
     name = "xla_client",
     srcs = ["xla_client.py"],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = [":xla_extension"],
+    deps = [
+        ":xla_extension",
+        "@absl_py//absl/logging",
+    ],
 )
 
 cc_library(
@@ -302,6 +308,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
 )
@@ -372,6 +379,7 @@ cc_library(
         ":types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
@@ -544,6 +552,7 @@ pybind_extension(
         ":xla_compiler",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "//tensorflow/compiler/xla:literal",

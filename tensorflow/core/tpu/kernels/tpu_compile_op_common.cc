@@ -423,7 +423,6 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
 Status TpuCompileOpKernelCommon::RegisterXLAFingerprints(
     const std::vector<TensorShape>& arg_shapes,
     TpuProgramGroupInterface* tpu_program_group, uint64 fingerprint) {
-  LOG(INFO) << "[DEBUG] RegisterFingerprints";
   // TODO(chiachenc): Support only one program for now.
   if (tpu_program_group->program_count() != 1) {
     LOG(INFO) << "Found " << tpu_program_group->program_count()

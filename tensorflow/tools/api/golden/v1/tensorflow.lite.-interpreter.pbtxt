@@ -24,7 +24,7 @@ tf_class {
   }
   member_method {
     name: "get_signature_runner"
-    argspec: "args=[\'self\', \'method_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'signature_key\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "get_tensor"

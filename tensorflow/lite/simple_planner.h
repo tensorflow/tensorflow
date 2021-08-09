@@ -48,11 +48,15 @@ struct SimpleAlloc {
 
   // Allocate heap memory for a tensor with the given size and first_node
   // information.
-  inline void alloc(size_t new_size, int32_t new_first_node) {
+  inline bool alloc(size_t new_size, int32_t new_first_node) {
+    if (new_size == 0) {
+      return false;
+    }
     size = new_size;
     node = new_first_node;
     assert(ptr == nullptr);
     ptr = static_cast<char*>(malloc(new_size));
+    return true;
   }
 
   // Free allocated heap memory and reset member variables.

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -63,7 +64,7 @@ monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
     const string& id);
 
 // Records the number of bytes fetched from tf.data.Dataset iterator.
-void RecordTFDataBytesFetched(int64 num_bytes);
+void RecordTFDataBytesFetched(int64_t num_bytes);
 
 // Records the number of times tf.data experiment is applied to input pipelines.
 void RecordTFDataExperiment(const string& name);
@@ -91,7 +92,7 @@ void RecordTFDataIteratorLifetime(uint64 duration_us);
 // application of a tf.data optimization.
 //
 // The `name` argument identifies the optimization (e.g. "noop_elimination").
-void RecordTFDataOptimization(const string& name, int64 num_changes);
+void RecordTFDataOptimization(const string& name, int64_t num_changes);
 
 // Records that a tf.data service worker has been created.
 void RecordTFDataServiceWorkerCreated();
@@ -101,21 +102,29 @@ void RecordTFDataServiceWorkerCreated();
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
 void RecordTFDataFilename(const string& name, const string& filename);
 
+// Records statistics of tf.data auto sharding.
+//
+// The `id` is a unique identifier of the input pipeline. The `policy`
+// identifies the auto-sharding policy used, the `num_workers` identifies the
+// number of workers, and `num_replicas` identifies the number of replicas.
+void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
+                           int64 num_workers, int64 num_replicas);
+
 // Records parsing of dense tensor features.
-void RecordParseDenseFeature(int64 num_features);
+void RecordParseDenseFeature(int64_t num_features);
 
 // Records parsing of sparse tensor features.
-void RecordParseSparseFeature(int64 num_features);
+void RecordParseSparseFeature(int64_t num_features);
 
 // Records parsing of ragged tensor features.
-void RecordParseRaggedFeature(int64 num_features);
+void RecordParseRaggedFeature(int64_t num_features);
 
 // Records the size of input/output tensors in bytes.
 void RecordGraphInputTensors(const size_t size);
 void RecordGraphOutputTensors(const size_t size);
 
 // Records the number of cores requested by graphs with XLA SPMD enabled.
-void RecordTPUXlaSpmdCoresPerReplica(int64 cores_per_replica);
+void RecordTPUXlaSpmdCoresPerReplica(int64_t cores_per_replica);
 
 void UpdateGraphExecTime(const uint64 running_time_usecs);
 void UpdateGraphPendingQueueLength(uint64 len);

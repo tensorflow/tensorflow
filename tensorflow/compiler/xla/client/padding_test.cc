@@ -24,9 +24,10 @@ namespace {
 class PaddingTest : public ::testing::Test {
  protected:
   // A convenience function to test padding for a single dimension.
-  std::pair<int64, int64> ComputePadding(int64 input_dimension,
-                                         int64 window_dimension,
-                                         int64 window_stride, Padding padding) {
+  std::pair<int64, int64> ComputePadding(int64_t input_dimension,
+                                         int64_t window_dimension,
+                                         int64_t window_stride,
+                                         Padding padding) {
     return MakePadding({input_dimension}, {window_dimension}, {window_stride},
                        padding)[0];
   }

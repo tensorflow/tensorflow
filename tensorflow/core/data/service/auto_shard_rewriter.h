@@ -18,11 +18,11 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
@@ -32,29 +32,17 @@ namespace data {
 // Rewrites the dataset graph by applying an auto-shard policy.
 class AutoShardRewriter {
  public:
-  // Creates an AutoShardRewriter. If `auto_shard_policy` is not OFF, it should
-  // also provide a non-empty list of tf.data service worker addresses which
-  // contains the calling worker's `worker_address`. Otherwise, this function
-  // returns a NotFound error.
-  static StatusOr<AutoShardRewriter> Create(
-      AutoShardPolicy auto_shard_policy,
-      absl::Span<const absl::string_view> worker_addresses,
-      absl::string_view worker_address);
+  // Creates an `AutoShardRewriter` according to `task_def`. Returns an error if
+  // the sharding policy is not a valid auto-shard policy.
+  static StatusOr<AutoShardRewriter> Create(const TaskDef& task_def);
 
   // Applies auto-sharding to `graph_def`. If auto-shard policy is OFF, returns
   // the same graph as `graph_def`. Otherwise, returns the re-written graph.
   StatusOr<GraphDef> ApplyAutoShardRewrite(const GraphDef& graph_def);
 
  private:
-  explicit AutoShardRewriter(AutoShardPolicy auto_shard_policy,
-                             int64 num_workers, int64 worker_index);
-
-  // Returns the shard index of the worker at `worker_address`, given the list
-  // of workers from `worker_addresses`. If no worker exists at the address, it
-  // returns a NotFound error.
-  static StatusOr<int> GetWorkerIndex(
-      absl::Span<const absl::string_view> worker_addresses,
-      absl::string_view worker_address);
+  AutoShardRewriter(AutoShardPolicy auto_shard_policy, int64 num_workers,
+                    int64 worker_index);
 
   // Creates a rewrite config based on the auto-shard policy.
   tensorflow::RewriterConfig::CustomGraphOptimizer GetRewriteConfig() const;
@@ -62,6 +50,42 @@ class AutoShardRewriter {
   const AutoShardPolicy auto_shard_policy_;
   const int64 num_workers_;
   const int64 worker_index_;
+};
+
+// Maps a worker to its index, given a list of workers. For example, suppose
+// `worker_addresses` contains
+//   /worker/task/0:worker, /worker/task/1:worker, /worker/task/2:worker,
+// then
+//   /worker/task/0:worker maps to index 0,
+//   /worker/task/1:worker maps to index 1,
+//   /worker/task/2:worker maps to index 2.
+// This is useful for deterministically sharding a dataset among a fixed set of
+// tf.data service workers.
+class WorkerIndexResolver {
+ public:
+  // Constructs a `WorkerIndexResolver` to generate worker indexes according to
+  // the specified worker addresses. The worker addresses can be "host" or
+  // "host:port", where "port" is a number, named port, or "%port%" to be
+  // replaced with the actual port.
+  template <class T>
+  explicit WorkerIndexResolver(const T& worker_addresses)
+      : worker_addresses_(worker_addresses.cbegin(), worker_addresses.cend()) {}
+
+  // Validates `worker_address`. Returns an error if the `worker_addresses` list
+  // is non-empty and `worker_address` is not specified in the worker addresses
+  // list (with optional port replacement).
+  Status ValidateWorker(absl::string_view worker_address) const;
+
+  // Processes a worker at address `worker_address`. Its index can be retrieved
+  // by calling `GetWorkerIndex`.
+  void AddWorker(absl::string_view worker_address);
+
+  // Returns the worker index for the worker at `worker_address`. Returns a
+  // NotFound error if the worker is not registered.
+  StatusOr<int64> GetWorkerIndex(absl::string_view worker_address) const;
+
+ private:
+  std::vector<std::string> worker_addresses_;
 };
 
 }  // namespace data

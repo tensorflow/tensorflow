@@ -202,7 +202,7 @@ Status ShapeHandleToTensorShape(const shape_inference::ShapeHandle& handle,
   if (!context->RankKnown(handle)) return Status::OK();
 
   std::vector<int64> dims(context->Rank(handle));
-  for (int32 i = 0; i < dims.size(); ++i) {
+  for (int32_t i = 0; i < dims.size(); ++i) {
     dims[i] = context->Value(context->Dim(handle, i));
   }
   return PartialTensorShape::MakePartialShape(dims.data(), dims.size(), shape);

@@ -224,16 +224,9 @@ tensorflow::ImportFunction
 
 [//tensorflow/core:op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
-tensorflow::AttrValue::CopyFrom  # tf_text
-tensorflow::AttrValue::MergeFrom
-tensorflow::AttrValue::SetCachedSize
-tensorflow::AttrValue::GetMetadata
-tensorflow::AttrValue::New
-tensorflow::AttrValue::Clear
-tensorflow::AttrValue::IsInitialized
-tensorflow::AttrValue::ByteSizeLong
-tensorflow::AttrValue::GetCachedSize
-tensorflow::AttrValue::~AttrValue
+
+[//tensorflow/core/framework:attr_value_proto_cc_impl] # tf_text
+tensorflow::AttrValue::`vftable'
 
 [//tensorflow/core/common_runtime:graph_constructor] # tf_session
 tensorflow::ShapeRefiner::~ShapeRefiner
@@ -387,11 +380,11 @@ tensorflow::grappler::AnalyticalCostEstimator::PredictCosts
 tensorflow::grappler::CostAnalyzer::CostAnalyzer
 tensorflow::grappler::CostAnalyzer::GenerateReport
 
-[//tensorflow/cc/experimental/libexport:metrics_impl] # SavedModel metrics
-tensorflow::libexport::metrics::Write
-tensorflow::libexport::metrics::Read
-tensorflow::libexport::metrics::WriteApi
-tensorflow::libexport::metrics::ReadApi
+[//tensorflow/cc/saved_model:metrics_impl] # SavedModel metrics
+tensorflow::metrics::SavedModelWrite
+tensorflow::metrics::SavedModelRead
+tensorflow::metrics::SavedModelWriteApi
+tensorflow::metrics::SavedModelReadApi
 
 [//tensorflow/compiler/jit:flags] # tfe
 tensorflow::IsXlaEnabled
@@ -401,6 +394,10 @@ tensorflow::GetXlaDeviceFlags
 [//tensorflow/core/platform:tensor_float_32_utils] # tensor_float_32
 tensorflow::enable_tensor_float_32_execution
 tensorflow::tensor_float_32_execution_enabled
+
+[//tensorflow/core/util:determinism] # determinism
+tensorflow::OpDeterminismRequired
+tensorflow::EnableOpDeterminism
 
 [//tensorflow/compiler/jit:get_compiler_ir] # tfe
 tensorflow::GetCompilerIr

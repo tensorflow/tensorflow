@@ -181,14 +181,14 @@ class ShapeVerifier : public DfsHloVisitor {
 
   // Checks that the given operand of the given instruction is of type TOKEN.
   Status CheckIsTokenOperand(const HloInstruction* instruction,
-                             int64 operand_no);
+                             int64_t operand_no);
 
   // Checks that the shape of the given operand of the given instruction matches
   // the given parameter of the given computation.
   Status CheckOperandAndParameter(const HloInstruction* instruction,
-                                  int64 operand_number,
+                                  int64_t operand_number,
                                   const HloComputation* computation,
-                                  int64 parameter_number);
+                                  int64_t parameter_number);
 
   // Returns true if the shapes of the two operands have the same element type,
   // and the result shape either has the same element type as the operand shapes

@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python.autograph.pyct import origin_info
+from tensorflow.python.util import traceback_utils
 
 
 class FrameInfo(
@@ -182,6 +183,10 @@ class ErrorMetadataBase(object):
     lines.append('')
 
     for frame_info in reversed(self.translated_stack):
+      if (traceback_utils.is_traceback_filtering_enabled() and
+          not traceback_utils.include_frame(frame_info.filename)):
+        continue
+
       formatted_line = '    {}:{} {}'.format(frame_info.filename,
                                              frame_info.lineno,
                                              frame_info.function_name)

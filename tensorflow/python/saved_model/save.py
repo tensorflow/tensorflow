@@ -22,6 +22,7 @@ import collections
 import functools
 import gc
 import os
+import re
 import sys
 
 from absl import logging
@@ -48,10 +49,10 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import nested_structure_coder
+from tensorflow.python.saved_model import pywrap_saved_model
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
@@ -60,8 +61,8 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
-from tensorflow.python.saved_model.experimental import pywrap_libexport
-from tensorflow.python.saved_model.experimental.pywrap_libexport import metrics
+from tensorflow.python.saved_model.pywrap_saved_model import constants
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import functional_saver
 from tensorflow.python.training.saving import saveable_object_util
@@ -478,6 +479,26 @@ def _map_captures_to_created_tensors(original_captures, resource_map):
   return export_captures
 
 
+def _to_safe_name_scope(signature_key, user_input_name):
+  """Creates a sanitized name scope from user signature and input names.
+
+  Concatenates signature and input names, sanitizing as needed to be a valid
+  scope name.
+
+  Args:
+    signature_key: The user-provided key for the signature.
+    user_input_name: The user-provided name for the input placeholder.
+
+  Returns:
+    A name scope that is safe to be used in tf.name_scope().
+  """
+  name_scope = "{}_{}".format(signature_key, user_input_name)
+  if re.match(r"^[A-Za-z0-9.][A-Za-z0-9_.\\-]*$", name_scope):
+    return name_scope
+  invalid_prefix_stripped = re.sub(r"^[^A-Za-z0-9.]*", "", name_scope)
+  return re.sub(r"[^A-Za-z0-9_.\\-]", "_", invalid_prefix_stripped)
+
+
 def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
                                               function_name):
   """Creates exterior placeholders in the exported graph for function arguments.
@@ -541,7 +562,7 @@ def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
     arg_placeholder = array_ops.placeholder(
         shape=placeholder.shape,
         dtype=placeholder.dtype,
-        name="{}_{}".format(signature_key, user_input_name))
+        name=_to_safe_name_scope(signature_key, user_input_name))
     exterior_argument_placeholders[user_input_name] = arg_placeholder
     mapped_inputs.append(arg_placeholder)
   return mapped_inputs, exterior_argument_placeholders
@@ -836,12 +857,11 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
     # Add the same op to the main_op collection and to the init_op
     # signature. The collection is for compatibility with older loader APIs;
     # only one will be executed.
-    meta_graph_def.collection_def[
-        pywrap_libexport.MAIN_OP_KEY].node_list.value.append(init_op.name)
-    meta_graph_def.signature_def[
-        pywrap_libexport.INIT_OP_SIGNATURE_KEY].CopyFrom(
-            signature_def_utils.op_signature_def(
-                init_op, pywrap_libexport.INIT_OP_SIGNATURE_KEY))
+    meta_graph_def.collection_def[constants.MAIN_OP_KEY].node_list.value.append(
+        init_op.name)
+    meta_graph_def.signature_def[constants.INIT_OP_SIGNATURE_KEY].CopyFrom(
+        signature_def_utils.op_signature_def(init_op,
+                                             constants.INIT_OP_SIGNATURE_KEY))
 
   # Saving an object-based checkpoint again gathers variables. We need to do the
   # gathering from the eager context so Optimizers save the right set of
@@ -859,18 +879,6 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
       concrete_function.add_to_graph()
     if save_custom_gradients:
       _trace_gradient_functions(exported_graph, saveable_view)
-    elif save_custom_gradients is None:
-      # Trace anyways to warn the user if there are any issues with the custom
-      # gradients.
-      try:
-        _trace_gradient_functions(exported_graph, saveable_view)
-      except Exception:  # pylint: disable=broad-except
-        tf_logging.warning(
-            "Your model contains untraceable custom gradients. This warning "
-            "may become an error in the future. Please set the option "
-            "tf.saved_model.SaveOption(experimental_custom_gradients=True) "
-            "to get the full error message.")
-
     saver_def = saver.to_proto()
     meta_graph_def.saver_def.CopyFrom(saver_def)
   graph_def = exported_graph.as_graph_def(add_shapes=True)
@@ -1004,7 +1012,7 @@ def _export_debug_info(exported_graph, export_dir):
   file_io.atomic_write_string_to_file(
       os.path.join(
           utils_impl.get_or_create_debug_dir(export_dir),
-          pywrap_libexport.DEBUG_INFO_FILENAME_PB),
+          constants.DEBUG_INFO_FILENAME_PB),
       graph_debug_info.SerializeToString(deterministic=True))
 
 
@@ -1189,9 +1197,9 @@ def save(obj, export_dir, signatures=None, options=None):
   @end_compatibility
   """
   # pylint: enable=line-too-long
-  metrics.IncrementWriteApi(_SAVE_V2_LABEL, write_version="2")
+  metrics.IncrementWriteApi(_SAVE_V2_LABEL)
   save_and_return_nodes(obj, export_dir, signatures, options)
-  metrics.IncrementWrite()
+  metrics.IncrementWrite(write_version="2")
 
 
 def save_and_return_nodes(obj,
@@ -1227,7 +1235,7 @@ def save_and_return_nodes(obj,
   _, exported_graph, object_saver, asset_info, saved_nodes, node_paths = (
       _build_meta_graph(obj, signatures, options, meta_graph_def))
   saved_model.saved_model_schema_version = (
-      pywrap_libexport.SAVED_MODEL_SCHEMA_VERSION)
+      constants.SAVED_MODEL_SCHEMA_VERSION)
 
   # Write the checkpoint, copy assets into the assets directory, and write out
   # the SavedModel proto itself.
@@ -1253,13 +1261,13 @@ def save_and_return_nodes(obj,
           "to the io_device such as '/job:localhost'."
       )
 
-  # We will slowly migrate code in this function to pywrap_libexport.Save
+  # We will slowly migrate code in this function to pywrap_saved_model.Save
   # as we build up the C++ API.
-  pywrap_libexport.Save(export_dir)
+  pywrap_saved_model.Save(export_dir)
 
   path = os.path.join(
       compat.as_str(export_dir),
-      compat.as_str(pywrap_libexport.SAVED_MODEL_FILENAME_PB))
+      compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
   file_io.atomic_write_string_to_file(
       path, saved_model.SerializeToString(deterministic=True))
   # Save debug info, if requested.

@@ -2451,6 +2451,15 @@ void ToBoolOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   results.insert<ToBoolOfRankedTensor>(context);
 }
 
+LogicalResult ToBoolOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  inferredReturnTypes.push_back(
+      RankedTensorType::get({}, IntegerType::get(context, 1)));
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//

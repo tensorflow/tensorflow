@@ -397,13 +397,15 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
     ArrayRef<Value> args, OpBuilder* b) {
   Type sourceType = getElementTypeOrSelf(arg_types.front());
   Type targetType = getElementTypeOrSelf(result_types.front());
+  Type convertedSourceType = getElementTypeOrSelf(args.front());
 
   // A boolean value is considered to be unsigned when converting to
   // floating-point. Otherwise, it will become `-1`.
-  if (sourceType.isInteger(/*width=*/1) &&
-      mlir::UIToFPOp::areCastCompatible(sourceType, targetType)) {
+  if ((sourceType.isInteger(/*width=*/1) || sourceType.isUnsignedInteger()) &&
+      mlir::UIToFPOp::areCastCompatible(convertedSourceType, targetType)) {
     return b->create<mlir::UIToFPOp>(loc, result_types, args, mlir::None);
-  } else if (mlir::SIToFPOp::areCastCompatible(sourceType, targetType)) {
+  } else if (mlir::SIToFPOp::areCastCompatible(convertedSourceType,
+                                               targetType)) {
     return b->create<mlir::SIToFPOp>(loc, result_types, args, mlir::None);
   } else if (sourceType.isa<FloatType>() && targetType.isa<FloatType>()) {
     FloatType src = sourceType.cast<FloatType>();
@@ -419,7 +421,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
   if (targetType.isInteger(/*width=*/1)) {
     // When casting to bool, we need to compare whether the value is equal to
     // zero.
-    if (sourceType.isSignlessInteger()) {
+    if (sourceType.isSignlessInteger() || sourceType.isUnsignedInteger()) {
       Value zero_intval = b->create<::mlir::ConstantIntOp>(
           loc, 0, sourceType.cast<IntegerType>().getWidth());
       if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
@@ -441,12 +443,9 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
     IntegerType res = targetType.cast<IntegerType>();
     if (src.getWidth() > res.getWidth()) {
       return b->create<mlir::TruncateIOp>(loc, result_types, args, mlir::None);
-    } else if (src.getWidth() == 1) {
-      // Special case boolean values, so they get casted to `1` instead of `-1`.
-      return b->create<mlir::ZeroExtendIOp>(loc, result_types, args,
-                                            mlir::None);
     } else if (src.getWidth() < res.getWidth()) {
-      if (src.isUnsignedInteger()) {
+      // Special case boolean values, so they get casted to `1` instead of `-1`.
+      if (src.isUnsignedInteger() || src.getWidth() == 1) {
         return b->create<mlir::ZeroExtendIOp>(loc, result_types, args,
                                               mlir::None);
       }
@@ -456,7 +455,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
     // No conversion is needed for the same width integers
     return args.front();
   }
-  if (mlir::FPToSIOp::areCastCompatible(sourceType, targetType)) {
+  if (mlir::FPToSIOp::areCastCompatible(convertedSourceType, targetType)) {
     return b->create<mlir::FPToSIOp>(loc, result_types, args, mlir::None);
   }
   return nullptr;

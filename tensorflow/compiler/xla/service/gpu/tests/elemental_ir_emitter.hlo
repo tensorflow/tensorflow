@@ -409,14 +409,13 @@ ENTRY main {
 
 HloModule Test
 
-// CHECK: define void @concatenate(i8* noalias align 16 dereferenceable(128) %[[VAL_2:.*]], i8* noalias align 16 dereferenceable(1920) %[[VAL_1:.*]], i8* noalias align 64 dereferenceable(2048) %[[VAL_0:.*]]) {
-// CHECK:       entry:
-// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
-// CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [32 x [1 x float]]*
-// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
-// CHECK:         %[[VAL_6:.*]] = bitcast i8* %[[VAL_5]] to [32 x [15 x float]]*
-// CHECK:         %[[VAL_7:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_7]] to [32 x [16 x float]]*
+// CHECK:         define void @concatenate
+// CHECK:         %[[VAL_0:.*]] = getelementptr inbounds i8, i8* %[[VAL_1:.*]], i64 0
+// CHECK:         %[[VAL_2:.*]] = bitcast i8* %[[VAL_0]] to [32 x [1 x float]]*
+// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_4:.*]], i64 0
+// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_3]] to [32 x [15 x float]]*
+// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, i8* %[[VAL_7:.*]], i64 0
+// CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_6]] to [32 x [16 x float]]*
 // CHECK:         %[[VAL_9:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_11:.*]] = mul nuw nsw i32 %[[VAL_9]], 512
@@ -431,32 +430,32 @@ HloModule Test
 // CHECK:       concatenate.in_bounds-after:                      ; preds = %[[VAL_20:.*]], %[[VAL_21:.*]]
 // CHECK:         ret void
 // CHECK:       concatenate.in_bounds-true:                       ; preds = %[[VAL_21]]
-// CHECK:         %[[VAL_22:.*]] = icmp ult i32 %[[VAL_15]], 1
-// CHECK:         br i1 %[[VAL_22]], label %[[VAL_23:.*]], label %[[VAL_24:.*]]
-// CHECK:       concat_index_from_operand_id0:                    ; preds = %[[VAL_18]]
-// CHECK:         %[[VAL_25:.*]] = phi i32 [ 0, %[[VAL_18]] ]
-// CHECK:         %[[VAL_26:.*]] = sub nsw i32 %[[VAL_15]], %[[VAL_25]]
-// CHECK:         %[[VAL_27:.*]] = getelementptr inbounds [32 x [1 x float]], [32 x [1 x float]]* %[[VAL_4]], i32 0, i32 %[[VAL_16]], i32 0
-// CHECK:         %[[VAL_28:.*]] = load float, float* %[[VAL_27]], align 4, !invariant.load !4
+// CHECK:         br label %[[VAL_22:.*]]
+// CHECK:       concat_index_from_operand_id0:                    ; preds = %[[VAL_23:.*]]
+// CHECK:         %[[VAL_24:.*]] = phi i32 [ 0, %[[VAL_23]]  ]
+// CHECK:         %[[VAL_25:.*]] = sub nsw i32 %[[VAL_15]], %[[VAL_24]]
+// CHECK:         %[[VAL_26:.*]] = getelementptr inbounds [32 x [1 x float]], [32 x [1 x float]]* %[[VAL_2]], i32 0, i32 %[[VAL_16]], i32 0
+// CHECK:         %[[VAL_27:.*]] = load float, float* %[[VAL_26]], align 4, !invariant.load !4
 // CHECK:         br label %[[VAL_20]]
-// CHECK:       concat_index_from_operand_id1:                    ; preds = %[[VAL_24]]
-// CHECK:         %[[VAL_29:.*]] = phi i32 [ 1, %[[VAL_24]] ]
+// CHECK:       concat_index_from_operand_id1:                    ; preds = %[[VAL_28:.*]]
+// CHECK:         %[[VAL_29:.*]] = phi i32 [ 1, %[[VAL_28]]  ]
 // CHECK:         %[[VAL_30:.*]] = sub nsw i32 %[[VAL_15]], %[[VAL_29]]
-// CHECK:         %[[VAL_31:.*]] = getelementptr inbounds [32 x [15 x float]], [32 x [15 x float]]* %[[VAL_6]], i32 0, i32 %[[VAL_16]], i32 %[[VAL_30]]
+// CHECK:         %[[VAL_31:.*]] = getelementptr inbounds [32 x [15 x float]], [32 x [15 x float]]* %[[VAL_5]], i32 0, i32 %[[VAL_16]], i32 %[[VAL_30]]
 // CHECK:         %[[VAL_32:.*]] = load float, float* %[[VAL_31]], align 4, !invariant.load !4
 // CHECK:         br label %[[VAL_20]]
-// CHECK:       concat_index_not_from_operand0:                   ; preds = %[[VAL_18]]
-// CHECK:         %[[VAL_33:.*]] = icmp ult i32 %[[VAL_15]], 16
-// CHECK:         br i1 %[[VAL_33]], label %[[VAL_34:.*]], label %[[VAL_35:.*]]
-// CHECK:       concat_index_not_from_operand1:                   ; preds = %[[VAL_24]]
-// CHECK:         unreachable
-// CHECK:       concatenate.3.merge:                              ; preds = %[[VAL_34]], %[[VAL_23]]
-// CHECK:         %[[VAL_36:.*]] = phi float [ %[[VAL_28]], %[[VAL_23]] ], [ %[[VAL_32]], %[[VAL_34]] ]
+// CHECK:       concatenate.pivot.1.:                             ; preds = %[[VAL_18]]
+// CHECK:         %[[VAL_33:.*]] = icmp ult i32 %[[VAL_15]], 1
+// CHECK:         br i1 %[[VAL_33]], label %[[VAL_23]], label %[[VAL_28]]
+// CHECK:       concatenate.pivot.0.:                             ; preds = %[[VAL_22]]
+// CHECK:         br label %[[VAL_34:.*]]
+// CHECK:       concatenate.pivot.1.1:                            ; preds = %[[VAL_22]]
+// CHECK:         br label %[[VAL_35:.*]]
+// CHECK:       concatenate.3.merge:                              ; preds = %[[VAL_35]], %[[VAL_34]]
+// CHECK:         %[[VAL_36:.*]] = phi float [ %[[VAL_27]], %[[VAL_34]]  ], [ %[[VAL_32]], %[[VAL_35]]  ]
 // CHECK:         %[[VAL_37:.*]] = bitcast [32 x [16 x float]]* %[[VAL_8]] to float*
 // CHECK:         %[[VAL_38:.*]] = getelementptr inbounds float, float* %[[VAL_37]], i32 %[[VAL_12]]
 // CHECK:         store float %[[VAL_36]], float* %[[VAL_38]], align 4
 // CHECK:         br label %[[VAL_19]]
-// CHECK:       }
 ENTRY main {
   %arg0 = f32[32, 1] parameter(0)
   %arg1 = f32[32, 15] parameter(1)

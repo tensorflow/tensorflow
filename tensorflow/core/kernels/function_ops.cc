@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gradients.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -331,6 +332,11 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     opts.remote_execution = true;
   }
   opts.create_rendezvous = true;
+  CancellationManager* cancel_mgr = nullptr;
+  if (ctx->cancellation_manager() != nullptr) {
+    cancel_mgr = new CancellationManager(ctx->cancellation_manager());
+  }
+  opts.cancellation_manager = cancel_mgr;
   opts.collective_executor = ctx->collective_executor();
   std::vector<Tensor> args(arguments.begin(), arguments.end());
   opts.args_alloc_attrs.reserve(input_dtypes_.size());
@@ -350,18 +356,20 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
           << " with handle: " << handle;
   profiler::TraceMe trace_me(
       [&] {
-        return absl::StrCat("RemoteCallOp#func_name=", func_name,
-                            ",device=", target_device, "#");
+        return profiler::TraceMeEncode(
+            "RemoteCallOp",
+            {{"func_name", func_name}, {"device", target_device}});
       },
       profiler::TraceMeLevel::kInfo);
   lib->Run(
       opts, handle, args, rets,
-      [rets, done = std::move(done), func_name, ctx,
+      [rets, done = std::move(done), func_name, ctx, cancel_mgr,
        target_device = std::move(function_target.first)](const Status& status) {
         profiler::TraceMe activity(
             [&] {
-              return absl::StrCat("RemoteCallOpDone#func_name=", func_name,
-                                  ",device=", target_device, "#");
+              return profiler::TraceMeEncode(
+                  "RemoteCallOpDone",
+                  {{"func_name", func_name}, {"device", target_device}});
             },
             profiler::TraceMeLevel::kInfo);
         if (!status.ok()) {
@@ -371,6 +379,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
             ctx->set_output(i, std::move((*rets)[i]));
           }
         }
+        delete cancel_mgr;
         delete rets;
         done();
       });

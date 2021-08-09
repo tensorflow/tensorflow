@@ -39,7 +39,7 @@ std::vector<Flag>* flag_list;
 absl::once_flag flags_init;
 
 bool SetterForXlaAutoJitFlag(const string& value) {
-  int32 opt_level;
+  int32_t opt_level;
   // We need to use the mark_for_compilation_flags directly here instead of
   // going via GetMarkForCompilationPassFlags() to avoid infinite recursion. The
   // latter will try to setup and parse flags, which would bring us back to this

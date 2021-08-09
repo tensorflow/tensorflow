@@ -180,7 +180,7 @@ class SqlDatasetOp : public DatasetOpKernel {
           TF_RETURN_IF_ERROR(InitializeQueryConnection());
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name("next_calls"), &next_calls_));
-          int64 rem_next_calls = next_calls_;
+          int64_t rem_next_calls = next_calls_;
           std::vector<Tensor> out_tensors;
           end_of_sequence_ = false;
           while (rem_next_calls--) {

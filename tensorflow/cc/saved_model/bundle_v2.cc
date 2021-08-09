@@ -14,8 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/saved_model/bundle_v2.h"
-#include "tensorflow/cc/experimental/libexport/metrics.h"
+
+#include <string>
+#include <utility>
+
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/metrics.h"
+#include "tensorflow/cc/saved_model/reader.h"
+#include "tensorflow/cc/saved_model/util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
@@ -26,8 +32,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-namespace metrics = libexport::metrics;
-
 // `tensorflow::SavedModelV2Bundle::Load` API label.
 constexpr char kCCLoadBundleV2Label[] = "cc_load_bundle_v2";
 
@@ -37,38 +41,32 @@ Status ReadSavedModelProto(const string& export_dir,
 
   const string saved_model_pb_path =
       io::JoinPath(export_dir, kSavedModelFilenamePb);
+
   if (Env::Default()->FileExists(saved_model_pb_path).ok()) {
-    return ReadBinaryProto(Env::Default(), saved_model_pb_path,
-                           saved_model_proto);
+    Status result =
+        ReadBinaryProto(Env::Default(), saved_model_pb_path, saved_model_proto);
+    if (result.ok()) {
+      metrics::SavedModelRead(saved_model::GetWriteVersion(*saved_model_proto))
+          .IncrementBy(1);
+    }
+    return result;
   }
   const string saved_model_pbtxt_path =
       io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
   if (Env::Default()->FileExists(saved_model_pbtxt_path).ok()) {
-    return ReadTextProto(Env::Default(), saved_model_pbtxt_path,
-                         saved_model_proto);
+    Status result = ReadTextProto(Env::Default(), saved_model_pbtxt_path,
+                                  saved_model_proto);
+    if (result.ok()) {
+      metrics::SavedModelRead(saved_model::GetWriteVersion(*saved_model_proto))
+          .IncrementBy(1);
+    }
+    return result;
   }
+
   return Status(error::Code::NOT_FOUND,
                 "Could not find SavedModel .pb or .pbtxt at supplied export "
                 "directory path: " +
                     export_dir);
-}
-
-Status ReadSavedModelDebugInfoIfPresent(
-    const string& export_dir,
-    std::unique_ptr<GraphDebugInfo>* debug_info_proto) {
-  LOG(INFO) << "Reading SavedModel debug info (if present) from: "
-            << export_dir;
-
-  const string debug_info_pb_path =
-      io::JoinPath(export_dir, "debug", "saved_model_debug_info.pb");
-  if (Env::Default()->FileExists(debug_info_pb_path).ok()) {
-    GraphDebugInfo debug_info;
-    TF_RETURN_IF_ERROR(
-        ReadBinaryProto(Env::Default(), debug_info_pb_path, &debug_info));
-    *debug_info_proto =
-        absl::make_unique<GraphDebugInfo>(std::move(debug_info));
-  }
-  return Status::OK();
 }
 
 Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
@@ -99,7 +97,7 @@ Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
 
 Status SavedModelV2Bundle::Load(const std::string& export_dir,
                                 SavedModelV2Bundle* const bundle) {
-  metrics::ReadApi(kCCLoadBundleV2Label, "2").IncrementBy(1);
+  metrics::SavedModelReadApi(kCCLoadBundleV2Label).IncrementBy(1);
   SavedModel saved_model_proto;
   TF_RETURN_IF_ERROR(ReadSavedModelProto(export_dir, &saved_model_proto));
 
@@ -139,7 +137,6 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
     TF_RETURN_IF_ERROR(ReadCheckpointObjectGraph(
         bundle->variable_reader_.get(), &bundle->trackable_object_graph_));
   }
-  metrics::Read().IncrementBy(1);
   return Status::OK();
 }
 

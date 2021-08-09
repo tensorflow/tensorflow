@@ -24,11 +24,12 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import data_service_ops
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import testing
+from tensorflow.python.data.experimental.ops.data_service_ops import ShardingPolicy
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
@@ -435,8 +436,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
       ds = dataset_ops.Dataset.from_tensor_slices(elements)
       ds = ds.interleave(interleave_fn, cycle_length=10, num_parallel_calls=10)
-      opts = dataset_ops.Options()
-      opts.experimental_deterministic = False
+      opts = options_lib.Options()
+      opts.deterministic = False
       ds = ds.with_options(opts)
       ds = self.make_distributed_dataset(ds, cluster)
       return ds
@@ -451,7 +452,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds = dataset_ops.Dataset.range(num_elements).map(
         lambda _: random_ops.random_uniform(()))
 
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_external_state_policy = external_state_policy
     ds = ds.with_options(options)
 
@@ -463,8 +464,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(external_state_policy=[
-              distribute_options.ExternalStatePolicy.IGNORE,
-              distribute_options.ExternalStatePolicy.WARN
+              options_lib.ExternalStatePolicy.IGNORE,
+              options_lib.ExternalStatePolicy.WARN
           ])))
   def testStatefulNoError(self, external_state_policy):
     self.run_stateful(external_state_policy)
@@ -472,7 +473,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.default_test_combinations())
   def testStatefulError(self):
     with self.assertRaises(errors.FailedPreconditionError):
-      self.run_stateful(distribute_options.ExternalStatePolicy.FAIL)
+      self.run_stateful(options_lib.ExternalStatePolicy.FAIL)
 
   @combinations.generate(test_base.default_test_combinations())
   def testDistributeFromInterleave(self):
@@ -530,8 +531,9 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeInvalidProcessingMode(self):
     ds = dataset_ops.Dataset.range(10)
-    with self.assertRaisesRegex(ValueError,
-                                "invalid is not a valid processing mode"):
+    with self.assertRaisesRegex(
+        ValueError, "should be a ShardingPolicy, `\"parallel_epochs\"`, or "
+        "`\"distributed_epoch\"`. Got 'invalid'."):
       ds = ds.apply(
           data_service_ops.distribute(
               processing_mode="invalid", service="grpc://localhost:5000"))
@@ -820,6 +822,14 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       ds = data_service_ops.from_dataset_id("parallel_epochs",
                                             cluster.dispatcher_address(),
                                             dataset_id)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoShardingPolicy(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(20)
+    dataset = self.make_distributed_dataset(
+        dataset, cluster=cluster, processing_mode=ShardingPolicy.OFF)
+    self.assertDatasetProduces(dataset, list(range(20)))
 
 
 if __name__ == "__main__":

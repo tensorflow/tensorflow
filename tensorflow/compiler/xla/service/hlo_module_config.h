@@ -124,12 +124,12 @@ class HloModuleConfig {
 
   int32 launch_id() const { return launch_id_; }
 
-  void set_replica_count(int64 replica_count) {
+  void set_replica_count(int64_t replica_count) {
     replica_count_ = replica_count;
   }
   int64 replica_count() const { return replica_count_; }
 
-  void set_num_partitions(int64 num_partitions) {
+  void set_num_partitions(int64_t num_partitions) {
     num_partitions_ = num_partitions;
   }
   int64 num_partitions() const { return num_partitions_; }
@@ -152,12 +152,19 @@ class HloModuleConfig {
   void set_deduplicate_hlo(bool deduplicate_hlo) {
     deduplicate_hlo_ = deduplicate_hlo;
   }
+
+  void set_device_type(const string& device_type) {
+    device_type_ = device_type;
+  }
+
   bool deduplicate_hlo() const { return deduplicate_hlo_; }
 
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
   // executable.
   string compilation_cache_key() const;
+
+  string device_type() const { return device_type_; }
 
   const DebugOptions& debug_options() const { return debug_options_; }
 
@@ -284,6 +291,8 @@ class HloModuleConfig {
   // execution on the CPU backend.
   int64 intra_op_parallelism_threads_ = -1;
 
+  string device_type_;
+
   DebugOptions debug_options_;
 
   // Compile-time known device assignment.
@@ -322,7 +331,7 @@ class HloModuleConfig {
   // Index (v) corresponding to current passes being added for phase ordering.
   // This is the variable that stores state to allow us to use the same
   // config across functions during compilation.
-  int phase_index_;
+  int phase_index_ = 0;
 };
 
 }  // namespace xla

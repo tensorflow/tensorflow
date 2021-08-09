@@ -209,7 +209,7 @@ xla::XlaOp MakeGeneralResizeKernelInDim(xla::XlaBuilder* builder,
 
 xla::XlaOp BroadcastSpatialDimensions(xla::XlaBuilder* builder,
                                       const xla::XlaOp& input,
-                                      int32 spatial_dimensions_offset,
+                                      int32_t spatial_dimensions_offset,
                                       absl::Span<const int64> in_size,
                                       absl::Span<const int64> out_size) {
   // Add broadcasts to handle expanding from a size == 1 dimension to a
@@ -219,7 +219,7 @@ xla::XlaOp BroadcastSpatialDimensions(xla::XlaBuilder* builder,
     return builder->ReportError(broadcast_shape_or_status.status());
   }
   xla::Shape broadcast_shape = broadcast_shape_or_status.ValueOrDie();
-  for (int32 i = 0; i < in_size.size(); ++i) {
+  for (int32_t i = 0; i < in_size.size(); ++i) {
     if (in_size[i] == 1 && out_size[i] > 1) {
       broadcast_shape.set_dimensions(spatial_dimensions_offset + i,
                                      out_size[i]);

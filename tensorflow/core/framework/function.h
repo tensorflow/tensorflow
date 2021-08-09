@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
@@ -205,7 +206,7 @@ class FunctionDefHelper {
     Node n = {{name}, "Const"};
     const DataType dtype = DataTypeToEnum<T>::value;
     n.attr.push_back({"dtype", dtype});
-    int64 num = vals.size();
+    int64_t num = vals.size();
     Tensor t(dtype, TensorShape({num}));
     for (size_t i = 0; i < vals.size(); ++i) {
       t.flat<T>()(i) = vals[i];
@@ -794,7 +795,7 @@ class FunctionLibraryRuntime {
   // RPC calls.
   struct Options {
     Options() {}
-    explicit Options(const int64 step_id) : step_id(step_id) {}
+    explicit Options(const int64_t step_id) : step_id(step_id) {}
     // Choose a step ID that is guaranteed not to clash with any
     // Session-generated step ID. DirectSession only generates
     // non-negative step IDs (contiguous, starting from 0), and
@@ -813,6 +814,7 @@ class FunctionLibraryRuntime {
     CollectiveExecutor* collective_executor = nullptr;
     ScopedStepContainer* step_container = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
+    CoordinationServiceAgent* coordination_service_agent = nullptr;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
 
@@ -836,6 +838,9 @@ class FunctionLibraryRuntime {
     // If True, hint that all kernels should be treated as "inexpensive", and
     // hence executed on the scheduling thread.
     bool run_all_kernels_inline = false;
+
+    // If not null, use this thread pool for intra op scheduling.
+    thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
 
     // Returns a human readable representation of this.
     std::string DebugString() const;

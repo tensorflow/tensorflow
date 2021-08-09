@@ -170,7 +170,8 @@ CollectiveContext::CollectiveContext(
     CollectiveExecutor* col_exec, NcclCommunicatorInterface* nccl_communicator,
     const DeviceMgr* dev_mgr, OpKernelContext* ctx,
     OpKernelContext::Params* op_params, const CollectiveParams* col_params,
-    const string& exec_key, int64 step_id, const Tensor* input, Tensor* output)
+    const string& exec_key, int64_t step_id, const Tensor* input,
+    Tensor* output)
     : col_exec(col_exec),
       nccl_communicator(nccl_communicator),
       dev_mgr(dev_mgr),
@@ -185,7 +186,7 @@ CollectiveContext::CollectiveContext(
       device_name(col_params->group.devices[col_params->default_rank].name()) {}
 
 /*static*/
-int64 CollectiveExecutor::kInvalidId = -1;
+int64_t CollectiveExecutor::kInvalidId = -1;
 
 /*static*/
 Status CollectiveRegistry::Lookup(

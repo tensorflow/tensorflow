@@ -695,13 +695,17 @@ class Context(object):
 
   def enable_coordination_service(self, service_type):
     if self._context_handle:
-      raise RuntimeError(
-          "Coordination service must be enabled at program startup time.")
+      logging.warn("Configuring coordination service type may not be effective "
+                   "because the context is already initialized.")
     self._coordination_service = service_type
+
+  @property
+  def coordination_service(self):
+    return self._coordination_service
 
   def set_config_key_value(self, key, value):
     ensure_initialized()
-    pywrap_tfe.TFE_SetConfigKeyValue(self._context_handle, key, value)
+    pywrap_tfe.TFE_InsertConfigKeyValue(self._context_handle, key, value)
 
   def get_config_key_value(self, key):
     ensure_initialized()

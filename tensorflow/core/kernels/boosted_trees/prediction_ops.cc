@@ -108,7 +108,7 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
     auto output_node_ids = output_node_ids_t->vec<int32>();
 
     // Indicate that the latest tree was used.
-    const int32 latest_tree = resource->num_trees() - 1;
+    const int32_t latest_tree = resource->num_trees() - 1;
 
     if (latest_tree < 0) {
       // Ensemble was empty. Output the very first node.
@@ -121,10 +121,10 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
       auto do_work = [&resource, &bucketized_features, &cached_tree_ids,
                       &cached_node_ids, &output_partial_logits,
                       &output_node_ids, latest_tree,
-                      this](int64 start, int64 end) {
-        for (int32 i = start; i < end; ++i) {
-          int32 tree_id = cached_tree_ids(i);
-          int32 node_id = cached_node_ids(i);
+                      this](int64_t start, int64_t end) {
+        for (int32_t i = start; i < end; ++i) {
+          int32_t tree_id = cached_tree_ids(i);
+          int32_t node_id = cached_node_ids(i);
           std::vector<float> partial_tree_logits(logits_dimension_, 0.0);
 
           if (node_id >= 0) {
@@ -139,7 +139,7 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
             const auto& node_logits = resource->node_value(tree_id, node_id);
             if (!node_logits.empty()) {
               DCHECK_EQ(node_logits.size(), logits_dimension_);
-              for (int32 j = 0; j < logits_dimension_; ++j) {
+              for (int32_t j = 0; j < logits_dimension_; ++j) {
                 partial_tree_logits[j] -= node_logits[j];
               }
             }
@@ -154,7 +154,7 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
               DCHECK_EQ(leaf_logits.size(), logits_dimension_);
               // Tree is done
               const float tree_weight = resource->GetTreeWeight(tree_id);
-              for (int32 j = 0; j < logits_dimension_; ++j) {
+              for (int32_t j = 0; j < logits_dimension_; ++j) {
                 partial_all_logits[j] +=
                     tree_weight * (partial_tree_logits[j] + leaf_logits[j]);
                 partial_tree_logits[j] = 0;
@@ -172,7 +172,7 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
             }
           }
           output_node_ids(i) = node_id;
-          for (int32 j = 0; j < logits_dimension_; ++j) {
+          for (int32_t j = 0; j < logits_dimension_; ++j) {
             output_partial_logits(i, j) = partial_all_logits[j];
           }
         }
@@ -180,7 +180,7 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
       // 30 is the magic number. The actual value might be a function of (the
       // number of layers) * (cpu cycles spent on each layer), but this value
       // would work for many cases. May be tuned later.
-      const int64 cost = 30;
+      const int64_t cost = 30;
       thread::ThreadPool* const worker_threads =
           context->device()->tensorflow_cpu_worker_threads()->workers;
       Shard(worker_threads->NumThreads(), worker_threads, batch_size,
@@ -235,19 +235,19 @@ class BoostedTreesPredictOp : public OpKernel {
       return;
     }
 
-    const int32 last_tree = resource->num_trees() - 1;
+    const int32_t last_tree = resource->num_trees() - 1;
     auto do_work = [&resource, &bucketized_features, &output_logits, last_tree,
-                    this](int64 start, int64 end) {
-      for (int32 i = start; i < end; ++i) {
+                    this](int64_t start, int64_t end) {
+      for (int32_t i = start; i < end; ++i) {
         std::vector<float> tree_logits(logits_dimension_, 0.0);
-        int32 tree_id = 0;
-        int32 node_id = 0;
+        int32_t tree_id = 0;
+        int32_t node_id = 0;
         while (true) {
           if (resource->is_leaf(tree_id, node_id)) {
             const float tree_weight = resource->GetTreeWeight(tree_id);
             const auto& leaf_logits = resource->node_value(tree_id, node_id);
             DCHECK_EQ(leaf_logits.size(), logits_dimension_);
-            for (int32 j = 0; j < logits_dimension_; ++j) {
+            for (int32_t j = 0; j < logits_dimension_; ++j) {
               tree_logits[j] += tree_weight * leaf_logits[j];
             }
             // Stop if it was the last tree.
@@ -262,7 +262,7 @@ class BoostedTreesPredictOp : public OpKernel {
                 resource->next_node(tree_id, node_id, i, bucketized_features);
           }
         }
-        for (int32 j = 0; j < logits_dimension_; ++j) {
+        for (int32_t j = 0; j < logits_dimension_; ++j) {
           output_logits(i, j) = tree_logits[j];
         }
       }
@@ -270,7 +270,7 @@ class BoostedTreesPredictOp : public OpKernel {
     // 10 is the magic number. The actual number might depend on (the number of
     // layers in the trees) and (cpu cycles spent on each layer), but this
     // value would work for many cases. May be tuned later.
-    const int64 cost = (last_tree + 1) * 10;
+    const int64_t cost = (last_tree + 1) * 10;
     thread::ThreadPool* const worker_threads =
         context->device()->tensorflow_cpu_worker_threads()->workers;
     Shard(worker_threads->NumThreads(), worker_threads, batch_size,
@@ -333,15 +333,15 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
                                           {batch_size}, &output_debug_info_t));
     // Will contain serialized protos, per example.
     auto output_debug_info = output_debug_info_t->flat<tstring>();
-    const int32 last_tree = resource->num_trees() - 1;
+    const int32_t last_tree = resource->num_trees() - 1;
 
     // For each given example, traverse through all trees keeping track of the
     // features used to split and the associated logits at each point along the
     // path. Note: feature_ids has one less value than logits_path because the
     // first value of each logit path will be the bias.
     auto do_work = [&resource, &bucketized_features, &output_debug_info,
-                    last_tree](int64 start, int64 end) {
-      for (int32 i = start; i < end; ++i) {
+                    last_tree](int64_t start, int64_t end) {
+      for (int32_t i = start; i < end; ++i) {
         // Proto to store debug outputs, per example.
         boosted_trees::DebugOutput example_debug_info;
         // Initial bias prediction. E.g., prediction based off training mean.
@@ -349,9 +349,9 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
         DCHECK_EQ(tree_logits.size(), 1);
         float tree_logit = resource->GetTreeWeight(0) * tree_logits[0];
         example_debug_info.add_logits_path(tree_logit);
-        int32 node_id = 0;
-        int32 tree_id = 0;
-        int32 feature_id;
+        int32_t node_id = 0;
+        int32_t tree_id = 0;
+        int32_t feature_id;
         float past_trees_logit = 0;  // Sum of leaf logits from prior trees.
         // Go through each tree and populate proto.
         while (tree_id <= last_tree) {
@@ -387,7 +387,7 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
     // 10 is the magic number. The actual number might depend on (the number of
     // layers in the trees) and (cpu cycles spent on each layer), but this
     // value would work for many cases. May be tuned later.
-    const int64 cost = (last_tree + 1) * 10;
+    const int64_t cost = (last_tree + 1) * 10;
     thread::ThreadPool* const worker_threads =
         context->device()->tensorflow_cpu_worker_threads()->workers;
     Shard(worker_threads->NumThreads(), worker_threads, batch_size,

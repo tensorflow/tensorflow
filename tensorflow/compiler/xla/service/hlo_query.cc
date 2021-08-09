@@ -145,7 +145,7 @@ bool ContainsLayoutConstrainedCollective(const HloModule& module,
 }
 
 int64 NextChannelId(const HloModule& module) {
-  int64 next_channel_id = 1;
+  int64_t next_channel_id = 1;
   for (const HloComputation* comp : module.computations()) {
     for (const HloInstruction* hlo : comp->instructions()) {
       const HloChannelInstruction* channel_instr =

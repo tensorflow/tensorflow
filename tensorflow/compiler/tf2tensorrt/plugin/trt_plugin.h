@@ -29,7 +29,6 @@ namespace tensorrt {
 extern const char* kTfTrtPluginVersion;
 extern const char* kTfTrtPluginNamespace;
 
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
 // A wrapper class for TensorRT plugin. User application should inherit from
 // this class to write custom kernels.
 class TrtPlugin : public nvinfer1::IPluginV2Ext {
@@ -71,7 +70,6 @@ class TrtPlugin : public nvinfer1::IPluginV2Ext {
  private:
   std::string namespace_;
 };
-#endif
 
 template <typename T>
 class TrtPluginRegistrar {

@@ -67,7 +67,7 @@ XfeedBuffer* XfeedQueueManager::BlockingDequeueBuffer() {
   return current_buffer_;
 }
 
-void XfeedQueueManager::ReleaseCurrentBuffer(int32 length, void* data,
+void XfeedQueueManager::ReleaseCurrentBuffer(int32_t length, void* data,
                                              StatusOr<Shape> shape) {
   VLOG(3) << "Releasing buffer with shape: "
           << (shape.ok() ? ShapeUtil::HumanString(shape.ValueOrDie())

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cstdint>
 #include <iostream>
 #include <sstream>
@@ -68,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -77,6 +79,7 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/lite/string_util.h"
 
 using llvm::ArrayRef;
 using mlir::Builder;
@@ -358,6 +361,14 @@ tensorflow::TensorProto ConvertTfliteConstTensor(
   for (auto dim : tensor.shape) {
     shape->add_dim()->set_size(int64_t{dim});
   }
+  // TensorFlow Lite uses tflite::DynamicBufer to encode vector of strings.
+  if (tensor.type == tflite::TensorType_STRING) {
+    for (int i = 0; i < tflite::GetStringCount(buffer.data()); ++i) {
+      tflite::StringRef str = tflite::GetString(buffer.data(), i);
+      ret.add_string_val(str.str, str.len);
+    }
+    return ret;
+  }
   std::string content;
   content.assign(reinterpret_cast<const char*>(buffer.data()), buffer.size());
   ret.set_tensor_content(content);
@@ -535,6 +546,103 @@ Operation* BuildVariableOp(const tflite::TensorT& tensor,
   return op.getOperation();
 }
 
+static StatusOr<mlir::ArrayAttr> ConvertSparseIndexVector(
+    const tflite::SparseIndexVectorUnion& sparse_index_vector,
+    OpBuilder& builder) {
+  if (sparse_index_vector.type == tflite::SparseIndexVector_Int32Vector) {
+    return builder.getI32ArrayAttr(sparse_index_vector.AsInt32Vector()->values);
+  } else if (sparse_index_vector.type ==
+             tflite::SparseIndexVector_Uint16Vector) {
+    const auto& inputs = sparse_index_vector.AsUint16Vector()->values;
+    std::vector<int32_t> outputs(inputs.size());
+    std::transform(inputs.begin(), inputs.end(), outputs.begin(),
+                   [](auto x) { return static_cast<int32_t>(x); });
+    return builder.getI32ArrayAttr(outputs);
+  } else if (sparse_index_vector.type ==
+             tflite::SparseIndexVector_Uint8Vector) {
+    const auto& inputs = sparse_index_vector.AsUint8Vector()->values;
+    std::vector<int32_t> outputs(inputs.size());
+    std::transform(inputs.begin(), inputs.end(), outputs.begin(),
+                   [](auto x) { return static_cast<int32_t>(x); });
+    return builder.getI32ArrayAttr(outputs);
+  } else {
+    return errors::Unimplemented("Unsupported SparseIndexVector type");
+  }
+}
+
+static StatusOr<Operation*> BuildSparseConstOp(
+    const tflite::TensorT& tensor, const std::vector<uint8_t>& buffer,
+    const mlir::RankedTensorType shaped_type, OpBuilder& builder,
+    Location loc) {
+  tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
+  repr.clear_tensor_shape();
+  if (IsQuantized(tensor)) {
+    repr.mutable_tensor_shape()->add_dim()->set_size(buffer.size());
+    repr.set_dtype(tensorflow::DT_INT8);
+  } else {
+    repr.mutable_tensor_shape()->add_dim()->set_size(
+        buffer.size() / (shaped_type.getElementTypeBitWidth() / CHAR_BIT));
+  }
+  TF_ASSIGN_OR_RETURN(mlir::ElementsAttr compressed_data,
+                      tensorflow::ConvertTensorProto(repr, &builder));
+
+  const int dim_metadata_size = tensor.sparsity->dim_metadata.size();
+  std::vector<mlir::Attribute> dim_metadata(dim_metadata_size);
+  for (int i = 0; i < dim_metadata_size; i++) {
+    if (tensor.sparsity->dim_metadata[i]->format ==
+        tflite::DimensionType_DENSE) {
+      dim_metadata[i] = tfl::DimensionMetadataAttr::get(
+          builder.getStringAttr("DENSE"),
+          builder.getI32IntegerAttr(
+              tensor.sparsity->dim_metadata[i]->dense_size),
+          builder.getI32ArrayAttr({}), builder.getI32ArrayAttr({}),
+          builder.getContext());
+    } else if (tensor.sparsity->dim_metadata[i]->format ==
+               tflite::DimensionType_SPARSE_CSR) {
+      TF_ASSIGN_OR_RETURN(
+          mlir::ArrayAttr segments,
+          ConvertSparseIndexVector(
+              tensor.sparsity->dim_metadata[i]->array_segments, builder));
+      TF_ASSIGN_OR_RETURN(
+          mlir::ArrayAttr indices,
+          ConvertSparseIndexVector(
+              tensor.sparsity->dim_metadata[i]->array_indices, builder));
+      dim_metadata[i] = tfl::DimensionMetadataAttr::get(
+          builder.getStringAttr("SPARSE_CSR"), builder.getI32IntegerAttr(0),
+          segments, indices, builder.getContext());
+    } else {
+      return errors::Unimplemented("Unsupported dimension metadata type");
+    }
+  }
+  auto s_param = tfl::SparsityParameterAttr::get(
+      builder.getI32ArrayAttr(tensor.sparsity->traversal_order),
+      builder.getI32ArrayAttr(tensor.sparsity->block_map),
+      builder.getArrayAttr(dim_metadata), builder.getContext());
+
+  auto value_type = shaped_type;
+  if (IsQuantized(tensor)) {
+    value_type = RankedTensorType::get(
+        shaped_type.getShape(), shaped_type.getElementType()
+                                    .dyn_cast<mlir::quant::QuantizedType>()
+                                    .getStorageType());
+  }
+  std::vector<char> dense_buffer(
+      value_type.getElementType().getIntOrFloatBitWidth() / CHAR_BIT);
+  mlir::Attribute dummy_value =
+      mlir::DenseIntOrFPElementsAttr::getFromRawBuffer(value_type, dense_buffer,
+                                                       /*isSplatBuffer=*/true);
+
+  if (IsQuantized(tensor)) {
+    return builder
+        .create<tfl::SparseQConstOp>(loc, mlir::TypeAttr::get(shaped_type),
+                                     dummy_value, s_param, compressed_data)
+        .getOperation();
+  }
+  return builder
+      .create<tfl::SparseConstOp>(loc, dummy_value, s_param, compressed_data)
+      .getOperation();
+}
+
 StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                   const std::vector<uint8_t>& buffer,
                                   bool is_variable, OpBuilder builder,
@@ -545,6 +653,10 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
   auto shaped_type = type.dyn_cast<mlir::RankedTensorType>();
   if (!shaped_type) {
     return errors::Internal("Constant doesn't have a shape");
+  }
+
+  if (tensor.sparsity != nullptr) {
+    return BuildSparseConstOp(tensor, buffer, shaped_type, builder, loc);
   }
 
   auto elem_type = shaped_type.getElementType();
@@ -879,20 +991,23 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
   func.walk([&](tfl::QConstOp cst) {
     Value value = cst.getResult();
     Value full_range_const = value;
+    auto qtype = mlir::quant::UniformQuantizedType::getQuantizedElementType(
+        value.getType());
+    // Only the 8-bit constants are imported with narrow range.
+    if (!qtype || qtype.getStorageTypeIntegralWidth() != 8 ||
+        !(qtype.isa<mlir::quant::UniformQuantizedType>() ||
+          qtype.isa<mlir::quant::UniformQuantizedPerAxisType>())) {
+      return;
+    }
     for (auto& use : value.getUses()) {
       Operation* user = use.getOwner();
-      if (user->hasTrait<mlir::OpTrait::IsTerminator>()) return;
-      auto qtype = mlir::quant::UniformQuantizedType::getQuantizedElementType(
-          value.getType());
-      // Only the 8-bit constants are imported with narrow range.
-      if (!qtype || qtype.getStorageTypeIntegralWidth() != 8) return;
+      if (user->hasTrait<mlir::OpTrait::IsTerminator>()) continue;
 
       auto affine_user = llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(user);
       if (affine_user &&
           affine_user.GetAffineOperandIndex() == use.getOperandNumber() &&
           affine_user.RequiredNarrowRangeAffineOperand())
-        return;
-
+        continue;
       // Create a fully range quantized constant.
       if (full_range_const == value) {
         mlir::quant::QuantizedType new_qtype;
@@ -911,7 +1026,7 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
               per_tensor.getZeroPoint(), per_tensor.getStorageTypeMin() - 1,
               per_tensor.getStorageTypeMax());
         } else {
-          return;
+          return;  // Should not reach here, as it's already checked.
         }
         auto new_output_type = new_qtype.castFromExpressedType(
             mlir::quant::UniformQuantizedType::castToExpressedType(
@@ -998,7 +1113,7 @@ void SetSignature(
   func->setAttr(
       kExportedNameAttr,
       mlir::ArrayAttr::get(
-          context, {mlir::StringAttr::get(context, signature->method_name)}));
+          context, {mlir::StringAttr::get(context, signature->signature_key)}));
 }
 
 // Build a FuncOp from a tflite SubGraph

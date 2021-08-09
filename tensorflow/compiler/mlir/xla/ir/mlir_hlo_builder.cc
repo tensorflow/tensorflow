@@ -137,12 +137,14 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
         output_operand_aliasing,
     const Literal* literal, absl::optional<Window> window,
     absl::optional<ConvolutionDimensionNumbers> dnums,
-    CustomCallSchedule schedule) {
+    CustomCallSchedule schedule, CustomCallApiVersion api_version) {
   if (operand_shapes_with_layout.has_value())
     return Unimplemented(
         "CustomCall doesn't support operands shapes with layout");
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
                                          shape, builder_));
+  TF_ASSIGN_OR_RETURN(auto mlir_api_version,
+                      ConvertCustomCallApiVersion(api_version));
   TF_RET_CHECK(output_operand_aliasing.empty())
       << "MLIR CustomCallOp does not support output_operand_aliasing yet";
   TF_RET_CHECK(literal == nullptr)
@@ -156,7 +158,10 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
   auto op = builder_.create<mlir::mhlo::CustomCallOp>(
       loc_, ty, GetValues(operands), builder_.getStringAttr(call_target_name),
       /*has_side_effect=*/builder_.getBoolAttr(has_side_effect),
-      builder_.getStringAttr(opaque));
+      builder_.getStringAttr(opaque),
+      /*api_version=*/
+      mlir::mhlo::CustomCallApiVersionAttr::get(builder_.getContext(),
+                                                mlir_api_version));
   return MakeXlaOp(op.getResult(0));
 }
 

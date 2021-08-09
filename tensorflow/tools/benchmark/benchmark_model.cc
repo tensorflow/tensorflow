@@ -298,10 +298,10 @@ Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
   }
 
   RunMetadata run_metadata;
-  const int64 start_time = Env::Default()->NowMicros();
+  const int64_t start_time = Env::Default()->NowMicros();
   s = session->Run(run_options, input_tensors, outputs, targets,
                    &output_tensors, &run_metadata);
-  const int64 end_time = Env::Default()->NowMicros();
+  const int64_t end_time = Env::Default()->NowMicros();
   *inference_time_us = end_time - start_time;
 
   if (!s.ok()) {
@@ -537,7 +537,7 @@ int Main(int argc, char** argv) {
     std::vector<string> split_layer_shapes =
         str_util::Split(input_layer_shapes[n], ',');
     for (const string& layer_shape : split_layer_shapes) {
-      int32 tmp;
+      int32_t tmp;
       CHECK(strings::safe_strto32(layer_shape, &tmp))
           << "Incorrect size string specified: " << input_layer_shapes[n];
       if (tmp == -1) {

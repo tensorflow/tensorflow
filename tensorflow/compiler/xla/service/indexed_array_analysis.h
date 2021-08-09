@@ -191,7 +191,8 @@ class IndexedArrayAnalysis {
     absl::Span<const int64> output_dims() const { return output_dims_; }
 
    private:
-    explicit ScalarIndexedArray(Array* source, Array* indices, int64 source_dim,
+    explicit ScalarIndexedArray(Array* source, Array* indices,
+                                int64_t source_dim,
                                 std::vector<int64> output_dims, Shape shape)
         : source_(source),
           indices_(indices),
@@ -222,7 +223,7 @@ class IndexedArrayAnalysis {
 
    private:
     explicit ScalarIndexedConstantArray(Array* source, Array* indices,
-                                        int64 source_dim,
+                                        int64_t source_dim,
                                         std::vector<int64> output_dims,
                                         Shape shape)
         : ScalarIndexedArray(source, indices, source_dim,
@@ -302,7 +303,7 @@ class IndexedArrayAnalysis {
   //    I2 = [I0[i]  for i in I1]
   //    G1 = [Arr[i] for i in I2]
   StatusOr<ScalarIndexedArray*> FoldGatherOfGather(
-      ScalarIndexedArray* source, Array* indices, int64 source_dim,
+      ScalarIndexedArray* source, Array* indices, int64_t source_dim,
       absl::Span<const int64> output_dims, Shape shape);
 
   // Reshapes a scalar-indexed node to remove the degenerate dimensions in its
@@ -334,7 +335,7 @@ class IndexedArrayAnalysis {
   }
 
   ScalarIndexedArray* ConstructScalarIndexedArray(
-      Array* source, Array* indices, int64 source_dim,
+      Array* source, Array* indices, int64_t source_dim,
       std::vector<int64> output_dims, Shape shape) {
     if (source->kind() == Array::kConstant) {
       return Construct<ScalarIndexedConstantArray>(source, indices, source_dim,

@@ -164,7 +164,7 @@ string PrintArray(int64_t num_elts, const T* array) {
 string PrintTensor(const TensorProto& tensor_proto) {
   Tensor t(tensor_proto.dtype());
   CHECK(t.FromProto(tensor_proto));
-  const int64 num_elts = t.NumElements();
+  const int64_t num_elts = t.NumElements();
   switch (t.dtype()) {
     case DT_FLOAT:
       return PrintArray(num_elts, t.flat<float>().data());

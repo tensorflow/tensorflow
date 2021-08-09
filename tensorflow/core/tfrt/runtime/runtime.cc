@@ -32,10 +32,10 @@ limitations under the License.
 #include "tfrt/tensor/scalar_host_tensor.h"  // from @tf_runtime
 
 #ifdef GOOGLE_CUDA
-#include "tfrt/gpu/core_runtime/gpu_op_handler.h"
-#include "tfrt/gpu/device/device.h"
-#include "tfrt/gpu/device/device_util.h"
-#include "tfrt/gpu/tensor/dense_gpu_tensor.h"
+#include "tfrt/gpu/core_runtime/gpu_op_handler.h"  // from @tf_runtime
+#include "tfrt/gpu/device/device.h"  // from @tf_runtime
+#include "tfrt/gpu/device/device_util.h"  // from @tf_runtime
+#include "tfrt/gpu/tensor/dense_gpu_tensor.h"  // from @tf_runtime
 #endif  // GOOGLE_CUDA
 
 constexpr char const kDefaultHostDeviceName[] =

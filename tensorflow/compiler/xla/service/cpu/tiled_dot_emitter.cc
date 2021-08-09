@@ -822,7 +822,7 @@ void TiledSmallGemmEmitter::HandleResiduesOnK(VectorSupportLibrary* vsl,
 void TiledSmallGemmEmitter::HandleResiduesOnM(
     VectorSupportLibrary* vsl, int64_t tile_size_k, llvm::Value* k_start,
     llvm::Value* k_end, llvm::Value* n_start, llvm::Value* n_end) {
-  const int64 m_end = dims().m() - dims().m() % tile_size_m();
+  const int64_t m_end = dims().m() - dims().m() % tile_size_m();
   EmitTiledGemm(vsl, tile_size_k, k_start, k_end, n_start, n_end, tile_size_m(),
                 GetInt64(0), GetInt64(m_end));
 

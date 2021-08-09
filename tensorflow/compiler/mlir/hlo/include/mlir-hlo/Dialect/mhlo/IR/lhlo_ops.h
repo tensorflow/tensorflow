@@ -38,6 +38,10 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 
+// clang-format off
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
+// clang-format on
+
 namespace mlir {
 class OpBuilder;
 namespace lmhlo {

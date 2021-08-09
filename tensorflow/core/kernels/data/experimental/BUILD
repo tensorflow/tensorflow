@@ -525,6 +525,20 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "random_access_ops",
+    srcs = ["random_access_ops.cc"],
+    hdrs = ["random_access_ops.h"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels/data:iterator_ops",
+        "//tensorflow/core/platform",
+    ],
+)
+
+tf_kernel_library(
     name = "random_dataset_op",
     srcs = ["random_dataset_op.cc"],
     hdrs = ["random_dataset_op.h"],

@@ -40,16 +40,16 @@ class Operation {
   explicit Operation(Node* n);
 
   int32 num_inputs() const { return node_->num_inputs(); }
-  DataType input_type(int32 o) const { return node_->input_type(o); }
-  Output input(int32 i) const;
+  DataType input_type(int32_t o) const { return node_->input_type(o); }
+  Output input(int32_t i) const;
 
   int32 num_outputs() const { return node_->num_outputs(); }
-  DataType output_type(int32 o) const { return node_->output_type(o); }
-  Output output(int32 i) const;
+  DataType output_type(int32_t o) const { return node_->output_type(o); }
+  Output output(int32_t i) const;
 
   Node* node() const { return node_; }
 
-  uint64 hash(int32 index) const;
+  uint64 hash(int32_t index) const;
 
   bool operator==(const Operation& other) const { return node_ == other.node_; }
 
@@ -66,8 +66,8 @@ class Output {
  public:
   Output() = default;
   explicit Output(Node* n) : op_(n) {}
-  Output(Node* n, int32 index) : op_(n), index_(index) {}
-  Output(const Operation& op, int32 index) : op_(op), index_(index) {}
+  Output(Node* n, int32_t index) : op_(n), index_(index) {}
+  Output(const Operation& op, int32_t index) : op_(op), index_(index) {}
 
   Operation op() const { return op_; }
   Node* node() const { return op().node(); }
@@ -232,7 +232,7 @@ class Input {
 
   /// Constructor specifying a node name, index and datatype. This should only
   /// be used for specifying a backward edge, needed by control flow.
-  Input(const std::string& name, int32 i, DataType dt)
+  Input(const std::string& name, int32_t i, DataType dt)
       : node_name_(name), index_(i), data_type_(dt) {}
 
   Node* node() const { return output_.node(); }

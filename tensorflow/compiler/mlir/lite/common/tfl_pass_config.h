@@ -38,7 +38,9 @@ struct PassConfig {
         shape_inference(true),
         runtime_verification(true),
         enable_tflite_variables(false),
-        disable_variable_freezing(false) {}
+        disable_variable_freezing(false),
+        unfold_large_splat_constant(false),
+        guarantee_all_funcs_one_use(false) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -71,6 +73,12 @@ struct PassConfig {
   // By default we freeze all variables and disallow mutable variables. When
   // 'enable_tflite_variables' is true then we allow mutable variable only.
   bool disable_variable_freezing;
+  // Whether to unfold large splat constant tensors and replace them with
+  // fill operation.
+  bool unfold_large_splat_constant;
+  // Whether to run the `GuaranteeAllFuncsOneUsePass` to ensure each function
+  // has a single use.
+  bool guarantee_all_funcs_one_use;
 };
 
 }  // namespace TFL

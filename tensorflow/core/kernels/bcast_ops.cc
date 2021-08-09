@@ -38,7 +38,7 @@ class BCastArgsOp : public OpKernel {
                   errors::InvalidArgument("In[", i, "] must be a vector.",
                                           in.shape().DebugString()));
       BCast::Vec vec;
-      for (int64 i = 0; i < in.NumElements(); ++i) {
+      for (int64_t i = 0; i < in.NumElements(); ++i) {
         vec.push_back(in.vec<T>()(i));
       }
       shapes.push_back(vec);
@@ -55,10 +55,10 @@ class BCastArgsOp : public OpKernel {
 
  private:
   void Output(OpKernelContext* ctx, int idx, const BCast::Vec& v) {
-    const int64 len = v.size();
+    const int64_t len = v.size();
     Tensor* o = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(idx, TensorShape({len}), &o));
-    for (int64 i = 0; i < len; ++i) {
+    for (int64_t i = 0; i < len; ++i) {
       o->flat<T>()(i) = static_cast<T>(v[i]);
     }
   }
@@ -87,7 +87,7 @@ class BCastGradArgsOp : public OpKernel {
                   errors::InvalidArgument("In[", i, "] must be a vector.",
                                           in.shape().DebugString()));
       BCast::Vec vec;
-      for (int64 i = 0; i < in.NumElements(); ++i) {
+      for (int64_t i = 0; i < in.NumElements(); ++i) {
         vec.push_back(in.vec<T>()(i));
       }
       shapes.push_back(vec);
@@ -105,10 +105,10 @@ class BCastGradArgsOp : public OpKernel {
 
  private:
   void Output(OpKernelContext* ctx, int idx, const BCast::Vec& v) {
-    const int64 len = v.size();
+    const int64_t len = v.size();
     Tensor* o = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(idx, TensorShape({len}), &o));
-    for (int64 i = 0; i < len; ++i) {
+    for (int64_t i = 0; i < len; ++i) {
       o->flat<T>()(i) = static_cast<T>(v[i]);
     }
   }

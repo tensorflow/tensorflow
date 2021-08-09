@@ -45,8 +45,8 @@ gtl::InlinedVector<INDICES_TYPE, 8> GetFlattenedRelativeOffsets(
 template <typename INDICES_TYPE>
 std::pair<INDICES_TYPE, INDICES_TYPE> GetStrides(
     const TensorShape& input_shape, const TensorShape& segment_id_shape) {
-  int64 small_stride = 1;
-  int64 big_stride = 1;
+  int64_t small_stride = 1;
+  int64_t big_stride = 1;
   for (auto i = 0; i < input_shape.dims(); i++) {
     if (i < segment_id_shape.dims()) {
       small_stride *= segment_id_shape.dim_size(i);
@@ -59,7 +59,7 @@ std::pair<INDICES_TYPE, INDICES_TYPE> GetStrides(
 
 TensorShape GetOutputShape(const TensorShape& input_shape,
                            const TensorShape& segment_id_shape,
-                           const int64 num_segments) {
+                           const int64_t num_segments) {
   TensorShape output_shape;
   output_shape.AddDim(num_segments);
   for (size_t index = segment_id_shape.dims(); index < input_shape.dims();
@@ -83,11 +83,11 @@ class UnsortedSegmentJoinOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
-    const int32 input_dims = input_shape.dims();
+    const int32_t input_dims = input_shape.dims();
 
     const Tensor& segment_id = context->input(1);
     const TensorShape& segment_id_shape = segment_id.shape();
-    const int32 segment_dims = segment_id_shape.dims();
+    const int32_t segment_dims = segment_id_shape.dims();
 
     const Tensor& num_segments_tensor = context->input(2);
     OP_REQUIRES(context, num_segments_tensor.NumElements() != 0,
@@ -130,8 +130,8 @@ class UnsortedSegmentJoinOp : public OpKernel {
               " to have negative values."));
     }
 
-    int64 big_stride;
-    int64 small_stride;
+    int64_t big_stride;
+    int64_t small_stride;
     std::tie(big_stride, small_stride) =
         GetStrides<INDICES_TYPE>(input_shape, segment_id_shape);
     auto relative_offset_set =

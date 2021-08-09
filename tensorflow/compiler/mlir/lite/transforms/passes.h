@@ -141,6 +141,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHashTablesPass();
 // Creates get arithmetic count pass, which will calculate the arithmetic count
 // for each ops.
 std::unique_ptr<OperationPass<FuncOp>> CreateGetArithmeticCountPass();
+
+// Creates unfold large constant pass, which will replace large splat constant
+// tensors with fill op.
+std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldLargeSplatConstantPass();
 }  // namespace TFL
 
 }  // namespace mlir

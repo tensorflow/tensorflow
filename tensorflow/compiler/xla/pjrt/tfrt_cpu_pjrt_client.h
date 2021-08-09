@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
+#include "tensorflow/compiler/xla/pjrt/transpose.h"
 #include "tensorflow/compiler/xla/pjrt/worker_thread.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -142,8 +143,7 @@ class TfrtCpuClient final : public PjRtClient {
   }
 
   StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      absl::string_view serialized, std::unique_ptr<HloModule> hlo_module,
-      CompileOptions options) override {
+      absl::string_view serialized, CompileOptions options) override {
     return Unimplemented("DeserializeExecutable not implemented on %s",
                          platform_name());
   }
@@ -158,7 +158,8 @@ class TfrtCpuClient final : public PjRtClient {
   };
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
-      const void* data, const Shape& shape,
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      absl::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer,
       PjRtDevice* device) override;
@@ -242,6 +243,12 @@ class TfrtCpuClient final : public PjRtClient {
   mutable absl::Mutex mu_;
   tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event_
       ABSL_GUARDED_BY(mu_);
+
+  // A cache for transpose plans. We use transposes to convert
+  // (possibly strided) buffers provided to BufferFromHostBuffer into dense
+  // major-to-minor layout.
+  absl::Mutex transpose_mu_;
+  TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
 };
 
 class TfrtCpuBuffer final : public PjRtBuffer {
@@ -427,7 +434,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  Status CopyRawToHost(void* dst, int64 offset, int64 transfer_size,
+  Status CopyRawToHost(void* dst, int64_t offset, int64_t transfer_size,
                        std::function<void(Status)> on_ready) override {
     return Unimplemented("CopyRawToHost not implemented");
   }

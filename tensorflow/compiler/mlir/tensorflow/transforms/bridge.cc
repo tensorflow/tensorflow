@@ -29,13 +29,14 @@ limitations under the License.
 namespace mlir {
 namespace {
 // Add logger to bridge passmanager.
-void EnableLogging(PassManager *pm) {
+// Enable timing statistics per pass for the bridge passmanager.
+void EnableDetailedLogging(PassManager *pm) {
   // Print the whole module after each pass, which requires disabling
   // multi-threading as well.
   pm->getContext()->disableMultithreading();
   pm->enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
       /*print_module_scope=*/true));
-  pm->enableTiming(std::make_unique<tensorflow::BridgeTimingConfig>());
+  pm->enableTiming();
 }
 }  // namespace
 
@@ -49,7 +50,7 @@ tensorflow::Status RunTPUBridge(
   ::tensorflow::applyTensorflowAndCLOptions(bridge);
   if (enable_logging || VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("tpu_bridge_before", module);
-    if (VLOG_IS_ON(2)) EnableLogging(&bridge);
+    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
   }
 
   // Populate a passmanager with the list of passes that implement the bridge.
@@ -217,7 +218,7 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
   PassManager bridge(module.getContext());
   if (enable_logging || VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("standard_pipeline_before", module);
-    if (VLOG_IS_ON(2)) EnableLogging(&bridge);
+    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
   }
 
   StandardPipelineOptions pipeline_options;

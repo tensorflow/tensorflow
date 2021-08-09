@@ -20,10 +20,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "tfrt/core_runtime/core_runtime_op.h"
-#include "tfrt/dtype/dtype.h"
-#include "tfrt/host_context/host_context.h"
-#include "tfrt/tensor/tensor_shape.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
@@ -35,9 +31,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
+#include "tfrt/core_runtime/core_runtime_op.h"  // from @tf_runtime
+#include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
+#include "tfrt/tensor/tensor_shape.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {

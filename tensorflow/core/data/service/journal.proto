@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow.data;
 
 import "tensorflow/core/data/service/common.proto";
+import "tensorflow/core/protobuf/data_service.proto";
 
 // Message representing journaled dispatcher metadata updates. When we apply
 // one of these changes to the dispatcher's in-memory state, we also write an
@@ -44,12 +45,12 @@ message NamedJobKeyDef {
   int64 index = 2;
 }
 
-// Next tag: 9
+// Next tag: 11
 message CreateJobUpdate {
-  reserved 5, 6;
+  reserved 3, 5, 6;
   int64 job_id = 1;
   int64 dataset_id = 2;
-  ProcessingModeDef processing_mode = 3;
+  ProcessingModeDef processing_mode_def = 9;
   int64 num_split_providers = 8;
   // Only some jobs have names, so this may be unset.
   NamedJobKeyDef named_job_key = 4;
@@ -58,6 +59,8 @@ message CreateJobUpdate {
   oneof optional_num_consumers {
     int64 num_consumers = 7;
   }
+  // Specifies which workers the client of this job reads from.
+  TargetWorkers target_workers = 10;
 }
 
 // Next tag: 5

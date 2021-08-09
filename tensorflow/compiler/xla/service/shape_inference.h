@@ -88,14 +88,14 @@ class ShapeInference {
   static StatusOr<Shape> InferBatchNormTrainingShape(const Shape& operand_shape,
                                                      const Shape& scale_shape,
                                                      const Shape& offset_shape,
-                                                     int64 feature_index);
+                                                     int64_t feature_index);
 
   // Infers the shape produced by InferBatchNormInference with the given
   // operands.
   static StatusOr<Shape> InferBatchNormInferenceShape(
       const Shape& operand_shape, const Shape& scale_shape,
       const Shape& offset_shape, const Shape& mean_shape,
-      const Shape& variance_shape, int64 feature_index);
+      const Shape& variance_shape, int64_t feature_index);
 
   // Infers the shape produced by InferBatchNormGrad with the given operands.
   static StatusOr<Shape> InferBatchNormGradShape(const Shape& operand_shape,
@@ -103,14 +103,14 @@ class ShapeInference {
                                                  const Shape& mean_shape,
                                                  const Shape& var_shape,
                                                  const Shape& output_grad_shape,
-                                                 int64 feature_index);
+                                                 int64_t feature_index);
 
   // Infers the shape produced by applying the given convolutional filter (rhs)
   // to lhs in the way specified by the fields on window. An optional
   // preferred_element_type can be specified to upcast the element type.
   static StatusOr<Shape> InferConvolveShape(
-      const Shape& lhs, const Shape& rhs, int64 feature_group_count,
-      int64 batch_group_count, const Window& window,
+      const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
+      int64_t batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       absl::optional<PrimitiveType> preferred_element_type);
 
@@ -128,14 +128,14 @@ class ShapeInference {
   // Infers the shape produced by an all-gather with the given operand shape,
   // concat dimension, and shard count.
   static StatusOr<Shape> InferAllGatherShape(
-      absl::Span<const Shape* const> operand_shapes, int64 all_gather_dimension,
-      int64 shard_count);
+      absl::Span<const Shape* const> operand_shapes,
+      int64_t all_gather_dimension, int64_t shard_count);
 
   // Infers the shape produced by an all-gather-start with the given operand
   // shape, concat dimension, and shard count.
   static StatusOr<Shape> InferAllGatherStartShape(
-      absl::Span<const Shape* const> operand_shapes, int64 all_gather_dimension,
-      int64 shard_count);
+      absl::Span<const Shape* const> operand_shapes,
+      int64_t all_gather_dimension, int64_t shard_count);
 
   // Infers the shape produced by an all-gather-done given a certain
   // all-gather-start shape.
@@ -150,8 +150,8 @@ class ShapeInference {
   // Infers the shape produced by a reduce-scatter with the given operand
   // shape, scatter dimension, and shard count.
   static StatusOr<Shape> InferReduceScatterShape(
-      absl::Span<const Shape* const> operand_shapes, int64 scatter_dimension,
-      int64 shard_count);
+      absl::Span<const Shape* const> operand_shapes, int64_t scatter_dimension,
+      int64_t shard_count);
 
   // Infers the shape produced by a cross replica sum start.
   static StatusOr<Shape> InferAllReduceStartShape(
@@ -163,9 +163,9 @@ class ShapeInference {
   // Infers final shape of an Alltoall operation that is created by the xla
   // builder.
   static StatusOr<Shape> InferAllToAllShape(const Shape& shape,
-                                            int64 split_dimension,
-                                            int64 concat_dimension,
-                                            int64 split_count);
+                                            int64_t split_dimension,
+                                            int64_t concat_dimension,
+                                            int64_t split_count);
 
   // Infers the shape of an HLO all-to-all instruction.
   static StatusOr<Shape> InferAllToAllTupleShape(
@@ -250,7 +250,7 @@ class ShapeInference {
   // it is impossible to infer the type that comes out of the tuple indexing if
   // it is not a compile time constant.
   static StatusOr<Shape> InferGetTupleElementShape(const Shape& arg,
-                                                   int64 index);
+                                                   int64_t index);
 
   // Infers the shape produced from a while node. condition and body are the
   // shapes of computations for the condition and the body of a while node, and
@@ -281,7 +281,7 @@ class ShapeInference {
   static StatusOr<Shape> InferReshapeShape(const Shape& operand,
                                            absl::Span<const int64> dimensions,
                                            absl::Span<const int64> new_sizes,
-                                           int64 inferred_dimension);
+                                           int64_t inferred_dimension);
 
   // Infers the shape produced by a dynamic reshape operation from the element
   // type of its operand and the new dimension sizes specified. The result shape
@@ -300,7 +300,7 @@ class ShapeInference {
   // Helper that infers the shape produced by performing a concatenate operation
   // with the given operand shapes.
   static StatusOr<Shape> InferConcatOpShape(
-      absl::Span<const Shape* const> arg_shapes, int64 dimension);
+      absl::Span<const Shape* const> arg_shapes, int64_t dimension);
 
   // Helper that validates the given operand shape can be converted to the
   // target output_shape via a convert instruction -- the requirement is that
@@ -358,12 +358,12 @@ class ShapeInference {
 
   // Helper that validates the given input shape to GetDimensionSize.
   static StatusOr<Shape> InferGetDimensionSizeShape(const Shape& shape,
-                                                    int64 dimension);
+                                                    int64_t dimension);
 
   // Helper that validates the given input shape to SetDimensionSize.
   static StatusOr<Shape> InferSetDimensionSizeShape(const Shape& operand_shape,
                                                     const Shape& val_shape,
-                                                    int64 dimension);
+                                                    int64_t dimension);
 
   // Helper function for creating a Window proto from user-supplied data.
   // Returns error if the user-supplied data was invalid.

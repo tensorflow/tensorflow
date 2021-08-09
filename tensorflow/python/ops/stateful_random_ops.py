@@ -21,6 +21,7 @@ from __future__ import print_function
 import six
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -135,7 +136,10 @@ def _get_counter_size(alg):
   elif alg == RNG_ALG_THREEFRY:
     return 1
   else:
-    raise ValueError("Unsupported algorithm id: %s" % alg)
+    raise ValueError(
+        f"Argument `alg` got unsupported value {alg}. Supported values are "
+        f"{RNG_ALG_PHILOX} for the Philox algorithm and {RNG_ALG_THREEFRY} for "
+        f"the ThreeFry algorithm.")
 
 
 def _get_state_size(alg):
@@ -144,7 +148,10 @@ def _get_state_size(alg):
   elif alg == RNG_ALG_THREEFRY:
     return THREEFRY_STATE_SIZE
   else:
-    raise ValueError("Unsupported algorithm id: %s" % alg)
+    raise ValueError(
+        f"Argument `alg` got unsupported value {alg}. Supported values are "
+        f"{RNG_ALG_PHILOX} for the Philox algorithm and {RNG_ALG_THREEFRY} for "
+        f"the ThreeFry algorithm.")
 
 
 def _check_state_shape(shape, alg):
@@ -260,9 +267,6 @@ class Generator(tracking.AutoTrackable):
   When creating a generator inside a `tf.distribute.Strategy` scope, each
   replica will get a different stream of random numbers.
 
-  Note: `tf.distribute.experimental.CentralStorageStrategy` and
-  `tf.distribute.experimental.ParameterServerStrategy` are not supported yet.
-
   For example, in this code:
 
   ```
@@ -297,6 +301,25 @@ class Generator(tracking.AutoTrackable):
   while another has made two RNG calls). We don't have such guarantee if the
   generator is saved in a strategy scope and restored outside of any strategy
   scope, or vice versa.
+
+  When a generator is created within the scope of
+  `tf.distribute.experimental.ParameterServerStrategy`, the workers
+  will share the generator's state (placed on one of the parameter
+  servers). In this way the workers will still get different
+  random-number streams, as stated above. (This is similar to replicas
+  in a `tf.distribute.MirroredStrategy` sequentially accessing a
+  generator created outside the strategy.) Each RNG call on a worker
+  will incur a round-trip to a parameter server, which may have
+  performance impacts. When creating a
+  `tf.distribute.experimental.ParameterServerStrategy`, please make
+  sure that the `variable_partitioner` argument won't shard small
+  variables of shape `[2]` or `[3]` (because generator states must not
+  be sharded). Ways to avoid sharding small variables include setting
+  `variable_partitioner` to `None` or to
+  `tf.distribute.experimental.partitioners.MinSizePartitioner` with a
+  large enough `min_shard_bytes` (see
+  `tf.distribute.experimental.ParameterServerStrategy`'s documentation
+  for more details).
   """
 
   @classmethod
@@ -425,12 +448,6 @@ class Generator(tracking.AutoTrackable):
       self._alg = copy_from.algorithm
     else:
       assert alg is not None and state is not None
-      if ds_context.has_strategy():
-        strat_name = type(ds_context.get_strategy()).__name__
-        # TODO(b/174610856): Support CentralStorageStrategy and
-        #   ParameterServerStrategy.
-        if "CentralStorage" in strat_name or "ParameterServer" in strat_name:
-          raise ValueError("%s is not supported yet" % strat_name)
       alg = stateless_random_ops.convert_alg_to_int(alg)
       if isinstance(state, variables.Variable):
         _check_state_shape(state.shape, alg)
@@ -452,7 +469,20 @@ class Generator(tracking.AutoTrackable):
     Returns:
       The created variable.
     """
-    return variables.Variable(*args, **kwargs)
+    v = variables.Variable(*args, **kwargs)
+    if isinstance(v, sharded_variable.ShardedVariable):
+      # RNG state is an atomic entity representing a 128-bit or
+      # 192-bit value, so it mustn't be sharded.
+      raise ValueError(
+          "tf.random.Generator state is sharded, which is not allowed. When "
+          "creating a tf.distribute.experimental.ParameterServerStrategy, "
+          "please make sure that the `variable_partitioner` "
+          "argument won't shard a "
+          "small variable of shape [2] or [3]. Ways to avoid sharding small "
+          "variables include setting `variable_partitioner` to None or to "
+          "tf.distribute.experimental.partitioners.MinSizePartitioner with a "
+          "large enough `min_shard_bytes`.")
+    return v
 
   def reset(self, state):
     """Resets the generator by a new state.
@@ -531,7 +561,10 @@ class Generator(tracking.AutoTrackable):
     if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
       return self._state_var[-1]
     else:
-      raise ValueError("Unsupported algorithm id: %s" % alg)
+      raise ValueError(
+          f"This generator uses an unsupported algorithm {alg}. Supported "
+          f"values are {RNG_ALG_PHILOX} for the Philox algorithm and "
+          f"{RNG_ALG_THREEFRY} for the ThreeFry algorithm.")
 
   def _skip_single_var(self, var, delta):
     # TODO(wangpeng): Cache the cast algorithm instead of casting everytime.
@@ -567,7 +600,12 @@ class Generator(tracking.AutoTrackable):
           # Code that operates on all replicas of a variable cannot be saved
           # without retracing.
           values_util.mark_as_unsaveable()
+        if (ds_context.in_cross_replica_context() or
+            "CentralStorage" in type(self._distribution_strategy).__name__):
           # In cross-replica context we need to use strategy.extended.update.
+          # In CentralStorageStrategy we also need to use
+          # strategy.extended.update (even for replica context),
+          # because variable updates here must be within merge_call.
           return ds_context.get_strategy().extended.update(
               self.state, update_fn)
     return update_fn(self.state)
@@ -863,7 +901,10 @@ class Generator(tracking.AutoTrackable):
       zeros = array_ops.zeros_like(keys)
       return array_ops.stack([keys, zeros])
     else:
-      raise ValueError("Unsupported algorithm id: %s" % alg)
+      raise ValueError(
+          f"This generator uses an unsupported algorithm {alg}. Supported "
+          f"values are {RNG_ALG_PHILOX} for the Philox algorithm and "
+          f"{RNG_ALG_THREEFRY} for the ThreeFry algorithm.")
 
   def split(self, count=1):
     """Returns a list of independent `Generator` objects.
@@ -913,7 +954,10 @@ class Generator(tracking.AutoTrackable):
       return [Generator(state=_key_to_state(alg, key), alg=alg)
               for key in array_ops.unstack(keys, num=count)]
     else:
-      raise ValueError("Unsupported algorithm id: %s" % alg)
+      raise ValueError(
+          f"This generator uses an unsupported algorithm {alg}. Supported "
+          f"values are {RNG_ALG_PHILOX} for the Philox algorithm and "
+          f"{RNG_ALG_THREEFRY} for the ThreeFry algorithm.")
 
 
 # It's not safe to create TF ops before `init_google` is called, so this is

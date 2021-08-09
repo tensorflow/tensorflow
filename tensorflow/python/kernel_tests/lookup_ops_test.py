@@ -136,7 +136,7 @@ class StaticHashTableTest(BaseLookupTableTest):
 
   def testStaticHashTableInitWithNumPyArrays(self):
     default_val = -1
-    keys = np.array(["brain", "salad", "surgery"], dtype=np.str)
+    keys = np.array(["brain", "salad", "surgery"], dtype=np.str_)
     values = np.array([0, 1, 2], dtype=np.int64)
     table = self.getHashTable()(
         lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
@@ -2183,7 +2183,7 @@ class IndexTableFromFile(test.TestCase):
   def test_index_table_from_file_str_fails_with_zero_size_vocabulary(self):
     vocabulary_file = self._createVocabFile("zero_vocab_str.txt")
     self.assertRaisesRegex(
-        ValueError, "vocab_size must be greater than 0, got 0. "
+        ValueError, "`vocab_size` must be greater than 0, got 0 for "
         "vocabulary_file: .*zero_vocab_str.txt",
         lookup_ops.index_table_from_file,
         vocabulary_file=vocabulary_file,
@@ -2193,7 +2193,7 @@ class IndexTableFromFile(test.TestCase):
     vocabulary_file = constant_op.constant(
         self._createVocabFile("zero_vocab_tensor.txt"))
     self.assertRaisesRegex(
-        ValueError, "vocab_size must be greater than 0, got 0. "
+        ValueError, "`vocab_size` must be greater than 0, got 0 for "
         "vocabulary_file: .*zero_vocab_tensor.txt",
         lookup_ops.index_table_from_file,
         vocabulary_file=vocabulary_file,
@@ -2327,7 +2327,7 @@ class IndexTableFromTensor(test.TestCase):
 
   def test_index_table_from_tensor_missing_vocabulary_list(self):
     with self.assertRaisesRegex(ValueError,
-                                "vocabulary_list must be specified"):
+                                "`vocabulary_list` must be specified"):
       lookup_ops.index_table_from_tensor(
           vocabulary_list=None, num_oov_buckets=1)
 
@@ -2608,12 +2608,12 @@ class IdTableWithHashBucketsTest(test.TestCase):
     self.assertEqual(oov_buckets, self.evaluate(table.size()))
 
   def testFloat64IdTableWithOnlyHashBucket(self):
-    with self.assertRaisesRegex(TypeError, "Invalid key_dtype"):
+    with self.assertRaisesRegex(TypeError, "Invalid `key_dtype`"):
       lookup_ops.IdTableWithHashBuckets(
           None, num_oov_buckets=5, key_dtype=dtypes.float64)
 
   def testBoolIdTableWithOnlyHashBucket(self):
-    with self.assertRaisesRegex(TypeError, "Invalid key_dtype"):
+    with self.assertRaisesRegex(TypeError, "Invalid `key_dtype`"):
       lookup_ops.IdTableWithHashBuckets(
           None, num_oov_buckets=5, key_dtype=dtypes.bool)
 

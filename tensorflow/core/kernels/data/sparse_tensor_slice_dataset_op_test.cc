@@ -377,7 +377,7 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
 
   int cur_iteration = 0;
   bool end_of_sequence = false;
-  int64 num_slices = dataset_->Cardinality();
+  int64_t num_slices = dataset_->Cardinality();
   std::vector<Tensor> out_tensors;
 
   for (int breakpoint : test_case.breakpoints) {

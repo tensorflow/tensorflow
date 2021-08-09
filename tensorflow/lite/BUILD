@@ -34,6 +34,13 @@ config_setting(
 )
 
 config_setting(
+    name = "tflite_use_simple_memory_planner",
+    values = {
+        "copt": "-DTFLITE_USE_SIMPLE_MEMORY_PLANNER",
+    },
+)
+
+config_setting(
     name = "mips",
     values = {
         "cpu": "mips",
@@ -84,6 +91,7 @@ FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
     "core/subgraph.h",
     "graph_info.h",
     "optional_debug_tools.h",
+    "signature_runner.h",
 ]
 
 exports_files(
@@ -149,7 +157,6 @@ cc_library(
     deps = [
         ":graph_info",
         ":memory_planner",
-        ":simple_memory_arena",
         ":util",
         "//tensorflow/lite/c:common",
     ],
@@ -342,6 +349,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -381,6 +389,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -411,6 +420,7 @@ cc_library(
         "core/subgraph.h",
         "interpreter.cc",
         "interpreter_builder.cc",
+        "signature_runner.h",
     ],
     hdrs = [
         "interpreter.h",
@@ -449,6 +459,7 @@ cc_library(
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/delegates:telemetry",
         "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/profiling:platform_profiler",
         "//tensorflow/lite/schema:schema_fbs",
@@ -470,6 +481,7 @@ cc_library(
         "graph_info.cc",
         "interpreter_builder_experimental.cc",
         "interpreter_experimental.cc",
+        "signature_runner.cc",
     ],
     hdrs = [
         "core/subgraph.h",
@@ -478,6 +490,7 @@ cc_library(
         "interpreter_builder.h",
         "model.h",
         "model_builder.h",
+        "signature_runner.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
@@ -488,7 +501,6 @@ cc_library(
     ],
     deps = [
         ":allocation",
-        ":arena_planner",
         ":builtin_ops",
         ":cc_api_stable",
         ":external_cpu_backend_context",
@@ -502,15 +514,23 @@ cc_library(
         ":string",
         ":type_to_tflitetype",
         ":util",
+        "@flatbuffers//:runtime_cc",
+        "@ruy//ruy:denormal",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/schema:schema_fbs",
-        "@flatbuffers//:runtime_cc",
-        "@ruy//ruy:denormal",
-    ],
+    ] + select({
+        ":tflite_use_simple_memory_planner": [
+            ":simple_planner",
+        ],
+        "//conditions:default": [
+            ":arena_planner",
+        ],
+    }),
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
 )
 
@@ -711,6 +731,7 @@ cc_library(
         ":version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",
@@ -746,6 +767,23 @@ cc_test(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Test signature runner.
+cc_test(
+    name = "signature_runner_test",
+    size = "small",
+    srcs = ["signature_runner_test.cc"],
+    data = [
+        "testdata/multi_signatures.bin",
+    ],
+    deps = [
+        ":framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -795,6 +833,7 @@ cc_test(
         "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
+        "testdata/test_model_redux_precision.bin",
         "testdata/while_op_with_forwarding_input.bin",
     ],
     tags = [

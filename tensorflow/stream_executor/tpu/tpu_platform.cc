@@ -34,6 +34,7 @@ using StatusOr = ::stream_executor::port::StatusOr<T>;
 
 TpuPlatform::TpuPlatform() : name_("TPU") {
   platform_ = tpu::ExecutorApiFn()->TpuPlatform_NewFn();
+  CHECK(platform_ != nullptr);
 }
 
 TpuPlatform* TpuPlatform::GetRegisteredPlatform() {
@@ -183,7 +184,7 @@ bool RegisterTpuPlatform() {
   // Silently bail if the underlying TPU C API isn't initialized. This is useful
   // for code that unconditionally calls RegisterTpuPlatform() but doesn't link
   // in the underlying TPU library when not running on TPU.
-  if (!tpu::IsInitialized(tpu::ExecutorApiFn())) {
+  if (!tpu::IsStreamExecutorEnabled(tpu::ExecutorApiFn())) {
     return true;
   }
   static bool tpu_platform_registered = false;

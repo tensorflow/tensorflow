@@ -65,9 +65,10 @@ class _Optimizer(object):
     self.clip_weight_min = clip_weight_min
     self.clip_weight_max = clip_weight_max
     if not use_gradient_accumulation and clipvalue is not None:
-      raise ValueError("Received non-None gradient clipping limit {} but "
-                       "use_gradient_accumulation is not set to True.".format(
-                           clipvalue))
+      raise ValueError(
+          f"When `use_gradient_accumulation` is False, gradient clipping "
+          f"cannot be used and `clipvalue` should be left as None. "
+          f"Received value {clipvalue} for argument `clipvalue`.")
     if clipvalue is None:
       clipvalue = (None, None)
     elif not isinstance(clipvalue, tuple):
@@ -80,8 +81,9 @@ class _Optimizer(object):
 
     if (slot_variable_creation_fn is not None and
         not callable(slot_variable_creation_fn)):
-      raise ValueError("slot_variable_creation_fn must be either None or a "
-                       "callable.")
+      raise ValueError(
+          f"Argument `slot_variable_creation_fn` must be either None or a "
+          f"callable. Received: {slot_variable_creation_fn}")
     self.slot_variable_creation_fn = slot_variable_creation_fn
 
   @abc.abstractmethod
@@ -356,7 +358,9 @@ class Adagrad(_Optimizer):
         multiply_weight_decay_factor_by_learning_rate, clipvalue,
         slot_variable_creation_fn)
     if initial_accumulator_value <= 0:
-      raise ValueError("Adagrad initial_accumulator_value must be positive")
+      raise ValueError(
+          f"Argument `initial_accumulator_value` must be a positive float. "
+          f"Received: {initial_accumulator_value}")
     self.initial_accumulator_value = initial_accumulator_value
 
   def _slot_names(self) -> List[Text]:
@@ -497,7 +501,9 @@ class FTRL(_Optimizer):
                      multiply_weight_decay_factor_by_learning_rate, clipvalue,
                      slot_variable_creation_fn)
     if initial_accumulator_value <= 0:
-      raise ValueError("FTRL initial_accumulator_value must be positive")
+      raise ValueError(
+          f"Argument `initial_accumulator_value` must be a positive float. "
+          f"Received: {initial_accumulator_value}")
     self.initial_accumulator_value = initial_accumulator_value
     self.learning_rate_power = learning_rate_power
     self.l1_regularization_strength = l1_regularization_strength
@@ -644,16 +650,18 @@ class Adam(_Optimizer):
         multiply_weight_decay_factor_by_learning_rate, clipvalue,
         slot_variable_creation_fn)
     if beta_1 < 0. or beta_1 >= 1.:
-      raise ValueError("beta1 must be in the range [0, 1), but received {}."
-                       .format(beta_1))
+      raise ValueError(
+          f"Argument `beta_1` must be >= 0 and < 1. Received: {beta_1}.")
     if beta_2 < 0. or beta_2 >= 1.:
-      raise ValueError("beta2 must be in the range [0, 1), but received {}."
-                       .format(beta_2))
+      raise ValueError(
+          f"Argument `beta_2` must be >= 0 and < 1. Received: {beta_1}.")
     if epsilon <= 0.:
       raise ValueError("epsilon must be positive; got {}.".format(epsilon))
     if not use_gradient_accumulation and not lazy_adam:
       raise ValueError(
-          "When disabling Lazy Adam, gradient accumulation must be used.")
+          "When disabling lazy Adam (`lazy_adam=False`), "
+          "gradient accumulation must be used. "
+          "Set `use_gradient_accumulation` to False.")
 
     self.beta_1 = beta_1
     self.beta_2 = beta_2
@@ -759,19 +767,27 @@ class TableConfig(object):
       ValueError: if `combiner` is not supported.
     """
     if not isinstance(vocabulary_size, int) or vocabulary_size < 1:
-      raise ValueError("Invalid vocabulary_size {}.".format(vocabulary_size))
+      raise ValueError(
+          f"Argument `vocabulary_size` must be an int and must be >= 1. "
+          f"Received: {vocabulary_size}")
 
     if not isinstance(dim, int) or dim < 1:
-      raise ValueError("Invalid dim {}.".format(dim))
+      raise ValueError(
+          f"Argument `dim` (embedding dimension) "
+          f"must be an int and must be >= 1. Received: {dim}")
 
     if (initializer is not None) and (not callable(initializer)):
-      raise ValueError("initializer must be callable if specified.")
+      raise ValueError(
+          f"Argument `initializer` must be a callable (or None). "
+          f"Received: {initializer}")
     if initializer is None:
       initializer = init_ops_v2.TruncatedNormal(mean=0.0,
                                                 stddev=1/math.sqrt(dim))
-
-    if combiner not in ("mean", "sum", "sqrtn"):
-      raise ValueError("Invalid combiner {}".format(combiner))
+    accepted_combiners = ("mean", "sum", "sqrtn")
+    if combiner not in accepted_combiners:
+      raise ValueError(
+          f"Argument `combiner` must be one of {accepted_combiners}. "
+          f"Received: {combiner}")
 
     self.vocabulary_size = vocabulary_size
     self.dim = dim
@@ -873,13 +889,13 @@ class FeatureConfig(object):
       ValueError: if `max_sequence_length` not an integer or is negative.
     """
     if not isinstance(table, TableConfig):
-      raise ValueError("table is type {}, expected "
-                       "`tf.tpu.experimental.embedding.TableConfig`".format(
-                           type(table)))
+      raise ValueError(f"Argument `table` has invalid type {type(table)}. "
+                       "Expected `tf.tpu.experimental.embedding.TableConfig`.")
 
     if not isinstance(max_sequence_length, int) or max_sequence_length < 0:
-      raise ValueError("Invalid max_sequence_length {}.".format(
-          max_sequence_length))
+      raise ValueError(
+          f"Argument `max_sequence_length` must be an int and must be >= 0. "
+          f"Received: {max_sequence_length}")
 
     self.table = table
     self.max_sequence_length = max_sequence_length
@@ -887,8 +903,9 @@ class FeatureConfig(object):
 
     if not isinstance(
         validate_weights_and_indices, bool):
-      raise ValueError("validate_weights_and_indices must be a bool, received "
-                       "{} instead.".format(validate_weights_and_indices))
+      raise ValueError(
+          f"Argument `validate_weights_and_indices` must be a boolean. "
+          f"Received: {validate_weights_and_indices}")
 
     self.validate_weights_and_indices = validate_weights_and_indices
 

@@ -87,6 +87,7 @@ cc_library(
         "buffer_reuse_pass.cc",
         "bufferize_pass.cc",
         "convert_to_signless_pass.cc",
+        "copy_cleanup_pass.cc",
         "embed_memref_prints.cc",
         "embed_tf_framework_pass.cc",
         "fuse_inner_parallel_loops_pass.cc",
@@ -105,7 +106,6 @@ cc_library(
         "vectorization_pass.cc",
     ],
     hdrs = ["passes.h"],
-    compatible_with = get_compatible_with_cloud(),
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":bufferize",

@@ -52,10 +52,10 @@ class SplitOpBase : public OpKernel {
         context, split_dim_tensor.shape().dims() == 0,
         errors::InvalidArgument("split_dim must be a scalar but has rank ",
                                 split_dim_tensor.shape().dims()));
-    const int32 split_dim_orig = split_dim_tensor.flat<int32>()(0);
-    const int32 split_dim =
+    const int32_t split_dim_orig = split_dim_tensor.flat<int32>()(0);
+    const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
-    const int32 num_split = num_outputs();
+    const int32_t num_split = num_outputs();
 
     OP_REQUIRES(
         context, 0 <= split_dim && split_dim < input_shape.dims(),
@@ -92,7 +92,7 @@ class SplitOpBase : public OpKernel {
     // the copying.
     if ((split_dim == 0) && IsInnerDimsSizeAligned<T>(input_shape)) {
       VLOG(1) << "Slice dim 0: " << input_shape.DebugString();
-      const int64 delta = input_shape.dim_size(0) / num_split;
+      const int64_t delta = input_shape.dim_size(0) / num_split;
       for (int i = 0; i < num_split; ++i) {
         context->set_output(i, input.Slice(i * delta, (i + 1) * delta));
       }
@@ -103,10 +103,10 @@ class SplitOpBase : public OpKernel {
 
   template <typename IndexType>
   std::tuple<IndexType, IndexType, IndexType> SetDims(
-      const TensorShape& input_shape, int32 split_dim) const {
+      const TensorShape& input_shape, int32_t split_dim) const {
     static_assert(std::is_integral<IndexType>::value,
                   "IndexType must be an integer type");
-    int32 prefix_dim_size = 1;
+    int32_t prefix_dim_size = 1;
     for (int i = 0; i < split_dim; ++i) {
       prefix_dim_size *= input_shape.dim_size(i);
     }
@@ -130,13 +130,13 @@ class SplitOpCPUImpl {
   template <typename MakeSizesType, typename ReshapeResultType>
   void operator()(OpKernelContext* context,
                   const InputReshapedType& input_reshaped,
-                  const TensorShape& input_shape, int32 split_dim,
+                  const TensorShape& input_shape, int32_t split_dim,
                   Eigen::DenseIndex prefix_dim_size,
                   Eigen::DenseIndex split_dim_size,
                   Eigen::DenseIndex suffix_dim_size,
                   const MakeSizesType& make_sizes,
-                  const ReshapeResultType& reshape_result, int32 num_split,
-                  int64 split_dim_output_size) const {
+                  const ReshapeResultType& reshape_result, int32_t num_split,
+                  int64_t split_dim_output_size) const {
     const auto num_threads =
         context->device()->tensorflow_cpu_worker_threads()->num_threads;
     // TODO(jewillco): Tune heuristic further.
@@ -156,8 +156,8 @@ class SplitOpCPUImpl {
     auto range_output_func = [&indices, context, &output_shape, prefix_dim_size,
                               split_dim_output_size, suffix_dim_size, &sizes,
                               use_parallelism_between_outputs, &input_reshaped,
-                              &reshape_result](int64 start, int64 limit) {
-      for (int64 i = start; i < limit; ++i) {
+                              &reshape_result](int64_t start, int64_t limit) {
+      for (int64_t i = start; i < limit; ++i) {
         Tensor* result = nullptr;
         OP_REQUIRES_OK(context,
                        context->allocate_output(i, output_shape, &result));
@@ -207,11 +207,11 @@ class SplitOpCPU : public SplitOpBase<CPUDevice, T> {
     if (!context->status().ok() || done) {
       return;
     }
-    const int32 num_split = Base::num_outputs();
+    const int32_t num_split = Base::num_outputs();
     const Tensor& input = context->input(1);
     const TensorShape& input_shape = input.shape();
-    const int32 split_dim_orig = context->input(0).flat<int32>()(0);
-    const int32 split_dim =
+    const int32_t split_dim_orig = context->input(0).flat<int32>()(0);
+    const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
     // Android also uses int32 indexing, so check here also.
@@ -229,7 +229,7 @@ class SplitOpCPU : public SplitOpBase<CPUDevice, T> {
     std::tie(prefix_dim_size, split_dim_size, suffix_dim_size) =
         Base::template SetDims<Eigen::DenseIndex>(input_shape, split_dim);
 
-    const int64 split_dim_output_size = split_dim_size / num_split;
+    const int64_t split_dim_output_size = split_dim_size / num_split;
 
     if (prefix_dim_size == 1) {
       auto input_reshaped =
@@ -280,22 +280,22 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
     }
     const Tensor& input = context->input(1);
     const TensorShape& input_shape = input.shape();
-    const int32 split_dim_orig = context->input(0).flat<int32>()(0);
-    const int32 split_dim =
+    const int32_t split_dim_orig = context->input(0).flat<int32>()(0);
+    const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
-    const int32 num_split = Base::num_outputs();
+    const int32_t num_split = Base::num_outputs();
     OP_REQUIRES(
         context,
         FastBoundsCheck(input.NumElements(), std::numeric_limits<int32>::max()),
         errors::InvalidArgument("Split on GPU requires input size "
                                 "< max int32"));
-    int32 prefix_dim_size;
-    int32 split_dim_size;
-    int32 suffix_dim_size;
+    int32_t prefix_dim_size;
+    int32_t split_dim_size;
+    int32_t suffix_dim_size;
     std::tie(prefix_dim_size, split_dim_size, suffix_dim_size) =
         Base::template SetDims<int32>(input_shape, split_dim);
 
-    const int32 split_dim_output_size = split_dim_size / num_split;
+    const int32_t split_dim_output_size = split_dim_size / num_split;
     TensorShape output_shape(input_shape);
     output_shape.set_dim(split_dim, split_dim_output_size);
 

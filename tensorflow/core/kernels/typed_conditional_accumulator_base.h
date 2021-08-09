@@ -49,7 +49,7 @@ class TypedConditionalAccumulatorBase : public ConditionalAccumulatorBase {
    * grad:       Gradient tensor to be added to the accumulator.
    * ctx:        Context in which the op is executed.
    */
-  void TryApplyGrad(int64 local_step, OpKernelContext* ctx) override {
+  void TryApplyGrad(int64_t local_step, OpKernelContext* ctx) override {
     {
       mutex_lock l(mu_);
       if (local_step >= current_global_step_) {

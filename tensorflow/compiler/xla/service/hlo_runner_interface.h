@@ -163,9 +163,9 @@ class HloRunnerInterface {
       DeviceAssignment* device_assignment) = 0;
 
   virtual StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::function<Executable*(int64)> executable_provider,
-      std::function<int64(int64)> argument_count_provider,
-      std::function<const Literal*(int64, int64)> argument_provider,
+      std::function<Executable*(int64_t)> executable_provider,
+      std::function<int64(int64_t)> argument_count_provider,
+      std::function<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options) = 0;
 
   typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;

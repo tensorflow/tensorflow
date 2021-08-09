@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
+#include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
@@ -361,8 +362,8 @@ class IrEmitterUnnested : public IrEmitter {
   // complicating the index calculation in the code generation of the reduce
   // instructions. In other words, a block_id_y is assigned to a group and so
   // different groups can be run in parallel.
-  Status EmitReductionFromOrToContiguousDimensions(
-      mlir::Operation* op, const FusionLayoutAnalysis& layout_analysis);
+  Status EmitUnnestedReduction(mlir::Operation* unnested_hlo,
+                               const FusionLayoutAnalysis& layout_analysis);
 
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
   // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo
@@ -427,15 +428,17 @@ class IrEmitterUnnested : public IrEmitter {
   // for the hlo instruction.
   StatusOr<bool> CheckAndEmitHloWithTile021(mlir::Operation* op);
 
-  // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm and
-  // sets the corresponding launch dimensions. This is a helper to support
-  // the implementation of CheckAndEmitHloWithTile021.
+  // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm.
+  // This is a helper to support the implementation of
+  // CheckAndEmitHloWithTile021.
   void EmitHlo021Tile(mlir::Operation* op, Thunk* kernel_thunk,
                       const MlirEmitterContext& context,
                       absl::Span<const llvm_ir::IrArray> operand_arrays,
                       absl::Span<const llvm_ir::IrArray> output_arrays,
                       absl::Span<const int64> reduced_output_dims,
-                      absl::Span<const int64> tiled_param_ids);
+                      absl::Span<const int64> tiled_param_ids,
+                      const KernelMappingScheme& mapping_scheme,
+                      const LaunchDimensions& launch_dimensions);
 
   struct TilingKernelInfo {
     // Tiling bounds.
@@ -508,11 +511,10 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::Operation* unnested_hlo, const Shape& reduction_operand_shape,
       absl::Span<const int> instr_index_group,
       HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
-      absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
       absl::Span<const llvm_ir::IrArray> result_ir_arrays,
       absl::Span<HloComputation* const> reducers,
       const llvm_ir::IrArray::Index& index,
-      const ReductionCodegenInfo& reduction_info, int64_t x_iter_num,
+      const ReductionCodegenState& reduction_info, int64_t x_iter_num,
       const FusionLayoutAnalysis& layout_analysis);
 
   // Prepares for the code generation for a tile block of a reduction kernel.
@@ -522,9 +524,8 @@ class IrEmitterUnnested : public IrEmitter {
   void EmitPrologueForReduction(
       mlir::Operation* unnested_hlo, absl::Span<const int> instr_index_group,
       HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
-      absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
       absl::Span<const llvm_ir::IrArray> result_ir_arrays,
-      ReductionCodegenInfo* reduction_info,
+      ReductionCodegenState* reduction_info,
       const FusionLayoutAnalysis& layout_analysis);
 
   // Wraps up the code generation for a tile block of a reduction kernel:
@@ -534,20 +535,37 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<const int> instr_index_group,
       absl::Span<const llvm_ir::IrArray> result_ir_arrays,
       absl::Span<HloComputation* const> reducers,
-      const ReductionCodegenInfo& reduction_info,
+      const ReductionCodegenState& reduction_info,
       const TilingKernelInfo& tiling_kernel_info,
       const FusionLayoutAnalysis& layout_analysis);
+
+  // `current_output`: the value the tile has calculated.
+  // `output_address`: address where the output value has to be written.
+  void EmitEpilogueForRowReduction(
+      HloComputation* reducer,
+      const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
+      const ReductionCodegenState& reduction_info, llvm::Type* element_type,
+      llvm::Type* index_ty, llvm::Value* current_output,
+      llvm::Value* output_address, int reduction_idx, int partial_result_idx);
+
+  // Same arguments as EmitEpilogueForRowReduction.
+  void EmitEpilogueForColumnReduction(
+      HloComputation* reducer,
+      const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
+      const ReductionCodegenState& reduction_info, llvm::Type* element_type,
+      llvm::Type* index_ty, llvm::Value* current_output,
+      llvm::Value* output_address, int reduction_idx, int partial_result_idx,
+      const TilingKernelInfo& tiling_kernel_info);
 
   // Emits code for reductions in the output_instructions.
   void EmitIRForReduction(mlir::Operation* unnested_hlo,
                           absl::Span<const int> instr_index_group,
                           HloComputation* fused_computation,
                           FusedIrEmitter* fused_emitter,
-                          absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
                           absl::Span<const llvm_ir::IrArray> result_ir_arrays,
-                          ReductionCodegenInfo* reduction_info,
+                          ReductionCodegenState* reduction_info,
                           const Shape& input_shape,
-                          const FusionLayoutAnalysis& layout_anaysis);
+                          const FusionLayoutAnalysis& layout_analysis);
 
   // For each reducer, emits the shuffle-down loop to accumulate the partial
   // result to the global result.
@@ -566,15 +584,18 @@ class IrEmitterUnnested : public IrEmitter {
   std::unique_ptr<KernelThunk> BuildKernelThunkImpl(
       absl::string_view name, Thunk::ThunkInfo thunk_info,
       absl::Span<const BufferSlice> slices,
-      std::vector<llvm_ir::IrArray>* ir_arrays);
+      std::vector<llvm_ir::IrArray>* ir_arrays,
+      const LaunchDimensions& launch_dimensions);
 
   StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunk(
       mlir::Operation* op, mlir::ValueRange operands,
-      Thunk::ThunkInfo thunk_info, std::vector<llvm_ir::IrArray>* ir_arrays);
+      Thunk::ThunkInfo thunk_info, std::vector<llvm_ir::IrArray>* ir_arrays,
+      const LaunchDimensions& launch_dimensions);
 
   StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunk(
       mlir::Operation* op, Thunk::ThunkInfo thunk_info,
-      std::vector<llvm_ir::IrArray>* ir_arrays);
+      std::vector<llvm_ir::IrArray>* ir_arrays,
+      const LaunchDimensions& launch_dimensions);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.
@@ -636,6 +657,10 @@ class IrEmitterUnnested : public IrEmitter {
       absl::string_view fmt, absl::Span<llvm::Value* const> arguments,
       absl::optional<int64> thread_id_filter = absl::nullopt,
       absl::optional<int64> block_id_filter = absl::nullopt);
+
+  // __shared__ memory uses a different address space, so we cast it to
+  // global address space before writing or reading.
+  llvm::Value* CastSharedToGlobal(llvm::Value* input, llvm::Twine name = "");
 
   StatusOr<HloComputation*> GetOrCreateSubComputationFromRegion(
       mlir::Region* region, bool is_fusion);

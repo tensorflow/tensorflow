@@ -879,7 +879,7 @@ string ReplicaGroupsStr(std::vector<std::vector<int64>> replica_groups) {
 }
 
 int64 ReplicaCount(const std::vector<std::vector<int64>>& replica_groups) {
-  int64 replica_count = 0;
+  int64_t replica_count = 0;
   for (auto group : replica_groups) {
     replica_count += group.size();
   }

@@ -129,8 +129,8 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     const Tensor& input = context->input(0);
     const Tensor& rhs = context->input(1);
     const int ndims = input.dims();
-    const int64 n = input.dim_size(ndims - 1);
-    const int64 nrhs = rhs.dim_size(ndims - 1);
+    const int64_t n = input.dim_size(ndims - 1);
+    const int64_t nrhs = rhs.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(
         context, ndims >= 2,
@@ -204,7 +204,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
       }
     }
     auto input_copy_reshaped = input_copy.template flat_inner_dims<Scalar, 3>();
-    const int64 batch_size = input_copy_reshaped.dimension(0);
+    const int64_t batch_size = input_copy_reshaped.dimension(0);
 
     // Allocate pivots on the device.
     Tensor pivots;

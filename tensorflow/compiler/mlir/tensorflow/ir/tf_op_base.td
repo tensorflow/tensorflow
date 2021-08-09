@@ -92,13 +92,13 @@ def TF_CwiseUnary : NativeOpTrait<"TF::CwiseUnary">;
 // Variant of broadcastable trait that considers TF's subtype behavior.
 class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
     TCOpResIsShapedTypePred<opId, resId>,
-    CPred<"mlir::TF::BroadcastCompatible("
+    CPred<"mlir::tf_type::BroadcastCompatible("
               "$_op.getOperand(" # opId # ").getType(), "
               "$_op.getResult(" # resId # ").getType())">]>;
 
 
 class TF_AllTypesMatchPred<list<string> values> :
-    CPred<"TF::AreCastCompatible(llvm::makeArrayRef({" #
+    CPred<"tf_type::AreCastCompatible(llvm::makeArrayRef({" #
       !interleave(values, ", ") # "}))">;
 
 class TF_AllTypesMatch<list<string> names> :
@@ -107,6 +107,18 @@ class TF_AllTypesMatch<list<string> names> :
           "} have dynamically equal types ",
         TF_AllTypesMatchPred<
             !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
+
+// This trait indicates that all returned resources are unique for a
+// resource-allocating op (i.e. op with `MemAlloc` side-effect).
+//
+// Note that if the trait is used where this invariant is not true, then this
+// might lead to incorrect execution order, while if not used where it should
+// be, it can only lead to reduced performance due to conservative ordering.
+// Example op where the invariant is not true: `TF_VarHandleOp`.
+def TF_UniqueResourceAllocation: OpTraitList<[
+    TF_ResourceHandleAllocatorInterface,
+    NativeOpTrait<"TF::UniqueResourceAllocation">
+]>;
 
 //===----------------------------------------------------------------------===//
 // Rank/Shape helpers.

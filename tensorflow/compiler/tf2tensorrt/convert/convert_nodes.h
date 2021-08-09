@@ -220,11 +220,8 @@ class TRT_ShapedWeights {
   nvinfer1::DataType TrtDType() const { return type_; }
 
   // TODO(aaroey): make these private.
-  // Before TRT 6, scalar weights are not supported. In that case a TF scalar
-  // constant tensor is represented via TRT_ShapedWeights::shape_ = {1,{1}}.
-  //
-  // Starting TRT 6, scalar weights are supported, a scalar constant tensor is
-  // represented via TRT_ShapedWeights::shape_ = {0, {1}}.
+  // Scalar weights are supported, a scalar constant tensor is represented via
+  // TRT_ShapedWeights::shape_ = {0, {1}}.
   nvinfer1::Dims shape_;  // Note: shape.type[] is not used.
 
  private:
@@ -397,9 +394,9 @@ class TrtNodeValidator {
   // to TRT subgraph and later converted into TRT engine.
   Status IsTensorRTCandidate(const Node* node);
 
- private:
   static const std::set<string>* quantize_ops;
 
+ private:
   void RegisterOpValidators();
 
   // Convert a Const node to a TRT_TensorOrWeights.
@@ -499,15 +496,8 @@ class Converter {
   // Whether implicit batch mode is enabled
   bool use_implicit_batch() const { return use_implicit_batch_; }
 
-  // This should be called on the inputs and outputs of any layer we create
-  // where we know that the quantization range does not change during that
-  // operation. (e.g. Reshape, Transpose, Identity, MaxPool).
-  void MarkQuantizationRangesAsInferrable(ITensorProxyPtr* input,
-                                          ITensorProxyPtr* output);
-
   // This function should be called when we know the quantization range of a
-  // tensor, either from a quantize/dequantize node or when the output is a
-  // fixed range (e.g. SoftMax, Relu6, Sigmoid).
+  // tensor from a quantize/dequantize node.
   void ProvideQuantizationRange(ITensorProxyPtr* tensor, float min_range,
                                 float max_range);
 
@@ -634,8 +624,6 @@ class Converter {
 
   void RegisterOpConverters();
 
-  void PropagateQuantizationRanges();
-
   // Registered op converters by op type.
   std::unordered_map<string, OpConverter> op_registry_;
 
@@ -659,16 +647,6 @@ class Converter {
   // = 6.0f for Relu6.
   std::unordered_map<ITensorProxyPtr*, float> quantization_ranges_proxy_;
   std::unordered_map<nvinfer1::ITensor*, float> quantization_ranges_;
-
-  // Edges where quantization ranges can be inferred (copied) across ops - from
-  // first tensor to second tensor. PropagateQuantizationRanges() will propagate
-  // known ranges from quantization_ranges_ across these edges, adding the new
-  // ranges to quantization_ranges_ so that they can be applied in
-  // MaybeApplyQuantizationRanges().
-  std::vector<std::pair<ITensorProxyPtr*, ITensorProxyPtr*>>
-      quantization_infer_proxy_;
-  std::vector<std::pair<nvinfer1::ITensor*, nvinfer1::ITensor*>>
-      quantization_infer_;
 
   const TrtPrecisionMode precision_mode_;
 
@@ -726,6 +704,9 @@ const std::unordered_map<string, nvinfer1::ActivationType>* ActivationTypeMap();
 // Map of all supported BinaryOperations
 const std::unordered_map<string, nvinfer1::ElementWiseOperation>*
 BinaryOperationMap();
+
+// Returns true if the node is a quantize and dequantize Op.
+bool IsQuantizeAndDequantizeOp(const Node*);
 
 }  // namespace convert
 }  // namespace tensorrt

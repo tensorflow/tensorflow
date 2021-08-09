@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/DenseMap.h"
@@ -79,7 +80,14 @@ bool IsMatrixMultiplication(const HloInstruction& dot);
 // after a GemmRewriter lowering pass.
 bool IsCublasGemm(const HloInstruction& hlo);
 
-constexpr int64 kWarpSize = 32;
+constexpr int64_t kWarpSize = 32;
+
+// Need at least 256 threads/block for reasonable tree reduction
+// performance (assuming all data fits).
+constexpr int64_t kMinThreadsXRowReduction = 256;
+
+// When doing batched row reduction, how big the batch dimension could be.
+static constexpr int64_t kBatchedReductionRaceFreeBound = 8;
 
 // A call to cuBLAS general matrix multiplication API.
 extern const char* const kGemmCallTarget;
@@ -220,10 +228,7 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
 ReductionDimensions GetReductionKindAndContiguousComponents(
     mlir::Operation* reduce);
 
-// Get tiling per thread for the given reduction in dimensions [D, H, W] per
-// thread.
-// If the device isn't known pass null for device_description and you will get
-// non-optimized value.
+// Get tiling per thread for the given reduction in dimensions [D, H, W].
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     int smallest_input_dtype_bits,
@@ -305,6 +310,11 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     absl::Span<const BufferAllocation> allocations);
 
 Shape GetShape(mlir::Value value);
+
+// Returns whether the given reduction can be safely generated without atomics:
+// that is, at most one block will write to every output element.
+bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
+                         const std::array<int64_t, 3>& reduction_tiling);
 
 }  // namespace gpu
 }  // namespace xla

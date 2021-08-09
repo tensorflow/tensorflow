@@ -172,7 +172,8 @@ class FunctionInstantiationHelper {
   // "_resource_arg_unique_id" attribute of the arg node.
   Status BuildInputArgIndex(const OpDef::ArgDef& arg_def, AttrSlice attr_values,
                             const FunctionDef::ArgAttrs* arg_attrs,
-                            bool ints_on_device, int64 resource_arg_unique_id) {
+                            bool ints_on_device,
+                            int64_t resource_arg_unique_id) {
     bool is_type_list;
     DataTypeVector dtypes;
     TF_RETURN_IF_ERROR(
@@ -736,7 +737,7 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
     const FunctionDef::ArgAttrs* arg_attrs =
         it != fdef.arg_attr().end() ? &it->second : nullptr;
     auto resource_id_it = fdef.resource_arg_unique_id().find(i);
-    int64 resource_arg_unique_id =
+    int64_t resource_arg_unique_id =
         resource_id_it != fdef.resource_arg_unique_id().end()
             ? resource_id_it->second
             : -1LL;

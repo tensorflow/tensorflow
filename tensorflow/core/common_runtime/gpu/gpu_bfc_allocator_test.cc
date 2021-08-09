@@ -267,7 +267,7 @@ TEST_P(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
   random::PhiloxRandom philox(123, 17);
   random::SimplePhilox rand(&philox);
 
-  const int32 max_mem = 1 << 27;
+  const int32_t max_mem = 1 << 27;
 
   std::vector<void*> initial_ptrs;
   for (int s = 1; s < 10; s++) {
@@ -288,7 +288,7 @@ TEST_P(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
     }
   }
 
-  const int32 max_mem_2 = 1 << 26;
+  const int32_t max_mem_2 = 1 << 26;
   // Allocate a lot of raw pointers between 100 bytes and 64 megs.
   for (int s = 1; s < 10; s++) {
     size_t size = std::min<size_t>(

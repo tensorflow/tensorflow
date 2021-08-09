@@ -61,9 +61,14 @@ struct SpmdPartitionerOptions {
   // memory-efficient, and the compiler can use the ScheduleAwareAllGatherCSE
   // pass to CSE some all-gathers which are relatively close to each other.
   bool cache_all_gather = true;
+
   // When making a compromise between windowed einsum speed and memory usage
   // prefer the former if true.
   bool choose_faster_windowed_einsum_over_mem = false;
+
+  // Whether doing bidirectional communication when decomposing independent
+  // all-gathers.
+  bool bidirectional_decomposed_all_gather = false;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
@@ -267,6 +272,7 @@ class SpmdPartitioner : public HloModulePass {
 
   SpmdPartitionerOptions options_;
   SPMDCollectiveOpsCreator collective_ops_creator_;
+  std::vector<std::vector<int64>> device_groups_;
 };
 
 // Class describes partition state of the data represented by an HLO created
@@ -358,6 +364,9 @@ class PartitionedHlo {
 
   // Helper function to replicate the data for partitions along the given dims.
   HloInstruction* ReplicatePartial(absl::Span<const int64> dims);
+
+  // Set state of the partitoned HLO.
+  void set_state(PartitioningState state) { state_ = std::move(state); }
 
  private:
   // Same as Reshard except that it does not explicitly modify the reshard
@@ -502,18 +511,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   int64 NewChannel() { return (*next_channel_id_)++; }
 
-  PartitionedHlo::PartitioningState MakePartitioningState() {
-    PartitionedHlo::PartitioningState state;
-    state.b = &b_;
-    state.module = module_;
-    state.num_replicas = num_replicas_;
-    state.partition_id = partition_id_;
-    state.collective_ops_creator = collective_ops_creator_;
-    state.next_channel_id = next_channel_id_;
-    state.reshard_cache = &reshard_cache_;
-    state.partitioner = partitioner_;
-    return state;
-  }
+  PartitionedHlo::PartitioningState MakePartitioningState();
 
   SpmdBuilder* builder() { return &b_; }
 
@@ -572,6 +570,9 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   SpmdPartitioner* partitioner_;
   std::vector<HloSharding> visiting_hlo_operand_shardings_;
   absl::optional<HloSharding> visiting_hlo_sharding_;
+  absl::optional<int64> visiting_num_partitions_;
+  std::vector<PartitionedHlo::PartitioningState> visiting_state_;
+  std::vector<std::vector<int64>> device_groups_;
 };
 
 }  // namespace spmd

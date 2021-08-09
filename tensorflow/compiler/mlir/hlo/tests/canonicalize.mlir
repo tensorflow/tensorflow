@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s
+// RUN: mlir-hlo-opt %s -pass-pipeline='builtin.func(canonicalize)' | FileCheck %s
 
 // CHECK-LABEL: add_fold
 func @add_fold() -> tensor<4xi64> {

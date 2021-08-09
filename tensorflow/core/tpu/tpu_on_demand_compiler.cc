@@ -194,7 +194,7 @@ class TpuCompiler : public Compiler {
     return [this](const xla::Shape& shape) {
       XLA_Shape c_shape;
       ApiConverter::ToC(shape, &c_shape);
-      int64 bytes =
+      int64_t bytes =
           ExecutorApiFn()->TpuCompiler_ShapeSizeFn(compiler_, &c_shape);
       ApiConverter::Free(&c_shape);
       return bytes;

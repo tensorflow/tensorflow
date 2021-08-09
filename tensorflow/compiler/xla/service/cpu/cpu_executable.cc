@@ -140,9 +140,11 @@ StatusOr<std::vector<MaybeOwningDeviceMemory>> CpuExecutable::CreateBufferTable(
                                         device_ordinal));
   }
 
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
-                      assignment_->GetUniqueTopLevelOutputSlice());
-  VLOG(3) << "result index: " << result_slice.index();
+  if (VLOG_IS_ON(3)) {
+    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                        assignment_->GetUniqueTopLevelOutputSlice());
+    VLOG(3) << "result index: " << result_slice.index();
+  }
   return std::move(buffers);
 }
 

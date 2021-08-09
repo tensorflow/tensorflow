@@ -30,7 +30,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 namespace functor {
 
 template <typename Device, typename T>
-Status DoParallelConcatUpdate(const Device& d, const Tensor& value, int32 loc,
+Status DoParallelConcatUpdate(const Device& d, const Tensor& value, int32_t loc,
                               Tensor* output) {
   auto Tvalue = value.shaped<T, 2>({1, value.NumElements()});
   auto Toutput = output->flat_outer_dims<T>();
@@ -41,7 +41,7 @@ Status DoParallelConcatUpdate(const Device& d, const Tensor& value, int32 loc,
 }
 
 template <>
-Status DoParallelConcat(const CPUDevice& d, const Tensor& value, int32 loc,
+Status DoParallelConcat(const CPUDevice& d, const Tensor& value, int32_t loc,
                         Tensor* output) {
   CHECK_EQ(value.dtype(), output->dtype());
   switch (value.dtype()) {
@@ -57,7 +57,6 @@ Status DoParallelConcat(const CPUDevice& d, const Tensor& value, int32 loc,
                                      DataTypeString(value.dtype()));
   }
 }
-
 
 }  // end namespace functor
 
@@ -226,7 +225,7 @@ class InplaceOpBase : public OpKernel {
 
     Tensor y = x;  // This creates an alias intentionally.
     // Skip processing if tensors are empty.
-    if (x.NumElements() > 0 || v.NumElements() > 0) {
+    if (x.NumElements() > 0 && v.NumElements() > 0) {
       OP_REQUIRES_OK(ctx, DoCompute(ctx, i, v, &y));
     }
     ctx->set_output(0, y);
@@ -248,7 +247,7 @@ void DoInplaceOp(const CPUDevice& d, InplaceOpType op, const Tensor& i,
   auto Tv = v.flat_outer_dims<T>();
   auto Ty = y->flat_outer_dims<T>();
   auto nrows = Ty.dimension(0);
-  for (int64 j = 0; j < Ti.size(); ++j) {
+  for (int64_t j = 0; j < Ti.size(); ++j) {
     auto r = (Ti(j) % nrows + nrows) % nrows;  // Guard index range.
     switch (op) {
       case I_UPDATE:
@@ -271,7 +270,7 @@ void DoInplaceStringUpdateOp(const CPUDevice& d, const Tensor& i,
   auto Tv = v.flat_outer_dims<tstring>();
   auto Ty = y->flat_outer_dims<tstring>();
   auto nrows = Ty.dimension(0);
-  for (int64 j = 0; j < Ti.size(); ++j) {
+  for (int64_t j = 0; j < Ti.size(); ++j) {
     auto r = (Ti(j) % nrows + nrows) % nrows;  // Guard index range.
     Ty.template chip<0>(r).device(d) = Tv.template chip<0>(j);
   }

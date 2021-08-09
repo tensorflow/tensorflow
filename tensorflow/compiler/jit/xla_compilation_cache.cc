@@ -202,17 +202,8 @@ Status XlaCompilationCache::Compile(
     CompileMode compile_mode,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
-  // !!Pay attention when additional variables must be captured by this
-  // lambda!! compile_fn can run asynchronously after this funcion has
-  // exited. Make sure that any variable needed inside compile_fn is
-  // either passed as an argument, or captured by value right here.
-  auto compile_fn = [compile_options, function](
-                        XlaCompiler* compiler,
-                        const std::vector<XlaCompiler::Argument>& args,
-                        XlaCompiler::CompilationResult* result) {
-    return compiler->CompileFunction(compile_options, function, args, result);
-  };
-  return CompileImpl(options, function, args, compile_fn, compile_mode,
+  return CompileImpl(compile_options, options, function, args, /*ctx=*/nullptr,
+                     CompileScope::kFunction, compile_mode,
                      out_compilation_result, out_executable);
 }
 
@@ -344,13 +335,8 @@ Status XlaCompilationCache::CompileSingleOp(
   // compilation cache key. This attribute is information for the colocator
   // and causes false uniqueness between nodes.
   name.mutable_attr()->erase("_class");
-  auto compile_op = [&](XlaCompiler* compiler,
-                        const std::vector<XlaCompiler::Argument>& args,
-                        XlaCompiler::CompilationResult* result) {
-    return XlaSingleOpToHlo(compiler, options, args, ctx, compile_options,
-                            result);
-  };
-  return CompileImpl(options, name, args, compile_op, CompileMode::kStrict,
+  return CompileImpl(compile_options, options, name, args, ctx,
+                     CompileScope::kOp, CompileMode::kStrict,
                      out_compilation_result, out_executable);
 }
 
@@ -369,19 +355,26 @@ void LogOnceXlaCompiledFirstCluster() {
 }  // namespace
 
 Status XlaCompilationCache::CompileStrict(
-    Entry* entry, const XlaCompiler::Options& options,
-    const std::vector<XlaCompiler::Argument>& args, const string& function_name,
-    const std::function<Status(XlaCompiler* compiler,
-                               const std::vector<XlaCompiler::Argument>& args,
-                               XlaCompiler::CompilationResult*)>& compile_fn) {
+    Entry* entry, const XlaCompiler::CompileOptions& compile_options,
+    const XlaCompiler::Options& options,
+    const std::vector<XlaCompiler::Argument>& args,
+    const NameAttrList& function, OpKernelContext* ctx, CompileScope scope) {
   tensorflow::Env* env = tensorflow::Env::Default();
   const uint64 compile_start_us = env->NowMicros();
 
   XlaCompiler compiler(options);
   entry->compile_state = CompileState::kCompiled;
+  entry->compilation_status = [&] {
+    if (scope == CompileScope::kOp) {
+      return XlaSingleOpToHlo(&compiler, options, args, ctx, compile_options,
+                              &entry->compilation_result);
 
-  entry->compilation_status =
-      compile_fn(&compiler, args, &entry->compilation_result);
+    } else {
+      CHECK(scope == CompileScope::kFunction);  // Crash OK
+      return compiler.CompileFunction(compile_options, function, args,
+                                      &entry->compilation_result);
+    }
+  }();
   TF_RETURN_IF_ERROR(entry->compilation_status);
   TF_RET_CHECK(entry->executable.get() == nullptr);
   entry->compilation_status =
@@ -390,43 +383,40 @@ Status XlaCompilationCache::CompileStrict(
   const uint64 compile_end_us = env->NowMicros();
   const uint64 compile_time_us = compile_end_us - compile_start_us;
   metrics::UpdateXlaCompilationTime(compile_time_us);
-  {
-    mutex_lock lock(cluster_compile_stats_mu_);
-    auto it = cluster_compile_stats_.find(function_name);
-    const uint64 compile_time_s = compile_time_us / 1.0e6;
-    it->second.compile_count++;
-    it->second.cumulative_compile_time_us += compile_time_us;
 
-    LogOnceXlaCompiledFirstCluster();
-    VLOG(1) << "compiled " << function_name << " " << it->second.compile_count
-            << " times, compile time: " << compile_time_us
-            << " us, cumulative: " << it->second.cumulative_compile_time_us
-            << " us ("
-            << tensorflow::strings::HumanReadableElapsedTime(compile_time_s)
-            << " / "
-            << tensorflow::strings::HumanReadableElapsedTime(
-                   it->second.cumulative_compile_time_us / 1.0e6)
-            << ")";
+  mutex_lock lock(cluster_compile_stats_mu_);
+  const std::string& function_name = function.name();
+  auto it = cluster_compile_stats_.find(function_name);
+  const uint64 compile_time_s = compile_time_us / 1.0e6;
+  it->second.compile_count++;
+  it->second.cumulative_compile_time_us += compile_time_us;
+  LogOnceXlaCompiledFirstCluster();
+  VLOG(1) << "compiled " << function_name << " " << it->second.compile_count
+          << " times, compile time: " << compile_time_us
+          << " us, cumulative: " << it->second.cumulative_compile_time_us
+          << " us ("
+          << tensorflow::strings::HumanReadableElapsedTime(compile_time_s)
+          << " / "
+          << tensorflow::strings::HumanReadableElapsedTime(
+                 it->second.cumulative_compile_time_us / 1.0e6)
+          << ")";
 
-    XlaJitCompilationActivity jit_compilation_activity;
-    jit_compilation_activity.set_cluster_name(function_name);
-    jit_compilation_activity.set_compile_count(it->second.compile_count);
-    jit_compilation_activity.set_compile_time_us(compile_time_us);
-    jit_compilation_activity.set_cumulative_compile_time_us(
-        it->second.cumulative_compile_time_us);
-    TF_RETURN_IF_ERROR(
-        BroadcastXlaActivity(std::move(jit_compilation_activity)));
-  }
+  XlaJitCompilationActivity jit_compilation_activity;
+  jit_compilation_activity.set_cluster_name(function_name);
+  jit_compilation_activity.set_compile_count(it->second.compile_count);
+  jit_compilation_activity.set_compile_time_us(compile_time_us);
+  jit_compilation_activity.set_cumulative_compile_time_us(
+      it->second.cumulative_compile_time_us);
+  TF_RETURN_IF_ERROR(BroadcastXlaActivity(std::move(jit_compilation_activity)));
 
   return Status::OK();
 }
 
 Status XlaCompilationCache::CompileAsynchronous(
-    Entry* entry, const XlaCompiler::Options& options,
-    const std::vector<XlaCompiler::Argument>& args, const string& function_name,
-    const std::function<Status(XlaCompiler* compiler,
-                               const std::vector<XlaCompiler::Argument>& args,
-                               XlaCompiler::CompilationResult*)>& compile_fn) {
+    Entry* entry, const XlaCompiler::CompileOptions& compile_options,
+    const XlaCompiler::Options& options,
+    const std::vector<XlaCompiler::Argument>& args,
+    const NameAttrList& function, OpKernelContext* ctx, CompileScope scope) {
   // Explicitly capture all required data by value for async compilation.
   entry->compile_state = CompileState::kCompiling;
   {
@@ -442,6 +432,7 @@ Status XlaCompilationCache::CompileAsynchronous(
   // !!Pay attention when additional variables must be captured by this lambda!!
   // All values are captured by value. Make sure that all pointer values (like
   // entry) do not get freed until the lambda has finished,\.
+  const std::string& function_name = function.name();
   async_compilation_state_.compiler_threads->Schedule([=] {
     Entry local_entry;
     VLOG(2) << "Starting asynchronous compilation of cluster " << function_name
@@ -449,8 +440,8 @@ Status XlaCompilationCache::CompileAsynchronous(
     // We don't need to lock local_entry.mu, but do it anyway to satisfy
     // thread safety analysis.
     mutex_lock entry_lock(local_entry.mu);
-    (void)CompileStrict(&local_entry, options, args, function_name, compile_fn);
-
+    Status s = CompileStrict(&local_entry, compile_options, options, args,
+                             function, ctx, scope);
     VLOG(2) << "Finished asynchronous compililation of cluster "
             << function_name << '.';
     {
@@ -459,28 +450,80 @@ Status XlaCompilationCache::CompileAsynchronous(
     }
     {  // Populate original entry with compilation result.
       mutex_lock entry_lock(entry->mu);
+      if (!s.ok()) {
+        entry->compilation_status = s;
+      } else {
+        entry->compilation_status = local_entry.compilation_status;
+      }
       entry->compilation_result = local_entry.compilation_result;
       entry->compile_state = local_entry.compile_state;
-      entry->compilation_status = local_entry.compilation_status;
       entry->executable = std::move(local_entry.executable);
     }
   });
   return Status::OK();
 }
 
+bool XlaCompilationCache::ShouldCompileCluster(CompileMode compile_mode,
+                                               bool is_megamorphic,
+                                               bool is_first_execution,
+                                               int64_t current_request_count,
+                                               const NameAttrList& function) {
+  absl::optional<int64> compile_threshold;
+  if (compile_mode == CompileMode::kLazy) {
+    compile_threshold = kDefaultCompilationThreshold;
+  } else if (compile_mode == CompileMode::kAsync) {
+    compile_threshold = 0;  // for now, always compile right away.
+  }
+
+  if (compile_mode == CompileMode::kStrict) {
+    // Lazy compilation is disabled.
+    return true;
+  }
+
+  if (is_megamorphic) {
+    BroadcastOptimizationRemark(XlaOptimizationRemark::MEGAMORPHIC_FUNCTION,
+                                function.name())
+        .IgnoreError();
+    VLOG(2) << "Not compiling cluster " << function.name()
+            << " because it is megamorphic.";
+    return false;
+  }
+
+  if (is_first_execution) {
+    return true;
+  }
+
+  if (compile_mode == CompileMode::kAsync) {
+    // Asynchronous compilation is enabled.
+    mutex_lock lock(async_compilation_state_.async_compilation_state_mu);
+    if (async_compilation_state_.num_ongoing_compilations >=
+        async_compilation_state_.kMaxNumOngoingCompilations) {
+      VLOG(2) << "Not asynchronously compiling cluster " << function.name()
+              << " because of too many ongoing compilations.";
+      return false;
+    }
+  }
+
+  bool reached_compile_threshold = current_request_count >= *compile_threshold;
+  if (!reached_compile_threshold) {
+    VLOG(2) << "Not compiling cluster " << function.name()
+            << " because it has not reached compile threshold; threshold is "
+            << *compile_threshold << " execution count "
+            << current_request_count << ".";
+  }
+  return reached_compile_threshold;
+}
+
 Status XlaCompilationCache::CompileImpl(
+    const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options, const NameAttrList& function,
-    const std::vector<XlaCompiler::Argument>& args,
-    const std::function<Status(XlaCompiler* compiler,
-                               const std::vector<XlaCompiler::Argument>& args,
-                               XlaCompiler::CompilationResult*)>& compile_fn,
-    CompileMode compile_mode,
+    const std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
+    CompileScope scope, CompileMode compile_mode,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
   if (FailOnXlaCompilation()) {
     return errors::Internal("XLA compilation disabled");
   }
-
   DCHECK_NE(out_executable, nullptr);
   VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
 
@@ -490,20 +533,8 @@ Status XlaCompilationCache::CompileImpl(
       VLOG(3) << i << ": " << args[i].HumanString();
     }
   }
-  absl::optional<int64> compile_threshold;
-  if (compile_mode == CompileMode::kLazy) {
-    compile_threshold = kDefaultCompilationThreshold;
-  } else if (compile_mode == CompileMode::kAsync) {
-    compile_threshold = 0;  // for now, always compile right away.
-  }
-
   TF_ASSIGN_OR_RETURN(Signature signature, BuildSignature(function, args));
 
-  string human_signature;
-  if (VLOG_IS_ON(2)) {
-    human_signature = VLOG_IS_ON(3) ? signature.HumanString() : function.name();
-    VLOG(2) << "Signature: " << human_signature;
-  }
 
   // The outer lock protects the existence of the cache entry. It does not
   // protect the contents of the cache entry.
@@ -550,6 +581,12 @@ Status XlaCompilationCache::CompileImpl(
     is_megamorphic = it->second.is_megamorphic;
   }
 
+  string human_signature;
+  if (VLOG_IS_ON(2)) {
+    human_signature = VLOG_IS_ON(3) ? signature.HumanString() : function.name();
+    VLOG(2) << "Signature: " << human_signature;
+  }
+
   // Acquire the cache entry lock and compile, if necessary.
   // TODO(phawkins): this locking will need to be restructured when we implement
   // cache eviction.
@@ -558,84 +595,40 @@ Status XlaCompilationCache::CompileImpl(
   VLOG(2) << "Compilation cache entry hit: "
           << static_cast<int>(entry->compile_state)
           << " signature: " << human_signature << " with request count "
-          << current_request_count << " and compile threshold "
-          << compile_threshold.value_or(0);
-  // TODO(sanjoy): Refactor this code into helper functions.
-  bool return_null = false;
+          << current_request_count;
+
   CompileState state = entry->compile_state;
+  *out_compilation_result = nullptr;
+  *out_executable = nullptr;
+
   if (state == CompileState::kUncompiled) {
     XLA_SCOPED_LOGGING_TIMER("Compilation of XLA executable");
-    const bool should_compile = [&] {
-      if (compile_mode == CompileMode::kStrict) {
-        // Lazy compilation is disabled.
-        return true;
-      }
-
-      if (is_megamorphic) {
-        BroadcastOptimizationRemark(XlaOptimizationRemark::MEGAMORPHIC_FUNCTION,
-                                    function.name())
-            .IgnoreError();
-        VLOG(2) << "Not compiling cluster " << function.name()
-                << " because it is megamorphic.";
-        return false;
-      }
-
-      if (is_first_execution) {
-        return true;
-      }
-
-      if (compile_mode == CompileMode::kAsync) {
-        // Asynchronous compilation is enabled.
-        mutex_lock lock(async_compilation_state_.async_compilation_state_mu);
-        if (async_compilation_state_.num_ongoing_compilations >=
-            async_compilation_state_.kMaxNumOngoingCompilations) {
-          VLOG(2) << "Not asynchronously compiling cluster " << function.name()
-                  << " because of too many ongoing compilations.";
-          return false;
-        }
-      }
-
-      bool reached_compile_threshold =
-          current_request_count >= *compile_threshold;
-      if (!reached_compile_threshold) {
-        VLOG(2)
-            << "Not compiling cluster " << function.name()
-            << " because it has not reached compile threshold; threshold is "
-            << *compile_threshold << " execution count "
-            << current_request_count << ".";
-      }
-      return reached_compile_threshold;
-    }();
-
-    if (!should_compile) {
+    if (!ShouldCompileCluster(compile_mode, is_megamorphic, is_first_execution,
+                              current_request_count, function)) {
       VLOG(2) << "Not compiling for signature: " << human_signature;
-      return_null = true;
+      return Status::OK();
     } else if (compile_mode == CompileMode::kAsync) {
       VLOG(2) << "Queueing asynchronous compilation for signature: "
               << human_signature;
-      TF_RETURN_IF_ERROR(CompileAsynchronous(entry, options, args,
-                                             function.name(), compile_fn));
-      return_null = true;
+      TF_RETURN_IF_ERROR(CompileAsynchronous(entry, compile_options, options,
+                                             args, function, ctx, scope));
+      return Status::OK();
     } else {
       VLOG(2) << "Instantly compiling for signature: " << human_signature;
-      TF_RETURN_IF_ERROR(
-          CompileStrict(entry, options, args, function.name(), compile_fn));
+      TF_RETURN_IF_ERROR(CompileStrict(entry, compile_options, options, args,
+                                       function, ctx, scope));
     }
   } else if (state == CompileState::kCompiling) {
     VLOG(2) << "Ongoing asynchronous compilation for signature: "
             << human_signature;
-    return_null = true;
+    return Status::OK();
   } else if (state == CompileState::kCompiled) {
     VLOG(2) << "Already Compiled for signature: " << human_signature;
   }
-  if (return_null) {
-    *out_compilation_result = nullptr;
-    *out_executable = nullptr;
-  } else {
-    TF_RETURN_IF_ERROR(entry->compilation_status);
-    *out_compilation_result = &entry->compilation_result;
-    *out_executable = entry->executable.get();
-  }
+
+  TF_RETURN_IF_ERROR(entry->compilation_status);
+  *out_compilation_result = &entry->compilation_result;
+  *out_executable = entry->executable.get();
   return Status::OK();
 }
 

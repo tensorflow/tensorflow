@@ -301,18 +301,18 @@ tensorflow::Status RunInitializers(
   return tensorflow::Status::OK();
 }
 
-// A helper method to create tensorflow::SeesionOptions from
-// SavedModel::Options.
-static tensorflow::SessionOptions SetUpGrapplerConfig(
+// The created `SessionOptions` contains the Grappler configs.
+static tensorflow::SessionOptions CreateSessionOptions(
     const SavedModel::Options& options) {
-  auto session_options = options.session_options;
+  tensorflow::SessionOptions session_options;
   auto& config = session_options.config;
 
-  // TODO(b/179924827): Remove enable_grappler as it can be controlled by
-  // session_options.
   config.mutable_graph_options()
       ->mutable_rewrite_options()
       ->set_disable_meta_optimizer(!options.compile_options.enable_grappler);
+
+  // The following configs are constant.
+
   // Avoid grappler logic that lowers to v1 control flow.
   config.mutable_experimental()->set_use_tfrt(true);
   config.mutable_graph_options()
@@ -549,7 +549,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
 
     // Step 1: Import saved model from a proto to an MLIR module.
     auto import_start_time = absl::Now();
-    auto session_options = SetUpGrapplerConfig(options);
+    auto session_options = CreateSessionOptions(options);
     // Set optimize_for_static_graph to true since we won't extend the graph
     // later. If optimize_for_static_graph is set to false, FallbackState will
     // keep an extra unused copy of the graph, which unnecessarily consumes

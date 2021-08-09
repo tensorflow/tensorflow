@@ -116,20 +116,20 @@ constexpr double kDefaultPerIteratorPrefetchFactor = 2.0L;
 // Period between reporting dataset statistics.
 constexpr int kStatsReportingPeriodMillis = 1000;
 
-inline int64 CeilDiv(int64 numerator, int64 denominator) {
+inline int64 CeilDiv(int64_t numerator, int64_t denominator) {
   return (numerator + denominator - 1) / denominator;
 }
 
-int64 ComputeBufferOutputElements(int64 configured_buffer_output_elements,
-                                  int64 block_length) {
+int64 ComputeBufferOutputElements(int64_t configured_buffer_output_elements,
+                                  int64_t block_length) {
   if (configured_buffer_output_elements != model::kAutotune) {
     return configured_buffer_output_elements;
   }
   return kDefaultPerIteratorPrefetchFactor * block_length + 1;
 }
 
-int64 ComputePrefetchInputElements(int64 configured_prefetch_input_elements,
-                                   int64 cycle_length) {
+int64 ComputePrefetchInputElements(int64_t configured_prefetch_input_elements,
+                                   int64_t cycle_length) {
   if (configured_prefetch_input_elements != model::kAutotune) {
     return configured_prefetch_input_elements;
   }
@@ -157,9 +157,9 @@ int64 OpVersionFromOpName(absl::string_view op_name) {
 class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
-          std::unique_ptr<CapturedFunction> captured_func, int64 cycle_length,
-          int64 block_length, int64 buffer_output_elements,
-          int64 prefetch_input_elements, int64 num_parallel_calls,
+          std::unique_ptr<CapturedFunction> captured_func, int64_t cycle_length,
+          int64_t block_length, int64_t buffer_output_elements,
+          int64_t prefetch_input_elements, int64_t num_parallel_calls,
           DeterminismPolicy deterministic, const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes, int op_version)
       : DatasetBase(DatasetContext(ctx)),
@@ -218,7 +218,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+    int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality) {
       return n;
     }
@@ -487,9 +487,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
-      int64 parallelism = -1;
-      int64 results_ready = -1;
-      int64 active_elements = -1;
+      int64_t parallelism = -1;
+      int64_t results_ready = -1;
+      int64_t active_elements = -1;
       // NOTE: We only set the parallelism value if the lock can be acquired
       // right away to avoid introducing tracing overhead.
       if (mu_->try_lock()) {
@@ -677,8 +677,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           // Reached end of input.
           return true;
         }
-        for (int64 i = 0; i < (last_valid_current_element_ + 1); ++i) {
-          int64 index = (cycle_index_ + i) % (last_valid_current_element_ + 1);
+        for (int64_t i = 0; i < (last_valid_current_element_ + 1); ++i) {
+          int64_t index =
+              (cycle_index_ + i) % (last_valid_current_element_ + 1);
           if (current_elements_[index]) {
             cycle_index_ = index;
             if (i > 0) {
@@ -943,7 +944,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         TF_LOCKS_EXCLUDED(mu_) {
       DCHECK(element != nullptr);
       IteratorBase* iterator;
-      int64 input_element_id;
+      int64_t input_element_id;
       // Initialize the inputs and iterator if necessary.
       {
         mutex_lock l(*mu_);
@@ -1128,7 +1129,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     void StatsThread() {
-      for (int64 step = 0;; ++step) {
+      for (int64_t step = 0;; ++step) {
         int num_current_active_workers;
         int num_current_workers;
         {
@@ -1172,7 +1173,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     Status ReadStatusLocked(IteratorStateReader* reader,
                             const string& iterator_name, size_t idx,
                             Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      int64 code_int;
+      int64_t code_int;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(iterator_name, CodeKey(idx), &code_int));
       error::Code code = static_cast<error::Code>(code_int);
@@ -1279,7 +1280,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                               absl::StrCat(kResultsSuffix, kSizeSuffix))) {
           return Status::OK();
         }
-        int64 results_size;
+        int64_t results_size;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             iterator_name, absl::StrCat(kResultsSuffix, kSizeSuffix),
             &results_size));
@@ -1288,7 +1289,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           auto result = std::make_shared<Result>();
           TF_RETURN_IF_ERROR(
               ReadStatusLocked(reader, iterator_name, i, &result->status));
-          int64 num_return_values;
+          int64_t num_return_values;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
               iterator_name,
               absl::StrCat(kResultsSuffix, "[", i, "]", kSizeSuffix),
@@ -1310,7 +1311,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           *out = std::move(element);
           return Status::OK();
         }
-        int64 inputs_size;
+        int64_t inputs_size;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             iterator_name, absl::StrCat(kInputsSuffix, kSizeSuffix),
             &inputs_size));
@@ -1337,7 +1338,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status ReadCurrentElements(IteratorContext* ctx,
                                IteratorStateReader* reader) {
-      int64 size;
+      int64_t size;
       {
         mutex_lock l(*mu_);
         TF_RETURN_IF_ERROR(
@@ -1375,7 +1376,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status ReadFutureElements(IteratorContext* ctx,
                               IteratorStateReader* reader) {
-      int64 size;
+      int64_t size;
       {
         mutex_lock l(*mu_);
         TF_RETURN_IF_ERROR(
@@ -1399,7 +1400,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     Status ReadElementsParallel(
-        IteratorContext* ctx, IteratorStateReader* reader, int64 size,
+        IteratorContext* ctx, IteratorStateReader* reader, int64_t size,
         const string& name, std::vector<std::shared_ptr<Element>>* elements) {
       elements->resize(size);
       Status s = Status::OK();
@@ -1621,13 +1622,13 @@ ParallelInterleaveDatasetOp::ParallelInterleaveDatasetOp(
 void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
                                               DatasetBase* input,
                                               DatasetBase** output) {
-  int64 block_length = 0;
+  int64_t block_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBlockLength, &block_length));
   OP_REQUIRES(ctx, block_length > 0,
               errors::InvalidArgument("`block_length` must be > 0"));
 
-  int64 buffer_output_elements = model::kAutotune;
-  int64 prefetch_input_elements = model::kAutotune;
+  int64_t buffer_output_elements = model::kAutotune;
+  int64_t prefetch_input_elements = model::kAutotune;
   if (op_version_ >= 4) {
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBufferOutputElements,
                                             &buffer_output_elements));
@@ -1648,13 +1649,13 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
                                         prefetch_input_elements));
   }
 
-  int64 num_parallel_calls = 0;
+  int64_t num_parallel_calls = 0;
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument(ctx, kNumParallelCalls, &num_parallel_calls));
   OP_REQUIRES(
       ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
       errors::InvalidArgument("num_parallel_calls must be greater than zero."));
-  int64 cycle_length = 0;
+  int64_t cycle_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCycleLength, &cycle_length));
   if (cycle_length == model::kAutotune) {
     if (num_parallel_calls != model::kAutotune) {

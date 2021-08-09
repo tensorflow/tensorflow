@@ -92,7 +92,7 @@ void RangeSampler::SampleBatchGetExpectedCountAvoid(
     while (num_picked < batch_size) {
       num_tries++;
       CHECK_LT(num_tries, kint32max);
-      int64 value = Sample(rnd);
+      int64_t value = Sample(rnd);
       if (gtl::InsertIfNotPresent(&used, value)) {
         batch[num_picked++] = value;
       }
@@ -120,7 +120,7 @@ void RangeSampler::SampleBatchGetExpectedCountAvoid(
   }
 }
 
-AllSampler::AllSampler(int64 range) : RangeSampler(range) {}
+AllSampler::AllSampler(int64_t range) : RangeSampler(range) {}
 
 void AllSampler::SampleBatchGetExpectedCountAvoid(
     random::SimplePhilox* rnd, bool unique, MutableArraySlice<int64> batch,
@@ -145,20 +145,20 @@ void AllSampler::SampleBatchGetExpectedCountAvoid(
   }
 }
 
-UniformSampler::UniformSampler(int64 range)
+UniformSampler::UniformSampler(int64_t range)
     : RangeSampler(range), inv_range_(1.0 / range) {}
 
 int64 UniformSampler::Sample(random::SimplePhilox* rnd) const {
   return rnd->Uniform64(range_);
 }
 
-float UniformSampler::Probability(int64 value) const { return inv_range_; }
+float UniformSampler::Probability(int64_t value) const { return inv_range_; }
 
-LogUniformSampler::LogUniformSampler(int64 range)
+LogUniformSampler::LogUniformSampler(int64_t range)
     : RangeSampler(range), log_range_(log1p(range)) {}
 
 int64 LogUniformSampler::Sample(random::SimplePhilox* rnd) const {
-  const int64 value =
+  const int64_t value =
       static_cast<int64>(exp(rnd->RandDouble() * log_range_)) - 1;
   DCHECK_GE(value, 0);
   // Mathematically, value should be <= range_, but might not be due to some
@@ -168,7 +168,7 @@ int64 LogUniformSampler::Sample(random::SimplePhilox* rnd) const {
   return value % range_;
 }
 
-float LogUniformSampler::Probability(int64 value) const {
+float LogUniformSampler::Probability(int64_t value) const {
   // value is returned iff the call to UniformDouble(log_range_) in the
   // Sample() function returns a value between log(value + 1)
   // and log(value + 2).   The probability of this is:
@@ -177,7 +177,7 @@ float LogUniformSampler::Probability(int64 value) const {
   return (log((value + 2.0) / (value + 1.0))) / log_range_;
 }
 
-ThreadUnsafeUnigramSampler::ThreadUnsafeUnigramSampler(int64 range)
+ThreadUnsafeUnigramSampler::ThreadUnsafeUnigramSampler(int64_t range)
     : RangeSampler(range), picker_(range) {
   CHECK_LT(range, kint32max);
 }
@@ -186,7 +186,7 @@ int64 ThreadUnsafeUnigramSampler::Sample(random::SimplePhilox* rnd) const {
   return picker_.Pick(rnd);
 }
 
-float ThreadUnsafeUnigramSampler::Probability(int64 value) const {
+float ThreadUnsafeUnigramSampler::Probability(int64_t value) const {
   return static_cast<float>(picker_.get_weight(value)) / picker_.total_weight();
 }
 
@@ -194,24 +194,24 @@ void ThreadUnsafeUnigramSampler::Update(ArraySlice<int64> values) {
   int num_updates = std::min(static_cast<int>(values.size()),
                              kint32max - picker_.total_weight());
   for (int i = 0; i < num_updates; i++) {
-    const int64 value = values[i];
+    const int64_t value = values[i];
     picker_.set_weight(value, picker_.get_weight(value) + 1);
   }
 }
 
 // Thread-safe unigram sampler
-UnigramSampler::UnigramSampler(int64 range)
+UnigramSampler::UnigramSampler(int64_t range)
     : RangeSampler(range), unsafe_sampler_(range) {
   CHECK_LT(range, kint32max);
 }
 
 int64 UnigramSampler::Sample(random::SimplePhilox* rnd) const {
-  mutex_lock lock(mu_);  // could use reader lock
+  tf_shared_lock lock(mu_);
   return unsafe_sampler_.Sample(rnd);
 }
 
-float UnigramSampler::Probability(int64 value) const {
-  mutex_lock lock(mu_);  // could use reader lock
+float UnigramSampler::Probability(int64_t value) const {
+  tf_shared_lock lock(mu_);
   return unsafe_sampler_.Probability(value);
 }
 
@@ -221,7 +221,7 @@ void UnigramSampler::SampleBatchGetExpectedCountAvoid(
     MutableArraySlice<float> batch_expected_count, ArraySlice<int64> extras,
     MutableArraySlice<float> extras_expected_count,
     ArraySlice<int64> avoided_values) const {
-  mutex_lock lock(mu_);  // could use reader lock
+  tf_shared_lock lock(mu_);
   unsafe_sampler_.SampleBatchGetExpectedCountAvoid(
       rnd, unique, batch, batch_expected_count, extras, extras_expected_count,
       avoided_values);
@@ -232,11 +232,11 @@ void UnigramSampler::Update(ArraySlice<int64> values) {
   unsafe_sampler_.Update(values);
 }
 
-FixedUnigramSampler::FixedUnigramSampler(Env* env, int64 range,
+FixedUnigramSampler::FixedUnigramSampler(Env* env, int64_t range,
                                          const string& vocab_file,
                                          float distortion,
-                                         int32 num_reserved_ids,
-                                         int32 num_shards, int32 shard)
+                                         int32_t num_reserved_ids,
+                                         int32_t num_shards, int32_t shard)
     : RangeSampler(range),
       total_weight_(0.0),
       num_shards_(num_shards),
@@ -248,11 +248,11 @@ FixedUnigramSampler::FixedUnigramSampler(Env* env, int64 range,
   dist_sampler_.reset(new random::DistributionSampler(weights_));
 }
 
-FixedUnigramSampler::FixedUnigramSampler(int64 range,
+FixedUnigramSampler::FixedUnigramSampler(int64_t range,
                                          const std::vector<float>& unigrams,
                                          float distortion,
-                                         int32 num_reserved_ids,
-                                         int32 num_shards, int32 shard)
+                                         int32_t num_reserved_ids,
+                                         int32_t num_shards, int32_t shard)
     : RangeSampler(range),
       total_weight_(0.0),
       num_shards_(num_shards),
@@ -264,7 +264,7 @@ FixedUnigramSampler::FixedUnigramSampler(int64 range,
   dist_sampler_.reset(new random::DistributionSampler(weights_));
 }
 
-float FixedUnigramSampler::Probability(int64 value) const {
+float FixedUnigramSampler::Probability(int64_t value) const {
   if (value < 0 || static_cast<size_t>(value) >= weights_.size()) {
     return 0.0;
   }
@@ -275,8 +275,8 @@ int64 FixedUnigramSampler::Sample(random::SimplePhilox* rnd) const {
   return dist_sampler_->Sample(rnd);
 }
 
-void FixedUnigramSampler::FillReservedIds(int32 num_reserved_ids) {
-  for (int32 word_id = 0; word_id < num_reserved_ids; ++word_id) {
+void FixedUnigramSampler::FillReservedIds(int32_t num_reserved_ids) {
+  for (int32_t word_id = 0; word_id < num_reserved_ids; ++word_id) {
     if (word_id % num_shards_ == shard_) weights_.push_back(0.0);
   }
 }
@@ -288,7 +288,7 @@ Status FixedUnigramSampler::LoadFromFile(Env* env, const string& vocab_file,
 
   io::InputBuffer in(file.get(), 262144 /*bytes*/);
   string line;
-  int32 word_id = weights_.size();
+  int32_t word_id = weights_.size();
   while (in.ReadLine(&line).ok()) {
     // The vocabulary file should be in csv like format, with the last
     // field the weight associated with the word.
@@ -312,7 +312,7 @@ Status FixedUnigramSampler::LoadFromFile(Env* env, const string& vocab_file,
 
 void FixedUnigramSampler::LoadFromUnigrams(const std::vector<float>& unigrams,
                                            float distortion) {
-  int32 word_id = weights_.size();
+  int32_t word_id = weights_.size();
   for (float w : unigrams) {
     // Skip entries that do not belong to this shard.
     if (word_id % num_shards_ == shard_) {

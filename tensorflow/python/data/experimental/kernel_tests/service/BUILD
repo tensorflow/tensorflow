@@ -8,6 +8,27 @@ package(
 )
 
 tf_py_test(
+    name = "auto_shard_test",
+    size = "medium",
+    srcs = ["auto_shard_test.py"],
+    shard_count = 32,
+    deps = [
+        ":multi_process_cluster",
+        ":test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/experimental/ops:distribute",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/kernel_tests:tf_record_test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:errors",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "coordinated_read_ft_test",
     size = "medium",
     srcs = ["coordinated_read_ft_test.py"],
@@ -55,6 +76,7 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/data",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/kernel_tests:test_base",
@@ -62,9 +84,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "distributed_epoch_test",
+    name = "dynamic_sharding_test",
     size = "medium",
-    srcs = ["distributed_epoch_test.py"],
+    srcs = ["dynamic_sharding_test.py"],
     shard_count = 16,
     deps = [
         ":test_base",
@@ -74,6 +96,7 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/data",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/kernel_tests:test_base",

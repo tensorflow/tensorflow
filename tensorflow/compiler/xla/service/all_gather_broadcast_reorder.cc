@@ -35,7 +35,7 @@ StatusOr<bool> AllGatherBroadcastReorder::Run(HloModule *module) {
     return false;
   }
 
-  int64 next_channel_id = hlo_query::NextChannelId(*module);
+  int64_t next_channel_id = hlo_query::NextChannelId(*module);
 
   bool changed = false;
   for (auto computation : module->computations()) {

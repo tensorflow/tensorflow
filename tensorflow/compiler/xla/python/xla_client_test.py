@@ -126,8 +126,8 @@ def TestFactory(xla_backend,
     return np.array(*args, dtype=np.int32, **kwargs)
 
   def NumpyArrayBool(*args, **kwargs):
-    """Convenience wrapper to create Numpy arrays with a np.bool dtype."""
-    return np.array(*args, dtype=np.bool, **kwargs)
+    """Convenience wrapper to create Numpy arrays with a np.bool_ dtype."""
+    return np.array(*args, dtype=np.bool_, **kwargs)
 
   class ComputationPrinting(absltest.TestCase):
 
@@ -731,7 +731,7 @@ def TestFactory(xla_backend,
         "src_dtype": src_dtype,
         "dst_dtype": dst_dtype,
     } for src_dtype, dst_dtype in itertools.permutations(
-        [np.bool, np.int32, np.int64, np.float32, np.float64], 2))
+        [np.bool_, np.int32, np.int64, np.float32, np.float64], 2))
     # pyformat: enable
     def testConvertElementType(self, src_dtype, dst_dtype):
       if ((src_dtype in [np.int64, np.float64] or

@@ -51,20 +51,20 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
     Abs, DT_INT8, DT_INT32, DT_INT8, DT_INT32,
-    test::NearZeroAndExtremeInput<int8>(), std::abs,
+    test::NearZeroAndExtremeInput<int8_t>(), std::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
     Abs, DT_INT16, DT_INT32, DT_INT16, DT_INT32,
-    test::NearZeroAndExtremeInput<int16>(), std::abs,
+    test::NearZeroAndExtremeInput<int16_t>(), std::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Abs, DT_INT32, DT_INT32, test::NearZeroAndExtremeInput<int32>(), std::abs,
+    Abs, DT_INT32, DT_INT32, test::NearZeroAndExtremeInput<int32_t>(), std::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64>(), std::abs,
+    Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64_t>(), std::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
 /// Test `tf.Angle`.
@@ -119,6 +119,18 @@ GENERATE_DEFAULT_TEST(
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(
     Invert, DT_INT64, DT_INT64, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Invert, DT_UINT8, DT_UINT8, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Invert, DT_UINT16, DT_UINT16, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Invert, DT_UINT32, DT_UINT32, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Invert, DT_UINT64, DT_UINT64, baseline_invert,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
 /// Test `tf.Rsqrt`.

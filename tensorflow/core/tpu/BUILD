@@ -375,6 +375,7 @@ cc_library(
     deps = [
         ":tpu_defs",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:tpu_ops",
         "//tensorflow/core:core_cpu",

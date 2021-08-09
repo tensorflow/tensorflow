@@ -67,7 +67,7 @@ func @jit_execute(%ctx : !tf_framework.op_kernel_context,
     %f : !tf_framework.jit_callable, %arg0 : tensor<2x?xf32>,
     %arg1 : tensor<2x?xf32>) -> tensor<2x?xf32> attributes {tf_entry} {
   // CHECK: %[[RES:.*]] = tf_framework.jit_execute
-  // CHECK-SAME: ctx = %[[CTX]], %[[F]](%[[ARG0]], %[[ARG1]])
+  // CHECK-SAME: ctx(%[[CTX]]) %[[F]](%[[ARG0]], %[[ARG1]])
   // CHECK: return %[[RES]]
   %0 = tf_framework.jit_execute %f(%arg0, %arg1)
       : tensor<2x?xf32>, tensor<2x?xf32> -> tensor<2x?xf32>
@@ -82,6 +82,9 @@ func @jit_compile_from_str(%ctx : !tf_framework.op_kernel_context)
     -> !tf_framework.jit_callable attributes {tf_entry} {
   // CHECK: %[[RES:.*]] = tf_framework.jit_compile_from_str %[[CTX]], "placeholder"
   // CHECK: return %[[RES]]
-  %0 = tf_framework.jit_compile_from_str "placeholder"
+  %0 = tf_framework.jit_compile_from_str "placeholder" {
+      architectures = ["sm_123", "sm_456"], tileSizes = [1, 2, 3],
+      unrollFactors = [4], maxSupportedRank = 3 : i64, enableFtz = false,
+      cpuCodegen = false }
   return %0 : !tf_framework.jit_callable
 }

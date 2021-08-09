@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/stream_executor/gpu/gpu_types.h"
 
 #if TENSORFLOW_USE_ROCM
 // Local hipify of cuda symbols
@@ -150,10 +151,41 @@ class NcclCliqueMap {
 
 NcclCliqueMap& NcclCliqueCache();
 
+struct NcclCliqueParticipantData : public ParticipantData {
+  // For running in StreamExecutor. To be deprecated after transitioning to
+  // TFRT.
+  NcclCliqueParticipantData(const RendezvousKey& rendezvous_key,
+                            int64_t device_ordinal, se::Stream* stream)
+      : ParticipantData(rendezvous_key),
+        device_ordinal(device_ordinal),
+        stream(stream) {}
+
+  // For running in TFRT.
+  NcclCliqueParticipantData(const RendezvousKey& rendezvous_key,
+                            se::gpu::GpuContextHandle context)
+      : ParticipantData(rendezvous_key), stream(nullptr), context(context) {}
+
+  int64 device_ordinal;
+  se::Stream* stream;
+  se::gpu::GpuContextHandle context;
+
+  std::string ToString() const override {
+    if (stream != nullptr) {
+      return absl::StrFormat(
+          "NcclCliqueParticipantData{rendezvous_key=%s, "
+          "device_ordinal=%d, stream=%p}",
+          rendezvous_key.ToString(), device_ordinal, stream);
+    }
+    return absl::StrFormat(
+        "NcclCliqueParticipantData{rendezvous_key=%s, context=%p}",
+        rendezvous_key.ToString(), context);
+  }
+};
+
 // Acquires a locked NCCL clique for use in NCCL collective operations.
 StatusOr<LockedNcclClique> AcquireNcclClique(
-    const RendezvousKey& rendezvous_key, int local_device_ordinal,
-    se::Stream* stream, const std::vector<LocalParticipant>& local_participants,
+    const NcclCliqueParticipantData& participant,
+    const std::vector<LocalParticipant>& local_participants,
     const NcclUniqueIdCallback* callback);  // may be null
 
 }  // namespace gpu

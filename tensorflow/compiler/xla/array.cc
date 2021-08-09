@@ -24,7 +24,7 @@ void Array<complex64>::FillRandom(const complex64& stddev, const double mean,
                                   const int seed) {
   std::mt19937 g(seed);
   std::normal_distribution<double> distribution(mean, std::real(stddev));
-  for (int64 i = 0; i < num_elements(); ++i) {
+  for (int64_t i = 0; i < num_elements(); ++i) {
     values_[i] = complex64(distribution(g), distribution(g));
   }
 }

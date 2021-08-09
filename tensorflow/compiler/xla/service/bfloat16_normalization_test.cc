@@ -35,7 +35,7 @@ class TestBFloat16Support : public BFloat16Support {
   ~TestBFloat16Support() override {}
 
   bool SupportsBF16Operand(const HloInstruction& hlo,
-                           int64 operand_index) const override {
+                           int64_t operand_index) const override {
     if (hlo.opcode() == HloOpcode::kAdd ||
         hlo.opcode() == HloOpcode::kSubtract ||
         hlo.opcode() == HloOpcode::kReduce ||

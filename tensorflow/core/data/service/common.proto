@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow.data;
 
 import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/protobuf/data_service.proto";
 
 // Next tag: 2
 message DatasetDef {
@@ -11,8 +12,9 @@ message DatasetDef {
   GraphDef graph = 1;
 }
 
-// Next tag: 10
+// Next tag: 13
 message TaskDef {
+  reserved 6;
   // The dataset to iterate over.
   oneof dataset {
     DatasetDef dataset_def = 1;
@@ -27,12 +29,16 @@ message TaskDef {
   int64 num_split_providers = 9;
   // Address of the worker that the task is assigned to.
   string worker_address = 8;
-  ProcessingModeDef processing_mode = 6;
+  ProcessingModeDef processing_mode_def = 10;
   // Optional number of consumers. If set, the results of the task will be
   // provided to consumers round-robin.
   oneof optional_num_consumers {
     int64 num_consumers = 7;
   }
+  // Number of workers and the worker index. These are only populated when the
+  // `processing_mode_def` specifies a static sharding policy.
+  int64 num_workers = 11;
+  int64 worker_index = 12;
 }
 
 // Next tag: 6
@@ -50,11 +56,13 @@ message TaskInfo {
   int64 starting_round = 5;
 }
 
-// Next tag: 3
-enum ProcessingModeDef {
-  INVALID = 0;
-  // Each tf.data worker processes an entire epoch.
-  PARALLEL_EPOCHS = 1;
-  // Processing of an epoch is distributed across all tf.data workers.
-  DISTRIBUTED_EPOCH = 2;
+// Specifies which tf.data service workers to read from.
+enum TargetWorkers {
+  TARGET_WORKERS_UNSPECIFIED = 0;
+  // tf.data service runtime decides which workers to read from.
+  TARGET_WORKERS_AUTO = 1;
+  // Reads from any available worker.
+  TARGET_WORKERS_ANY = 2;
+  // Only reads from local workers. If no local worker is found, it is an error.
+  TARGET_WORKERS_LOCAL = 3;
 }

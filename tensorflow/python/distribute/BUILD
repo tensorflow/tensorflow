@@ -623,11 +623,14 @@ distribute_py_test(
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  #TODO(b/195770530)
         "no_rocm",
+        "noasan",  #TODO(b/195770530)
     ],
     tpu_tags = [
         "no_oss",
     ],
+    xla_enable_strict_auto_jit = False,  # PSStrategy doesn't work on _xla tests
     deps = [
         "//tensorflow/python:stateful_random_ops",
         "//tensorflow/python/compat:v2_compat",
@@ -640,7 +643,6 @@ tpu_py_test(
     name = "tpu_strategy_test",
     srcs = ["tpu_strategy_test.py"],
     disable_experimental = True,
-    disable_tfrt = False,
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
@@ -658,7 +660,6 @@ tpu_py_test(
     srcs = ["tpu_strategy_compilation_test.py"],
     disable_experimental = True,
     disable_mlir_bridge = False,
-    disable_tfrt = False,
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
@@ -954,6 +955,7 @@ distribute_py_test(
     srcs = ["strategy_combinations_test.py"],
     disable_mlir_bridge = False,
     python_version = "PY3",
+    tags = ["no_cuda_asan"],  # b/195246941
     deps = [
         ":central_storage_strategy",
         ":collective_all_reduce_strategy",

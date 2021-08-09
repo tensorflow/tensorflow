@@ -527,6 +527,10 @@ cc_library(
         "include",
         "lib/Bindings/Python",
     ],
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
+    ],
     textual_hdrs = glob([
         "lib/Bindings/Python/*.h",
         "include/mlir-c/Bindings/Python/*.h",
@@ -541,10 +545,17 @@ cc_library(
 
 cc_library(
     name = "MLIRBindingsPythonCore",
-    srcs = glob(
-        include = ["lib/Bindings/Python/*.cpp"],
-        exclude = ["lib/Bindings/Python/MainModule.cpp"],
-    ),
+    srcs = [
+        "lib/Bindings/Python/DialectLinalg.cpp",
+        "lib/Bindings/Python/DialectSparseTensor.cpp",
+        "lib/Bindings/Python/IRAffine.cpp",
+        "lib/Bindings/Python/IRAttributes.cpp",
+        "lib/Bindings/Python/IRCore.cpp",
+        "lib/Bindings/Python/IRModule.cpp",
+        "lib/Bindings/Python/IRTypes.cpp",
+        "lib/Bindings/Python/Pass.cpp",
+        "lib/Bindings/Python/PybindUtils.cpp",
+    ],
     # These flags are needed for pybind11 to work.
     copts = [
         "-fexceptions",
@@ -554,10 +565,13 @@ cc_library(
         # Cannot use header_modules (parse_headers feature fails).
         "-use_header_modules",
     ],
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
+    ],
     deps = [
         ":CAPIAsync",
         ":CAPIDebug",
-        ":CAPIExecutionEngine",
         ":CAPIGPU",
         ":CAPIIR",
         ":CAPILinalg",
@@ -589,13 +603,17 @@ cc_binary(
     features = PYBIND11_FEATURES,
     linkshared = 1,
     linkstatic = 0,
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
+    ],
     deps = [
         ":MLIRBindingsPythonCore",
         ":MLIRBindingsPythonHeadersAndDeps",
     ],
 )
 
-# Dynamlic library with the MLIR Conversions Python extension.
+# Dynamic library with the MLIR Conversions Python extension.
 cc_binary(
     name = "_mlirConversions.so",
     srcs = ["lib/Bindings/Python/Conversions/Conversions.cpp"],
@@ -603,6 +621,10 @@ cc_binary(
     features = PYBIND11_FEATURES,
     linkshared = 1,
     linkstatic = 0,
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
+    ],
     deps = [
         ":CAPIConversion",
         ":MLIRBindingsPythonHeadersAndDeps",
@@ -611,7 +633,27 @@ cc_binary(
     ],
 )
 
-# Dynamlic library with the MLIR Transforms Python extension.
+# Dynamic library with the MLIR Conversions Python extension.
+cc_binary(
+    name = "_mlirExecutionEngine.so",
+    srcs = ["lib/Bindings/Python/ExecutionEngineModule.cpp"],
+    copts = PYBIND11_COPTS,
+    features = PYBIND11_FEATURES,
+    linkshared = 1,
+    linkstatic = 0,
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
+    ],
+    deps = [
+        ":CAPIExecutionEngine",
+        ":MLIRBindingsPythonHeadersAndDeps",
+        "//third_party/pybind11",
+        "//third_party/python_runtime:headers",
+    ],
+)
+
+# Dynamic library with the MLIR Transforms Python extension.
 cc_binary(
     name = "_mlirTransforms.so",
     srcs = ["lib/Bindings/Python/Transforms/Transforms.cpp"],
@@ -619,6 +661,10 @@ cc_binary(
     features = PYBIND11_FEATURES,
     linkshared = 1,
     linkstatic = 0,
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
+    ],
     deps = [
         ":CAPITransforms",
         ":MLIRBindingsPythonHeadersAndDeps",
@@ -635,6 +681,10 @@ cc_binary(
     features = PYBIND11_FEATURES,
     linkshared = 1,
     linkstatic = 0,
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
+    ],
     deps = [
         ":CAPILinalg",
         ":MLIRBindingsPythonHeadersAndDeps",
@@ -1443,6 +1493,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Affine",
+        ":DialectUtils",
         ":IR",
         ":MemRefDialect",
         ":Pass",
@@ -1781,6 +1832,7 @@ cc_library(
         ":IR",
         ":Pass",
         ":SCFDialect",
+        ":SCFToStandard",
         ":StandardOps",
         ":Support",
         ":TransformUtils",
@@ -1905,7 +1957,9 @@ cc_library(
         ":LinalgToStandard",
         ":MathToLLVM",
         ":MathToLibm",
+        ":MathToSPIRV",
         ":MemRefToLLVM",
+        ":MemRefToSPIRV",
         ":OpenACCToLLVM",
         ":OpenACCToSCF",
         ":OpenMPToLLVM",
@@ -2979,6 +3033,7 @@ cc_library(
         ":ConversionPassIncGen",
         ":GPUDialect",
         ":IR",
+        ":MemRefToSPIRV",
         ":Pass",
         ":SCFDialect",
         ":SCFToSPIRV",
@@ -3633,6 +3688,32 @@ cc_library(
 )
 
 cc_library(
+    name = "MathToSPIRV",
+    srcs = glob([
+        "lib/Conversion/MathToSPIRV/*.cpp",
+        "lib/Conversion/MathToSPIRV/*.h",
+    ]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = glob([
+        "include/mlir/Conversion/MathToSPIRV/*.h",
+    ]),
+    includes = [
+        "include",
+        "lib/Conversion/MathToSPIRV",
+    ],
+    deps = [
+        ":ConversionPassIncGen",
+        ":IR",
+        ":MathDialect",
+        ":Pass",
+        ":SPIRVConversion",
+        ":SPIRVDialect",
+        ":Support",
+        ":Transforms",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "StandardToSPIRV",
     srcs = glob([
         "lib/Conversion/StandardToSPIRV/*.cpp",
@@ -3648,8 +3729,6 @@ cc_library(
     deps = [
         ":ConversionPassIncGen",
         ":IR",
-        ":MathDialect",
-        ":MemRefDialect",
         ":Pass",
         ":SPIRVConversion",
         ":SPIRVDialect",
@@ -4195,6 +4274,7 @@ cc_library(
         ":Affine",
         ":ConversionPassIncGen",
         ":IR",
+        ":MemRefToSPIRV",
         ":Pass",
         ":SCFDialect",
         ":SPIRVConversion",
@@ -4318,6 +4398,32 @@ cc_library(
         ":Pass",
         ":Support",
         ":Transforms",
+    ],
+)
+
+cc_library(
+    name = "MemRefToSPIRV",
+    srcs = glob([
+        "lib/Conversion/MemRefToSPIRV/*.cpp",
+        "lib/Conversion/MemRefToSPIRV/*.h",
+    ]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = glob([
+        "include/mlir/Conversion/MemRefToSPIRV/*.h",
+    ]),
+    includes = [
+        "include",
+        "lib/Conversion/MemRefToSPIRV",
+    ],
+    deps = [
+        ":ConversionPassIncGen",
+        ":IR",
+        ":MemRefDialect",
+        ":Pass",
+        ":SPIRVConversion",
+        ":SPIRVDialect",
+        ":Support",
+        ":Transforms",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -4940,9 +5046,11 @@ cc_library(
         ":MathDialect",
         ":MathToLLVM",
         ":MathToLibm",
+        ":MathToSPIRV",
         ":MathTransforms",
         ":MemRefDialect",
         ":MemRefToLLVM",
+        ":MemRefToSPIRV",
         ":MemRefTransforms",
         ":NVVMDialect",
         ":OpenACCDialect",
@@ -5141,6 +5249,10 @@ cc_library(
     srcs = ["lib/ExecutionEngine/CudaRuntimeWrappers.cpp"],
     # Prevent needing EnableABIBreakingChecks symbol from LLVMSupport.
     copts = ["-DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1"],
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
+    ],
     deps = [
         ":LLVMSupportHeaders",
         ":mlir_c_runner_utils",
@@ -5153,6 +5265,9 @@ cc_library(
     name = "VulkanRuntime",
     srcs = ["tools/mlir-vulkan-runner/VulkanRuntime.cpp"],
     hdrs = ["tools/mlir-vulkan-runner/VulkanRuntime.h"],
+    tags = [
+        "manual",  # External dependency
+    ],
     deps = [
         ":IR",
         ":Pass",
@@ -5170,6 +5285,9 @@ cc_binary(
     name = "tools/libvulkan-runtime-wrappers.so",
     srcs = ["tools/mlir-vulkan-runner/vulkan-runtime-wrappers.cpp"],
     linkshared = True,
+    tags = [
+        "manual",  # External dependency
+    ],
     deps = [
         ":VulkanRuntime",
         "@llvm-project//llvm:Support",
@@ -6297,6 +6415,7 @@ cc_library(
         ":TosaInterfacesIncGen",
         ":TosaPassIncGen",
         ":TransformUtils",
+        "@llvm-project//llvm:Support",
     ],
 )
 

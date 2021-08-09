@@ -65,6 +65,37 @@ static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
   return convs;
 }
 
+// Converts an XlaBuilder into an HloComputation in the same module as
+// `sibling_computation`.
+//
+// Yes, we serialize/deserialize as a proto.  :)
+static StatusOr<HloComputation*> BuilderToHloComputation(
+    XlaBuilder& b, XlaOp root, HloComputation* sibling_computation) {
+  TF_ASSIGN_OR_RETURN(XlaComputation comp, b.Build(root));
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, comp.GetProgramShape());
+  HloModuleConfig config(program_shape);
+  TF_ASSIGN_OR_RETURN(auto new_module,
+                      HloModule::CreateFromProto(comp.proto(), config));
+
+  HloModule* dest_module = sibling_computation->parent();
+  HloCloneContext context(dest_module);
+  return dest_module->DeepCloneComputation(new_module->entry_computation(),
+                                           &context);
+}
+
+// Reshapes `instr` so that it has an extra dimension of size `vect_size` right
+// after `dim`.
+static XlaOp SplitAtDim(XlaOp instr, int64_t dim, int64_t vect_size) {
+  XlaBuilder& b = *instr.builder();
+  Shape shape = b.GetShape(instr).ValueOrDie();
+  absl::InlinedVector<int64, 6> new_dims(shape.dimensions().begin(),
+                                         shape.dimensions().end());
+  CHECK_EQ(new_dims[dim] % vect_size, 0);
+  new_dims[dim] /= vect_size;
+  new_dims.insert(new_dims.begin() + dim + 1, vect_size);
+  return Reshape(instr, new_dims);
+}
+
 // Reshapes `shape` so that there's an extra dimension of size `vect_size` right
 // after `dim`.
 //
@@ -79,77 +110,92 @@ static Shape SplitShapeAtDim(Shape shape, int64_t dim, int64_t vect_size) {
   return ShapeUtil::MakeShape(shape.element_type(), new_dims);
 }
 
-// Reshapes `instr` so that it has an extra dimension of size `vect_size` right
-// after `dim`.
-static HloInstruction* SplitInstrAtDim(HloInstruction* instr, int64_t dim,
-                                       int64_t vect_size) {
-  return instr->parent()->AddInstruction(HloInstruction::CreateReshape(
-      SplitShapeAtDim(instr->shape(), dim, vect_size), instr));
+// Transposes dimension `src` to right before `dst`.
+static XlaOp MoveDim(XlaOp instr, int64_t src, int64_t dst) {
+  XlaBuilder& b = *instr.builder();
+  int64_t rank = b.GetShape(instr)->dimensions_size();
+
+  absl::InlinedVector<int64, 6> idxs(rank);
+  absl::c_iota(idxs, 0);
+  if (src < dst) {
+    idxs.insert(idxs.begin() + dst, src);
+    idxs.erase(idxs.begin() + src);
+  } else {
+    idxs.erase(idxs.begin() + src);
+    idxs.insert(idxs.begin() + dst, src);
+  }
+  return Transpose(instr, idxs);
 }
 
-// Reshapes `instr` so that dimension `dim` is collapsed into the dimension
-// right before it.
-static HloInstruction* CollapseDimIntoPrev(HloInstruction* instr, int64_t dim) {
-  CHECK_GT(dim, 0);
-  absl::InlinedVector<int64, 5> new_dims(instr->shape().dimensions().begin(),
-                                         instr->shape().dimensions().end());
-  new_dims[dim - 1] *= new_dims[dim];
-  new_dims.erase(new_dims.begin() + dim);
-
-  return instr->parent()->AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(instr->shape().element_type(), new_dims), instr));
-}
-
-// Reshapes instr so that dimension `vect_dim` has size `vect_size`.  If we have
-// to grow `vect_dim`, we steal elements from `dim`.  If we have to shrink it,
-// we move elements into `dim`.
+// Reshapes instr so that dimension `vect_dim` has size `vect_size`, by stealing
+// elements from `dim`.
 //
 // Requires that this is possible without merging and re-splitting the two
-// dimensions.  I.e. there should be some amount of dim or vect_dim that we can
-// "split off" and add to the other to get vect_dim to have size vect_size.
-static HloInstruction* RevectorizeInstr(HloInstruction* instr, int64_t dim,
-                                        int64_t vect_dim, int64_t vect_size) {
-  HloComputation* computation = instr->parent();
-  const Shape& shape = instr->shape();
-  PrimitiveType elem_ty = shape.element_type();
+// dimensions.  I.e. there should be some amount of dim that we can "split off"
+// and add to vect_dim to get it to have size vect_size.
+static XlaOp RevectorizeInstr(XlaOp instr, int64_t dim, int64_t vect_dim,
+                              int64_t vect_size) {
+  XlaBuilder& b = *instr.builder();
+  Shape shape = b.GetShape(instr).ValueOrDie();
   auto size = [&](int64_t d) { return shape.dimensions(d); };
 
-  CHECK_EQ(size(dim) * size(vect_dim) % vect_size, 0);
-
-  // WLOG let vect_dim be the dimension we're shrinking.
-  if (size(vect_dim) > vect_size) {
-    // We want vect_dim to have size vect_size.  That means dim must have the
-    // rest of the elements, namely size(dim) * size(vect_dim) / vect_size.
-    return RevectorizeInstr(instr, vect_dim, dim,
-                            size(dim) * size(vect_dim) / vect_size);
-  }
-
+  CHECK_LE(size(vect_dim), vect_size);
   CHECK_EQ(vect_size % size(vect_dim), 0);
+
   int64_t split_factor = vect_size / size(vect_dim);
   CHECK_EQ(size(dim) % split_factor, 0);
 
-  absl::InlinedVector<int64, 6> new_dims(shape.dimensions().begin(),
-                                         shape.dimensions().end());
-  new_dims[dim] /= split_factor;
-  new_dims.insert(new_dims.begin() + dim + 1, split_factor);
-  instr = computation->AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(elem_ty, new_dims), instr));
+  // Split dim into [C, split_factor].
+  instr = SplitAtDim(instr, dim, split_factor);
 
-  // Transpose the new dimension so it's adjacent to vect_dim.
-  new_dims.erase(new_dims.begin() + dim + 1);
-  new_dims.insert(new_dims.begin() + vect_dim + 1, split_factor);
+  // SplitAtDim may have added a dimension before vect_dim.
+  if (vect_dim > dim) {
+    vect_dim++;
+  }
 
-  absl::InlinedVector<int64, 6> transpose_idxs(new_dims.size());
-  absl::c_iota(transpose_idxs, 0);
-  transpose_idxs.erase(transpose_idxs.begin() + dim + 1);
-  transpose_idxs.insert(transpose_idxs.begin() + vect_dim + 1, dim + 1);
-  instr = computation->AddInstruction(HloInstruction::CreateTranspose(
-      ShapeUtil::MakeShape(elem_ty, new_dims), instr, transpose_idxs));
+  // Move the split_factor dimension to right before vect_dim.
+  instr = MoveDim(instr, dim + 1, vect_dim);
 
-  new_dims.erase(new_dims.begin() + vect_dim + 1);
-  new_dims[vect_dim] *= split_factor;
-  return computation->AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(elem_ty, new_dims), instr));
+  // Moving the split_factor dimension may have *removed* a dimension before
+  // vect_dim.
+  if (vect_dim > dim) {
+    vect_dim--;
+  }
+
+  // Collapse the split_factor dimension into vect_dim.
+  return Collapse(instr, {vect_dim, vect_dim + 1});
+}
+
+// Inverse of RevectorizeInstr.  Reshapes instr so that dimension `vect_dim` has
+// size `vect_size`, moving excess elements into `dim`.
+static XlaOp UnrevectorizeInstr(XlaOp instr, int64_t dim, int64_t vect_dim,
+                                int64_t orig_vect_size) {
+  XlaBuilder& b = *instr.builder();
+  Shape shape = b.GetShape(instr).ValueOrDie();
+  auto size = [&](int64_t d) { return shape.dimensions(d); };
+
+  CHECK_GE(size(vect_dim), orig_vect_size);
+  CHECK_EQ(size(vect_dim) % orig_vect_size, 0);
+
+  // Split vect_dim into [C, orig_vect_size].
+  instr = SplitAtDim(instr, vect_dim, orig_vect_size);
+
+  // SplitAtDim may have added a dimension before dim.
+  if (dim > vect_dim) {
+    dim++;
+  }
+
+  // Move the `C` dimension to right after `dim`.  Take into account that
+  // SplitAtDim may have added a dimension before dim.
+  instr = MoveDim(instr, vect_dim, dim + 1);
+
+  // MoveDim may have *removed* a dimension before dim.
+  if (dim > vect_dim) {
+    dim--;
+  }
+
+  // Collapse the `C` and `dim` dimensions.
+  return Collapse(instr, {dim, dim + 1});
 }
 
 // Adds a vectorized-feature dimension to dnums right after the current feature
@@ -208,7 +254,6 @@ static ConvolutionDimensionNumbers VectorizeDnums(
 // (The dimensions can appear in any order; which is N/C/etc is determined by
 // the convolutions' dnums.)
 static StatusOr<bool> TryRevectorizeConv(HloInstruction* conv, int vect_size) {
-  HloComputation* comp = conv->parent();
   const Shape& input_shape = conv->operand(0)->shape();
   const Shape& kernel_shape = conv->operand(1)->shape();
   const Shape& output_shape = conv->shape().tuple_shapes(0);
@@ -242,24 +287,27 @@ static StatusOr<bool> TryRevectorizeConv(HloInstruction* conv, int vect_size) {
           << input_shape.dimensions(*input_vect_dim) << " to " << vect_size
           << ": " << conv->ToString();
 
-  absl::InlinedVector<HloInstruction*, 3> new_operands = {
-      RevectorizeInstr(conv->mutable_operand(0),
+  // We use XlaBuilder because it's a lot easier to get these tricky
+  // reshape/transposes correct using that API.
+  XlaBuilder b(absl::StrCat(conv->name(), ".revectorized"));
+  absl::InlinedVector<XlaOp, 4> new_operands = {
+      RevectorizeInstr(Parameter(&b, 0, conv->operand(0)->shape(), "input"),
                        dnums.input_feature_dimension(), *input_vect_dim,
                        vect_size),
-      RevectorizeInstr(conv->mutable_operand(1),
+      RevectorizeInstr(Parameter(&b, 1, conv->operand(1)->shape(), "filter"),
                        dnums.kernel_input_feature_dimension(), *kernel_vect_dim,
                        vect_size),
   };
   if (conv->operand_count() > 2) {
     // Bias, if present.  This is passed through unmodified.
-    new_operands.push_back(conv->mutable_operand(2));
+    new_operands.push_back(Parameter(&b, 2, conv->operand(2)->shape(), "bias"));
   }
   if (conv->operand_count() > 3) {
-    // Handle side input, which has same shape as the input.
-    new_operands.push_back(RevectorizeInstr(conv->mutable_operand(3),
-                                            dnums.input_feature_dimension(),
-                                            *input_vect_dim, vect_size));
+    new_operands.push_back(RevectorizeInstr(
+        Parameter(&b, 3, conv->operand(3)->shape(), "side_input"),
+        dnums.input_feature_dimension(), *input_vect_dim, vect_size));
   }
+
   if (conv->operand_count() > 4) {
     return InvalidArgument(
         "Don't understand a conv with more than 4 arguments: %s",
@@ -273,31 +321,35 @@ static StatusOr<bool> TryRevectorizeConv(HloInstruction* conv, int vect_size) {
   new_output_dims[dnums.output_feature_dimension()] /=
       (vect_size / output_vect_size);
   new_output_dims[*output_vect_dim] = vect_size;
-  Shape new_output_shape =
-      ShapeUtil::MakeShape(output_shape.element_type(), new_output_dims);
-  HloInstruction* new_conv = comp->AddInstruction(conv->CloneWithNewOperands(
+  XlaOp new_conv = CustomCallWithConvDnums(
+      &b, conv->custom_call_target(), new_operands,
       ShapeUtil::MakeTupleShape(
-          {new_output_shape, ShapeUtil::MakeShape(U8, {0})}),
-      new_operands));
-  new_conv->set_convolution_dimension_numbers(dnums);
+          {ShapeUtil::MakeShape(output_shape.element_type(), new_output_dims),
+           ShapeUtil::MakeShape(U8, {0})}),
+      /*operand_shapes_with_layout=*/{},
+      /*opaque=*/conv->raw_backend_config_string(), /*has_side_effect=*/false,
+      /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+      /*window=*/conv->window(),
+      /*dnums=*/conv->convolution_dimension_numbers());
 
-  VLOG(1) << "Re-vectorized conv to " << new_conv->ToString();
+  XlaOp new_conv_result = GetTupleElement(new_conv, 0);
+  XlaOp new_conv_scratch = GetTupleElement(new_conv, 1);
 
-  HloInstruction* new_conv_result = comp->AddInstruction(
-      HloInstruction::CreateGetTupleElement(new_output_shape, new_conv, 0));
-  HloInstruction* new_conv_scratch =
-      comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-          ShapeUtil::MakeShape(U8, {0}), new_conv, 1));
-
-  // Reshape back to the original shape.
-  HloInstruction* conv_result_unrevectorized = RevectorizeInstr(
+  XlaOp new_conv_result_unrevectorized = UnrevectorizeInstr(
       new_conv_result, dnums.output_feature_dimension(), *output_vect_dim,
-      /*orig output vector size*/ output_shape.dimensions(*output_vect_dim));
+      /*orig_vect_size=*/output_shape.dimensions(*output_vect_dim));
 
-  // Create a tuple and replace the old conv with it!
-  TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
-      conv, HloInstruction::CreateTuple(
-                {conv_result_unrevectorized, new_conv_scratch})));
+  TF_ASSIGN_OR_RETURN(
+      HloComputation * new_conv_comp,
+      BuilderToHloComputation(
+          b, Tuple(&b, {new_conv_result_unrevectorized, new_conv_scratch}),
+          conv->parent()));
+
+  // Replace the old conv with a call to the computation we just created.
+  VLOG(1) << "Re-vectorized conv to " << new_conv_comp->ToString();
+  TF_RETURN_IF_ERROR(conv->parent()->ReplaceWithNewInstruction(
+      conv, HloInstruction::CreateCall(conv->shape(), conv->operands(),
+                                       new_conv_comp)));
   return true;
 }
 
@@ -311,7 +363,6 @@ static StatusOr<bool> TryRevectorizeConv(HloInstruction* conv, int vect_size) {
 // add padding to make this true.
 static StatusOr<bool> TryVectorizeConv(HloInstruction* conv,
                                        int64_t vect_size) {
-  HloComputation* comp = conv->parent();
   const Shape& input_shape = conv->operand(0)->shape();
   const Shape& output_shape = conv->shape().tuple_shapes(0);
   const auto& dnums = conv->convolution_dimension_numbers();
@@ -333,20 +384,25 @@ static StatusOr<bool> TryVectorizeConv(HloInstruction* conv,
   VLOG(1) << "Vectorizing conv channels by " << vect_size << ": "
           << conv->ToString();
 
-  absl::InlinedVector<HloInstruction*, 3> new_operands = {
-      SplitInstrAtDim(conv->mutable_operand(0), dnums.input_feature_dimension(),
-                      vect_size),
-      SplitInstrAtDim(conv->mutable_operand(1),
-                      dnums.kernel_input_feature_dimension(), vect_size),
+  // We use XlaBuilder because it's a lot easier to get these tricky
+  // reshape/transposes correct using that API.
+  XlaBuilder b(absl::StrCat(conv->name(), ".revectorized"));
+
+  absl::InlinedVector<XlaOp, 4> new_operands = {
+      SplitAtDim(Parameter(&b, 0, conv->operand(0)->shape(), "input"),
+                 dnums.input_feature_dimension(), vect_size),
+      SplitAtDim(Parameter(&b, 1, conv->operand(1)->shape(), "filter"),
+                 dnums.kernel_input_feature_dimension(), vect_size),
   };
   if (conv->operand_count() > 2) {
     // Bias, if present.  This is passed through unmodified.
-    new_operands.push_back(conv->mutable_operand(2));
+    new_operands.push_back(Parameter(&b, 2, conv->operand(2)->shape(), "bias"));
   }
   if (conv->operand_count() > 3) {
     // Handle side input, which has same shape as the input.
-    new_operands.push_back(SplitInstrAtDim(
-        conv->mutable_operand(3), dnums.input_feature_dimension(), vect_size));
+    new_operands.push_back(
+        SplitAtDim(Parameter(&b, 3, conv->operand(3)->shape(), "side_input"),
+                   dnums.input_feature_dimension(), vect_size));
   }
   if (conv->operand_count() > 4) {
     return InvalidArgument(
@@ -358,29 +414,35 @@ static StatusOr<bool> TryVectorizeConv(HloInstruction* conv,
   // value in the tuple represents the convolution's scratch memory.
   Shape new_output_shape = SplitShapeAtDim(
       output_shape, dnums.output_feature_dimension(), vect_size);
-  HloInstruction* new_conv = comp->AddInstruction(conv->CloneWithNewOperands(
+  XlaOp new_conv = CustomCallWithConvDnums(
+      &b, conv->custom_call_target(), new_operands,
       ShapeUtil::MakeTupleShape(
           {new_output_shape, ShapeUtil::MakeShape(U8, {0})}),
-      new_operands));
-  new_conv->set_convolution_dimension_numbers(VectorizeDnums(dnums));
+      /*operand_shapes_with_layout=*/{},
+      /*opaque=*/conv->raw_backend_config_string(), /*has_side_effect=*/false,
+      /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+      /*window=*/conv->window(),
+      /*dnums=*/VectorizeDnums(dnums));
 
-  VLOG(1) << "Vectorized conv to: " << new_conv->ToString();
-
-  HloInstruction* new_conv_result = comp->AddInstruction(
-      HloInstruction::CreateGetTupleElement(new_output_shape, new_conv, 0));
-  HloInstruction* new_conv_scratch =
-      comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-          ShapeUtil::MakeShape(U8, {0}), new_conv, 1));
+  XlaOp new_conv_result = GetTupleElement(new_conv, 0);
+  XlaOp new_conv_scratch = GetTupleElement(new_conv, 1);
 
   // Reshape back to the original shape.
-  HloInstruction* conv_result_collapsed = CollapseDimIntoPrev(
-      new_conv_result, dnums.output_feature_dimension() + 1);
+  XlaOp conv_result_collapsed = Collapse(
+      new_conv_result,
+      {dnums.output_feature_dimension(), dnums.output_feature_dimension() + 1});
+
+  TF_ASSIGN_OR_RETURN(
+      HloComputation * new_conv_comp,
+      BuilderToHloComputation(
+          b, Tuple(&b, {conv_result_collapsed, new_conv_scratch}),
+          conv->parent()));
 
   // Create a tuple and replace the old conv with it!
-  TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
-      conv,
-      HloInstruction::CreateTuple({conv_result_collapsed, new_conv_scratch})));
-
+  VLOG(1) << "Vectorized conv to: " << new_conv_comp->ToString();
+  TF_RETURN_IF_ERROR(conv->parent()->ReplaceWithNewInstruction(
+      conv, HloInstruction::CreateCall(conv->shape(), conv->operands(),
+                                       new_conv_comp)));
   return true;
 }
 

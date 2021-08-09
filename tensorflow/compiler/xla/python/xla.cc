@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "pybind11/attr.h"
 #include "pybind11/cast.h"
 #include "pybind11/numpy.h"
@@ -163,6 +164,7 @@ PYBIND11_MODULE(xla_extension, m) {
       });
 
   py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
+      .def_property_readonly("device_vendor", &GpuDevice::device_vendor)
       .def("__repr__", [](const GpuDevice& device) {
         return absl::StrFormat("GpuDevice(id=%i, process_index=%i)",
                                device.id(), device.process_index());
@@ -173,7 +175,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly(
           "coords",
           [](const PjRtTpuDevice& device) -> pybind11::tuple {
-            return IntSpanToTuple(device.coords());
+            return SpanToTuple(absl::MakeConstSpan(device.coords()));
           },
           "The coordinates of this TpuDevice's chip in the TPU mesh network.")
       .def_property_readonly(
@@ -236,7 +238,13 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions())
       .def("serialize_executable", &PyClient::SerializeExecutable)
-      .def("deserialize_executable", &PyClient::DeserializeExecutable)
+      .def("deserialize_executable",
+           py::overload_cast<const std::string&, CompileOptions>(
+               &PyClient::DeserializeExecutable))
+      // TODO(skyewm): remove when jax stop providing hlo_module
+      .def("deserialize_executable",
+           py::overload_cast<const std::string&, std::shared_ptr<HloModule>,
+                             CompileOptions>(&PyClient::DeserializeExecutable))
       .def("heap_profile", &PyClient::HeapProfile)
       // TODO(zhangqiaorjc): Experimental.
       .def("defragment", &PyClient::Defragment)
@@ -248,6 +256,7 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def(
       "get_cpu_client",
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
+        py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetCpuClient(asynchronous));
         return std::make_shared<PyClient>(std::move(client));
@@ -256,12 +265,14 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def(
       "get_tfrt_cpu_client",
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
+        py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetTfrtCpuClient(asynchronous));
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true);
   m.def("get_interpreter_client", []() -> StatusOr<std::shared_ptr<PyClient>> {
+    py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                         GetInterpreterClient());
     return std::make_shared<PyClient>(std::move(client));
@@ -271,6 +282,7 @@ PYBIND11_MODULE(xla_extension, m) {
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
          int node_id) -> StatusOr<std::shared_ptr<PyClient>> {
+        py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<PjRtClient> client,
             GetGpuClient(asynchronous, allocator_config,
@@ -283,6 +295,7 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def(
       "get_tpu_client",
       [](int max_inflight_computations) -> StatusOr<std::shared_ptr<PyClient>> {
+        py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
                             GetTpuClient(max_inflight_computations));
         return std::make_shared<PyClient>(std::move(client));

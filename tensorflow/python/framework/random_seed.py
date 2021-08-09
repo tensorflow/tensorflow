@@ -186,6 +186,14 @@ def set_random_seed(seed):
     print(sess2.run(b))  # generates 'B2'
   ```
 
+  @compatibility(TF2)
+  'tf.compat.v1.set_random_seed' is compatible with eager mode. However,
+  in eager mode this API will set the global seed instead of the
+  graph-level seed of the default graph. In TF2 this API is changed to
+  [tf.random.set_seed]
+  (https://www.tensorflow.org/api_docs/python/tf/random/set_seed).
+  @end_compatibility
+
   Args:
     seed: integer.
   """

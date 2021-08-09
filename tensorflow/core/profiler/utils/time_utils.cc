@@ -28,11 +28,11 @@ int64 GetCurrentTimeNanos() {
   return absl::GetCurrentTimeNanos();
 }
 
-void SleepForNanos(int64 ns) { absl::SleepFor(absl::Nanoseconds(ns)); }
+void SleepForNanos(int64_t ns) { absl::SleepFor(absl::Nanoseconds(ns)); }
 
-void SpinForNanos(int64 ns) {
+void SpinForNanos(int64_t ns) {
   if (ns <= 0) return;
-  int64 deadline = GetCurrentTimeNanos() + ns;
+  int64_t deadline = GetCurrentTimeNanos() + ns;
   while (GetCurrentTimeNanos() < deadline) {
   }
 }

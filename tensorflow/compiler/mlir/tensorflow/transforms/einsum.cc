@@ -373,6 +373,19 @@ LogicalResult transposeForBatchMatmul(
   return success();
 }
 
+template <int I>
+inline int64_t ProdShapeWithIndexInTuple(
+    ArrayRef<int64_t> shape,
+    const std::vector<std::tuple<int64_t, int64_t>>& index_tuples) {
+  int64_t prod_shape = 1;
+  for (auto index_tuple : index_tuples) {
+    const int64_t shape_i = shape[std::get<I>(index_tuple)];
+    if (shape_i == -1) return -1;
+    prod_shape *= shape_i;
+  }
+  return prod_shape;
+}
+
 // Reshapes LHS and RHS to have B0,...,Bn,L,C and B0,...,Bn,C,R shape
 // respectively while assuming that the initial shape for them is
 // B0,...,Bn,L0,...,Ln,C0,...,Cn and B0,...,Bn,C0,...,Cn,R0,...,Rn respectively.
@@ -390,9 +403,9 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
   lhs_shape.reserve(dnums.lhs_rhs_out.size() + dnums.lhs_out.size() + 1);
   rhs_shape.reserve(dnums.lhs_rhs_out.size() + 2);
   for (auto i : dnums.lhs_rhs_out) {
-    int64_t b1 = lhs_type.getShape()[std::get<0>(i)];
+    const int64_t b1 = lhs_type.getShape()[std::get<0>(i)];
     lhs_shape.push_back(b1);
-    int64_t b2 = rhs_type.getShape()[std::get<1>(i)];
+    const int64_t b2 = rhs_type.getShape()[std::get<1>(i)];
     rhs_shape.push_back(b2);
   }
   if (!OpTrait::util::getBroadcastedShape(lhs_shape, rhs_shape, *out_shape)) {
@@ -408,36 +421,31 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
     // If there is not batch labels B0,...,Bn, it is safe to use L0,...,Ln as
     // the batch labels in lhs, the rhs will be broadcasted.
     for (auto i : dnums.lhs_out) {
-      int64_t b = lhs_type.getShape()[std::get<0>(i)];
+      const int64_t b = lhs_type.getShape()[std::get<0>(i)];
       lhs_shape.push_back(b);
       out_shape->push_back(b);
     }
   } else {
-    int64_t lhs_out_size = 1;
-    for (auto i : dnums.lhs_out) {
-      lhs_out_size *= lhs_type.getShape()[std::get<0>(i)];
-    }
+    const int64_t lhs_out_size =
+        ProdShapeWithIndexInTuple<0>(lhs_type.getShape(), dnums.lhs_out);
     lhs_shape.push_back(lhs_out_size);
     out_shape->push_back(lhs_out_size);
   }
 
   // Calculates dimension for the common label C from labels C0,...,Cn that
   // exist in both lhs and rhs.
-  int64_t lhs_size = 1, rhs_size = 1;
-  for (auto i : dnums.lhs_rhs) {
-    lhs_size *= lhs_type.getShape()[std::get<0>(i)];
-    rhs_size *= rhs_type.getShape()[std::get<1>(i)];
-  }
+  const int64_t lhs_size =
+      ProdShapeWithIndexInTuple<0>(lhs_type.getShape(), dnums.lhs_rhs);
+  const int64_t rhs_size =
+      ProdShapeWithIndexInTuple<1>(rhs_type.getShape(), dnums.lhs_rhs);
   lhs_shape.push_back(lhs_size);
   rhs_shape.push_back(rhs_size);
 
   // Calculates dimension for the label R from R0,...,Rn in rhs.
-  rhs_size = 1;
-  for (auto i : dnums.rhs_out) {
-    rhs_size *= rhs_type.getShape()[std::get<0>(i)];
-  }
-  rhs_shape.push_back(rhs_size);
-  out_shape->push_back(rhs_size);
+  const int64_t rhs_out_size =
+      ProdShapeWithIndexInTuple<0>(rhs_type.getShape(), dnums.rhs_out);
+  rhs_shape.push_back(rhs_out_size);
+  out_shape->push_back(rhs_out_size);
 
   if (failed(VerifyShapeOfReshapeOp(lhs_shape)) ||
       failed(VerifyShapeOfReshapeOp(rhs_shape)))
@@ -511,6 +519,10 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
     return failure();
   }
 
+  // TODO(b/162328998) Better support Einsum with dynamic input. Currently, one
+  // dynamic dimension is always supported. If there are two or more dynamic
+  // dimensions, it is supported if they only exist in a single component
+  // among: L0,...,Ln R0,...,Rn or C0,...,Cn.
   if (const auto dnums_or = GetEinsumDimensionNumbers(op.equation(), lhs, rhs))
     return rewriteToBatchMatmul(op, dnums_or.getValue(), rewriter);
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");

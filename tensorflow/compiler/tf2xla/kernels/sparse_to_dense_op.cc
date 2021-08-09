@@ -34,9 +34,9 @@ class SparseToDenseOp : public XlaOpKernel {
                     "sparse_indices should be a scalar, vector, or matrix, "
                     "got shape ",
                     indices_shape.DebugString()));
-    const int64 num_elems =
+    const int64_t num_elems =
         indices_shape.dims() > 0 ? indices_shape.dim_size(0) : 1;
-    const int64 num_dims =
+    const int64_t num_dims =
         indices_shape.dims() > 1 ? indices_shape.dim_size(1) : 1;
 
     // output_shape
@@ -49,7 +49,7 @@ class SparseToDenseOp : public XlaOpKernel {
 
     // sparse_values
     const TensorShape sparse_values_shape = context->InputShape(2);
-    const int64 num_values = sparse_values_shape.num_elements();
+    const int64_t num_values = sparse_values_shape.num_elements();
     OP_REQUIRES(
         context,
         sparse_values_shape.dims() == 0 ||

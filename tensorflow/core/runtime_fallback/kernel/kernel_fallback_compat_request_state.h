@@ -68,7 +68,7 @@ class KernelFallbackCompatRequestState {
  public:
   // NOTE: This is the constructor for training.
   KernelFallbackCompatRequestState(
-      const tensorflow::DeviceMgr* device_manager, int64 step_id,
+      const tensorflow::DeviceMgr* device_manager, int64_t step_id,
       tfrt::OwnedOrUnownedPtr<ScopedStepContainer> step_container,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
       core::RefCountPtr<Rendezvous> rendezvous,
@@ -79,7 +79,7 @@ class KernelFallbackCompatRequestState {
 
   // NOTE: This is the constructor for inference.
   KernelFallbackCompatRequestState(
-      const tensorflow::DeviceMgr* device_manager, int64 step_id,
+      const tensorflow::DeviceMgr* device_manager, int64_t step_id,
       OpKernelRunnerTable* runner_table, FallbackResourceArray* resource_array,
       tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
       const absl::optional<tfrt::ModelMetadata>& model_metadata,

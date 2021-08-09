@@ -2207,25 +2207,25 @@ TEST_F(OpLevelCostEstimatorTest, ResizeBilinearExecutionTime) {
     // Cost with very large tensor.
     op_context.op_info.clear_outputs();
     // Number of elements in tensor exceeds 2^32.
-    constexpr int64 kLargeOutputImageDim = 40000;
+    constexpr int64_t kLargeOutputImageDim = 40000;
     DescribeTensor4D(1, kLargeOutputImageDim, kLargeOutputImageDim,
                      kChannelSize, op_context.op_info.add_outputs());
-    const int64 kInterpWeightCost = 12;
+    const int64_t kInterpWeightCost = 12;
     // Using half_pixel_centers.
     AttrValue half_pixel_centers;
     half_pixel_centers.set_b(true);
     (*op_context.op_info.mutable_attr())["half_pixel_centers"] =
         half_pixel_centers;
 
-    const int64 num_ops =
+    const int64_t num_ops =
         kInterpWeightCost * (kLargeOutputImageDim * 2) +
         kComputeLerpCost *
             (kLargeOutputImageDim * kLargeOutputImageDim * kChannelSize);
-    const int64 expected_compute_time = std::ceil(
+    const int64_t expected_compute_time = std::ceil(
         num_ops /
         estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
 
-    const int64 expected_memory_time =
+    const int64_t expected_memory_time =
         (kImageDim * kImageDim + kLargeOutputImageDim * kLargeOutputImageDim) *
         4;
 

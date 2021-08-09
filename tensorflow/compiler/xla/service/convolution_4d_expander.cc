@@ -42,8 +42,8 @@ bool Convolution4DExpander::InstructionMatchesPattern(
     return false;
   }
   Shape input = instruction->operand(0)->shape();
-  for (int64 i = 0; i < dim_nums.input_spatial_dimensions().size(); ++i) {
-    int64 spatial_dim = dim_nums.input_spatial_dimensions(i);
+  for (int64_t i = 0; i < dim_nums.input_spatial_dimensions().size(); ++i) {
+    int64_t spatial_dim = dim_nums.input_spatial_dimensions(i);
     if (input.dimensions(spatial_dim) == 1 &&
         instruction->window().dimensions(i).padding_low() == 0 &&
         instruction->window().dimensions(i).padding_high() == 0) {
@@ -71,10 +71,10 @@ StatusOr<HloInstruction*> Convolution4DExpander::ExpandInstruction(
 
   // Collect all trivial input spatial dimensions, and the corresponding
   // dimensions of the kernel and the output. Those will be removed.
-  for (int64 i = 0; i < dim_nums.input_spatial_dimensions().size(); ++i) {
-    int64 input_spatial_dim = dim_nums.input_spatial_dimensions(i);
-    int64 output_spatial_dim = dim_nums.output_spatial_dimensions(i);
-    int64 kernel_spatial_dim = dim_nums.kernel_spatial_dimensions(i);
+  for (int64_t i = 0; i < dim_nums.input_spatial_dimensions().size(); ++i) {
+    int64_t input_spatial_dim = dim_nums.input_spatial_dimensions(i);
+    int64_t output_spatial_dim = dim_nums.output_spatial_dimensions(i);
+    int64_t kernel_spatial_dim = dim_nums.kernel_spatial_dimensions(i);
     if (input->shape().dimensions(input_spatial_dim) == 1 &&
         instruction->window().dimensions(i).padding_low() == 0 &&
         instruction->window().dimensions(i).padding_high() == 0) {
@@ -100,16 +100,16 @@ StatusOr<HloInstruction*> Convolution4DExpander::ExpandInstruction(
 
   // Compute the new shapes.
   Shape new_input_shape = input->shape();
-  for (int64 dim : removed_input_dimensions) {
+  for (int64_t dim : removed_input_dimensions) {
     new_input_shape.DeleteDimension(dim);
   }
   HloInstruction* kernel = instruction->mutable_operand(1);
   Shape new_kernel_shape = kernel->shape();
-  for (int64 dim : removed_kernel_dimensions) {
+  for (int64_t dim : removed_kernel_dimensions) {
     new_kernel_shape.DeleteDimension(dim);
   }
   Shape new_output_shape = instruction->shape();
-  for (int64 dim : removed_output_dimensions) {
+  for (int64_t dim : removed_output_dimensions) {
     new_output_shape.DeleteDimension(dim);
   }
 
@@ -117,9 +117,9 @@ StatusOr<HloInstruction*> Convolution4DExpander::ExpandInstruction(
   // each dimension number, we need to reduce its value by the number of removed
   // smaller dimensions.
   auto compute_new_dimension = [](const std::vector<int64>& removed_dimensions,
-                                  int64 old_dimension) {
-    int64 num_smaller = absl::c_count_if(
-        removed_dimensions, [old_dimension](int64 removed_dimension) {
+                                  int64_t old_dimension) {
+    int64_t num_smaller = absl::c_count_if(
+        removed_dimensions, [old_dimension](int64_t removed_dimension) {
           return removed_dimension < old_dimension;
         });
     return old_dimension - num_smaller;
@@ -128,7 +128,7 @@ StatusOr<HloInstruction*> Convolution4DExpander::ExpandInstruction(
       removed_input_dimensions, new_dim_nums.input_batch_dimension()));
   new_dim_nums.set_input_feature_dimension(compute_new_dimension(
       removed_input_dimensions, new_dim_nums.input_feature_dimension()));
-  for (int64 i = 0; i < new_dim_nums.input_spatial_dimensions().size(); ++i) {
+  for (int64_t i = 0; i < new_dim_nums.input_spatial_dimensions().size(); ++i) {
     new_dim_nums.set_input_spatial_dimensions(
         i, compute_new_dimension(removed_input_dimensions,
                                  new_dim_nums.input_spatial_dimensions(i)));
@@ -137,7 +137,8 @@ StatusOr<HloInstruction*> Convolution4DExpander::ExpandInstruction(
       removed_output_dimensions, new_dim_nums.output_batch_dimension()));
   new_dim_nums.set_output_feature_dimension(compute_new_dimension(
       removed_output_dimensions, new_dim_nums.output_feature_dimension()));
-  for (int64 i = 0; i < new_dim_nums.output_spatial_dimensions().size(); ++i) {
+  for (int64_t i = 0; i < new_dim_nums.output_spatial_dimensions().size();
+       ++i) {
     new_dim_nums.set_output_spatial_dimensions(
         i, compute_new_dimension(removed_output_dimensions,
                                  new_dim_nums.output_spatial_dimensions(i)));
@@ -148,7 +149,8 @@ StatusOr<HloInstruction*> Convolution4DExpander::ExpandInstruction(
   new_dim_nums.set_kernel_output_feature_dimension(
       compute_new_dimension(removed_kernel_dimensions,
                             new_dim_nums.kernel_output_feature_dimension()));
-  for (int64 i = 0; i < new_dim_nums.kernel_spatial_dimensions().size(); ++i) {
+  for (int64_t i = 0; i < new_dim_nums.kernel_spatial_dimensions().size();
+       ++i) {
     new_dim_nums.set_kernel_spatial_dimensions(
         i, compute_new_dimension(removed_kernel_dimensions,
                                  new_dim_nums.kernel_spatial_dimensions(i)));

@@ -103,7 +103,7 @@ RemoteProfilerSessionManager::WaitForCompletion() {
   std::vector<RemoteProfilerSessionManager::Response> remote_responses(
       clients_.size());
 
-  for (int32 idx = 0; idx < clients_.size(); ++idx) {
+  for (int32_t idx = 0; idx < clients_.size(); ++idx) {
     auto& remote_response = remote_responses[idx];
     auto* client = clients_[idx].get();
     remote_response.profile_response =

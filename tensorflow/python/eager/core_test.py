@@ -583,6 +583,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   @test_util.disable_tfrt('PyFunc is not supported in TFRT.')
   def testPyFunctionAsync(self):
+    self.skipTest('flaky; b/194307407')
 
     def simple_fn(v):
       one = constant_op.constant(1.)

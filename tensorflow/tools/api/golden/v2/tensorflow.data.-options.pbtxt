@@ -1,8 +1,16 @@
 path: "tensorflow.data.Options"
 tf_class {
-  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.Options\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.options.Options\'>"
   is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
   is_instance: "<type \'object\'>"
+  member {
+    name: "autotune"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "deterministic"
+    mtype: "<type \'property\'>"
+  }
   member {
     name: "experimental_deterministic"
     mtype: "<type \'property\'>"
@@ -21,6 +29,10 @@ tf_class {
   }
   member {
     name: "experimental_slack"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_threading"
     mtype: "<type \'property\'>"
   }
   member {

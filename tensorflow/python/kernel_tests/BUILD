@@ -1007,6 +1007,7 @@ cuda_py_test(
     name = "segment_reduction_ops_deterministic_test",
     size = "small",
     srcs = ["segment_reduction_ops_deterministic_test.py"],
+    tags = ["no_cuda_asan"],  # b/195247538
     xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:array_ops",
@@ -2145,6 +2146,9 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python:while_v2",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/eager:cancellation",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:executor",
         "//third_party/py/numpy",
     ],
 )
@@ -3092,8 +3096,10 @@ cuda_py_test(
     timeout = "long",
     srcs = ["depthwise_conv_op_test.py"],
     shard_count = 3,
-    # TODO(b/118842098): Re-enable this test in Kokoro.
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
+        "notap",  # TOOD(b/195753631): Re-enable when not flaky
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3134,8 +3140,9 @@ cuda_py_test(
     name = "pooling_ops_test",
     size = "medium",
     srcs = ["pooling_ops_test.py"],
-    shard_count = 4,
-    xla_enable_strict_auto_jit = False,  # Flaky in XLA b/149568654
+    shard_count = 10,
+    # Some operations in this test can only be checked on sm61+.
+    tags = ["prefer-sm70"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

@@ -149,29 +149,29 @@ class FractionalAvgPoolOp : public OpKernel {
     // 1: row / row
     // 2: col / col
     // 3: depth / channel
-    const int64 row_max = input_size[1] - 1;
-    const int64 col_max = input_size[2] - 1;
-    for (int64 b = 0; b < input_size[0]; ++b) {
+    const int64_t row_max = input_size[1] - 1;
+    const int64_t col_max = input_size[2] - 1;
+    for (int64_t b = 0; b < input_size[0]; ++b) {
       // row sequence.
-      for (int64 hs = 0; hs < row_cum_seq.size() - 1; ++hs) {
+      for (int64_t hs = 0; hs < row_cum_seq.size() - 1; ++hs) {
         // row start and end.
-        const int64 row_start = row_cum_seq[hs];
-        int64 row_end =
+        const int64_t row_start = row_cum_seq[hs];
+        int64_t row_end =
             overlapping_ ? row_cum_seq[hs + 1] : row_cum_seq[hs + 1] - 1;
         row_end = std::min(row_end, row_max);
 
         // col sequence.
-        for (int64 ws = 0; ws < col_cum_seq.size() - 1; ++ws) {
-          const int64 out_offset =
+        for (int64_t ws = 0; ws < col_cum_seq.size() - 1; ++ws) {
+          const int64_t out_offset =
               (b * output_size[1] + hs) * output_size[2] + ws;
           // col start and end.
-          const int64 col_start = col_cum_seq[ws];
-          int64 col_end =
+          const int64_t col_start = col_cum_seq[ws];
+          int64_t col_end =
               overlapping_ ? col_cum_seq[ws + 1] : col_cum_seq[ws + 1] - 1;
           col_end = std::min(col_end, col_max);
-          for (int64 h = row_start; h <= row_end; ++h) {
-            for (int64 w = col_start; w <= col_end; ++w) {
-              const int64 in_offset =
+          for (int64_t h = row_start; h <= row_end; ++h) {
+            for (int64_t w = col_start; w <= col_end; ++w) {
+              const int64_t in_offset =
                   (b * input_size[1] + h) * input_size[2] + w;
               out_mat.col(out_offset) += in_mat.col(in_offset);
               out_count(out_offset)++;
@@ -245,10 +245,10 @@ class FractionalAvgPoolGradOp : public OpKernel {
     const Tensor& row_seq_tensor = context->input(2);
     const Tensor& col_seq_tensor = context->input(3);
 
-    const int64 out_batch = out_backprop.dim_size(0);
-    const int64 out_rows = out_backprop.dim_size(1);
-    const int64 out_cols = out_backprop.dim_size(2);
-    const int64 out_depth = out_backprop.dim_size(3);
+    const int64_t out_batch = out_backprop.dim_size(0);
+    const int64_t out_rows = out_backprop.dim_size(1);
+    const int64_t out_cols = out_backprop.dim_size(2);
+    const int64_t out_depth = out_backprop.dim_size(3);
 
     OP_REQUIRES(context, row_seq_tensor.NumElements() > out_rows,
                 errors::InvalidArgument("Given out_backprop shape ",
@@ -267,10 +267,22 @@ class FractionalAvgPoolGradOp : public OpKernel {
     auto col_seq_tensor_flat = col_seq_tensor.flat<int64>();
     auto orig_input_tensor_shape_flat = orig_input_tensor_shape.flat<int64>();
 
-    const int64 in_batch = orig_input_tensor_shape_flat(0);
-    const int64 in_rows = orig_input_tensor_shape_flat(1);
-    const int64 in_cols = orig_input_tensor_shape_flat(2);
-    const int64 in_depth = orig_input_tensor_shape_flat(3);
+    const int64_t in_batch = orig_input_tensor_shape_flat(0);
+    const int64_t in_rows = orig_input_tensor_shape_flat(1);
+    const int64_t in_cols = orig_input_tensor_shape_flat(2);
+    const int64_t in_depth = orig_input_tensor_shape_flat(3);
+    OP_REQUIRES(
+        context, in_batch != 0,
+        errors::InvalidArgument("Batch dimension of input must not be 0"));
+    OP_REQUIRES(
+        context, in_rows != 0,
+        errors::InvalidArgument("Rows dimension of input must not be 0"));
+    OP_REQUIRES(
+        context, in_cols != 0,
+        errors::InvalidArgument("Columns dimension of input must not be 0"));
+    OP_REQUIRES(
+        context, in_depth != 0,
+        errors::InvalidArgument("Depth dimension of input must not be 0"));
 
     constexpr int tensor_in_and_out_dims = 4;
     // Transform orig_input_tensor_shape into TensorShape
@@ -294,30 +306,30 @@ class FractionalAvgPoolGradOp : public OpKernel {
                                          out_cols * out_rows * out_batch);
     // Loop through each element of out_backprop and evenly distribute the
     // element to the corresponding pooling cell.
-    const int64 in_max_row_index = in_rows - 1;
-    const int64 in_max_col_index = in_cols - 1;
-    for (int64 b = 0; b < out_batch; ++b) {
-      for (int64 r = 0; r < out_rows; ++r) {
-        const int64 in_row_start = row_seq_tensor_flat(r);
-        int64 in_row_end = overlapping_ ? row_seq_tensor_flat(r + 1)
-                                        : row_seq_tensor_flat(r + 1) - 1;
+    const int64_t in_max_row_index = in_rows - 1;
+    const int64_t in_max_col_index = in_cols - 1;
+    for (int64_t b = 0; b < out_batch; ++b) {
+      for (int64_t r = 0; r < out_rows; ++r) {
+        const int64_t in_row_start = row_seq_tensor_flat(r);
+        int64_t in_row_end = overlapping_ ? row_seq_tensor_flat(r + 1)
+                                          : row_seq_tensor_flat(r + 1) - 1;
         in_row_end = std::min(in_row_end, in_max_row_index);
-        for (int64 c = 0; c < out_cols; ++c) {
-          const int64 in_col_start = col_seq_tensor_flat(c);
-          int64 in_col_end = overlapping_ ? col_seq_tensor_flat(c + 1)
-                                          : col_seq_tensor_flat(c + 1) - 1;
+        for (int64_t c = 0; c < out_cols; ++c) {
+          const int64_t in_col_start = col_seq_tensor_flat(c);
+          int64_t in_col_end = overlapping_ ? col_seq_tensor_flat(c + 1)
+                                            : col_seq_tensor_flat(c + 1) - 1;
           in_col_end = std::min(in_col_end, in_max_col_index);
 
-          const int64 num_elements_in_pooling_cell =
+          const int64_t num_elements_in_pooling_cell =
               (in_row_end - in_row_start + 1) * (in_col_end - in_col_start + 1);
-          const int64 out_index = (b * out_rows + r) * out_cols + c;
+          const int64_t out_index = (b * out_rows + r) * out_cols + c;
           // Now we can evenly distribute out_backprop(b, h, w, *) to
           // in_backprop(b, hs:he, ws:we, *).
-          for (int64 in_r = in_row_start; in_r <= in_row_end; ++in_r) {
-            for (int64 in_c = in_col_start; in_c <= in_col_end; ++in_c) {
-              const int64 in_index = (b * in_rows + in_r) * in_cols + in_c;
+          for (int64_t in_r = in_row_start; in_r <= in_row_end; ++in_r) {
+            for (int64_t in_c = in_col_start; in_c <= in_col_end; ++in_c) {
+              const int64_t in_index = (b * in_rows + in_r) * in_cols + in_c;
               // Walk through each channel (depth).
-              for (int64 d = 0; d < out_depth; ++d) {
+              for (int64_t d = 0; d < out_depth; ++d) {
                 const double out_backprop_element = static_cast<double>(
                     out_backprop_mat.coeffRef(d, out_index));
                 double& in_backprop_ref =
@@ -337,7 +349,7 @@ class FractionalAvgPoolGradOp : public OpKernel {
                                 {0}, 0, in_shape, &in_backprop_tensor));
     auto in_backprop_tensor_flat = in_backprop_tensor->flat<T>();
     auto in_backprop_tensor_temp_flat = in_backprop_tensor_temp.flat<double>();
-    for (int64 i = 0; i < in_backprop_tensor_flat.size(); ++i) {
+    for (int64_t i = 0; i < in_backprop_tensor_flat.size(); ++i) {
       in_backprop_tensor_flat(i) =
           static_cast<T>(in_backprop_tensor_temp_flat(i));
     }

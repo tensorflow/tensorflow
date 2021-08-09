@@ -93,7 +93,7 @@ Status BufferedInputStream::ReadLineHelper(StringType* result,
   return s;
 }
 
-Status BufferedInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
+Status BufferedInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Can't read a negative number of bytes: ",
                                    bytes_to_read);
@@ -116,7 +116,7 @@ Status BufferedInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
         break;
       }
     }
-    const int64 bytes_to_copy =
+    const int64_t bytes_to_copy =
         std::min<int64>(limit_ - pos_, bytes_to_read - result->size());
     result->insert(result->size(), buf_, pos_, bytes_to_copy);
     pos_ += bytes_to_copy;
@@ -131,7 +131,7 @@ Status BufferedInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
   return s;
 }
 
-Status BufferedInputStream::SkipNBytes(int64 bytes_to_skip) {
+Status BufferedInputStream::SkipNBytes(int64_t bytes_to_skip) {
   if (bytes_to_skip < 0) {
     return errors::InvalidArgument("Can only skip forward, not ",
                                    bytes_to_skip);
@@ -158,14 +158,14 @@ int64 BufferedInputStream::Tell() const {
   return input_stream_->Tell() - (limit_ - pos_);
 }
 
-Status BufferedInputStream::Seek(int64 position) {
+Status BufferedInputStream::Seek(int64_t position) {
   if (position < 0) {
     return errors::InvalidArgument("Seeking to a negative position: ",
                                    position);
   }
 
   // Position of the buffer's lower limit within file.
-  const int64 buf_lower_limit = input_stream_->Tell() - limit_;
+  const int64_t buf_lower_limit = input_stream_->Tell() - limit_;
   if (position < buf_lower_limit) {
     // Seek before buffer, reset input stream and skip 'position' bytes.
     TF_RETURN_IF_ERROR(Reset());

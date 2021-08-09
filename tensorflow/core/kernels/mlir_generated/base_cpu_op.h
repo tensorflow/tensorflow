@@ -23,11 +23,21 @@ namespace tensorflow {
 #define GENERATE_AND_REGISTER_UNARY_CPU_KERNEL(tf_op, input_type) \
   GENERATE_AND_REGISTER_UNARY_KERNEL(tf_op, CPU, input_type)
 
+#define GENERATE_AND_REGISTER_UNARY_CPU_KERNEL3(                           \
+    tf_op, input_type, output_type, casted_input_type, casted_output_type) \
+  GENERATE_AND_REGISTER_UNARY_KERNEL3(tf_op, CPU, input_type, output_type, \
+                                      casted_input_type, casted_output_type)
+
 #define GENERATE_UNARY_CPU_KERNEL(tf_op, input_type) \
   GENERATE_UNARY_KERNEL(tf_op, CPU, input_type)
 
 #define GENERATE_UNARY_CPU_KERNEL2(tf_op, input_type, output_type) \
   GENERATE_UNARY_KERNEL2(tf_op, CPU, input_type, output_type)
+
+#define GENERATE_UNARY_CPU_KERNEL3(tf_op, input_type, output_type,        \
+                                   casted_input_type, casted_output_type) \
+  GENERATE_UNARY_KERNEL3(tf_op, CPU, input_type, output_type,             \
+                         casted_input_type, casted_output_type)
 
 #define REGISTER_ALIASED_CPU_KERNEL(tf_op, mlir_op, input_type, output_type) \
   REGISTER_ALIASED_KERNEL(tf_op, mlir_op, CPU, input_type, output_type)
@@ -47,6 +57,11 @@ namespace tensorflow {
 #define GENERATE_AND_REGISTER_BINARY_CPU_KERNEL2(tf_op, input_type, \
                                                  output_type)       \
   GENERATE_AND_REGISTER_BINARY_KERNEL2(tf_op, CPU, input_type, output_type)
+
+#define GENERATE_AND_REGISTER_BINARY_CPU_KERNEL3(                           \
+    tf_op, input_type, output_type, casted_input_type, casted_output_type)  \
+  GENERATE_AND_REGISTER_BINARY_KERNEL3(tf_op, CPU, input_type, output_type, \
+                                       casted_input_type, casted_output_type)
 
 #define GENERATE_BINARY_CPU_KERNEL(tf_op, input_type) \
   GENERATE_BINARY_KERNEL(tf_op, CPU, input_type)

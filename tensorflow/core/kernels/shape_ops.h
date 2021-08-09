@@ -51,7 +51,7 @@ class ShapeOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({rank}), &out));
     auto vec = out->vec<OutType>();
     for (int i = 0; i < rank; ++i) {
-      int64 dim_size = shape.dim_size(i);
+      int64_t dim_size = shape.dim_size(i);
       if (out->dtype() == DT_INT32) {
         OP_REQUIRES(
             ctx, FastBoundsCheck(dim_size, std::numeric_limits<int32>::max()),
@@ -80,7 +80,7 @@ class ShapeNOp : public OpKernel {
       auto vec = out->vec<OutType>();
 
       for (int j = 0; j < dims; ++j) {
-        int64 dim_size = shape.dim_size(j);
+        int64_t dim_size = shape.dim_size(j);
         if (out->dtype() == DT_INT32) {
           OP_REQUIRES(
               ctx, FastBoundsCheck(dim_size, std::numeric_limits<int32>::max()),
@@ -119,7 +119,7 @@ class SizeOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     TensorShape shape;
     OP_REQUIRES_OK(ctx, shape_op_helpers::GetShape(ctx, 0, &shape));
-    const int64 size = shape.num_elements();
+    const int64_t size = shape.num_elements();
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
     if (out->dtype() == DT_INT32) {
@@ -166,11 +166,11 @@ class ExpandDimsOp : public OpKernel {
 
     // Compute new shape with an additional dimension.
     absl::InlinedVector<int64, 8> output_shape_vec(input_dims + 1);
-    for (int64 i = 0; i < dim; ++i) {
+    for (int64_t i = 0; i < dim; ++i) {
       output_shape_vec[i] = input_shape.dim_size(i);
     }
     output_shape_vec[dim] = 1;
-    for (int64 i = dim + 1; i < input_dims + 1; ++i) {
+    for (int64_t i = dim + 1; i < input_dims + 1; ++i) {
       output_shape_vec[i] = input_shape.dim_size(i - 1);
     }
     TensorShape output_shape(output_shape_vec);
@@ -209,7 +209,7 @@ class SqueezeOp : public OpKernel {
     std::unordered_set<int32> wrapped_squeeze_dims;
     wrapped_squeeze_dims.reserve(squeeze_dims_.size());
     // Validate squeeze dims against the input.
-    for (int32 dim : squeeze_dims_) {
+    for (int32_t dim : squeeze_dims_) {
       OP_REQUIRES(
           ctx, (dim >= -ctx->input(0).dims() && dim < ctx->input(0).dims()),
           errors::InvalidArgument("Tried to squeeze dim index ", dim,

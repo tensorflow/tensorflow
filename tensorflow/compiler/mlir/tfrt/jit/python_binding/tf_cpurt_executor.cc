@@ -21,18 +21,18 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
-#include "tfrt/cpu/jit/cpurt.h"
-#include "tfrt/dtype/dtype.h"
-#include "tfrt/host_context/async_value.h"
-#include "tfrt/host_context/concurrent_work_queue.h"
-#include "tfrt/host_context/execution_context.h"
-#include "tfrt/host_context/host_allocator.h"
-#include "tfrt/host_context/kernel_utils.h"
-#include "tfrt/support/ref_count.h"
-#include "tfrt/support/string_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_passes.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
+#include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
+#include "tfrt/dtype/dtype.h"  // from @tf_runtime
+#include "tfrt/host_context/async_value.h"  // from @tf_runtime
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
+#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
+#include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
+#include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
+#include "tfrt/support/ref_count.h"  // from @tf_runtime
+#include "tfrt/support/string_util.h"  // from @tf_runtime
 
 namespace py = pybind11;
 
@@ -66,15 +66,15 @@ TfCpurtExecutor::TfCpurtExecutor()
           },
           CreateMallocAllocator(), CreateMultiThreadedWorkQueue(4, 4)) {}
 
-TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
-                                                 const std::string& entrypoint,
-                                                 bool disable_specializations) {
+TfCpurtExecutor::Handle TfCpurtExecutor::Compile(
+    const std::string& mlir_module, const std::string& entrypoint,
+    Specialization specialization) {
   CompilationOptions opts;
   // Create an async task for each worker thread.
   opts.num_worker_threads = 4;
   opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
   opts.register_pass_pipeline = CreateTfCpuRtPipeline;
-  opts.disable_specializations = disable_specializations;
+  opts.specialization = specialization;
 
   // Instantiate new JitExecutable from the MLIR source.
   llvm::Expected<JitExecutable> jit_executable =
@@ -305,10 +305,16 @@ std::vector<py::array> TfCpurtExecutor::Execute(
 }  // namespace tensorflow
 
 PYBIND11_MODULE(_tf_cpurt_executor, m) {
+  py::enum_<tensorflow::TfCpurtExecutor::Specialization>(m, "Specialization")
+      .value("ENABLED", tensorflow::TfCpurtExecutor::Specialization::kEnabled)
+      .value("DISABLED", tensorflow::TfCpurtExecutor::Specialization::kDisabled)
+      .value("ALWAYS", tensorflow::TfCpurtExecutor::Specialization::kAlways);
+
   py::class_<tensorflow::TfCpurtExecutor>(m, "TfCpurtExecutor")
       .def(py::init<>())
       .def("compile", &tensorflow::TfCpurtExecutor::Compile,
            py::arg("mlir_module"), py::arg("entrypoint"),
-           py::arg("disable_specializations") = false)
+           py::arg("specialization") =
+               tensorflow::TfCpurtExecutor::Specialization::kEnabled)
       .def("execute", &tensorflow::TfCpurtExecutor::Execute);
 }

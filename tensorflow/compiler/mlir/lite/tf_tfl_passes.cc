@@ -87,6 +87,9 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
   // Add canonicalize pass to remove no-op session initializer pass.
   pass_manager->addPass(mlir::createCanonicalizerPass());
 
+  if (pass_config.guarantee_all_funcs_one_use) {
+    pass_manager->addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
+  }
   if (pass_config.shape_inference) {
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
@@ -271,6 +274,9 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
     // model dialect.
     pass_manager->addPass(
         mlir::TFL::CreateInsertCallOnceOpFromSessionInitializerPass());
+  }
+  if (pass_config.unfold_large_splat_constant) {
+    pass_manager->addPass(mlir::TFL::CreateUnfoldLargeSplatConstantPass());
   }
 }
 

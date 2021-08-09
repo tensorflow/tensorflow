@@ -101,8 +101,8 @@ class MetricTableReport {
 
  private:
   static constexpr double kDefaultMaxMetricProportionToShow = 0.99;
-  static constexpr int64 kDefaultMaxEntriesToShow = 100;
-  static constexpr int64 kDefaultMaxEntriesPerCategoryToShow = 5;
+  static constexpr int64_t kDefaultMaxEntriesToShow = 100;
+  static constexpr int64_t kDefaultMaxEntriesPerCategoryToShow = 5;
 
   // Append all parameters to the report.
   template <typename... Args>

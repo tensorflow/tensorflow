@@ -36,7 +36,7 @@ class TensorKey : public Tensor {
     if (t1.dtype() == DT_STRING) {
       const auto s1 = t1.unaligned_flat<tstring>();
       const auto s2 = t2.unaligned_flat<tstring>();
-      for (int64 i = 0, n = t1.NumElements(); i < n; ++i) {
+      for (int64_t i = 0, n = t1.NumElements(); i < n; ++i) {
         if (TF_PREDICT_FALSE(s1(i) != s2(i))) {
           return false;
         }

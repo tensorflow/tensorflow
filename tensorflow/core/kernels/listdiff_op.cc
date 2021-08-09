@@ -59,7 +59,7 @@ class ListDiffOp : public OpKernel {
 
     // Compute the size of the output.
 
-    int64 out_size = 0;
+    int64_t out_size = 0;
     for (size_t i = 0; i < x_size; ++i) {
       if (y_set.count(Tx(i)) == 0) {
         ++out_size;

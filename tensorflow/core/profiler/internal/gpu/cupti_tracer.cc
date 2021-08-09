@@ -159,70 +159,80 @@ DecodeDriverMemcpy(CUpti_CallbackId cbid, const void *params) {
   switch (cbid) {
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2: {
       const auto *p = reinterpret_cast<const cuMemcpyHtoD_v2_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyH2D, false};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyH2D,
+                             false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpyHtoDAsync_v2_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyH2D, true};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyH2D,
+                             true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2: {
       const auto *p = reinterpret_cast<const cuMemcpyDtoH_v2_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyD2H, false};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyD2H,
+                             false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpyDtoHAsync_v2_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyD2H, true};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyD2H,
+                             true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2: {
       const auto *p = reinterpret_cast<const cuMemcpyDtoD_v2_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyD2D, false};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyD2D,
+                             false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpyDtoDAsync_v2_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyD2D, true};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyD2D,
+                             true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy: {
       const auto *p = reinterpret_cast<const cuMemcpy_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyOther, false};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyOther,
+                             false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync: {
       const auto *p = reinterpret_cast<const cuMemcpyAsync_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyOther, true};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyOther,
+                             true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2: {
       const auto *p = reinterpret_cast<const cuMemcpy2D_v2_params *>(params);
-      return {Bytes2D(p->pCopy), MemcpyKind(p->pCopy), false};
+      return std::make_tuple(Bytes2D(p->pCopy), MemcpyKind(p->pCopy), false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpy2DAsync_v2_params *>(params);
-      return {Bytes2D(p->pCopy), MemcpyKind(p->pCopy), true};
+      return std::make_tuple(Bytes2D(p->pCopy), MemcpyKind(p->pCopy), true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2: {
       const auto *p = reinterpret_cast<const cuMemcpy3D_v2_params *>(params);
-      return {Bytes3D(p->pCopy), MemcpyKind(p->pCopy), true};
+      return std::make_tuple(Bytes3D(p->pCopy), MemcpyKind(p->pCopy), true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpy3DAsync_v2_params *>(params);
-      return {Bytes3D(p->pCopy), MemcpyKind(p->pCopy), true};
+      return std::make_tuple(Bytes3D(p->pCopy), MemcpyKind(p->pCopy), true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeer: {
       const auto *p2p_params =
           reinterpret_cast<const cuMemcpyPeer_params *>(params);
-      return {p2p_params->ByteCount, CuptiTracerEventType::MemcpyP2P, false};
+      return std::make_tuple(p2p_params->ByteCount,
+                             CuptiTracerEventType::MemcpyP2P, false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeerAsync: {
       const auto *p2p_params =
           reinterpret_cast<const cuMemcpyPeerAsync_params *>(params);
-      return {p2p_params->ByteCount, CuptiTracerEventType::MemcpyP2P, true};
+      return std::make_tuple(p2p_params->ByteCount,
+                             CuptiTracerEventType::MemcpyP2P, true);
     }
     default: {
       LOG(ERROR) << "Unsupported memcpy activity observed: " << cbid;
-      return {0, CuptiTracerEventType::Unsupported, false};
+      return std::make_tuple(0, CuptiTracerEventType::Unsupported, false);
     }
   }
 }
@@ -232,58 +242,64 @@ DecodeDriverMemset(CUpti_CallbackId cbid, const void *params) {
   switch (cbid) {
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2: {
       const auto *p = reinterpret_cast<const cuMemsetD8_v2_params *>(params);
-      return {p->N, CuptiTracerEventType::Memset, false};
+      return std::make_tuple(p->N, CuptiTracerEventType::Memset, false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2: {
       const auto *p = reinterpret_cast<const cuMemsetD16_v2_params *>(params);
-      return {p->N, CuptiTracerEventType::Memset, false};
+      return std::make_tuple(p->N, CuptiTracerEventType::Memset, false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2: {
       const auto *p = reinterpret_cast<const cuMemsetD32_v2_params *>(params);
-      return {p->N, CuptiTracerEventType::Memset, false};
+      return std::make_tuple(p->N, CuptiTracerEventType::Memset, false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2: {
       const auto *p = reinterpret_cast<const cuMemsetD2D8_v2_params *>(params);
-      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, false};
+      return std::make_tuple(p->dstPitch * p->Height,
+                             CuptiTracerEventType::Memset, false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2: {
       const auto *p = reinterpret_cast<const cuMemsetD2D16_v2_params *>(params);
-      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, false};
+      return std::make_tuple(p->dstPitch * p->Height,
+                             CuptiTracerEventType::Memset, false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2: {
       const auto *p = reinterpret_cast<const cuMemsetD2D32_v2_params *>(params);
-      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, false};
+      return std::make_tuple(p->dstPitch * p->Height,
+                             CuptiTracerEventType::Memset, false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async: {
       const auto *p = reinterpret_cast<const cuMemsetD8Async_params *>(params);
-      return {p->N, CuptiTracerEventType::Memset, true};
+      return std::make_tuple(p->N, CuptiTracerEventType::Memset, true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async: {
       const auto *p = reinterpret_cast<const cuMemsetD16Async_params *>(params);
-      return {p->N, CuptiTracerEventType::Memset, true};
+      return std::make_tuple(p->N, CuptiTracerEventType::Memset, true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async: {
       const auto *p = reinterpret_cast<const cuMemsetD32Async_params *>(params);
-      return {p->N, CuptiTracerEventType::Memset, true};
+      return std::make_tuple(p->N, CuptiTracerEventType::Memset, true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async: {
       const auto *p =
           reinterpret_cast<const cuMemsetD2D8Async_params *>(params);
-      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, true};
+      return std::make_tuple(p->dstPitch * p->Height,
+                             CuptiTracerEventType::Memset, true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async: {
       const auto *p =
           reinterpret_cast<const cuMemsetD2D16Async_params *>(params);
-      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, true};
+      return std::make_tuple(p->dstPitch * p->Height,
+                             CuptiTracerEventType::Memset, true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async: {
       const auto *p =
           reinterpret_cast<const cuMemsetD2D32Async_params *>(params);
-      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, true};
+      return std::make_tuple(p->dstPitch * p->Height,
+                             CuptiTracerEventType::Memset, true);
     }
     default: {
       LOG(ERROR) << "Unsupported memset activity observed: " << cbid;
-      return {0, CuptiTracerEventType::Unsupported, false};
+      return std::make_tuple(0, CuptiTracerEventType::Unsupported, false);
     }
   }
 }

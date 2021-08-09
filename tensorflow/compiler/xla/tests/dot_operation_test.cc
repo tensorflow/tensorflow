@@ -1822,10 +1822,10 @@ void DOT_ReorderContracting(::testing::benchmark::State& state) {
 
   int device_ordinal = client->default_device_ordinal();
 
-  const int64 d0 = 128;
-  const int64 d1 = 128;
-  const int64 d2 = 128;
-  const int64 d3 = 128;
+  const int64_t d0 = 128;
+  const int64_t d1 = 128;
+  const int64_t d2 = 128;
+  const int64_t d3 = 128;
 
   Array3D<float> input_arr(d0, d1, d2);
   Array2D<float> const_arr(d1 * d2, d3);
@@ -1861,7 +1861,7 @@ void DOT_ReorderContracting(::testing::benchmark::State& state) {
     ASSERT_IS_OK(executable->Run({&buffer0}, options));
   }
 
-  const int64 total_bytes = d0 * d1 * d2 + d1 * d2 * d3 + d0 * d3;
+  const int64_t total_bytes = d0 * d1 * d2 + d1 * d2 * d3 + d0 * d3;
   for (auto s : state) {
     ASSERT_IS_OK(executable->Run({&buffer0}, options));
   }

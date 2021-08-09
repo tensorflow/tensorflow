@@ -19,6 +19,12 @@ import numpy as np
 import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
 
+specializations = [
+    tf_cpurt.Specialization.ENABLED,
+    tf_cpurt.Specialization.DISABLED,
+    tf_cpurt.Specialization.ALWAYS,
+]
+
 
 def log1p_1d():
   return """
@@ -40,14 +46,15 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 
 def test_log1p(fn, rank):
-  compiled = cpurt.compile(fn(), "log1p")
+  for specialize in specializations:
+    compiled = cpurt.compile(fn(), "log1p", specialize)
 
-  for _ in range(100):
-    shape = np.random.randint(0, 10, size=(rank))
-    arg = np.random.uniform(0, 10.0, size=shape).astype(np.float32)
+    for _ in range(100):
+      shape = np.random.randint(0, 10, size=(rank))
+      arg = np.random.uniform(0, 10.0, size=shape).astype(np.float32)
 
-    [res] = cpurt.execute(compiled, [arg])
-    np.testing.assert_allclose(res, np.log1p(arg), atol=1e-07)
+      [res] = cpurt.execute(compiled, [arg])
+      np.testing.assert_allclose(res, np.log1p(arg), atol=1e-06)
 
 
 class TfLog1PTest(googletest.TestCase):

@@ -60,16 +60,19 @@ def _get_quant_params(
 class QuantizationDebugOptions:
   """Debug options to set up a given QuantizationDebugger."""
 
-  def __init__(
-      self,
-      layer_debug_metrics: Optional[Mapping[str, Callable[[np.ndarray],
-                                                          float]]] = None,
-      model_debug_metrics: Optional[Mapping[str, Callable[
-          [Sequence[np.ndarray], Sequence[np.ndarray]], float]]] = None,
-      layer_direct_compare_metrics: Optional[Mapping[str, Callable[
-          [Sequence[np.ndarray], Sequence[np.ndarray], float, int],
-          float]]] = None
-  ) -> None:
+  def __init__(self,
+               layer_debug_metrics: Optional[Mapping[str,
+                                                     Callable[[np.ndarray],
+                                                              float]]] = None,
+               model_debug_metrics: Optional[Mapping[
+                   str, Callable[[Sequence[np.ndarray], Sequence[np.ndarray]],
+                                 float]]] = None,
+               layer_direct_compare_metrics: Optional[Mapping[str, Callable[
+                   [Sequence[np.ndarray], Sequence[np.ndarray], float, int],
+                   float]]] = None,
+               denylisted_ops: Optional[List[str]] = None,
+               denylisted_nodes: Optional[List[str]] = None,
+               fully_quantize: bool = False) -> None:
     """Initializes debugger options.
 
     Args:
@@ -88,6 +91,13 @@ class QuantizationDebugOptions:
           implementation is responsible for correctly dequantize the quantized
           value to compare. Use this one when comparing diff is not enough.
           (Note) quantized value is passed as int8, so cast to int32 is needed.
+      denylisted_ops: a list of op names which is expected to be removed from
+        quantization.
+      denylisted_nodes: a list of op's output tensor names to be removed from
+        quantization.
+      fully_quantize: Bool indicating whether to fully quantize the model.
+        Besides model body, the input/output will be quantized as well.
+        Corresponding to mlir_quantize's fully_quantize parameter.
 
     Raises:
       ValueError: when there are duplicate keys
@@ -104,9 +114,9 @@ class QuantizationDebugOptions:
     if len(keys) != len(set(keys)):
       raise ValueError('Provided metrics have duplicate keys.')
 
-    self.denylisted_ops = None
-    self.denylisted_nodes = None
-    self.fully_quantize = False
+    self.denylisted_ops = denylisted_ops
+    self.denylisted_nodes = denylisted_nodes
+    self.fully_quantize = fully_quantize
 
 
 @tf_export.tf_export('lite.experimental.QuantizationDebugger')
@@ -219,31 +229,18 @@ class QuantizationDebugger:
     self._metrics = metrics_stub.TFLiteMetrics()
     self._metrics.increase_counter_debugger_creation()
 
-  def _quantize_model(self, calibrated_model: bytes, disable_per_channel: bool,
-                      fully_quantize: bool, enable_numeric_verify: bool,
-                      denylisted_ops: Optional[List[str]] = None,
-                      denylisted_nodes: Optional[List[str]] = None) -> bytes:
-    return convert.mlir_quantize(
-        calibrated_model, disable_per_channel=disable_per_channel,
-        fully_quantize=fully_quantize,
-        enable_numeric_verify=enable_numeric_verify,
-        blocklisted_ops=denylisted_ops,
-        blocklisted_nodes=denylisted_nodes)
-
   def _get_quantized_model(self, is_debug: bool) -> bytes:
     if not self.converter:
       raise ValueError('No converter found, use this function with the '
                        'converter option in the constructor.')
 
-    denylisted_nodes = self._debug_options.denylisted_nodes
-    disable_per_channel = self.converter._experimental_disable_per_channel  # pylint: disable=protected-access
-    return self._quantize_model(
+    return convert.mlir_quantize(
         self.calibrated_model,
-        disable_per_channel=disable_per_channel,
+        disable_per_channel=self.converter._experimental_disable_per_channel,  # pylint: disable=protected-access
         fully_quantize=self._debug_options.fully_quantize,
         enable_numeric_verify=is_debug,
         denylisted_ops=self._debug_options.denylisted_ops,
-        denylisted_nodes=denylisted_nodes)
+        denylisted_nodes=self._debug_options.denylisted_nodes)
 
   def get_nondebug_quantized_model(self) -> bytes:
     """Returns a non-instrumented quantized model.
@@ -289,7 +286,7 @@ class QuantizationDebugger:
       calibrated_model: Calibrated model bytes.
       float_model: Float model bytes.
     """
-    self.quant_model = self._quantize_model(
+    self.quant_model = convert.mlir_quantize(
         calibrated_model,
         disable_per_channel=converter._experimental_disable_per_channel,  # pylint: disable=protected-access
         fully_quantize=options.fully_quantize,

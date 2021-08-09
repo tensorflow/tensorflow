@@ -98,7 +98,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64 n = input.dim_size(ndims - 1);
+    const int64_t n = input.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(
         context, ndims >= 2,
@@ -146,7 +146,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
           context, DoConjugateMatrixTranspose(device, input, &input_copy),
           done);
     }
-    const int64 batch_size = input_copy_reshaped.dimension(0);
+    const int64_t batch_size = input_copy_reshaped.dimension(0);
 
     Tensor pivots;
     OP_REQUIRES_OK_ASYNC(

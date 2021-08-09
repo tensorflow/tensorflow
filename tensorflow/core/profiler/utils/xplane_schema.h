@@ -33,6 +33,8 @@ TF_CONST_INIT extern const absl::string_view kHostThreadsPlaneName;
 TF_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
 // Name prefix of XPlane that contains TPU events.
 TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
+// Name prefix of XPlane that contains custom device events.
+TF_CONST_INIT extern const absl::string_view kCustomPlanePrefix;
 // Name prefix of XPlane that contains TPU runtime events.
 TF_CONST_INIT extern const absl::string_view kTpuRuntimePlaneName;
 // Name of XPlane that contains CUPTI driver API generated events.
@@ -228,7 +230,7 @@ enum StatType {
   kLastStatType = kOccupancySuggestedBlockSize,
 };
 
-inline std::string GpuPlaneName(int32 device_ordinal) {
+inline std::string GpuPlaneName(int32_t device_ordinal) {
   return absl::StrCat(kGpuPlanePrefix, device_ordinal);
 }
 

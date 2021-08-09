@@ -34,13 +34,13 @@ class MemoryInputStream : public io::InputStreamInterface {
 
   ~MemoryInputStream() override {}
 
-  Status ReadNBytes(int64 bytes_to_read, tstring* result) override {
+  Status ReadNBytes(int64_t bytes_to_read, tstring* result) override {
     result->clear();
     if (bytes_to_read < 0) {
       return errors::InvalidArgument("Can't read a negative number of bytes: ",
                                      bytes_to_read);
     }
-    int64 bytes = bytes_to_read;
+    int64_t bytes = bytes_to_read;
     Status s = Status::OK();
     if (pos_ + bytes_to_read > len_) {
       bytes = len_ - pos_;
@@ -92,14 +92,14 @@ class DecodeCompressedOp : public OpKernel {
                                             &output_tensor));
     auto output_flat = output_tensor->flat<tstring>();
     if (compression_type_.empty()) {
-      for (int64 i = 0; i < bytes_flat.size(); i++) {
+      for (int64_t i = 0; i < bytes_flat.size(); i++) {
         output_flat(i) = bytes_flat(i);
       }
     } else {
       const io::ZlibCompressionOptions zlib_options =
           compression_type_ == "ZLIB" ? io::ZlibCompressionOptions::DEFAULT()
                                       : io::ZlibCompressionOptions::GZIP();
-      for (int64 i = 0; i < bytes_flat.size(); i++) {
+      for (int64_t i = 0; i < bytes_flat.size(); i++) {
         std::unique_ptr<MemoryInputStream> input_stream(
             new MemoryInputStream(bytes_flat(i).data(), bytes_flat(i).size()));
         std::unique_ptr<io::ZlibInputStream> zlib_stream(

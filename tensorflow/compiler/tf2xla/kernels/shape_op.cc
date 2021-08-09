@@ -316,7 +316,7 @@ class SqueezeOp : public XlaOpKernel {
     std::unordered_set<int32> wrapped_squeeze_dims;
     wrapped_squeeze_dims.reserve(squeeze_dims_.size());
     // Validate squeeze dims against the input.
-    for (int32 dim : squeeze_dims_) {
+    for (int32_t dim : squeeze_dims_) {
       OP_REQUIRES(ctx, (dim >= -input_shape.dims() && dim < input_shape.dims()),
                   errors::InvalidArgument("Tried to squeeze dim index ", dim,
                                           " for tensor with ",

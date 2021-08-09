@@ -300,9 +300,10 @@ class _InterpolateFunctionError(object):
           func_stack.append("<unknown>")
     if g:
       message = error_interpolation.interpolate(message, g)
-      message += "\n\nFunction call stack:\n"
-      message += " -> ".join(func_stack)
-      message += "\n"
+      if len(func_stack) >= 2:
+        message += "\n\nFunction call stack:\n"
+        message += " -> ".join(func_stack)
+        message += "\n"
       exc._message = message  # pylint: disable=protected-access
     return False
 
@@ -2380,6 +2381,9 @@ class FunctionSpec(object):
       instance of FunctionSpec
     """
     fullargspec = tf_inspect.getfullargspec(python_function)
+    # Checks if the `fullargspec` contains self or cls as its first argument.
+    is_method = tf_inspect.isanytargetmethod(python_function)
+
     # Treat a wrapped partial function as a special case. For all arguments that
     # were overridden with keywords in the partial:
     #   - remove the corresponding arguments,
@@ -2398,7 +2402,7 @@ class FunctionSpec(object):
           #
           #   def func(a, b, c, d=5, e=7):
           #     return a, b, c, d, e
-          #   p_func = functools.partial(tf.function(func, 10, e=9))
+          #   p_func = tf.function(functools.partial(func, 10, e=9))
           #
           # Here we want to drop from the defaults the parameter `e`. If we
           # forwarded the call to the partial function with a default for `e`
@@ -2444,25 +2448,6 @@ class FunctionSpec(object):
             kwonlyargs=[],
             kwonlydefaults={},
             annotations=fullargspec.annotations)
-
-      # inspect.ismethod() and inspect.isfunction() both return False on a
-      # functools.partial-wrapped function. We set it to False to
-      # maintain consistency with prior versions.
-      is_method = False
-
-    else:
-      # Instead of using tf_inspect.ismethod() which only checks the
-      # final unwrapped target, we check if any decorated target along the chain
-      # is a method.
-      is_method = tf_inspect.isanytargetmethod(python_function)
-
-      # In the following scenario, 'python_function' is a callable object.
-      # python_function(...) is equal to python_function.__call__(self, ...)
-      if not is_method and not tf_inspect.isfunction(
-          python_function) and hasattr(
-              python_function, "__class__") and hasattr(
-                  python_function.__class__, "__call__"):
-        is_method = True
 
     # Get the function's name.  Remove functools.partial wrappers if necessary.
     while isinstance(python_function, functools.partial):
@@ -3499,6 +3484,11 @@ def validate_signature(signature):
     raise TypeError("Invalid input_signature {}; input_signature must be "
                     "a possibly nested sequence of TensorSpec objects."
                     .format(signature))
+
+
+def validate_python_function(python_function):
+  if not callable(python_function):
+    raise TypeError(f"{python_function} is not a callable object.")
 
 
 def defun(func=None,

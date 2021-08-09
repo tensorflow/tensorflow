@@ -18,7 +18,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_INTERPRETER_BUILDER_H_
 #define TENSORFLOW_LITE_INTERPRETER_BUILDER_H_
 
+#include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -122,6 +124,11 @@ class InterpreterBuilder {
   const OpResolver& op_resolver_;
   ErrorReporter* error_reporter_;
   std::vector<TfLiteDelegate*> delegates_;
+  // Model metadata stored as mapping of name (key) to buffer (value).
+  // Data is mapped from the Metadata in TFLite flatbuffer model.
+  // TODO(b/188185962): Consider mapping to std::pair<const char*, size_t> if
+  // this increases runtime memory usage for large metadata.
+  std::map<std::string, std::string> metadata_;
 
   std::vector<const TfLiteRegistration*> flatbuffer_op_index_to_registration_;
   std::vector<TfLiteRegistration> unresolved_custom_ops_;

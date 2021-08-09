@@ -18,22 +18,6 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_op_handler.h"
 
-#include "tfrt/core_runtime/core_runtime.h"
-#include "tfrt/core_runtime/dispatch_utils.h"
-#include "tfrt/core_runtime/op_attrs.h"
-#include "tfrt/core_runtime/op_handler.h"
-#include "tfrt/core_runtime/op_invocation.h"
-#include "tfrt/core_runtime/tensor_handle.h"
-#include "tfrt/host_context/device.h"
-#include "tfrt/host_context/host_context.h"
-#include "tfrt/host_context/kernel_utils.h"
-#include "tfrt/support/error_util.h"
-#include "tfrt/support/ref_count.h"
-#include "tfrt/support/string_util.h"
-#include "tfrt/tensor/conversion_registry.h"
-#include "tfrt/tensor/dense_host_tensor.h"
-#include "tfrt/tensor/string_host_tensor.h"
-#include "tfrt/tensor/tensor_metadata.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Error.h"
@@ -42,14 +26,30 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_kernels.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
+#include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
+#include "tfrt/core_runtime/dispatch_utils.h"  // from @tf_runtime
+#include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
+#include "tfrt/core_runtime/op_handler.h"  // from @tf_runtime
+#include "tfrt/core_runtime/op_invocation.h"  // from @tf_runtime
+#include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/host_context/device.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
+#include "tfrt/support/error_util.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
+#include "tfrt/support/ref_count.h"  // from @tf_runtime
+#include "tfrt/support/string_util.h"  // from @tf_runtime
+#include "tfrt/tensor/conversion_registry.h"  // from @tf_runtime
+#include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/scalar_host_tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/tensor_metadata.h"  // from @tf_runtime
 // TODO(b/160798174): Avoid CUDA/ROCM macro.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tfrt/gpu/device/device.h"
-#include "tfrt/gpu/device/device_util.h"
-#include "tfrt/gpu/tensor/dense_gpu_tensor.h"
+#include "tfrt/gpu/device/device.h"  // from @tf_runtime
+#include "tfrt/gpu/device/device_util.h"  // from @tf_runtime
+#include "tfrt/gpu/tensor/dense_gpu_tensor.h"  // from @tf_runtime
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {

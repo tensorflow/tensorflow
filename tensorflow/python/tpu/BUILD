@@ -15,6 +15,7 @@ package(
         "//learning/serving:__subpackages__",
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
+        "//waymo/ml/deploy/sync_test/tools:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -74,7 +75,6 @@ tpu_py_test(
     srcs = ["async_checkpoint_test.py"],
     disable_experimental = True,
     disable_mlir_bridge = False,
-    disable_v2 = True,  # TODO(b/193351923): Re-enable v2 after fix the hanging issue.
     deps = [
         ":async_checkpoint",
         ":tpu_estimator",

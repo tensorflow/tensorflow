@@ -27,7 +27,7 @@ namespace xla {
 // the CustomCall and it is more efficient to use that implementation.
 class TopkRewriter : public HloModulePass {
  public:
-  explicit TopkRewriter(std::function<bool(const HloSortInstruction*, int64)>
+  explicit TopkRewriter(std::function<bool(const HloSortInstruction*, int64_t)>
                             is_profitable_to_convert)
       : is_profitable_to_convert_(std::move(is_profitable_to_convert)) {}
 
@@ -45,7 +45,7 @@ class TopkRewriter : public HloModulePass {
  private:
   // Predicate that returns true if a sort instruction is profitable to be
   // converted into a custom call.
-  std::function<bool(const HloSortInstruction*, int64)>
+  std::function<bool(const HloSortInstruction*, int64_t)>
       is_profitable_to_convert_;
 };
 }  // namespace xla

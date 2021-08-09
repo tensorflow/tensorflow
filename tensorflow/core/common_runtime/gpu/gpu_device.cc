@@ -1054,15 +1054,15 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
       std::getenv("TF_DEVICE_MIN_SYS_MEMORY_IN_MB");
   if (force_device_reserved_bytes != nullptr &&
       strcmp(force_device_reserved_bytes, "") != 0) {
-    int32 reserved_mb;
-    if (!strings::safe_strto32(force_device_reserved_bytes, &reserved_mb) ||
+    int64 reserved_mb;
+    if (!strings::safe_strto64(force_device_reserved_bytes, &reserved_mb) ||
         reserved_mb < 0) {
       LOG(WARNING) << "The requested reserved device memory "
                    << force_device_reserved_bytes
                    << " is invalid. The request will be ignored.";
     } else {
       // Convert MBytes to Bytes.
-      size_t allowable_reserved_memory = reserved_mb * 1024 * 1024;
+      int64 allowable_reserved_memory = reserved_mb * 1024 * 1024;
       // TF_DEVICE_MIN_SYS_MEMORY_IN_MB overrides
       // per_process_gpu_memory_fraction.
       if (allowable_reserved_memory <= available_memory) {
@@ -1831,8 +1831,9 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
                     "if you would like to use GPU. Follow the guide at "
                     "https://www.tensorflow.org/install/gpu for how to "
                     "download and setup the required libraries for your "
-                    "platform.\n";
-    return handle_or;
+                    "platform.\nSkipping registering "
+                    "GPU devices...";
+    return Status::OK();
   }
 #endif
 

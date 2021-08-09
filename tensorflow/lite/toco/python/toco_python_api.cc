@@ -177,7 +177,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
 
   std::string output_file_contents_txt;
   tensorflow::Status status;
-  int64 arithmetic_ops_count;
+  int64_t arithmetic_ops_count;
 
   // Convert model.
   if (enable_mlir_converter) {
@@ -242,15 +242,15 @@ tflite::TensorType FromTocoDataTypeToTflitToTensorType(int inference_type) {
   }
 }
 
-int ToStringSet(PyObject* py_blocklist, StringSet* string_set) {
+int ToStringSet(PyObject* py_denylist, StringSet* string_set) {
   using tflite::python_utils::ConvertFromPyString;
-  // Ensure op_blocklist is non null
-  if (!py_blocklist) {
+  // Ensure op_denylist is non null
+  if (!py_denylist) {
     return 0;
   }
-  if (PyList_Check(py_blocklist)) {
-    for (int i = 0; i < PyList_GET_SIZE(py_blocklist); ++i) {
-      PyObject* value = PyList_GetItem(py_blocklist, i);
+  if (PyList_Check(py_denylist)) {
+    for (int i = 0; i < PyList_GET_SIZE(py_denylist); ++i) {
+      PyObject* value = PyList_GetItem(py_denylist, i);
       char* str_buf;
       Py_ssize_t length;
       if (ConvertFromPyString(value, &str_buf, &length) == -1) {
@@ -259,8 +259,8 @@ int ToStringSet(PyObject* py_blocklist, StringSet* string_set) {
       string_set->emplace(str_buf, length);
     }
   }
-  if (PySet_Check(py_blocklist)) {
-    auto* tmp = PySet_New(py_blocklist);
+  if (PySet_Check(py_denylist)) {
+    auto* tmp = PySet_New(py_denylist);
     while (PySet_GET_SIZE(tmp)) {
       PyObject* value = PySet_Pop(tmp);
       char* str_buf;
@@ -279,7 +279,7 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             int input_data_type, int output_data_type,
                             bool enable_numeric_verify,
                             bool enable_whole_model_verify,
-                            PyObject* op_blocklist, PyObject* node_blocklist) {
+                            PyObject* op_denylist, PyObject* node_denylist) {
   using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
@@ -290,14 +290,14 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
     return nullptr;
   }
 
-  StringSet blocklisted_ops;
-  StringSet blocklisted_nodes;
-  if (ToStringSet(op_blocklist, &blocklisted_ops) == -1) {
-    PyErr_Format(PyExc_ValueError, "Failed to convert op blocklist PyObject");
+  StringSet denylisted_ops;
+  StringSet denylisted_nodes;
+  if (ToStringSet(op_denylist, &denylisted_ops) == -1) {
+    PyErr_Format(PyExc_ValueError, "Failed to convert op denylist PyObject");
     return nullptr;
   }
-  if (ToStringSet(node_blocklist, &blocklisted_nodes) == -1) {
-    PyErr_Format(PyExc_ValueError, "Failed to convert node blocklist PyObject");
+  if (ToStringSet(node_denylist, &denylisted_nodes) == -1) {
+    PyErr_Format(PyExc_ValueError, "Failed to convert node denylist PyObject");
     return nullptr;
   }
 
@@ -323,7 +323,7 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
       *tflite_model, input_type, output_type, inference_tensor_type, {},
       disable_per_channel, fully_quantize, &builder, error_reporter.get(),
       enable_numeric_verify, enable_whole_model_verify,
-      /*legacy_float_scale=*/true, blocklisted_ops, blocklisted_nodes);
+      /*legacy_float_scale=*/true, denylisted_ops, denylisted_nodes);
 
   if (status != kTfLiteOk) {
     error_reporter->exception();
@@ -373,7 +373,7 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
     return nullptr;
   }
 
-  int64 size = PyList_Size(list);
+  int64_t size = PyList_Size(list);
   for (int i = 0; i < size; ++i) {
     // Get character array from Python object.
     char* tf_opdefs;

@@ -169,6 +169,8 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
                            bool pad_to_max_output_size = false,
                            int* ptr_num_valid_outputs = nullptr) {
   const int output_size = max_output_size.scalar<int>()();
+  OP_REQUIRES(context, output_size >= 0,
+              errors::InvalidArgument("output size must be non-negative"));
 
   std::vector<T> scores_data(num_boxes);
   std::copy_n(scores.flat<T>().data(), num_boxes, scores_data.begin());
@@ -768,6 +770,9 @@ class NonMaxSuppressionV4Op : public OpKernel {
         context, scores, num_boxes, max_output_size, iou_threshold_val,
         score_threshold_val, dummy_soft_nms_sigma, similarity_fn,
         return_scores_tensor_, pad_to_max_output_size_, &num_valid_outputs);
+    if (!context->status().ok()) {
+      return;
+    }
 
     // Allocate scalar output tensor for number of indices computed.
     Tensor* num_outputs_t = nullptr;
@@ -845,6 +850,9 @@ class NonMaxSuppressionV5Op : public OpKernel {
         context, scores, num_boxes, max_output_size, iou_threshold_val,
         score_threshold_val, soft_nms_sigma_val, similarity_fn,
         return_scores_tensor_, pad_to_max_output_size_, &num_valid_outputs);
+    if (!context->status().ok()) {
+      return;
+    }
 
     // Allocate scalar output tensor for number of indices computed.
     Tensor* num_outputs_t = nullptr;
@@ -930,6 +938,8 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
         errors::InvalidArgument("max_size_per_class must be 0-D, got shape ",
                                 max_output_size.shape().DebugString()));
     const int max_size_per_class = max_output_size.scalar<int>()();
+    OP_REQUIRES(context, max_size_per_class > 0,
+                errors::InvalidArgument("max_size_per_class must be positive"));
     // max_total_size: scalar
     const Tensor& max_total_size = context->input(3);
     OP_REQUIRES(

@@ -276,7 +276,7 @@ inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
 }
 
 inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const int64 b) {
+                                               const int64_t b) {
   auto x = tensorflow::FingerprintCat64(a.low64, b);
   return {x, tensorflow::FingerprintCat64(a.high64, x)};
 }
@@ -1052,7 +1052,7 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
     return errors::Unimplemented(
         "Cross-process functions are not supported on mobile devices.");
 #else  // !IS_MOBILE_PLATFORM
-    const int64 op_id = ctx.RemoteMgr()->NextOpId();
+    const int64_t op_id = ctx.RemoteMgr()->NextOpId();
     remote_func_params =
         EagerRemoteFunctionParams{op_id, /*step_id=*/absl::nullopt};
 #endif  // !IS_MOBILE_PLATFORM
@@ -1551,9 +1551,14 @@ Status EagerKernelExecute(
   // device. We don't call it now because it is an unneeded overhead (it
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
+  CoordinationServiceAgent* coord_agent = nullptr;
+#if !defined(IS_MOBILE_PLATFORM)
+  if (ctx->GetDistributedManager() != nullptr)
+    coord_agent = ctx->GetDistributedManager()->GetCoordinationServiceAgent();
+#endif  // !IS_MOBILE_PLATFORM
   TF_RETURN_IF_ERROR(kernel->Run(container, inputs, &outputs,
                                  cancellation_manager, remote_func_params,
-                                 stack_trace));
+                                 stack_trace, coord_agent));
   if (graph_collector != nullptr) {
     CollectGraphs(ctx);
   }
@@ -1752,11 +1757,16 @@ void EagerKernelExecuteAsync(
     done(s);
     return;
   }
+  CoordinationServiceAgent* coord_agent = nullptr;
+#if !defined(IS_MOBILE_PLATFORM)
+  if (ctx->GetDistributedManager() != nullptr)
+    coord_agent = ctx->GetDistributedManager()->GetCoordinationServiceAgent();
+#endif  // !IS_MOBILE_PLATFORM
 
   kernel->Ref();  // Ownership of reference is transferred to the callback
   kernel->RunAsync(
       ctx->StepContainer(), *inputs, outputs.get(), cancellation_manager,
-      remote_func_params,
+      remote_func_params, coord_agent,
       [retvals, inputs, outputs, num_outputs, ctx, graph_collector,
        remote_func_params, kernel_raw = kernel.get(),
        done = std::move(done)](const Status& s) {

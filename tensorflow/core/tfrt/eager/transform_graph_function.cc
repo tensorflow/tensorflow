@@ -37,16 +37,12 @@ Status TransformGraphFunction(const std::string& func_name,
                               const tensorflow::DeviceSet& device_set,
                               EagerContext* eager_ctx, bool enable_grappler,
                               std::unique_ptr<FunctionBody>* fbody,
+                              std::unique_ptr<Graph> graph,
                               tfrt::ArrayRef<const tfrt::Device*> input_devices,
                               FunctionLibraryDefinition* func_lib_def) {
-  TF_RETURN_IF_ERROR(
-      FunctionDefToBodyHelper(fdef, AttrSlice(), func_lib_def, fbody));
   const DeviceMgr* device_mgr = eager_ctx->local_device_mgr();
   if (device_mgr == nullptr)
     return errors::Internal("Cannot find device manager");
-  // Transferring out the graph ownership from fbody.
-  auto graph = std::unique_ptr<Graph>((*fbody)->graph);
-  (*fbody)->graph = nullptr;
   DumpGraph("Input function graph", graph.get());
 
   std::vector<string> ret_node_names;

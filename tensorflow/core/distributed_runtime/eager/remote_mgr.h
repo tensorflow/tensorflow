@@ -48,7 +48,7 @@ class RemoteMgr {
       int64_t operation_id);
 
   void AddOperationOutput(tensorflow::TensorHandle* handles,
-                          int64_t operation_id, int32 output_num);
+                          int64_t operation_id, int32_t output_num);
 
   Status GetTensorHandle(const RemoteTensorHandleInternal& remote_handle,
                          tensorflow::TensorHandle** handle);

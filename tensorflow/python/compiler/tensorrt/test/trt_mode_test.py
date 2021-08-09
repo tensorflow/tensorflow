@@ -119,9 +119,8 @@ class ExplicitBatchTest(TrtModeTestBase):
     return ["TRTEngineOp_0"]
 
   def ShouldRunTest(self, run_params):
-    # Only run for TRT 6 and above.
-    return run_params.is_v2 and trt_test.IsTensorRTVersionGreaterEqual(6) and (
-        not run_params.use_calibration), "test v2, >=TRT6 and non-calibration"
+    return (run_params.is_v2 and
+            not run_params.use_calibration, "test v2 and non-calibration")
 
   def setUp(self):
     super().setUp()
@@ -156,9 +155,8 @@ class DynamicShapesTest(TrtModeTestBase):
     return ["TRTEngineOp_0"]
 
   def ShouldRunTest(self, run_params):
-    # Only run for TRT 6 and above.
-    return run_params.is_v2 and trt_test.IsTensorRTVersionGreaterEqual(6) and (
-        not run_params.use_calibration), "test v2 >=TRT6 and non-calibration"
+    return (run_params.is_v2 and
+            not run_params.use_calibration, "test v2 and non-calibration")
 
   def setUp(self):
     super().setUp()

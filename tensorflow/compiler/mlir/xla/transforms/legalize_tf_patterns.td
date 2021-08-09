@@ -24,6 +24,7 @@ include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.
 include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
 def SignedIntTensor : TensorOf<[I1, I8, I16, I32, I64]>;
+def UnsignedIntTensor : TensorOf<[UI8, UI16, UI32, UI64]>;
 
 // IEEE compliant floating point tensors.
 def IEEEFloatTensor : TensorOf<[F16, F32, F64]>;
@@ -95,8 +96,11 @@ def LowerRightShiftSigned :
        (BinBroadcastDimensions $l, $r)),
       [(SignedIntTensor $r)]>;
 
-// TODO(hinsu): Lower unsigned types to HLO_ShiftRightLogical once the HLO op
-// supports unsigned integers.
+def LowerRightShiftUnsigned :
+  Pat<(TF_RightShiftOp AnyTensor:$l, AnyTensor:$r),
+      (HLOClient_BroadcastShiftRightLogicalOp $l, $r,
+       (BinBroadcastDimensions $l, $r)),
+      [(UnsignedIntTensor $r)]>;
 
 // Performs a substitution of FloorDiv, pseudo code below:
 //
@@ -197,7 +201,7 @@ def : Pat<(TF_RiscDotOp $a, $b, $transpose_a, $transpose_b),
 class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
   : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r)),
-        [(SignedIntTensor $l)]>;
+        [(AnyTypeOf<[SignedIntTensor, UnsignedIntTensor]> $l)]>;
 
 foreach fromToBinPair = [[TF_LogicalAndOp, HLOClient_BroadcastAndOp],
                          [TF_LogicalOrOp, HLOClient_BroadcastOrOp],
@@ -341,7 +345,7 @@ def : Pat<(TF_PadV2Op $input, (ConstantLikeMatcher ElementsAttr:$padding), $c),
 // Identity op patterns.
 //===----------------------------------------------------------------------===//
 
-foreach src = [TF_IdentityOp, TF_StopGradientOp] in
+foreach src = [TF_IdentityOp, TF_StopGradientOp, TF__EagerConstOp] in
   def : Pat<(src $op), (replaceWithValue $op)>;
 
 // TODO(b/32223192): Support CheckNumerics in HLO.

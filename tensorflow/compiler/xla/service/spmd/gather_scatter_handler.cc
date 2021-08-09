@@ -595,7 +595,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       CHECK(new_updates_sharding.has_value());
       updates = updates.Reshard(*new_updates_sharding);
       // Update partition_id for partial replicate.
-      auto partition_id = partition_id_;
+      auto partition_id = MakePartitioningState().partition_id;
       if (indices.sharding().ReplicateOnLastTileDim()) {
         auto sharding_grouped = GroupShardingOnDims(
             indices.sharding(),
@@ -666,8 +666,8 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       HloInstruction* indices_max_unused;
       std::tie(indices_min, indices_max_unused) =
           IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
-              operand, indices, partition_id_, scatter_dims_to_operand_dims,
-              dnums.index_vector_dim(), &b_);
+              operand, indices, MakePartitioningState().partition_id,
+              scatter_dims_to_operand_dims, dnums.index_vector_dim(), &b_);
       auto adjusted_indices = b_.AddInstruction(HloInstruction::CreateBinary(
           indices.hlo()->shape(), HloOpcode::kSubtract, indices.hlo(),
           indices_min));

@@ -49,9 +49,7 @@ class TfrtContext {
 
   ResourceContext* GetResourceContext() { return &resource_context_; }
 
-  const tensorflow::DeviceNameUtils::ParsedName& HostCPUParsedName() const {
-    return cpu_device_parsed_name_;
-  }
+  const tensorflow::DeviceNameUtils::ParsedName& HostCPUParsedName() const;
 
  private:
   ResourceContext resource_context_;
@@ -59,7 +57,6 @@ class TfrtContext {
   ::tfrt::HostContext* host_context_;
   OpHandler* fallback_op_handler_;
   tensorflow::EagerContext* eager_context_;
-  tensorflow::DeviceNameUtils::ParsedName cpu_device_parsed_name_;
 };
 
 }  // namespace tf

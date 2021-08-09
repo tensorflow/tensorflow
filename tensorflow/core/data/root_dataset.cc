@@ -38,7 +38,7 @@ constexpr char kPrivateThreadpoolSize[] = "threadpool_size";
 constexpr double kRamBudgetShare = 0.5;
 
 // If value `x` matches `y`, returns default value `z`. Otherwise, return `x`.
-inline int64 value_or_default(int64 x, int64 y, int64 z) {
+inline int64 value_or_default(int64_t x, int64_t y, int64_t z) {
   return x == y ? z : x;
 }
 
@@ -59,15 +59,11 @@ Status RootDataset::FromOptions(DatasetBase* input, DatasetBase** output) {
   params.autotune = ShouldUseAutotuning(options);
   if (params.autotune) {
     params.autotune_algorithm = model::AutotuneAlgorithm::HILL_CLIMB;
-    if (options.optimization_options().autotune_buffers()) {
-      params.autotune_algorithm = model::AutotuneAlgorithm::GRADIENT_DESCENT;
-    }
-    params.autotune_cpu_budget =
-        value_or_default(options.optimization_options().autotune_cpu_budget(),
-                         0, port::NumSchedulableCPUs());
+    params.autotune_cpu_budget = value_or_default(
+        options.autotune_options().cpu_budget(), 0, port::NumSchedulableCPUs());
     params.autotune_ram_budget =
-        value_or_default(options.optimization_options().autotune_ram_budget(),
-                         0, kRamBudgetShare * port::AvailableRam());
+        value_or_default(options.autotune_options().ram_budget(), 0,
+                         kRamBudgetShare * port::AvailableRam());
   }
   *output = new RootDataset(input, params);
   return Status::OK();

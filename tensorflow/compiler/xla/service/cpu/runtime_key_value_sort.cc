@@ -26,8 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
-    int64_t a, int64_t b, int64_t c, char** values,
-    tensorflow::int32 values_count,
+    int64_t a, int64_t b, int64_t c, char** values, int32_t values_count,
     tensorflow::int32* values_primitive_type_size_in_bytes, bool is_stable,
     char* run_options, tensorflow::int64* prof_counters,
     void (*less_than)(char*, char*, char**, char**, tensorflow::int64*)) {
@@ -71,7 +70,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
         index % sort_dimension_offset +
         (index - index % sort_dimension_offset) * sort_dimension_elements;
     auto compare_function = [&](int64_t a, int64_t b) -> bool {
-      for (tensorflow::int32 i = 0; i < values_count; ++i) {
+      for (int32_t i = 0; i < values_count; ++i) {
         int64_t memory_index_lhs = (base_offset + a * sort_dimension_offset) *
                                    values_primitive_type_size_in_bytes[i];
         int64_t memory_index_rhs = (base_offset + b * sort_dimension_offset) *
@@ -93,7 +92,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
     }
 
     // Reorder the values according to the order defined by 'indices'.
-    for (tensorflow::int32 idx = 0; idx < values_count; ++idx) {
+    for (int32_t idx = 0; idx < values_count; ++idx) {
       for (int64_t i = 0; i < sort_dimension_elements; ++i) {
         int64_t memory_index =
             (base_offset + indices[i] * sort_dimension_offset) *

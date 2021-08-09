@@ -4,6 +4,7 @@ package tensorflow.data;
 
 import "tensorflow/core/data/service/common.proto";
 import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/protobuf/data_service.proto";
 
 // Next tag: 3
 message TaskProgress {
@@ -101,13 +102,13 @@ message JobKey {
   int64 job_name_index = 2;
 }
 
-// Next tag: 8
+// Next tag: 10
 message GetOrCreateJobRequest {
-  reserved 3, 4;
+  reserved 2, 3, 4;
   // The id of the dataset to create a job for.
   int64 dataset_id = 1;
   // A mode controlling how the tf.data service produces data for the job.
-  ProcessingModeDef processing_mode = 2;
+  ProcessingModeDef processing_mode_def = 8;
   // Optional job key identifying a shared job. If not set, the RPC will always
   // create a new job.
   JobKey job_key = 5;
@@ -116,6 +117,8 @@ message GetOrCreateJobRequest {
   oneof optional_num_consumers {
     int64 num_consumers = 7;
   }
+  // Specifies which workers the client of this job reads from.
+  TargetWorkers target_workers = 9;
 }
 
 // Next tag: 2

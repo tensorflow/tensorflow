@@ -305,7 +305,7 @@ template <typename Device, typename T>
 class LRNOp : public OpKernel {
  public:
   explicit LRNOp(OpKernelConstruction* context) : OpKernel(context) {
-    int64 depth_radius64;
+    int64_t depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
     OP_REQUIRES(
         context,
@@ -395,10 +395,10 @@ struct LaunchLRNGrad<CPUDevice, T> {
   void launch(OpKernelContext* context, OpKernel* kernel,
               const Tensor& in_grads, const Tensor& in_image,
               const Tensor& out_image, Tensor* output) {
-    const int64 batch = in_grads.dim_size(0);
-    const int64 rows = in_grads.dim_size(1);
-    const int64 cols = in_grads.dim_size(2);
-    const int64 depth = in_grads.dim_size(3);
+    const int64_t batch = in_grads.dim_size(0);
+    const int64_t rows = in_grads.dim_size(1);
+    const int64_t cols = in_grads.dim_size(2);
+    const int64_t depth = in_grads.dim_size(3);
     const auto nodes = cols * rows;
     auto grads_shaped = in_grads.shaped<T, 2>({nodes * batch, depth});
     auto in_shaped = in_image.shaped<T, 2>({nodes * batch, depth});
@@ -408,9 +408,9 @@ struct LaunchLRNGrad<CPUDevice, T> {
     out_shaped.setZero();
 
     auto shard = [this, activations, in_shaped, grads_shaped, out_shaped,
-                  depth](int64 begin, int64 end) {
-      for (int64 i = begin; i < end; ++i) {
-        for (int64 j = 0; j < depth; ++j) {
+                  depth](int64_t begin, int64_t end) {
+      for (int64_t i = begin; i < end; ++i) {
+        for (int64_t j = 0; j < depth; ++j) {
           // Let y be the LRN activations and x be the inputs along the depth
           // dimension. (LRN operates independently along rows, cols, and
           // batch).
@@ -430,18 +430,18 @@ struct LaunchLRNGrad<CPUDevice, T> {
           T gs = grads_shaped(i, j);
           if (gs == T(0)) continue;
 
-          int64 depth_begin = std::max<int64>(0, j - depth_radius_);
-          int64 depth_end = std::min<int64>(depth, j + depth_radius_ + 1);
+          int64_t depth_begin = std::max<int64>(0, j - depth_radius_);
+          int64_t depth_end = std::min<int64>(depth, j + depth_radius_ + 1);
 
           T norm(0);
-          for (int64 k = depth_begin; k < depth_end; ++k) {
+          for (int64_t k = depth_begin; k < depth_end; ++k) {
             norm += in_shaped(i, k) * in_shaped(i, k);
           }
           norm = alpha_ * norm + bias_;
           DCHECK_GT(norm, T(1e-6));
           T pre_computed_pow = Eigen::numext::pow(norm, -beta_);
           T activations_ab2 = alpha_beta_2_ * activations(i, j);
-          for (int64 k = depth_begin; k < depth_end; ++k) {
+          for (int64_t k = depth_begin; k < depth_end; ++k) {
             T dyi = in_shaped(i, k) * activations_ab2 / norm;
             if (k == j) {
               dyi += pre_computed_pow;
@@ -487,10 +487,10 @@ struct LaunchLRNGrad<GPUDevice, T> {
         context, bias_ >= 1e-5,
         errors::InvalidArgument("cuDNN requires bias >= 1e-5, got: ", bias_));
 
-    const int64 batch = in_grads.dim_size(0);
-    const int64 rows = in_grads.dim_size(1);
-    const int64 cols = in_grads.dim_size(2);
-    const int64 depth = in_grads.dim_size(3);
+    const int64_t batch = in_grads.dim_size(0);
+    const int64_t rows = in_grads.dim_size(1);
+    const int64_t cols = in_grads.dim_size(2);
+    const int64_t depth = in_grads.dim_size(3);
 
     se::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
@@ -635,7 +635,7 @@ template <typename Device, typename T>
 class LRNGradOp : public OpKernel {
  public:
   explicit LRNGradOp(OpKernelConstruction* context) : OpKernel(context) {
-    int64 depth_radius64;
+    int64_t depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
     OP_REQUIRES(
         context,
@@ -659,10 +659,10 @@ class LRNGradOp : public OpKernel {
 
     OP_REQUIRES(context, in_grads.dims() == 4 && in_image.dims() == 4,
                 errors::InvalidArgument("inputs must be 4-dimensional"));
-    const int64 batch = in_grads.dim_size(0);
-    const int64 rows = in_grads.dim_size(1);
-    const int64 cols = in_grads.dim_size(2);
-    const int64 depth = in_grads.dim_size(3);
+    const int64_t batch = in_grads.dim_size(0);
+    const int64_t rows = in_grads.dim_size(1);
+    const int64_t cols = in_grads.dim_size(2);
+    const int64_t depth = in_grads.dim_size(3);
     OP_REQUIRES(
         context,
         in_image.dim_size(0) == batch && in_image.dim_size(1) == rows &&

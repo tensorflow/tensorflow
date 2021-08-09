@@ -61,6 +61,11 @@ CreateRemoveTfIfConstArgsPass();
 // operands.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateMergeTfIfOpsPass();
 
+// Create a pass to deduplicate the function invoked by tf.BatchFunction with
+// the same shared_name.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDeduplicateFunctionsInovkedByBatchFunctionPass();
+
 }  // namespace tfrt_compiler
 
 class CoreRTConverter;
@@ -130,6 +135,11 @@ struct TfrtPipelineOptions
                      "Otherwise, use the assigned core. Currently we use "
                      "core selector for Servo serving use cases."),
       llvm::cl::init(true)};
+  Option<bool> tpu_use_bundled_transfer{
+      *this, "tpu-use-bundled-transfer",
+      llvm::cl::desc("If true, use BundledTransferToTpuOp to transfer "
+                     "variables and input tensors to TPU."),
+      llvm::cl::init(true)};
   Option<bool> tpu_lower_to_fallback{
       *this, "tpu-lower-to-fallback",
       llvm::cl::desc("If true, lower an TF op that's placed on TPU device "
@@ -190,8 +200,9 @@ struct TfrtPipelineOptions
   ListOption<std::string> auto_fusion_oplist{
       *this, "auto-fusion-oplist",
       llvm::cl::desc("A list of Tensorflow operations to cluster together for "
-                     "JIT compilation. Use 'all' to enable clustering for all "
-                     "operations supported by the clustering policy."),
+                     "JIT compilation. Alternatively use 'tier1', ..., 'all' "
+                     "to allow clustering for all operations included in the "
+                     "given clustering tier."),
       llvm::cl::MiscFlags::CommaSeparated};
 
   Option<int> auto_fusion_min_cluster_size{

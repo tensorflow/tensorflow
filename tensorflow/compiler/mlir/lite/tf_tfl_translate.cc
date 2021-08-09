@@ -241,6 +241,8 @@ int main(int argc, char **argv) {
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
   pass_config.legalize_tf_while = convert_tf_while_to_tfl_while;
   pass_config.unfold_batch_matmul = unfold_batchmatmul;
+  pass_config.unfold_large_splat_constant = unfold_large_splat_constant;
+  pass_config.guarantee_all_funcs_one_use = guarantee_all_funcs_one_use;
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm,

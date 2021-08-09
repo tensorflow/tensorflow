@@ -31,8 +31,6 @@
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "tfrt/basic_kernels/opdefs/types.h"
-#include "third_party/gpus/cuda/include/cublas.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -45,6 +43,7 @@
 #include "tfrt/gpu/pass/pass.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/cublas_wrapper.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
+#include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace {

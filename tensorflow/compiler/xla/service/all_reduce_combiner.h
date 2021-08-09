@@ -31,8 +31,8 @@ namespace xla {
 // more efficient than many small ones.
 class AllReduceCombiner : public HloModulePass {
  public:
-  AllReduceCombiner(int64 combine_threshold_in_bytes,
-                    int64 combine_threshold_count);
+  AllReduceCombiner(int64_t combine_threshold_in_bytes,
+                    int64_t combine_threshold_count);
 
   absl::string_view name() const override { return "all-reduce-combiner"; }
 

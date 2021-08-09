@@ -46,8 +46,8 @@ namespace gtl {
 template <typename T, typename Cmp>
 inline int64 LevenshteinDistance(const gtl::ArraySlice<T>& s,
                                  const gtl::ArraySlice<T>& t, const Cmp& cmp) {
-  const int64 s_size = s.size();
-  const int64 t_size = t.size();
+  const int64_t s_size = s.size();
+  const int64_t t_size = t.size();
 
   if (t_size > s_size) return LevenshteinDistance(t, s, cmp);
 

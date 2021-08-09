@@ -128,10 +128,10 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ true> {
     Tensor transformed_x;
     Tensor transformed_y;
     if (tensor_format == FORMAT_NCHW) {
-      const int64 in_batch = GetTensorDim(x_input, tensor_format, 'N');
-      const int64 in_rows = GetTensorDim(x_input, tensor_format, 'H');
-      const int64 in_cols = GetTensorDim(x_input, tensor_format, 'W');
-      const int64 in_depths = GetTensorDim(x_input, tensor_format, 'C');
+      const int64_t in_batch = GetTensorDim(x_input, tensor_format, 'N');
+      const int64_t in_rows = GetTensorDim(x_input, tensor_format, 'H');
+      const int64_t in_cols = GetTensorDim(x_input, tensor_format, 'W');
+      const int64_t in_depths = GetTensorDim(x_input, tensor_format, 'C');
       OP_REQUIRES_OK(context, context->allocate_temp(
                                   DataTypeToEnum<T>::value,
                                   ShapeFromFormat(FORMAT_NHWC, in_batch,
@@ -275,10 +275,10 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
     Tensor transformed_x;
     Tensor transformed_y;
     if (tensor_format == FORMAT_NCHW) {
-      const int64 in_batch = GetTensorDim(x_input, tensor_format, 'N');
-      const int64 in_rows = GetTensorDim(x_input, tensor_format, 'H');
-      const int64 in_cols = GetTensorDim(x_input, tensor_format, 'W');
-      const int64 in_depths = GetTensorDim(x_input, tensor_format, 'C');
+      const int64_t in_batch = GetTensorDim(x_input, tensor_format, 'N');
+      const int64_t in_rows = GetTensorDim(x_input, tensor_format, 'H');
+      const int64_t in_cols = GetTensorDim(x_input, tensor_format, 'W');
+      const int64_t in_depths = GetTensorDim(x_input, tensor_format, 'C');
       OP_REQUIRES_OK(context, context->allocate_temp(
                                   DataTypeToEnum<T>::value,
                                   ShapeFromFormat(FORMAT_NHWC, in_batch,
@@ -370,10 +370,10 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
     Tensor transformed_x_input;
     Tensor transformed_x_backprop_output;
     if (tensor_format == FORMAT_NCHW) {
-      const int64 in_batch = GetTensorDim(x_input, tensor_format, 'N');
-      const int64 in_rows = GetTensorDim(x_input, tensor_format, 'H');
-      const int64 in_cols = GetTensorDim(x_input, tensor_format, 'W');
-      const int64 in_depths = GetTensorDim(x_input, tensor_format, 'C');
+      const int64_t in_batch = GetTensorDim(x_input, tensor_format, 'N');
+      const int64_t in_rows = GetTensorDim(x_input, tensor_format, 'H');
+      const int64_t in_cols = GetTensorDim(x_input, tensor_format, 'W');
+      const int64_t in_depths = GetTensorDim(x_input, tensor_format, 'C');
       OP_REQUIRES_OK(context, context->allocate_temp(
                                   DataTypeToEnum<T>::value,
                                   ShapeFromFormat(FORMAT_NHWC, in_batch,
@@ -693,10 +693,10 @@ class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
     return std::numeric_limits<int64>::max();
   }
 
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
     Tensor temporary_memory;
     const DataType tf_data_type = DataTypeToEnum<T>::v();
-    int64 allocate_count =
+    int64_t allocate_count =
         Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
     Status allocation_status(context_->allocate_temp(
         tf_data_type, TensorShape({allocate_count}), &temporary_memory));
@@ -746,11 +746,11 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
     return std::numeric_limits<int64>::max();
   }
 
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
     output_allocated = true;
     DCHECK(total_byte_size_ == 0)
         << "Reserve space allocator can only be called once";
-    int64 allocate_count =
+    int64_t allocate_count =
         Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
 
     Tensor* temporary_memory = nullptr;
@@ -789,10 +789,10 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available"));
 
-    const int64 batch_size = GetTensorDim(x, tensor_format, 'N');
-    const int64 channels = GetTensorDim(x, tensor_format, 'C');
-    const int64 height = GetTensorDim(x, tensor_format, 'H');
-    const int64 width = GetTensorDim(x, tensor_format, 'W');
+    const int64_t batch_size = GetTensorDim(x, tensor_format, 'N');
+    const int64_t channels = GetTensorDim(x, tensor_format, 'C');
+    const int64_t height = GetTensorDim(x, tensor_format, 'H');
+    const int64_t width = GetTensorDim(x, tensor_format, 'W');
 
     // If use_reserved_space we have reserve_space_3 output (only in
     // FusedBatchNormV3 op).
@@ -1011,10 +1011,10 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available"));
 
-    const int64 batch_size = GetTensorDim(x, tensor_format, 'N');
-    const int64 channels = GetTensorDim(x, tensor_format, 'C');
-    const int64 height = GetTensorDim(x, tensor_format, 'H');
-    const int64 width = GetTensorDim(x, tensor_format, 'W');
+    const int64_t batch_size = GetTensorDim(x, tensor_format, 'N');
+    const int64_t channels = GetTensorDim(x, tensor_format, 'C');
+    const int64_t height = GetTensorDim(x, tensor_format, 'H');
+    const int64_t width = GetTensorDim(x, tensor_format, 'W');
 
 #if GOOGLE_CUDA
     // Check if cuDNN batch normalization has a fast NHWC implementation:
@@ -1289,11 +1289,11 @@ class FusedBatchNormOpBase : public OpKernel {
     auto x_shape = x.shape();
     TensorShape dest_shape;
     if (use_reshape) {
-      const int64 in_batch = GetTensorDim(x, tensor_format_, 'N');
-      int64 in_planes = GetTensorDim(x, tensor_format_, '0');
-      int64 in_rows = GetTensorDim(x, tensor_format_, '1');
-      int64 in_cols = GetTensorDim(x, tensor_format_, '2');
-      const int64 in_depth = GetTensorDim(x, tensor_format_, 'C');
+      const int64_t in_batch = GetTensorDim(x, tensor_format_, 'N');
+      int64_t in_planes = GetTensorDim(x, tensor_format_, '0');
+      int64_t in_rows = GetTensorDim(x, tensor_format_, '1');
+      int64_t in_cols = GetTensorDim(x, tensor_format_, '2');
+      const int64_t in_depth = GetTensorDim(x, tensor_format_, 'C');
       dest_shape = ShapeFromFormat(tensor_format_, in_batch,
                                    {{in_planes, in_rows * in_cols}}, in_depth);
       OP_REQUIRES(context, x.CopyFrom(x, dest_shape),
@@ -1476,11 +1476,11 @@ class FusedBatchNormGradOpBase : public OpKernel {
     auto x_shape = x.shape();
     TensorShape dest_shape;
     if (use_reshape) {
-      const int64 in_batch = GetTensorDim(x, tensor_format_, 'N');
-      int64 in_planes = GetTensorDim(x, tensor_format_, '0');
-      int64 in_rows = GetTensorDim(x, tensor_format_, '1');
-      int64 in_cols = GetTensorDim(x, tensor_format_, '2');
-      const int64 in_depth = GetTensorDim(x, tensor_format_, 'C');
+      const int64_t in_batch = GetTensorDim(x, tensor_format_, 'N');
+      int64_t in_planes = GetTensorDim(x, tensor_format_, '0');
+      int64_t in_rows = GetTensorDim(x, tensor_format_, '1');
+      int64_t in_cols = GetTensorDim(x, tensor_format_, '2');
+      const int64_t in_depth = GetTensorDim(x, tensor_format_, 'C');
       dest_shape = ShapeFromFormat(tensor_format_, in_batch,
                                    {{in_planes, in_rows * in_cols}}, in_depth);
       OP_REQUIRES(context, x.CopyFrom(x, dest_shape),

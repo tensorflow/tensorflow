@@ -166,10 +166,55 @@ class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
     num_elements = 10
     ds = self.make_distributed_range_dataset(
         num_elements, cluster, target_workers="LOCAL")
+
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "no local worker is found"):
-      get_next = self.getNext(ds)
-      self.evaluate(get_next())
+      self.getDatasetOutput(ds)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testInconsistentTargetWorkers(self):
+    cluster = multi_process_cluster.MultiProcessCluster(
+        num_local_workers=3, num_remote_workers=3)
+    ds = dataset_ops.Dataset.range(10)
+    datasets = [
+        self.make_distributed_dataset(
+            ds, cluster, job_name="test_job", target_workers=target_workers)
+        for target_workers in ["AUTO", "ANY", "LOCAL"]
+    ]
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "but there is already an existing job with that name using "
+        "target_workers <AUTO>."):
+      for dataset in datasets:
+        self.getDatasetOutput(dataset)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testAnonymousJobWithDifferentTargetWorkers(self):
+    num_local_workers, num_remote_workers = (3, 3)
+    cluster = multi_process_cluster.MultiProcessCluster(num_local_workers,
+                                                        num_remote_workers)
+    num_elements = 10
+    ds = dataset_ops.Dataset.range(num_elements)
+    datasets = {
+        target_workers: self.make_distributed_dataset(
+            ds, cluster, target_workers=target_workers)
+        for target_workers in ["AUTO", "ANY", "LOCAL"]
+    }
+
+    num_workers = num_local_workers + num_remote_workers
+    self.assertDatasetProduces(
+        datasets["AUTO"],
+        num_workers * list(range(num_elements)),
+        assert_items_equal=True)
+    self.assertDatasetProduces(
+        datasets["ANY"],
+        num_workers * list(range(num_elements)),
+        assert_items_equal=True)
+    self.assertDatasetProduces(
+        datasets["LOCAL"],
+        num_local_workers * list(range(num_elements)),
+        assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testCoordinatedRead(self):
@@ -179,14 +224,13 @@ class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
     ds = self.make_distributed_dataset(
         ds,
         cluster,
-        job_name="test",
+        job_name="test_job",
         consumer_index=0,
         num_consumers=3,
         target_workers="LOCAL")
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "Coordinated reads require non-local workers"):
-      get_next = self.getNext(ds)
-      self.evaluate(get_next())
+      self.getDatasetOutput(ds)
 
 
 if __name__ == "__main__":

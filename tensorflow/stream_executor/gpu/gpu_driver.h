@@ -227,6 +227,10 @@ class GpuDriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g27a365aebb0eb548166309f58a1e8b8e
   static void DestroyContext(GpuContext* context);
 
+  // Returns the context handle (CUcontext for CUDA and hipCtx_t for ROCm) of a
+  // GpuContext.
+  static GpuContextHandle GetContextHandle(GpuContext* context);
+
   // Queries the runtime for the specified attribute of the specified function.
   // cuFuncGetAttribute (the underlying CUDA driver API routine) only operates
   // in terms of integer-sized values, so there's no potential for overrun (as
@@ -258,7 +262,8 @@ class GpuDriver {
   // way.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gb8f3dc3031b40da29d5f9a7139e52e15
   static port::Status LaunchKernel(
-      GpuContext* context, GpuFunctionHandle function, unsigned int grid_dim_x,
+      GpuContext* context, absl::string_view kernel_name,
+      GpuFunctionHandle function, unsigned int grid_dim_x,
       unsigned int grid_dim_y, unsigned int grid_dim_z,
       unsigned int block_dim_x, unsigned int block_dim_y,
       unsigned int block_dim_z, unsigned int shared_mem_bytes,

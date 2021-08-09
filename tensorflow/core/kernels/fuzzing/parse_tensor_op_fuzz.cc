@@ -54,8 +54,8 @@ class FuzzParseTensor : public FuzzSession {
       return;
     }
     TensorShape shape(proto.tensor_shape());
-    const int64 num_elements = shape.num_elements();
-    const int64 max_num_elements = 1 << 18;
+    const int64_t num_elements = shape.num_elements();
+    const int64_t max_num_elements = 1 << 18;
     if (num_elements > max_num_elements) {
       LOG(WARNING) << "Requiring a tensor with too many elements\n";
       return;

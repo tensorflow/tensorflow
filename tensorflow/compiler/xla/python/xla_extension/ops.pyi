@@ -53,6 +53,12 @@ class CustomCallSchedule(enum.IntEnum):
   SCHEDULE_LATEST: int
   SCHEDULE_EARLIEST: int
 
+# TODO(b/189822916): Remove this enum when all clients are migrated to the
+# status-returning API.
+class CustomCallApiVersion(enum.IntEnum):
+  API_VERSION_ORIGINAL: int
+  API_VERSION_STATUS_RETURNING: int
+
 def AfterAll(builder: XlaBuilder, tokens: Sequence[XlaOp]) -> XlaOp: ...
 def AllGather(
     operand: XlaOp,
@@ -121,9 +127,9 @@ def ConvGeneralDilated(
     rhs: XlaOp,
     window_strides: Sequence[int],
     padding: Sequence[Tuple[int, int]],
-    lhs_dilation: Sequence[int], 
+    lhs_dilation: Sequence[int],
     rhs_dilation: Sequence[int],
-    dimension_numbers: _ConvDimensionNumbers, 
+    dimension_numbers: _ConvDimensionNumbers,
     feature_group_count: int = ...,
     batch_group_count: int = ...,
     precision_config: PrecisionConfig_Precision = ...,
@@ -142,7 +148,8 @@ def CustomCall(
     shape: Shape,
     opaque: bytes = ...,
     has_side_effects: bool = ...,
-    schedule: CustomCallSchedule = ...) -> XlaOp: ...
+    schedule: CustomCallSchedule = ...,
+    api_version: CustomCallApiVersion = ...) -> XlaOp: ...
 def CustomCallWithLayout(
     builder: XlaBuilder,
     call_target_name: bytes,
@@ -151,7 +158,8 @@ def CustomCallWithLayout(
     operand_shapes_with_layout: Sequence[Shape],
     opaque: bytes = ...,
     has_side_effects: bool = ...,
-    schedule: CustomCallSchedule = ...) -> XlaOp: ...
+    schedule: CustomCallSchedule = ...,
+    api_version: CustomCallApiVersion = ...) -> XlaOp: ...
 def CustomCallWithAliasing(
     builder: XlaBuilder,
     call_target_name: bytes,
@@ -162,18 +170,19 @@ def CustomCallWithAliasing(
     has_side_effects: bool = ...,
     output_operand_aliasing: Sequence[Tuple[ShapeIndex, Tuple[int, ShapeIndex]]] = ...,
     literal: _LiteralSlice = ...,
-    schedule: CustomCallSchedule = ...) -> XlaOp: ...
+    schedule: CustomCallSchedule = ...,
+    api_version: CustomCallApiVersion = ...) -> XlaOp: ...
 def Dot(
     lhs: XlaOp,
     rhs: XlaOp,
     precision_config: PrecisionConfig_Precision = ...,
-    preferred_element_type: Optional[PrimitiveType]) -> XlaOp: ...
+    preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
 def DotGeneral(
     lhs: XlaOp,
     rhs: XlaOp,
     dimensions_numbers: _DotDimensionNumbers,
     precision_config: PrecisionConfig_Precision = ...,
-    preferred_element_type: Optional[PrimitiveType]) -> XlaOp: ...
+    preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
 def DynamicReshape(
     operand: XlaOp,
     dim_sizes: Sequence[XlaOp],
@@ -386,6 +395,7 @@ def IsFinite(__arg: XlaOp) -> XlaOp: ...
 def Neg(__arg: XlaOp) -> XlaOp: ...
 def Sqrt(__arg: XlaOp) -> XlaOp: ...
 def Rsqrt(__arg: XlaOp) -> XlaOp: ...
+def Cbrt(__arg: XlaOp) -> XlaOp: ...
 def Square(__arg: XlaOp) -> XlaOp: ...
 def Reciprocal(__arg: XlaOp) -> XlaOp: ...
 def Erfc(__arg: XlaOp) -> XlaOp: ...

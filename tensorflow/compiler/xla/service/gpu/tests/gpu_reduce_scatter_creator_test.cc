@@ -37,8 +37,8 @@ namespace op = xla::testing::opcode_matchers;
 class GpuReduceScatterCreatorTest : public HloTestBase {
  public:
   StatusOr<std::unique_ptr<HloModule>> RunPass(absl::string_view hlo_module,
-                                               int64 num_replicas,
-                                               int64 num_partitions,
+                                               int64_t num_replicas,
+                                               int64_t num_partitions,
                                                bool expect_change) {
     HloModuleConfig config = GetModuleConfigForTest(
         /*replica_count=*/num_replicas,

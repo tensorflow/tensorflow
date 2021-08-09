@@ -48,7 +48,7 @@ namespace {
 // cares about collecting the CPU time needed to execute a captured function.
 class SimpleStepStatsCollector : public StepStatsCollectorInterface {
  public:
-  void IncrementProcessingTime(int64 delta) {
+  void IncrementProcessingTime(int64_t delta) {
     mutex_lock l(mu_);
     processing_time_ += delta;
   }
@@ -96,7 +96,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
 
     void SetOutput(int slot, const Tensor* tensor) override {}
 
-    void SetScheduled(int64 nanos) override {}
+    void SetScheduled(int64_t nanos) override {}
 
    private:
     int64 start_time_ns_ = 0;
@@ -376,7 +376,7 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const IteratorBase* parent,
-    const std::vector<Tensor>& input_element, int64 thread_index,
+    const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator) {
   return MakeIteratorFromInputElement(ctx, parent, input_element, thread_index,
@@ -386,7 +386,7 @@ Status MakeIteratorFromInputElement(
 
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const IteratorBase* parent,
-    const std::vector<Tensor>& input_element, int64 thread_index,
+    const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator,
     const std::shared_ptr<model::Node>& node) {
@@ -791,6 +791,7 @@ Status InstantiatedCapturedFunction::Run(
   f_opts.create_rendezvous = ShouldCreateRendezvous();
   CancellationManager cancellation_manager(ctx->cancellation_manager());
   f_opts.cancellation_manager = &cancellation_manager;
+  f_opts.collective_executor = ctx->collective_executor();
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (node || ctx->stats_aggregator()) {
@@ -804,8 +805,8 @@ Status InstantiatedCapturedFunction::Run(
                            ret_types_);
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat(
-            "InstantiatedCapturedFunction::Run#id=", f_opts.step_id, "#");
+        return profiler::TraceMeEncode("InstantiatedCapturedFunction::Run",
+                                       {{"id", f_opts.step_id}});
       },
       profiler::TraceMeLevel::kInfo);
   if (node) {
@@ -854,6 +855,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   f_opts.create_rendezvous = ShouldCreateRendezvous();
   CancellationManager cancellation_manager(ctx->cancellation_manager());
   f_opts.cancellation_manager = &cancellation_manager;
+  f_opts.collective_executor = ctx->collective_executor();
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (node || ctx->stats_aggregator()) {
@@ -867,9 +869,9 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
                               ret_types_);
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat(
-            "InstantiatedCapturedFunction::RunWithBorrowedArgs#id=",
-            f_opts.step_id, "#");
+        return profiler::TraceMeEncode(
+            "InstantiatedCapturedFunction::RunWithBorrowedArgs",
+            {{"id", f_opts.step_id}});
       },
       profiler::TraceMeLevel::kInfo);
   if (node) {
@@ -914,8 +916,9 @@ Status InstantiatedCapturedFunction::RunInstantiated(
                               ret_types_);
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat("InstantiatedCapturedFunction::RunInstantiated#id=",
-                            f_opts.step_id, "#");
+        return profiler::TraceMeEncode(
+            "InstantiatedCapturedFunction::RunInstantiated",
+            {{"id", f_opts.step_id}});
       },
       profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
@@ -956,6 +959,7 @@ void InstantiatedCapturedFunction::RunAsync(
   auto cancellation_manager =
       absl::make_unique<CancellationManager>(ctx->cancellation_manager());
   f_opts.cancellation_manager = cancellation_manager.get();
+  f_opts.collective_executor = ctx->collective_executor();
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (node || ctx->stats_aggregator()) {
@@ -1009,8 +1013,8 @@ void InstantiatedCapturedFunction::RunAsync(
 
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat(
-            "InstantiatedCapturedFunction::RunAsync#id=", f_opts.step_id, "#");
+        return profiler::TraceMeEncode("InstantiatedCapturedFunction::RunAsync",
+                                       {{"id", f_opts.step_id}});
       },
       profiler::TraceMeLevel::kInfo);
   // Stop the usage collection before calling `Run()` because `callback` may

@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 27
+_version = 32
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -499,7 +499,7 @@ def make_padding_config(
   Returns:
     A `PaddingConfig` object.
   """
-  if isinstance(padding_config, tuple) or isinstance(padding_config, list):
+  if not isinstance(padding_config, PaddingConfig):
     triples = padding_config
     padding_config = PaddingConfig()
     for lo, hi, interior in triples:

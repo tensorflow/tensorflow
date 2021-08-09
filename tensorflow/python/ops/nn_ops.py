@@ -139,11 +139,11 @@ from __future__ import print_function
 
 import functools
 import numbers
-import os
 
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -158,6 +158,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables as variables_lib
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -3421,19 +3422,6 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
         name=name)
 
 
-def _tf_deterministic_ops():
-  if _tf_deterministic_ops.value is None:
-    tf_deterministic_ops = os.environ.get("TF_DETERMINISTIC_OPS")
-    if tf_deterministic_ops is not None:
-      tf_deterministic_ops = tf_deterministic_ops.lower()
-    _tf_deterministic_ops.value = (
-        tf_deterministic_ops == "true" or tf_deterministic_ops == "1")
-  return _tf_deterministic_ops.value
-
-
-_tf_deterministic_ops.value = None
-
-
 @tf_export("nn.bias_add")
 @dispatch.add_dispatch_support
 def bias_add(value, bias, data_format=None, name=None):
@@ -3479,7 +3467,7 @@ def bias_add(value, bias, data_format=None, name=None):
 
     # TODO(duncanriach): Implement deterministic functionality at CUDA kernel
     #   level.
-    if _tf_deterministic_ops():
+    if config.deterministic_ops_enabled():
       # Note that this code does not implement the same error checks as the
       # pre-existing C++ ops.
       if data_format == "NCHW":
@@ -4060,7 +4048,7 @@ def softmax_cross_entropy_with_logits_v2_helper(
     labels = _flatten_outer_dims(labels)
 
     # Do the actual op computation.
-    if _tf_deterministic_ops():
+    if config.deterministic_ops_enabled():
       log_probs = log_softmax_v2(precise_logits)
       cost = -math_ops.reduce_sum(labels * log_probs, axis=1)
     else:
@@ -5198,7 +5186,7 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
   Args:
     x: A floating point tensor.
     keep_prob: (deprecated) A deprecated alias for `(1-rate)`.
-    noise_shape: A 1-D `Tensor` of type `int32`, representing the
+    noise_shape: A 1-D integer `Tensor`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
       `tf.random.set_seed` for behavior.
@@ -5214,14 +5202,14 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
       point tensor.
   """
   try:
-    keep = 1. - keep_prob if keep_prob is not None else None
+    rate_from_keep_prob = 1. - keep_prob if keep_prob is not None else None
   except TypeError:
     raise ValueError("keep_prob must be a floating point number or Tensor "
                      "(got %r)" % keep_prob)
 
   rate = deprecation.deprecated_argument_lookup(
       "rate", rate,
-      "keep_prob", keep)
+      "keep_prob", rate_from_keep_prob)
 
   if rate is None:
     raise ValueError("You must provide a rate to dropout.")
@@ -5233,6 +5221,18 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
 @dispatch.add_dispatch_support
 def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
   """Computes dropout: randomly sets elements to zero to prevent overfitting.
+
+  Warning: You should consider using
+  `tf.nn.experimental.stateless_dropout` instead of this function. The
+  difference between `tf.nn.experimental.stateless_dropout` and this
+  function is analogous to the difference between
+  `tf.random.stateless_uniform` and `tf.random.uniform`. Please see
+  [Random number
+  generation](https://www.tensorflow.org/guide/random_numbers) guide
+  for a detailed description of the various RNG systems in TF. As the
+  guide states, legacy stateful RNG ops like `tf.random.uniform` and
+  `tf.nn.dropout` are not deprecated yet but highly discouraged,
+  because their states are hard to control.
 
   Note: The behavior of dropout has changed between TensorFlow 1.x and 2.x.
   When converting 1.x code, please use named arguments to ensure behavior stays
@@ -5289,7 +5289,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     rate: A scalar `Tensor` with the same type as x. The probability
       that each element is dropped. For example, setting rate=0.1 would drop
       10% of input elements.
-    noise_shape: A 1-D `Tensor` of type `int32`, representing the
+    noise_shape: A 1-D integer `Tensor`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
       `tf.random.set_seed` for behavior.
@@ -5303,7 +5303,182 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       tensor. `rate=1` is disallowed, because the output would be all zeros,
       which is likely not what was intended.
   """
-  with ops.name_scope(name, "dropout", [x]) as name:
+  uniform_sampler = functools.partial(random_ops.random_uniform, seed=seed)
+  def dummy_rng_step():
+    random_seed.get_seed(seed)
+  return _dropout(x=x, rate=rate, noise_shape=noise_shape,
+                  uniform_sampler=uniform_sampler,
+                  dummy_rng_step=dummy_rng_step, name=name,
+                  default_name="dropout")
+
+
+@tf_export("nn.experimental.stateless_dropout")
+@dispatch.add_dispatch_support
+def stateless_dropout(x, rate, seed, rng_alg=None, noise_shape=None, name=None):
+  """Computes dropout: randomly sets elements to zero to prevent overfitting.
+
+  [Dropout](https://arxiv.org/abs/1207.0580) is useful for regularizing DNN
+  models. Inputs elements are randomly set to zero (and the other elements are
+  rescaled). This encourages each node to be independently useful, as it cannot
+  rely on the output of other nodes.
+
+  More precisely: With probability `rate` elements of `x` are set to `0`.
+  The remaining elements are scaled up by `1.0 / (1 - rate)`, so that the
+  expected value is preserved.
+
+  >>> x = tf.ones([3,5])
+  >>> tf.nn.experimental.stateless_dropout(x, rate=0.5, seed=[1, 0])
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[2., 0., 2., 0., 0.],
+         [0., 0., 2., 0., 2.],
+         [0., 0., 0., 0., 2.]], dtype=float32)>
+
+  >>> x = tf.ones([3,5])
+  >>> tf.nn.experimental.stateless_dropout(x, rate=0.8, seed=[1, 0])
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[5., 0., 0., 0., 0.],
+         [0., 0., 0., 0., 5.],
+         [0., 0., 0., 0., 5.]], dtype=float32)>
+
+  >>> tf.nn.experimental.stateless_dropout(x, rate=0.0, seed=[1, 0]) == x
+  <tf.Tensor: shape=(3, 5), dtype=bool, numpy=
+  array([[ True,  True,  True,  True,  True],
+         [ True,  True,  True,  True,  True],
+         [ True,  True,  True,  True,  True]])>
+
+
+  This function is a stateless version of `tf.nn.dropout`, in the
+  sense that no matter how many times you call this function, the same
+  `seed` will lead to the same results, and different `seed` will lead
+  to different results.
+
+  >>> x = tf.ones([3,5])
+  >>> tf.nn.experimental.stateless_dropout(x, rate=0.8, seed=[1, 0])
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[5., 0., 0., 0., 0.],
+         [0., 0., 0., 0., 5.],
+         [0., 0., 0., 0., 5.]], dtype=float32)>
+  >>> tf.nn.experimental.stateless_dropout(x, rate=0.8, seed=[1, 0])
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[5., 0., 0., 0., 0.],
+         [0., 0., 0., 0., 5.],
+         [0., 0., 0., 0., 5.]], dtype=float32)>
+  >>> tf.nn.experimental.stateless_dropout(x, rate=0.8, seed=[2, 0])
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[5., 0., 0., 0., 0.],
+         [0., 0., 0., 5., 0.],
+         [0., 0., 0., 0., 0.]], dtype=float32)>
+  >>> tf.nn.experimental.stateless_dropout(x, rate=0.8, seed=[2, 0])
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[5., 0., 0., 0., 0.],
+         [0., 0., 0., 5., 0.],
+         [0., 0., 0., 0., 0.]], dtype=float32)>
+
+  Compare the above results to those of `tf.nn.dropout` below. The
+  second time `tf.nn.dropout` is called with the same seed, it will
+  give a different output.
+
+  >>> tf.random.set_seed(0)
+  >>> x = tf.ones([3,5])
+  >>> tf.nn.dropout(x, rate=0.8, seed=1)
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[0., 0., 0., 5., 5.],
+         [0., 5., 0., 5., 0.],
+         [5., 0., 5., 0., 5.]], dtype=float32)>
+  >>> tf.nn.dropout(x, rate=0.8, seed=1)
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[0., 0., 0., 0., 0.],
+         [0., 0., 0., 5., 0.],
+         [0., 0., 0., 0., 0.]], dtype=float32)>
+  >>> tf.nn.dropout(x, rate=0.8, seed=2)
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[0., 0., 0., 0., 0.],
+         [0., 5., 0., 5., 0.],
+         [0., 0., 0., 0., 0.]], dtype=float32)>
+  >>> tf.nn.dropout(x, rate=0.8, seed=2)
+  <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
+  array([[0., 0., 0., 0., 0.],
+         [5., 0., 5., 0., 5.],
+         [0., 5., 0., 0., 5.]], dtype=float32)>
+
+  The difference between this function and `tf.nn.dropout` is
+  analogous to the difference between `tf.random.stateless_uniform`
+  and `tf.random.uniform`. Please see [Random number
+  generation](https://www.tensorflow.org/guide/random_numbers) guide
+  for a detailed description of the various RNG systems in TF. As the
+  guide states, legacy stateful RNG ops like `tf.random.uniform` and
+  `tf.nn.dropout` are not deprecated yet but highly discouraged,
+  because their states are hard to control.
+
+  By default, each element is kept or dropped independently.  If `noise_shape`
+  is specified, it must be
+  [broadcastable](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+  to the shape of `x`, and only dimensions with `noise_shape[i] == shape(x)[i]`
+  will make independent decisions. This is useful for dropping whole
+  channels from an image or sequence. For example:
+
+  >>> x = tf.ones([3,10])
+  >>> tf.nn.experimental.stateless_dropout(x, rate=2/3, noise_shape=[1,10],
+  ...                                      seed=[1, 0])
+  <tf.Tensor: shape=(3, 10), dtype=float32, numpy=
+  array([[3., 0., 0., 0., 0., 0., 0., 3., 0., 3.],
+         [3., 0., 0., 0., 0., 0., 0., 3., 0., 3.],
+         [3., 0., 0., 0., 0., 0., 0., 3., 0., 3.]], dtype=float32)>
+
+  Args:
+    x: A floating point tensor.
+    rate: A scalar `Tensor` with the same type as x. The probability
+      that each element is dropped. For example, setting rate=0.1 would drop
+      10% of input elements.
+    seed: An integer tensor of shape `[2]`. The seed of the random numbers.
+    rng_alg: The algorithm used to generate the random numbers
+      (default to `"auto_select"`). See the `alg` argument of
+      `tf.random.stateless_uniform` for the supported values.
+    noise_shape: A 1-D integer `Tensor`, representing the
+      shape for randomly generated keep/drop flags.
+    name: A name for this operation.
+
+  Returns:
+    A Tensor of the same shape and dtype of `x`.
+
+  Raises:
+    ValueError: If `rate` is not in `[0, 1)` or if `x` is not a floating point
+      tensor. `rate=1` is disallowed, because the output would be all zeros,
+      which is likely not what was intended.
+  """
+  uniform_sampler = functools.partial(
+      stateless_random_ops.stateless_random_uniform, seed=seed, alg=rng_alg)
+  def dummy_rng_step():
+    pass
+  return _dropout(x=x, rate=rate, noise_shape=noise_shape,
+                  uniform_sampler=uniform_sampler,
+                  dummy_rng_step=dummy_rng_step, name=name,
+                  default_name="stateless_dropout")
+
+
+def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
+             default_name):
+  """Shared implementation of the various dropout functions.
+
+  Args:
+    x: same as the namesake in `dropout_v2`.
+    rate: same as the namesake in `dropout_v2`.
+    noise_shape: same as the namesake in `dropout_v2`.
+    uniform_sampler: a callable of signature `(shape, dtype) ->
+      Tensor`, used to generate a tensor of uniformly-distributed
+      random numbers, of the given shape and dtype.
+    dummy_rng_step: a callable of signature `() -> None`, to make a
+      dummy RNG call in the fast path. In the fast path where rate is
+      0, we don't need to generate random numbers, but some samplers
+      still require you to make an RNG call, to make sure that RNG
+      states won't depend on whether the fast path is taken.
+    name: same as the namesake in `dropout_v2`.
+    default_name: a default name in case `name` is `None`.
+
+  Returns:
+    A Tensor of the same shape and dtype of `x`.
+  """
+  with ops.name_scope(name, default_name, [x]) as name:
     is_rate_number = isinstance(rate, numbers.Real)
     if is_rate_number and (rate < 0 or rate >= 1):
       raise ValueError("rate must be a scalar tensor or a float in the "
@@ -5319,11 +5494,11 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       # and after `x` has been converted to a tensor, to prevent inconsistent
       # tensor conversions/error raising if rate is changed to/from 0.
       #
-      # We also explicitly call `random_seed.get_seed` to make sure
+      # We also explicitly call `dummy_rng_step` to make sure
       # we don't change the random number generation behavior of
       # stateful random ops by entering a fastpath,
       # despite not generating a random tensor in the fastpath
-      random_seed.get_seed(seed)
+      dummy_rng_step()
       return x
 
     is_executing_eagerly = context.executing_eagerly()
@@ -5341,22 +5516,16 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       if rate_dtype != x_dtype:
         if not rate_dtype.is_compatible_with(x_dtype):
           raise ValueError(
-              "Tensor dtype %s is incomptaible with Tensor dtype %s: %r" %
-              (x_dtype.name, rate_dtype.name, rate))
+              "`x` has dtype %s which is incomptaible with `rate`'s dtype %s" %
+              (x_dtype.name, rate_dtype.name))
         rate = gen_math_ops.cast(rate, x_dtype, name="rate")
       one_tensor = constant_op.constant(1, dtype=x_dtype)
       ret = gen_math_ops.real_div(x, gen_math_ops.sub(one_tensor, rate))
 
     noise_shape = _get_noise_shape(x, noise_shape)
     # Sample a uniform distribution on [0.0, 1.0) and select values larger
-    # than rate.
-    #
-    # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
-    # and subtract 1.0.
-    random_tensor = random_ops.random_uniform(
-        noise_shape, seed=seed, dtype=x_dtype)
-    # NOTE: if (1.0 + rate) - 1 is equal to rate, then that float is selected,
-    # hence a >= comparison is used.
+    # than or equal to `rate`.
+    random_tensor = uniform_sampler(shape=noise_shape, dtype=x_dtype)
     keep_mask = random_tensor >= rate
     ret = gen_math_ops.mul(ret, gen_math_ops.cast(keep_mask, x_dtype))
     if not is_executing_eagerly:

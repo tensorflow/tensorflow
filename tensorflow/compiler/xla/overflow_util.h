@@ -27,7 +27,7 @@ limitations under the License.
 namespace xla {
 
 // Multiply two nonnegative int64's, returning negative for overflow
-inline int64 MultiplyWithoutOverflow(const int64 x, const int64 y) {
+inline int64 MultiplyWithoutOverflow(const int64_t x, const int64_t y) {
   // Multiply in uint64 rather than int64 since signed overflow is undefined.
   // Negative values will wrap around to large unsigned values in the casts
   // (see section 4.7 [conv.integral] of the C++14 standard).
@@ -71,7 +71,7 @@ inline absl::optional<T> OverflowSafeAdd(T x, T y) {
   return sum;
 }
 
-inline bool FitsInIntegralType(int64 x, PrimitiveType ty) {
+inline bool FitsInIntegralType(int64_t x, PrimitiveType ty) {
   switch (ty) {
     case S8:
       return std::numeric_limits<int8>::min() <= x &&

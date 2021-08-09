@@ -63,6 +63,20 @@ message AdagradParameters {
   reserved 1;
 }
 
+// This optimizer combines the Adagrad and Momentum update rules.
+// accum(new) = accum(old) + grad^2
+// mom_accum(new) = momentum * mom_accum(old) + accum(new)^(-1.0 / exponent)
+// update = use_nesterov ?
+//          momentum * mom_accum(new) + accum(new)^(-1.0 / exponent) :
+//          mom_accum(new)
+// var(new) = var(old) - lr * grad * update
+// Algorithm described in https://arxiv.org/abs/2002.11803.
+message AdagradMomentumParameters {
+  float momentum = 1;
+  bool use_nesterov = 2;
+  float exponent = 3;
+}
+
 // Algorithm in http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.
 message BoundedAdagradParameters {
   // Whether to use the updated or the old value of the accumulator when
@@ -413,6 +427,7 @@ message OptimizationParameters {
   // algorithm to use.
   oneof parameters {
     AdagradParameters adagrad = 3;
+    AdagradMomentumParameters adagrad_momentum = 26;
     BoundedAdagradParameters bounded_adagrad = 19;
     StochasticGradientDescentParameters stochastic_gradient_descent = 4;
     FtrlParameters ftrl = 5;

@@ -24,14 +24,14 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
-#include "tfrt/basic_kernels/opdefs/basic_kernels.h"
-#include "tfrt/core_runtime/opdefs/attributes.h"
-#include "tfrt/core_runtime/opdefs/core_runtime.h"
-#include "tfrt/distributed_runtime/opdefs/kernels.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
+#include "tfrt/core_runtime/opdefs/attributes.h"  // from @tf_runtime
+#include "tfrt/core_runtime/opdefs/core_runtime.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
+#include "tfrt/distributed_runtime/opdefs/kernels.h"  // from @tf_runtime
 
 namespace tensorflow {
 

@@ -72,7 +72,7 @@ static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases(
 
     config.activation_dims = {batch, activation_size, activation_size, feature};
 
-    const int64 depthwise_multiplier = use_depth_multiplier ? counter++ : 1;
+    const int64_t depthwise_multiplier = use_depth_multiplier ? counter++ : 1;
     config.kernel_dims = {batch, kernel_size, kernel_size,
                           feature * depthwise_multiplier};
     // Don't let the counter grow too much, else the compute demand will grow.

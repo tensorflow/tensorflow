@@ -196,9 +196,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
              absl::optional<py::object> layout_seq,
              absl::optional<std::vector<bool>> dynamic_dimensions)
               -> StatusOr<Shape> {
-            std::vector<int64> dims = IntSequenceToVector(dims_seq);
+            std::vector<int64> dims = SequenceToVector<int64>(dims_seq);
             if (layout_seq) {
-              std::vector<int64> layout = IntSequenceToVector(*layout_seq);
+              std::vector<int64> layout = SequenceToVector<int64>(*layout_seq);
               return MakeShapeWithLayout(type, dims, layout,
                                          dynamic_dimensions);
             } else {
@@ -216,9 +216,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
              absl::optional<std::vector<bool>> dynamic_dimensions)
               -> StatusOr<Shape> {
             PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
-            std::vector<int64> dims = IntSequenceToVector(dims_seq);
+            std::vector<int64> dims = SequenceToVector<int64>(dims_seq);
             if (layout_seq) {
-              std::vector<int64> layout = IntSequenceToVector(*layout_seq);
+              std::vector<int64> layout = SequenceToVector<int64>(*layout_seq);
               return MakeShapeWithLayout(type, dims, layout,
                                          dynamic_dimensions);
             } else {
@@ -245,7 +245,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           "Constructs a scalar shape.", py::arg("type"))
       .def("dimensions",
            [](const Shape& shape) -> py::tuple {
-             return IntSpanToTuple(shape.dimensions());
+             return SpanToTuple(shape.dimensions());
            })
       .def("xla_element_type", &Shape::element_type)
       .def("element_type",
@@ -346,6 +346,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       }))
       .def("get_hlo_module", &GetHloModule)
       .def("program_shape", &XlaComputation::GetProgramShape)
+      .def("name", &XlaComputation::name)
       .def("as_serialized_hlo_module_proto", &GetComputationSerializedProto)
       .def("as_hlo_text", &GetComputationHloText)
       .def("as_hlo_dot_graph", &GetComputationHloDotGraph)
@@ -471,7 +472,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("clear_sharding", &XlaBuilder::ClearSharding)
       .def("setup_alias",
            [](XlaBuilder& builder, const std::vector<int64>& output_index,
-              int64 param_number, const std::vector<int64>& param_index) {
+              int64_t param_number, const std::vector<int64>& param_index) {
              builder.SetUpAlias(
                  ShapeIndex(output_index.begin(), output_index.end()),
                  param_number,

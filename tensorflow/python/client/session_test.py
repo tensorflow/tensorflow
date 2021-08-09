@@ -1569,9 +1569,8 @@ class SessionTest(test_util.TensorFlowTestCase):
         size = 1
         for s in shape:
           size *= s
-        c_list = np.array(
-            [compat.as_bytes(str(i)) for i in xrange(size)],
-            dtype=np.object).reshape(shape) if size > 0 else []
+        c_list = np.array([compat.as_bytes(str(i)) for i in xrange(size)],
+                          dtype=np.object_).reshape(shape) if size > 0 else []
         c = constant_op.constant(c_list)
         self.assertAllEqual(c, c_list)
 
@@ -1581,9 +1580,8 @@ class SessionTest(test_util.TensorFlowTestCase):
         size = 1
         for s in shape:
           size *= s
-        c_list = np.array(
-            [compat.as_bytes(str(i)) for i in xrange(size)],
-            dtype=np.object).reshape(shape)
+        c_list = np.array([compat.as_bytes(str(i)) for i in xrange(size)],
+                          dtype=np.object_).reshape(shape)
         feed_t = array_ops.placeholder(dtype=dtypes.string, shape=shape)
         c = array_ops.identity(feed_t)
         self.assertAllEqual(sess.run(c, feed_dict={feed_t: c_list}), c_list)
@@ -1617,7 +1615,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       for i in range(len(c_list)):
         self.assertEqual(c_list[i], out[i].decode('utf-8'))
 
-      out = c.eval(feed_dict={feed_t: np.array(c_list, dtype=np.object)})
+      out = c.eval(feed_dict={feed_t: np.array(c_list, dtype=np.object_)})
       for i in range(len(c_list)):
         self.assertEqual(c_list[i], out[i].decode('utf-8'))
 

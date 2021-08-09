@@ -19,11 +19,13 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
+#include <string>
 #include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/variant.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
@@ -33,8 +35,11 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
+#include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -65,8 +70,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/fusion_bitcast_lift.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
@@ -151,6 +156,12 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
+#include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
+
+#if BEF_EXECUTABLE
+#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
+#endif  // BEF_EXECUTABLE
 
 namespace xla {
 namespace gpu {
@@ -214,6 +225,8 @@ class GpuBfloat16Support : public BFloat16Support {
 };
 
 }  // end anonymous namespace
+
+using OwnedThunkSchedule = GpuExecutable::OwnedThunkSchedule;
 
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
                          const char* target_triple, const char* data_layout)
@@ -395,7 +408,7 @@ Status GpuCompiler::OptimizeHloModule(
     AlgebraicSimplifierOptions options;
     options.set_replace_transpose_with_bitcast(false);
     options.set_enable_conv_operand_swap(false);
-    collectives_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+    collectives_pipeline.AddPass<AlgebraicSimplifier>(options);
 
     collectives_pipeline.AddPass<AllGatherBroadcastReorder>();
     TF_RETURN_IF_ERROR(collectives_pipeline.Run(hlo_module).status());
@@ -419,8 +432,7 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<FlattenCallGraph>();
     ChannelLayoutConstraints layout_constraints;
     pipeline.AddPass<GpuLayoutAssignment>(
-        hlo_module->mutable_entry_computation_layout(),
-        LayoutAssignment::InstructionCanChangeLayout, stream_exec,
+        hlo_module->mutable_entry_computation_layout(), stream_exec,
         &layout_constraints);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
@@ -434,8 +446,6 @@ Status GpuCompiler::OptimizeHloModule(
     // We try to split variadic ops with many parameters into several such ops
     // to avoid exceeding the parameter space.
     fusion.AddPass<VariadicOpSplitter>();
-    /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
-     * fixing the ticket. */
     fusion.AddInvariantCheckerDebug<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false,
@@ -454,9 +464,6 @@ Status GpuCompiler::OptimizeHloModule(
     HloPassFix<HloPassPipeline> horizontal_fusion("horizontal fusion");
     horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
     horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
-    // FusionBitcastLift must be after InstructionFusion, as it undoes
-    // part of it.
-    horizontal_fusion.AddPass<FusionBitcastLift>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();
@@ -505,8 +512,6 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
-  /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
-   * fixing the ticket. */
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/true,
       /*allow_mixed_precision=*/false,
@@ -532,8 +537,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
   HloPassPipeline pipeline("post-layout_assignment");
-  /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
-   * fixing the ticket. */
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/true,
       /*allow_mixed_precision=*/false,
@@ -562,7 +565,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   if (RequireDeterminism(hlo_module->config()) ||
       hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
-    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>();
+    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
+        stream_exec->GetDeviceDescription().cuda_compute_capability());
   }
 
   // GemmRewriter assumes that all transposes are folded into gemms, but,
@@ -577,6 +581,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       TransposeFolding::NeverFoldTranspose);
   // Rewrite GEMMs into custom calls.
   pipeline.AddPass<GemmRewriter>();
+
+  // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
+  pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
   // Run conversion again, to catch those matrix multiplications which were not
   // rewritten into cuBLAS calls.
@@ -677,6 +684,41 @@ GpuCompiler::RunHloPassesAndBufferAssignement(
   return std::make_tuple(std::move(hlo_module), std::move(assignment));
 }
 
+#if BEF_EXECUTABLE
+static StatusOr<tfrt::BefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
+  if (!mlir_module) {
+    return tensorflow::errors::FailedPrecondition(
+        "No mlir module to lower to BEF.");
+  }
+
+  // LHLO -> TFRT Dialect (gpu kernels)
+  mlir::PassManager pm(mlir_module.getContext(),
+                       mlir::PassManager::Nesting::Implicit);
+  pm.addPass(tensorflow::createLmhloGpuAsyncConversionPass());
+  pm.addPass(mlir::createGpuAsyncRegionPass());
+  pm.addPass(tensorflow::createAsyncGpuTfrtConversionPass());
+  if (pm.run(mlir_module).failed()) {
+    return InternalError(
+        "Failed to lower LHLO to TFRT Dialect with gpu kernels.");
+  }
+
+  // Perform DCE with empty pattern set.
+  if (failed(mlir::applyPatternsAndFoldGreedily(
+          mlir_module, mlir::RewritePatternSet(mlir_module.getContext())))) {
+    return InternalError("Failed to remove dead ops.");
+  }
+
+  // TFRT Dialect -> BEF
+  std::string bef;
+  llvm::raw_string_ostream bef_ostream(bef);
+  if (tfrt::MLIRToBEFTranslate(mlir_module, bef_ostream).failed()) {
+    return InternalError("Failed to lower TFRT Dialect to BEF.");
+  }
+
+  return tfrt::BefBuffer(bef.data(), bef.data() + bef.size());
+}
+#endif  // BEF_EXECUTABLE
+
 using OutputInfoMap =
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>;
 static Status GetMlirAllocationInfo(mlir::FuncOp func,
@@ -688,7 +730,7 @@ struct CompileModuleResults {
   std::unique_ptr<llvm::Module> llvm_module;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::vector<BufferAllocation> allocations;
-  std::unique_ptr<ThunkSchedule> thunk_schedule;
+  absl::variant<OwnedThunkSchedule, tfrt::BefBuffer> thunks_or_bef;
   std::vector<GpuExecutable::ConstantInfo> constants;
   OutputInfoMap output_info;
   Shape output_shape;
@@ -774,11 +816,15 @@ static Status CompileModuleToLlvmIrImpl(
 
     TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
 
-    results->thunk_schedule =
-        absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
-
     results->constants = std::move(ir_emitter_context.constants());
   }
+
+#if BEF_EXECUTABLE
+  TF_ASSIGN_OR_RETURN(results->thunks_or_bef, LowerToBef(*mlir_module));
+#else   // BEF_EXECUTABLE
+  results->thunks_or_bef =
+      absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
+#endif  // BEF_EXECUTABLE
 
   return Status::OK();
 }
@@ -1051,9 +1097,13 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       CompileToTargetBinary(module->config(),
                             std::move(compile_module_results.llvm_module),
                             stream_exec, options, module.get()));
-  if (DumpingEnabledForHloModule(*module)) {
+  if (DumpingEnabledForHloModule(*module) &&
+      absl::holds_alternative<OwnedThunkSchedule>(
+          compile_module_results.thunks_or_bef)) {
+    const ThunkSchedule& thunk_schedule =
+        *absl::get<OwnedThunkSchedule>(compile_module_results.thunks_or_bef);
     DumpToFileInDirOrStdout(*module, "", "thunk_schedule",
-                            compile_module_results.thunk_schedule->ToString());
+                            thunk_schedule.ToString());
   }
 
   auto buffer_assignment_proto = std::make_unique<BufferAssignmentProto>(
@@ -1068,7 +1118,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   GpuVersion gpu_version = GetGpuVersion(stream_exec);
   auto* gpu_executable = new GpuExecutable(
       {std::move(backend_result.first), std::move(backend_result.second),
-       gpu_version, std::move(compile_module_results.thunk_schedule),
+       gpu_version, std::move(compile_module_results.thunks_or_bef),
        std::move(compile_module_results.constants),
        std::move(compile_module_results.output_info),
        compile_module_results.module_name, compile_module_results.output_shape,

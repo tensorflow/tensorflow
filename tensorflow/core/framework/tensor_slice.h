@@ -80,14 +80,14 @@ class TensorSlice {
     return start(d) + length(d);
   }
 
-  void set_start(int d, int64 x) {
+  void set_start(int d, int64_t x) {
     DCHECK_GE(d, 0);
     DCHECK_LT(d, dims());
     DCHECK_GE(x, 0);
     starts_[d] = x;
   }
 
-  void set_length(int d, int64 x) {
+  void set_length(int d, int64_t x) {
     DCHECK_GE(d, 0);
     DCHECK_LT(d, dims());
     lengths_[d] = x;
@@ -187,7 +187,7 @@ class TensorSlice {
  private:
   // a length value of kFullExtent (-1) means we have a full slice at this
   // dimension. It's defined in tensor_slice.cc.
-  static const int64 kFullExtent;
+  static const int64_t kFullExtent;
 
   // TODO(yangke): switch to Eigen once it supports variable size arrays.
   // A value of

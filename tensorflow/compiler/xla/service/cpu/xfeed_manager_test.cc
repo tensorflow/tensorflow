@@ -32,7 +32,7 @@ class InfeedManagerTest : public ::testing::Test {};
 
 class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
  public:
-  explicit TestInfeedBuffer(int32 length, bool expect_shape_match = true)
+  explicit TestInfeedBuffer(int32_t length, bool expect_shape_match = true)
       : shape_(ShapeUtil::MakeShape(U8, {length})),
         done_called_(false),
         length_(length),
@@ -62,7 +62,7 @@ class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
 
 // Performs the acquire/release sequence on the infeed, as the generated CPU
 // code would in the process of executing the infeed operation.
-void ProcessNextBuffer(int32 length) {
+void ProcessNextBuffer(int32_t length) {
   auto shape = ShapeUtil::MakeShape(U8, {length});
   string bytes = shape.SerializeAsString();
   void* buffer = __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
@@ -73,7 +73,7 @@ void ProcessNextBuffer(int32 length) {
 
 // Performs the acquire/release sequence on the outfeed, as the generated CPU
 // code would in the process of executing the outfeed operation.
-void ProcessNextOutfeedBuffer(int32 length, const Shape& shape) {
+void ProcessNextOutfeedBuffer(int32_t length, const Shape& shape) {
   string bytes = shape.SerializeAsString();
   void* buffer = __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
       /*run_options=*/nullptr, length, bytes.data(), bytes.size());
@@ -110,7 +110,7 @@ TEST_F(InfeedManagerTest, MultiThreaded) {
 
   cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
 
-  const int32 length = 64;
+  const int32_t length = 64;
 
   pool.Schedule([length, &xfeed]() {
     // Spin for 100 milliseconds

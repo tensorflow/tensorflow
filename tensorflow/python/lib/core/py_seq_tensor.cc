@@ -253,21 +253,21 @@ struct Converter {
     Safe_PyObjectPtr seq = make_safe(PySequence_Fast(obj, ""));
     if (TF_PREDICT_FALSE(seq == nullptr)) return ErrorRectangular;
 
-    const int64 s = state->inferred_shape[depth];
+    const int64_t s = state->inferred_shape[depth];
     if (TF_PREDICT_FALSE(s != PySequence_Fast_GET_SIZE(seq.get()))) {
       return ErrorRectangular;
     }
 
     if (state->inferred_shape.size() - depth > 1) {
       /* Iterate over outer dim, and recursively convert each element. */
-      for (int64 i = 0; i < s; ++i) {
+      for (int64_t i = 0; i < s; ++i) {
         const char* error = Helper(PySequence_Fast_GET_ITEM(seq.get(), i),
                                    depth + 1, state, buf);
         if (TF_PREDICT_FALSE(error != nullptr)) return error;
       }
     } else {
       PyObject** l = PySequence_Fast_ITEMS(seq.get());
-      for (int64 i = 0; i < s; ++i) {
+      for (int64_t i = 0; i < s; ++i) {
         auto scalar = ZeroDimArrayToScalar(l[i], state);
         const char* error = ConverterTraits<T>::ConvertScalar(scalar, *buf);
         Py_DECREF(scalar);
@@ -316,7 +316,8 @@ struct Converter {
 
 template <>
 struct ConverterTraits<int64> {
-  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, int64 value) {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx,
+                                               int64_t value) {
     return tensorflow::unwrap(ctx)->CreateInt64Scalar(value);
   }
 
@@ -393,7 +394,8 @@ typedef Converter<uint64> UInt64Converter;
 
 template <>
 struct ConverterTraits<int32> {
-  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, int32 value) {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx,
+                                               int32_t value) {
     return tensorflow::unwrap(ctx)->CreateInt32Scalar(value);
   }
 
@@ -403,7 +405,7 @@ struct ConverterTraits<int32> {
   }
 
   static const char* ConvertScalar(PyObject* v, int32* out) {
-    int64 i;
+    int64_t i;
 #if PY_MAJOR_VERSION < 3
     if (TF_PREDICT_TRUE(PyInt_Check(v))) {
       i = PyInt_AS_LONG(v);

@@ -111,9 +111,13 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
   std::vector<Tensor> out_tensors;
   int cur_slice = 0;
 
-  while (!end_of_sequence) {
+  while (true) {
     TF_EXPECT_OK(iterator_->GetNext(iterator_ctx_.get(), &out_tensors,
                                     &end_of_sequence));
+    if (end_of_sequence) {
+      EXPECT_TRUE(out_tensors.empty());
+      break;
+    }
     for (int i = 0; i < out_tensors.size(); ++i) {
       EXPECT_LT(i + num_tensors_per_slice * cur_slice,
                 test_case.expected_outputs.size());
@@ -132,7 +136,6 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
             test_case.expected_outputs[i + num_tensors_per_slice * cur_slice]));
       }
     }
-    out_tensors.clear();
     cur_slice++;
   }
 }
@@ -273,7 +276,7 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, SaveAndRestore) {
 
   auto params =
       static_cast<TensorSliceDatasetParams&>(test_case.dataset_params);
-  int64 num_slices = params.num_slices();
+  int64_t num_slices = params.num_slices();
   size_t num_tensors_per_slice = params.num_tensors_per_slice();
   std::vector<Tensor> out_tensors;
   const std::vector<int>& breakpoints = test_case.breakpoints;

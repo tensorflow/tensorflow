@@ -301,7 +301,7 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
       LOG(WARNING) << "Replica ID must be 0 in target: " << target;
       return "";
     }
-    int32 task = parsed.has_task ? parsed.task : -1;
+    int32_t task = parsed.has_task ? parsed.task : -1;
     auto iter = host_ports_.find(task);
     if (iter == host_ports_.end()) {
       LOG(WARNING) << "Task " << task << " was not defined in sparse job "

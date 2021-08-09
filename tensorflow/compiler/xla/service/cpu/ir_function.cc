@@ -27,7 +27,7 @@ namespace xla {
 namespace cpu {
 
 static std::vector<llvm::Type*> GetComputeFunctionParams(
-    llvm::Module* llvm_module, const int64 num_dynamic_loop_bounds) {
+    llvm::Module* llvm_module, const int64_t num_dynamic_loop_bounds) {
   llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(llvm_module->getContext());
   llvm::Type* i8_ptr_ptr_type = i8_ptr_type->getPointerTo();
   llvm::Type* i64_ptr_type =
@@ -178,7 +178,7 @@ void IrFunction::Initialize(const string& function_name,
       /*Parent=*/function_));
 }
 
-llvm::Value* IrFunction::GetDynamicLoopBound(const int64 offset) {
+llvm::Value* IrFunction::GetDynamicLoopBound(const int64_t offset) {
   CHECK_GT(num_dynamic_loop_bounds_, 0);
   CHECK_LT(offset, num_dynamic_loop_bounds_ * 2);
   string name = absl::StrCat("dynamic_loop_bound_", offset);
@@ -275,32 +275,32 @@ Status EmitCallToParallelForkJoin(
 
   // Create ShapePartitionIterator to generate all partitions of 'shape'.
   ShapePartitionIterator partition_iterator(shape, dimension_partition_counts);
-  const int64 num_partitions = partition_iterator.GetTotalPartitionCount();
+  const int64_t num_partitions = partition_iterator.GetTotalPartitionCount();
   // Add argument specifying the number of parallel partitions.
   fork_join_arguments.push_back(b->getInt32(num_partitions));
 
   // The number of partitioned most-major dimensions in 'shape'.
-  const int32 num_partitioned_dims = dimension_partition_counts.size();
+  const int32_t num_partitioned_dims = dimension_partition_counts.size();
   // A dimension partition consists of two elements: [start_index, limit_index).
-  const int32 dim_partition_size = 2;
+  const int32_t dim_partition_size = 2;
   // Calculate array partition stride.
-  const int32 array_partition_stride =
+  const int32_t array_partition_stride =
       num_partitioned_dims * dim_partition_size;
   // Calculate the total number of elements in the partition array.
-  const int32 partition_array_size =
+  const int32_t partition_array_size =
       dim_partition_size * num_partitioned_dims * num_partitions;
 
   // Store dimension partition values as llvm constants in 'partitions'.
   // See comments in runtime_fork_join.cc for array layout description.
   std::vector<llvm::Constant*> partitions(partition_array_size);
-  for (int32 i = 0; i < num_partitions; ++i) {
+  for (int32_t i = 0; i < num_partitions; ++i) {
     std::vector<std::pair<int64, int64>> dim_partitions =
         partition_iterator.GetPartition(i);
     CHECK_EQ(num_partitioned_dims, dim_partitions.size());
-    const int32 partition_index = i * array_partition_stride;
-    for (int32 j = 0; j < num_partitioned_dims; ++j) {
+    const int32_t partition_index = i * array_partition_stride;
+    for (int32_t j = 0; j < num_partitioned_dims; ++j) {
       const std::pair<int64, int64>& dim_partition = dim_partitions[j];
-      const int32 index = partition_index + j * dim_partition_size;
+      const int32_t index = partition_index + j * dim_partition_size;
       // Store partition [dim_start, dim_limit) intervals for each dimension.
       partitions[index] = b->getInt64(dim_partition.first);
       partitions[index + 1] =

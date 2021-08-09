@@ -20,30 +20,36 @@ This package provides a way to check TFLite compatibility at model authoring
 time.
 
 Example:
-    @lite.authoring.compatible
+    @tf.lite.experimental.authoring.compatible
     @tf.function(input_signature=[
-        tf.TensorSpec(shape=[], dtype=tf.float32)
+        tf.TensorSpec(shape=[None], dtype=tf.float32)
     ])
     def f(x):
       return tf.cosh(x)
 
-    f(1.0)
+    result = f(tf.constant([0.0]))
 
-    > CompatibilityWarning: op 'tf.Cosh' requires "Select TF Ops" for model
-    conversion for TensorFlow Lite.
+    > COMPATIBILITY WARNING: op 'tf.Cosh' require(s) "Select TF Ops" for model
+    > conversion for TensorFlow Lite.
+    > Op: tf.Cosh
+    >   - tensorflow/python/framework/op_def_library.py:xxx
+    >   - tensorflow/python/ops/gen_math_ops.py:xxx
+    >   - simple_authoring.py:xxx
 """
 import functools
-import sys
 
-# pylint: disable=g-direct-tensorflow-import
+
+# pylint: disable=g-import-not-at-top
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
 from tensorflow.lite.python.metrics_wrapper import converter_error_data_pb2
-from tensorflow.python.platform import tf_logging as logging
 
 
 _CUSTOM_OPS_HDR = "Custom ops: "
 _TF_OPS_HDR = "TF Select ops: "
+_AUTHORING_ERROR_HDR = "COMPATIBILITY ERROR"
+_AUTHORING_WARNING_HDR = "COMPATIBILITY WARNING"
+_FUNC_GRAPH_SRC_PATH = "tensorflow/python/framework/func_graph.py"
 
 
 class CompatibilityError(Exception):
@@ -52,14 +58,13 @@ class CompatibilityError(Exception):
 
 
 class _Compatible:
-  """A decorator to check TFLite compatibility."""
+  """A decorator class to check TFLite compatibility created by `lite.experimental.authoring.compatible`."""
 
   def __init__(self,
                target,
-               raise_exception=False,
                converter_target_spec=None,
                converter_allow_custom_ops=None,
-               debug=False):
+               raise_exception=False):
     """Initialize the decorator object.
 
     Here is the description of the object variables.
@@ -70,12 +75,11 @@ class _Compatible:
 
     Args:
       target: decorated function.
-      raise_exception : to raise an exception on compatibility issues.
-          User need to use get_compatibility_log() to check details.
       converter_target_spec : target_spec of TFLite converter parameter.
       converter_allow_custom_ops : allow_custom_ops of TFLite converter
           parameter.
-      debug: to dump execution details of decorated function.
+      raise_exception : to raise an exception on compatibility issues.
+          User need to use get_compatibility_log() to check details.
     """
     functools.update_wrapper(self, target)
     self._func = target
@@ -85,7 +89,6 @@ class _Compatible:
     self._raise_exception = raise_exception
     self._converter_target_spec = converter_target_spec
     self._converter_allow_custom_ops = converter_allow_custom_ops
-    self._debug = debug
 
   def __get__(self, instance, cls):
     """A Python descriptor interface."""
@@ -110,18 +113,12 @@ class _Compatible:
     Returns:
       A execution result of the decorated function.
     """
-    if self._debug:
-      args_repr = [repr(a) for a in args]
-      kwargs_repr = [f"{k}={v!r}" for k, v in kwargs.items()]
-      signature = ", ".join(args_repr + kwargs_repr)
-      print(
-          f"DEBUG: Calling {self._get_func().__name__}({signature})",
-          file=sys.stderr)
 
     if not self._verified:
-      concrete_func = self._get_func().get_concrete_function(*args, **kwargs)
+      model = self._get_func()
+      concrete_func = model.get_concrete_function(*args, **kwargs)
       converter = lite.TFLiteConverterV2.from_concrete_functions(
-          [concrete_func])
+          [concrete_func], model)
       # Set provided converter parameters
       if self._converter_target_spec is not None:
         converter.target_spec = self._converter_target_spec
@@ -147,14 +144,16 @@ class _Compatible:
       for single_call in locations[i].call:
         if (locations[i].type ==
             converter_error_data_pb2.ConverterErrorData.CALLSITELOC):
+          # Stop showing CallSite after func_graph.py which isn't meaningful.
+          if _FUNC_GRAPH_SRC_PATH in single_call.source.filename:
+            break
           callstack.append(
               f"  - {single_call.source.filename}:{single_call.source.line}")
         else:
           callstack.append(str(single_call))
       callstack_dump = "\n".join(callstack)
       err_string = f"Op: {ops[i]}\n{callstack_dump}\n"
-      self._log_messages.append(err_string)
-      logging.warning(err_string)
+      self._log(err_string)
 
   def _decode_error_legacy(self, err):
     """Parses the given legacy ConverterError for OSS."""
@@ -163,20 +162,18 @@ class _Compatible:
       if line.startswith(_CUSTOM_OPS_HDR):
         custom_ops = line[len(_CUSTOM_OPS_HDR):]
         err_string = (
-            f"CompatibilityError: op '{custom_ops}' is(are) not natively "
+            f"{_AUTHORING_ERROR_HDR}: op '{custom_ops}' is(are) not natively "
             "supported by TensorFlow Lite. You need to provide a custom "
             "operator. https://www.tensorflow.org/lite/guide/ops_custom")
-        self._log_messages.append(err_string)
-        logging.warning(err_string)
+        self._log(err_string)
       # Check TensorFlow op usage error.
       elif line.startswith(_TF_OPS_HDR):
         tf_ops = line[len(_TF_OPS_HDR):]
         err_string = (
-            f"CompatibilityWarning: op '{tf_ops}' require(s) \"Select TF Ops\" "
-            "for model conversion for TensorFlow Lite. "
+            f"{_AUTHORING_WARNING_HDR}: op '{tf_ops}' require(s) \"Select TF "
+            "Ops\" for model conversion for TensorFlow Lite. "
             "https://www.tensorflow.org/lite/guide/ops_select")
-        self._log_messages.append(err_string)
-        logging.warning(err_string)
+        self._log(err_string)
 
   def _decode_converter_error(self, err):
     """Parses the given ConverterError which has detailed error information."""
@@ -197,21 +194,19 @@ class _Compatible:
     if custom_ops:
       custom_ops_str = ", ".join(sorted(custom_ops))
       err_string = (
-          f"CompatibilityError: op '{custom_ops_str}' is(are) not natively "
+          f"{_AUTHORING_ERROR_HDR}: op '{custom_ops_str}' is(are) not natively "
           "supported by TensorFlow Lite. You need to provide a custom "
           "operator. https://www.tensorflow.org/lite/guide/ops_custom")
-      self._log_messages.append(err_string)
-      logging.warning(err_string)
+      self._log(err_string)
       self._dump_error_details(custom_ops, custom_ops_location)
 
     if tf_ops:
       tf_ops_str = ", ".join(sorted(tf_ops))
       err_string = (
-          f"CompatibilityWarning: op '{tf_ops_str}' require(s) \"Select TF Ops"
-          "\" for model conversion for TensorFlow Lite. "
+          f"{_AUTHORING_WARNING_HDR}: op '{tf_ops_str}' require(s) \"Select TF"
+          " Ops\" for model conversion for TensorFlow Lite. "
           "https://www.tensorflow.org/lite/guide/ops_select")
-      self._log_messages.append(err_string)
-      logging.warning(err_string)
+      self._log(err_string)
       self._dump_error_details(tf_ops, tf_ops_location)
 
   def _decode_error(self, err):
@@ -223,6 +218,11 @@ class _Compatible:
 
     if self._raise_exception and self._log_messages:
       raise CompatibilityError(f"CompatibilityException at {repr(self._func)}")
+
+  def _log(self, message):
+    """Log and print authoring warning / error message."""
+    self._log_messages.append(message)
+    print(message)
 
   def get_compatibility_log(self):
     """Returns list of compatibility log messages.
@@ -239,12 +239,21 @@ class _Compatible:
     return self._log_messages
 
 
-def compatible(target=None, **kwargs):
-  """Wraps _Compatible to allow for deferred calling."""
+def compatible(target=None, converter_target_spec=None, **kwargs):
+  """Wraps `tf.function` into a callable function with TFLite compatibility checking.
+
+  Args:
+    target: A `tf.function` to decorate.
+    converter_target_spec : target_spec of TFLite converter parameter.
+    **kwargs: The keyword arguments of the decorator class _Compatible.
+
+  Returns:
+     A callable object of `tf.lite.experimental.authoring._Compatible`.
+  """
   if target is None:
     def wrapper(target):
-      return _Compatible(target, **kwargs)
+      return _Compatible(target, converter_target_spec, **kwargs)
 
     return wrapper
   else:
-    return _Compatible(target, **kwargs)
+    return _Compatible(target, converter_target_spec, **kwargs)

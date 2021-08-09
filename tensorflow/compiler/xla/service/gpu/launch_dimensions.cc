@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 
+#include <algorithm>
 #include <ostream>
 #include <string>
 
@@ -110,7 +111,7 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     CHECK(!dim_config.row_vectorized);
     // We unroll kernels to make use of vectorized loads/stores. This means we
     // need more registers to hold intermediate values. Reduce the number of
-    // blocks per thread to increase the number of registers available to ptxas.
+    // threads per block to increase the number of registers available to ptxas.
     // Make sure we still have a multiple of 32.
     threads_per_block = RoundUpToNearest(
         threads_per_block / dim_config.unroll_factor, int64{32});

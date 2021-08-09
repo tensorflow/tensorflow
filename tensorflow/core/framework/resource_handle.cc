@@ -117,7 +117,7 @@ string ProtoDebugString(const ResourceHandle& handle) {
   return handle.DebugString();
 }
 
-void EncodeResourceHandleList(const ResourceHandle* p, int64 n,
+void EncodeResourceHandleList(const ResourceHandle* p, int64_t n,
                               std::unique_ptr<port::StringListEncoder> e) {
   ResourceHandleProto proto;
   for (int i = 0; i < n; ++i) {
@@ -128,7 +128,7 @@ void EncodeResourceHandleList(const ResourceHandle* p, int64 n,
 }
 
 bool DecodeResourceHandleList(std::unique_ptr<port::StringListDecoder> d,
-                              ResourceHandle* ps, int64 n) {
+                              ResourceHandle* ps, int64_t n) {
   std::vector<uint32> sizes(n);
   if (!d->ReadSizes(&sizes)) return false;
 

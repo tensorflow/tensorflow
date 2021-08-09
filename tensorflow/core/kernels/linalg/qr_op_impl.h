@@ -139,10 +139,10 @@ class QrOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64 m = input.dim_size(ndims - 2);
-    const int64 n = input.dim_size(ndims - 1);
-    const int64 min_size = std::min(m, n);
-    const int64 batch_size =
+    const int64_t m = input.dim_size(ndims - 2);
+    const int64_t n = input.dim_size(ndims - 1);
+    const int64_t min_size = std::min(m, n);
+    const int64_t batch_size =
         input.template flat_inner_dims<Scalar, 3>().dimension(0);
 
     // Validate inputs.

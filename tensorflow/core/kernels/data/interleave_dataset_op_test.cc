@@ -24,7 +24,7 @@ class InterleaveDatasetParams : public DatasetParams {
   template <typename T>
   InterleaveDatasetParams(T input_dataset_params,
                           std::vector<Tensor> other_arguments,
-                          int64 cycle_length, int64 block_length,
+                          int64_t cycle_length, int64_t block_length,
                           FunctionDefHelper::AttrValueWrapper func,
                           std::vector<FunctionDef> func_lib,
                           DataTypeVector type_arguments,

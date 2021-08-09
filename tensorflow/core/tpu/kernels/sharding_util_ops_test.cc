@@ -791,7 +791,7 @@ Status CreateConcatTensorGraph(absl::Span<const TensorShape> input_shapes,
                                absl::Span<const int32> num_concats,
                                absl::Span<const int32> paddings, Graph* graph,
                                std::vector<std::string>* output_tensor_names) {
-  int32 val = 0;
+  int32_t val = 0;
   DataType data_type = DataTypeToEnum<int32>::value;
   std::vector<NodeBuilder::NodeOut> inputs;
   inputs.reserve(input_shapes.size());
@@ -842,7 +842,7 @@ Status CreateConcatResourceGraph(
             .Finalize(graph, &assign_var));
   }
 
-  int32 val = 0;
+  int32_t val = 0;
   std::vector<NodeBuilder::NodeOut> inputs;
   inputs.reserve(input_shapes.size());
   for (const TensorShape& input_shape : input_shapes) {
@@ -1218,7 +1218,7 @@ Status CreateRoundtripTensorGraph(
     const TensorShape& input_shape, absl::Span<const int32> num_partitions,
     absl::Span<const int32> paddings, Graph* graph,
     std::vector<std::string>* output_tensor_names) {
-  const int32 num_partitions_size =
+  const int32_t num_partitions_size =
       std::accumulate(num_partitions.begin(), num_partitions.end(), 1,
                       std::multiplies<int32>());
 
@@ -1267,7 +1267,7 @@ Status CreateRoundtripResourceGraph(
     const TensorShape& input_shape, absl::Span<const int32> num_partitions,
     absl::Span<const int32> paddings, Graph* graph,
     std::vector<std::string>* output_tensor_names) {
-  const int32 num_partitions_size =
+  const int32_t num_partitions_size =
       std::accumulate(num_partitions.begin(), num_partitions.end(), 1,
                       std::multiplies<int32>());
 

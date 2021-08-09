@@ -161,7 +161,7 @@ StatusOr<const Shape*> PyBuffer::xla_dynamic_shape() {
 }
 
 pybind11::tuple PyBuffer::python_shape() const {
-  return IntSpanToTuple(buffer()->on_device_shape().dimensions());
+  return SpanToTuple(buffer()->on_device_shape().dimensions());
 }
 
 pybind11::dtype PyBuffer::python_dtype() const {
@@ -287,7 +287,7 @@ StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
 
   py::dict result;
   TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
-  result["shape"] = IntSpanToTuple(dynamic_shape->dimensions());
+  result["shape"] = SpanToTuple(dynamic_shape->dimensions());
   TF_ASSIGN_OR_RETURN(py::str typestr,
                       TypeDescriptorForPrimitiveType(
                           buffer_->on_device_shape().element_type()));
@@ -551,7 +551,7 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       property_readonly([](py::object self) { return self; });
   type.attr(
       "shape") = property_readonly([](PyBuffer::object self) -> py::tuple {
-    return IntSpanToTuple(self.buf()->buffer()->on_device_shape().dimensions());
+    return SpanToTuple(self.buf()->buffer()->on_device_shape().dimensions());
   });
   type.attr("dtype") = property_readonly([](PyBuffer::object self) {
     PrimitiveType primitive =

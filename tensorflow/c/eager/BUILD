@@ -821,28 +821,6 @@ tf_cuda_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
-    name = "c_api_multi_client_test",
-    size = "small",
-    srcs = [
-        "c_api_multi_client_test.cc",
-    ],
-    deps = [
-        ":c_api",
-        ":c_api_experimental",
-        ":c_api_internal",
-        ":c_api_test_util",
-        ":tfe_tensorhandle_internal",
-        "//tensorflow/c:c_api_experimental",
-        "//tensorflow/c:c_test_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:env",
-    ],
-)
-
 cc_library(
     name = "graph_function",
     srcs = ["graph_function.cc"],
@@ -923,7 +901,7 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",

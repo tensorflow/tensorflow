@@ -82,14 +82,14 @@ class ScopedStepContainer {
   // has to be unique.
   // cleanup: callback to delete a container of this name.
   // prefix: optional string prefix to disambiguate step containers.
-  ScopedStepContainer(const int64 step_id,
+  ScopedStepContainer(const int64_t step_id,
                       std::function<void(const string&)> cleanup)
       : step_id_(step_id),
         container_(strings::StrCat("__per_step_", step_id)),
         cleanup_(cleanup),
         dirty_(false) {}
 
-  ScopedStepContainer(const int64 step_id,
+  ScopedStepContainer(const int64_t step_id,
                       std::function<void(const string&)> cleanup,
                       const std::string& prefix)
       : step_id_(step_id),

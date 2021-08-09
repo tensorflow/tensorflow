@@ -107,14 +107,14 @@ XlaOp Norm(std::vector<XlaOp> xs) {
 // TODO(phawkins): LAPACK's xLARFG implementation has code for handling
 // overflows in the norm/beta calculations. Perhaps do the same here.
 Status House(XlaOp x, XlaOp k, absl::Span<const int64> batch_dims,
-             const int64 m, XlaOp* v, XlaOp* tau, XlaOp* beta) {
+             const int64_t m, XlaOp* v, XlaOp* tau, XlaOp* beta) {
   XlaBuilder* const builder = x.builder();
   TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
   const PrimitiveType type = x_shape.element_type();
 
   std::vector<int64> batch_dim_ids(batch_dims.size());
   std::iota(batch_dim_ids.begin(), batch_dim_ids.end(), 0);
-  const int64 minor_dim = batch_dims.size();
+  const int64_t minor_dim = batch_dims.size();
 
   XlaOp zero = ScalarLike(x, 0.0);
 
@@ -207,10 +207,10 @@ StatusOr<QrDecomposition> QrExpander::QrBlock(
   }
   PrimitiveType type = a_shape.element_type();
 
-  const int64 m = ShapeUtil::GetDimension(a_shape, -2);
-  const int64 n = ShapeUtil::GetDimension(a_shape, -1);
+  const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
+  const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
 
-  const int64 num_batch_dims = num_dims - 2;
+  const int64_t num_batch_dims = num_dims - 2;
   std::vector<int64> batch_dims(num_batch_dims);
   for (int i = 0; i < num_batch_dims; ++i) {
     batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
@@ -230,7 +230,7 @@ StatusOr<QrDecomposition> QrExpander::QrBlock(
     TF_RETURN_IF_ERROR(House(Collapse(x, {num_dims - 2, num_dims - 1}), j,
                              batch_dims, m, &v, &tau, &beta));
 
-    const int64 minor_dim = batch_dims.size();
+    const int64_t minor_dim = batch_dims.size();
     auto iota_mn = Iota(
         builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {m, n})),
         minor_dim + 1);
@@ -317,12 +317,12 @@ StatusOr<QrDecomposition> QrExpander::QrBlock(
 //   return t
 StatusOr<XlaOp> QrExpander::CompactWYRepresentation(
     PrimitiveType type, absl::Span<const int64> batch_dims, XlaOp vs,
-    XlaOp taus, int64 m, int64 n, PrecisionConfig::Precision precision) {
+    XlaOp taus, int64_t m, int64_t n, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = vs.builder();
 
   std::vector<int64> batch_dim_indices(batch_dims.size());
   std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
-  int64 n_index = batch_dims.size() + 1;
+  int64_t n_index = batch_dims.size() + 1;
 
   auto body_fn = [&](XlaOp j, absl::Span<const XlaOp> values,
                      XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
@@ -371,7 +371,7 @@ StatusOr<XlaOp> QrExpander::CompactWYRepresentation(
 //     q[:, i:] += (q[:, i:] @ y) @ np.conj((y @ np.conj(t.T)).T)
 //   return (q, a)
 StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
-    XlaOp a, int64 block_size, PrecisionConfig::Precision precision) {
+    XlaOp a, int64_t block_size, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
   const int num_dims = a_shape.rank();
@@ -381,16 +381,16 @@ StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
   }
   PrimitiveType type = a_shape.element_type();
 
-  const int64 m = ShapeUtil::GetDimension(a_shape, -2);
-  const int64 n = ShapeUtil::GetDimension(a_shape, -1);
-  const int64 p = std::min(m, n);
+  const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
+  const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
+  const int64_t p = std::min(m, n);
 
   if (block_size < 1) {
     return InvalidArgument("block_size argument to QR must be >= 1; got %d",
                            block_size);
   }
 
-  const int64 num_batch_dims = num_dims - 2;
+  const int64_t num_batch_dims = num_dims - 2;
   std::vector<int64> batch_dims(num_batch_dims);
   for (int i = 0; i < num_batch_dims; ++i) {
     batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
@@ -399,8 +399,8 @@ StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
   std::vector<int64> taus_dims = batch_dims;
   taus_dims.push_back(p);
   auto taus = Zeros(builder, ShapeUtil::MakeShape(type, taus_dims));
-  for (int64 i = 0; i < p; i += block_size) {
-    int64 k = std::min(block_size, p - i);
+  for (int64_t i = 0; i < p; i += block_size) {
+    int64_t k = std::min(block_size, p - i);
 
     auto a_block = SliceInMinorDims(a, {i, i}, {m, i + k});
     TF_ASSIGN_OR_RETURN(auto qr_block, QrBlock(a_block, precision));
@@ -434,7 +434,7 @@ StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
 }
 
 StatusOr<XlaOp> QrExpander::ProductOfElementaryHouseholderReflectors(
-    XlaOp a, XlaOp taus, int64 block_size,
+    XlaOp a, XlaOp taus, int64_t block_size,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
@@ -446,9 +446,9 @@ StatusOr<XlaOp> QrExpander::ProductOfElementaryHouseholderReflectors(
   }
   PrimitiveType type = a_shape.element_type();
 
-  const int64 m = ShapeUtil::GetDimension(a_shape, -2);
-  int64 n = ShapeUtil::GetDimension(a_shape, -1);
-  const int64 p = ShapeUtil::GetDimension(taus_shape, -1);
+  const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
+  int64_t n = ShapeUtil::GetDimension(a_shape, -1);
+  const int64_t p = ShapeUtil::GetDimension(taus_shape, -1);
   if (m < n) {
     return InvalidArgument(
         "Argument to product of elementary Householder "
@@ -461,15 +461,15 @@ StatusOr<XlaOp> QrExpander::ProductOfElementaryHouseholderReflectors(
                            block_size);
   }
 
-  const int64 num_batch_dims = num_dims - 2;
+  const int64_t num_batch_dims = num_dims - 2;
   std::vector<int64> batch_dims(num_batch_dims);
   for (int i = 0; i < num_batch_dims; ++i) {
     batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
   }
 
   auto q = Broadcast(IdentityMatrix(builder, type, m, m), batch_dims);
-  for (int64 i = 0; i < p; i += block_size) {
-    int64 k = std::min(block_size, p - i);
+  for (int64_t i = 0; i < p; i += block_size) {
+    int64_t k = std::min(block_size, p - i);
 
     auto a_block = SliceInMinorDims(a, {i, i}, {m, i + k});
     auto y = Add(IdentityMatrix(builder, type, m - i, k),

@@ -40,7 +40,7 @@ class BatchNormExpanderTest : public HloTestBase {
  protected:
   // BatchNorm should have a dynamic sized divider for mean operations.
   int64 CountGetDimensionSize(const HloModule& module) {
-    int64 count = 0;
+    int64_t count = 0;
     for (HloComputation* comp : module.computations()) {
       for (HloInstruction* inst : comp->instructions()) {
         if (inst->opcode() == HloOpcode::kGetDimensionSize) {

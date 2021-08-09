@@ -46,6 +46,7 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.types import core
 
@@ -261,6 +262,7 @@ class VariableMetaclass(type):
         aggregation=aggregation,
         shape=shape)
 
+  @traceback_utils.filter_traceback
   def __call__(cls, *args, **kwargs):
     if cls is VariableV1:
       return cls._variable_v1_call(*args, **kwargs)

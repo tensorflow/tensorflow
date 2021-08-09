@@ -741,6 +741,7 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  #TODO(b/195563283)
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
     ],
     deps = [
@@ -945,7 +946,6 @@ distribute_py_test(
 
 distribute_py_test(
     name = "dataset_creator_model_fit_ps_only_test",
-    size = "small",
     srcs = ["dataset_creator_model_fit_ps_only_test.py"],
     disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,

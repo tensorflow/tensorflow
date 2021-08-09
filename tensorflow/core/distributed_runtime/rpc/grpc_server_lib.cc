@@ -475,6 +475,14 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
   return Status::OK();
 }
 
+// TODO(haoyuzhang): Remove this method once we have a mechanism to directly set
+// field inside the RPC coordination service handler.
+Status GrpcServer::SetCoordinationServiceAgentInstance(
+    CoordinationServiceAgent* agent) {
+  // No op, coordination service is not implemented in open source.
+  return Status::OK();
+}
+
 Status GrpcServer::Stop() {
   mutex_lock l(mu_);
   switch (state_) {

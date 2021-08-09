@@ -44,7 +44,7 @@ class RaggedTensorToVariantKernelTest : public ::tensorflow::OpsTestBase {
       const std::vector<VALUE_TYPE>& ragged_values, const bool batched) {
     const auto values_dtype = DataTypeToEnum<VALUE_TYPE>::v();
     const auto splits_dtype = DataTypeToEnum<SPLIT_TYPE>::v();
-    int64 num_splits = ragged_splits.size();
+    int64_t num_splits = ragged_splits.size();
     TF_ASSERT_OK(
         NodeDefBuilder("tested_op", "RaggedTensorToVariant")
             .Input(FakeInput(num_splits, splits_dtype))  // ragged_splits
@@ -56,7 +56,7 @@ class RaggedTensorToVariantKernelTest : public ::tensorflow::OpsTestBase {
             .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
     for (const auto& splits : ragged_splits) {
-      int64 splits_size = splits.size();
+      int64_t splits_size = splits.size();
       AddInputFromArray<SPLIT_TYPE>(TensorShape({splits_size}), splits);
     }
     AddInputFromArray<VALUE_TYPE>(ragged_values_shape, ragged_values);

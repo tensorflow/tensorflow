@@ -1122,6 +1122,41 @@ class OrderingTest(test.TestCase, parameterized.TestCase):
       self.assertEmpty(first.control_inputs)
 
 
+class InputPipelineTest(test.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    _setup_context()
+
+  def testMap(self):
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+
+    def create_dataset_and_fetch_one(t):
+      dataset = dataset_ops.Dataset.from_tensor_slices([t])
+
+      def reduce_fn(t):
+        return CollectiveOpsV2.all_reduce(
+            t,
+            group_size=group_size,
+            group_key=group_key,
+            instance_key=instance_key)
+
+      dataset = dataset.map(reduce_fn)
+      return next(iter(dataset))
+
+    @def_function.function
+    def f():
+      with ops.device('CPU:0'):
+        value0 = create_dataset_and_fetch_one([1.])
+      with ops.device('CPU:1'):
+        value1 = create_dataset_and_fetch_one([2.])
+      return value0, value1
+
+    self.assertAllEqual(self.evaluate(f()), [[3.], [3.]])
+
+
 def _setup_context():
   context._reset_context()
   test_util.set_logical_devices_to_at_least('CPU', 4)

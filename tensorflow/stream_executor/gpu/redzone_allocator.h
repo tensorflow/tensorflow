@@ -39,8 +39,8 @@ namespace stream_executor {
 // memory for cudnn convolutions.
 class RedzoneAllocator : public ScratchAllocator {
  public:
-  static constexpr int64 kDefaultMemoryLimit = 1LL << 32;  // 4GB
-  static constexpr int64 kDefaultRedzoneSize =
+  static constexpr int64_t kDefaultMemoryLimit = 1LL << 32;  // 4GB
+  static constexpr int64_t kDefaultRedzoneSize =
       1LL << 23;  // 8MiB per side, 16MiB total.
   static constexpr uint8 kDefaultRedzonePattern = -1;
   RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,

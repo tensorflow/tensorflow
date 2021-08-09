@@ -33,6 +33,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/delegates/serialization.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/sl/public/NeuralNetworksSupportLibraryImpl.h"
 
@@ -69,6 +70,20 @@ limitations under the License.
 
 namespace tflite {
 namespace {
+
+static const char kNnapiId[] = "nnapi_";
+
+// Returns a string ID unique to what accelerator is run by NNAPI, based on
+// user params. Assumes that the default accelerator is same across runs.
+// Used for caching nodes to be delegated for a model.
+std::string NnApiBackendId(
+    const StatefulNnApiDelegate::Options& delegate_options) {
+  std::string delegate_id = kNnapiId;
+  if (delegate_options.accelerator_name) {
+    delegate_id += delegate_options.accelerator_name;
+  }
+  return delegate_id;
+}
 
 // Returns the enum name corresponding to the given error code if the given
 // value corresponds to an of the error codes in the enumeration above or
@@ -3889,40 +3904,22 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
                                      params->output_tensors, nnapi_errno));
   }
 
-  // Calculating model compilation cache here since the value depends on
-  // some of the TfLiteDelegateParams
-  nn_compilation_cache_token_.clear();
-  const char* cache_dir = delegate_options.cache_dir;
-  const char* model_token = delegate_options.model_token;
-  if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 && cache_dir &&
-      model_token) {
-    // Compilation caching could be enabled, try construct the uint8
-    // token.
-    // TODO(b/133342794): use a generic token generator class.
+  auto* cache = StatefulNnApiDelegate::GetCache(params->delegate);
+  if (cache) {
+    // Compilation caching is enabled, construct the uint8 token.
     uint64_t token_parts[4];
-    // Create bits from model_token.
-    // Using farmhash fingerprint instead of std::hash, as the latter is not
-    // guaranteed to be stable across program invocations.
-    token_parts[0] =
-        ::util::Fingerprint64(model_token, std::strlen(model_token));
-    // Create bits from params->nodes_to_replace.
-    token_parts[1] = GetHash(params->nodes_to_replace);
-    // Create bits from params->input_tensors. These include the input tensor
-    // sizes, as the cached compilations are size-dependent.
-    token_parts[2] = GetHash(params->input_tensors);
-    for (int i : TfLiteIntArrayView(params->input_tensors)) {
-      if (i != kTfLiteOptionalTensor) {
-        TfLiteTensor* t = &context->tensors[i];
-        TF_LITE_ENSURE(context, t->dims);
-        token_parts[2] = GetHash(t->dims, token_parts[2]);
-      }
-    }
-    // bits from params->output_tensors.
-    token_parts[3] = GetHash(params->output_tensors);
-    // NNAPI requires the token to be 256bit long.
-    // TODO(b/172238515): get token size from header instead of
-    // hardcoding.
-    std::vector<uint8_t> nnapi_cache_token(32, 0);
+    // model_token is incorporated into parition_key by TFLite Serialization.
+    // NNAPI uses 256-bit key, but we can just tile the unique 64-bit
+    // fingerprint from TFLite.
+    auto partition_entry = cache->GetEntryForKernel(kNnapiId, context, params);
+    token_parts[0] = partition_entry.GetFingerprint();
+    token_parts[1] = partition_entry.GetFingerprint();
+    token_parts[2] = partition_entry.GetFingerprint();
+    token_parts[3] = partition_entry.GetFingerprint();
+    // TODO(b/172238515): get token size from header instead of hardcoding.
+    // Allocate one extra 'null' byte to avoid bugs with backends that might
+    // be doing strlen() on the token ptr.
+    std::vector<uint8_t> nnapi_cache_token(33, 0);
     // Copy the token bits.
     uint8_t* p = reinterpret_cast<uint8_t*>(token_parts);
     for (int i = 0; i < 4 * sizeof(uint64_t); i++) {
@@ -5479,6 +5476,12 @@ StatefulNnApiDelegate::GetTensorMemoryMap(TfLiteDelegate* delegate) {
   return delegate_data->tensor_memory_map;
 }
 
+delegates::Serialization* StatefulNnApiDelegate::GetCache(
+    TfLiteDelegate* delegate) {
+  auto delegate_data = reinterpret_cast<Data*>(delegate->data_);
+  return delegate_data->cache.get();
+}
+
 TfLiteBufferHandle StatefulNnApiDelegate::RegisterNnapiMemory(
     ANeuralNetworksMemory* memory, CopyToHostTensorFnPtr callback,
     void* callback_context) {
@@ -5823,6 +5826,31 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
       .version = 1,
   };
 
+  // Initialize caching, if applicable, from Options.
+  const char* cache_dir = delegate_options.cache_dir;
+  const char* model_token = delegate_options.model_token;
+  delegates::SerializationParams params = {model_token, cache_dir};
+  if (nnapi->android_sdk_version >= kMinSdkVersionForNNAPI12 && cache_dir &&
+      model_token) {
+    delegate_data->cache.reset(new delegates::Serialization(params));
+  }
+
+  delegates::Serialization* cache_ptr = delegate_data->cache.get();
+
+  if (cache_ptr) {
+    // Reuse cached delegation decision if possible.
+    std::string accelerator_id = NnApiBackendId(delegate_options);
+    TfLiteIntArray* cached_nodes_to_delegate = nullptr;
+    if (delegates::GetDelegatedNodes(context, cache_ptr, accelerator_id,
+                                     &cached_nodes_to_delegate) == kTfLiteOk) {
+      if (cached_nodes_to_delegate->size == 0) return kTfLiteOk;
+      auto status = context->ReplaceNodeSubsetsWithDelegateKernels(
+          context, nnapi_delegate_kernel, cached_nodes_to_delegate, delegate);
+      TfLiteIntArrayFree(cached_nodes_to_delegate);
+      return status;
+    }
+  }
+
   std::vector<int> nodes_to_delegate;
 
   int num_partitions;
@@ -5848,12 +5876,24 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
                                    params_array, params_array + num_partitions),
                                &nodes_to_delegate));
 
-  if (nodes_to_delegate.empty()) {
+  auto nodes_to_delegate_int_array = BuildTfLiteIntArray(nodes_to_delegate);
+
+  if (cache_ptr) {
+    // Cache list of nodes to be delegated for later.
+    std::string accelerator_id = NnApiBackendId(delegate_options);
+    if (delegates::SaveDelegatedNodes(context, cache_ptr, accelerator_id,
+                                      nodes_to_delegate_int_array.get()) !=
+        kTfLiteOk) {
+      // Not a critical error.
+      TF_LITE_KERNEL_LOG(context, "Could not save delegated nodes");
+    }
+  }
+
+  if (nodes_to_delegate_int_array->size == 0) {
     return kTfLiteOk;
   } else {
     // Request TFLite to partition the graph and make kernels
     // for each independent node sub set a new nnapi_delegate_kernel.
-    auto nodes_to_delegate_int_array = BuildTfLiteIntArray(nodes_to_delegate);
     return context->ReplaceNodeSubsetsWithDelegateKernels(
         context, nnapi_delegate_kernel, nodes_to_delegate_int_array.get(),
         delegate);

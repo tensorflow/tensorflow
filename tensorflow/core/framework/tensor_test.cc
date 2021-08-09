@@ -206,8 +206,8 @@ void TestCopies(const Tensor& t) {
 TEST(Tensor_Half, Simple) {
   Tensor t(DT_HALF, TensorShape({5, 7}));
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));
-  for (int64 a = 0; a < t.shape().dim_size(0); a++) {
-    for (int64 b = 0; b < t.shape().dim_size(1); b++) {
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
       t.matrix<Eigen::half>()(a, b) = static_cast<Eigen::half>(a * b);
     }
   }
@@ -217,8 +217,8 @@ TEST(Tensor_Half, Simple) {
 TEST(Tensor_Bfloat16, Simple) {
   Tensor t(DT_BFLOAT16, TensorShape({5, 7}));
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));
-  for (int64 a = 0; a < t.shape().dim_size(0); a++) {
-    for (int64 b = 0; b < t.shape().dim_size(1); b++) {
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
       t.matrix<bfloat16>()(a, b) = static_cast<bfloat16>(a * b);
     }
   }
@@ -228,8 +228,8 @@ TEST(Tensor_Bfloat16, Simple) {
 TEST(Tensor_Float, Simple) {
   Tensor t(DT_FLOAT, TensorShape({10, 20}));
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({10, 20})));
-  for (int64 a = 0; a < t.shape().dim_size(0); a++) {
-    for (int64 b = 0; b < t.shape().dim_size(1); b++) {
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
       t.matrix<float>()(a, b) = static_cast<float>(a * b);
     }
   }
@@ -327,8 +327,8 @@ TEST(Tensor_Variant, Marshal) {
 TEST(Tensor_UInt16, Simple) {
   Tensor t(DT_UINT16, TensorShape({2, 2}));
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 2})));
-  for (int64 a = 0; a < t.shape().dim_size(0); a++) {
-    for (int64 b = 0; b < t.shape().dim_size(1); b++) {
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
       t.matrix<uint16>()(a, b) = uint16(a * b);
     }
   }
@@ -338,8 +338,8 @@ TEST(Tensor_UInt16, Simple) {
 TEST(Tensor_QInt8, Simple) {
   Tensor t(DT_QINT8, TensorShape({2, 2}));
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 2})));
-  for (int64 a = 0; a < t.shape().dim_size(0); a++) {
-    for (int64 b = 0; b < t.shape().dim_size(1); b++) {
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
       t.matrix<qint8>()(a, b) = qint8(a * b);
     }
   }
@@ -349,8 +349,8 @@ TEST(Tensor_QInt8, Simple) {
 TEST(Tensor_QUInt8, Simple) {
   Tensor t(DT_QUINT8, TensorShape({2, 2}));
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 2})));
-  for (int64 a = 0; a < t.shape().dim_size(0); a++) {
-    for (int64 b = 0; b < t.shape().dim_size(1); b++) {
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
       t.matrix<Eigen::QUInt8>()(a, b) = Eigen::QUInt8(a * b);
     }
   }
@@ -360,8 +360,8 @@ TEST(Tensor_QUInt8, Simple) {
 TEST(Tensor_QInt32, Simple) {
   Tensor t(DT_QINT32, TensorShape({2, 2}));
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 2})));
-  for (int64 a = 0; a < t.shape().dim_size(0); a++) {
-    for (int64 b = 0; b < t.shape().dim_size(1); b++) {
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
       t.matrix<qint32>()(a, b) = qint32(static_cast<int32>(a * b));
     }
   }
@@ -757,7 +757,7 @@ TEST(ReinterpretLastDimension, Reinterpret_NCHW_VECT_C_as_NCHW) {
     auto nchw_vect_c = t_nchw_vect_c.tensor<qint8, 5>();
     Tensor t_expected_nchw(DT_INT32, TensorShape({2, 3, 5, 7}));
     auto expected_nchw = t_expected_nchw.tensor<int32, 4>();
-    int8 val = 0;
+    int8_t val = 0;
     for (int n = 0; n < t_nchw_vect_c.shape().dim_size(0); ++n) {
       for (int c = 0; c < t_nchw_vect_c.shape().dim_size(1); ++c) {
         for (int h = 0; h < t_nchw_vect_c.shape().dim_size(2); ++h, ++val) {
@@ -1294,7 +1294,7 @@ TEST(Tensor, Slice_Basic) {
     EXPECT_FALSE(y.IsAligned());
 #endif
     y.unaligned_flat<float>().setConstant(1.0);
-    for (int64 i = 0; i < y.NumElements(); ++i) {
+    for (int64_t i = 0; i < y.NumElements(); ++i) {
       EXPECT_EQ(1.0, y.unaligned_flat<float>()(i));
     }
   }
@@ -1333,7 +1333,7 @@ TEST(Tensor, SubSlice_Basic) {
     EXPECT_FALSE(y.IsAligned());
 #endif
     y.unaligned_flat<float>().setConstant(1.0);
-    for (int64 i = 0; i < y.NumElements(); ++i) {
+    for (int64_t i = 0; i < y.NumElements(); ++i) {
       EXPECT_EQ(1.0, y.unaligned_flat<float>()(i));
     }
   }

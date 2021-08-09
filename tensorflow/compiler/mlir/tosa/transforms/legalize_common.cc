@@ -29,8 +29,10 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -446,13 +448,10 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
                                         Operation* op, Value output_val,
                                         Value input_lhs_val,
                                         Value input_rhs_val) {
-  RankedTensorType input_lhs_type =
-      input_lhs_val.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType input_rhs_type =
-      input_rhs_val.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      output_val.getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
+  ShapedType input_lhs_type = input_lhs_val.getType().dyn_cast<ShapedType>();
+  ShapedType input_rhs_type = input_rhs_val.getType().dyn_cast<ShapedType>();
+  ShapedType output_type = output_val.getType().dyn_cast<ShapedType>();
+  // Not a shaped tensor output
   if (!input_lhs_type || !input_rhs_type || !output_type) return llvm::None;
 
   bool input_lhs_is_qtype =
@@ -472,8 +471,7 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
 
   Value output;
   if (output_is_qtype) {
-    RankedTensorType rescale_type =
-        RankedTensorType::get(output_type.getShape(), rewriter.getI32Type());
+    ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
     auto input_lhs_qtype = input_lhs_type.getElementType()
                                .cast<mlir::quant::UniformQuantizedType>();
     auto input_rhs_qtype = input_rhs_type.getElementType()
@@ -516,14 +514,14 @@ llvm::Optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
                                                  Value x, Value y) {
   // Squared-difference is (x-y)*(x-y).
   // This lowering calculates the difference and multiplies.
-  RankedTensorType result_type = result.getType().dyn_cast<RankedTensorType>();
+  ShapedType result_type = result.getType().dyn_cast<ShapedType>();
   if (!result_type) {
     op->emitOpError("SquaredDifference: result not ranked tensor type");
     return llvm::None;
   }
 
-  RankedTensorType x_type = x.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType y_type = y.getType().dyn_cast<RankedTensorType>();
+  ShapedType x_type = x.getType().dyn_cast<ShapedType>();
+  ShapedType y_type = y.getType().dyn_cast<ShapedType>();
   if (!x_type || !y_type) {
     op->emitOpError("SquaredDifference: inputs not ranked tensor type");
     return llvm::None;
@@ -540,15 +538,15 @@ llvm::Optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
 llvm::Optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
                                      Value result, Value input) {
   // Implements banker's rounding by calculating floor(input + 0.5).
-  RankedTensorType result_type = result.getType().dyn_cast<RankedTensorType>();
+  ShapedType result_type = result.getType().dyn_cast<ShapedType>();
   if (!result_type) {
-    op->emitOpError("Round: result not ranked tensor type");
+    op->emitOpError("Round: result not shaped tensor type");
     return llvm::None;
   }
 
-  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+  ShapedType input_type = input.getType().dyn_cast<ShapedType>();
   if (!input_type) {
-    op->emitOpError("Round: input not ranked tensor type");
+    op->emitOpError("Round: input not shaped tensor type");
     return llvm::None;
   }
 
@@ -2062,7 +2060,7 @@ llvm::Optional<Value> convertStridedSliceOp(
   // tensor
   //
   // 2. Reshape2: Reshape the tensor from (1) such that each dimension with
-  // stride is split into two dimensions of size_i/stride_i, stride_i.   A naive
+  // stride is split into two dimensions of size_i/stride_i, stride_i. A naive
   // implementation doubles the input tensor rank, but only dimensions being
   // strided actually need to be doubled.
   //
@@ -2074,44 +2072,90 @@ llvm::Optional<Value> convertStridedSliceOp(
   // shrink_axis_mask
 
   // Limitations:
-  // This implementation only supports ellipsis_mask=0 for now
-  // This implementation does not support reverse stride yet.  Will need
+  // * This implementation only supports ellipsis_mask=0 for now
+  // * This implementation does not support reverse stride yet.  Will need
   // to insert tosa.Reverse operators for this.
-  assert(ellipsis_mask == 0);
-
-  RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType result_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
-
-  if (!result_type) {
-    op->emitOpError("StridedSlice: output type not ranked tensor.");
-    return llvm::None;
+  if (ellipsis_mask != 0) {
+    (void)rewriter.notifyMatchFailure(op, "ellipses mask not supported yet");
   }
 
-  if (!input_type) {
-    op->emitOpError("StridedSlice: input type not ranked tensor.");
-    return llvm::None;
-  }
-
-  int32_t input_rank = input_type.getRank();
-  auto input_shape = input_type.getShape();
+  ShapedType input_type = input_value.getType().cast<ShapedType>();
+  ShapedType result_type = result_value.getType().cast<ShapedType>();
 
   // Extract the begin/end/stride tensors
   SmallVector<int32_t> begin, end, strides;
 
-  if (getVectorFromValue32(begin_value, begin) != input_rank) {
-    op->emitOpError("StridedSlice: begin doesn't match input_rank.");
+  DenseIntElementsAttr strides_attr;
+
+  if (!matchPattern(strides_value, m_Constant(&strides_attr))) {
+    (void)rewriter.notifyMatchFailure(op, "strides is not a constant");
     return llvm::None;
   }
-  if (getVectorFromValue32(end_value, end) != input_rank) {
-    op->emitOpError("StridedSlice: end doesn't match input_rank.");
+
+  bool all_strides_one =
+      strides_attr.isSplat() && strides_attr.getSplatValue<int32_t>() == 1;
+  int32_t strides_size = strides_attr.getNumElements();
+
+  // If all of the masks are set we can just bypass the entire thing.
+  const int32_t all_masks_one = (1 << strides_size) - 1;
+  if (all_strides_one && begin_mask == all_masks_one &&
+      end_mask == all_masks_one) {
+    return rewriter
+        .create<tensor::CastOp>(op->getLoc(), result_type, input_value)
+        .getResult();
+  }
+
+  if (failed(getVectorFromValue32(begin_value, begin))) {
+    (void)rewriter.notifyMatchFailure(op, "begin isn't a constant");
     return llvm::None;
   }
-  if (getVectorFromValue32(strides_value, strides) != input_rank) {
-    op->emitOpError("StridedSlice: strides doesn't match input_rank.");
-    return llvm::None;
+
+  // If begin value is a constant we might be able to still bypass.
+  for (auto val : llvm::enumerate(begin)) {
+    if (val.value() == 0) begin_mask |= (0x1 << val.index());
   }
+
+  if (all_strides_one && begin_mask == all_masks_one &&
+      end_mask == all_masks_one) {
+    return rewriter
+        .create<tensor::CastOp>(op->getLoc(), result_type, input_value)
+        .getResult();
+  }
+
+  if (failed(getVectorFromValue32(end_value, end))) {
+    return (void)rewriter.notifyMatchFailure(op, "end isn't a constant"),
+           llvm::None;
+  }
+
+  if (!input_type.hasRank()) {
+    return (void)rewriter.notifyMatchFailure(op,
+                                             "input type not ranked tensor."),
+           llvm::None;
+  }
+
+  int32_t input_rank = input_type.getRank();
+
+  if (failed(getVectorFromValue32(strides_value, strides))) {
+    return (void)rewriter.notifyMatchFailure(op, "strides isn't a constant"),
+           llvm::None;
+  }
+
+  // If strides is incomplete, pad out to the full size.
+  while (strides.size() < input_rank) strides.push_back(1);
+
+  // Unspecified begins should set the begin mask.
+  while (begin.size() < input_rank) {
+    begin_mask = begin_mask | (1 << begin.size());
+    begin.push_back(0);
+  }
+
+  // Unspecified ends should set the end mask.
+  while (end.size() < input_rank) {
+    end_mask = end_mask | (1 << end.size());
+    end.push_back(-1);
+  }
+
+  auto input_shape = input_type.getShape();
 
   SmallVector<int64_t> a1_begin(input_rank), a1_size(input_rank);
   SmallVector<int64_t> a2_shape(input_rank * 2);
@@ -2164,6 +2208,12 @@ llvm::Optional<Value> convertStridedSliceOp(
       input_value, rewriter.getI64ArrayAttr(a1_begin),
       rewriter.getI64ArrayAttr(a1_size));
 
+  if (all_strides_one) {
+    return rewriter
+        .create<tensor::CastOp>(op->getLoc(), result_type, a1_slice_op)
+        .getResult();
+  }
+
   // Step 2: reshape the sliced array
   auto a2_reshape_op = rewriter.create<tosa::ReshapeOp>(
       op->getLoc(),
@@ -2178,10 +2228,9 @@ llvm::Optional<Value> convertStridedSliceOp(
 
   // Step 4: reshape the now-strided tensor
   return rewriter
-      .create<tosa::ReshapeOp>(
-          op->getLoc(),
-          RankedTensorType::get(a4_shape, input_type.getElementType()),
-          a3_slice_op.getResult(), rewriter.getI64ArrayAttr(a4_shape))
+      .create<tosa::ReshapeOp>(op->getLoc(), result_type,
+                               a3_slice_op.getResult(),
+                               rewriter.getI64ArrayAttr(a4_shape))
       .getResult();
 }
 
@@ -2255,16 +2304,15 @@ llvm::Optional<Value> convertFloorModOp(PatternRewriter& rewriter,
 llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
                                              Operation* op, Value input_value,
                                              StringAttr fused_activation_fn) {
-  RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+  ShapedType input_type = input_value.getType().dyn_cast<ShapedType>();
   if (!input_type) return llvm::None;
 
   bool input_is_qtype =
       input_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
 
   if (input_is_qtype) {
-    // We can always make output/input tensor's scale/zp always be the same when
-    // legalizing fused_activation_function, as it's generated during
+    // We can always make output/input tensor's scale/zp always be the same
+    // when legalizing fused_activation_function, as it's generated during
     // legalization.
     auto input_qtype =
         input_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
@@ -2761,14 +2809,14 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
           rewriter.getF32ArrayAttr({0.0, 0.0}), resize_mode);
 
 #ifdef RESIZE_BILINEAR_LOWER_SYMMETRIC_ROUNDING
-      // TFLite resize_bilinear always assume input and output tensors have same
-      // scale That means we only need to arithmetic right shift with (2 *
-      // shift)
+      // TFLite resize_bilinear always assume input and output tensors have
+      // same scale That means we only need to arithmetic right shift with
+      // (2 * shift)
       // TODO(suderman): Align TFLite rounding behavior
       // TFLite also uses symmetric rounding by doing 'x / (1 << 20)'
       // TOSA arithmetic right shift is doing standard rounding.
-      // Right now it's legalized using GreaterEqualOp + SelectOp to conform to
-      // TFLite reference. But this eventually should be fixed in TFLite
+      // Right now it's legalized using GreaterEqualOp + SelectOp to conform
+      // to TFLite reference. But this eventually should be fixed in TFLite
       // reference
       Value cst_zero = getTosaConstTensorSingleI32(rewriter, op, 0);
       Value cst_twenty = getTosaConstTensorSingleI32(rewriter, op, 20);
@@ -2934,7 +2982,8 @@ llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  // This code originates from tensorflow/core/kernels/fake_quant_ops_functor.h.
+  // This code originates from
+  // tensorflow/core/kernels/fake_quant_ops_functor.h.
   int32_t qmax = (1 << (num_bits)) - 1;
   int32_t qmin = narrow_range ? 1 : 0;
 
@@ -2949,7 +2998,8 @@ llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
       getTosaConstTensorSingleF32(rewriter, op, 1.0f / nudged_scale);
   Value cst_half = getTosaConstTensorSingleF32(rewriter, op, 0.5f);
 
-  // This code originates from tensorflow/core/kernels/fake_quant_ops_functor.h.
+  // This code originates from
+  // tensorflow/core/kernels/fake_quant_ops_functor.h.
   auto op1_min_in = rewriter.create<tosa::MinimumOp>(op->getLoc(), output_type,
                                                      input_value, cst_max);
 
@@ -3106,8 +3156,8 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   // Where Batch (N), Indices (K) can be one or more dimensions in size,
   // while LeftChannels and RightChannels represent the group of data channels
   // (C) to the left and right (C_l, C_r) of the indices; the sum of these two
-  // is one or more dimensions in size, but either one may be zero depending on
-  // how axis was specified by the caller.
+  // is one or more dimensions in size, but either one may be zero depending
+  // on how axis was specified by the caller.
   //
   // The resulting tensor will look like:
   //
@@ -3503,17 +3553,17 @@ llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
     return llvm::None;
 
   // OneHot operator creates a new tensor with shape indices.shape[:axis] +
-  // [depth] + indices.shape[axis:] For each index in 'indices', it needs to be
-  // within range of [0, depth - 1] and the [..., k, ...] = on_value (if k =
-  // index), or [..., k, ...] = off_value (if k != index)
+  // [depth] + indices.shape[axis:] For each index in 'indices', it needs to
+  // be within range of [0, depth - 1] and the [..., k, ...] = on_value (if k
+  // = index), or [..., k, ...] = off_value (if k != index)
   //
   // The lowering below assumes depth is always known at compile time.
   // TBD for depth resolved in run time.
   //
   // OneHot can be lowered as TOSA Scatter, where off_value being mapped to
-  // 'values_in', on_value being mapped to 'input', and indices naturally mapped
-  // to 'indices'. Also the dimensions of TOSA scatter (N, W, K, C) need to be
-  // picked.
+  // 'values_in', on_value being mapped to 'input', and indices naturally
+  // mapped to 'indices'. Also the dimensions of TOSA scatter (N, W, K, C)
+  // need to be picked.
   //
   // N: number of elements of input indices
   // Computed as:

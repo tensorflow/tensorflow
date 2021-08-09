@@ -304,8 +304,8 @@ void PrintMismatch(int64* mismatches, const ErrorGenerator& err_generator) {
   // We send a few mismatches to gunit so they show up nicely in test logs.
   // Then we send more to LOG(ERROR).  The remainder we squelch unless we're
   // at vlog level 2.
-  constexpr int64 kMaxMismatchesLoggedToGunit = 10;
-  constexpr int64 kMaxMismatchesLoggedToErr = 1000;
+  constexpr int64_t kMaxMismatchesLoggedToGunit = 10;
+  constexpr int64_t kMaxMismatchesLoggedToErr = 1000;
 
   (*mismatches)++;
   if (*mismatches < kMaxMismatchesLoggedToGunit) {

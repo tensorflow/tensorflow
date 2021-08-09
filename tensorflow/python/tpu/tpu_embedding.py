@@ -314,40 +314,40 @@ def get_enqueue_datas_list_from_ragged_tensors_list(rg_tensors_list):
 AdamSlotVariableNames = collections.namedtuple('AdamSlotVariableNames',
                                                ['m', 'v'])
 
-AdagradSlotVariableName = collections.namedtuple('AdagradSlotVariableName',
-                                                 ['accumulator'])
+AdagradSlotVariableNames = collections.namedtuple('AdagradSlotVariableNames',
+                                                  ['accumulator'])
 
-MomentumSlotVariableName = collections.namedtuple('MomentumSlotVariableName',
-                                                  ['momenta'])
+MomentumSlotVariableNames = collections.namedtuple('MomentumSlotVariableNames',
+                                                   ['momenta'])
 
 RMSPropSlotVariableNames = collections.namedtuple('RMSPropSlotVariableNames',
                                                   ['ms', 'mom'])
 
-ProximalAdagradSlotVariableName = collections.namedtuple(
-    'ProximalAdagradSlotVariableName', ['accumulator'])
+ProximalAdagradSlotVariableNames = collections.namedtuple(
+    'ProximalAdagradSlotVariableNames', ['accumulator'])
 
-FtrlSlotVariableName = collections.namedtuple('FtrlSlotVariableName',
-                                              ['accumulator', 'linear'])
+FtrlSlotVariableNames = collections.namedtuple('FtrlSlotVariableNames',
+                                               ['accumulator', 'linear'])
 
 ProximalYogiSlotVariableNames = collections.namedtuple(
     'ProximalYogiSlotVariableNames', ['v', 'm'])
 
-FrequencyEstimatorSlotVariableName = collections.namedtuple(
-    'FrequencyEstimatorSlotVariableName', ['last_hit_step'])
+FrequencyEstimatorSlotVariableNames = collections.namedtuple(
+    'FrequencyEstimatorSlotVariableNames', ['last_hit_step'])
 
 AdamSlotVariables = collections.namedtuple('AdamSlotVariables', ['m', 'v'])
 
-MomentumSlotVariable = collections.namedtuple('MomentumSlotVariable',
-                                              ['momenta'])
+MomentumSlotVariables = collections.namedtuple('MomentumSlotVariables',
+                                               ['momenta'])
 
 RMSPropSlotVariables = collections.namedtuple('RMSPropSlotVariables',
                                               ['ms', 'mom'])
 
-AdagradSlotVariable = collections.namedtuple('AdagradSlotVariable',
-                                             ['accumulator'])
+AdagradSlotVariables = collections.namedtuple('AdagradSlotVariables',
+                                              ['accumulator'])
 
-ProximalAdagradSlotVariable = collections.namedtuple(
-    'ProximalAdagradSlotVariable', ['accumulator'])
+ProximalAdagradSlotVariables = collections.namedtuple(
+    'ProximalAdagradSlotVariables', ['accumulator'])
 
 FtrlSlotVariable = collections.namedtuple('FtrlSlotVariable',
                                           ['accumulator', 'linear'])
@@ -1261,15 +1261,16 @@ class TPUEmbedding(object):
         embedding IDs per example and how well the embedding IDs are load
         balanced across the system. The lookup statistics are used during TPU
         initialization for embedding table partitioning. Collection of lookup
-        statistics is done at runtime by  profiling the embedding inputs: only
-        3% of input samples are profiled to minimize host CPU overhead. Once
-        a suitable number of samples are profiled, the lookup statistics are
-        saved to table-specific files in the profile data directory generally
-        at the end of a TPU training loop. The filename corresponding to each
-        table is obtained by hashing table specific parameters (e.g., table
-        name and number of features) and global configuration parameters (e.g.,
-        sharding strategy and task count). The same profile data directory can
-        be shared among several models to reuse embedding lookup statistics.
+        statistics is done at runtime by  profiling the embedding inputs, only a
+        small fraction of input samples are profiled to minimize host CPU
+        overhead. Once a suitable number of samples are profiled, the lookup
+        statistics are saved to table-specific files in the profile data
+        directory generally at the end of a TPU training loop. The filename
+        corresponding to each table is obtained by hashing table specific
+        parameters (e.g., table name and number of features) and global
+        configuration parameters (e.g., sharding strategy and task count). The
+        same profile data directory can be shared among several models to reuse
+        embedding lookup statistics.
       device_config: A DeviceConfig instance, used when `master` and
         `cluster_def` are both `None`.
       master_job_name: if set, overrides the master job name used to schedule
@@ -1505,9 +1506,8 @@ class TPUEmbedding(object):
     config_proto.num_hosts = self._num_hosts
     config_proto.num_tensor_cores = self._num_cores
     config_proto.sharding_strategy = (
-        elc.TPUEmbeddingConfiguration.DIV_DEFAULT
-        if self._partition_strategy == 'div' else
-        elc.TPUEmbeddingConfiguration.MOD)
+        elc.TPUEmbeddingConfiguration.DIV_DEFAULT if self._partition_strategy
+        == 'div' else elc.TPUEmbeddingConfiguration.MOD)
     config_proto.pipeline_execution_with_tensor_core = (
         self._pipeline_execution_with_tensor_core)
     if self._profile_data_directory:
@@ -1544,7 +1544,7 @@ class TPUEmbedding(object):
     Returns:
       `tpu_embedding.VariablesAndOps` with:
         A dictionary mapping from string of table name to embedding variables,
-        A dictionary mapping from string of table name to AdagradSlotVariable,
+        A dictionary mapping from string of table name to AdagradSlotVariables,
          AdamSlotVariables etc with slot variables,
         A function which returns a list of ops to load embedding and slot
          variables from CPU to TPU.
@@ -2025,7 +2025,7 @@ class _AdagradHandler(_OptimizerHandler):
     table_descriptor.optimization_parameters.adagrad.SetInParent()
 
   def get_default_slot_variable_names(self, table):
-    return AdagradSlotVariableName('{}/{}'.format(table, 'Adagrad'))
+    return AdagradSlotVariableNames('{}/{}'.format(table, 'Adagrad'))
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
                                table_config, table_variables, config_proto):
@@ -2038,7 +2038,7 @@ class _AdagradHandler(_OptimizerHandler):
         embedding_dimension=table_config.dimension,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES],
         initializer=accumulator_initializer)
-    slot_variables = AdagradSlotVariable(accumulator_variables)
+    slot_variables = AdagradSlotVariables(accumulator_variables)
 
     def load_ops_fn():
       """Returns the retrieve ops for AdaGrad embedding tables.
@@ -2101,7 +2101,7 @@ class _ProximalAdagradHandler(_OptimizerHandler):
         self._optimization_parameters.l2_regularization_strength)
 
   def get_default_slot_variable_names(self, table):
-    return ProximalAdagradSlotVariableName('{}/{}'.format(
+    return ProximalAdagradSlotVariableNames('{}/{}'.format(
         table, 'ProximalAdagrad'))
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
@@ -2115,7 +2115,7 @@ class _ProximalAdagradHandler(_OptimizerHandler):
         embedding_dimension=table_config.dimension,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES],
         initializer=accumulator_initializer)
-    slot_variables = ProximalAdagradSlotVariable(accumulator_variables)
+    slot_variables = ProximalAdagradSlotVariables(accumulator_variables)
 
     def load_ops_fn():
       """Returns the retrieve ops for Proximal AdaGrad embedding tables.
@@ -2280,7 +2280,7 @@ class _FtrlHandler(_OptimizerHandler):
   def get_default_slot_variable_names(self, table):
     # These match the default slot variable names created by
     # tf.train.FtrlOptimizer.
-    return FtrlSlotVariableName(
+    return FtrlSlotVariableNames(
         '{}/{}'.format(table, 'Ftrl'),  # accumulator
         '{}/{}'.format(table, 'Ftrl_1'))  # linear
 
@@ -2467,7 +2467,7 @@ class _MomentumHandler(_OptimizerHandler):
         self._optimization_parameters.use_nesterov)
 
   def get_default_slot_variable_names(self, table):
-    return MomentumSlotVariableName('{}/{}'.format(table, 'Momentum'))
+    return MomentumSlotVariableNames('{}/{}'.format(table, 'Momentum'))
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
                                table_config, table_variables, config_proto):
@@ -2480,7 +2480,7 @@ class _MomentumHandler(_OptimizerHandler):
         embedding_dimension=table_config.dimension,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES],
         initializer=momenta_initializer)
-    slot_variables = MomentumSlotVariable(momenta_variables)
+    slot_variables = MomentumSlotVariables(momenta_variables)
 
     def load_ops_fn():
       """Returns the retrieve ops for Momentum embedding tables.
@@ -2635,7 +2635,7 @@ class _FrequencyEstimatorHandler(_OptimizerHandler):
     freq.weight_exponent = self._optimization_parameters.weight_exponent
 
   def get_default_slot_variable_names(self, table):
-    return FrequencyEstimatorSlotVariableName(
+    return FrequencyEstimatorSlotVariableNames(
         '{}/FrequencyEstimator'.format(table))
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,

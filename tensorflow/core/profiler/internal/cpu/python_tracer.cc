@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/python/profiler/internal/python_hooks.h"
 
 namespace tensorflow {
@@ -39,8 +38,6 @@ class PythonTracer : public ProfilerInterface {
   Status Start() override;
 
   Status Stop() override;
-
-  Status CollectData(RunMetadata* run_metadata) override;
 
   Status CollectData(XSpace* space) override;
 
@@ -74,11 +71,6 @@ Status PythonTracer::Stop() {
   context_ = PythonHooks::GetSingleton()->Stop();
   recording_ = false;
   return Status::OK();
-}
-
-Status PythonTracer::CollectData(RunMetadata* run_metadata) {
-  return errors::Unimplemented(
-      "CollectData to RunMetadata not supported in PythonTracer");
 }
 
 Status PythonTracer::CollectData(XSpace* space) {

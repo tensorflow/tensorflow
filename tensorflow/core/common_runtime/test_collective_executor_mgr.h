@@ -46,8 +46,8 @@ class TestParamResolver : public ParamResolverInterface {
     done(errors::Internal("Unimplemented"));
   }
 
-  void CompleteGroupAsync(const CompleteGroupRequest* request,
-                          CompleteGroupResponse* response,
+  void CompleteGroupAsync(const DeviceAttributes& device,
+                          CollGroupParams* group_params,
                           CancellationManager* cancel_mgr,
                           const StatusCallback& done) override {
     done(errors::Internal("Unimplemented"));
@@ -60,13 +60,16 @@ class TestParamResolver : public ParamResolverInterface {
     done(errors::Internal("Unimplemented"));
   }
 
-  void StartAbort(const Status& s) override { return; }
+  void StartAbort(const Status& s) override {}
 };
 
 class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
  public:
-  TestCollectiveExecutorMgr(CollectiveRemoteAccess* rma = nullptr)
-      : rma_(rma) {}
+  explicit TestCollectiveExecutorMgr(ParamResolverInterface* param_resolver,
+                                     CollectiveRemoteAccess* rma)
+      : param_resolver_(param_resolver), rma_(rma) {}
+
+  TestCollectiveExecutorMgr() : param_resolver_(nullptr), rma_(nullptr) {}
 
   ~TestCollectiveExecutorMgr() override {
     for (auto& iter : table_) {
@@ -98,7 +101,7 @@ class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
   }
 
   ParamResolverInterface* GetParamResolver() const override {
-    return &param_resolver_;
+    return param_resolver_;
   }
 
   DeviceResolverInterface* GetDeviceResolver() const override {
@@ -127,9 +130,10 @@ class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
 
   void RetireStepId(int64_t graph_key, int64_t step_id) override {}
 
+ protected:
   mutex mu_;
   gtl::FlatMap<int64, CollectiveExecutor*> table_ TF_GUARDED_BY(mu_);
-  mutable TestParamResolver param_resolver_;
+  ParamResolverInterface* param_resolver_;
   CollectiveRemoteAccess* rma_;
 };
 

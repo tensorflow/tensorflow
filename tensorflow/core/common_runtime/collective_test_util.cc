@@ -140,7 +140,11 @@ std::vector<std::unique_ptr<Device>> CreateGPUDevices() {
 std::unique_ptr<CollectiveTestEnv> CreateCollectiveTestEnv(
     int num_workers, int num_devices_per_worker, DeviceType device_type) {
   auto test_env = absl::make_unique<CollectiveTestEnv>();
-  test_env->col_exec_mgr = absl::make_unique<TestCollectiveExecutorMgr>();
+  test_env->param_resolver = absl::make_unique<TestParamResolver>();
+  // We don't create CollecticeExecutor from the CollecticeExecutorMgr so we
+  // don't need to pass rma.
+  test_env->col_exec_mgr = absl::make_unique<TestCollectiveExecutorMgr>(
+      test_env->param_resolver.get(), /*rma=*/nullptr);
   test_env->num_workers = num_workers;
   test_env->num_devices_per_worker = num_devices_per_worker;
   test_env->device_type = device_type;

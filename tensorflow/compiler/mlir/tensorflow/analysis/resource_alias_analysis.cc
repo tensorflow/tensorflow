@@ -238,22 +238,55 @@ namespace {
 
 constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
 
+bool IsResourceAllocatingOp(Operation* op) {
+  auto mem_interface = dyn_cast<MemoryEffectOpInterface>(op);
+  if (!mem_interface) return false;
+
+  for (Value value : filter_resources(op->getResults())) {
+    llvm::SmallVector<MemoryEffects::EffectInstance, 4> effects;
+    mem_interface.getEffectsOnValue(value, effects);
+    for (auto& effect_instance : effects) {
+      if (isa<MemoryEffects::Allocate>(effect_instance.getEffect())) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 constexpr int64_t ResourceAliasAnalysisInfo::kUnknownResourceId;
+
+void IncrementResourceTypeId(int64_t& resource_type_id) {
+  if (resource_type_id == ResourceAliasAnalysisInfo::kMaxResourceTypeId) {
+    // We don't expect this to happen, currently there are 10 resource types in
+    // TF dialect. Still, it should be visible if this ever happens.
+    LOG(WARNING) << "reached limit for supported number of resource types ("
+                 << ResourceAliasAnalysisInfo::kMaxResourceTypeId
+                 << "); this could lead to overly conservative execution order";
+    // Note: By not incrementing `resource_type_id` we still maintain
+    // correctness, we might only handle different resource types as the same
+    // type (for ID `kMaxResourceTypeId`) which is overly conservative.
+  } else {
+    ++resource_type_id;
+  }
+}
 
 // Constructs the analysis info by analyzing the given function.
 ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
     FuncOp func_op, const BacktrackAnalysis& backtrack_analysis) {
   // This function populates resource_value_to_ids_ and id_to_resource_values_.
 
-  int64_t next_unique_id = 0;
+  // See `ResourceAliasAnalysisInfo` class for ID semantics.
+  int64_t next_unique_type_id = 0;
+  int64_t next_unique_instance_id = kMaxResourceTypeId + 1;
 
   // Helper to assign new unique id for all resources in the given list of
   // values.
   auto assign_unique_id_to_all = [&](ValueRange values) {
     for (Value value : filter_resources(values)) {
-      AddValueUniqueIDMapping(value, next_unique_id++);
+      AddValueUniqueIDMapping(value, next_unique_instance_id++);
     }
   };
 
@@ -275,8 +308,8 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
       });
   if (has_arg_unique_id_attrs) {
     // Resource arguments have ID's attached (via `kResourceArgUniqueIdAttr`)
-    // that represent different resources. Map those ID's to the internal ID's
-    // used by this pass.
+    // that represent different resources. Map those ID's to the internal
+    // instance ID's used by this pass.
     llvm::SmallDenseMap<int64_t, int64_t> attr_id_to_internal_id;
     for (auto arg : filter_resources(func_op.getArguments())) {
       auto id_attr = func_op.getArgAttrOfType<IntegerAttr>(
@@ -284,9 +317,11 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
       assert(id_attr &&
              "tf.resource_arg_unique_id attribute should exist on either "
              "none or all arguments.");
-      auto emplace_res = attr_id_to_internal_id.try_emplace(id_attr.getInt(),
-                                                            next_unique_id++);
+      auto emplace_res = attr_id_to_internal_id.try_emplace(
+          id_attr.getInt(), next_unique_instance_id);
       AddValueUniqueIDMapping(arg, emplace_res.first->getSecond());
+      // Only increment ID if it has been used.
+      if (emplace_res.second) ++next_unique_instance_id;
     }
   } else {
     // No `kResourceArgUniqueIdAttr` attribute is present, so all resource
@@ -314,8 +349,8 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
   func_op.walk([&](Operation* op) {
     if (auto resource_alloc = dyn_cast<ResourceHandleAllocatorInterface>(op)) {
       llvm::SmallVector<ResourceHandleValueAndId, 4> resources =
-          resource_alloc.GetResourceHandleValueAndIdList(resource_handle_id_map,
-                                                         next_unique_id);
+          resource_alloc.GetResourceHandleValueAndIdList(
+              resource_handle_id_map, next_unique_instance_id);
       for (auto& resource_handle : resources) {
         AddValueUniqueIDMapping(resource_handle.value, resource_handle.id);
       }
@@ -362,49 +397,30 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
         Value body_result = body_info.GetValue(result.getResultNumber());
         PropagateInputToOutput(body_result, result);
       }
-    } else if (auto mem_interface = dyn_cast<MemoryEffectOpInterface>(op)) {
-      if (mem_interface.hasNoEffect()) {
-        // Assign unknown ID for all results since we don't know if a resource
-        // is allocated here.
-        assign_unknown_id_to_all(op->getResults());
-        return WalkResult::advance();
-      }
-      // In general, we can't rule out the possibility that two calls of a
-      // resource-allocating op return a handle to the same resource, so we
-      // conservatively assume that the allocated resource is not unique.
-      bool allocated_resource_is_unique = false;
-      if (auto shared_name =
-              op->getAttrOfType<mlir::StringAttr>("shared_name")) {
-        if (shared_name &&
-            (shared_name.getValue().empty() ||
-             IsResourceHandleAnonymous(shared_name.getValue()))) {
-          // For a resource-allocating op with empty or anonymous `shared_name`
-          // attribute we can assume that the resource being created is unique
-          // (see `ContainerInfo::Init` for details).
-          allocated_resource_is_unique = true;
-        }
-      }
+    } else {
+      auto mem_interface = dyn_cast<MemoryEffectOpInterface>(op);
       for (Value value : filter_resources(op->getResults())) {
-        llvm::SmallVector<MemoryEffects::EffectInstance, 4> effects;
-        mem_interface.getEffectsOnValue(value, effects);
-        for (auto& effect_instance : effects) {
-          if (isa<MemoryEffects::Allocate>(effect_instance.getEffect()) &&
-              allocated_resource_is_unique) {
-            // This result value is a handle to a unique allocated resource, so
-            // assign unique ID.
-            AddValueUniqueIDMapping(value, next_unique_id++);
-          } else {
-            // Assign unknown ID for other result values since we don't know if
-            // this value is a handle to an allocated resource and whether it is
-            // unique.
-            AddValueUniqueIDMapping(value, kUnknownResourceId);
+        // Set unknown ID first, reset later if applicable.
+        int64_t resource_id = kUnknownResourceId;
+
+        if (mem_interface) {
+          auto alloc_effect =
+              mem_interface.getEffectOnValue<MemoryEffects::Allocate>(value);
+          if (alloc_effect) {
+            TypeID mlir_type_id =
+                alloc_effect.getValue().getResource()->getResourceID();
+            // Update or lookup internal type ID.
+            auto emplace_result = type_id_to_internal_type_id_.try_emplace(
+                mlir_type_id, next_unique_type_id);
+            // Change unknown ID to type-based ID.
+            resource_id = emplace_result.first->getSecond();
+            // Only increment ID if we have encountered a new resource type.
+            if (emplace_result.second)
+              IncrementResourceTypeId(next_unique_type_id);
           }
         }
+        AddValueUniqueIDMapping(value, resource_id);
       }
-    } else {
-      // Assign unknown ID for all results since we don't know if a resource is
-      // allocated here.
-      assign_unknown_id_to_all(op->getResults());
     }
     return WalkResult::advance();
   });

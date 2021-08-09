@@ -22,23 +22,21 @@ import numpy as np
 
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.ops import math_ops
 
 
 class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for autotuning performance knobs."""
 
-  def _run_benchmark(self, dataset, autotune, autotune_buffers,
-                     benchmark_iters, benchmark_label, benchmark_id):
-    options = dataset_ops.Options()
+  def _run_benchmark(self, dataset, autotune, benchmark_iters, benchmark_label,
+                     benchmark_id):
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.autotune = autotune
-    options.experimental_optimization.autotune_buffers = autotune_buffers
+    options.autotune.enabled = autotune
     dataset = dataset.with_options(options)
 
-    autotune_string = "_autotune_{}".format(
-        "parallelism_and_buffer_sizes"
-        if autotune_buffers else "parallelism_only")
+    autotune_string = "_autotune_parallelism_only"
     wall_time = self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=benchmark_iters,
@@ -48,23 +46,17 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
             "model_name":
                 "autotune.benchmark.%s.%d" % (benchmark_label, benchmark_id),
             "parameters":
-                "%s.%s" % (autotune, autotune_buffers),
+                "%s" % autotune,
         },
         name=benchmark_label + (autotune_string if autotune else ""))
     return wall_time
 
   def benchmark_batch(self):
-    a = self._benchmark_batch(
-        autotune=False, autotune_buffers=False, benchmark_id=1)
-    b = self._benchmark_batch(
-        autotune=True, autotune_buffers=False, benchmark_id=2)
-    c = self._benchmark_batch(
-        autotune=True, autotune_buffers=True, benchmark_id=3)
+    a = self._benchmark_batch(autotune=False, benchmark_id=1)
+    b = self._benchmark_batch(autotune=True, benchmark_id=2)
     print("autotune parallelism vs no autotuning speedup: {}".format(a / b))
-    print("autotune parallelism and buffer sizes vs no autotuning speedup: {}"
-          .format(a / c))
 
-  def _benchmark_batch(self, autotune, autotune_buffers, benchmark_id):
+  def _benchmark_batch(self, autotune, benchmark_id):
     batch_size = 128
     k = 1024
     dataset = dataset_ops.Dataset.from_tensors(
@@ -75,23 +67,16 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
     return self._run_benchmark(
         dataset=dataset,
         autotune=autotune,
-        autotune_buffers=autotune_buffers,
         benchmark_iters=10000,
         benchmark_label="batch",
         benchmark_id=benchmark_id)
 
   def benchmark_map(self):
-    a = self._benchmark_map(
-        autotune=False, autotune_buffers=False, benchmark_id=1)
-    b = self._benchmark_map(
-        autotune=True, autotune_buffers=False, benchmark_id=2)
-    c = self._benchmark_map(
-        autotune=True, autotune_buffers=True, benchmark_id=3)
+    a = self._benchmark_map(autotune=False, benchmark_id=1)
+    b = self._benchmark_map(autotune=True, benchmark_id=2)
     print("autotune parallelism vs no autotuning speedup: {}".format(a / b))
-    print("autotune parallelism and buffer sizes vs no autotuning speedup: {}"
-          .format(a / c))
 
-  def _benchmark_map(self, autotune, autotune_buffers, benchmark_id):
+  def _benchmark_map(self, autotune, benchmark_id):
     k = 1024 * 1024
     dataset = dataset_ops.Dataset.from_tensors(
         (np.random.rand(1, 4 * k), np.random.rand(4 * k, 1))).repeat()
@@ -100,23 +85,16 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
     return self._run_benchmark(
         dataset=dataset,
         autotune=autotune,
-        autotune_buffers=autotune_buffers,
         benchmark_iters=10000,
         benchmark_label="map",
         benchmark_id=benchmark_id)
 
   def benchmark_map_and_batch(self):
-    a = self._benchmark_map_and_batch(
-        autotune=False, autotune_buffers=False, benchmark_id=1)
-    b = self._benchmark_map_and_batch(
-        autotune=True, autotune_buffers=False, benchmark_id=2)
-    c = self._benchmark_map_and_batch(
-        autotune=True, autotune_buffers=True, benchmark_id=3)
+    a = self._benchmark_map_and_batch(autotune=False, benchmark_id=1)
+    b = self._benchmark_map_and_batch(autotune=True, benchmark_id=2)
     print("autotune parallelism vs no autotuning speedup: {}".format(a / b))
-    print("autotune parallelism and buffer sizes vs no autotuning speedup: {}"
-          .format(a / c))
 
-  def _benchmark_map_and_batch(self, autotune, autotune_buffers, benchmark_id):
+  def _benchmark_map_and_batch(self, autotune, benchmark_id):
     batch_size = 16
     k = 1024 * 1024
     dataset = dataset_ops.Dataset.from_tensors(
@@ -127,23 +105,16 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
     return self._run_benchmark(
         dataset=dataset,
         autotune=autotune,
-        autotune_buffers=autotune_buffers,
         benchmark_iters=1000,
         benchmark_label="map_and_batch",
         benchmark_id=benchmark_id)
 
   def benchmark_interleave(self):
-    a = self._benchmark_interleave(
-        autotune=False, autotune_buffers=False, benchmark_id=1)
-    b = self._benchmark_interleave(
-        autotune=True, autotune_buffers=False, benchmark_id=2)
-    c = self._benchmark_interleave(
-        autotune=True, autotune_buffers=True, benchmark_id=3)
+    a = self._benchmark_interleave(autotune=False, benchmark_id=1)
+    b = self._benchmark_interleave(autotune=True, benchmark_id=2)
     print("autotune parallelism vs no autotuning speedup: {}".format(a / b))
-    print("autotune parallelism and buffer sizes vs no autotuning speedup: {}"
-          .format(a / c))
 
-  def _benchmark_interleave(self, autotune, autotune_buffers, benchmark_id):
+  def _benchmark_interleave(self, autotune, benchmark_id):
     k = 1024 * 1024
     dataset = dataset_ops.Dataset.from_tensors(
         (np.random.rand(1, 4 * k), np.random.rand(4 * k, 1))).repeat()
@@ -155,24 +126,16 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
     return self._run_benchmark(
         dataset=dataset,
         autotune=autotune,
-        autotune_buffers=autotune_buffers,
         benchmark_iters=10000,
         benchmark_label="interleave",
         benchmark_id=benchmark_id)
 
   def benchmark_map_and_interleave(self):
-    a = self._benchmark_map_and_interleave(
-        autotune=False, autotune_buffers=False, benchmark_id=1)
-    b = self._benchmark_map_and_interleave(
-        autotune=True, autotune_buffers=False, benchmark_id=2)
-    c = self._benchmark_map_and_interleave(
-        autotune=True, autotune_buffers=True, benchmark_id=3)
+    a = self._benchmark_map_and_interleave(autotune=False, benchmark_id=1)
+    b = self._benchmark_map_and_interleave(autotune=True, benchmark_id=2)
     print("autotune parallelism vs no autotuning speedup: {}".format(a / b))
-    print("autotune parallelism and buffer sizes vs no autotuning speedup: {}"
-          .format(a / c))
 
-  def _benchmark_map_and_interleave(self, autotune, autotune_buffers,
-                                    benchmark_id):
+  def _benchmark_map_and_interleave(self, autotune, benchmark_id):
     k = 1024 * 1024
     a = (np.random.rand(1, 8 * k), np.random.rand(8 * k, 1))
     b = (np.random.rand(1, 4 * k), np.random.rand(4 * k, 1))
@@ -207,24 +170,16 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
     return self._run_benchmark(
         dataset=dataset,
         autotune=autotune,
-        autotune_buffers=autotune_buffers,
         benchmark_iters=10000,
         benchmark_label="map_and_interleave",
         benchmark_id=benchmark_id)
 
   def benchmark_map_batch_and_interleave(self):
-    a = self._benchmark_map_batch_and_interleave(
-        autotune=False, autotune_buffers=False, benchmark_id=1)
-    b = self._benchmark_map_batch_and_interleave(
-        autotune=True, autotune_buffers=False, benchmark_id=2)
-    c = self._benchmark_map_batch_and_interleave(
-        autotune=True, autotune_buffers=True, benchmark_id=3)
+    a = self._benchmark_map_batch_and_interleave(autotune=False, benchmark_id=1)
+    b = self._benchmark_map_batch_and_interleave(autotune=True, benchmark_id=2)
     print("autotune parallelism vs no autotuning speedup: {}".format(a / b))
-    print("autotune parallelism and buffer sizes vs no autotuning speedup: {}"
-          .format(a / c))
 
-  def _benchmark_map_batch_and_interleave(self, autotune, autotune_buffers,
-                                          benchmark_id):
+  def _benchmark_map_batch_and_interleave(self, autotune, benchmark_id):
     batch_size = 16
     k = 1024 * 1024
     a = (np.random.rand(1, 8 * k), np.random.rand(8 * k, 1))
@@ -256,7 +211,6 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
     return self._run_benchmark(
         dataset=dataset,
         autotune=autotune,
-        autotune_buffers=autotune_buffers,
         benchmark_iters=1000,
         benchmark_label="map_and_batch_and_interleave",
         benchmark_id=benchmark_id)

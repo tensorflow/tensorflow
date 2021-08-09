@@ -159,7 +159,7 @@ class ExecutorImpl : public Executor {
       is_expensive_.resize(gview.num_nodes());
       cost_estimates_ =
           absl::make_unique<std::atomic_uint_fast64_t[]>(gview.num_nodes());
-      for (int32 i = 0; i < gview.num_nodes(); ++i) {
+      for (int32_t i = 0; i < gview.num_nodes(); ++i) {
         if (gview.node(i)) {
           is_expensive_[i] =
               gview.node(i)->kernel && gview.node(i)->kernel->IsExpensive();
@@ -366,6 +366,7 @@ class ExecutorState {
   const ImmutableExecutorState& immutable_state_;
   ExecutorImpl::KernelStats* const kernel_stats_;
   CancellationManager* cancellation_manager_;
+  CoordinationServiceAgent* coordination_service_agent_;
   // If not null, use this device to schedule intra-op operation
   std::unique_ptr<DeviceBase> user_device_;
   Executor::Args::Runner runner_;
@@ -413,6 +414,7 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       immutable_state_(immutable_state),
       kernel_stats_(kernel_stats),
       cancellation_manager_(args.cancellation_manager),
+      coordination_service_agent_(args.coordination_service_agent),
       runner_(args.runner),
       sync_on_finish_(args.sync_on_finish),
       run_all_kernels_inline_(args.run_all_kernels_inline),
@@ -706,6 +708,7 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
   params.session_metadata = session_metadata_;
   params.tensor_store = tensor_store_;
   params.cancellation_manager = cancellation_manager_;
+  params.coordination_service_agent = coordination_service_agent_;
   params.call_frame = call_frame_;
   params.function_library = immutable_state_.params().function_library;
   params.resource_manager = device->resource_manager();

@@ -151,8 +151,8 @@ TEST_F(ArrayGradTest, MatrixDiagGrad) {
 TEST_F(ArrayGradTest, MatrixBandPartGrad) {
   TensorShape shape({5, 5});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  const int64 num_lower = 1;
-  const int64 num_upper = 2;
+  const int64_t num_lower = 1;
+  const int64_t num_upper = 2;
   auto y = MatrixBandPart(scope_, x, num_lower, num_upper);
   RunTest(x, shape, y, shape);
 }

@@ -109,8 +109,8 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
     const int ksize_cols_eff = ksize_cols + (ksize_cols - 1) * (rate_cols - 1);
     */
 
-    int64 out_planes = 0, out_rows = 0, out_cols = 0;
-    int64 pad_planes = 0, pad_rows = 0, pad_cols = 0;
+    int64_t out_planes = 0, out_rows = 0, out_cols = 0;
+    int64_t pad_planes = 0, pad_rows = 0, pad_cols = 0;
     OP_REQUIRES_OK(context,
                    GetWindowedOutputSize(in_planes, ksize_planes, stride_planes,
                                          padding_, &out_planes, &pad_planes));

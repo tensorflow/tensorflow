@@ -53,9 +53,9 @@ void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
   *depth = 1;
   *channel = 1;
   if (data_format == FORMAT_NHWC) {
-    int32 channel_dim = value_tensor.dims() - 1;
+    int32_t channel_dim = value_tensor.dims() - 1;
     *channel = static_cast<int32>(value_tensor.dim_size(channel_dim));
-    for (int32 i = 0; i < channel_dim; i++) {
+    for (int32_t i = 0; i < channel_dim; i++) {
       *batch *= static_cast<int32>(value_tensor.dim_size(i));
     }
   } else if (data_format == FORMAT_NCHW) {
@@ -133,7 +133,7 @@ class BiasOp : public BinaryOp<T> {
 
     // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
     if (data_format_ == FORMAT_NCHW) {
-      int32 batch, height, width, depth, channel;
+      int32_t batch, height, width, depth, channel;
       GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth,
                        &channel);
       switch (input.shape().dims()) {
@@ -243,7 +243,7 @@ class BiasGradOp : public OpKernel {
                         std::numeric_limits<int32>::max()),
         errors::InvalidArgument("BiasGrad requires tensor size <= int32 max"));
 
-    int32 batch, height, width, depth, channel;
+    int32_t batch, height, width, depth, channel;
     GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width,
                      &depth, &channel);
     Tensor* output = nullptr;
@@ -319,7 +319,7 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
     OP_REQUIRES(context, TensorShapeUtils::IsVector(bias.shape()),
                 errors::InvalidArgument("Biases must be 1D: ",
                                         bias.shape().DebugString()));
-    int32 batch, height, width, depth, channel;
+    int32_t batch, height, width, depth, channel;
     GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth,
                      &channel);
     OP_REQUIRES(context, bias.shape().dim_size(0) == channel,
@@ -399,7 +399,7 @@ class BiasAddParams {
         data_format_(data_format),
         dtype_(dtype),
         device_id_(device_id) {
-    for (int64 val : in_shape_) {
+    for (int64_t val : in_shape_) {
       hash_code_ = Hash64Combine(hash_code_, val);
     }
     hash_code_ = Hash64Combine(hash_code_, data_format);
@@ -439,7 +439,7 @@ class BiasAddParams {
   int device_id_;
 };
 
-typedef AutoTuneSingleton<BiasGradAutotuneGroup, BiasAddParams,
+typedef AutotuneSingleton<BiasGradAutotuneGroup, BiasAddParams,
                           BiasAddGradGPUConfig>
     AutotuneBiasGrad;
 
@@ -458,9 +458,9 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
   }
 
   void ComputeWithCustomKernel(OpKernelContext* context,
-                               const Tensor& output_backprop, int32 batch,
-                               int32 width, int32 height, int32 depth,
-                               int32 channel, Tensor* output) {
+                               const Tensor& output_backprop, int32_t batch,
+                               int32_t width, int32_t height, int32_t depth,
+                               int32_t channel, Tensor* output) {
     BiasGradGPU<T>::compute(context->template eigen_device<Device>(),
                             output_backprop.template flat<T>().data(),
                             output->flat<T>().data(), batch, width, height,
@@ -468,12 +468,12 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
   }
 
   void ComputeWithReduceSum(OpKernelContext* context,
-                            const Tensor& output_backprop, int32 batch,
-                            int32 width, int32 height, int32 depth,
-                            int32 channel, Tensor* output) {
+                            const Tensor& output_backprop, int32_t batch,
+                            int32_t width, int32_t height, int32_t depth,
+                            int32_t channel, Tensor* output) {
     if (data_format_ == FORMAT_NCHW) {
-      int32 row_count = batch * channel;
-      int32 col_count = height * width * depth;
+      int32_t row_count = batch * channel;
+      int32_t col_count = height * width * depth;
       Tensor temp_grad_outputs;
       // For 'NCHW' format, we perform reduction twice: first HW, then N.
       TensorShape temp_grad_output_shape{row_count, col_count};
@@ -491,8 +491,8 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                                      row_count, col_count);
     } else {
       // For 'NHWC', we simply apply reduction once on NHW.
-      int32 row_count = batch * height * width * depth;
-      int32 col_count = channel;
+      int32_t row_count = batch * height * width * depth;
+      int32_t col_count = channel;
       BiasGradGPU<T>::DoColReduction(
           context, const_cast<T*>(output->flat<T>().data()),
           reinterpret_cast<const T*>(output_backprop.template flat<T>().data()),
@@ -507,7 +507,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                 TensorShapeUtils::IsMatrixOrHigher(output_backprop.shape()),
                 errors::InvalidArgument("Input tensor must be at least 2D: ",
                                         output_backprop.shape().DebugString()));
-    int32 batch, height, width, depth, channel;
+    int32_t batch, height, width, depth, channel;
     GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width,
                      &depth, &channel);
     Tensor* output = nullptr;

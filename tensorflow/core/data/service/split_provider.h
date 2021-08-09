@@ -33,8 +33,8 @@ namespace data {
 class DataServiceSplitProvider : public SplitProvider {
  public:
   DataServiceSplitProvider(const std::string& address,
-                           const std::string& protocol, int64 job_id,
-                           int64 split_provider_index, int64 timeout_ms)
+                           const std::string& protocol, int64_t job_id,
+                           int64_t split_provider_index, int64_t timeout_ms)
       : address_(address),
         protocol_(protocol),
         job_id_(job_id),

@@ -29,6 +29,10 @@ namespace profiler {
 const absl::string_view kHostThreadsPlaneName = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kTpuPlanePrefix = "/device:TPU:";
+// TODO(b/195582092): change it to /device:custom once all literals are
+// migrated.
+const absl::string_view kCustomPlanePrefix = "/device:CUSTOM:";
+
 const absl::string_view kTpuRuntimePlaneName = "/host:TPU-runtime";
 const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
 const absl::string_view kRoctracerApiPlaneName = "/host:ROCTRACER";

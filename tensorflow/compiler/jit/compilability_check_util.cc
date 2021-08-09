@@ -705,6 +705,7 @@ static auto const ops_triggering_xla_compilation =
                                          "XlaReduce",
                                          "XlaReduceWindow",
                                          "XlaReplicaId",
+                                         "XlaRngBitGenerator",
                                          "XlaScatter",
                                          "XlaSelectAndScatter",
                                          "XlaSelfAdjointEig",
@@ -714,6 +715,8 @@ static auto const ops_triggering_xla_compilation =
                                          "XlaSpmdFullToShardShape",
                                          "XlaSpmdShardToFullShape",
                                          "XlaSvd",
+                                         "XlaVariadicReduceV2",
+                                         "XlaVariadicSort",
                                          "XlaWhile"};
 
 static bool NodeCanTriggerXlaCompilation(const NodeDef& node) {

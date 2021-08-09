@@ -160,14 +160,6 @@ class StepDetails {
   }
   // Returns the step time.
   Timespan StepTime() const;
-  std::vector<StepMarker>* MutableMarkers() { return &markers_; }
-  std::vector<EventTypeSpan>* MutableEvents() { return &events_; }
-  absl::flat_hash_map<uint32, AllReduceDbResult>* MutableCollectives() {
-    return &collectives_;
-  }
-  std::vector<DeviceMemoryTransfer>* MutableDeviceMemoryTransfers() {
-    return &device_memory_transfers_;
-  }
   // Adds a step-marker to this step.
   void AddMarker(const StepMarker& m);
   // Adds an EventTypeSpan to this step.
@@ -179,28 +171,30 @@ class StepDetails {
   // allowed.
   void AddDeviceMemoryTransferEvent(EventType event_type,
                                     const Timespan& time_span, uint64 bytes);
-  // Appends the step-markers from another step to this step.
-  void AppendMarkers(const std::vector<StepMarker>& other_markers);
-  // Appends the events from another step to this step.
-  void AppendEvents(const std::vector<EventTypeSpan>& other_events);
-  // Appends the collectives from another step to this step.
-  void AppendCollectives(
-      const absl::flat_hash_map<uint32, AllReduceDbResult>& collectives);
-  // Accumulates the device memory transfers from another step to this step.
-  void AggregateDeviceMemoryTransfers(
-      const std::vector<DeviceMemoryTransfer> device_memory_transfers);
   // Returns the step name.
   std::string StepName() const { return step_name_; }
   // Sets the name of this step.
   void SetStepName(std::string step_name) { step_name_ = step_name; }
+
+  // Converts from overlapped events to non-overlapped events.
+  StepDetails ToNonOverlapped() const;
+
+  // Combines other.
+  void Combine(const StepDetails& other);
+
   // Equality test.
   bool operator==(const StepDetails& other) const;
   // Inequality test.
   bool operator!=(const StepDetails& other) const { return !(*this == other); }
+
   // Returns a string that prints the content of this object.
   std::string DebugString() const;
 
  private:
+  // Accumulates the device memory transfers from another step to this step.
+  void AggregateDeviceMemoryTransfers(
+      const std::vector<DeviceMemoryTransfer> device_memory_transfers);
+
   // All step-markers found for marking this step in the traces. There could be
   // multiple step-markers for a single step for different reasons. One such
   // reason is that there may be one step-marker for the same step on each core;
@@ -223,14 +217,6 @@ using StepEvents = absl::flat_hash_map<int64 /*step_id*/, StepDetails>;
 
 // Equality test for StepEvents.
 bool operator==(const StepEvents& a, const StepEvents& b);
-
-// Returns the event type of the given CPU event.
-EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id,
-                           bool has_device);
-
-// Returns the event type of the given GPU event and tensor shapes.
-EventType ClassifyGpuEvent(absl::string_view event_name,
-                           absl::string_view tensor_shapes);
 
 // Returns the name of the given EventType.
 std::string PrintEventType(EventType event_type);

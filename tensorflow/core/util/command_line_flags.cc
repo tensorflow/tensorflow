@@ -41,13 +41,13 @@ bool ParseStringFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
 }
 
 bool ParseInt32Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
-                    const std::function<bool(int32)>& hook,
+                    const std::function<bool(int32_t)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;
   if (absl::ConsumePrefix(&arg, "--") && absl::ConsumePrefix(&arg, flag) &&
       absl::ConsumePrefix(&arg, "=")) {
     char extra;
-    int32 parsed_int32;
+    int32_t parsed_int32;
     if (sscanf(arg.data(), "%d%c", &parsed_int32, &extra) != 1) {
       LOG(ERROR) << "Couldn't interpret value " << arg << " for flag " << flag
                  << ".";
@@ -136,7 +136,7 @@ Flag::Flag(const char* name, tensorflow::int32* dst, const string& usage_text,
            bool* dst_updated)
     : name_(name),
       type_(TYPE_INT32),
-      int32_hook_([dst, dst_updated](int32 value) {
+      int32_hook_([dst, dst_updated](int32_t value) {
         *dst = value;
         if (dst_updated) *dst_updated = true;
         return true;
@@ -192,8 +192,8 @@ Flag::Flag(const char* name, string* dst, const string& usage_text,
       string_default_for_display_(*dst),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, std::function<bool(int32)> int32_hook,
-           int32 default_value_for_display, const string& usage_text)
+Flag::Flag(const char* name, std::function<bool(int32_t)> int32_hook,
+           int32_t default_value_for_display, const string& usage_text)
     : name_(name),
       type_(TYPE_INT32),
       int32_hook_(std::move(int32_hook)),

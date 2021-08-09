@@ -37,21 +37,32 @@ def TF__TfrtSetResourceOp : TF_Op<"_TfrtSetResource", []> {
   );
 }
 
-def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource", [NoSideEffect, TF_NoConstantFold]> {
+def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource",
+    [NoSideEffect, TF_NoConstantFold, DeclareOpInterfaceMethods<TF_ResourceHandleAllocatorInterface>]> {
   let summary = "Get values from TFRT runtime's static resource.";
 
   let description = [{
     Getting tensor values from TFRT runtime's static resource manager, using
     the indices that are previously set in _TfrtSetResource op.
+    `shared_name` and `container` are used to store identifying information for
+    resource tensors that have been hoisted. This is important for resource
+    alias analysis and side effect analysis. These are empty for non-resource
+    type tensors.
   }];
 
   let arguments = (ins
-    I64ArrayAttr:$indices
+    I64ArrayAttr:$indices,
+    StrArrayAttr:$shared_name,
+    StrArrayAttr:$container
   );
 
   let results = (outs
     Variadic<TF_Tensor>:$results
   );
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 #endif // TFRT_OPS

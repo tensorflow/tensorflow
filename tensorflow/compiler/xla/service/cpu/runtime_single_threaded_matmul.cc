@@ -31,8 +31,8 @@ bool Is16BytesAligned(void* ptr) {
 
 template <typename T, Eigen::AlignmentType Alignment>
 void MatMul(const void* run_options_ptr, T* out, T* lhs, T* rhs, int64_t m,
-            int64_t n, int64_t k, tensorflow::int32 transpose_lhs,
-            tensorflow::int32 transpose_rhs) {
+            int64_t n, int64_t k, int32_t transpose_lhs,
+            int32_t transpose_rhs) {
   int64_t lhs_rows = m;
   int64_t lhs_cols = k;
   if (transpose_lhs) {
@@ -66,8 +66,8 @@ void MatMul(const void* run_options_ptr, T* out, T* lhs, T* rhs, int64_t m,
 template <typename T>
 void SingleThreadedMatMulDispatch(const void* run_options_ptr, T* out, T* lhs,
                                   T* rhs, int64_t m, int64_t n, int64_t k,
-                                  tensorflow::int32 transpose_lhs,
-                                  tensorflow::int32 transpose_rhs) {
+                                  int32_t transpose_lhs,
+                                  int32_t transpose_rhs) {
   bool all_buffers_16b_aligned =
       Is16BytesAligned(out) && Is16BytesAligned(lhs) && Is16BytesAligned(rhs);
 
@@ -85,26 +85,29 @@ void SingleThreadedMatMulDispatch(const void* run_options_ptr, T* out, T* lhs,
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_EigenSingleThreadedMatMulF16(
     const void* run_options_ptr, Eigen::half* out, Eigen::half* lhs,
-    Eigen::half* rhs, int64_t m, int64_t n, int64_t k,
-    tensorflow::int32 transpose_lhs, tensorflow::int32 transpose_rhs) {
+    Eigen::half* rhs, int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
+    int32_t transpose_rhs) {
   SingleThreadedMatMulDispatch<Eigen::half>(run_options_ptr, out, lhs, rhs, m,
                                             n, k, transpose_lhs, transpose_rhs);
 }
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
-__xla_cpu_runtime_EigenSingleThreadedMatMulF32(
-    const void* run_options_ptr, float* out, float* lhs, float* rhs, int64_t m,
-    int64_t n, int64_t k, tensorflow::int32 transpose_lhs,
-    tensorflow::int32 transpose_rhs) {
+__xla_cpu_runtime_EigenSingleThreadedMatMulF32(const void* run_options_ptr,
+                                               float* out, float* lhs,
+                                               float* rhs, int64_t m, int64_t n,
+                                               int64_t k, int32_t transpose_lhs,
+                                               int32_t transpose_rhs) {
   SingleThreadedMatMulDispatch<float>(run_options_ptr, out, lhs, rhs, m, n, k,
                                       transpose_lhs, transpose_rhs);
 }
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
-__xla_cpu_runtime_EigenSingleThreadedMatMulF64(
-    const void* run_options_ptr, double* out, double* lhs, double* rhs,
-    int64_t m, int64_t n, int64_t k, tensorflow::int32 transpose_lhs,
-    tensorflow::int32 transpose_rhs) {
+__xla_cpu_runtime_EigenSingleThreadedMatMulF64(const void* run_options_ptr,
+                                               double* out, double* lhs,
+                                               double* rhs, int64_t m,
+                                               int64_t n, int64_t k,
+                                               int32_t transpose_lhs,
+                                               int32_t transpose_rhs) {
   SingleThreadedMatMulDispatch<double>(run_options_ptr, out, lhs, rhs, m, n, k,
                                        transpose_lhs, transpose_rhs);
 }
@@ -113,8 +116,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_EigenSingleThreadedMatMulC64(
     const void* run_options_ptr, std::complex<float>* out,
     std::complex<float>* lhs, std::complex<float>* rhs, int64_t m, int64_t n,
-    int64_t k, tensorflow::int32 transpose_lhs,
-    tensorflow::int32 transpose_rhs) {
+    int64_t k, int32_t transpose_lhs, int32_t transpose_rhs) {
   SingleThreadedMatMulDispatch<std::complex<float>>(
       run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
 }
@@ -123,8 +125,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_EigenSingleThreadedMatMulC128(
     const void* run_options_ptr, std::complex<double>* out,
     std::complex<double>* lhs, std::complex<double>* rhs, int64_t m, int64_t n,
-    int64_t k, tensorflow::int32 transpose_lhs,
-    tensorflow::int32 transpose_rhs) {
+    int64_t k, int32_t transpose_lhs, int32_t transpose_rhs) {
   SingleThreadedMatMulDispatch<std::complex<double>>(
       run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
 }
@@ -133,7 +134,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_EigenSingleThreadedMatMulS32(
     const void* run_options_ptr, tensorflow::int32* out, tensorflow::int32* lhs,
     tensorflow::int32* rhs, int64_t m, int64_t n, int64_t k,
-    tensorflow::int32 transpose_lhs, tensorflow::int32 transpose_rhs) {
+    int32_t transpose_lhs, int32_t transpose_rhs) {
   SingleThreadedMatMulDispatch<tensorflow::int32>(
       run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
 }

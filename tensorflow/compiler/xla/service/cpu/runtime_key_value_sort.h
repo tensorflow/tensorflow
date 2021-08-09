@@ -36,8 +36,7 @@ extern "C" {
 // - pointers to the buffer tables = nullptr for thread local functions (char**)
 // - profile counters = 'prof_counters' (int64*)
 extern void __xla_cpu_runtime_KeyValueSort(
-    int64_t a, int64_t b, int64_t c, char** values,
-    tensorflow::int32 values_count,
+    int64_t a, int64_t b, int64_t c, char** values, int32_t values_count,
     tensorflow::int32* values_primitive_type_size_in_bytes, bool is_stable,
     char* run_options, tensorflow::int64* prof_counters,
     void (*less_than)(char*, char*, char**, char**, tensorflow::int64*));

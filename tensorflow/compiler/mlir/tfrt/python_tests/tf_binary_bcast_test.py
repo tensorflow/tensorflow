@@ -21,6 +21,12 @@ from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
 
 cpurt = tf_cpurt.TfCpurtExecutor()
 
+specializations = [
+    tf_cpurt.Specialization.ENABLED,
+    tf_cpurt.Specialization.DISABLED,
+    tf_cpurt.Specialization.ALWAYS,
+]
+
 
 class TfBinaryBcastTest(googletest.TestCase):
 
@@ -44,7 +50,7 @@ class TfBinaryBcastTest(googletest.TestCase):
     arg1 = np.random.uniform(0, 10.0, size=(4)).astype(np.float32)
     arg2 = np.random.uniform(0, 10.0, size=(4)).astype(np.float32)
 
-    for specialize in [True, False]:
+    for specialize in specializations:
       compiled = cpurt.compile(mlir_function, 'test', specialize)
 
       [res] = cpurt.execute(compiled, [arg0, arg1, arg2])
@@ -73,7 +79,7 @@ class TfBinaryBcastTest(googletest.TestCase):
     rhs2 = np.random.uniform(0, 10.0, size=(m, 1)).astype(np.float32)
     rhs3 = np.random.uniform(0, 10.0, size=(m, n)).astype(np.float32)
 
-    for specialize in [True, False]:
+    for specialize in specializations:
       compiled = cpurt.compile(mlir_function, 'test', specialize)
 
       for lhs in [lhs0, lhs1, lhs2, lhs3]:
@@ -95,7 +101,7 @@ class TfBinaryBcastTest(googletest.TestCase):
         return %2 : tensor<?x4xf32>
       }"""
 
-    for specialize in [True, False]:
+    for specialize in specializations:
       compiled = cpurt.compile(mlir_function, 'compute', specialize)
 
       arg0 = np.random.uniform(0, 10.0, size=(1, 4)).astype(np.float32)

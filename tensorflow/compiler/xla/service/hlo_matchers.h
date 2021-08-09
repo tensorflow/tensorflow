@@ -46,7 +46,7 @@ class HloMatcher : public ::testing::MatcherInterface<const HloInstruction*> {
 // Custom matcher for parameters, which accepts a parameter number.
 class HloParameterMatcher : public HloMatcher {
  public:
-  explicit HloParameterMatcher(int64 parameter_number)
+  explicit HloParameterMatcher(int64_t parameter_number)
       : HloMatcher(HloOpcode::kParameter, /*operands=*/{}),
         parameter_number_(parameter_number) {}
 
@@ -77,7 +77,7 @@ class HloComparisonMatcher : public HloMatcher {
 class HloGetTupleElementMatcher : public HloMatcher {
  public:
   HloGetTupleElementMatcher(::testing::Matcher<const HloInstruction*> operand,
-                            int64 tuple_index)
+                            int64_t tuple_index)
       : HloMatcher(HloOpcode::kGetTupleElement, /*operands=*/{operand}),
         tuple_index_(tuple_index) {}
 
@@ -158,8 +158,8 @@ class HloDotWithContractingDimsMatcher : public HloMatcher {
  public:
   explicit HloDotWithContractingDimsMatcher(
       ::testing::Matcher<const HloInstruction*> lhs,
-      ::testing::Matcher<const HloInstruction*> rhs, int64 lhs_contracting_dim,
-      int64 rhs_contracting_dim)
+      ::testing::Matcher<const HloInstruction*> rhs,
+      int64_t lhs_contracting_dim, int64_t rhs_contracting_dim)
       : HloMatcher(HloOpcode::kDot, /*operands=*/{lhs, rhs}),
         lhs_contracting_dim_(lhs_contracting_dim),
         rhs_contracting_dim_(rhs_contracting_dim) {}
@@ -177,7 +177,7 @@ class HloDotWithContractingDimsMatcher : public HloMatcher {
 // source and destination memory spaces.
 class HloAsyncCopyMatcher : public HloMatcher {
  public:
-  HloAsyncCopyMatcher(int64 to_space, int64 from_space,
+  HloAsyncCopyMatcher(int64_t to_space, int64_t from_space,
                       ::testing::Matcher<const HloInstruction*> operand)
       : HloMatcher(HloOpcode::kCopyDone,
                    {::testing::MakeMatcher(
@@ -322,7 +322,7 @@ HLO_MATCHER_VECTOR_OPERANDS(DynamicSlice);
 //  - Parameter(N) matches parameter number N.
 //  - Parameter() matches any parameter.
 inline ::testing::Matcher<const ::xla::HloInstruction*> Parameter(
-    int64 parameter_number) {
+    int64_t parameter_number) {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloParameterMatcher(parameter_number));
 }
@@ -367,7 +367,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Lt(M... operands) {
 // tuple element of operand, while GetTupleElement(operand) matches any GTE
 // operation on operand, and GetTupleElement() matches any GTE operation at all.
 inline ::testing::Matcher<const ::xla::HloInstruction*> GetTupleElement(
-    ::testing::Matcher<const HloInstruction*> operand, int64 tuple_index) {
+    ::testing::Matcher<const HloInstruction*> operand, int64_t tuple_index) {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloGetTupleElementMatcher(operand, tuple_index));
 }
@@ -474,7 +474,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(
 inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(
     ::testing::Matcher<const HloInstruction*> lhs_matcher,
     ::testing::Matcher<const HloInstruction*> rhs_matcher,
-    int64 lhs_contracting_dim, int64 rhs_contracting_dim) {
+    int64_t lhs_contracting_dim, int64_t rhs_contracting_dim) {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloDotWithContractingDimsMatcher(
           lhs_matcher, rhs_matcher, lhs_contracting_dim, rhs_contracting_dim));
@@ -484,7 +484,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(
 // CopyDone(CopyStart(...)) where from_space and to_space is the source and
 // destination memory spaces, respectively.
 inline ::testing::Matcher<const ::xla::HloInstruction*> AsyncCopy(
-    int64 to_space, int64 from_space,
+    int64_t to_space, int64_t from_space,
     ::testing::Matcher<const HloInstruction*> operand_matcher) {
   return ::testing::MakeMatcher(new ::xla::testing::HloAsyncCopyMatcher(
       to_space, from_space, operand_matcher));

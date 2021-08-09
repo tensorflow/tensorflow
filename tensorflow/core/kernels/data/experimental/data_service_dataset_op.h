@@ -88,7 +88,7 @@ class DataServiceDatasetOp : public DatasetOpKernel {
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   std::string data_transfer_protocol_;
-  TargetWorkers target_workers_ = TargetWorkers::AUTO;
+  TargetWorkers target_workers_ = TARGET_WORKERS_AUTO;
 };
 
 }  // namespace data

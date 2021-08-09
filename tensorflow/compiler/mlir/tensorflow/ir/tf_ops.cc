@@ -305,6 +305,7 @@ TensorFlowDialect::DecodeConstantHook TensorFlowDialect::decode_constant_hook_;
 
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf", context, TypeID::get<TensorFlowDialect>()) {
+  context->getOrLoadDialect<::mlir::tf_type::TFTypeDialect>();
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_all_ops.cc.inc"
@@ -313,12 +314,10 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.cc.inc"
       >();
-  registerTypes();
   addInterfaces<TFInlinerInterface, TFDecodeAttributesInterface,
                 TFConstantFoldInterface>();
   fallback_effect_op_interface_ =
       new TensorFlowRegistryEffectInterfaceFallback();
-  registerAttributes();
 
   // Support unknown operations because not all TensorFlow operations are
   // registered.
@@ -333,107 +332,21 @@ TensorFlowDialect::~TensorFlowDialect() {
   delete fallback_effect_op_interface_;
 }
 
-// Parses a type registered to this dialect.
 Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
-  StringRef data;
-  if (parser.parseKeyword(&data)) return Type();
-
-#define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  if (data == name) return tftype##Type::get(getContext());
-// Custom TensorFlow types are handled separately at the end as they do partial
-// match.
-#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)
-// NOLINTNEXTLINE
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-
-  llvm::SMLoc loc = parser.getNameLoc();
-  if (data.startswith("resource")) {
-    Type ret = ParseResourceType(parser);
-    if (!ret) parser.emitError(loc, "invalid resource type");
-    return ret;
-  }
-  if (data.startswith("variant")) {
-    Type ret = ParseVariantType(parser);
-    if (!ret) parser.emitError(loc, "invalid variant type");
-    return ret;
-  }
-  return (parser.emitError(loc, "unknown TensorFlow type: " + data), nullptr);
+  StringRef spec = parser.getFullSymbolSpec();
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  parser.emitError(
+      loc, "tf dialect has no types, potentially meant !tf_type." + spec);
+  return nullptr;
 }
 
-// Prints a type registered to this dialect.
-void TensorFlowDialect::printType(Type ty, DialectAsmPrinter &os) const {
-  assert(ty.isa<TensorFlowType>());
-#define HANDLE_TF_TYPE(tftype, enumerant, name)        \
-  if (auto derived_ty = ty.dyn_cast<tftype##Type>()) { \
-    os << name;                                        \
-    return;                                            \
-  }
-#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name) \
-  if (auto derived_ty = ty.dyn_cast<tftype##Type>()) { \
-    Print##tftype##Type(derived_ty, os);               \
-    return;                                            \
-  }
-// NOLINTNEXTLINE
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-
-  llvm_unreachable("unexpected tensorflow type kind");
-}
-
-namespace {
-template <typename TypeWithSubtype>
-Type ParseTypeWithSubtype(MLIRContext *context, DialectAsmParser &parser) {
-  // Default type without inferred subtypes.
-  if (failed(parser.parseOptionalLess())) return TypeWithSubtype::get(context);
-
-  // Most types with subtypes have only one subtype.
-  SmallVector<TensorType, 1> subtypes;
-  do {
-    TensorType tensor_ty;
-    if (parser.parseType(tensor_ty)) return Type();
-
-    // Each of the subtypes should be a valid TensorFlow type.
-    // TODO(jpienaar): Remove duplication.
-    if (!IsValidTFTensorType(tensor_ty)) {
-      parser.emitError(parser.getNameLoc()) << "invalid subtype: " << tensor_ty;
-      return Type();
-    }
-    subtypes.push_back(tensor_ty);
-  } while (succeeded(parser.parseOptionalComma()));
-
-  if (parser.parseGreater()) return Type();
-
-  return TypeWithSubtype::get(subtypes, context);
-}
-
-template <typename TypeWithSubtype>
-void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty,
-                          DialectAsmPrinter &os) {
-  os << type;
-  ArrayRef<TensorType> subtypes = ty.getSubtypes();
-  if (subtypes.empty()) return;
-
-  os << "<";
-  interleaveComma(subtypes, os);
-  os << ">";
-}
-}  // anonymous namespace
-
-Type TensorFlowDialect::ParseResourceType(DialectAsmParser &parser) const {
-  return ParseTypeWithSubtype<ResourceType>(getContext(), parser);
-}
-
-void TensorFlowDialect::PrintResourceType(ResourceType ty,
-                                          DialectAsmPrinter &os) const {
-  return PrintTypeWithSubtype("resource", ty, os);
-}
-
-Type TensorFlowDialect::ParseVariantType(DialectAsmParser &parser) const {
-  return ParseTypeWithSubtype<VariantType>(getContext(), parser);
-}
-
-void TensorFlowDialect::PrintVariantType(VariantType ty,
-                                         DialectAsmPrinter &os) const {
-  return PrintTypeWithSubtype("variant", ty, os);
+Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
+                                            Type type) const {
+  StringRef spec = parser.getFullSymbolSpec();
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  parser.emitError(
+      loc, "tf dialect has no attributes, potentially meant #tf_type." + spec);
+  return nullptr;
 }
 
 Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,

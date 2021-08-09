@@ -11764,8 +11764,7 @@ struct SignatureDefT : public flatbuffers::NativeTable {
   typedef SignatureDef TableType;
   std::vector<std::unique_ptr<tflite::TensorMapT>> inputs;
   std::vector<std::unique_ptr<tflite::TensorMapT>> outputs;
-  std::string method_name;
-  std::string key;
+  std::string signature_key;
   uint32_t subgraph_index;
   SignatureDefT()
       : subgraph_index(0) {
@@ -11777,8 +11776,7 @@ struct SignatureDef FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_INPUTS = 4,
     VT_OUTPUTS = 6,
-    VT_METHOD_NAME = 8,
-    VT_KEY = 10,
+    VT_SIGNATURE_KEY = 8,
     VT_SUBGRAPH_INDEX = 12
   };
   const flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>> *inputs() const {
@@ -11787,11 +11785,8 @@ struct SignatureDef FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>> *outputs() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>> *>(VT_OUTPUTS);
   }
-  const flatbuffers::String *method_name() const {
-    return GetPointer<const flatbuffers::String *>(VT_METHOD_NAME);
-  }
-  const flatbuffers::String *key() const {
-    return GetPointer<const flatbuffers::String *>(VT_KEY);
+  const flatbuffers::String *signature_key() const {
+    return GetPointer<const flatbuffers::String *>(VT_SIGNATURE_KEY);
   }
   uint32_t subgraph_index() const {
     return GetField<uint32_t>(VT_SUBGRAPH_INDEX, 0);
@@ -11804,10 +11799,8 @@ struct SignatureDef FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_OUTPUTS) &&
            verifier.VerifyVector(outputs()) &&
            verifier.VerifyVectorOfTables(outputs()) &&
-           VerifyOffset(verifier, VT_METHOD_NAME) &&
-           verifier.VerifyString(method_name()) &&
-           VerifyOffset(verifier, VT_KEY) &&
-           verifier.VerifyString(key()) &&
+           VerifyOffset(verifier, VT_SIGNATURE_KEY) &&
+           verifier.VerifyString(signature_key()) &&
            VerifyField<uint32_t>(verifier, VT_SUBGRAPH_INDEX) &&
            verifier.EndTable();
   }
@@ -11825,11 +11818,8 @@ struct SignatureDefBuilder {
   void add_outputs(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>>> outputs) {
     fbb_.AddOffset(SignatureDef::VT_OUTPUTS, outputs);
   }
-  void add_method_name(flatbuffers::Offset<flatbuffers::String> method_name) {
-    fbb_.AddOffset(SignatureDef::VT_METHOD_NAME, method_name);
-  }
-  void add_key(flatbuffers::Offset<flatbuffers::String> key) {
-    fbb_.AddOffset(SignatureDef::VT_KEY, key);
+  void add_signature_key(flatbuffers::Offset<flatbuffers::String> signature_key) {
+    fbb_.AddOffset(SignatureDef::VT_SIGNATURE_KEY, signature_key);
   }
   void add_subgraph_index(uint32_t subgraph_index) {
     fbb_.AddElement<uint32_t>(SignatureDef::VT_SUBGRAPH_INDEX, subgraph_index, 0);
@@ -11850,13 +11840,11 @@ inline flatbuffers::Offset<SignatureDef> CreateSignatureDef(
     flatbuffers::FlatBufferBuilder &_fbb,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>>> inputs = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>>> outputs = 0,
-    flatbuffers::Offset<flatbuffers::String> method_name = 0,
-    flatbuffers::Offset<flatbuffers::String> key = 0,
+    flatbuffers::Offset<flatbuffers::String> signature_key = 0,
     uint32_t subgraph_index = 0) {
   SignatureDefBuilder builder_(_fbb);
   builder_.add_subgraph_index(subgraph_index);
-  builder_.add_key(key);
-  builder_.add_method_name(method_name);
+  builder_.add_signature_key(signature_key);
   builder_.add_outputs(outputs);
   builder_.add_inputs(inputs);
   return builder_.Finish();
@@ -11866,19 +11854,16 @@ inline flatbuffers::Offset<SignatureDef> CreateSignatureDefDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<flatbuffers::Offset<tflite::TensorMap>> *inputs = nullptr,
     const std::vector<flatbuffers::Offset<tflite::TensorMap>> *outputs = nullptr,
-    const char *method_name = nullptr,
-    const char *key = nullptr,
+    const char *signature_key = nullptr,
     uint32_t subgraph_index = 0) {
   auto inputs__ = inputs ? _fbb.CreateVector<flatbuffers::Offset<tflite::TensorMap>>(*inputs) : 0;
   auto outputs__ = outputs ? _fbb.CreateVector<flatbuffers::Offset<tflite::TensorMap>>(*outputs) : 0;
-  auto method_name__ = method_name ? _fbb.CreateString(method_name) : 0;
-  auto key__ = key ? _fbb.CreateString(key) : 0;
+  auto signature_key__ = signature_key ? _fbb.CreateString(signature_key) : 0;
   return tflite::CreateSignatureDef(
       _fbb,
       inputs__,
       outputs__,
-      method_name__,
-      key__,
+      signature_key__,
       subgraph_index);
 }
 
@@ -15559,8 +15544,7 @@ inline void SignatureDef::UnPackTo(SignatureDefT *_o, const flatbuffers::resolve
   (void)_resolver;
   { auto _e = inputs(); if (_e) { _o->inputs.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->inputs[_i] = std::unique_ptr<tflite::TensorMapT>(_e->Get(_i)->UnPack(_resolver)); } } }
   { auto _e = outputs(); if (_e) { _o->outputs.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->outputs[_i] = std::unique_ptr<tflite::TensorMapT>(_e->Get(_i)->UnPack(_resolver)); } } }
-  { auto _e = method_name(); if (_e) _o->method_name = _e->str(); }
-  { auto _e = key(); if (_e) _o->key = _e->str(); }
+  { auto _e = signature_key(); if (_e) _o->signature_key = _e->str(); }
   { auto _e = subgraph_index(); _o->subgraph_index = _e; }
 }
 
@@ -15574,15 +15558,13 @@ inline flatbuffers::Offset<SignatureDef> CreateSignatureDef(flatbuffers::FlatBuf
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SignatureDefT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _inputs = _o->inputs.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::TensorMap>> (_o->inputs.size(), [](size_t i, _VectorArgs *__va) { return CreateTensorMap(*__va->__fbb, __va->__o->inputs[i].get(), __va->__rehasher); }, &_va ) : 0;
   auto _outputs = _o->outputs.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::TensorMap>> (_o->outputs.size(), [](size_t i, _VectorArgs *__va) { return CreateTensorMap(*__va->__fbb, __va->__o->outputs[i].get(), __va->__rehasher); }, &_va ) : 0;
-  auto _method_name = _o->method_name.empty() ? 0 : _fbb.CreateString(_o->method_name);
-  auto _key = _o->key.empty() ? 0 : _fbb.CreateString(_o->key);
+  auto _signature_key = _o->signature_key.empty() ? 0 : _fbb.CreateString(_o->signature_key);
   auto _subgraph_index = _o->subgraph_index;
   return tflite::CreateSignatureDef(
       _fbb,
       _inputs,
       _outputs,
-      _method_name,
-      _key,
+      _signature_key,
       _subgraph_index);
 }
 

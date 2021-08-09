@@ -29,7 +29,6 @@ def : Pat<(TFL_ExpOp $arg), (Tosa_ExpOp $arg)>;
 def : Pat<(TFL_LogOp $arg), (Tosa_LogOp $arg)>;
 def : Pat<(TFL_RsqrtOp $arg), (Tosa_RsqrtOp $arg)>;
 def : Pat<(TFL_LogicalNotOp $arg), (Tosa_LogicalNotOp $arg)>;
-def : Pat<(TFL_SqrtOp $arg), (Tosa_ReciprocalOp(Tosa_RsqrtOp $arg))>;
 def : Pat<(TFL_CastOp $in), (Tosa_CastOp $in)>;
 
 // Removing the quant.stats op for unquantized models.

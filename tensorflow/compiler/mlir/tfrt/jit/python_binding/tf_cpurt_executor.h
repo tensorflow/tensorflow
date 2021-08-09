@@ -19,12 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
-#include "tfrt/cpu/jit/cpurt.h"
-#include "tfrt/host_context/host_context.h"
 #include "llvm/ADT/DenseMap.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
+#include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 
@@ -34,13 +34,14 @@ namespace tensorflow {
 class TfCpurtExecutor {
  public:
   using Handle = int64_t;
+  using Specialization = tfrt::cpu::jit::CompilationOptions::Specialization;
 
   TfCpurtExecutor();
 
   // Compiles mlir module and caches it. Returns a handle, that can be passed to
   // execute function.
   Handle Compile(const std::string& mlir_module, const std::string& entrypoint,
-                 bool disable_specializations = false);
+                 Specialization specialization);
 
   // Executes compiled mlir module with Python array arguments. Converts
   // returned memrefs into Python arrays.

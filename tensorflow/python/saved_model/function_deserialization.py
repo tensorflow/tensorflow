@@ -33,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import compat
@@ -425,8 +426,16 @@ def load_function_def_library(library,
 
 
 def _gen_gradient_func(func):
+  """Wraps a deserialized function."""
 
   def gradient_func(unused_op, *result_grads):
+    # Replace all `None` arguments, because the traced custom gradient function
+    # expects tensors. Replacing with zeros is correct since the `None` values
+    # occur when the gradient is unconnected, and thus the gradient is
+    # "statically proven to be zero." See `tf.UnconnectedGradients` for details.
+    result_grads = [x if x is not None else default_gradient.zeros_like(t)
+                    for (x, t) in zip(result_grads, func.graph.inputs)]
+
     return func(*result_grads)
 
   return gradient_func

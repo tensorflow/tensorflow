@@ -59,7 +59,7 @@ namespace xla {
 // d_new = slice(cd_new) second half
 class WhileLoopConcatCodeMotion : public HloModulePass {
  public:
-  explicit WhileLoopConcatCodeMotion(int64 min_operand_count_to_optimize)
+  explicit WhileLoopConcatCodeMotion(int64_t min_operand_count_to_optimize)
       : min_operand_count_to_optimize_(min_operand_count_to_optimize) {}
   ~WhileLoopConcatCodeMotion() override = default;
 
