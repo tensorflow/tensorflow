@@ -281,6 +281,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
       } else if (post_op == "LeakyRelu") {
         params.post_op_params.push_back(
             {"leakyrelu", {1.0, leakyrelu_alpha, 0.0}});
+      } else if (post_op == "Sigmoid") {
+        params.post_op_params.push_back({"logistic", {1.0, 0.0, 0.0}});
       } else {
         OP_REQUIRES_OK(
             ctx, errors::InvalidArgument(

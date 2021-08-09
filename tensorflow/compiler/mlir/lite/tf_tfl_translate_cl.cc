@@ -138,3 +138,10 @@ opt<bool> unfold_large_splat_constant(
     llvm::cl::desc("Whether to unfold large splat constant tensors to reduce "
                    "the generated model size."),
     llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> guarantee_all_funcs_one_use(
+    "guarantee-all-funcs-one-use",
+    llvm::cl::desc(
+        "Whether to clone functions to ensure each function has a single use."),
+    llvm::cl::init(false));

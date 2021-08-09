@@ -57,8 +57,15 @@ Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   auto gpu_stream = se::gpu::AsGpuStreamValue(params.stream);
-  call_target_(gpu_stream, buffers.data(), opaque_.data(), opaque_.size());
-  return Status::OK();
+  XlaCustomCallStatus custom_call_status;
+  call_target_(gpu_stream, buffers.data(), opaque_.data(), opaque_.size(),
+               &custom_call_status);
+  auto message = CustomCallStatusGetMessage(&custom_call_status);
+  if (message) {
+    return InternalError("CustomCall failed: %s", *message);
+  } else {
+    return Status::OK();
+  }
 #else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return Unavailable(
       "Custom calls on GPU are not supported in this configuration. Please "

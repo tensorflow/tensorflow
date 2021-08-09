@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/model.h"
@@ -118,11 +119,15 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   InputTensorData LoadInputTensorData(const TfLiteTensor& t,
                                       const std::string& input_file_path);
 
+  void AddOwnedListener(std::unique_ptr<BenchmarkListener> listener) {
+    if (listener == nullptr) return;
+    owned_listeners_.emplace_back(std::move(listener));
+    AddListener(owned_listeners_.back().get());
+  }
+
   std::vector<InputLayerInfo> inputs_;
   std::vector<InputTensorData> inputs_data_;
-  std::unique_ptr<BenchmarkListener> profiling_listener_ = nullptr;
-  std::unique_ptr<BenchmarkListener> ruy_profiling_listener_ = nullptr;
-  std::unique_ptr<BenchmarkListener> interpreter_state_printer_ = nullptr;
+  std::vector<std::unique_ptr<BenchmarkListener>> owned_listeners_;
   std::mt19937 random_engine_;
   std::vector<Interpreter::TfLiteDelegatePtr> owned_delegates_;
   // Always TFLITE_LOG the benchmark result.

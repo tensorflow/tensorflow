@@ -308,6 +308,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
 )
@@ -378,6 +379,7 @@ cc_library(
         ":types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
@@ -550,6 +552,7 @@ pybind_extension(
         ":xla_compiler",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "//tensorflow/compiler/xla:literal",

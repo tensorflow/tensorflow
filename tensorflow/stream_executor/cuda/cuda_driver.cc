@@ -463,13 +463,13 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ port::Status GpuDriver::LaunchKernel(
-    GpuContext* context, CUfunction function, unsigned int grid_dim_x,
-    unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,
-    unsigned int block_dim_y, unsigned int block_dim_z,
-    unsigned int shared_mem_bytes, CUstream stream, void** kernel_params,
-    void** extra) {
+    GpuContext* context, absl::string_view kernel_name, CUfunction function,
+    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
+    unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_mem_bytes, CUstream stream,
+    void** kernel_params, void** extra) {
   ScopedActivateContext activation(context);
-  VLOG(2) << "launching kernel: " << function << "; gdx: " << grid_dim_x
+  VLOG(2) << "launching kernel: " << kernel_name << "; gdx: " << grid_dim_x
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
           << " bdz: " << block_dim_z;
@@ -477,7 +477,9 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
       cuLaunchKernel(function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x,
                      block_dim_y, block_dim_z, shared_mem_bytes, stream,
                      kernel_params, extra),
-      "Failed to launch CUDA kernel");
+      "Failed to launch CUDA kernel: ", kernel_name,
+      " with block dimensions: ", block_dim_x, "x", block_dim_y, "x",
+      block_dim_z);
   return port::Status::OK();
 }
 

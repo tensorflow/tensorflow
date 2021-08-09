@@ -141,8 +141,9 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(absl::StrContains(
-        s.ToString(), "Invalid argument: Shape must be rank 2 but is rank 1"));
+    EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "Shape must be rank 2 but is rank 1"));
   }
 
   {
@@ -161,9 +162,9 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {S({2, 5}), S({3, 4})}, {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(absl::StrContains(
-        s.ToString(),
-        "Invalid argument: Dimensions must be equal, but are 5 and 3"));
+    EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "Dimensions must be equal, but are 5 and 3"));
   }
 
   {
@@ -171,9 +172,9 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
     InferenceContext c(TF_GRAPH_DEF_VERSION, def, op_def,
                        {S({2, 5, 3}), S({3, 5, 4})}, {}, {}, {});
     auto s = MatMulShape(&c);
-    EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(absl::StrContains(
-        s.ToString(), "Invalid argument: Shape must be rank 2 but is rank 3"));
+    EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "Shape must be rank 2 but is rank 3"));
   }
 
   {

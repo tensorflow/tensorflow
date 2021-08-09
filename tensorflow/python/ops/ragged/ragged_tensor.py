@@ -376,7 +376,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
         a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
-        since they must be checked for each tensor value.
+          since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor`.  `result.rank = values.rank + 1`.
@@ -426,7 +426,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
         a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
-        since they must be checked for each tensor value.
+          since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor`.  `result.rank = values.rank + 1`.
@@ -472,7 +472,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
         a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
-        since they must be checked for each tensor value.
+          since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor`.  `result.rank = values.rank + 1`.
@@ -511,7 +511,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
         a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
-        since they must be checked for each tensor value.
+          since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor`.  `result.rank = values.rank + 1`.
@@ -550,7 +550,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
         a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
-        since they must be checked for each tensor value.
+          since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor`.  `result.rank = values.rank + 1`.
@@ -613,11 +613,11 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       nrows: The number of rows in the constructed RaggedTensor.  If not
         specified, then it defaults to `nvals/uniform_row_length` (or `0` if
         `uniform_row_length==0`).  `nrows` only needs to be specified if
-        `uniform_row_length` might be zero.  `uniform_row_length*nrows` must
-        be `nvals`.
+        `uniform_row_length` might be zero.  `uniform_row_length*nrows` must be
+        `nvals`.
       validate: If true, then use assertions to check that the arguments form
         a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
-        since they must be checked for each tensor value.
+          since they must be checked for each tensor value.
       name: A name prefix for the RaggedTensor (optional).
 
     Returns:
@@ -675,7 +675,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
         a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
-        since they must be checked for each tensor value.
+          since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor` (or `flat_values` if `nested_value_rowids` is empty).
@@ -729,7 +729,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
         a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
-        since they must be checked for each tensor value.
+          since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor` (or `flat_values` if `nested_row_splits` is empty).
@@ -769,7 +769,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
         a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
-        since they must be checked for each tensor value.
+          since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor` (or `flat_values` if `nested_row_lengths` is empty).
@@ -804,7 +804,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     Args:
       flat_values: A potentially ragged tensor.
       nested_row_partitions: A list of row partitions.  The `i`th element is
-      used as the row partition for the `i`th ragged dimension.
+        used as the row partition for the `i`th ragged dimension.
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
         a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
@@ -2070,12 +2070,29 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     Returns:
       A nested Python `list`.
     """
-    if self._is_eager():
-      return self._eager_value().to_list()
+    if not isinstance(self.row_splits, ops.EagerTensor):
+      raise ValueError("to_list can only be used in eager mode.")
+    row_splits = self.row_splits.numpy().tolist()
+    values = self.values
+
+    if isinstance(values, RaggedTensor):
+      return [
+          values[row_splits[i]:row_splits[i + 1]].to_list()
+          for i in range(len(row_splits) - 1)
+      ]
     else:
-      raise ValueError("RaggedTensor.to_list() is only supported in eager "
-                       "mode; in graph mode, evaluate the RaggedTensor first "
-                       "and then use RaggedTensorValue.to_list().")
+      # Convert values to a Python list.
+      if hasattr(values, "numpy"):
+        values_as_list = values.numpy().tolist()
+      elif hasattr(values, "to_list"):
+        values_as_list = values.to_list()
+      else:
+        raise ValueError("values must be convertible to a list")
+
+      return [
+          values_as_list[row_splits[i]:row_splits[i + 1]]
+          for i in range(len(row_splits) - 1)
+      ]
 
   def _eager_value(self):
     """Returns a RaggedTensorValue for self.  Requires self._is_eager()=true."""

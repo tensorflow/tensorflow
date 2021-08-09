@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/env_time.h"
@@ -165,13 +164,6 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 
     for (int i = 0; i < options_.num_gpus; ++i) {
       per_device_collector_[i].SortByStartTime();
-    }
-  }
-
-  void Export(StepStats* step_stats) {
-    for (int i = 0; i < options_.num_gpus; ++i) {
-      per_device_collector_[i].Export(i, start_walltime_ns_, start_gputime_ns_,
-                                      step_stats);
     }
   }
 
@@ -660,6 +652,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
           });
     }
 
+<<<<<<< HEAD
     void Export(int32_t device_ordinal, uint64_t start_walltime_ns,
                 uint64_t start_gputime_ns, StepStats* step_stats) {
       mutex_lock l(events_mutex);
@@ -791,6 +784,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       events.clear();
     }
 
+=======
+>>>>>>> google_upstream/master
     void CreateXEvent(const RocmTracerEvent& event, XPlaneBuilder* plane,
                       uint64_t start_gpu_ns, uint64_t end_gpu_ns,
                       XLineBuilder* line) {
@@ -1060,13 +1055,11 @@ class GpuTracer : public profiler::ProfilerInterface {
   // GpuTracer interface:
   Status Start() override;
   Status Stop() override;
-  Status CollectData(RunMetadata* run_metadata) override;
   Status CollectData(XSpace* space) override;
 
  private:
   Status DoStart();
   Status DoStop();
-  Status DoCollectData(StepStats* step_stats);
   Status DoCollectData(XSpace* space);
 
   RocmTracerOptions GetRocmTracerOptions();
@@ -1216,37 +1209,6 @@ Status GpuTracer::Stop() {
     profiling_state_ = status.ok() ? State::kStoppedOk : State::kStoppedError;
   }
   return Status::OK();
-}
-
-Status GpuTracer::DoCollectData(StepStats* step_stats) {
-  if (rocm_trace_collector_) rocm_trace_collector_->Export(step_stats);
-  return Status::OK();
-}
-
-Status GpuTracer::CollectData(RunMetadata* run_metadata) {
-  switch (profiling_state_) {
-    case State::kNotStarted:
-      VLOG(3) << "No trace data collected, session wasn't started";
-      return Status::OK();
-    case State::kStartedOk:
-      return errors::FailedPrecondition("Cannot collect trace before stopping");
-    case State::kStartedError:
-      LOG(ERROR) << "Cannot collect, roctracer failed to start";
-      return Status::OK();
-    case State::kStoppedError:
-      VLOG(3) << "No trace data collected";
-      return Status::OK();
-    case State::kStoppedOk: {
-      // Input run_metadata is shared by profiler interfaces, we need append.
-      StepStats step_stats;
-      DoCollectData(&step_stats);
-      for (auto& dev_stats : *step_stats.mutable_dev_stats()) {
-        run_metadata->mutable_step_stats()->add_dev_stats()->Swap(&dev_stats);
-      }
-      return Status::OK();
-    }
-  }
-  return errors::Internal("Invalid profiling state: ", profiling_state_);
 }
 
 Status GpuTracer::DoCollectData(XSpace* space) {

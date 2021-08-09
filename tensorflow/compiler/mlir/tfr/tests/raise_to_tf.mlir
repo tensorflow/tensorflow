@@ -6,6 +6,8 @@ tfr.func @tf__risc_split_(!tfr.tensor<T>, i32 {tfr.name="N"}) -> !tfr.tensor_lis
 tfr.func @tf__risc_cast_(!tfr.tensor, !tfr.attr {tfr.name="K"}) -> !tfr.tensor<K> attributes {T, K}
 tfr.func @tf__const_(!tfr.attr {tfr.name="value", tfr.type="tensor"},
   !tfr.attr {tfr.name="K",tfr.type="dtype"}) -> !tfr.tensor<K> attributes {T, K}
+tfr.func @tf__positive_(!tfr.tensor<T>) -> !tfr.tensor<i1_> attributes {T, i1_}
+tfr.func @tf__invalid_type_op_(!tfr.tensor<T>) -> !tfr.tensor<i8_> attributes {T, i8_}
 
 // CHECK-LABEL: decompose_tf_same
 func @decompose_tf_same(%arg0: tensor<1x2x3x4x!tf_type.string>) -> tensor<1x2x3x4x!tf_type.string> {
@@ -100,4 +102,25 @@ func @attribute_propagate(%arg0: tensor<f32>) -> tensor<i32> {
 // CHECK: %[[tfcast:.*]] = "tf.RiscCast"(%arg0) {K = i32, _tpu_replicate, device = "hello"} : (tensor<f32>) -> tensor<*xi32>
 // CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[tfcast]]) {shape = #tf_type.shape<>} : (tensor<*xi32>) -> tensor<i32>
 // CHECK: return %[[es]] : tensor<i32>
+}
+
+// CHECK-LABEL: fixed_element_attribute
+func @fixed_element_attribute(%arg0: tensor<2xf32>) -> tensor<2xi1> {
+  %0 = "tfr.cast"(%arg0) : (tensor<2xf32>) -> !tfr.tensor
+  %1 = tfr.call @tf__positive(%0) : (!tfr.tensor) -> !tfr.tensor
+  %2 = "tfr.cast"(%1) : (!tfr.tensor) -> tensor<2xi1>
+  return %2 : tensor<2xi1>
+// CHECK: %[[positive:.*]] = "tf.Positive"(%arg0) : (tensor<2xf32>) -> tensor<*xi1>
+// CHECK: %[[res:.*]] = "tf.EnsureShape"(%[[positive]]) {shape = #tf_type.shape<2>} : (tensor<*xi1>) -> tensor<2xi1>
+// CHECK: return %[[res]] : tensor<2xi1>
+}
+
+// CHECK-LABEL: fixed_element_attribute_invalid
+func @fixed_element_attribute_invalid(%arg0: tensor<2xf32>) -> tensor<2xi8> {
+  %0 = "tfr.cast"(%arg0) : (tensor<2xf32>) -> !tfr.tensor
+  // expected-error@+1 {{type i8_ can't be resolved for the signature of the op}}
+  %1 = tfr.call @tf__invalid_type_op(%0) : (!tfr.tensor) -> !tfr.tensor
+  %2 = "tfr.cast"(%1) : (!tfr.tensor) -> tensor<2xi8>
+  return %2 : tensor<2xi8>
+// CHECK: tfr.call @tf__invalid_type_op
 }

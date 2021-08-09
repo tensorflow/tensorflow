@@ -19,32 +19,16 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 source tensorflow/tools/ci_build/ctpu/ctpu.sh
 
-install_ubuntu_16_python_pip_deps python3.7
+install_ubuntu_16_python_pip_deps python3.9
 install_bazelisk
-install_ctpu pip3.7
-
-# Run configure.
-export TF_NEED_GCP=1
-export TF_NEED_HDFS=1
-export TF_NEED_S3=1
-export TF_NEED_CUDA=0
-export TF_NEED_TENSORRT=0
-export CC_OPT_FLAGS='-mavx'
-export PYTHON_BIN_PATH=$(which python3.7)
-export TF2_BEHAVIOR=1
-
-yes "" | "$PYTHON_BIN_PATH" configure.py
+install_ctpu pip3.9
 
 test_patterns=(//tensorflow/... -//tensorflow/compiler/... -//tensorflow/lite/...)
 tag_filters="tpu,-tpu_pod,-no_tpu,-notpu,-no_oss,-no_oss_py37"
 
 bazel_args=(
-  --config=opt \
-  --config=short_logs \
-  --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-  --linkopt=-lrt \
-  --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
-  --noincompatible_strict_action_env \
+  --config=release_cpu_linux \
+  --repo_env=PYTHON_BIN_PATH="$(which python3.9)" \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" \
   --test_output=errors --verbose_failures=true --keep_going
@@ -56,7 +40,6 @@ ctpu_up -s v2-8 -p tensorflow-testing-tpu
 
 test_args=(
   --test_timeout=120,600,-1,-1 \
-  --test_env=TF_ENABLE_LEGACY_FILESYSTEM=1 \
   --test_arg=--tpu="${TPU_NAME}" \
   --test_arg=--zone="${TPU_ZONE}" \
   --test_arg=--test_dir_base=gs://kokoro-tpu-testing/tempdir/ \

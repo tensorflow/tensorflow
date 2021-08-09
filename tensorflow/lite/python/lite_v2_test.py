@@ -810,9 +810,9 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       ('_BlocklistedNodesWithLowering', None, {'PartitionedCall:0'}, True),
       ('_BlocklistedNodesWithoutLowering', None, {'Identity'}, False))
   @test_util.run_v2_only
-  def testNewQuantizerBlocklistingArgs(self, blocklisted_ops, blocklisted_nodes,
+  def testNewQuantizerBlocklistingArgs(self, denylisted_ops, denylisted_nodes,
                                        lower_to_saved_model):
-    """Test the model quantized by the new converter and blocklisted options."""
+    """Test the model quantized by the new converter and denylisted options."""
     root, func, calibration_gen = self._getIntegerQuantizeModel()
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func],
                                                                          root)
@@ -825,15 +825,16 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter._experimental_calibrate_only = True
     quantized_converter.experimental_lower_to_saved_model = lower_to_saved_model
     calibrated = quantized_converter.convert()
-    quantized_tflite_model = mlir_quantize(calibrated,
-                                           blocklisted_ops=blocklisted_ops,
-                                           blocklisted_nodes=blocklisted_nodes)
+    quantized_tflite_model = mlir_quantize(
+        calibrated,
+        denylisted_ops=denylisted_ops,
+        denylisted_nodes=denylisted_nodes)
     interpreter = Interpreter(model_content=quantized_tflite_model)
     details = interpreter.get_tensor_details()
     num_quantized_tensors = sum(
         [1 for detail in details
          if len(detail['quantization_parameters']['scales'])])
-    if blocklisted_nodes or blocklisted_ops:
+    if denylisted_nodes or denylisted_ops:
       self.assertEqual(num_quantized_tensors, 0)
       return
     self.assertEqual(num_quantized_tensors, 4)  # quant, filter, bias, dequant
@@ -1609,6 +1610,38 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     sub_signature_runner = interpreter.get_signature_runner('sub')
     sub_output = sub_signature_runner(x=input_data)
     self.assertEqual(sub_output['output_0'], -2)
+
+  @test_util.run_v2_only
+  def testMultipleFunctionModelWithSharedWeight(self):
+    """Convert multiple functions with the shared weight."""
+    root = self._getMultiFunctionModelWithSharedWeight()
+    input_data = tf.constant(1., shape=[1])
+    add_func = root.add.get_concrete_function(input_data)
+    sub_func = root.sub.get_concrete_function(input_data)
+    mul_func = root.mul.get_concrete_function(input_data)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir, {'add': add_func, 'sub': sub_func, 'mul': mul_func})
+
+    # Try converting multiple functions.
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Make sure that the weight tensors are shared.
+    self.assertLess(len(tflite_model), 1100000)
+
+    # TODO(b/184696047): Write down the test codes for multiple signature
+    #                    runners once the Python API is ready to use.
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+    self.assertLen(signature_defs, 3)
+    add_signature_runner = interpreter.get_signature_runner('add')
+    sub_signature_runner = interpreter.get_signature_runner('sub')
+    mul_signature_runner = interpreter.get_signature_runner('mul')
+    self.assertIsNotNone(add_signature_runner)
+    self.assertIsNotNone(sub_signature_runner)
+    self.assertIsNotNone(mul_signature_runner)
 
   @test_util.run_v2_only
   def testNoConcreteFunctionModel(self):

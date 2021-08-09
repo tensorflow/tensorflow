@@ -24,30 +24,55 @@ limitations under the License.
 namespace xla {
 namespace dot_as_convolution_util {
 
-bool ConvSpatialDimensionIsParallel(const WindowDimension& wd,
-                                    int64_t lhs_size) {
-  // A parallel batch dimension in DotGeneral is represented as a
-  // spatial dimension with window size B (batch dimension size),
-  // stride B - 1, and base dilation B.
-  if (lhs_size == wd.size() && lhs_size == wd.base_dilation() &&
-      ((std::max<int64>(1, lhs_size - 1) == wd.stride() &&
-        wd.window_dilation() == 1) ||
-       (std::max<int64>(1, lhs_size - 1) == wd.window_dilation() &&
-        wd.stride() == 1)) &&
-      wd.padding_high() == 0 && wd.padding_low() == 0 &&
-      !wd.window_reversal()) {
-    return true;
+SpatialBatchRepresentation SpatialIsBatch(int64_t lhs_spatial_size,
+                                          const WindowDimension& spatial_wd) {
+  if (lhs_spatial_size == spatial_wd.size() &&
+      lhs_spatial_size == spatial_wd.base_dilation() &&
+      ((std::max<int64_t>(1, lhs_spatial_size - 1) == spatial_wd.stride() &&
+        spatial_wd.window_dilation() == 1) ||
+       (std::max<int64_t>(1, lhs_spatial_size - 1) ==
+            spatial_wd.window_dilation() &&
+        spatial_wd.stride() == 1)) &&
+      spatial_wd.padding_high() == 0 && spatial_wd.padding_low() == 0 &&
+      !spatial_wd.window_reversal()) {
+    return SpatialBatchRepresentation::kUnpaddedVersion;
+  } else if (lhs_spatial_size == spatial_wd.size() &&
+             spatial_wd.padding_high() == lhs_spatial_size - 1 &&
+             spatial_wd.padding_low() == lhs_spatial_size - 1 &&
+             spatial_wd.window_reversal() &&
+             spatial_wd.window_dilation() == 1 &&
+             spatial_wd.stride() == lhs_spatial_size &&
+             spatial_wd.base_dilation() == lhs_spatial_size - 1) {
+    return SpatialBatchRepresentation::kPaddedVersion;
   }
+  return SpatialBatchRepresentation::kNone;
+}
 
-  // Aternative representation of a batch dimension.
-  if (wd.size() == lhs_size && wd.padding_high() == lhs_size - 1 &&
-      wd.padding_low() == lhs_size - 1 && wd.window_reversal() &&
-      wd.window_dilation() == 1 && wd.stride() == lhs_size &&
-      wd.base_dilation() == lhs_size - 1) {
-    return true;
-  }
+bool SpatialIsLhsNonContracting(int64_t rhs_spatial_size,
+                                const WindowDimension& spatial_wd) {
+  return spatial_wd.stride() == 1 && spatial_wd.window_dilation() == 1 &&
+         spatial_wd.base_dilation() == 1 && rhs_spatial_size == 1 &&
+         spatial_wd.size() == 1 && spatial_wd.padding_high() == 0 &&
+         spatial_wd.padding_low() == 0 && !spatial_wd.window_reversal();
+}
 
-  return false;
+bool SpatialIsRhsNonContracting(int64_t lhs_spatial_size,
+                                int64_t rhs_spatial_size,
+                                const WindowDimension& spatial_wd) {
+  return spatial_wd.stride() == 1 && spatial_wd.window_dilation() == 1 &&
+         spatial_wd.base_dilation() == 1 && lhs_spatial_size == 1 &&
+         spatial_wd.size() == rhs_spatial_size &&
+         spatial_wd.padding_high() == rhs_spatial_size - 1 &&
+         spatial_wd.padding_low() == rhs_spatial_size - 1 &&
+         spatial_wd.window_reversal();
+}
+
+bool SpatialIsContracting(int64_t lhs_spatial_size, int64_t rhs_spatial_size,
+                          const WindowDimension& spatial_wd) {
+  return lhs_spatial_size == spatial_wd.size() &&
+         spatial_wd.base_dilation() == 1 && spatial_wd.window_dilation() == 1 &&
+         spatial_wd.padding_high() == 0 && spatial_wd.padding_low() == 0 &&
+         !spatial_wd.window_reversal();
 }
 
 /* static */ DotConvolutionDimsInfo ParseConvolutionDimsInfo(
@@ -72,7 +97,7 @@ bool ConvSpatialDimensionIsParallel(const WindowDimension& wd,
     int64_t rhs_size = conv->operand(1)->shape().dimensions(rhs);
     int64_t output = conv_dims.output_spatial_dimensions(i);
     const auto& wd = conv->window().dimensions(i);
-    if (ConvSpatialDimensionIsParallel(wd, lhs_size)) {
+    if (SpatialIsBatch(lhs_size, wd) != SpatialBatchRepresentation::kNone) {
       dims.batch_dims.push_back({lhs, rhs, output, i});
     } else if (lhs_size == wd.size() && wd.base_dilation() == 1 &&
                wd.window_dilation() == 1 && wd.padding_high() == 0 &&

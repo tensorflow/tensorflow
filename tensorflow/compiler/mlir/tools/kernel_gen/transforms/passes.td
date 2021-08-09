@@ -42,6 +42,9 @@ def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
   let summary = "Pass to rewrite all TF operations to JIT invocations";
   let constructor = "transforms::CreateTFToJITInvocationPass()";
   let options = [
+      ListOption<"architectures_", "architectures", "std::string",
+                 "Target architectures",
+                 "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
       ListOption<"tile_sizes_", "tile-sizes", "int64_t", "Tiling sizes",
                  "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
       ListOption<"unroll_factors_", "unroll-factors", "int64_t",
@@ -180,6 +183,17 @@ def VectorizationCleanupPass : FunctionPass<"vectorization-cleanup"> {
     VectorizationPass creates some memory transfers that are unneeded but cannot
     be safely removed by current generic infrastructure. This removes the
     specific operations.
+  }];
+}
+
+def CopyCleanupPass : FunctionPass<"copy-cleanup"> {
+  let summary = "Pass to remove copies which are consumed by a GenericOp.";
+  let constructor = "transforms::CreateCopyCleanupPass()";
+  let description = [{
+    We can have GenericOps which have operands that are a copy, but the copy is
+    not used by any other op. In this case, the GenericOp can just use the
+    buffer which is the source of the copy, and we can remove the Alloc and the
+    copy.
   }];
 }
 

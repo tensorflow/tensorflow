@@ -341,7 +341,8 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
   HloInstruction* rotated1 = rotate_with_padding(
       (amount + right_padding) % (shard_size * participating_shards));
   HloInstruction* shard_offset = MakePartitionOffsets(
-      hlo->shape(), hlo->sharding(), partition_id_, &b_, {dim})[dim];
+      hlo->shape(), hlo->sharding(), MakePartitioningState().partition_id, &b_,
+      {dim})[dim];
   HloInstruction* iota = b_.AddInstruction(HloInstruction::CreateIota(
       ShapeUtil::ChangeElementType(rotated0->shape(), S32), dim));
   HloInstruction* selection_boundary =

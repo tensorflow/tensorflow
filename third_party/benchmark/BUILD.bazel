@@ -22,6 +22,14 @@ config_setting(
     visibility = [":__subpackages__"],
 )
 
+config_setting(
+    name = "macos",
+    constraint_values = [
+        "@platforms//os:macos",
+    ],
+    visibility = [":__subpackages__"],
+)
+
 cc_library(
     name = "benchmark",
     srcs = glob(
@@ -34,7 +42,11 @@ cc_library(
     hdrs = ["include/benchmark/benchmark.h"],
     linkopts = select({
         ":windows": ["-DEFAULTLIB:shlwapi.lib"],
-        "//conditions:default": ["-pthread"],
+        ":macos": ["-lpthread"],
+        "//conditions:default": [
+            "-pthread",
+            "-lrt",
+        ],
     }),
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],

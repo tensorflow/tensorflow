@@ -80,7 +80,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
                         const ProcessingModeDef& processing_mode,
                         const absl::optional<JobKey>& job_key,
                         absl::optional<int64> num_consumers,
-                        int64& job_client_id);
+                        int64& job_client_id, TargetWorkers target_workers);
 
   // Releases a job client id, indicating that the id will no longer be used to
   // read from the job.

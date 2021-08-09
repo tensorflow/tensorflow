@@ -40,6 +40,43 @@ limitations under the License.
 
 namespace tensorflow {
 namespace serving {
+namespace internal {
+
+template <typename TaskType>
+class BatchInputTaskHandleTestAccess {
+ public:
+  explicit BatchInputTaskHandleTestAccess(
+      BatchInputTaskHandle<TaskType>* handle)
+      : handle_(handle) {}
+
+  int split_id() const { return handle_->split_id(); }
+
+ private:
+  BatchInputTaskHandle<TaskType>* const handle_;
+};
+
+template <typename TaskType>
+class BatchInputTaskTestAccess {
+ public:
+  explicit BatchInputTaskTestAccess(BatchInputTask<TaskType>* task)
+      : task_(task) {}
+
+  size_t size() const { return task_->size(); }
+
+  int num_batches() const { return task_->num_batches(); }
+
+  int num_new_batches() const { return task_->num_new_batches(); }
+
+  int tail_batch_task_size() const { return task_->tail_batch_task_size(); }
+
+  int head_batch_task_size() const { return task_->head_batch_task_size(); }
+
+  int GetTaskSize(int split_id) const { return task_->GetTaskSize(split_id); }
+
+ private:
+  BatchInputTask<TaskType>* const task_;
+};
+}  // namespace internal
 namespace {
 
 using TensorMatrix = std::vector<std::vector<Tensor>>;
@@ -104,17 +141,20 @@ TEST(BatchInputTask, BatchTaskSplitSize) {
        {std::tuple<int /* input_size */, int /* open_batch_remaining_slot */,
                    int /* batch_size_limit */, int /* expected_num_batches */,
                    int /* expected_num_new_batches */,
-                   int /* expected_tail_batch_task_size */>{5, 1, 1, 5, 4, 1},
-        {10, 3, 4, 3, 2, 3},
-        {20, 5, 6, 4, 3, 3},
-        {30, 0, 11, 3, 3, 8},
-        {5, 6, 8, 1, 0, 7}}) {
+                   int /* expected_head_batch_task_size */,
+                   int /* expected_tail_batch_task_size */>{5, 1, 1, 5, 4, 1,
+                                                            1},
+        {10, 3, 4, 3, 2, 3, 3},
+        {20, 5, 6, 4, 3, 5, 3},
+        {30, 0, 11, 3, 3, 11, 8},
+        {5, 6, 8, 1, 0, 5, 5}}) {
     const int input_size = std::get<0>(batch_task_param);
     const int open_batch_remaining_slot = std::get<1>(batch_task_param);
     const int batch_size_limit = std::get<2>(batch_task_param);
     const int expected_num_batches = std::get<3>(batch_task_param);
     const int expected_num_new_batches = std::get<4>(batch_task_param);
-    const int expected_tail_batch_task_size = std::get<5>(batch_task_param);
+    const int expected_head_batch_task_size = std::get<5>(batch_task_param);
+    const int expected_tail_batch_task_size = std::get<6>(batch_task_param);
 
     // The number of remaining slots should be smaller than or equal to
     // batch_size_limit; whearas we allow one input (of `input_size`) to span
@@ -129,11 +169,18 @@ TEST(BatchInputTask, BatchTaskSplitSize) {
             std::move(batch_task), open_batch_remaining_slot, batch_size_limit,
             BatchResourceBase::SplitInputTask);
 
-    EXPECT_EQ(batch_input_task->size(), input_size);
-    EXPECT_EQ(batch_input_task->num_batches(), expected_num_batches);
-    EXPECT_EQ(batch_input_task->num_new_batches(), expected_num_new_batches);
-    EXPECT_EQ(batch_input_task->tail_batch_task_size(),
+    internal::BatchInputTaskTestAccess<BatchResourceBase::BatchTask>
+        test_access(batch_input_task.get());
+    EXPECT_EQ(test_access.size(), input_size);
+    EXPECT_EQ(test_access.num_batches(), expected_num_batches);
+    EXPECT_EQ(test_access.num_new_batches(), expected_num_new_batches);
+    EXPECT_EQ(test_access.head_batch_task_size(),
+              expected_head_batch_task_size);
+    EXPECT_EQ(test_access.tail_batch_task_size(),
               expected_tail_batch_task_size);
+    for (int i = 1; i + 1 < test_access.num_batches(); i++) {
+      EXPECT_EQ(test_access.GetTaskSize(i), batch_size_limit);
+    }
   }
 }
 
@@ -195,33 +242,38 @@ TEST_F(BatchInputTaskTest, BatchInputToSplitTasks) {
           std::move(batch_task), /*open_batch_remaining_slot=*/1,
           /*batch_size_limit=*/3, BatchResourceBase::SplitInputTask);
 
-  ASSERT_EQ(batch_input_task->size(), 5);
+  internal::BatchInputTaskTestAccess<BatchResourceBase::BatchTask> test_access(
+      batch_input_task.get());
+  ASSERT_EQ(test_access.size(), 5);
 
-  ASSERT_EQ(batch_input_task->num_batches(), 3);
+  ASSERT_EQ(test_access.num_batches(), 3);
 
   std::vector<
       std::unique_ptr<BatchInputTaskHandle<BatchResourceBase::BatchTask>>>
       output_tasks;
-  for (auto task = batch_input_task->GetNextTaskHandle(); task != nullptr;
-       task = batch_input_task->GetNextTaskHandle()) {
-    output_tasks.push_back(std::move(task));
-  }
+  batch_input_task->ToTaskHandles(&output_tasks);
 
-  EXPECT_EQ(output_tasks.size(), batch_input_task->num_batches());
+  EXPECT_EQ(output_tasks.size(), test_access.num_batches());
 
   // Output tasks haven't invoked `done_callback`, so
   // `batch_task->done_callback` hasn't run yet.
   ASSERT_FALSE(batch_task_done_callback_executed);
 
+  const std::vector<int> expected_task_sizes{1, 3, 1};
   // Call `done_callback` for each output task, so `batch_task->done_callback`
   // can be executed and batch_task_done_callback_executed will be updated.
   for (int i = 0; i < output_tasks.size(); i++) {
     // When emitting output tasks, split_id starts from zero and increases by
     // one.
-    EXPECT_EQ(output_tasks[i]->split_id(), i);
+    EXPECT_EQ(
+        internal::BatchInputTaskHandleTestAccess<BatchResourceBase::BatchTask>(
+            output_tasks[i].get())
+            .split_id(),
+        i);
 
     auto batch_task = output_tasks[i]->GetSplitTask();
     ASSERT_NE(batch_task, nullptr);
+    EXPECT_EQ(batch_task->size(), expected_task_sizes[i]);
     batch_task->done_callback();
 
     // `GetSplitTask` returns nullptr from the 2nd call and on.

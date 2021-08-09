@@ -15,6 +15,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
     "tf_cc_test",
+    "tf_features_nolayering_check_if_android_or_ios",
 )
 
 package(
@@ -352,6 +353,7 @@ cc_library(
     name = "tf_driver",
     srcs = ["tf_driver.cc"],
     hdrs = ["tf_driver.h"],
+    features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
         ":join",
         ":split",
@@ -394,6 +396,7 @@ cc_library(
     name = "generate_testspec",
     srcs = ["generate_testspec.cc"],
     hdrs = ["generate_testspec.h"],
+    features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
         ":join",
         ":split",
@@ -472,6 +475,7 @@ cc_library(
 cc_library(
     name = "tflite_diff_flags",
     hdrs = ["tflite_diff_flags.h"],
+    features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
         ":split",
         ":tflite_diff_util",

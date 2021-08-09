@@ -423,10 +423,11 @@ port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
 
   void** kernel_params = const_cast<void**>(args.argument_addresses().data());
 
-  return GpuDriver::LaunchKernel(
-      context_, cufunc, block_dims.x, block_dims.y, block_dims.z, thread_dims.x,
-      thread_dims.y, thread_dims.z, args.number_of_shared_bytes(), custream,
-      kernel_params, nullptr /* = extra */);
+  return GpuDriver::LaunchKernel(context_, kernel.name(), cufunc, block_dims.x,
+                                 block_dims.y, block_dims.z, thread_dims.x,
+                                 thread_dims.y, thread_dims.z,
+                                 args.number_of_shared_bytes(), custream,
+                                 kernel_params, nullptr /* = extra */);
 }
 
 // This is a non-essential operation; if there's a failure, proceed without

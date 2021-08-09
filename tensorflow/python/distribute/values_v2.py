@@ -53,7 +53,10 @@ class DistributedVariable(resource_variable_ops.BaseResourceVariable):
 
   def __init__(self, variables, *, enable_packed_handle=False):
     if enable_packed_handle and not ops.executing_eagerly_outside_functions():
-      raise ValueError("packed handle is only supported in eager")
+      raise ValueError(
+          "Argument `enable_packed_handle` is true, but packed handle is only "
+          "supported in eager mode. Please make sure eager execution is "
+          "enabled.")
     self._variables = variables
     if enable_packed_handle:
       self._packed_handle = ops.pack_eager_tensors(
@@ -221,7 +224,7 @@ class DistributedVariable(resource_variable_ops.BaseResourceVariable):
       return super().gather_nd(indices, name)
 
   def to_proto(self, export_scope=None):
-    del self  # Not implemented
+    del self
     raise TypeError("DistributedVariable doesn't support to_proto")
 
   @staticmethod

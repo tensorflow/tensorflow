@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
+#include "tensorflow/core/kernels/data/shard_dataset_op.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -165,7 +166,8 @@ Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
   new_node.add_input(index_node->name());
 
   // Ensure that each shard will have at least one element.
-  (*(new_node.mutable_attr()))["require_non_empty"].set_b(true);
+  (*(new_node.mutable_attr()))[data::ShardDatasetOp::kRequireNonEmpty].set_b(
+      true);
 
   // Add shapes and other attributes
   NodeDef* add_after = graph->GetNode(add_before.input(0));
@@ -663,6 +665,9 @@ Status ShardByHint(const NodeDef& sink_node, int64_t num_workers, int64_t index,
     auto mutable_node = graph->GetNode(shard_node->name());
     *mutable_node->mutable_input(1) = num_workers_node->name();
     *mutable_node->mutable_input(2) = worker_index_node->name();
+    // Ensure that each shard will have at least one element.
+    (*(mutable_node->mutable_attr()))[data::ShardDatasetOp::kRequireNonEmpty]
+        .set_b(true);
   }
   return Status::OK();
 }

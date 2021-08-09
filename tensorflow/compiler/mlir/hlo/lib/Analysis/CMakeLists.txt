@@ -19,7 +19,10 @@ add_mlir_library(MLIRHLOTestAnalysis
   Core
 
   LINK_LIBS PUBLIC
+  LmhloDialect
+  LmhloGPUDialect
   MLIRHLOAnalysis
   MLIRAnalysis
   MLIRPass
+  MLIRTransforms
   )

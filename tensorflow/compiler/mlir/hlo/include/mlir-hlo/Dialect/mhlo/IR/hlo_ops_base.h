@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_H_
 #define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_H_
 
+#include "llvm/ADT/Sequence.h"
 #include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
@@ -25,6 +26,30 @@ namespace OpTrait {
 template <typename ConcreteType>
 class BroadcastingElementwise
     : public mlir::OpTrait::TraitBase<ConcreteType, BroadcastingElementwise> {};
+
+template <typename ConcreteType>
+class PairwiseSameOperandAndResultType
+    : public mlir::OpTrait::TraitBase<ConcreteType,
+                                      PairwiseSameOperandAndResultType> {
+ public:
+  static LogicalResult verifyTrait(Operation *op) {
+    const int numOperands = op->getNumOperands();
+    const int numResults = op->getNumResults();
+    if (numOperands != numResults) {
+      return op->emitOpError()
+             << "requires the same number of operands and results";
+    }
+
+    for (int idx : llvm::seq<int>(0, numOperands)) {
+      if (op->getOperand(idx).getType() != op->getResult(idx).getType()) {
+        return op->emitOpError()
+               << "requires the same type for operand and result at index "
+               << idx;
+      }
+    }
+    return success();
+  }
+};
 
 }  // namespace OpTrait
 }  // namespace mhlo

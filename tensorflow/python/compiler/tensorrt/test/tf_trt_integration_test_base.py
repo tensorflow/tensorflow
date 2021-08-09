@@ -103,6 +103,11 @@ def IsQuantizationWithCalibration(params):
   return IsQuantizationMode(params.precision_mode) and params.use_calibration
 
 
+def IsQuantizationWithoutCalibration(params):
+  return IsQuantizationMode(
+      params.precision_mode) and not params.use_calibration
+
+
 class GraphState(object):
   ORIGINAL = 0
   CALIBRATE = 1
@@ -833,9 +838,15 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
           self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
         self.assertIn(
             self._RemoveGraphSequenceNumber(node.name), expected_engines)
-        self.assertEqual(
-            self._ToBytes(run_params.precision_mode),
-            node.attr["precision_mode"].s, node.name)
+        if IsQuantizationWithoutCalibration(run_params):
+          # TODO(bixia): Refine this check by inspecting nodes in the engine.
+          if self._ToBytes("INT8") != node.attr["precision_mode"].s:
+            self.assertEqual(
+                self._ToBytes("FP16"), node.attr["precision_mode"].s, node.name)
+        else:
+          self.assertEqual(
+              self._ToBytes(run_params.precision_mode),
+              node.attr["precision_mode"].s, node.name)
 
         self.assertEqual(run_params.dynamic_engine, is_dynamic_engine,
                          node.name)

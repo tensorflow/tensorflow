@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "pybind11/attr.h"
 #include "pybind11/cast.h"
 #include "pybind11/numpy.h"
@@ -174,7 +175,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly(
           "coords",
           [](const PjRtTpuDevice& device) -> pybind11::tuple {
-            return IntSpanToTuple(device.coords());
+            return SpanToTuple(absl::MakeConstSpan(device.coords()));
           },
           "The coordinates of this TpuDevice's chip in the TPU mesh network.")
       .def_property_readonly(

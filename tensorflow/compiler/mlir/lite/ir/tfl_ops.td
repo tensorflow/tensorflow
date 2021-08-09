@@ -1665,6 +1665,7 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
     AnyTensor:$output
   );
 
+  let hasFolder = 1;
   let hasOptions = 1;
 
   let customOption = "SqueezeOptions";

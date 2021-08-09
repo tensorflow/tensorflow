@@ -641,7 +641,7 @@ class XlaBuilder {
           output_operand_aliasing,
       const Literal* literal, absl::optional<Window> window,
       absl::optional<ConvolutionDimensionNumbers> dnums,
-      CustomCallSchedule schedule);
+      CustomCallSchedule schedule, CustomCallApiVersion api_version);
 
   // Internal version of CustomCall without computation that doesn't do op
   // specific error handling and expects arguments to be legal. CustomCall
@@ -655,7 +655,7 @@ class XlaBuilder {
           output_operand_aliasing,
       const Literal* literal, absl::optional<Window> window,
       absl::optional<ConvolutionDimensionNumbers> dnums,
-      CustomCallSchedule schedule);
+      CustomCallSchedule schedule, CustomCallApiVersion api_version);
 
   XlaOp CustomCall(
       const string& call_target_name, absl::Span<const XlaOp> operands,
@@ -665,7 +665,8 @@ class XlaBuilder {
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
           output_operand_aliasing,
-      const Literal* literal, CustomCallSchedule schedule);
+      const Literal* literal, CustomCallSchedule schedule,
+      CustomCallApiVersion api_version);
 
   XlaOp Reduce(XlaOp operand, XlaOp init_value,
                const XlaComputation& computation,
@@ -1224,14 +1225,16 @@ class XlaBuilder {
       const string& opaque, bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
           output_operand_aliasing,
-      const Literal* literal, CustomCallSchedule schedule);
+      const Literal* literal, CustomCallSchedule schedule,
+      CustomCallApiVersion api_version);
   friend XlaOp CustomCallWithComputation(
       XlaBuilder* builder, const string& call_target_name,
       absl::Span<const XlaOp> operands, const XlaComputation& computation,
       const Shape& shape, const string& opaque, bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
           output_operand_aliasing,
-      const Literal* literal, CustomCallSchedule schedule);
+      const Literal* literal, CustomCallSchedule schedule,
+      CustomCallApiVersion api_version);
   friend XlaOp CustomCallWithLayout(
       XlaBuilder* builder, const string& call_target_name,
       absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
@@ -1239,7 +1242,8 @@ class XlaBuilder {
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
           output_operand_aliasing,
-      const Literal* literal, CustomCallSchedule schedule);
+      const Literal* literal, CustomCallSchedule schedule,
+      CustomCallApiVersion api_version);
   friend XlaOp CustomCallWithConvDnums(
       XlaBuilder* builder, const string& call_target_name,
       absl::Span<const XlaOp> operands, const Shape& shape,
@@ -1248,7 +1252,7 @@ class XlaBuilder {
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
           output_operand_aliasing,
       const Literal* literal, Window window, ConvolutionDimensionNumbers dnums,
-      CustomCallSchedule schedule);
+      CustomCallSchedule schedule, CustomCallApiVersion api_version);
   friend XlaOp Complex(XlaOp real, XlaOp imag,
                        absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Conj(XlaOp operand);
@@ -2075,7 +2079,8 @@ XlaOp CustomCall(
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing = {},
     const Literal* literal = nullptr,
-    CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE);
+    CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE,
+    CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
 // Overload which constructs a custom call that applies an Xla computation.
 XlaOp CustomCallWithComputation(
@@ -2085,7 +2090,8 @@ XlaOp CustomCallWithComputation(
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing = {},
     const Literal* literal = nullptr,
-    CustomCallSchedule = CustomCallSchedule::SCHEDULE_NONE);
+    CustomCallSchedule = CustomCallSchedule::SCHEDULE_NONE,
+    CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
 // Overload which constructs a custom call with fixed layouts. The operands will
 // have the layouts specified by |operand_shapes_with_layout| when provided to
@@ -2100,7 +2106,8 @@ XlaOp CustomCallWithLayout(
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing = {},
     const Literal* literal = nullptr,
-    CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE);
+    CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE,
+    CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
 // Overload which annotates a custom call with the given Window and
 // ConvolutionDimensionNumbers.  Useful for custom-calls which represent
@@ -2116,7 +2123,8 @@ XlaOp CustomCallWithConvDnums(
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing,
     const Literal* literal, Window window, ConvolutionDimensionNumbers dnums,
-    CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE);
+    CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE,
+    CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
 // The following methods enqueue element-wise binary arithmetic operations
 // onto the computation. The shapes of the operands have to match unless one

@@ -95,6 +95,11 @@ std::unique_ptr<FunctionPass> createLowerComplexPass();
 std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();
 std::unique_ptr<FunctionPass> createLegalizeEinsumToDotGeneralPass();
 std::unique_ptr<FunctionPass> createLegalizeGatherToTorchIndexSelectPass();
+std::unique_ptr<FunctionPass> createFlattenTuplePass();
+
+// Creates a pass for expanding mhlo.tuple ops.
+std::unique_ptr<OperationPass<ModuleOp>> CreateExpandHloTuplesPass(
+    const std::string& entry_function_name = "main");
 
 }  // namespace mhlo
 

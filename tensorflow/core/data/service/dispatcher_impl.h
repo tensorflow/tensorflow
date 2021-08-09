@@ -192,9 +192,7 @@ class DataServiceDispatcherImpl {
       TF_LOCKS_EXCLUDED(mu_);
   // Creates a job and stores it in `job`. This method updates the
   // dispatcher state with the new job, but does not assign tasks to workers.
-  Status CreateJob(int64_t dataset_id, const ProcessingModeDef& processing_mode,
-                   absl::optional<DispatcherState::NamedJobKey> named_job_key,
-                   absl::optional<int64> num_consumers,
+  Status CreateJob(const GetOrCreateJobRequest& request,
                    std::shared_ptr<const DispatcherState::Job>& job)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates tasks for the specified worker, one task for every unfinished job.
@@ -250,11 +248,10 @@ class DataServiceDispatcherImpl {
   // Assigns a task to the worker indicated by its `worker_address` field.
   Status AssignTask(std::shared_ptr<const DispatcherState::Task> task)
       TF_LOCKS_EXCLUDED(mu_);
-  // Validates that an existing job matches the given processing_mode and
-  // dataset_id, returning an error status describing any difference.
+  // Validates that an existing job matches the requested processing mode,
+  // returning an error status describing any difference.
   Status ValidateMatchingJob(std::shared_ptr<const DispatcherState::Job> job,
-                             const ProcessingModeDef& processing_mode,
-                             int64_t dataset_id)
+                             const GetOrCreateJobRequest& request)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Fills out a TaskDef with information about a task.
   Status PopulateTaskDef(std::shared_ptr<const DispatcherState::Task> task,

@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -285,15 +286,45 @@ void HoistInvariantOpsInFunction(
   }
 }
 
+void FindCalleesRecursive(const mlir::SymbolTable &symbol_table,
+                          mlir::FuncOp func, llvm::StringSet<> &callees) {
+  assert(func);
+  func.walk([&](mlir::Operation *op) {
+    for (const auto &named_attr : op->getAttrs()) {
+      if (auto symbol_attr =
+              named_attr.second.dyn_cast<mlir::FlatSymbolRefAttr>()) {
+        auto symbol = symbol_attr.getValue();
+        if (!callees.contains(symbol)) {
+          callees.insert(symbol);
+
+          auto func = symbol_table.lookup<mlir::FuncOp>(symbol);
+          if (!func) continue;
+
+          FindCalleesRecursive(symbol_table, func, callees);
+        }
+      }
+    }
+  });
+}
+
 void HoistInvariantOps(mlir::ModuleOp module) {
+  mlir::SymbolTable symbol_table(module);
+
   // Find all resources used in non-init functions.
   llvm::DenseMap<ResourceKey, llvm::SmallVector<mlir::Operation *, 4>>
       resources;
+
+  // Find all callees referenced in the initialization functions.
+  llvm::StringSet<> init_callees;
+
   module.walk([&](mlir::Operation *op) {
     if (llvm::isa<mlir::TF::VarHandleOp, mlir::TF::HashTableV2Op>(op)) {
       auto func = op->getParentOfType<mlir::FuncOp>();
       if (IsSessionInitializer(func)) return;
       resources[GetResourceKey(op)].push_back(op);
+    } else if (auto func = llvm::dyn_cast<mlir::FuncOp>(op)) {
+      if (!IsSessionInitializer(func)) return;
+      FindCalleesRecursive(symbol_table, func, init_callees);
     }
   });
 
@@ -314,6 +345,9 @@ void HoistInvariantOps(mlir::ModuleOp module) {
   mlir::TF::SideEffectAnalysis side_effect_analysis(module);
 
   mlir::OpBuilder builder(&module.body());
+  // "_tfrt_resource_init" is the special function that executes all invariant
+  // ops (eg. read-only variables) used in the model. This function should be
+  // executed after user-specified initialization.
   auto init_func_op = builder.create<mlir::FuncOp>(
       module.getLoc(), "_tfrt_resource_init",
       mlir::FunctionType::get(module.getContext(), /*inputs=*/{},
@@ -324,7 +358,12 @@ void HoistInvariantOps(mlir::ModuleOp module) {
   HoistInfo module_hoist_info;
 
   for (auto func : module.getOps<mlir::FuncOp>()) {
-    if (IsSessionInitializer(func) || func == init_func_op) continue;
+    // Skips hoisting if this function is an init function or any callees,
+    // including recursive ones, of an init functions, because otherwise the
+    // hoisted values won't be initialized when this function is called.
+    if (IsSessionInitializer(func) || init_callees.contains(func.sym_name()) ||
+        func == init_func_op)
+      continue;
 
     HoistInvariantOpsInFunction(func, read_only_vars,
                                 side_effect_analysis.GetAnalysisForFunc(func),

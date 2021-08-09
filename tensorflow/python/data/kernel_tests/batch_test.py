@@ -23,6 +23,7 @@ import time
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -40,6 +41,8 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -274,6 +277,21 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset
 
     self.checkDeterminism(dataset_fn, expect_determinism, elements)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testCheckpointLargeBatches(self):
+    if pywrap_sanitizers.is_tsan_enabled():
+      self.skipTest('Creating a large buffer causes OOM when using tsan.')
+    # Batches of size 512M
+    dataset = dataset_ops.Dataset.from_tensors(
+        array_ops.ones((64, 1024, 1024), dtype=dtypes.float32)).repeat()
+    dataset = dataset.batch(2, num_parallel_calls=5)
+    iterator = iter(dataset)
+    next(iterator)  # request an element to fill the buffer
+    ckpt = trackable_utils.Checkpoint(iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, self.get_temp_dir(), max_to_keep=1)
+    manager.save()
 
 
 class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,

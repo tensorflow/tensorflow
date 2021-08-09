@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -32,7 +31,6 @@ class TestProfiler : public ProfilerInterface {
  public:
   Status Start() override { return Status::OK(); }
   Status Stop() override { return Status::OK(); }
-  Status CollectData(RunMetadata*) override { return Status::OK(); }
   Status CollectData(XSpace*) override { return Status::OK(); }
 };
 

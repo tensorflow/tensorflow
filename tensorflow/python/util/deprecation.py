@@ -93,9 +93,11 @@ def _add_deprecated_arg_value_notice_to_docstring(doc, date, instructions,
 
 def _validate_deprecation_args(date, instructions):
   if date is not None and not re.match(r'20\d\d-[01]\d-[0123]\d', date):
-    raise ValueError('Date must be YYYY-MM-DD.')
+    raise ValueError(f'Date must be in format YYYY-MM-DD. Received: {date}')
   if not instructions:
-    raise ValueError('Don\'t deprecate things without conversion instructions!')
+    raise ValueError(
+        'Don\'t deprecate things without conversion instructions! Specify '
+        'the `instructions` argument.')
 
 
 def _call_location(outer=False):
@@ -269,9 +271,9 @@ def deprecated_endpoints(*args):
     # pylint: disable=protected-access
     if '_tf_deprecated_api_names' in func.__dict__:
       raise DeprecatedNamesAlreadySet(
-          'Cannot set deprecated names for %s to %s. '
-          'Deprecated names are already set to %s.' % (
-              func.__name__, str(args), str(func._tf_deprecated_api_names)))
+          f'Cannot set deprecated names for {func.__name__} to {args}. '
+          'Deprecated names are already set to '
+          f'{func._tf_deprecated_api_names}.')
     func._tf_deprecated_api_names = args
     # pylint: disable=protected-access
     return func
@@ -416,7 +418,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
     raise ValueError('Specify which argument is deprecated.')
   if kwargs and list(kwargs.keys()) != ['warn_once']:
     kwargs.pop('warn_once', None)
-    raise ValueError('Illegal argument to deprecated_args: %s' % kwargs)
+    raise ValueError(f'Illegal argument passed to deprecated_args: {kwargs}')
   warn_once = kwargs.get('warn_once', True)
 
   def _get_arg_names_to_ok_vals():
@@ -482,8 +484,9 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
       missing_args = [arg_name for arg_name in deprecated_arg_names
                       if arg_name not in known_args]
       raise ValueError('The following deprecated arguments are not present '
-                       'in the function signature: %s. '
-                       'Found next arguments: %s.' % (missing_args, known_args))
+                       f'in the function signature: {missing_args}. '
+                       'Expected arguments from the following list: '
+                       f'{known_args}.')
 
     def _same_value(a, b):
       """A comparison operation that works for multiple object types.
@@ -638,8 +641,7 @@ def deprecated_argument_lookup(new_name, new_value, old_name, old_value):
   """
   if old_value is not None:
     if new_value is not None:
-      raise ValueError("Cannot specify both '%s' and '%s'" %
-                       (old_name, new_name))
+      raise ValueError(f"Cannot specify both '{old_name}' and '{new_name}'.")
     return old_value
   return new_value
 

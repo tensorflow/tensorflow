@@ -878,6 +878,29 @@ class AlgorithmConfig {
       : algorithm_(algorithm),
         algorithm_no_scratch_(algorithm_no_scratch),
         scratch_size_(scratch_size) {}
+
+  // TODO(ruochengw): After cl/380702564, add support for algorithm configs with
+  // cuDNN Frontend APIs.
+  explicit AlgorithmConfig(const AlgorithmConfigProto& algorithm_config_proto) {
+    const AlgorithmProto& algorithm_proto = algorithm_config_proto.algorithm();
+    algorithm_ = AlgorithmDesc(
+        algorithm_proto.algo_id(),
+        algorithm_proto.math_type() == AlgorithmProto::TENSOR_OP_MATH);
+    if (algorithm_config_proto.optional_scratch_size_case() !=
+        /*ONEOF_NAME_NOT_SET=*/0) {
+      scratch_size_ = algorithm_config_proto.scratch_size();
+    }
+    if (algorithm_config_proto.optional_algorithm_no_scratch_case() !=
+        /*ONEOF_NAME_NOT_SET=*/0) {
+      const AlgorithmProto& algorithm_no_scratch_proto =
+          algorithm_config_proto.algorithm_no_scratch();
+      algorithm_no_scratch_ = AlgorithmDesc(
+          algorithm_no_scratch_proto.algo_id(),
+          /*use_tensor_ops=*/algorithm_no_scratch_proto.math_type() ==
+              AlgorithmProto::TENSOR_OP_MATH);
+    }
+  }
+
   absl::optional<AlgorithmDesc> algorithm() const { return algorithm_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
   absl::optional<AlgorithmDesc> algorithm_no_scratch() const {
@@ -902,6 +925,24 @@ class AlgorithmConfig {
   }
   void set_plan_no_scratch(std::unique_ptr<dnn::ConvolveExecutionPlan>& plan) {
     plan_no_scratch_ = std::move(plan);
+  }
+
+  // TODO(ruochengw): After cl/380702564, add support for algorithm configs with
+  // cuDNN Frontend APIs.
+  AlgorithmConfigProto ToProto() const {
+    AlgorithmConfigProto algorithm_config_proto;
+    if (algorithm_.has_value()) {
+      *algorithm_config_proto.mutable_algorithm() =
+          algorithm_.value().ToProto();
+    }
+    if (algorithm_no_scratch_.has_value()) {
+      *algorithm_config_proto.mutable_algorithm_no_scratch() =
+          algorithm_no_scratch_.value().ToProto();
+    }
+    if (scratch_size_.has_value()) {
+      algorithm_config_proto.set_scratch_size(scratch_size_.value());
+    }
+    return algorithm_config_proto;
   }
 
  private:

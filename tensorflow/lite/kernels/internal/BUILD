@@ -52,7 +52,10 @@ cc_library(
 
 cc_library(
     name = "types",
-    hdrs = ["types.h"],
+    hdrs = [
+        "runtime_shape.h",
+        "types.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
@@ -797,6 +800,7 @@ cc_library(
         "tensor_utils.cc",
     ],
     hdrs = [
+        "portable_tensor_utils.h",
         "tensor_utils.h",
         "tensor_utils_common.h",
     ],

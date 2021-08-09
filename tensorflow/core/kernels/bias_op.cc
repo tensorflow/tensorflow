@@ -439,7 +439,7 @@ class BiasAddParams {
   int device_id_;
 };
 
-typedef AutoTuneSingleton<BiasGradAutotuneGroup, BiasAddParams,
+typedef AutotuneSingleton<BiasGradAutotuneGroup, BiasAddParams,
                           BiasAddGradGPUConfig>
     AutotuneBiasGrad;
 

@@ -183,7 +183,17 @@ def dimension_at_index(shape, index):
 
 @tf_export(v1=["Dimension"])
 class Dimension(object):
-  """Represents the value of one dimension in a TensorShape."""
+  """Represents the value of one dimension in a TensorShape.
+
+  @compatibility(TF2)
+  In TF2, members of a `TensorShape` object are integers. The `Dimension` class
+  is not part of TF2's data model.
+
+  Please refer to the [TensorShape section of the migration guide]
+  (https://www.tensorflow.org/guide/migrate/index#tensorshape) on common code
+  patterns adapting Dimension objects to a TF2 syntax.
+  @end_compatibility
+  """
 
   __slots__ = ["_value"]
 

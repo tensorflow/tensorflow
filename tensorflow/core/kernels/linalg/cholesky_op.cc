@@ -15,10 +15,6 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#if GOOGLE_CUDA
-#define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
-
 #include "third_party/eigen3/Eigen/Cholesky"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -30,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/linalg/matrix_band_part_op.h"
@@ -37,10 +34,9 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
+=======
+>>>>>>> google_upstream/master
 namespace tensorflow {
-
-static const char kErrMsg[] =
-    "Cholesky decomposition was not successful. The input might not be valid.";
 
 template <class Scalar>
 class CholeskyOp : public LinearAlgebraOp<Scalar> {
@@ -64,6 +60,7 @@ class CholeskyOp : public LinearAlgebraOp<Scalar> {
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
         llt_decomposition(input);
 
+<<<<<<< HEAD
     OP_REQUIRES(context, llt_decomposition.info() == Eigen::Success,
                 errors::InvalidArgument(kErrMsg));
 
@@ -178,20 +175,22 @@ class CholeskyOpGpu : public AsyncOpKernel {
       band_part(context, context->eigen_device<GPUDevice>(),
                 n /* num_lower_diags */, 0 /* num_upper_diags */,
                 input_reshaped, output_reshaped);
+=======
+    // If decomposition fails, fill output with NaNs so the failure can
+    // be detected at runtime.
+    if (!TF_PREDICT_TRUE(llt_decomposition.info() == Eigen::Success)) {
+      LOG(WARNING) << "Cholesky decomposition was not successful. "
+                      "Eigen::LLT failed with error code "
+                   << llt_decomposition.info()
+                   << ". Filling lower-triangular output with NaNs.";
+      outputs->at(0).template triangularView<Eigen::Lower>().fill(
+          Eigen::NumTraits<Scalar>::quiet_NaN());
+>>>>>>> google_upstream/master
     } else {
-#endif
-
-      dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "potrf"));
-      for (int batch = 0; batch < batch_size; ++batch) {
-        OP_REQUIRES_OK_ASYNC(context,
-                             solver->Potrf(CUBLAS_FILL_MODE_UPPER, n,
-                                           &output_reshaped(batch, 0, 0), n,
-                                           &dev_info.back()(batch)),
-                             done);
-      }
-
-#if CUDA_VERSION >= 9020
+      // Output the lower triangular in a dense form.
+      outputs->at(0) = llt_decomposition.matrixL();
     }
+<<<<<<< HEAD
 #endif
 
     // Register callback to check info after kernels finish.
@@ -204,15 +203,10 @@ class CholeskyOpGpu : public AsyncOpKernel {
     };
     GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
                                                     std::move(info_checker));
+=======
+>>>>>>> google_upstream/master
   }
 };
-
-REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<float>), float);
-REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<double>), double);
-REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<complex64>), complex64);
-REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<complex128>), complex128);
-
-#endif  // GOOGLE_CUDA
 
 REGISTER_LINALG_OP("Cholesky", (CholeskyOp<float>), float);
 REGISTER_LINALG_OP("Cholesky", (CholeskyOp<double>), double);

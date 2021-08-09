@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/cc/experimental/libtf/impl/none.h"
 #include "tensorflow/cc/experimental/libtf/impl/scalars.h"
 #include "tensorflow/cc/experimental/libtf/impl/string.h"
 #include "tensorflow/core/platform/test.h"
@@ -39,6 +40,12 @@ TEST(OStreamTest, TestString) {
   std::stringstream stream;
   stream << s;
   ASSERT_EQ(stream.str(), "foo");
+}
+
+TEST(OStreamTest, TestNone) {
+  std::stringstream stream;
+  stream << None::GetInstance();
+  ASSERT_EQ(stream.str(), "None");
 }
 
 }  // namespace impl

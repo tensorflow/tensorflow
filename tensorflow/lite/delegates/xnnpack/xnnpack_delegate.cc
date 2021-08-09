@@ -1772,6 +1772,14 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
+    if (input_tensor.type != output_tensor.type ||
+        input_tensor.type != filter_tensor.type) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context, "unsupported mixed types in CONV_2D operator #%d",
+          node_index);
+      return kTfLiteError;
+    }
+
     const int output_channels = filter_tensor.dims->data[0];
     const int kernel_height = filter_tensor.dims->data[1];
     const int kernel_width = filter_tensor.dims->data[2];
@@ -1867,6 +1875,15 @@ class Subgraph {
                                            node->outputs->data[0]));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    if (input_tensor.type != output_tensor.type ||
+        input_tensor.type != filter_tensor.type) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "unsupported mixed types in DEPTHWISE_CONV_2D operator #%d",
+          node_index);
+      return kTfLiteError;
+    }
 
     const int kernel_height = filter_tensor.dims->data[1];
     const int kernel_width = filter_tensor.dims->data[2];
@@ -2795,19 +2812,19 @@ class Subgraph {
         CheckNumInputsAndOutputs(logging_context, node, 2, 1, node_index));
 
     const TfLiteTensor& input1_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, input1_tensor, node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input1_tensor, node->inputs->data[0], node_index));
 
     const TfLiteTensor& input2_tensor = tensors[node->inputs->data[1]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, input2_tensor, node->inputs->data[1], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input2_tensor, node->inputs->data[1], node_index));
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, output_tensor, node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));

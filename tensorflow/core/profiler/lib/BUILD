@@ -21,13 +21,14 @@ cc_library(
     hdrs = ["device_profiler_session.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":profiler_session",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "@com_google_absl//absl/memory",
-    ],
+    ] + if_not_android([
+        ":profiler_session",
+        "//tensorflow/core/profiler/convert:xplane_to_step_stats",
+    ]),
 )
 
 tf_profiler_pybind_cc_library_wrapper(
@@ -45,7 +46,6 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
     ] + if_static([
         ":profiler_session_impl",
     ]),

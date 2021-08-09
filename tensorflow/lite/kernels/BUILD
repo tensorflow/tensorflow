@@ -788,6 +788,7 @@ cc_library(
         "random_uniform.cc",
         "roll.cc",
         "sign.cc",
+        "table.cc",
         "unidirectional_sequence_gru.cc",
     ],
     hdrs = ["custom_ops_register.h"],
@@ -799,6 +800,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:padding",
+        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
@@ -2011,6 +2013,20 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "table_test",
+    size = "small",
+    srcs = ["table_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],

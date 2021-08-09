@@ -1669,6 +1669,11 @@ class HloInstruction {
     frontend_attributes_ = std::move(frontend_attributes);
   }
 
+  void add_frontend_attributes(FrontendAttributes frontend_attributes) {
+    frontend_attributes_.mutable_map()->insert(
+        frontend_attributes.map().begin(), frontend_attributes.map().end());
+  }
+
   const FrontendAttributes& frontend_attributes() const {
     return frontend_attributes_;
   }

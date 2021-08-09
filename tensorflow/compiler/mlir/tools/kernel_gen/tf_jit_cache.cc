@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_jit_cache.h"
 
+#include <functional>
+#include <string>
 #include <utility>
 
 namespace mlir {

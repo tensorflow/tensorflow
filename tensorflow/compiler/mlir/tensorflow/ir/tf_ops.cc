@@ -332,6 +332,22 @@ TensorFlowDialect::~TensorFlowDialect() {
   delete fallback_effect_op_interface_;
 }
 
+Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
+  StringRef spec = parser.getFullSymbolSpec();
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  parser.emitError(
+      loc, "tf dialect has no types, potentially meant !tf_type." + spec);
+  return nullptr;
+}
+
+Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
+                                            Type type) const {
+  StringRef spec = parser.getFullSymbolSpec();
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  parser.emitError(
+      loc, "tf dialect has no attributes, potentially meant #tf_type." + spec);
+  return nullptr;
+}
 
 Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,
                                                   Attribute value, Type type,

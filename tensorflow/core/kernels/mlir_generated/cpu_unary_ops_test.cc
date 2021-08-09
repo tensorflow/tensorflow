@@ -120,6 +120,18 @@ GENERATE_DEFAULT_TEST(
 GENERATE_DEFAULT_TEST(
     Invert, DT_INT64, DT_INT64, baseline_invert,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Invert, DT_UINT8, DT_UINT8, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Invert, DT_UINT16, DT_UINT16, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Invert, DT_UINT32, DT_UINT32, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Invert, DT_UINT64, DT_UINT64, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
 /// Test `tf.Rsqrt`.
 GENERATE_DEFAULT_TEST(Rsqrt, DT_HALF, DT_HALF, Eigen::numext::rsqrt,

@@ -156,6 +156,16 @@ class HloSharding {
                           [](const HloSharding& s) { return s.IsManual(); });
   }
 
+  // Returns whether the sharding represents manual subgroup sharding.
+  bool IsManualSubgroup() const {
+    if (!IsTuple()) {
+      return absl::c_linear_search(sharding_types_, OpSharding::MANUAL);
+    }
+    return absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
+      return s.IsManualSubgroup();
+    });
+  }
+
   // Returns weather the sharding represents a tiled sharding where the mapping
   // between devices and tiles is represented through 'tile_assignment()'.
   bool IsTiled() const { return !IsTileMaximal() && !IsManual(); }
@@ -272,6 +282,12 @@ class HloSharding {
   // Gets the tile assignment tensor.
   // REQUIRES: !IsReplicated() && !IsTuple()
   const Array<int64>& tile_assignment() const { return tile_assignment_; }
+
+  // Gets the sharding types array.
+  // REQUIRES: !sharding_tyes.empty() && !IsTuple()
+  const std::vector<OpSharding::Type>& sharding_types() const {
+    return sharding_types_;
+  }
 
   // Returns the flattened list of all the leaf shardings in a tuple shape, by
   // pre-order walk (ShapeTree iterator order).

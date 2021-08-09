@@ -55,3 +55,14 @@ message TaskInfo {
   // this is always 0.
   int64 starting_round = 5;
 }
+
+// Specifies which tf.data service workers to read from.
+enum TargetWorkers {
+  TARGET_WORKERS_UNSPECIFIED = 0;
+  // tf.data service runtime decides which workers to read from.
+  TARGET_WORKERS_AUTO = 1;
+  // Reads from any available worker.
+  TARGET_WORKERS_ANY = 2;
+  // Only reads from local workers. If no local worker is found, it is an error.
+  TARGET_WORKERS_LOCAL = 3;
+}

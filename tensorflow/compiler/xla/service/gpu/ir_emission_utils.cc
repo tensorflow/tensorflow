@@ -151,20 +151,14 @@ std::array<int64, 3> GetReductionTiling(
     int smallest_input_dtype_bits,
     se::CudaComputeCapability cuda_compute_capability) {
   if (reduction_dimensions.is_row_reduction) {
-    int64_t tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
-    if (reduction_dimensions.dimensions[1] == 1) {
-      CHECK_EQ(reduction_dimensions.dimensions[0], 1);
-      return {tile_z, 1, 16};
-    }
-    if (reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
-        0) {
-      return {tile_z, 1, 64};
-    }
-    int unroll_x = 8;
-    if (cuda_compute_capability.major >= 6 && smallest_input_dtype_bits == 16) {
-      unroll_x = 16;
-    } else if (cuda_compute_capability.major >= 6 &&
-               smallest_input_dtype_bits == 8) {
+    int64_t tile_z = std::min(reduction_dimensions.dimensions[0],
+                              kBatchedReductionRaceFreeBound);
+    int64_t unroll_x = 16;
+    if ((cuda_compute_capability.IsAtLeast(
+             se::CudaComputeCapability::PASCAL_) &&
+         smallest_input_dtype_bits == 8) ||
+        reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
+            0) {
       unroll_x = 64;
     }
     return {tile_z, 1, unroll_x};
@@ -265,6 +259,21 @@ static ReductionDimensions GetReductionKindAndContiguousComponentsImpl(
   return {/*is_row_reduction=*/false, shape_partition};
 }
 
+static bool IsUnnestedReductionFasterThanElemental(
+    const ReductionDimensions& reduction_dimensions) {
+  if (reduction_dimensions.is_row_reduction) {
+    // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
+    // along tile_size_x which needs to be large enough to make the tiling
+    // implementation efficient.
+    return reduction_dimensions.dimensions[2] >= kWarpSize;
+  }
+
+  // For column reduction, the tile block is tile_size_y x tile_size_x, and we
+  // are reducing along tile_size_y. Only tile_size_y needs to be
+  // large enough to make the tiling implementation efficient.
+  return reduction_dimensions.dimensions[1] >= kWarpSize;
+}
+
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
   if (HloOpcode::kReduce != reduce.opcode()) {
     return false;
@@ -294,20 +303,8 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
     return false;
   }
 
-  ReductionDimensions reduction_dimensions =
-      GetReductionKindAndContiguousComponents(reduce);
-
-  if (reduction_dimensions.is_row_reduction) {
-    // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
-    // along tile_size_x which needs to be large enough to make the tiling
-    // implementation efficient.
-    return reduction_dimensions.dimensions[2] >= kWarpSize;
-  }
-
-  // For column reduction, the tile block is tile_size_y x tile_size_x, and we
-  // are reducing along tile_size_y. Only tile_size_y needs to be
-  // large enough to make the tiling implementation efficient.
-  return reduction_dimensions.dimensions[1] >= kWarpSize;
+  return IsUnnestedReductionFasterThanElemental(
+      GetReductionKindAndContiguousComponents(reduce));
 }
 
 // Constructs the fusion layout analysis object by using a heuristic to infer
@@ -461,20 +458,8 @@ bool IsReductionFromOrToContiguousDimensions(
     return false;
   }
 
-  ReductionDimensions reduction_dimensions =
-      GetReductionKindAndContiguousComponentsImpl(operand_shape, dimensions);
-
-  if (reduction_dimensions.is_row_reduction) {
-    // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
-    // along tile_size_x which needs to be large enough to make the tiling
-    // implementation efficient.
-    return reduction_dimensions.dimensions[2] >= kWarpSize;
-  }
-
-  // For column reduction, the tile block is tile_size_y x tile_size_x, and we
-  // are reducing along tile_size_y. Only tile_size_y needs to be
-  // large enough to make the tiling implementation efficient.
-  return reduction_dimensions.dimensions[1] >= kWarpSize;
+  return IsUnnestedReductionFasterThanElemental(
+      GetReductionKindAndContiguousComponentsImpl(operand_shape, dimensions));
 }
 
 bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
@@ -941,6 +926,18 @@ Shape GetShape(mlir::Value value) {
   }
   LOG(FATAL) << "Unexpected value type to get shape for";
   return {};
+}
+
+bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
+                         const std::array<int64_t, 3>& reduction_tiling) {
+  return (reduction_dimensions.is_row_reduction &&
+          reduction_dimensions.dimensions[2] <=
+              kMinThreadsXRowReduction * reduction_tiling[2] &&
+          reduction_dimensions.dimensions[0] <=
+              kBatchedReductionRaceFreeBound) ||
+         (!reduction_dimensions.is_row_reduction &&
+          reduction_dimensions.dimensions[1] <=
+              kWarpSize * reduction_tiling[1]);
 }
 
 }  // namespace gpu

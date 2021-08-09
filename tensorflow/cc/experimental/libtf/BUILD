@@ -32,6 +32,7 @@ cc_library(
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/cc/experimental/libtf/impl:iostream",
+        "//tensorflow/cc/experimental/libtf/impl:none",
         "//tensorflow/cc/experimental/libtf/impl:scalars",
         "//tensorflow/cc/experimental/libtf/impl:string",
         "//tensorflow/core:framework",

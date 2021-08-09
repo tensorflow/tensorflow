@@ -75,6 +75,7 @@ struct CollectiveTestEnv {
   int num_workers;
   int num_devices_per_worker;
   DeviceType device_type;
+  std::unique_ptr<ParamResolverInterface> param_resolver;
   std::unique_ptr<TestCollectiveExecutorMgr> col_exec_mgr;
   std::shared_ptr<UnboundedWorkQueue> work_queue;
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr;

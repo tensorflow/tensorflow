@@ -122,6 +122,7 @@ LABEL_IMAGE_SRCS := \
 
 PROFILER_SRCS := \
 	tensorflow/lite/profiling/memory_info.cc \
+	tensorflow/lite/profiling/memory_usage_monitor.cc \
 	tensorflow/lite/profiling/platform_profiler.cc \
 	tensorflow/lite/profiling/time.cc
 
@@ -169,7 +170,7 @@ tensorflow/lite/tools/make/downloads/fft2d/fftsg2d.c \
 tensorflow/lite/tools/make/downloads/flatbuffers/src/util.cpp
 CORE_CC_ALL_SRCS += \
 	$(shell find tensorflow/lite/tools/make/downloads/absl/absl/ \
-	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization | grep -v debugging | grep -v hash | grep -v flags | grep -v random)
+	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v hash | grep -v flags | grep -v random)
 endif
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))

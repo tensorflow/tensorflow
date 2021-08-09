@@ -9,7 +9,6 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["@llvm-project//mlir:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/...",
         "//tensorflow/lite/...",

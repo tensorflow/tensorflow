@@ -698,7 +698,8 @@ def create_api_files(output_files,
     raise ValueError(
         """Missing outputs for genrule:\n%s. Be sure to add these targets to
 tensorflow/python/tools/api/generator/api_init_files_v1.bzl and
-tensorflow/python/tools/api/generator/api_init_files.bzl (tensorflow repo), or
+tensorflow/python/tools/api/generator/api_init_files.bzl (tensorflow repo),
+keras/api/api_init_files.bzl (keras repo), or
 tensorflow_estimator/python/estimator/api/api_gen.bzl (estimator repo)""" %
         ',\n'.join(sorted(missing_output_files)))
 

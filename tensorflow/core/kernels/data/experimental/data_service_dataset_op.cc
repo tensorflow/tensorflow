@@ -290,7 +290,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           [&]() {
             return dispatcher_->GetOrCreateJob(
                 dataset()->dataset_id_, dataset()->processing_mode_, key,
-                dataset()->num_consumers_, job_client_id_);
+                dataset()->num_consumers_, job_client_id_,
+                dataset()->target_workers_);
           },
           /*description=*/
           strings::StrCat("get or create job with dispatcher at ",
@@ -428,19 +429,19 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     };
 
     Status ValidateDataset() const {
-      if (dataset()->target_workers_ == TargetWorkers::LOCAL &&
+      if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
           LocalWorkers::Empty()) {
         return errors::InvalidArgument(
             "`target_workers` is `local`, but no local worker is found.");
       }
-      if (dataset()->target_workers_ == TargetWorkers::LOCAL &&
+      if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
           StrictRoundRobin()) {
         return errors::InvalidArgument(
             "Coordinated reads require non-local workers, but `target_workers` "
             "is `local`.");
       }
       if (IsStaticShard(dataset()->processing_mode_) &&
-          dataset()->target_workers_ != TargetWorkers::LOCAL) {
+          dataset()->target_workers_ != TARGET_WORKERS_LOCAL) {
         return errors::InvalidArgument(
             "Static sharding requires reading from local workers, but "
             "`target_workers` is ",
@@ -461,7 +462,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (num_running_worker_threads_ > 0) {
         return false;
       }
-      if (dataset()->target_workers_ == TargetWorkers::LOCAL) {
+      if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL) {
         return job_finished_ || LocalTasksFinished();
       }
       return job_finished_;
@@ -660,7 +661,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     bool ShouldReadFromTask(const TaskInfo& task) const {
-      if (dataset()->target_workers_ == TargetWorkers::LOCAL &&
+      if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
           LocalWorkers::Get(task.worker_address()) == nullptr) {
         return false;
       }
@@ -746,7 +747,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           outstanding_requests_--;
           while (true) {
             if (cancelled_ || job_finished_ ||
-                (dataset()->target_workers_ == TargetWorkers::LOCAL &&
+                (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
                  LocalTasksFinished())) {
               return;
             }
@@ -1053,7 +1054,7 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
       ParseTargetWorkers(target_workers_str);
   OP_REQUIRES_OK(ctx, status_or_target_workers.status());
   target_workers_ = *status_or_target_workers;
-  if (target_workers_ == TargetWorkers::LOCAL) {
+  if (target_workers_ == TARGET_WORKERS_LOCAL) {
     data_transfer_protocol_ = kLocalTransferProtocol;
   }
 

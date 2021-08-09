@@ -38,14 +38,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// TODO(cheshire): duplication w/ GetReductionTiling, but we need to get a
-// minimum possible tiling, regardless of the input.
-static constexpr int64_t kRowAtomicFreeBound = kWarpSize * kWarpSize * 8;
-static constexpr int64_t kColumnAtomicFreeBound = kWarpSize * 128;
-// TODO(cheshire): This is very small, we could increase it at the cost of
-// decreased column/row tiling.
-static constexpr int64_t kBatchedAtomicFreeBound = 8;
-
 // Returns the square root of the input rounded up to the nearest square.
 static int64 SqrtOfRoundUpToNearestSquare(int64_t input) {
   return static_cast<int64>(std::ceil(std::sqrt(input)));
@@ -53,7 +45,9 @@ static int64 SqrtOfRoundUpToNearestSquare(int64_t input) {
 
 class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit ReductionRewriterVisitor() {}
+  explicit ReductionRewriterVisitor(
+      se::CudaComputeCapability cuda_compute_capability)
+      : cuda_compute_capability_(cuda_compute_capability) {}
 
   Status HandleReduce(HloInstruction *hlo) override {
     if (!hlo->shape().IsArray()) {
@@ -71,6 +65,10 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   Status RewriteReduction(HloInstruction *hlo) {
     ReductionDimensions reduction_dimensions =
         GetReductionKindAndContiguousComponents(*hlo);
+    std::array<int64, 3> reduction_tiling = GetReductionTiling(
+        reduction_dimensions,
+        primitive_util::BitWidth(hlo->shape().element_type()),
+        cuda_compute_capability_);
     VLOG(5) << "Input: " << hlo->ToString();
 
     HloInstruction *input = hlo->mutable_operand(0);
@@ -90,7 +88,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Case (1): batched dimension does not fit.
     if (reduce_batch_dimension &&
-        input_shape.dimensions(0) > kBatchedAtomicFreeBound) {
+        input_shape.dimensions(0) > kBatchedReductionRaceFreeBound) {
       VLOG(2) << "Splitting batched dimension reduce into a separate reduction";
       VLOG(1) << "Input: " << hlo->ToString();
       return RewriteBatchDimensionLargerThanTile(hlo, reduction_dimensions,
@@ -99,12 +97,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     }
     bool is_row_reduction = reduction_dimensions.is_row_reduction;
 
-    int64_t atomic_free_bound =
-        is_row_reduction ? kRowAtomicFreeBound : kColumnAtomicFreeBound;
-    VLOG(3) << "atomic_free_bound: " << atomic_free_bound;
-
     // Base case: everything fits.
-    if (input_shape.dimensions(reduced_input_dimension) <= atomic_free_bound) {
+    if (ReductionIsRaceFree(reduction_dimensions, reduction_tiling)) {
       VLOG(3) << "Base case: dimensions fit";
       return Status::OK();
     }
@@ -222,12 +216,15 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     VLOG(1) << "Generated: " << out->ToString();
     return ReplaceWithNewInstruction(hlo, std::move(out));
   }
+
+  se::CudaComputeCapability cuda_compute_capability_;
 };
 
 StatusOr<bool> GpuTreeReductionRewriter::Run(HloModule *module) {
   VLOG(5) << "Rewriter input: " << module->ToString();
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      ReductionRewriterVisitor().RunOnModule(module));
+  TF_ASSIGN_OR_RETURN(
+      bool changed,
+      ReductionRewriterVisitor(cuda_compute_capability_).RunOnModule(module));
   VLOG(5) << "Rewriter output: " << module->ToString();
   return changed;
 }

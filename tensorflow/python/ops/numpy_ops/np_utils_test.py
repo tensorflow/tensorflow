@@ -139,7 +139,7 @@ f docstring.
         return
 
     with self.assertRaisesRegex(
-        TypeError, 'Parameter "y" should have a default value'):
+        TypeError, 'Parameter y should have a default value'):
       @np_utils.np_doc(None, np_fun=np_fun)
       def f3(x, y):
         return

@@ -60,6 +60,11 @@ void BuildOpsSubmodule(py::module* m) {
       .value("SCHEDULE_LATEST", CustomCallSchedule::SCHEDULE_LATEST)
       .value("SCHEDULE_EARLIEST", CustomCallSchedule::SCHEDULE_EARLIEST);
 
+  py::enum_<CustomCallApiVersion>(ops, "CustomCallApiVersion")
+      .value("API_VERSION_ORIGINAL", CustomCallApiVersion::API_VERSION_ORIGINAL)
+      .value("API_VERSION_STATUS_RETURNING",
+             CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
+
   ops.def("AfterAll", &AfterAll, py::arg("builder"), py::arg("tokens"));
   ops.def("AllGather", &AllGather, py::arg("operand"),
           py::arg("all_gather_dimension"), py::arg("shard_count"),
@@ -134,32 +139,36 @@ void BuildOpsSubmodule(py::module* m) {
       [](XlaBuilder* builder, const py::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const Shape& shape,
          const py::bytes& opaque, bool has_side_effect,
-         CustomCallSchedule schedule) -> XlaOp {
+         CustomCallSchedule schedule,
+         CustomCallApiVersion api_version) -> XlaOp {
         return CustomCall(builder, call_target_name, operands, shape, opaque,
                           has_side_effect, /*output_operand_aliasing=*/{},
-                          /*literal=*/nullptr, schedule);
+                          /*literal=*/nullptr, schedule, api_version);
       },
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
       py::arg("shape"), py::arg("opaque") = py::bytes(""),
       py::arg("has_side_effect") = false,
-      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE);
+      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
+      py::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
   ops.def(
       "CustomCallWithLayout",
       [](XlaBuilder* builder, const py::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
          absl::Span<const Shape> operand_shapes_with_layout,
          const py::bytes& opaque, bool has_side_effect,
-         CustomCallSchedule schedule) -> XlaOp {
+         CustomCallSchedule schedule,
+         CustomCallApiVersion api_version) -> XlaOp {
         return CustomCallWithLayout(
             builder, call_target_name, operands, shape_with_layout,
             operand_shapes_with_layout, opaque, has_side_effect,
             /*output_operand_aliasing=*/{},
-            /*literal=*/nullptr, schedule);
+            /*literal=*/nullptr, schedule, api_version);
       },
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
       py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
       py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false,
-      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE);
+      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
+      py::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
   ops.def(
       "CustomCallWithAliasing",
       [](XlaBuilder* builder, const py::bytes& call_target_name,
@@ -168,17 +177,19 @@ void BuildOpsSubmodule(py::module* m) {
          const py::bytes& opaque, bool has_side_effect,
          absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
              output_operand_aliasing,
-         const Literal* literal, CustomCallSchedule schedule) -> XlaOp {
+         const Literal* literal, CustomCallSchedule schedule,
+         CustomCallApiVersion api_version) -> XlaOp {
         return CustomCallWithLayout(
             builder, call_target_name, operands, shape_with_layout,
             operand_shapes_with_layout, opaque, has_side_effect,
-            output_operand_aliasing, literal, schedule);
+            output_operand_aliasing, literal, schedule, api_version);
       },
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
       py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
       py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false,
       py::arg("output_operand_aliasing"), py::arg("literal") = nullptr,
-      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE);
+      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
+      py::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
           py::arg("precision_config") = nullptr,
           py::arg("preferred_element_type") = absl::nullopt);

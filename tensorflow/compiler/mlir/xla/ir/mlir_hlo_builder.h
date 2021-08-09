@@ -140,7 +140,7 @@ class MlirHloBuilder : public XlaBuilder {
           output_operand_aliasing,
       const Literal* literal, absl::optional<Window> window,
       absl::optional<ConvolutionDimensionNumbers> dnums,
-      CustomCallSchedule schedule) override;
+      CustomCallSchedule schedule, CustomCallApiVersion api_version) override;
 
   StatusOr<XlaOp> ReduceInternal(
       const Shape& shape, absl::Span<const XlaOp> all_operands,

@@ -1,5 +1,23 @@
 // RUN: tf-opt -pass-pipeline='builtin.func(canonicalize)' -split-input-file -verify-diagnostics %s | FileCheck %s
 
+// CHECK-LABEL: @squeeze_folder
+func @squeeze_folder(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %0 = "tfl.squeeze"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK: return %arg0
+  return %0 : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @squeeze_folder
+func @squeeze_folder(%arg0 : tensor<?x?xf32>) -> tensor<*xf32> {
+  %0 = "tfl.squeeze"(%arg0) : (tensor<?x?xf32>) -> tensor<*xf32>
+  // CHECK: "tfl.squeeze"
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
 // Checks that tfl.reshape shape operand is converted to a vector if it is possible
 func @reshape_vector_shape(tensor<4x4x4xf32>) -> tensor<16x4xf32> {
 ^bb0(%arg0: tensor<4x4x4xf32>) :

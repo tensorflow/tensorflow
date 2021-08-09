@@ -359,22 +359,22 @@ class StringFormatOpTest(test.TestCase):
   def testTensorCountMustMatchPlaceholderCount(self):
     with self.cached_session():
       with self.assertRaisesRegex(
-          ValueError, r"2 placeholder\(s\) in template does not match 1 "
-          r"tensor\(s\) provided as input"):
+          ValueError, r"The template expects 2 tensors, but the inputs only has"
+          r" 1\.\s.*"):
         tensor = math_ops.range(10)
         format_output = string_ops.string_format("{} {}", tensor)
         self.evaluate(format_output)
     with self.cached_session():
       with self.assertRaisesRegex(
-          ValueError, r"2 placeholder\(s\) in template does not match 1 "
-          r"tensor\(s\) provided as input"):
+          ValueError, r"The template expects 2 tensors, but the inputs only has"
+          r" 1\.\s.*"):
         tensor = math_ops.range(10)
         format_output = string_ops.string_format("{} {}", [tensor])
         self.evaluate(format_output)
     with self.cached_session():
       with self.assertRaisesRegex(
-          ValueError, r"1 placeholder\(s\) in template does not match 2 "
-          r"tensor\(s\) provided as input"):
+          ValueError, r"The template expects 1 tensors, but the inputs only has"
+          r" 2\.\s.*"):
         tensor = math_ops.range(10)
         format_output = string_ops.string_format("{}", (tensor, tensor))
         self.evaluate(format_output)

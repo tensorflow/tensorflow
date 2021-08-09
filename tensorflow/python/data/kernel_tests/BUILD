@@ -535,7 +535,6 @@ tf_py_test(
     size = "small",
     srcs = ["map_test.py"],
     shard_count = 19,
-    tags = ["notsan"],  # TODO(b/183962015)
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -612,6 +611,9 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "//tensorflow/python/eager:cancellation",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:executor",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -757,6 +759,27 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "rejection_resample_test",
+    size = "medium",
+    srcs = ["rejection_resample_test.py"],
+    shard_count = 10,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
     ],
 )
 

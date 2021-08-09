@@ -134,24 +134,26 @@ TEST(DataServiceTest, InvalidProcessingMode) {
 }
 
 TEST(DataServiceTest, ParseTargetWorkers) {
-  EXPECT_THAT(ParseTargetWorkers("AUTO"), IsOkAndHolds(TargetWorkers::AUTO));
-  EXPECT_THAT(ParseTargetWorkers("Auto"), IsOkAndHolds(TargetWorkers::AUTO));
-  EXPECT_THAT(ParseTargetWorkers("ANY"), IsOkAndHolds(TargetWorkers::ANY));
-  EXPECT_THAT(ParseTargetWorkers("any"), IsOkAndHolds(TargetWorkers::ANY));
-  EXPECT_THAT(ParseTargetWorkers("LOCAL"), IsOkAndHolds(TargetWorkers::LOCAL));
-  EXPECT_THAT(ParseTargetWorkers("local"), IsOkAndHolds(TargetWorkers::LOCAL));
-  EXPECT_THAT(ParseTargetWorkers(""), IsOkAndHolds(TargetWorkers::AUTO));
+  EXPECT_THAT(ParseTargetWorkers("AUTO"), IsOkAndHolds(TARGET_WORKERS_AUTO));
+  EXPECT_THAT(ParseTargetWorkers("Auto"), IsOkAndHolds(TARGET_WORKERS_AUTO));
+  EXPECT_THAT(ParseTargetWorkers("ANY"), IsOkAndHolds(TARGET_WORKERS_ANY));
+  EXPECT_THAT(ParseTargetWorkers("any"), IsOkAndHolds(TARGET_WORKERS_ANY));
+  EXPECT_THAT(ParseTargetWorkers("LOCAL"), IsOkAndHolds(TARGET_WORKERS_LOCAL));
+  EXPECT_THAT(ParseTargetWorkers("local"), IsOkAndHolds(TARGET_WORKERS_LOCAL));
+  EXPECT_THAT(ParseTargetWorkers(""), IsOkAndHolds(TARGET_WORKERS_AUTO));
 }
 
 TEST(DataServiceTest, ParseInvalidTargetWorkers) {
+  EXPECT_THAT(ParseTargetWorkers("TARGET_WORKERS_UNSPECIFIED"),
+              testing::StatusIs(error::INVALID_ARGUMENT));
   EXPECT_THAT(ParseTargetWorkers("UNSET"),
               testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
 TEST(DataServiceTest, TargetWorkersToString) {
-  EXPECT_EQ(TargetWorkersToString(TargetWorkers::AUTO), "AUTO");
-  EXPECT_EQ(TargetWorkersToString(TargetWorkers::ANY), "ANY");
-  EXPECT_EQ(TargetWorkersToString(TargetWorkers::LOCAL), "LOCAL");
+  EXPECT_EQ(TargetWorkersToString(TARGET_WORKERS_AUTO), "AUTO");
+  EXPECT_EQ(TargetWorkersToString(TARGET_WORKERS_ANY), "ANY");
+  EXPECT_EQ(TargetWorkersToString(TARGET_WORKERS_LOCAL), "LOCAL");
 }
 
 TEST(DataServiceTest, GetWorkers) {

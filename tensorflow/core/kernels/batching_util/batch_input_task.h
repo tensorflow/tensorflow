@@ -33,33 +33,50 @@ limitations under the License.
 namespace tensorflow {
 namespace serving {
 
+namespace internal {
+template <typename TaskType>
+class BatchInputTaskHandleTestAccess;
+
+template <typename TaskType>
+class BatchInputTaskTestAccess;
+}  // namespace internal
+
 template <typename TaskType>
 class BatchInputTask;
 
 // A RAII-style object that holds a ref-counted batch-input-task, and
 // represents a slice of batch-input-task.
 
-// To be handed out to callers of `BatchInputTask::GetNextTaskHandle` quickly
+// To be handed out to callers of `BatchInputTask::ToTaskHandles` quickly
 // (i.e. not necessarily waiting for input split)
 //
-// GetSplitTask evaluates to the slice of task.
+// `BatchInputTaskHandle::GetSplitTask` evaluates to the slice of task.
 template <typename TaskType>
-class BatchInputTaskHandle {
+class BatchInputTaskHandle : public BatchTask {
  public:
   BatchInputTaskHandle(
-      std::shared_ptr<BatchInputTask<TaskType>> batch_input_task, int split_id);
+      std::shared_ptr<BatchInputTask<TaskType>> batch_input_task, int split_id,
+      size_t task_size);
 
   // Should be called once. Returns nullptr on subsequent calls.
   std::unique_ptr<TaskType> GetSplitTask();
 
-  int split_id() const { return split_id_; }
+  // Returns the size of this task.
+  size_t size() const override { return task_size_; }
 
  private:
+  template <typename T>
+  friend class internal::BatchInputTaskHandleTestAccess;
+
+  int split_id() const { return split_id_; }
+
   std::shared_ptr<BatchInputTask<TaskType>> batch_input_task_;
 
   // The handle evaluates to the N-th slice of original task, and
   // N is `split_id_`.
   const int split_id_;
+
+  const size_t task_size_;
 
   std::atomic<bool> once_{false};
 };
@@ -74,34 +91,55 @@ class BatchInputTaskHandle {
 //
 // BatchInputTask is thread safe.
 //
-// Usage:
+// Usage
 //
 // ... a deque with frequent enqueue and dequeue operations ...
-// std::deque<shared_ptr<BatchInputTask<BatchTask>>> deque_ TF_GUARDED_BY(mu_);
+// ... Note, a deque of Batch of BatchInputTaskHandle is used to form batches
+//     at enqueue time (split is lazy at deque time);
+// ... For use cases to form batches at dequeue time, we can use a deque of
+//     BatchInputTaskHandle directly, and "peek" metadata to form a batch by
+//     then.
+// std::deque<std::unique_ptr<Batch<BatchInputTaskHandle<TaskType>>>> deque_
+//     TF_GUARDED_BY(mu_);
 //
-// ... input_task provided by batch scheduling  ...
 // std::unique_ptr<TaskType> input_task;
 //
 // ... Enqueue path ...
 //
 // {
 //   mutex_lock l(mu_);
-//   ...... construct `batch_input_task` quickly without split ......
-//   std::shared_ptr<BatchInputTask<BatchTask>> batch_input_task;
-//   deque_.push_back(batch_input_task);
-// }
+//   std::shared_ptr<BatchInputTask<TaskType>> batch_input_task =
+//       ConstructLazyBatchWithoutSplit(input_task);
+//
+//   std::vector<std::unique_ptr<BatchInputTaskHandle<TaskType>>> task_handles;
+//   input_batch->ToTaskHandles(&task_handles);
+//   for (int i = 0; i < task_handles.size(); ++i) {
+//     EnqueueTaskHandleIntoDeque(deque_);
+//   }
 //
 // ... Dequeue path ...
-// vector<std::unique_ptr<BatchInputTaskHandle<TaskType>>> handles;
+// std::unique_ptr<Batch<BatchInputTaskHandle<TaskType>>> handles_to_schedule;
 // {
 //    mutex_lock l(mu_);
-//    auto handle = deque_.front()->GetNextTaskHandle();
-//    handles.push_back(std::move(handle));
-//    ... call `GetNextTaskHandle` until we accumuate enough to form a batch ...
+//    ... HasBatchToSchedule could be customized or specialized
+//    ... (e.g., readiness depending on enqueue time)
+//    if (HasBatchToSchedule(deque_)) {
+//      handles_to_schedule = std::move(deque_.front());
+//      deque_.pop_front();
+//    }
 // }
 // ...... `mu_` is released ......
-// Caller calls `BatchInputTaskHandle::GetSplitTask` to lazily evaluate each
-// task in the batch.
+//
+// std::vector<std::unique_ptr<BatchInputTaskHandle<TaskType>>> tasks_in_batch =
+//     RemoveAllTasksFromBatch(handles_to_schedule);
+//
+// std::unique_ptr<Batch<TaskType>> batch_to_schedule;
+// for (int i = 0; i < tasks_in_batch.size(); i++) {
+//   batch_to_schedule->AddTask(std::move(tasks_in_batch[i]->GetSplitTask()));
+// }
+// batch_to_schedule->Close();
+//
+// `batch_to_schedule` is ready for schedule.
 template <typename TaskType>
 class BatchInputTask
     : public std::enable_shared_from_this<BatchInputTask<TaskType>> {
@@ -118,14 +156,28 @@ class BatchInputTask
                  int open_batch_remaining_slot, int batch_size_limit,
                  BatchSplitFunc split_func);
 
-  // A stateful method to hand out the next task to be processed.
-  // Returns nullptr if all batches are given out.
-  std::unique_ptr<BatchInputTaskHandle<TaskType>> GetNextTaskHandle();
+  // Outputs the task handles for the input task.
+  // Each task handle represents a slice of task after input task is split, and
+  // could evaluate to that slice.
+  //
+  // NOTE:
+  // Each task handle in `output_task_handles` takes ownership of a reference of
+  // this BatchInputTask.
+  void ToTaskHandles(
+      std::vector<std::unique_ptr<BatchInputTaskHandle<TaskType>>>*
+          output_task_handles);
 
+ private:
+  friend class BatchInputTaskHandle<TaskType>;
+  template <typename T>
+  friend class internal::BatchInputTaskTestAccess;
   // Following method exposes split metadata of this task.
   // Metadata are used to determine batch construction so needed before split
   // happens.
-  //
+
+  // Returns the task size of N-th batch; N is `split_id`.
+  int GetTaskSize(int split_id) const;
+
   // Task size of `input_task`
   size_t size() const;
 
@@ -135,11 +187,11 @@ class BatchInputTask
   // The number of new batches this input adds.
   int num_new_batches() const;
 
+  // The task size of the head batch.
+  int head_batch_task_size() const;
+
   // The task size of the last batch.
   int tail_batch_task_size() const;
-
- private:
-  friend class BatchInputTaskHandle<TaskType>;
 
   std::unique_ptr<TaskType> GetSplitTask(int split_id);
 
@@ -164,13 +216,13 @@ class BatchInputTask
   // The task size of the last batch.
   int tail_batch_task_size_;
 
+  // The task size of the first batch.
+  int head_batch_task_size_;
+
   mutable absl::once_flag once_;
 
   std::vector<std::unique_ptr<TaskType>> task_splits_;
   Status split_status_;
-
-  mutable mutex mu_;
-  int next_task_id_ TF_GUARDED_BY(mu_) = 0;
 };
 
 //
@@ -179,8 +231,11 @@ class BatchInputTask
 
 template <typename TaskType>
 BatchInputTaskHandle<TaskType>::BatchInputTaskHandle(
-    std::shared_ptr<BatchInputTask<TaskType>> batch_input_task, int split_id)
-    : batch_input_task_(batch_input_task), split_id_(split_id) {}
+    std::shared_ptr<BatchInputTask<TaskType>> batch_input_task, int split_id,
+    size_t task_size)
+    : batch_input_task_(batch_input_task),
+      split_id_(split_id),
+      task_size_(task_size) {}
 
 template <typename TaskType>
 std::unique_ptr<TaskType> BatchInputTaskHandle<TaskType>::GetSplitTask() {
@@ -215,9 +270,20 @@ BatchInputTask<TaskType>::BatchInputTask(
   num_batches_ =
       (task_size_from_open_batch + batch_size_limit_ - 1) / batch_size_limit_;
 
-  tail_batch_task_size_ = task_size_from_open_batch % batch_size_limit_;
-  if (tail_batch_task_size_ == 0) {
-    tail_batch_task_size_ = batch_size_limit_;
+  if (open_batch_remaining_slot_ == 0) {
+    head_batch_task_size_ = std::min(input_task_size_, batch_size_limit_);
+  } else {
+    head_batch_task_size_ = (input_task_size_ >= open_batch_remaining_slot_)
+                                ? open_batch_remaining_slot_
+                                : input_task_size_;
+  }
+  if (input_task_size_ <= open_batch_remaining_slot_) {
+    tail_batch_task_size_ = input_task_size_;
+  } else {
+    tail_batch_task_size_ = task_size_from_open_batch % batch_size_limit_;
+    if (tail_batch_task_size_ == 0) {
+      tail_batch_task_size_ = batch_size_limit_;
+    }
   }
 }
 
@@ -232,26 +298,44 @@ int BatchInputTask<TaskType>::num_batches() const {
 }
 
 template <typename TaskType>
-int BatchInputTask<TaskType>::tail_batch_task_size() const {
-  return tail_batch_task_size_;
-}
-
-template <typename TaskType>
 int BatchInputTask<TaskType>::num_new_batches() const {
   return num_batches_ - num_batches_reused_;
 }
 
 template <typename TaskType>
-std::unique_ptr<BatchInputTaskHandle<TaskType>>
-BatchInputTask<TaskType>::GetNextTaskHandle() {
-  mutex_lock l(mu_);
-  if (next_task_id_ < num_batches_) {
-    auto handle = std::make_unique<BatchInputTaskHandle<TaskType>>(
-        this->shared_from_this(), next_task_id_);
-    next_task_id_++;
-    return handle;
+int BatchInputTask<TaskType>::head_batch_task_size() const {
+  return head_batch_task_size_;
+}
+
+template <typename TaskType>
+int BatchInputTask<TaskType>::tail_batch_task_size() const {
+  return tail_batch_task_size_;
+}
+
+template <typename TaskType>
+void BatchInputTask<TaskType>::ToTaskHandles(
+    std::vector<std::unique_ptr<BatchInputTaskHandle<TaskType>>>*
+        task_handles) {
+  task_handles->resize(num_batches_);
+  for (int i = 0; i < num_batches_; i++) {
+    (*task_handles)[i] = std::make_unique<BatchInputTaskHandle<TaskType>>(
+        this->shared_from_this(), i, GetTaskSize(i));
   }
-  return nullptr;
+}
+
+template <typename TaskType>
+int BatchInputTask<TaskType>::GetTaskSize(int split_id) const {
+  if (split_id < 0 || split_id >= num_batches_) {
+    return 0;
+  }
+  if (split_id == 0) {
+    return head_batch_task_size_;
+  }
+  if (split_id == num_batches_ - 1) {
+    return tail_batch_task_size_;
+  }
+
+  return batch_size_limit_;
 }
 
 template <typename TaskType>

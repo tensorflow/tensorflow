@@ -43,5 +43,23 @@ TEST(MetricsTest, TestSavedModelRead) {
   EXPECT_EQ(SavedModelRead("2").value(), 2);
 }
 
+TEST(MetricsTest, TestCheckpointRead) {
+  EXPECT_EQ(CheckpointReadDuration("foo").value().num(), 0);
+  CheckpointReadDuration("foo").Add(100);
+  EXPECT_EQ(CheckpointReadDuration("foo").value().num(), 1);
+}
+
+TEST(MetricsTest, TestCheckpointWrite) {
+  EXPECT_EQ(CheckpointWriteDuration("foo").value().num(), 0);
+  CheckpointWriteDuration("foo").Add(100);
+  EXPECT_EQ(CheckpointWriteDuration("foo").value().num(), 1);
+}
+
+TEST(MetricsTest, TestTrainingTimeSaved) {
+  EXPECT_EQ(TrainingTimeSaved("foo").value(), 0);
+  TrainingTimeSaved("foo").IncrementBy(100);
+  EXPECT_EQ(TrainingTimeSaved("foo").value(), 100);
+}
+
 }  // namespace metrics
 }  // namespace tensorflow

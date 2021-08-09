@@ -120,9 +120,14 @@ tensorflow::Status FunctionCache::GetOrAddFunction(
                                                expected_fn.takeError()));
 
   TfrtDataTypeVector tfrt_arg_types;
+  tensorflow::DataTypeVector tf_ret_types;
 
   for (const auto& arg_type : fbody->arg_types) {
     tfrt_arg_types.push_back(ConvertTfDTypeToTfrtDType(arg_type));
+  }
+
+  for (const auto& ret_type : fbody->ret_types) {
+    tf_ret_types.push_back(ret_type);
   }
 
   auto runner_table = absl::make_unique<tensorflow::tfd::OpKernelRunnerTable>();
@@ -134,7 +139,7 @@ tensorflow::Status FunctionCache::GetOrAddFunction(
       RunRuntimeInitializer(exec_ctx, bef_file.get(), "_tfrt_fallback_init"));
 
   RCReference<FunctionState> entry = FunctionState::CreateFunctionState(
-      tfrt_arg_types, std::move(bef_buffer), std::move(bef_file),
+      tfrt_arg_types, tf_ret_types, std::move(bef_buffer), std::move(bef_file),
       std::move(expected_fn.get()), std::move(runner_table));
 
   mutex_lock l(cache_mu_);

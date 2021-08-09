@@ -548,6 +548,8 @@ class ParameterServerStrategyV2Extended(
     self._used_with_coordinator = False
     self._being_scheduled = False
     self._set_num_gpus()
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_gpus_per_worker").set(self._num_gpus_per_worker)
 
     # Don't canonicalize the devices here since this code is executed on Chief,
     # but we want the reduce evaluation to be done on each worker. Placer will
@@ -813,17 +815,10 @@ class ParameterServerStrategyV2Extended(
         input_workers_devices,
         self._container_strategy(),
         num_replicas_in_sync=self._num_replicas_in_sync,
-        build=ops.inside_function(),  # will be built by ClusterCoordinator
-        options=options)
+        options=options,
+        build=ops.inside_function())  # will be built by ClusterCoordinator
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
-    self._assert_used_with_cluster_coordinator()
-    if not ops.get_default_graph().building_function:
-      raise ValueError(
-          "The `distribute_datasets_from_function` method must be called "
-          "inside a `tf.function` passed to `create_per_worker_dataset` of "
-          "`tf.distribute.experimental.coordinator.ClusterCoordinator`")
-
     # There is no synchronization beyond a worker and thus, the number of
     # input pipelines in sync is only 1 per worker.
     input_pipeline_id_in_sync = 0
@@ -834,12 +829,17 @@ class ParameterServerStrategyV2Extended(
         input_pipeline_id=input_pipeline_id_in_sync,
         num_replicas_in_sync=self._num_replicas_in_sync)
 
+    # If this DistributedDatasetFromFunction is created outside
+    # ClusterCoordinator, i,e, outside a tf.function, we don't build its
+    # underlying datasets immediately until it is passed to
+    # ClusterCoordinator.create_per_worker_dataset.
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
         self._input_workers_with_options(options),
         [input_context],
         self._container_strategy(),
-        options=options)
+        options=options,
+        build=ops.inside_function())  # will be built by ClusterCoordinator
 
   @property
   def worker_devices(self):

@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package xla;
+
+import "tensorflow/compiler/xla/xla_data.proto";
+
+message RunHloModuleIterationLiterals {
+  // Arguments used by the iteration.
+  repeated LiteralProto arguments = 2;
+
+  // Ressult of the iteration on the target platform.
+  LiteralProto result = 3;
+
+  // Result of the iteration on the reference platform.
+  LiteralProto reference_result = 4;
+}
+
+message RunHloModuleLiterals {
+  // Iterations of run hlo module.
+  repeated RunHloModuleIterationLiterals iterations = 1;
+}

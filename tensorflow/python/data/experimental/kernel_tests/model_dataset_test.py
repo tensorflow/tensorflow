@@ -37,7 +37,7 @@ class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         testing.assert_next(["Root"]))
     options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.autotune = True
+    options.autotune.enabled = True
     dataset = dataset.with_options(options)
     get_next = self.getNext(dataset)
 

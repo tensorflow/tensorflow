@@ -220,12 +220,12 @@ class CudnnRnnParameters {
   uint64 hash_code_;
 };
 
-struct RnnAutoTuneGroup {
+struct RnnAutotuneGroup {
   static string name() { return "Rnn"; }
 };
 
-using AutoTuneRnnConfigMap =
-    AutoTuneSingleton<RnnAutoTuneGroup, CudnnRnnParameters, AlgorithmConfig>;
+using AutotuneRnnConfigMap =
+    AutotuneSingleton<RnnAutotuneGroup, CudnnRnnParameters, AlgorithmConfig>;
 
 Status ParseRNNMode(const string& str, RnnMode* rnn_mode) {
   if (str == "rnn_relu") {
@@ -1540,7 +1540,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
       output_algo_config->set_algorithm(algo_desc);
     } else {
       OP_REQUIRES_OK(context,
-                     MaybeAutoTune(context, model_shapes, input_mode, input,
+                     MaybeAutotune(context, model_shapes, input_mode, input,
                                    input_h, input_c, params, output, output_h,
                                    output_c, output_algo_config));
     }
@@ -1563,7 +1563,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
   }
 
  protected:
-  virtual Status MaybeAutoTune(OpKernelContext* context,
+  virtual Status MaybeAutotune(OpKernelContext* context,
                                const CudnnRnnModelShapes& model_shapes,
                                const RnnInputMode& input_mode,
                                const Tensor* input, const Tensor* input_h,
@@ -1670,7 +1670,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
   }
 
  protected:
-  Status MaybeAutoTune(OpKernelContext* context,
+  Status MaybeAutotune(OpKernelContext* context,
                        const CudnnRnnModelShapes& model_shapes,
                        const RnnInputMode& input_mode, const Tensor* input,
                        const Tensor* input_h, const Tensor* input_c,
@@ -1699,7 +1699,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
         /*has_dropout=*/std::abs(dropout()) > 1e-8, is_training(),
         modeltypes.rnn_mode, modeltypes.rnn_input_mode, input->dtype());
 
-    if (AutoTuneRnnConfigMap::GetInstance()->Find(rnn_params, algo_config)) {
+    if (AutotuneRnnConfigMap::GetInstance()->Find(rnn_params, algo_config)) {
       VLOG(1) << "Using existing best Cudnn RNN algorithm "
               << "(algo, tensor_op_enabled) = ("
               << algo_config->algorithm()->algo_id() << ", "
@@ -1807,7 +1807,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
     VLOG(1) << "Best Cudnn RNN algorithm (algo, tensor_op_enabled) =  ("
             << best_result.algorithm().algo_id() << ", "
             << best_result.algorithm().tensor_ops_enabled() << ").";
-    AutoTuneRnnConfigMap::GetInstance()->Insert(rnn_params, *algo_config);
+    AutotuneRnnConfigMap::GetInstance()->Insert(rnn_params, *algo_config);
     return Status::OK();
   }
 };

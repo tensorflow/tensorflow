@@ -31,7 +31,6 @@ from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -47,6 +46,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import utils_impl
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import saver as v1_saver_lib
@@ -64,39 +64,17 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
-
 # The callable that provide Keras default session that is needed for saving.
 _SESSION_PROVIDER = None
-
-_checkpoint_write_durations = monitoring.Sampler(
-    "/tensorflow/core/checkpoint/write/write_durations",
-    # Scale of 1000, growth factor of 1.5 with upper bound of ~184 minutes.
-    monitoring.ExponentialBuckets(1000, 1.5, 41),
-    "Distribution of the wall time duration in microseconds of the "
-    "`tf.train.Checkpoint.write` operation",
-    "version")
-
-_checkpoint_read_durations = monitoring.Sampler(
-    "/tensorflow/core/checkpoint/read/read_durations",
-    # Scale of 1000, growth factor of 1.5 with upper bound of ~184 minutes.
-    monitoring.ExponentialBuckets(1000, 1.5, 41),
-    "Distribution of the wall time duration in microseconds of the "
-    "`tf.train.Checkpoint.restore` operation",
-    "version")
-
-# Accumulates total time elapsed between module import time and the last
-# successful Checkpoint write prior to job pre-emption or job completion.
-_checkpoint_training_time_saved = monitoring.Counter(
-    "/tensorflow/core/checkpoint/write/training_time_saved",
-    "Total time in microseconds elapsed between two consecutive write "
-    "operations in a single job or between Checkpoint construction and the "
-    "first write operation.",
-    "version")
 
 # Captures the timestamp of the first Checkpoint instantiation or end of a write
 # operation. Can be accessed by multiple Checkpoint instances.
 _END_TIME_OF_LAST_WRITE = None
 _END_TIME_OF_LAST_WRITE_LOCK = threading.Lock()
+
+# API labels for cell names used in checkpoint metrics.
+_CHECKPOINT_V1 = "checkpoint_v1"
+_CHECKPOINT_V2 = "checkpoint_v2"
 
 
 def _get_duration_microseconds(start_time_seconds, end_time_seconds):
@@ -1645,13 +1623,17 @@ class CheckpointV1(tracking.AutoTrackable):
     start_time = time.time()
     output = self._saver.save(file_prefix=file_prefix, session=session)
     end_time = time.time()
-    _checkpoint_write_durations.get_cell("V1").add(
-        _get_duration_microseconds(start_time, end_time))
+
+    metrics.AddCheckpointWriteDuration(
+        api_label=_CHECKPOINT_V1,
+        microseconds=_get_duration_microseconds(start_time, end_time))
 
     global _END_TIME_OF_LAST_WRITE
     with _END_TIME_OF_LAST_WRITE_LOCK:
-      _checkpoint_training_time_saved.get_cell("V1").increase_by(
-          _get_duration_microseconds(_END_TIME_OF_LAST_WRITE, end_time))
+      metrics.AddTrainingTimeSaved(
+          api_label=_CHECKPOINT_V1,
+          microseconds=_get_duration_microseconds(_END_TIME_OF_LAST_WRITE,
+                                                  end_time))
       _END_TIME_OF_LAST_WRITE = end_time
 
     if tensor_util.is_tf_type(output):
@@ -1850,8 +1832,10 @@ class CheckpointV1(tracking.AutoTrackable):
     self._maybe_create_save_counter()
     if isinstance(status, NameBasedSaverStatus):
       status.add_to_optionally_restored(self.save_counter)
-    _checkpoint_read_durations.get_cell("V1").add(
-        _get_duration_microseconds(start_time, time.time()))
+
+    metrics.AddCheckpointReadDuration(
+        api_label=_CHECKPOINT_V1,
+        microseconds=_get_duration_microseconds(start_time, time.time()))
     return status
 
 
@@ -2089,13 +2073,17 @@ class Checkpoint(tracking.AutoTrackable):
     options = options or checkpoint_options.CheckpointOptions()
     output = self._saver.save(file_prefix=file_prefix, options=options)
     end_time = time.time()
-    _checkpoint_write_durations.get_cell("V2").add(
-        _get_duration_microseconds(start_time, end_time))
+
+    metrics.AddCheckpointWriteDuration(
+        api_label=_CHECKPOINT_V2,
+        microseconds=_get_duration_microseconds(start_time, end_time))
 
     global _END_TIME_OF_LAST_WRITE
     with _END_TIME_OF_LAST_WRITE_LOCK:
-      _checkpoint_training_time_saved.get_cell("V2").increase_by(
-          _get_duration_microseconds(_END_TIME_OF_LAST_WRITE, end_time))
+      metrics.AddTrainingTimeSaved(
+          api_label=_CHECKPOINT_V2,
+          microseconds=_get_duration_microseconds(_END_TIME_OF_LAST_WRITE,
+                                                  end_time))
       _END_TIME_OF_LAST_WRITE = end_time
 
     if tensor_util.is_tf_type(output):
@@ -2239,8 +2227,9 @@ class Checkpoint(tracking.AutoTrackable):
     start_time = time.time()
     options = options or checkpoint_options.CheckpointOptions()
     result = self._saver.restore(save_path=save_path, options=options)
-    _checkpoint_read_durations.get_cell("V2").add(
-        _get_duration_microseconds(start_time, time.time()))
+    metrics.AddCheckpointReadDuration(
+        api_label=_CHECKPOINT_V2,
+        microseconds=_get_duration_microseconds(start_time, time.time()))
     return result
 
   def restore(self, save_path, options=None):

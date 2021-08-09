@@ -418,7 +418,8 @@ class PerWorkerDatasetFromDataset(PerWorkerDatasetFromDatasetFunction):
     hood.
 
     Args:
-      dataset: A tf.data.Dataset or a DistributedDataset.
+      dataset: A tf.data.Dataset, a DistributedDataset or a
+        DistributedDatasetsFromFunction
       coordinator: a `ClusterCoordinator` object, used to create dataset
         resources.
     """
@@ -431,14 +432,17 @@ class PerWorkerDatasetFromDataset(PerWorkerDatasetFromDatasetFunction):
             serialized, original_dataset.element_spec)
         dataset.build(dataset_to_replace=deserialized)
         return dataset
+    elif isinstance(dataset, input_lib.DistributedDatasetsFromFunction):
+      def dataset_fn():
+        dataset.build()
+        return dataset
     elif isinstance(dataset, dataset_ops.Dataset):
       serialized = serialize_dataset_to_graph(dataset)
 
       def dataset_fn():
         return deserialize_dataset_from_graph(serialized, dataset.element_spec)
     else:
-      raise NotImplementedError(
-          "DistributedDatasetsFromFunction is not supported yet.")
+      raise ValueError("Unexpected dataset type!")
 
     super(PerWorkerDatasetFromDataset, self).__init__(dataset_fn, coordinator)
 

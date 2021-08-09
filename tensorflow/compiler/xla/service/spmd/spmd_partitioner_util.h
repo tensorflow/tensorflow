@@ -442,6 +442,9 @@ absl::optional<PadWithWrapPattern> FindPadWithWrapPattern(
     const HloInstruction* concat, const HloInstruction* lhs,
     const HloInstruction* mid, const HloInstruction* rhs);
 
+// Get group sharding for each manual subgroup.
+GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding);
+
 }  // namespace spmd
 }  // namespace xla
 

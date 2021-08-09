@@ -172,20 +172,6 @@ void DefaultOptimizationGraphRewrites(
       optimization_disabled->insert(kShuffleAndRepeatFusionOpt);
     }
   }
-  const bool has_autotune = optimization_options.optional_autotune_case() ==
-                            OptimizationOptions::kAutotune;
-  const bool has_autotune_buffers =
-      optimization_options.optional_autotune_buffers_case() ==
-      OptimizationOptions::kAutotuneBuffers;
-  if (!(has_autotune && !optimization_options.autotune()) &&
-      (has_autotune_buffers && optimization_options.autotune_buffers())) {
-    optimization_enabled->insert(kAutotuneBufferSizesOpt);
-    optimization_enabled->insert(kDisablePrefetchLegacyAutotuneOpt);
-  }
-  if (has_autotune && !optimization_options.autotune()) {
-    optimization_disabled->insert(kAutotuneBufferSizesOpt);
-    optimization_disabled->insert(kDisablePrefetchLegacyAutotuneOpt);
-  }
 }
 
 // Returns whether an op has been allowlisted as stateless. Uses a heuristic to
@@ -609,11 +595,9 @@ Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
   batch->reserve(output_size);
   for (int i = 0; i < output_size; i++) {
     Tensor t;
-    TF_RETURN_IF_ERROR(reader->ReadTensor(
-        ctx->flr(),
-        FullName(iterator_prefix,
-                 strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
-        &t));
+    TF_RETURN_IF_ERROR(
+        reader->ReadTensor(ctx->flr(), FullName(iterator_prefix, batch_prefix),
+                           strings::StrCat(kOutput, "_", i), &t));
     // If the batch was not full, we may have stored only the relevant slice.
     // Since tensors in `BatchResult.output` are expected to have the leading
     // dimension of size batch_size, we build a larger tensor and copy the slice
@@ -645,15 +629,14 @@ Status WriteBatch(int64_t batch_size, int64_t num_elements,
     // The rest of the batch tensor is *uninitialized* and accessing that will
     // raise msan errors.
     if (num_elements < batch_size) {
-      TF_RETURN_IF_ERROR(writer->WriteTensor(
-          FullName(iterator_prefix,
-                   strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
-          (*batch)[i].Slice(0, num_elements)));
+      TF_RETURN_IF_ERROR(
+          writer->WriteTensor(FullName(iterator_prefix, batch_prefix),
+                              strings::StrCat(kOutput, "_", i),
+                              (*batch)[i].Slice(0, num_elements)));
     } else {
-      TF_RETURN_IF_ERROR(writer->WriteTensor(
-          FullName(iterator_prefix,
-                   strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
-          (*batch)[i]));
+      TF_RETURN_IF_ERROR(
+          writer->WriteTensor(FullName(iterator_prefix, batch_prefix),
+                              strings::StrCat(kOutput, "_", i), (*batch)[i]));
     }
   }
   return Status::OK();
@@ -818,15 +801,14 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
 
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
-  const auto& optimization_options = options.optimization_options();
+  const auto& autotune_options = options.autotune_options();
   std::vector<tstring> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt, kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt, kEnableGradientDescentOpt,
       kMapParallelizationOpt};
 
-  if (optimization_options.optional_autotune_case() ==
-          OptimizationOptions::kAutotune &&
-      !optimization_options.autotune()) {
+  if (autotune_options.optional_enabled_case() == AutotuneOptions::kEnabled &&
+      !autotune_options.enabled()) {
     for (const auto& optimization : autotune_only_optimizations) {
       configs.insert(
           absl::StrCat(optimization.data(), ":", kAutotuneOpt, ":false"));
@@ -860,9 +842,9 @@ bool ShouldUsePrivateThreadPool(const Options& options) {
 }
 
 bool ShouldUseAutotuning(const Options& options) {
-  return options.optimization_options().optional_autotune_case() !=
-             OptimizationOptions::kAutotune ||
-         options.optimization_options().autotune();
+  return options.autotune_options().optional_enabled_case() !=
+             AutotuneOptions::kEnabled ||
+         options.autotune_options().enabled();
 }
 
 bool ShouldApplyOptimizations(

@@ -170,7 +170,8 @@ HloSharding HloSharding::Tuple(const Shape& tuple_shape,
                                absl::Span<const HloSharding> shardings) {
   CHECK(tuple_shape.IsTuple()) << ShapeUtil::HumanString(tuple_shape);
   for (auto& sharding : shardings) {
-    CHECK(!sharding.IsTuple()) << sharding.ToString();
+    CHECK(!sharding.IsTuple())
+        << sharding.ToString() << ShapeUtil::HumanString(tuple_shape);
   }
   std::vector<HloSharding> flattened_list(shardings.begin(), shardings.end());
   CHECK_EQ(flattened_list.size(), RequiredLeaves(tuple_shape))

@@ -158,3 +158,36 @@ func @not_hoist_if(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) ->
 }
 
 }
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+// Test not hoisting callees in init functions.
+
+"tf_saved_model.session_initializer"() {initializers = [@init]} : () -> ()
+
+func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_init"]} {
+  %var0 = "tf.VarHandleOp"() {container = "", shared_name = "var0"} : () -> tensor<!tf_type.resource<tensor<i1>>>
+  %cond = "tf.ReadVariableOp"(%var0) {device = "/CPU:0"} : (tensor<!tf_type.resource<tensor<i1>>>) -> tensor<i1>
+  %x = "tf.StatefulPartitionedCall"(%cond) {device = "/CPU:0", config = "", config_proto = "", executor_type = "", f = @some_func} : (tensor<i1>) -> (tensor<i32>)
+  %var1 = "tf.VarHandleOp"() {container = "", shared_name = "var1"} : () -> tensor<!tf_type.resource<tensor<i32>>>
+  "tf.AssignVariable"(%var1, %x) {device = "/CPU:0"} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
+  return
+}
+
+
+// CHECK-LABEL: func @_tfrt_resource_init
+// CHECK-NEXT: return
+
+// CHECK-LABEL: func private @some_func
+func private @some_func(%arg: tensor<i1>) -> tensor<i32> {
+  // CHECK-NOT: tf._TfrtGetResource
+  %const = "tf.Const"() {device = "/CPU:0", value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  %handle = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
+  %0 = "tf.ReadVariableOp"(%handle) {device = "/CPU:0"} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+  %r = "tf.SelectV2"(%arg, %const, %0) {device = "/CPU:0"} : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+  return %r : tensor<i32>
+}
+
+}

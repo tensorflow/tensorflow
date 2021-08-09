@@ -107,6 +107,12 @@ CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
 
   main_entry->initialization_status = initialization_status;
 
+  if (!initialization_status.ok()) {
+    // Compilation failure might caused the subsequent tpu_program_group init
+    // failed with assert error. Log the error here to make debugging easier.
+    LOG(ERROR) << initialization_status.error_message();
+  }
+
   // Add the entry to the uid index.
   auto uid_inserted = entries_by_uid_.insert(
       std::pair<int64, CompiledSubgraph*>(main_entry->uid, main_entry));

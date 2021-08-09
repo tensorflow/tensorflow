@@ -1252,4 +1252,63 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-NOT: tensor<?xf64>
     return %0 : tensor<?xf64>
   }
+
+  // CHECK-LABEL: set_dynamic_dimension_size_static_dim
+  func @set_dynamic_dimension_size_static_dim(%input: tensor<4x5xf32>, %size: tensor<i32>) -> tensor<*xf32> {
+    %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
+
+    // CHECK: (tensor<4x5xf32>, tensor<i32>, tensor<i32>) -> tensor<?x5xf32>
+    %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4x5xf32>, tensor<i32>, tensor<i32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: set_dynamic_dimension_size_dynamic_dim
+  func @set_dynamic_dimension_size_dynamic_dim(%input: tensor<4x5xf32>, %dimension: tensor<i32>, %size: tensor<i32>) -> tensor<*xf32> {
+
+    // CHECK: (tensor<4x5xf32>, tensor<i32>, tensor<i32>) -> tensor<?x?xf32>
+    %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4x5xf32>, tensor<i32>, tensor<i32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: set_dynamic_dimension_size_dynamic_input
+  func @set_dynamic_dimension_size_dynamic_input(%input: tensor<*xf32>, %size: tensor<i32>) -> tensor<*xf32> {
+    %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
+
+    // CHECK: (tensor<*xf32>, tensor<i32>, tensor<i32>) -> tensor<*xf32>
+    %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<*xf32>, tensor<i32>, tensor<i32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: passthrough_mapdataset
+  func @passthrough_mapdataset(
+      %arg0 : tensor<!tf_type.variant>,
+      %arg1 : tensor<!tf_type.string>,
+      %arg2 : tensor<2x!tf_type.string>,
+      %arg3 : tensor<!tf_type.resource<tensor<4096x128xf32>>>,
+      %arg4 : tensor<!tf_type.resource<tensor<i64>>>,
+      %arg5 : tensor<!tf_type.resource<tensor<4096x128xf32>>>,
+      %arg6 : tensor<!tf_type.resource<tensor<256x640xf32>>>,
+      %arg7 : tensor<!tf_type.resource<tensor<640xf32>>>,
+      %arg8 : tensor<!tf_type.resource<tensor<640xf32>>>,
+      %arg9 : tensor<!tf_type.resource<tensor<640xf32>>>,
+      %arg10 : tensor<!tf_type.resource<tensor<640xf32>>>,
+      %arg11 : tensor<!tf_type.resource<tensor<512x640xf32>>>,
+      %arg12 : tensor<!tf_type.resource<tensor<640x640xf32>>>,
+      %arg13 : tensor<!tf_type.resource<tensor<4096xf32>>>,
+      %arg14 : tensor<!tf_type.resource<tensor<640x4096xf32>>>) {
+    %111 = "tf.MapDataset"(
+      %arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7,
+      %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14)
+      {device = "", f = @__inference_Dataset_map__feature_fn_73870, f._tf_data_function = true,
+       output_shapes = [#tf_type.shape<?>, #tf_type.shape<?x?x512>, #tf_type.shape<?x?x?>, #tf_type.shape<?x?>, #tf_type.shape<?x?>, #tf_type.shape<?x?>, #tf_type.shape<?x?>, #tf_type.shape<?x?>, #tf_type.shape<?>, #tf_type.shape<?>],
+       output_types = [!tf_type.string, f32, f32, f32, i32, i32, f32, f32, !tf_type.string, !tf_type.string], preserve_cardinality = true, use_inter_op_parallelism = true} :
+       (tensor<!tf_type.variant>, tensor<!tf_type.string>, tensor<2x!tf_type.string>, tensor<!tf_type.resource<tensor<4096x128xf32>>>, tensor<!tf_type.resource<tensor<i64>>>, tensor<!tf_type.resource<tensor<4096x128xf32>>>, tensor<!tf_type.resource<tensor<256x640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<512x640xf32>>>, tensor<!tf_type.resource<tensor<640x640xf32>>>, tensor<!tf_type.resource<tensor<4096xf32>>>, tensor<!tf_type.resource<tensor<640x4096xf32>>>) -> tensor<!tf_type.variant>
+    return
+  }
+
+  // CHECK: @__inference_Dataset_map__feature_fn_73870(%arg0: tensor<?x!tf_type.string> {tf._user_specified_name = "args_0"}, %arg1: tensor<!tf_type.string>, %arg2: tensor<2x!tf_type.string>, %arg3: tensor<!tf_type.resource<tensor<4096x128xf32>>>, %arg4: tensor<!tf_type.resource<tensor<i64>>>, %arg5: tensor<!tf_type.resource<tensor<4096x128xf32>>>, %arg6: tensor<!tf_type.resource<tensor<256x640xf32>>>, %arg7: tensor<!tf_type.resource<tensor<640xf32>>>, %arg8: tensor<!tf_type.resource<tensor<640xf32>>>, %arg9: tensor<!tf_type.resource<tensor<640xf32>>>, %arg10: tensor<!tf_type.resource<tensor<640xf32>>>, %arg11: tensor<!tf_type.resource<tensor<512x640xf32>>>, %arg12: tensor<!tf_type.resource<tensor<640x640xf32>>>, %arg13: tensor<!tf_type.resource<tensor<4096xf32>>>, %arg14: tensor<!tf_type.resource<tensor<640x4096xf32>>>
+  func private @__inference_Dataset_map__feature_fn_73870(%arg0: tensor<?x!tf_type.string> {tf._user_specified_name = "args_0"}, %arg1: tensor<!tf_type.string>, %arg2: tensor<2x!tf_type.string>, %arg3: tensor<*x!tf_type.resource>, %arg4: tensor<*x!tf_type.resource>, %arg5: tensor<*x!tf_type.resource>, %arg6: tensor<*x!tf_type.resource>, %arg7: tensor<*x!tf_type.resource>, %arg8: tensor<*x!tf_type.resource>, %arg9: tensor<*x!tf_type.resource>, %arg10: tensor<*x!tf_type.resource>, %arg11: tensor<*x!tf_type.resource>, %arg12: tensor<*x!tf_type.resource>, %arg13: tensor<*x!tf_type.resource>, %arg14: tensor<*x!tf_type.resource>) -> (tensor<?x!tf_type.string>, tensor<?x?x512xf32>, tensor<?x?x?xf32>, tensor<?x?xf32>, tensor<?x?xi32>, tensor<?x?xi32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
+    %0:10 = "tf.JustPretend"() : () -> (tensor<?x!tf_type.string>, tensor<?x?x512xf32>, tensor<?x?x?xf32>, tensor<?x?xf32>, tensor<?x?xi32>, tensor<?x?xi32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>)
+    return %0#0, %0#1, %0#2, %0#3, %0#4, %0#5, %0#6, %0#7, %0#8, %0#9: tensor<?x!tf_type.string>, tensor<?x?x512xf32>, tensor<?x?x?xf32>, tensor<?x?xf32>, tensor<?x?xi32>, tensor<?x?xi32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>
+  }
 }

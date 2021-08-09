@@ -550,6 +550,64 @@ TEST(CalibratorTest, CalibrationWithMultipleSubgraphs) {
     EXPECT_NEAR(e.second.max, expected_result.max, eps);
   }
 }
+
+TEST(CalibratorTest, CalibrationWithCallOnce) {
+  auto model = ReadModel("call_once_mul.bin");
+  ASSERT_TRUE(model);
+  std::unique_ptr<Interpreter> interpreter;
+  std::unique_ptr<CalibrationReader> reader;
+  auto status = BuildLoggingInterpreter(
+      *model, ops::builtin::BuiltinOpResolver{}, &interpreter, &reader);
+  EXPECT_EQ(kTfLiteOk, status);
+
+  ASSERT_TRUE(interpreter);
+  ASSERT_TRUE(reader);
+  absl::flat_hash_map<std::tuple<int, int>, CalibrationReader::CalibrationStats>
+      stats;
+  status = reader->GetTensorStatsAsMap(&stats);
+  EXPECT_EQ(kTfLiteOk, status);
+  EXPECT_TRUE(stats.empty());
+
+  status = interpreter->AllocateTensors();
+  ASSERT_EQ(kTfLiteOk, status);
+  // Model does the following:
+  // serving_default_inp:0 -> CallOnce() -> ReadVariableOp() -> Mul()
+  //                              |                 |
+  //                       AssignVariableOp()  AssignVariableOp
+  const size_t tensor_size = 1;
+  for (size_t i = 0; i < interpreter->inputs().size(); i++) {
+    int input_tensor_idx = interpreter->inputs()[i];
+    TfLiteTensor* tensor = interpreter->tensor(input_tensor_idx);
+    ASSERT_EQ(tensor->bytes, tensor_size * sizeof(int));
+    for (size_t j = 0; j < tensor_size; j++) {
+      tensor->data.f[j] = i + 1;
+    }
+  }
+  status = interpreter->Invoke();
+  ASSERT_EQ(kTfLiteOk, status);
+
+  // Verify that min max of tensors.
+  status = reader->GetTensorStatsAsMap(&stats);
+  EXPECT_EQ(kTfLiteOk, status);
+  EXPECT_EQ(3, stats.size());
+
+  // Check the results.
+  const float eps = 1e-6f;
+  const absl::flat_hash_map<std::tuple<int, int>,
+                            CalibrationReader::CalibrationStats>
+      expected_calibration_result = {// input.
+                                     {{0, 0}, {1.0, 1.0}},
+                                     // readvariableop.
+                                     {{0, 2}, {2.0, 2.0}},
+                                     // mul output.
+                                     {{0, 3}, {2.0, 2.0}}};
+  EXPECT_EQ(expected_calibration_result.size(), stats.size());
+  for (const auto& e : stats) {
+    auto expected_result = expected_calibration_result.find(e.first)->second;
+    EXPECT_NEAR(e.second.min, expected_result.min, eps);
+    EXPECT_NEAR(e.second.max, expected_result.max, eps);
+  }
+}
 }  // namespace
 }  // namespace calibration
 }  // namespace optimize

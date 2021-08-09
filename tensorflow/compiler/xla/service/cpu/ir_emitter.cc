@@ -2308,6 +2308,23 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   if (custom_call->custom_call_target() == "TopK") {
     return HandleTopK(custom_call);
   }
+
+  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
+  switch (typed_custom_call->api_version()) {
+    case CustomCallApiVersion::API_VERSION_ORIGINAL:
+      break;
+    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+      // TODO(b/194529780): Support status-returning custom calls on CPU.
+      return Unimplemented(
+          "XLA CPU does not support custom calls that return a success/failure "
+          "status");
+    default:
+      return InternalError(
+          "Unknown custom-call API version enum value: %d (%s)",
+          typed_custom_call->api_version(),
+          CustomCallApiVersion_Name(typed_custom_call->api_version()));
+  }
+
   absl::Span<HloInstruction* const> operands(custom_call->operands());
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =

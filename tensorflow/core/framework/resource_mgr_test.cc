@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
@@ -77,8 +78,10 @@ string LookupOrCreate(ResourceMgr* rm, const string& container,
   return ret;
 }
 
-static void HasError(const Status& s, const string& substr) {
-  EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
+static void HasError(const Status& s, const error::Code code,
+                     const string& substr) {
+  EXPECT_EQ(s.code(), code);
+  EXPECT_TRUE(absl::StrContains(s.error_message(), substr))
       << s << ", expected substring " << substr;
 }
 
@@ -99,7 +102,7 @@ TEST(ResourceMgrTest, Basic) {
 
   // Expected to fail.
   HasError(rm.Create("foo", "bar", new Resource("kitty")),
-           "Already exists: Resource foo/bar");
+           error::ALREADY_EXISTS, "Resource foo/bar");
 
   // Expected to be found.
   EXPECT_EQ("R/cat", Find<Resource>(rm, "foo", "bar"));
@@ -107,24 +110,30 @@ TEST(ResourceMgrTest, Basic) {
   EXPECT_EQ("O/tiger", Find<Other>(rm, "foo", "bar"));
 
   // Expected to be not found.
-  HasError(FindErr<Resource>(rm, "bar", "foo"), "Not found: Container bar");
-  HasError(FindErr<Resource>(rm, "foo", "xxx"), "Not found: Resource foo/xxx");
-  HasError(FindErr<Other>(rm, "foo", "baz"), "Not found: Resource foo/baz");
+  HasError(FindErr<Resource>(rm, "bar", "foo"), error::NOT_FOUND,
+           "Container bar");
+  HasError(FindErr<Resource>(rm, "foo", "xxx"), error::NOT_FOUND,
+           "Resource foo/xxx");
+  HasError(FindErr<Other>(rm, "foo", "baz"), error::NOT_FOUND,
+           "Resource foo/baz");
 
   // Delete foo/bar/Resource.
   TF_CHECK_OK(rm.Delete<Resource>("foo", "bar"));
-  HasError(FindErr<Resource>(rm, "foo", "bar"), "Not found: Resource foo/bar");
+  HasError(FindErr<Resource>(rm, "foo", "bar"), error::NOT_FOUND,
+           "Resource foo/bar");
 
   TF_CHECK_OK(rm.Create("foo", "bar", new Resource("kitty")));
   EXPECT_EQ("R/kitty", Find<Resource>(rm, "foo", "bar"));
 
   // Drop the whole container foo.
   TF_CHECK_OK(rm.Cleanup("foo"));
-  HasError(FindErr<Resource>(rm, "foo", "bar"), "Not found: Container foo");
+  HasError(FindErr<Resource>(rm, "foo", "bar"), error::NOT_FOUND,
+           "Container foo");
 
   // Dropping it a second time is OK.
   TF_CHECK_OK(rm.Cleanup("foo"));
-  HasError(FindErr<Resource>(rm, "foo", "bar"), "Not found: Container foo");
+  HasError(FindErr<Resource>(rm, "foo", "bar"), error::NOT_FOUND,
+           "Container foo");
 
   // Dropping a non-existent container is also ok.
   TF_CHECK_OK(rm.Cleanup("bar"));
@@ -139,7 +148,8 @@ TEST(ResourceMgrTest, CreateOrLookup) {
   EXPECT_EQ("O/tiger", LookupOrCreate<Other>(&rm, "foo", "bar", "tiger"));
   EXPECT_EQ("O/tiger", LookupOrCreate<Other>(&rm, "foo", "bar", "lion"));
   TF_CHECK_OK(rm.Delete<Other>("foo", "bar"));
-  HasError(FindErr<Other>(rm, "foo", "bar"), "Not found: Resource foo/bar");
+  HasError(FindErr<Other>(rm, "foo", "bar"), error::NOT_FOUND,
+           "Resource foo/bar");
 }
 
 TEST(ResourceMgrTest, CreateOrLookupRaceCondition) {
@@ -219,16 +229,19 @@ Status WrongPolicy(const string& attr_container, const string& attr_shared_name,
 
 TEST(ContainerInfo, Error) {
   // Missing attribute.
-  HasError(WrongPolicy("none", "", false), "No attr");
-  HasError(WrongPolicy("", "none", false), "No attr");
-  HasError(WrongPolicy("none", "none", false), "No attr");
+  HasError(WrongPolicy("none", "", false), error::NOT_FOUND, "No attr");
+  HasError(WrongPolicy("", "none", false), error::NOT_FOUND, "No attr");
+  HasError(WrongPolicy("none", "none", false), error::NOT_FOUND, "No attr");
 
   // Invalid container.
-  HasError(WrongPolicy("12$%", "", false), "container contains invalid char");
-  HasError(WrongPolicy("-cat", "", false), "container contains invalid char");
+  HasError(WrongPolicy("12$%", "", false), error::INVALID_ARGUMENT,
+           "container contains invalid char");
+  HasError(WrongPolicy("-cat", "", false), error::INVALID_ARGUMENT,
+           "container contains invalid char");
 
   // Invalid shared name.
-  HasError(WrongPolicy("", "_foo", false), "shared_name cannot start with '_'");
+  HasError(WrongPolicy("", "_foo", false), error::INVALID_ARGUMENT,
+           "shared_name cannot start with '_'");
 }
 
 // Stub DeviceBase subclass which only sets a device name, for testing resource
