@@ -390,6 +390,11 @@ void PrintInterpreterState(const Interpreter* interpreter) {
     }
     tensor_mem_info.Print();
 
+    // Dumps debugging info provided by the underlying memory planner.
+    // Note that this will output nothing unless the
+    // ":simple_memory_arena_debug_dump" is added as an extra dependence.
+    subgraph.DumpMemoryPlannerDebugInfo();
+
     // Going to print out all nodes (i.e. op kernels) in this subgraph.
     std::vector<bool> replaced_node_bits;
     std::vector<size_t> replaced_by_node;

@@ -154,6 +154,7 @@ cc_library(
         ":benchmark_utils",
         ":profiling_listener",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:simple_memory_arena_debug_dump",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
