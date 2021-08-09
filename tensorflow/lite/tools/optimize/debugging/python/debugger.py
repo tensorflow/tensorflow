@@ -239,8 +239,8 @@ class QuantizationDebugger:
         disable_per_channel=self.converter._experimental_disable_per_channel,  # pylint: disable=protected-access
         fully_quantize=self._debug_options.fully_quantize,
         enable_numeric_verify=is_debug,
-        blocklisted_ops=self._debug_options.denylisted_ops,
-        blocklisted_nodes=self._debug_options.denylisted_nodes)
+        denylisted_ops=self._debug_options.denylisted_ops,
+        denylisted_nodes=self._debug_options.denylisted_nodes)
 
   def get_nondebug_quantized_model(self) -> bytes:
     """Returns a non-instrumented quantized model.
@@ -291,8 +291,8 @@ class QuantizationDebugger:
         disable_per_channel=converter._experimental_disable_per_channel,  # pylint: disable=protected-access
         fully_quantize=options.fully_quantize,
         enable_numeric_verify=True,
-        blocklisted_ops=options.denylisted_ops,
-        blocklisted_nodes=options.denylisted_nodes)
+        denylisted_ops=options.denylisted_ops,
+        denylisted_nodes=options.denylisted_nodes)
     self._quant_interpreter = tf.lite.Interpreter(
         model_content=self.quant_model)
     self._float_interpreter = None

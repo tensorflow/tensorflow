@@ -810,9 +810,9 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       ('_BlocklistedNodesWithLowering', None, {'PartitionedCall:0'}, True),
       ('_BlocklistedNodesWithoutLowering', None, {'Identity'}, False))
   @test_util.run_v2_only
-  def testNewQuantizerBlocklistingArgs(self, blocklisted_ops, blocklisted_nodes,
+  def testNewQuantizerBlocklistingArgs(self, denylisted_ops, denylisted_nodes,
                                        lower_to_saved_model):
-    """Test the model quantized by the new converter and blocklisted options."""
+    """Test the model quantized by the new converter and denylisted options."""
     root, func, calibration_gen = self._getIntegerQuantizeModel()
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func],
                                                                          root)
@@ -825,15 +825,16 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter._experimental_calibrate_only = True
     quantized_converter.experimental_lower_to_saved_model = lower_to_saved_model
     calibrated = quantized_converter.convert()
-    quantized_tflite_model = mlir_quantize(calibrated,
-                                           blocklisted_ops=blocklisted_ops,
-                                           blocklisted_nodes=blocklisted_nodes)
+    quantized_tflite_model = mlir_quantize(
+        calibrated,
+        denylisted_ops=denylisted_ops,
+        denylisted_nodes=denylisted_nodes)
     interpreter = Interpreter(model_content=quantized_tflite_model)
     details = interpreter.get_tensor_details()
     num_quantized_tensors = sum(
         [1 for detail in details
          if len(detail['quantization_parameters']['scales'])])
-    if blocklisted_nodes or blocklisted_ops:
+    if denylisted_nodes or denylisted_ops:
       self.assertEqual(num_quantized_tensors, 0)
       return
     self.assertEqual(num_quantized_tensors, 4)  # quant, filter, bias, dequant

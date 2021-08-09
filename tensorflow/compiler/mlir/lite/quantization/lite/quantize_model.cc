@@ -54,11 +54,11 @@ TfLiteStatus QuantizeModel(
     flatbuffers::FlatBufferBuilder* builder,
     tflite::ErrorReporter* error_reporter, bool verify_numeric,
     bool whole_model_verify, bool legacy_float_scale,
-    const StringSet& blocklisted_ops, const StringSet& blocklisted_nodes) {
+    const StringSet& denylisted_ops, const StringSet& denylisted_nodes) {
   // Translate TFLite names to mlir op names.
-  StringSet blocklisted_mlir_op_names;
-  for (const auto& entry : blocklisted_ops) {
-    blocklisted_mlir_op_names.insert(TfLiteToMlir(entry));
+  StringSet denylisted_mlir_op_names;
+  for (const auto& entry : denylisted_ops) {
+    denylisted_mlir_op_names.insert(TfLiteToMlir(entry));
   }
 
   DialectRegistry registry;
@@ -112,11 +112,11 @@ TfLiteStatus QuantizeModel(
   pm.addPass(TFL::CreatePrepareQuantizePass(quant_specs));
   pm.addPass(TFL::CreateQuantizePass(
       verify_numeric, whole_model_verify, legacy_float_scale,
-      blocklisted_mlir_op_names, blocklisted_nodes));
+      denylisted_mlir_op_names, denylisted_nodes));
   pm.addPass(TFL::CreatePostQuantizePass(/*emit_quant_adaptor_ops=*/true));
   pm.addPass(TFL::CreateOptimizeOpOrderPass());
   pm.addPass(TFL::CreateModifyIONodesPass(input_mlir_type, output_mlir_type));
-  if (!blocklisted_ops.empty() || !blocklisted_nodes.empty()) {
+  if (!denylisted_ops.empty() || !denylisted_nodes.empty()) {
     // If the first or final ops are not quantized, remove QDQ.
     pm.addPass(TFL::CreatePostQuantizeRemoveQDQPass());
   }
