@@ -43,6 +43,7 @@ static constexpr StringRef kCInterfaceJITCompile =
 static constexpr StringRef kCInterfaceJITExecute =
     "_mlir_ciface_tf_jit_execute";
 static constexpr StringRef kJITCodeGlobalBaseName = "jit_module_code";
+static constexpr StringRef kJITArchitectureGlobalBaseName = "jit_architecture";
 static constexpr StringRef kErrorMessageGlobalBaseName = "error_message";
 
 /// Base class for patterns converting TF Framework ops to function calls.
@@ -93,12 +94,10 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
                                     LLVM::Linkage::Internal);
   }
 
-  std::pair<Value, Value> ConvertIntegerArrayAttrToStackAllocatedArray(
+  std::pair<Value, Value> ConvertArrayAttrToStackAllocatedArray(
       Location loc, Type size_ty, Type element_ty,
-      llvm::Optional<ArrayAttr> attr,
-      ConversionPatternRewriter *rewriter) const {
-    assert(size_ty.isa<IntegerType>() && "expect integer size type");
-    assert(element_ty.isa<IntegerType>() && "expect integer element type");
+      llvm::Optional<ArrayAttr> attr, ConversionPatternRewriter *rewriter,
+      std::function<Value(Attribute)> create_element) const {
     Type element_ptr_ty = LLVM::LLVMPointerType::get(element_ty);
 
     // If the attribute is missing or empty, set the element count to 0 and
@@ -121,13 +120,39 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
           loc, size_ty, rewriter->getIntegerAttr(size_ty, e.index()));
       Value element_ptr =
           rewriter->create<LLVM::GEPOp>(loc, element_ptr_ty, array_ptr, index);
-      Value element = rewriter->create<LLVM::ConstantOp>(
-          loc, element_ty,
-          rewriter->getIntegerAttr(element_ty,
-                                   e.value().cast<IntegerAttr>().getInt()));
+      Value element = create_element(e.value());
       rewriter->create<LLVM::StoreOp>(loc, element, element_ptr);
     }
     return std::make_pair(array_size, array_ptr);
+  }
+
+  std::pair<Value, Value> ConvertIntegerArrayAttrToStackAllocatedArray(
+      Location loc, Type size_ty, Type element_ty,
+      llvm::Optional<ArrayAttr> attr,
+      ConversionPatternRewriter *rewriter) const {
+    assert(size_ty.isa<IntegerType>() && "expect integer size type");
+    assert(element_ty.isa<IntegerType>() && "expect integer element type");
+    return ConvertArrayAttrToStackAllocatedArray(
+        loc, size_ty, element_ty, attr, rewriter, [&](Attribute attr) {
+          return rewriter->create<LLVM::ConstantOp>(
+              loc, element_ty,
+              rewriter->getIntegerAttr(element_ty,
+                                       attr.cast<IntegerAttr>().getInt()));
+        });
+  }
+
+  std::pair<Value, Value> ConvertStrArrayAttrToStackAllocatedArray(
+      Location loc, Type size_ty, llvm::Optional<ArrayAttr> attr,
+      ConversionPatternRewriter *rewriter) const {
+    assert(size_ty.isa<IntegerType>() && "expect integer size type");
+    Type element_ty = LLVM::LLVMPointerType::get(rewriter->getI8Type());
+    return ConvertArrayAttrToStackAllocatedArray(
+        loc, size_ty, element_ty, attr, rewriter, [&](Attribute attr) {
+          std::string zero_terminated =
+              attr.cast<StringAttr>().getValue().str() + '\00';
+          return CreateOrFindGlobalStringConstant(
+              loc, *rewriter, kJITArchitectureGlobalBaseName, zero_terminated);
+        });
   }
 };
 
@@ -289,6 +314,9 @@ class JITCompileFromStrOpConverter
     auto loc = op.getLoc();
     Value jit_module_code = CreateOrFindGlobalStringConstant(
         loc, rewriter, kJITCodeGlobalBaseName, op.code());
+    std::pair<Value, Value> architectures =
+        ConvertStrArrayAttrToStackAllocatedArray(loc, rewriter.getI64Type(),
+                                                 op.architectures(), &rewriter);
     std::pair<Value, Value> tile_sizes =
         ConvertIntegerArrayAttrToStackAllocatedArray(loc, rewriter.getI64Type(),
                                                      rewriter.getI64Type(),
@@ -307,6 +335,7 @@ class JITCompileFromStrOpConverter
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, getVoidPtrType(), tf_func_ref,
         llvm::makeArrayRef({transformed.ctx(), jit_module_code,
+                            architectures.first, architectures.second,
                             tile_sizes.first, tile_sizes.second,
                             unroll_factors.first, unroll_factors.second,
                             max_supported_rank, enable_ftz, cpu_codegen}));
@@ -319,11 +348,14 @@ class JITCompileFromStrOpConverter
   Type GetFuncType() const override {
     auto i8_ptr_ty =
         LLVM::LLVMPointerType::get(IntegerType::get(getContext(), 8));
+    auto i8_ptr_ptr_ty = LLVM::LLVMPointerType::get(i8_ptr_ty);
     auto i64_ty = IntegerType::get(getContext(), 64);
     Type i64_ptr_ty = LLVM::LLVMPointerType::get(i64_ty);
     auto i1_ty = IntegerType::get(getContext(), 1);
     return LLVM::LLVMFunctionType::get(
         getVoidPtrType(), {getVoidPtrType(), /*char* code*/ i8_ptr_ty,
+                           /*int64_t num_architectures*/ i64_ty,
+                           /*int64_t* architectures_ptr*/ i8_ptr_ptr_ty,
                            /*int64_t num_tile_sizes*/ i64_ty,
                            /*int64_t* tile_sizes_ptr*/ i64_ptr_ty,
                            /*int64_t num_unroll_factors*/ i64_ty,
