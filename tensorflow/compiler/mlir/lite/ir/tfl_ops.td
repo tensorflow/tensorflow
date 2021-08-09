@@ -5234,6 +5234,7 @@ def TFL_Conv3DOp : TFL_Op<"conv_3d", [
 
 def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
     NoSideEffect,
+    AffineOpCoefficient<3, 1>,
     AccumulatorUniformScale<2, 0, 1>,
     TFL_OperandHasRank<0, 1>,
     TFL_OperandHasRank<1, 5>,
@@ -5262,11 +5263,17 @@ def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
       `inputs[3]`: optional: the bias tensor
   }];
 
+  let extraClassDeclaration = [{
+    // AffineQuantizedOpInterface:
+    int GetChannelDimIndex() { return 0; }
+    int GetQuantizationDimIndex() { return 3; }
+  }];
+
   let arguments = (ins
     TFL_I32Tensor:$output_shape,
-    TFL_TensorOf<[F32]>:$filter,
-    TFL_TensorOf<[F32]>:$input,
-    TFL_TensorOfOrNone<[F32]>:$bias,
+    TFL_TensorOf<[F32, QI8]>:$filter,
+    TFL_TensorOf<[F32, QI8, QI16]>:$input,
+    TFL_TensorOfOrNone<[F32, I32, I64]>:$bias,
     I32Attr:$dilation_d_factor,
     I32Attr:$dilation_h_factor,
     I32Attr:$dilation_w_factor,
@@ -5277,7 +5284,7 @@ def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
     I32Attr:$stride_w
   );
 
-  let results = (outs TFL_TensorOf<[F32]>:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8, QI16]> : $output);
 
   let hasOptions = 1;
 
