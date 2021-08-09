@@ -869,7 +869,6 @@ struct ConvertTensorListStack
 // we concatenate all those tensors along the first dimension.
 // The pattern will be rejected if either `element_shape` is not constant, or
 // the first dimension of `input` is not known.
-// TODO(b/184168136): Consider rewrite in tablegen.
 struct ConvertTensorListConcatV2
     : public TensorListOpConverterBase<TF::TensorListConcatV2Op> {
   using TensorListOpConverterBase<
