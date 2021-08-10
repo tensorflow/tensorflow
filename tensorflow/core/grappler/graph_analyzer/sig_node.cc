@@ -275,8 +275,8 @@ void Signature::PrepareNodes() {
 
 void Signature::FindUniqueHashes(size_t* next_node_id_p) {
   // Start by sorting by the hash value.
-  std::sort(nodes.begin() + *next_node_id_p, nodes.end(),
-            SigNode::NodeOrderLess());
+  std::stable_sort(nodes.begin() + *next_node_id_p, nodes.end(),
+                   SigNode::NodeOrderLess());
 
   // At each call, if no nodes have unique hashes, one node that has a
   // non-unique (shared) hash can be made unique by assigning a unique id.
