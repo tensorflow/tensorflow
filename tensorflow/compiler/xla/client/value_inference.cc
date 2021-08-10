@@ -91,7 +91,7 @@ Literal CreateGarbageLiteral(const Shape& reference_shape) {
   if (element_type == TOKEN) {
     return LiteralUtil::CreateToken();
   }
-  Literal literal = LiteralUtil::Zero(element_type);
+  Literal literal = LiteralUtil::One(element_type);
   return literal.Broadcast(reference_shape, {}).ValueOrDie();
 }
 
@@ -374,7 +374,33 @@ struct PostorderDFSVisitor {
     return false;
   }
 
-  absl::flat_hash_map<int64, Literal> evaluated;
+  struct CacheKey {
+    CacheKey(int64 handle, InferenceContext context, PostorderDFSNodeType type)
+        : handle(handle), context(context), type(type) {}
+    int64 handle;
+    InferenceContext context;
+    PostorderDFSNodeType type;
+
+    template <typename H>
+    friend H AbslHashValue(H h, const CacheKey& key) {
+      h = H::combine(std::move(h), key.handle);
+      h = H::combine(std::move(h), key.context.shape_index.ToString());
+      h = H::combine(std::move(h),
+                     VectorString(key.context.caller_operand_handles));
+      h = H::combine(std::move(h), key.type);
+      return h;
+    }
+
+    friend bool operator==(const CacheKey& lhs, const CacheKey& rhs) {
+      return lhs.handle == rhs.handle &&
+             lhs.context.shape_index == rhs.context.shape_index &&
+             lhs.context.caller_operand_handles ==
+                 rhs.context.caller_operand_handles &&
+             lhs.type == rhs.type;
+    }
+  };
+
+  absl::flat_hash_map<CacheKey, Literal> evaluated;
   HandleToInstruction handle_to_instruction;
   HandleToComputation handle_to_computation;
 };
@@ -405,6 +431,8 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
     case HloOpcode::kWhile:
     case HloOpcode::kSend:
     case HloOpcode::kRecv:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kRecvDone:
     case HloOpcode::kParameter: {
       if (opcode == HloOpcode::kParameter &&
           !context.caller_operand_handles.empty()) {
@@ -665,6 +693,11 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
             return Literal::CreateFromProto(root->literal());
           }
         });
+      } else if (root->custom_call_target() == "Sharding") {
+        return PostorderDFSNode()
+            .AddDependency(root->operand_ids(0),
+                           PostorderDFSNodeType::kConstantUpperBound, context)
+            .AddVisit([](Literal operand) { return operand; });
       }
       return InvalidArgument(
           "Upper-bound inferencing on custom call %s is not supported",
@@ -793,6 +826,11 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
                            PostorderDFSNodeType::kConstantValue, context)
             .AddVisit(
                 [](Literal operand) -> StatusOr<Literal> { return operand; });
+      } else if (root->custom_call_target() == "Sharding") {
+        return PostorderDFSNode()
+            .AddDependency(root->operand_ids(0),
+                           PostorderDFSNodeType::kConstantValue, context)
+            .AddVisit([](Literal operand) { return operand; });
       } else {
         return PostorderDFSNode().AddVisit(
             [root, context](absl::Span<Literal>) {
@@ -805,9 +843,11 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
     }
     case HloOpcode::kSort: {
       PostorderDFSNode result;
+      InferenceContext dep_context = context;
+      dep_context.shape_index = {};
       for (auto operand_id : root->operand_ids()) {
         result.AddDependency(operand_id, PostorderDFSNodeType::kConstantValue,
-                             context);
+                             dep_context);
       }
       const HloComputationProto* computation_proto =
           handle_to_computation(root->called_computation_ids(0));
@@ -908,17 +948,24 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       });
     }
     case HloOpcode::kSetDimensionSize:
-      return result.AddVisit([root, type]() {
+      return result.AddVisit([root, type](absl::Span<Literal> operands) {
+        bool any_dynamic_operand = absl::c_any_of(
+            operands, [](Literal& operand) { return !operand.IsAll(0); });
         // If values in a tensor `t` with bound are [e0, e1, e2...], we can say
         // the max value of each position is [max(t), max(t), max(t), ...]. The
         // effective size of this tensor doesn't change the max value.
         return CreatePredLiteral(
-            type == PostorderDFSNodeType::kValueIsDynamic,
+            type == PostorderDFSNodeType::kValueIsDynamic &&
+                any_dynamic_operand,
             ShapeUtil::MakeStaticShape(Shape(root->shape())));
       });
     case HloOpcode::kDynamicSlice: {
-      return result.AddVisit(
-          [root]() { return CreatePredLiteral(true, Shape(root->shape())); });
+      return result.AddVisit([root](absl::Span<Literal> operands) {
+        // If any of the operand is dynamic, we say output is dynamic.
+        bool any_dynamic_operand = absl::c_any_of(
+            operands, [](Literal& operand) { return !operand.IsAll(0); });
+        return CreatePredLiteral(any_dynamic_operand, Shape(root->shape()));
+      });
     }
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
@@ -1169,7 +1216,6 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
             Literal lhs = std::move(operands[2]);
             Literal rhs = std::move(operands[3]);
             auto result = CreatePredLiteral(true, Shape(root->shape()));
-
             result.MutableEachCell<bool>(
                 [&](absl::Span<const int64> indices, bool value) {
                   absl::optional<bool> optional_selector =
@@ -1235,6 +1281,8 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
             }
           }
         });
+      } else if (root->custom_call_target() == "Sharding") {
+        return result.AddVisit([](Literal operand) { return operand; });
       } else {
         return InvalidArgument(
             "Dynamic inferencing on custom call %s is not supported",
@@ -1245,6 +1293,10 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     }
 
     case HloOpcode::kCall:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
     case HloOpcode::kWhile: {
       return PostorderDFSNode().AddVisit([root,
                                           context]() -> StatusOr<Literal> {
@@ -1255,8 +1307,12 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       break;
     }
     default:
-      return Unimplemented("Can't infer dynamism through %s: %s",
-                           root->opcode(), root->DebugString());
+      return PostorderDFSNode().AddVisit([root,
+                                          context]() -> StatusOr<Literal> {
+        return CreatePredLiteral(
+            true,
+            ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index));
+      });
   }
 }
 
@@ -1284,7 +1340,9 @@ StatusOr<Literal> PostorderDFSVisitor::PostOrderDFSVisit(
     Visit visit;  // The handler to call once the dependencies are resolved into
                   // literal form.
     int64 id;     // Unique id in the work queue, starting from 0.
-    std::vector<int64> dependencies;
+    std::vector<CacheKey> dependencies;
+
+    CacheKey GetCacheKey() { return CacheKey(handle, context, type); }
   };
 
   std::vector<WorkItem> stack;
@@ -1302,21 +1360,25 @@ StatusOr<Literal> PostorderDFSVisitor::PostOrderDFSVisit(
 
       // Gather dependencies and transform them into literals.
       std::vector<Literal> literals;
-      for (int64_t dep_id : item.dependencies) {
-        TF_RET_CHECK(evaluated.contains(dep_id));
-        literals.emplace_back(evaluated.at(dep_id).Clone());
+      for (CacheKey& dep_key : item.dependencies) {
+        TF_RET_CHECK(evaluated.contains(dep_key));
+        literals.emplace_back(evaluated.at(dep_key).Clone());
       }
       VLOG(1) << "Start visiting with dependency type: "
               << PostorderDFSNodeTypeToString(item.type);
       TF_ASSIGN_OR_RETURN(auto literal, item.visit(absl::MakeSpan(literals)));
       VLOG(1) << "End visiting: " << literal.ToString();
-      evaluated[item.id] = std::move(literal);
+      evaluated[item.GetCacheKey()] = std::move(literal);
       stack.pop_back();
       continue;
     }
     // This is the first time we see this node, we want to gather its
     // dependenceis.
     VLOG(1) << "unvisited";
+    if (evaluated.contains(item.GetCacheKey())) {
+      stack.pop_back();
+      continue;
+    }
     item.state = kVisiting;
     PostorderDFSNode node;
     switch (item.type) {
@@ -1347,22 +1409,21 @@ StatusOr<Literal> PostorderDFSVisitor::PostOrderDFSVisit(
     // resolved.
     item.visit = node.visit;
 
-    // Dependencies of this item have id in the range of [unique_id, unique_id +
-    // dependencies.size())
-    for (int64_t i = 0; i < node.dependencies.size(); ++i) {
-      item.dependencies.push_back(unique_id + i);
-    }
+    const int64 current_item_id = stack.size() - 1;
     // Enqueue dependencies into the stack. `item` shouldn't be accessed after
     // this point.
     for (const PostorderDFSDep& dep : node.dependencies) {
-      VLOG(1) << "dep " << dep.annotation << ":"
-              << handle_to_instruction(dep.handle)->DebugString();
+      VLOG(1) << "dep " << dep.annotation
+              << "::" << handle_to_instruction(dep.handle)->DebugString()
+              << "index" << dep.context.shape_index
+              << " stack size:" << stack.size();
       stack.emplace_back(dep.handle, dep.context, dep.type, kUnvisited,
                          unique_id++);
+      stack[current_item_id].dependencies.push_back(stack.back().GetCacheKey());
     }
   }
-  VLOG(1) << "done" << evaluated[root.id].ToString();
-  return evaluated[root.id].Clone();
+  VLOG(1) << "done" << evaluated[root.GetCacheKey()].ToString();
+  return evaluated[root.GetCacheKey()].Clone();
 }
 
 StatusOr<Literal> ValueInference::AnalyzeIsDynamic(XlaOp op) {
