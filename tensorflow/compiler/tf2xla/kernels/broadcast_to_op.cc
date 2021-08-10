@@ -30,9 +30,7 @@ class BroadcastToOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* context) override {
     TensorShape output_shape;
-    OP_REQUIRES_OK(context,
-                   context->ConstantInputAsShape(
-                       1, &output_shape, xla::ValueInferenceMode::kUpperBound));
+    OP_REQUIRES_OK(context, context->ConstantInputAsShape(1, &output_shape));
     auto output_status_or =
         BroadcastTo(context->Input(0), output_shape.dim_sizes());
     OP_REQUIRES_OK(context, output_status_or.status());
