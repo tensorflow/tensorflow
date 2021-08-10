@@ -417,5 +417,16 @@ XLA_TEST_F(VecOpsSimpleTest, VectorPredicateNotEqual) {
   ComputeAndCompareR1<bool>(&builder, expected, {});
 }
 
+XLA_TEST_F(VecOpsSimpleTest, CbrtSevenValues) {
+  XlaBuilder builder(TestName());
+  std::vector<float> expected = {16.0, 1888.0, -102.0, 0.16, 0.2, 0., 1.23};
+  std::vector<float> cube = {4096.0, 6729859072., -1061208, .004096,
+                             0.008,  0.,          1.860867};
+  auto x = ConstantR1<float>(&builder, cube);
+  Cbrt(x);
+  ComputeAndCompareR1<float>(&builder, expected, {},
+                             ErrorSpec(/*aabs=*/1e-7, /*arel=*/2e-7));
+}
+
 }  // namespace
 }  // namespace xla
