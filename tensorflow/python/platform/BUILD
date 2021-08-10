@@ -1,7 +1,7 @@
 # platform package
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
+load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary", "tf_py_build_info_genrule")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 
 # buildifier: disable=same-origin-load
@@ -33,6 +33,14 @@ py_library(
     srcs_version = "PY3",
 )
 
+tf_native_cc_binary(
+    name = "_cpu_feature_guard.so",
+    linkshared = True,
+    deps = [
+        "//tensorflow/core/platform:cpu_feature_guard",
+    ],
+)
+
 py_library(
     name = "platform",
     srcs = glob(
@@ -46,6 +54,10 @@ py_library(
             "device_context.py",  # In platform_device_context.
         ],
     ) + ["build_info.py"],
+    data = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": [":_cpu_feature_guard.so"],
+    }),
     srcs_version = "PY3",
     deps = [
         ":build_info",
