@@ -1205,7 +1205,7 @@ HloSharding PartiallyReplicateTiledShardingOnDims(
   std::vector<int64> dim_permutation(
       sharding.tile_assignment().num_dimensions());
   std::iota(dim_permutation.begin(), dim_permutation.end(), 0);
-  absl::c_sort(dim_permutation, [&](const int64_t a, const int64_t b) {
+  absl::c_stable_sort(dim_permutation, [&](const int64_t a, const int64_t b) {
     return absl::c_linear_search(dims_to_replicate, a) <
            absl::c_linear_search(dims_to_replicate, b);
   });
