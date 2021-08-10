@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 
+#include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
@@ -31,6 +33,10 @@ limitations under the License.
 namespace tensorflow {
 namespace serving {
 namespace {
+
+const char* GetCostMeasurementType() {
+  return std::getenv("TF_COST_MEASUREMENT_TYPE");
+}
 
 // TODO(b/181883417): Replace with RecordPaddingSizeV2.
 void RecordPaddingSize(int32_t padding_size, const string& model_name,
@@ -616,6 +622,16 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
     return;
   }
 
+  const char* cost_measurement_type = GetCostMeasurementType();
+  auto batch_cost_measurement =
+      cost_measurement_type
+          ? CostMeasurementRegistry::CreateByNameOrNull(cost_measurement_type)
+          : nullptr;
+  int64_t processed_size = batch->size();
+  auto batch_cost_split_cleanup = gtl::MakeCleanup([&] {
+    SplitBatchCost(batch_cost_measurement.get(), processed_size, *batch);
+  });
+
   // We use the 'propagated_context' from one of the threads which setup one
   // of the tasks. This will propagate any common context over all the threads
   // which are running this Session, of which this BatchOp is a part.
@@ -655,6 +671,7 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
 
   std::vector<Tensor> concatenated_tensors;
   status = ConcatInputTensors(*batch, last_task_context, &concatenated_tensors);
+  processed_size = RoundToLowestAllowedBatchSize(batch->size());
   if (!status.ok()) {
     return;
   }
@@ -704,6 +721,16 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
     return;
   }
 
+  const char* cost_measurement_type = GetCostMeasurementType();
+  auto batch_cost_measurement =
+      cost_measurement_type
+          ? CostMeasurementRegistry::CreateByNameOrNull(cost_measurement_type)
+          : nullptr;
+  int64_t processed_size = batch->size();
+  auto batch_cost_split_cleaner = gtl::MakeCleanup([&] {
+    SplitBatchCost(batch_cost_measurement.get(), processed_size, *batch);
+  });
+
   WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
 
   OpKernelContext* last_task_context =
@@ -719,6 +746,7 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
   std::vector<Tensor> concatenated_tensors;
   const Status concat_status =
       ConcatInputTensors(*batch, last_task_context, &concatenated_tensors);
+  processed_size = RoundToLowestAllowedBatchSize(batch->size());
   OP_REQUIRES_OK_ASYNC(last_task_context, concat_status, last_task_callback);
 
   // Process each input edge one at a time (the typical case has just one).
@@ -826,6 +854,18 @@ Status BatchResourceBase::CreateBatchTask(
     std::unique_ptr<BatchResourceBase::BatchTask>* output) const {
   *output = absl::make_unique<BatchResourceBase::BatchTask>();
   return Status::OK();
+}
+
+void BatchResourceBase::SplitBatchCost(CostMeasurement* batch_cost_measurement,
+                                       const int64_t processed_size,
+                                       BatchT& batch) const {
+  if (batch_cost_measurement == nullptr ||
+      batch_cost_measurement->GetTotalCost() == absl::ZeroDuration()) {
+    return;
+  }
+  // TODO(b/1858529900): Split the cost to each task: define RequestCost for
+  // each inference request and add it as a field of BatchTask, implement the
+  // cost split algorithms where the paddings share / do not share the cost.
 }
 
 }  // namespace serving

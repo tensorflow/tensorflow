@@ -19,6 +19,7 @@ limitations under the License.
 #include <map>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -210,6 +211,22 @@ class BatchResourceBase : public ResourceBase {
   // creates it.
   Status LookupOrCreateBatcherQueue(const string& queue_name,
                                     BatcherQueueT** queue);
+
+  // Splits the batch cost to each task.
+  //
+  // Inputs:
+  // 1) batch_cost_measurement, which provides the total cost and cost type;
+  // 2) processed_size, it's the batch size plus the padding amount;
+  // 3) batch, provides the batch size.
+  //
+  // Outputs:
+  // The request_cost in each batch task will be updated. This function will use
+  // two approaches to split the batch cost (if it's non-zero), thus two costs
+  // will be output. One approach splits the cost proportionally to the each
+  // task's size, but paddings do not share any cost, while the other splits the
+  // cost proportionally to each task or padding's size.
+  void SplitBatchCost(CostMeasurement* batch_cost_measurement,
+                      const int64_t processed_size, BatchT& batch) const;
 
   // True if user specified a batch processing function for this resource.
   const bool has_process_batch_function_;
