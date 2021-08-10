@@ -191,7 +191,7 @@ MATCHER_P2(ShapedWeightsHasDimsAndValues, dims, expected_values, "") {
 }
 
 template <typename InCType, typename OutCType>
-std::vector<OutCType> CastTestVector(
+std::vector<OutCType> CastVector(
     const gtl::ArraySlice<InCType>& vals) {  // non-absl ok
   std::vector<OutCType> res(vals.size());
   std::transform(vals.begin(), vals.end(), res.begin(),
@@ -202,7 +202,7 @@ std::vector<OutCType> CastTestVector(
 }
 
 template <typename CType>
-std::vector<CType> InitTestVector(int size, CType start_value = CType(0)) {
+std::vector<CType> CreateVectorIota(int size, CType start_value = CType(0)) {
   std::vector<CType> res(size);
   std::iota(res.begin(), res.end(), start_value);
   return res;

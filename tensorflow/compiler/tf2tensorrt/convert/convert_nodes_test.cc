@@ -1073,11 +1073,11 @@ std::vector<float> GetDataAsFloat(InputOutputData& data) {
     return std::vector<float>(span.begin(), span.end());
   }
   if (data.tensor.dtype() == DT_HALF) {
-    return CastTestVector<Eigen::half, float>(
+    return CastVector<Eigen::half, float>(
         GetSpanForData<Eigen::half>(data));
   }
   if (data.tensor.dtype() == DT_INT32) {
-    return CastTestVector<int32, float>(GetSpanForData<int32>(data));
+    return CastVector<int32, float>(GetSpanForData<int32>(data));
   }
   LOG(FATAL) << "DataType not supported for testing "
              << DataTypeString(data.tensor.dtype());
@@ -1150,14 +1150,14 @@ class OpConverterTest : public ::testing::Test {
     Tensor ret(tensor_buffer_allocator_.get(), tf_type,
                {static_cast<int64>(vals.size())});
     if (tf_type == DT_FLOAT) {
-      auto conv_vals = CastTestVector<T, float>(vals);
+      auto conv_vals = CastVector<T, float>(vals);
       std::copy_n(conv_vals.data(), conv_vals.size(), ret.flat<float>().data());
     } else if (tf_type == DT_HALF) {
-      auto conv_vals = CastTestVector<T, Eigen::half>(vals);
+      auto conv_vals = CastVector<T, Eigen::half>(vals);
       std::copy_n(conv_vals.data(), conv_vals.size(),
                   ret.flat<Eigen::half>().data());
     } else if (tf_type == DT_INT32) {
-      auto conv_vals = CastTestVector<T, int32>(vals);
+      auto conv_vals = CastVector<T, int32>(vals);
       std::copy_n(conv_vals.data(), conv_vals.size(), ret.flat<int32>().data());
     } else {
       LOG(FATAL) << "Cannot create tensor with type "
@@ -1356,11 +1356,11 @@ class OpConverterTest : public ::testing::Test {
   void AddTestWeights(const string& name, const std::vector<int>& dims,
                       const std::vector<T>& values, DataType tf_type) {
     if (tf_type == DT_FLOAT) {
-      AddTestWeights(name, dims, CastTestVector<T, float>(values));
+      AddTestWeights(name, dims, CastVector<T, float>(values));
     } else if (tf_type == DT_HALF) {
-      AddTestWeights(name, dims, CastTestVector<T, Eigen::half>(values));
+      AddTestWeights(name, dims, CastVector<T, Eigen::half>(values));
     } else if (tf_type == DT_INT32) {
-      AddTestWeights(name, dims, CastTestVector<T, int32>(values));
+      AddTestWeights(name, dims, CastVector<T, int32>(values));
     } else {
       FAIL() << "Cannot create test weights with type "
              << DataTypeString(tf_type);
@@ -3011,7 +3011,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertAddN) {
         "Weights input to AddN is required to have batch dimension 1.");
   }
 
-  const std::vector<float> common_input = InitTestVector<float>(6);
+  const std::vector<float> common_input = CreateVectorIota<float>(6);
 
   std::vector<AddNTestParams> params = {
       {/*input_values=*/common_input,
@@ -5044,8 +5044,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     // Filter is tensor, should fail.
     Reset();
     NodeDef node_def = GetConv3DNodeDef();
-    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
-    AddTestTensor("weights", {1, 3, 3, 1}, tf_type_, InitTestVector<float>(9));
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, CreateVectorIota<float>(6));
+    AddTestTensor("weights", {1, 3, 3, 1}, tf_type_, CreateVectorIota<float>(9));
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "The input \"filter\" for Conv3D must be a constant, at my_conv3d");
@@ -5054,7 +5054,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     // Filter is not 5D, should fail.
     Reset();
     NodeDef node_def = GetConv3DNodeDef();
-    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, CreateVectorIota<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
@@ -5065,7 +5065,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     Reset();
     NodeDef node_def =
         GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NCDHW", {1, 1, 1, 1});
-    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, CreateVectorIota<float>(6));
     AddTestWeights<float>(
         "weights", {3, 3, 1, 1, 1},
         {1, 2, 3, 4, 5, 6, 7, 8, 9});  // Dimensions, then values
@@ -5078,7 +5078,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     Reset();
     NodeDef node_def =
         GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NCDHW", {1, 2, 1, 1, 1});
-    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, CreateVectorIota<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
@@ -5090,7 +5090,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     Reset();
     NodeDef node_def =
         GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NDHWC", {1, 1, 1, 1, 2});
-    AddTestTensor("input", {1, 2, 3, 1}, tf_type_, InitTestVector<float>(6));
+    AddTestTensor("input", {1, 2, 3, 1}, tf_type_, CreateVectorIota<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
@@ -5102,7 +5102,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     Reset();
     NodeDef node_def = GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NDHWC",
                                         {1, 1, 2, 1, 1}, true);
-    AddTestTensor("input", {1, 2, 3, 1}, tf_type_, InitTestVector<float>(6));
+    AddTestTensor("input", {1, 2, 3, 1}, tf_type_, CreateVectorIota<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     AddTestWeights<int>("input_sizes", {4}, {1, 2, 3, 1});
@@ -5116,7 +5116,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     Reset();
     NodeDef node_def = GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NDHWC",
                                         {1, 1, 1, 1, 1}, true);
-    AddTestTensor("input", {1, 2, 2, 2}, tf_type_, InitTestVector<float>(8));
+    AddTestTensor("input", {1, 2, 2, 2}, tf_type_, CreateVectorIota<float>(8));
     AddTestWeights<float>("weights", {1, 1, 2, 1, 1}, {1, 1});
     AddTestWeights<int>("input_sizes", {8}, {1, 2, 3, 4, 5, 6, 7, 8});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
@@ -5129,7 +5129,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     Reset();
     NodeDef node_def =
         GetConv3DNodeDef({1, 1, 1, 1, 1, 1}, "SAME", "NCDHW", {1, 1, 1, 1, 1});
-    AddTestTensor("input", {1, 2, 2, 2}, tf_type_, InitTestVector<float>(8));
+    AddTestTensor("input", {1, 2, 2, 2}, tf_type_, CreateVectorIota<float>(8));
     AddTestWeights<float>("weights", {1, 1, 2, 1, 1}, {1, 1});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
@@ -5140,7 +5140,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     Reset();
     NodeDef node_def =
         GetConv3DNodeDef({1, 2, 1, 1, 1}, "SAME", "NCDHW", {1, 1, 1, 1, 1});
-    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, CreateVectorIota<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
@@ -5282,7 +5282,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
 
   if (trt_mode_ == TrtTestMode::kDynamicShape) {
     ok_params.reserve(ok_params.size() + 2);
-    const std::vector<float> common_input = InitTestVector<float>(3 * 3 * 3);
+    const std::vector<float> common_input = CreateVectorIota<float>(3 * 3 * 3);
     // NCDHW - Dynamic Channel - Should fail in kDynamicShape
     ok_params.push_back(Conv3DTestParams{
         /*input_dims=*/{1, 1, 3, 3, 3},
@@ -6048,8 +6048,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
     bool input_as_weight;
   };
 
-  const std::vector<std::vector<int>> common_input{InitTestVector<int>(6),
-                                                   InitTestVector<int>(6, 6)};
+  const std::vector<std::vector<int>> common_input{CreateVectorIota<int>(6),
+                                                   CreateVectorIota<int>(6, 6)};
 
   std::vector<TestParams> params = {
       {
@@ -6057,14 +6057,14 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           /*input_values=*/common_input,
           /*axis=*/1,
           /*expected_output_dims=*/{1, 2, 2, 3},
-          /*expected_output=*/InitTestVector<int>(12),
+          /*expected_output=*/CreateVectorIota<int>(12),
       },
       {
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
           /*axis=*/2,
           /*expected_output_dims=*/{1, 1, 4, 3},
-          /*expected_output=*/InitTestVector<int>(12),
+          /*expected_output=*/CreateVectorIota<int>(12),
       },
       {
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
@@ -6081,7 +6081,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           /*axis=*/1,
           /*expected_output_dims=*/{1, 10},
           /*expected_output=*/
-          InitTestVector<int>(10, /*start_value=*/1),
+          CreateVectorIota<int>(10, /*start_value=*/1),
       },
       {
           // An input is a weight
@@ -6089,7 +6089,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           /*input_values=*/common_input,
           /*axis=*/1,
           /*expected_output_dims=*/{1, 2, 2, 3},
-          /*expected_output=*/InitTestVector<int>(12),
+          /*expected_output=*/CreateVectorIota<int>(12),
           /*conversion_status=*/
           errors::Unimplemented("The input \"values_1\" for ConcatV2 "
                                 "must be a tensor, at my_concat"),
@@ -6102,7 +6102,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           /*input_values=*/common_input,
           /*axis=*/0,
           /*expected_output_dims=*/{2, 1, 2, 3},
-          /*expected_output=*/InitTestVector<int>(12),
+          /*expected_output=*/CreateVectorIota<int>(12),
           /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
               ? errors::Unimplemented(
                     "TensorRT does not allow manipulation of the "
@@ -6115,7 +6115,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           /*input_values=*/common_input,
           /*axis=*/1,
           /*expected_output_dims=*/{2, 1, 2, 3},
-          /*expected_output=*/InitTestVector<int>(12),
+          /*expected_output=*/CreateVectorIota<int>(12),
           trt_mode_ != TrtTestMode::kDynamicShape
               ? errors::InvalidArgument(
                     "Received inputs with inconsistent shape, at my_concat")
@@ -6167,12 +6167,12 @@ void TestConvertSplit(OpConverterTest* test) {
     std::vector<std::vector<CType>> expected_outputs;
   };
 
-  const std::vector<CType> common_input = InitTestVector<CType>(6);
+  const std::vector<CType> common_input = CreateVectorIota<CType>(6);
   std::vector<TestParams> ok_params = {
       // Identity (num_split = 1)
       {/*input_shape=*/{1, 2, 3}, /*value=*/common_input, /*axis=*/1,
        /*num_split=*/1, /*expected_output_dims=*/{1, 2, 3},
-       /*expected_outputs=*/{InitTestVector<CType>(6)}},
+       /*expected_outputs=*/{CreateVectorIota<CType>(6)}},
       {/*input_shape=*/{1, 2, 3},
        /*value=*/common_input,
        /*axis=*/3,
@@ -6198,7 +6198,7 @@ void TestConvertSplit(OpConverterTest* test) {
        /*num_split=*/2,
        /*expected_output_dims=*/{1, 3},
        /*expected_outputs=*/
-       {InitTestVector<CType>(3), InitTestVector<CType>(3, CType(3))}},
+       {CreateVectorIota<CType>(3), CreateVectorIota<CType>(3, CType(3))}},
   };
 
   for (int i = 0; i < ok_params.size(); ++i) {
@@ -6441,7 +6441,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
     }
   }
 
-  const std::vector<float> common_input = InitTestVector<float>(6);
+  const std::vector<float> common_input = CreateVectorIota<float>(6);
 
   Status run_status = trt_mode_ == TrtTestMode::kDynamicShape
                           ? errors::Unimplemented(
@@ -6469,7 +6469,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
        /*axis=*/1,
        /*num=*/1,
        /*expected_output_dims=*/{1, 2, 3},
-       /*expected_outputs=*/{InitTestVector<float>(6)},
+       /*expected_outputs=*/{CreateVectorIota<float>(6)},
        /*run_status=*/run_status},
       {/*input_shape=*/{1, 6, 1},
        /*input_value=*/common_input,
@@ -6520,7 +6520,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
   };
 
   const std::vector<std::vector<float>> common_input{
-      InitTestVector<float>(6), InitTestVector<float>(6, /*start_value=*/6)};
+      CreateVectorIota<float>(6), CreateVectorIota<float>(6, /*start_value=*/6)};
   std::vector<TestParams> params = {
       // Second input is weight, should fail in implicit batch mode
       {/*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
@@ -6528,7 +6528,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
        /*input_values=*/common_input,
        /*axis=*/1,
        /*expected_output_dims=*/{1, 2, 2, 3},
-       /*expected_output=*/InitTestVector<float>(12),
+       /*expected_output=*/CreateVectorIota<float>(12),
        trt_mode_ == TrtTestMode::kImplicitBatch
            ? Status{error::UNIMPLEMENTED,
                     "The input \"values_1\" for Pack must be a tensor, at "
@@ -6554,7 +6554,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
        /*input_values=*/common_input,
        /*axis=*/-4,
        /*expected_output_dims=*/{2, 1, 2, 3},
-       /*expected_output=*/InitTestVector<float>(12),
+       /*expected_output=*/CreateVectorIota<float>(12),
        trt_mode_ == TrtTestMode::kImplicitBatch
            ? Status{error::UNIMPLEMENTED,
                     "TensorRT does not allow manipulation of the batch "
@@ -6577,7 +6577,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
           /*input_values=*/common_input,
           /*axis=*/1,
           /*expected_output_dims=*/{1, 2, 2, 3},
-          /*expected_output=*/InitTestVector<float>(12),
+          /*expected_output=*/CreateVectorIota<float>(12),
       },
       {
           /*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
@@ -6600,18 +6600,18 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
       {
           /*input_shapes=*/{{1, 2, 3}},
           /*partial_input_shapes=*/{{}},
-          /*input_values=*/{InitTestVector<float>(6)},
+          /*input_values=*/{CreateVectorIota<float>(6)},
           /*axis=*/1,
           /*expected_output_dims=*/{1, 1, 2, 3},
-          /*expected_output=*/InitTestVector<float>(6),
+          /*expected_output=*/CreateVectorIota<float>(6),
       },
       {
           /*input_shapes=*/{{1, 2, 3}},
           /*partial_input_shapes=*/{{}},
-          /*input_values=*/{InitTestVector<float>(6)},
+          /*input_values=*/{CreateVectorIota<float>(6)},
           /*axis=*/2,
           /*expected_output_dims=*/{1, 2, 1, 3},
-          /*expected_output=*/InitTestVector<float>(6),
+          /*expected_output=*/CreateVectorIota<float>(6),
       },
   };
   // Inputs have inconsistent shapes, should fail.
@@ -6622,7 +6622,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
         /*input_values=*/common_input,
         /*axis=*/1,
         /*expected_output_dims=*/{},
-        /*expected_output=*/InitTestVector<float>(12),
+        /*expected_output=*/CreateVectorIota<float>(12),
         Status{error::INVALID_ARGUMENT,
                "Received inputs with inconsistent shape, at my_pack"}});
   } else {
@@ -6740,7 +6740,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertArgMinMax) {
                                "Output type int64 is not supported, at my_arg");
   }
 
-  const std::vector<float> common_input = InitTestVector<float>(6);
+  const std::vector<float> common_input = CreateVectorIota<float>(6);
   std::vector<ArgMinMaxTestParams> params = {
       {/*input_shape=*/{2, 3},
        /*input_value=*/common_input,
@@ -6942,7 +6942,7 @@ void TestConvertDepthSpaceShuffle(
 }
 
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertDepthToSpace) {
-  const std::vector<int> common_input = InitTestVector<int>(16);
+  const std::vector<int> common_input = CreateVectorIota<int>(16);
   std::vector<DepthSpaceShuffleTestParams> params = {
       {
           /*input_shape=*/{1, 4, 2, 2},
@@ -6968,11 +6968,11 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertDepthToSpace) {
           /*block_size=*/4,
           /*data_format=*/"NCHW",
           /*expected_output_dims=*/{1, 1, 4, 4},
-          /*expected_output=*/InitTestVector<int>(16),
+          /*expected_output=*/CreateVectorIota<int>(16),
       },
       {
           /*input_shape=*/{1, 2, 2, 8},
-          /*input_value=*/InitTestVector<int>(32),
+          /*input_value=*/CreateVectorIota<int>(32),
           /*block_size=*/2,
           /*data_format=*/"NHWC",
           /*expected_output_dims=*/{1, 4, 4, 2},
@@ -6985,7 +6985,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertDepthToSpace) {
 }
 
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSpaceToDepth) {
-  const std::vector<int> common_input = InitTestVector<int>(16);
+  const std::vector<int> common_input = CreateVectorIota<int>(16);
   std::vector<DepthSpaceShuffleTestParams> params = {
       {
           /*input_shape=*/{1, 1, 4, 4},
@@ -7011,11 +7011,11 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSpaceToDepth) {
           /*block_size=*/4,
           /*data_format=*/"NCHW",
           /*expected_output_dims=*/{1, 16, 1, 1},
-          /*expected_output=*/InitTestVector<int>(16),
+          /*expected_output=*/CreateVectorIota<int>(16),
       },
       {
           /*input_shape=*/{1, 4, 4, 2},
-          /*input_value=*/InitTestVector<int>(32),
+          /*input_value=*/CreateVectorIota<int>(32),
           /*block_size=*/2,
           /*data_format=*/"NHWC",
           /*expected_output_dims=*/{1, 2, 2, 8},
@@ -7079,7 +7079,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
     std::vector<float> expected_output;
   };
 
-  const std::vector<float> common_input = InitTestVector<float>(6);
+  const std::vector<float> common_input = CreateVectorIota<float>(6);
 
   std::vector<TestParams> params = {{
                                         /*dims=*/{6},
@@ -7171,7 +7171,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquaredDifference) {
     Status runtime_status;
   };
 
-  const std::vector<float> common_input = InitTestVector<float>(6);
+  const std::vector<float> common_input = CreateVectorIota<float>(6);
   std::vector<TestParams> params = {
       {/*dims_x=*/{1, 2, 3},
        /*dims_y=*/{1, 7, 5},
