@@ -153,15 +153,7 @@ std::array<int64, 3> GetReductionTiling(
   if (reduction_dimensions.is_row_reduction) {
     int64_t tile_z = std::min(reduction_dimensions.dimensions[0],
                               kBatchedReductionRaceFreeBound);
-    int64_t unroll_x = 16;
-    if ((cuda_compute_capability.IsAtLeast(
-             se::CudaComputeCapability::PASCAL_) &&
-         smallest_input_dtype_bits == 8) ||
-        reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
-            0) {
-      unroll_x = 64;
-    }
-    return {tile_z, 1, unroll_x};
+    return {tile_z, 1, 64};
   }
 
   // Column reduction.
