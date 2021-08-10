@@ -375,7 +375,7 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
   if (import_user_signatures) {
     signature_names = FindNamesForValidSignatures(meta_graph_def);
     if (signature_names.empty())
-      LOG(ERROR) << "No valid signature found for model: " << saved_model_dir;
+      LOG(WARNING) << "No valid signature found for model: " << saved_model_dir;
   }
 
   // TfrtSavedModelMLIRImportInput basically implements the graph processing
