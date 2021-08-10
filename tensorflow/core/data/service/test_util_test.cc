@@ -15,18 +15,23 @@ limitations under the License.
 #include "tensorflow/core/data/service/test_util.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -36,6 +41,13 @@ namespace {
 
 using ::tensorflow::testing::IsOkAndHolds;
 using ::testing::IsEmpty;
+using ::testing::SizeIs;
+
+tstring LocalTempFilename() {
+  std::string path;
+  CHECK(Env::Default()->LocalTempFilename(&path));
+  return tstring(path);
+}
 
 StatusOr<std::vector<std::vector<Tensor>>> GetIteratorOutput(
     standalone::Iterator& iterator) {
@@ -70,6 +82,55 @@ TEST(TestUtilTest, RangeSquareDataset) {
 
 TEST(TestUtilTest, EmptyDataset) {
   const auto dataset_def = RangeSquareDataset(/*range=*/0);
+  standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> dataset;
+  TF_ASSERT_OK(
+      standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
+  std::unique_ptr<standalone::Iterator> iterator;
+  TF_ASSERT_OK(dataset->MakeIterator(&iterator));
+  EXPECT_THAT(GetIteratorOutput(*iterator), IsOkAndHolds(IsEmpty()));
+}
+
+TEST(TestUtilTest, InterleaveTextline) {
+  std::vector<tstring> filenames = {LocalTempFilename(), LocalTempFilename()};
+  TF_ASSERT_OK_AND_ASSIGN(const DatasetDef dataset_def,
+                          InterleaveTextlineDataset(filenames, {"0", "1"}));
+  standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> dataset;
+  TF_ASSERT_OK(
+      standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
+  std::unique_ptr<standalone::Iterator> iterator;
+  TF_ASSERT_OK(dataset->MakeIterator(&iterator));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<Tensor>> result,
+                          GetIteratorOutput(*iterator));
+  ASSERT_THAT(result, SizeIs(2));
+  test::ExpectEqual(result[0][0], Tensor("0"));
+  test::ExpectEqual(result[1][0], Tensor("1"));
+}
+
+TEST(TestUtilTest, InterleaveTextlineWithNewLines) {
+  std::vector<tstring> filenames = {LocalTempFilename(), LocalTempFilename()};
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DatasetDef dataset_def,
+      InterleaveTextlineDataset(filenames, {"0\n2\n4\n6\n8", "1\n3\n5\n7\n9"}));
+  standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> dataset;
+  TF_ASSERT_OK(
+      standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
+  std::unique_ptr<standalone::Iterator> iterator;
+  TF_ASSERT_OK(dataset->MakeIterator(&iterator));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<Tensor>> result,
+                          GetIteratorOutput(*iterator));
+  ASSERT_THAT(result, SizeIs(10));
+  for (int64 i = 0; i < 10; ++i) {
+    test::ExpectEqual(result[i][0], Tensor(absl::StrCat(i)));
+  }
+}
+
+TEST(TestUtilTest, InterleaveTextlineEmptyFiles) {
+  std::vector<tstring> filenames = {LocalTempFilename(), LocalTempFilename()};
+  TF_ASSERT_OK_AND_ASSIGN(const DatasetDef dataset_def,
+                          InterleaveTextlineDataset(filenames, {"", ""}));
   standalone::Dataset::Params params;
   std::unique_ptr<standalone::Dataset> dataset;
   TF_ASSERT_OK(

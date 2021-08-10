@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,12 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#ifndef TENSORFLOW_CORE_DATA_SERVICE_DATA_SERVICE_H_
-#define TENSORFLOW_CORE_DATA_SERVICE_DATA_SERVICE_H_
+#ifndef TENSORFLOW_CORE_DATA_SERVICE_COMMON_H_
+#define TENSORFLOW_CORE_DATA_SERVICE_COMMON_H_
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/platform/status.h"
@@ -85,4 +85,4 @@ class DataServiceClientBase {
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DATA_SERVICE_DATA_SERVICE_H_
+#endif  // TENSORFLOW_CORE_DATA_SERVICE_COMMON_H_
