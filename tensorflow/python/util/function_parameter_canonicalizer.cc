@@ -79,8 +79,11 @@ bool FunctionParameterCanonicalizer::Canonicalize(
 
   // Check if the number of input arguments are too many.
   if (TF_PREDICT_FALSE(args_size > interned_arg_names_.size())) {
-    // TODO(kkb): Also report the actual numbers.
-    PyErr_SetString(PyExc_TypeError, "Too many arguments were given");
+    PyErr_SetString(
+        PyExc_TypeError,
+        absl::StrCat("Too many arguments were given. Expected ",
+                     interned_arg_names_.size(), " but got ", args_size, ".")
+            .c_str());
     return false;
   }
 
