@@ -718,6 +718,19 @@ class Context(object):
     ensure_initialized()
     pywrap_tfe.TFE_DeleteConfigKeyValue(self._context_handle, key)
 
+  def report_error_to_cluster(self, error_code, error_message):
+    """Report error to other members in a multi-client cluster.
+
+    Args:
+      error_code: a `tf.errors` error code.
+      error_message: a string. The error message.
+    """
+    if self._context_handle:
+      pywrap_tfe.TFE_ReportErrorToCluster(self._context_handle, error_code,
+                                          error_message)
+    else:
+      raise ValueError("Context is not initialized.")
+
   def clear_kernel_cache(self):
     """Clear kernel cache and reset all stateful kernels."""
     if self._context_handle is not None:
