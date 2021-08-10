@@ -744,7 +744,14 @@ void CompiledFunction::PopulateCacheEntry(
 
 void CompiledFunction::TryToPopulateDefaultDevice() {
   // The following line calls Python and may release the GIL.
-  py::object device_and_is_committed = get_device_();
+  py::object device_and_is_committed;
+  try {
+    device_and_is_committed = get_device_();
+  } catch (py::error_already_set& e) {
+    // Backend or device initialization failed. Handle this in Python.
+    always_fallback_to_python_ = true;
+    return;
+  }
   // If the GIL was released by the call to get_device_, another thread may
   // have filled in default_device_.
   if (!default_device_) {
