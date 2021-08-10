@@ -177,7 +177,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Hlo configuration data used during code generation.
   const HloModuleConfig& hlo_module_config_;
 
- protected:
   // Bind all argument IrArrays of `fusion` to `fused_emitter`.
   void BindFusionArguments(const HloInstruction* fusion,
                            FusedIrEmitter* fused_emitter);
