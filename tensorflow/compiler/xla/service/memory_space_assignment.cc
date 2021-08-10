@@ -381,9 +381,9 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     float preferred_async_copy_to_overlap_ratio,
     int64_t buffer_size_for_max_async_copy)
     : while_nest_level_(
-          cost_analysis.hlo_live_range().instruction_schedule().size(), 0),
+          cost_analysis.hlo_live_range().instruction_schedule().size() + 1, 0),
       computation_nest_level_(
-          cost_analysis.hlo_live_range().instruction_schedule().size(), 0),
+          cost_analysis.hlo_live_range().instruction_schedule().size() + 1, 0),
       cost_analysis_(cost_analysis),
       min_async_copy_to_overlap_ratio_(min_async_copy_to_overlap_ratio),
       max_async_copy_to_overlap_ratio_(max_async_copy_to_overlap_ratio),
@@ -1707,7 +1707,7 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
                 ->instruction));
   }
 
-  int64_t end_of_program_prefetch_end_time = instruction_schedule.size() - 1;
+  int64_t end_of_program_prefetch_end_time = instruction_schedule.size();
   int64_t end_of_program_prefetch_start_time =
       options_.prefetch_interval_picker->PreferredPrefetchStartTime(
           buffer->defining_position().shape(), last_use_time,
@@ -3601,9 +3601,7 @@ Status MemorySpaceAssignment::FixSchedule() {
 
     VLOG(4) << "Scheduling: " << computation->ToString();
 
-    for (int64_t instruction_index = 0;
-         instruction_index < flattened_instructions_.size();
-         ++instruction_index) {
+    for (int64_t instruction_index = 0;; ++instruction_index) {
       auto insts_before_iter = schedule_before_.find(instruction_index);
       if (insts_before_iter != schedule_before_.end()) {
         for (HloInstruction* new_instruction : insts_before_iter->second) {
@@ -3614,6 +3612,12 @@ Status MemorySpaceAssignment::FixSchedule() {
                                                  &inserted_instructions);
           }
         }
+      }
+      // We allow scheduling copy dones past the root instruction (for
+      // end-of-program cross-program prefetch). So the loop exit condition is
+      // actually here.
+      if (instruction_index >= flattened_instructions_.size()) {
+        break;
       }
       HloInstruction* instruction = flattened_instructions_[instruction_index];
       // Insert only if it is not deleted (SimplifyGraph sets it to nullptr if

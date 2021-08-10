@@ -5949,6 +5949,14 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
   EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
                              is_end_of_program_prefetch),
             1);
+  // Also verify that the copy-done for the end-of-program prefetch is the last
+  // instruction in schedule.
+  const HloInstruction* last_instruction =
+      module->schedule()
+          .sequence(module->entry_computation())
+          .instructions()[module->entry_computation()->instruction_count() - 1];
+  EXPECT_THAT(last_instruction, op::CopyDone());
+  EXPECT_NE(last_instruction, module->entry_computation()->root_instruction());
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
