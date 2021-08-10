@@ -59,9 +59,12 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
                                                  const EngineInfo& engine);
 
 // Helper method that registers `segment_graph` as a function to the function
-// library in `graph`.
+// library in `graph`. When `has_int32_input` is true, the routine will informs
+// TensorFlow that int32 _Arg node inputs are on device memory during native
+// segment execution.
 Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
-                                      Graph* graph, const string& engine_name);
+                                      Graph* graph, const string& engine_name,
+                                      bool has_int32_input = false);
 
 }  // namespace convert
 }  // namespace tensorrt

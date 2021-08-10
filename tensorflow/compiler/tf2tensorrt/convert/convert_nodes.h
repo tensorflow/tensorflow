@@ -97,7 +97,8 @@ struct EngineInfo {
         maximum_cached_engines(0),
         precision_mode(TrtPrecisionMode::FP32),
         use_calibration(true),
-        allow_build_at_runtime(true) {}
+        allow_build_at_runtime(true),
+        has_int32_input(false) {}
 
   string engine_name;
   string device;
@@ -116,26 +117,26 @@ struct EngineInfo {
   TrtPrecisionMode precision_mode;
   bool use_calibration;
   bool allow_build_at_runtime;
+  bool has_int32_input;
 };
 
-// Constructs a graphdef from the segment in the given graph. Adds _Arg
-// nodes for input edges (InputPH_*) and _Retval nodes for output edges
-// (OutputPH_*). This function needs to be called before TensorRT nodes
-// inserted in order to correctly get sizes from the original graph.
+// Constructs a graphdef from the segment in the given graph and stores it to
+// the engine_info. Adds _Arg nodes for input edges (InputPH_*) and _Retval
+// nodes for output edges (OutputPH_*). Maintains the topological order of the
+// non-input/output nodes in the graphdef. This function needs to be called
+// before TensorRT layers are created because it prepares the original graph
+// for TensorRT conversion.
 //
 // - subgraph_node_names: the node names of the subgraph.
 // - subgraph_node_ids: the node ids of the subgraph, must be sorted in
 //   topological order.
-// - segment_def: the output GraphDef, whose non-input/output nodedefs will be
-//   sorted in topological order.
-// - scope_name: the name of the scope where the TRTEngineOp will be placed.
+// - engine_info: a data structure that records the information about the
+//   engine containing the subgraph.
 //
 // TODO(aaroey): add tests to validate these properties.
 Status ConvertSegmentToGraphDef(
     const Graph* graph, const grappler::GraphProperties& graph_properties,
-    const std::vector<const Node*>& subgraph_nodes,
-    std::vector<EngineConnection>* connections, GraphDef* segment_def,
-    string* scope_name);
+    const std::vector<const Node*>& subgraph_nodes, EngineInfo* engine_info);
 
 // Converts given subgraph to a TRT engine saved in 'engine'. Returns ok iff
 // 'builder' successfully build the engine. If the result is not ok, 'engine'
