@@ -479,7 +479,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                      kernel_params, extra),
       "Failed to launch CUDA kernel: ", kernel_name,
       " with block dimensions: ", block_dim_x, "x", block_dim_y, "x",
-      block_dim_z);
+      block_dim_z, " and grid dimensions: ", grid_dim_x, "x", grid_dim_y, "x",
+      grid_dim_z);
   return port::Status::OK();
 }
 
