@@ -134,6 +134,10 @@
     * Added a new API that allows custom call functions to signal errors. The
       old API will be deprecated in a future release. See
       https://www.tensorflow.org/xla/custom_call for details.
+*   `tf.saved_model.save`:
+    *   When saving a model, not specifying a namespace whitelist for custom
+        ops with a namespace will now default to allowing rather than rejecting
+        them all.
 
 ## Thanks to our Contributors
 

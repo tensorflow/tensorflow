@@ -903,7 +903,23 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
 
 
 def _verify_ops(graph_def, namespace_whitelist):
-  """Verifies that all namespaced ops in the graph are whitelisted."""
+  """Verifies that all namespaced ops in the graph are whitelisted.
+
+  Args:
+   graph_def: the GraphDef to validate.
+   namespace_whitelist: a list of namespaces to allow. If `None`, all will be
+     allowed. If an op does not have a namespace, it will be allowed.
+
+  Raises:
+   ValueError: If the graph contains ops that violate the whitelist.
+  """
+  # By default, if the user has not specified a whitelist, we want to allow
+  # everything.  We check for None directly rather than falseness, since the
+  # user may instead want to pass an empty list to disallow all custom
+  # namespaced ops.
+  if namespace_whitelist is None:
+    return
+
   invalid_ops = []
   invalid_namespaces = set()
 

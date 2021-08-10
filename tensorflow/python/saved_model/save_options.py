@@ -117,7 +117,8 @@ class SaveOptions(object):
       namespace_whitelist: List of strings containing op namespaces to whitelist
         when saving a model. Saving an object that uses namespaced ops must
         explicitly add all namespaces to the whitelist. The namespaced ops must
-        be registered into the framework when loading the SavedModel.
+        be registered into the framework when loading the SavedModel. If no
+        whitelist is provided, all namespaced ops will be allowed.
       save_debug_info: Boolean indicating whether debug information is saved. If
         True, then a debug/saved_model_debug_info.pb file will be written with
         the contents of a GraphDebugInfo binary protocol buffer containing stack
@@ -175,7 +176,7 @@ class SaveOptions(object):
 def _validate_namespace_whitelist(namespace_whitelist):
   """Validates namespace whitelist argument."""
   if namespace_whitelist is None:
-    return []
+    return None
   if not isinstance(namespace_whitelist, list):
     raise TypeError("`namespace_whitelist` must be a list of strings. Got: "
                     f"{namespace_whitelist} with type "
