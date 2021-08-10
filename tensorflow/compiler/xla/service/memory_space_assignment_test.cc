@@ -5892,7 +5892,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
   // This test is for checking if the cross-program-prefetched buffer is freed
   // after its last use and there is an end-of-program prefetch.
   absl::string_view hlo_string = R"(
@@ -5916,9 +5916,9 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
@@ -5957,9 +5957,21 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
           .instructions()[module->entry_computation()->instruction_count() - 1];
   EXPECT_THAT(last_instruction, op::CopyDone());
   EXPECT_NE(last_instruction, module->entry_computation()->root_instruction());
+  // Cross program prefetch would use offset 0 because that's the first
+  // assignment. Since we are freeing the cross-program prefetch buffer, we
+  // would also expect to see some of the intermediate computations (one of the
+  // negate ops) to also get 0 offset allocations.
+  bool has_zero_offset_allocations = false;
+  for (auto pos_and_chunk : preset_assignments->chunks()) {
+    if (pos_and_chunk.first.instruction->opcode() == HloOpcode::kNegate &&
+        pos_and_chunk.second.offset == 0) {
+      has_zero_offset_allocations = true;
+    }
+  }
+  EXPECT_TRUE(has_zero_offset_allocations);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
   // This tests the scenario that the cross-program-prefetched buffer is used
   // again close to the end of the computation. In this case, it is better not
   // to free the buffer.

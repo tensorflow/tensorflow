@@ -1673,7 +1673,6 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
         << "Could not allocate preferred memory for cross program prefetch";
     return;
   }
-  AddToPendingChunks(*prefetch_candidate, chunk_candidate);
 
   const HloValue* buffer = prefetch_candidate->buffer;
   int64_t parameter = buffer->instruction()->parameter_number();
@@ -1745,6 +1744,14 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
 
   const int allocations_initial_size = allocations_->size();
   for (auto& allocation : allocations) {
+    if (allocation->memory_space() == MemorySpace::kAlternate) {
+      BufferInterval buffer_interval;
+      buffer_interval.start = allocation->start_time();
+      buffer_interval.end = allocation->end_time();
+      buffer_interval.size = allocation->chunk().size;
+      buffer_interval.buffer = prefetch_candidate->buffer;
+      AddToPendingChunks(buffer_interval, chunk_candidate);
+    }
     allocations_->push_back(std::move(allocation));
   }
 
