@@ -857,8 +857,8 @@ void ResourceHandleOp<T>::Compute(OpKernelContext* ctx) {
     Tensor handle;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
-    handle.scalar<ResourceHandle>()() =
-        MakeResourceHandle<T>(ctx, container_, name_);
+    handle.scalar<ResourceHandle>()() = MakeResourceHandle<T>(
+        ctx, container_, name_, /*dtypes_and_shapes=*/{}, ctx->stack_trace());
     ctx->set_output(0, handle);
   } else {
     if (!initialized_.load()) {
@@ -870,7 +870,8 @@ void ResourceHandleOp<T>::Compute(OpKernelContext* ctx) {
         OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
                                                &resource_, attr));
         resource_.scalar<ResourceHandle>()() =
-            MakeResourceHandle<T>(ctx, container_, name_);
+            MakeResourceHandle<T>(ctx, container_, name_,
+                                  /*dtypes_and_shapes=*/{}, ctx->stack_trace());
         initialized_.store(true);
       }
     }
