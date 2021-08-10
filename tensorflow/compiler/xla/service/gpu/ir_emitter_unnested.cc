@@ -914,48 +914,6 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::EmitCustomCall(mlir::Operation* op) {
-  using mlir::dyn_cast;
-  using mlir::isa;
-
-  if (auto call = dyn_cast<mlir::lmhlo::CustomCallOp>(op)) {
-    if (call.call_target_name() == "PadToStatic") {
-      return EmitPadToStatic(op);
-    }
-    if (call.call_target_name() == "SliceToDynamic") {
-      return EmitSliceToDynamic(op);
-    }
-    return EmitCustomCallThunk(op);
-  }
-
-  if (isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(op)) {
-    return EmitGemmThunk(op);
-  }
-
-  if (mlir::isa<mlir::lmhlo_gpu::ConvForwardOp,
-                mlir::lmhlo_gpu::ConvForwardFusedOp,
-                mlir::lmhlo_gpu::ConvForwardFusedSideInputOp,
-                mlir::lmhlo_gpu::ConvBackwardFilterOp,
-                mlir::lmhlo_gpu::ConvBackwardInputOp>(op)) {
-    return EmitConvolutionThunk(op);
-  }
-
-  if (isa<mlir::lmhlo_gpu::BatchNormTrainingOp,
-          mlir::lmhlo_gpu::BatchNormInferenceOp,
-          mlir::lmhlo_gpu::BatchNormGradOp>(op)) {
-    return EmitBatchNormThunk(op);
-  }
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(op)) {
-    return EmitCholeskyThunk(op);
-  }
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-  return Unimplemented("No registered implementation for custom call to \"%s\"",
-                       MlirToString(op));
-}
-
 Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   using mlir::dyn_cast;
   using mlir::lmhlo_gpu::Activation;
