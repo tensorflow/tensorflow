@@ -597,7 +597,7 @@ public final class InterpreterTest {
           new Interpreter(MODEL_BUFFER, new Interpreter.Options().addDelegate(delegate));
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("Internal error: Invalid handle to delegate");
+      assertThat(e).hasMessageThat().contains("Internal error: Found invalid handle");
     }
   }
 

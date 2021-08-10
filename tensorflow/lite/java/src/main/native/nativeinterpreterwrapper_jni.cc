@@ -34,7 +34,10 @@ limitations under the License.
 #include "tensorflow/lite/util.h"
 
 using tflite::OpResolver;
+using tflite::jni::AreDimsDifferent;
 using tflite::jni::BufferErrorReporter;
+using tflite::jni::CastLongToPointer;
+using tflite::jni::ConvertJIntArrayToVector;
 using tflite::jni::ThrowException;
 using tflite_shims::FlatBufferModel;
 using tflite_shims::Interpreter;
@@ -43,55 +46,19 @@ using tflite_shims::InterpreterBuilder;
 namespace {
 
 Interpreter* convertLongToInterpreter(JNIEnv* env, jlong handle) {
-  if (handle == 0) {
-    ThrowException(env, tflite::jni::kIllegalArgumentException,
-                   "Internal error: Invalid handle to Interpreter.");
-    return nullptr;
-  }
-  return reinterpret_cast<Interpreter*>(handle);
+  return CastLongToPointer<Interpreter>(env, handle);
 }
 
 FlatBufferModel* convertLongToModel(JNIEnv* env, jlong handle) {
-  if (handle == 0) {
-    ThrowException(env, tflite::jni::kIllegalArgumentException,
-                   "Internal error: Invalid handle to model.");
-    return nullptr;
-  }
-  return reinterpret_cast<FlatBufferModel*>(handle);
+  return CastLongToPointer<FlatBufferModel>(env, handle);
 }
 
 BufferErrorReporter* convertLongToErrorReporter(JNIEnv* env, jlong handle) {
-  if (handle == 0) {
-    ThrowException(env, tflite::jni::kIllegalArgumentException,
-                   "Internal error: Invalid handle to ErrorReporter.");
-    return nullptr;
-  }
-  return reinterpret_cast<BufferErrorReporter*>(handle);
+  return CastLongToPointer<BufferErrorReporter>(env, handle);
 }
 
 TfLiteOpaqueDelegate* convertLongToDelegate(JNIEnv* env, jlong handle) {
-  if (handle == 0) {
-    ThrowException(env, tflite::jni::kIllegalArgumentException,
-                   "Internal error: Invalid handle to delegate.");
-    return nullptr;
-  }
-  return reinterpret_cast<TfLiteOpaqueDelegate*>(handle);
-}
-
-std::vector<int> convertJIntArrayToVector(JNIEnv* env, jintArray inputs) {
-  int size = static_cast<int>(env->GetArrayLength(inputs));
-  std::vector<int> outputs(size, 0);
-  jint* ptr = env->GetIntArrayElements(inputs, nullptr);
-  if (ptr == nullptr) {
-    ThrowException(env, tflite::jni::kIllegalArgumentException,
-                   "Array has empty dimensions.");
-    return {};
-  }
-  for (int i = 0; i < size; ++i) {
-    outputs[i] = ptr[i];
-  }
-  env->ReleaseIntArrayElements(inputs, ptr, JNI_ABORT);
-  return outputs;
+  return CastLongToPointer<TfLiteOpaqueDelegate>(env, handle);
 }
 
 int getDataType(TfLiteType data_type) {
@@ -125,31 +92,6 @@ void printDims(char* buffer, int max_size, int* dims, int num_dims) {
       size += written_size;
     }
   }
-}
-
-// Checks whether there is any difference between dimensions of a tensor and a
-// given dimensions. Returns true if there is difference, else false.
-bool AreDimsDifferent(JNIEnv* env, TfLiteTensor* tensor, jintArray dims) {
-  int num_dims = static_cast<int>(env->GetArrayLength(dims));
-  jint* ptr = env->GetIntArrayElements(dims, nullptr);
-  if (ptr == nullptr) {
-    ThrowException(env, tflite::jni::kIllegalArgumentException,
-                   "Empty dimensions of input array.");
-    return true;
-  }
-  bool is_different = false;
-  if (tensor->dims->size != num_dims) {
-    is_different = true;
-  } else {
-    for (int i = 0; i < num_dims; ++i) {
-      if (ptr[i] != tensor->dims->data[i]) {
-        is_different = true;
-        break;
-      }
-    }
-  }
-  env->ReleaseIntArrayElements(dims, ptr, JNI_ABORT);
-  return is_different;
 }
 
 // TODO(yichengfan): evaluate the benefit to use tflite verifier.
@@ -830,10 +772,10 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
       TfLiteStatus status;
       if (strict) {
         status = interpreter->ResizeInputTensorStrict(
-            tensor_idx, convertJIntArrayToVector(env, dims));
+            tensor_idx, ConvertJIntArrayToVector(env, dims));
       } else {
         status = interpreter->ResizeInputTensor(
-            tensor_idx, convertJIntArrayToVector(env, dims));
+            tensor_idx, ConvertJIntArrayToVector(env, dims));
       }
       if (status != kTfLiteOk) {
         ThrowException(env, tflite::jni::kIllegalArgumentException,
@@ -866,10 +808,10 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     TfLiteStatus status;
     if (strict) {
       status = subgraph->ResizeInputTensorStrict(
-          tensor_idx, convertJIntArrayToVector(env, dims));
+          tensor_idx, ConvertJIntArrayToVector(env, dims));
     } else {
       status = subgraph->ResizeInputTensor(tensor_idx,
-                                           convertJIntArrayToVector(env, dims));
+                                           ConvertJIntArrayToVector(env, dims));
     }
     if (status != kTfLiteOk) {
       ThrowException(env, tflite::jni::kIllegalArgumentException,
