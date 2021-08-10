@@ -21,15 +21,19 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-#define DEFINE_SORTED_GPU_SPECS_INDEX(T, Index)                            \
-  template struct SegmentReductionFunctor<T, Index, functor::Zero<T>,      \
-                                          functor::Zero<T>, functor::Sum>; \
-  template struct SegmentReductionFunctor<T, Index, functor::One<T>,       \
-                                          functor::One<T>, functor::Prod>; \
-  template struct SegmentReductionFunctor<T, Index, functor::Highest<T>,   \
-                                          functor::Zero<T>, functor::Min>; \
-  template struct SegmentReductionFunctor<T, Index, functor::Lowest<T>,    \
-                                          functor::Zero<T>, functor::Max>;
+#define DEFINE_SORTED_GPU_SPECS_INDEX(T, Index)               \
+  template struct SegmentReductionFunctor<                    \
+      T, Index, /*InitialValueF=*/functor::Zero<T>,           \
+      /*EmptySegmentValueF=*/functor::Zero<T>, functor::Sum>; \
+  template struct SegmentReductionFunctor<                    \
+      T, Index, /*InitialValueF=*/functor::One<T>,            \
+      /*EmptySegmentValueF=*/functor::One<T>, functor::Prod>; \
+  template struct SegmentReductionFunctor<                    \
+      T, Index, /*InitialValueF=*/functor::Highest<T>,        \
+      /*EmptySegmentValueF=*/functor::Zero<T>, functor::Min>; \
+  template struct SegmentReductionFunctor<                    \
+      T, Index, /*InitialValueF=*/functor::Lowest<T>,         \
+      /*EmptySegmentValueF=*/functor::Zero<T>, functor::Max>;
 
 #define DEFINE_SORTED_GPU_SPECS(T) DEFINE_SORTED_GPU_SPECS_INDEX(T, int64_t);
 
