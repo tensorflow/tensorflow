@@ -716,7 +716,7 @@ void SegmentReductionFunctor<
   // TODO(benbarsdell): If there are no performance concerns with the new
   // non-atomic kernels, remove this runtime check and only compile the old
   // atomic kernels on Windows (as a workaround for the build failure issue).
-  if (UseAtomicSegmentReductions()) {
+  if (UseNonDeterministicSegmentReductions()) {
     // Set 'output' to initial value.
     GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
     const T InitialValue = InitialValueF()();
@@ -774,8 +774,8 @@ void SegmentReductionFunctor<
             /*indices=*/static_cast<const Index*>(nullptr),
             /*weights=*/static_cast<T*>(nullptr), output.data()));
 #else
-    // Note: Shouldn't reach here because UseAtomicSegmentReductions() always
-    // returns true on Windows.
+    // Note: Shouldn't reach here because UseNonDeterministicSegmentReductions()
+    // always returns true on Windows.
     OP_REQUIRES(
         ctx, false,
         errors::Unimplemented(
@@ -796,7 +796,7 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     }
 
     bool determinism_requirement_met =
-        !UseAtomicSegmentReductions() ||
+        !UseNonDeterministicSegmentReductions() ||
         ReduceOpIsAssociative<ReductionF, T>::value ||
         !OpDeterminismRequired() ||
         DisableSegmentReductionOpDeterminismExceptions();
@@ -819,7 +819,7 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     // TODO(benbarsdell): If there are no performance concerns with the new
     // non-atomic kernels, remove this runtime check and only compile the old
     // atomic kernels on Windows (as a workaround for the build failure issue).
-    if (UseAtomicSegmentReductions()) {
+    if (UseNonDeterministicSegmentReductions()) {
       // Set 'output' to initial value.
       GPUDevice d = ctx->template eigen_device<GPUDevice>();
       GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
@@ -876,8 +876,8 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
               /*segment_ids=*/segment_ids_ptr, /*indices=*/sorted_indices_ptr,
               /*weights=*/static_cast<T*>(nullptr), output.data()));
 #else
-      // Note: Shouldn't reach here because UseAtomicSegmentReductions() always
-      // returns true on Windows.
+      // Note: Shouldn't reach here because
+      // UseNonDeterministicSegmentReductions() always returns true on Windows.
       OP_REQUIRES(
           ctx, false,
           errors::Unimplemented("Non-atomic unsorted segment reductions "

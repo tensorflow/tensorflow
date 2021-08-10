@@ -300,7 +300,7 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       // for the unsorted segment reduction ops) because the done callback
       // (required for OP_REQUIRES_ASYNC) is not available inside the functor.
       bool determinism_requirement_met =
-          !UseAtomicSegmentReductions() ||
+          !UseNonDeterministicSegmentReductions() ||
           SegmentReductionFunctor::atomic_reduction_is_associative ||
           !OpDeterminismRequired() ||
           DisableSegmentReductionOpDeterminismExceptions();
