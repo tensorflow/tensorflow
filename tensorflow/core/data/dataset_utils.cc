@@ -718,8 +718,10 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
   return Status::OK();
 }
 
-Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
+Status CopyBatch(IteratorContext* ctx,
                  const std::vector<std::vector<Tensor>>& batch_elements,
+                 bool parallel_copy,
+                 std::function<Status()> allocation_callback,
                  std::vector<Tensor>* out_tensors) {
   static bool in_experiment =
       GetExperiments().contains("parallelize_batch_copy");
@@ -729,11 +731,8 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
   for (size_t component_index = 0; component_index < num_tuple_components;
        ++component_index) {
     const Tensor& first_element = batch_elements.at(0)[component_index];
-    TensorShape batch_component_shape({num_batch_elements});
-    // NOTE(mrry): Copy the shape of the first element here, because
-    // `first_element.shape()` will become undefined after the 0th batch element
-    // is moved into the output batch.
     TensorShape first_element_shape(first_element.shape());
+    TensorShape batch_component_shape({num_batch_elements});
     batch_component_shape.AppendShape(first_element_shape);
     out_tensors->emplace_back(ctx->allocator({}), first_element.dtype(),
                               batch_component_shape);
@@ -742,7 +741,15 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
           "Failed to allocate memory for the batch of component ",
           component_index);
     }
-    Tensor& batch_component = out_tensors->back();
+  }
+  if (allocation_callback) {
+    TF_RETURN_IF_ERROR(allocation_callback());
+  }
+  for (size_t component_index = 0; component_index < num_tuple_components;
+       ++component_index) {
+    Tensor& batch_component = out_tensors->at(component_index);
+    const Tensor& first_element = batch_elements.at(0)[component_index];
+    TensorShape first_element_shape(first_element.shape());
     // Build the output tuple component by copying one slice from each input
     // element in the batch.
     auto copy_element_fn = [component_index, &batch_elements, &batch_component,

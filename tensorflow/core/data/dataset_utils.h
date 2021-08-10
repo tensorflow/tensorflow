@@ -237,8 +237,17 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
                     bool* end_of_sequence, std::vector<Tensor>* batch);
 
 // Copies the input elements to a batch.
-Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
+//
+// The `batch_elements` argument contains the individual elements to copy into a
+// batch. The `parallel_copy` argument indicates whether to parallelize the
+// copy. The `allocation_callback` argument can be used to pass a callback to
+// invoke upon successful allocation of the memory for the batch. The
+// `out_tensors` argument will be used to store the resulting batch (one for
+// each component of the input).
+Status CopyBatch(IteratorContext* ctx,
                  const std::vector<std::vector<Tensor>>& batch_elements,
+                 bool parallel_copy,
+                 std::function<Status()> allocation_callback,
                  std::vector<Tensor>* out_tensors);
 
 // Computes the set of experiments to apply based on the job name, rollout
