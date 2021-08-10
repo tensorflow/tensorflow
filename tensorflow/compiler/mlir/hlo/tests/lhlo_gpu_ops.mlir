@@ -1,5 +1,6 @@
-// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file | mlir-hlo-opt
-/// | FileCheck %s
+// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file \
+// RUN:   | mlir-hlo-opt \
+// RUN:   | FileCheck %s
 
 // CHECK-LABEL: func @batch_norm_grad_memrefs
 func @batch_norm_grad_memrefs(%arg0: memref<8x8x8x8xf32>, %arg1: memref<8xf32>, %arg2: memref<8xf32>,
