@@ -134,4 +134,10 @@ Status LoadSerializedAutotuneMaps(absl::string_view s) {
   return Status::OK();
 }
 
+void ResetAutotuneMaps() {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  AutotuneConv::GetInstance()->ClearMap();
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+}
+
 }  // namespace tensorflow

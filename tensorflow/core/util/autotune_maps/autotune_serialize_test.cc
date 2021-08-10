@@ -34,7 +34,7 @@ using stream_executor::gpu::GpuDriver;
 // Tests when there is no entry in the autotune maps.
 TEST(AutotuneSerializeTest, Empty) {
   TF_CHECK_OK(GpuDriver::Init());
-  AutotuneConv::GetInstance()->ClearMap();
+  ResetAutotuneMaps();
   std::string output;
   TF_CHECK_OK(SerializeAutotuneMaps(&output));
   TF_CHECK_OK(LoadSerializedAutotuneMaps(output));
@@ -50,7 +50,7 @@ TEST(AutotuneSerializeTest, Empty) {
 // 5. Check if entries in autotune maps are equal to the predefined ones.
 TEST(AutotuneSerializeTest, Consistency) {
   TF_CHECK_OK(GpuDriver::Init());
-  AutotuneConv::GetInstance()->ClearMap();
+  ResetAutotuneMaps();
   std::string serialized_string;
   ConvParameters conv_params_example_a = {
       /*batch_size=*/1,
@@ -112,7 +112,7 @@ TEST(AutotuneSerializeTest, Consistency) {
   AutotuneConv::GetInstance()->Insert(contrib_fused_params_example_a,
                                       algorithm_config_example_a);
   TF_CHECK_OK(SerializeAutotuneMaps(&serialized_string));
-  AutotuneConv::GetInstance()->ClearMap();
+  ResetAutotuneMaps();
   TF_CHECK_OK(LoadSerializedAutotuneMaps(serialized_string));
   EXPECT_EQ(AutotuneConv::GetInstance()->GetMap().size(), 3);
 

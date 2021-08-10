@@ -40,6 +40,9 @@ Status LoadSerializedAutotuneMaps(absl::string_view s);
 // LoadSerializedAutotuneMaps.
 Status SerializeAutotuneMaps(std::string* output);
 
+// Resets all autotune maps. For test use only.
+void ResetAutotuneMaps();
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_AUTOTUNE_MAPS_AUTOTUNE_SERIALIZE_H_
