@@ -1000,6 +1000,7 @@ py_library(
     srcs = ["config.py"],
     srcs_version = "PY3",
     deps = [
+        ":errors",
         ":ops",
         "//tensorflow/python/util",
     ],
