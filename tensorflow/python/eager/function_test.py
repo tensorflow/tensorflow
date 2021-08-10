@@ -667,7 +667,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    with self.assertRaisesRegex(ValueError, r'Got type: set'):
+    with self.assertRaisesRegex(ValueError, r'got.*set'):
       f(set([]))
 
   def testFuncName(self):
@@ -2270,7 +2270,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # Signatures must consist exclusively of `TensorSpec` objects.
     signature = [(2, 3), tensor_spec.TensorSpec([2, 3], dtypes.float32)]
-    with self.assertRaisesRegex(TypeError, 'Invalid input_signature.*'):
+    with self.assertRaisesRegex(TypeError, 'input_signature.*nested sequence'):
       def_function.function(foo, input_signature=signature)
 
     # Signatures must be either lists or tuples on their outermost levels.
@@ -2297,9 +2297,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
-    with self.assertRaisesRegex(
-        TypeError, r'takes 1 positional arguments \(as specified by the '
-        r'input_signature\) but 2 were given'):
+    with self.assertRaisesRegex(TypeError, 'specifies 1 .* got 2'):
       defined(array_ops.ones([2]), array_ops.ones([2]))
     with self.assertRaisesRegex(ValueError,
                                 'Structure of Python function inputs.*'):
@@ -2660,7 +2658,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def add(x, y):
       return math_ops.add(x, y)
 
-    with self.assertRaisesRegex(ValueError, '.*Unsupported attribute type.*'):
+    with self.assertRaisesRegex(ValueError,
+                                'Attribute experimental_1 must be .* Got .*'):
       with context.graph_mode(), self.cached_session():
         with ops.get_default_graph().as_default():
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
@@ -3786,7 +3785,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           testcase_name='ExtraPositionalArg',
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2, 3),
-          error=r'func\(x, y\) takes 2 positional arguments but 3 were given'),
+          error=r'func\(x, y\) takes 2 .* got 3'),
       dict(
           testcase_name='MissingKeywordOnlyArg',
           conc_args=lambda: (1, 2),
@@ -3861,7 +3860,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2),
           call_kwargs=lambda: {'x': 3},
-          error=r"func\(x, y\) got two values for argument 'x'"),
+          error=r"func\(x, y\) got two values for 'x'"),
   ])
   # pylint: enable=g-long-lambda
   @test_util.run_in_graph_and_eager_modes
@@ -3915,13 +3914,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
               'x': constant_op.constant(1),
               'y': constant_op.constant(1)
           },
-          error=r"func\(x, y\) got two values for argument 'x'"),
+          error=r"func\(x, y\) got two values for 'x'"),
       dict(
           testcase_name='ExtraPositionalArg',
           conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
           call_args=lambda: (constant_op.constant(1), constant_op.constant(2),
                              constant_op.constant(3)),
-          error=r'func\(x, y\) takes 2 positional arguments but 3 were given'),
+          error=r'func\(x, y\) takes 2 .* got 3'),
       dict(
           testcase_name='UnexpectedKeywordArg',
           conc_args=lambda: (constant_op.constant(1),),
@@ -4514,7 +4513,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           return x + y
 
     foo = Foo()
-    with self.assertRaisesRegex(TypeError, 'got two values for argument'):
+    with self.assertRaisesRegex(TypeError, 'got two values'):
       foo.add1(2, x=3)  # pylint: disable=redundant-keyword-arg,no-value-for-parameter
 
   def testWithExtraWrapperMissingArgs(self):
