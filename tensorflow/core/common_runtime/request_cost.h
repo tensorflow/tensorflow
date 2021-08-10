@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_REQUEST_COST_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_REQUEST_COST_H_
 
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -26,12 +27,17 @@ limitations under the License.
 namespace tensorflow {
 
 // RequestCost collects the costs for processing an rpc request.
-// It's thread-safe. RecordCost can be called from different threads.
 class RequestCost {
  public:
   // Records costs. The inputs should be pairs of cost type and cost.
+  // It's thread-safe, and can be called from different threads.
   void RecordCost(
       const std::vector<std::pair<absl::string_view, absl::Duration>>& costs);
+
+  // Gets all types of costs for processing an rpc request.
+  // It's not thread-safe. It's expected to be called at the end of processing
+  // an rpc request, when all the costs have been collected.
+  absl::flat_hash_map<std::string, absl::Duration> GetCosts();
 
  private:
   absl::Mutex mutex_;

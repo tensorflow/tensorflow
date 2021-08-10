@@ -31,4 +31,9 @@ void RequestCost::RecordCost(
   }
 }
 
+absl::flat_hash_map<std::string, absl::Duration> RequestCost::GetCosts() {
+  absl::MutexLock lock(&mutex_);
+  return cost_map_;
+}
+
 }  // namespace tensorflow
