@@ -133,6 +133,9 @@ class XStatsBuilder {
   static void SetStatValue(double value, XStat* stat) {
     stat->set_double_value(value);
   }
+  static void SetStatValue(const char* value, XStat* stat) {
+    stat->set_str_value(std::string(value));
+  }
   static void SetStatValue(absl::string_view value, XStat* stat) {
     stat->set_str_value(std::string(value));
   }
