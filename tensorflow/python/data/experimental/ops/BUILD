@@ -141,12 +141,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":random_ops",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:stateless_random_ops_gen",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
