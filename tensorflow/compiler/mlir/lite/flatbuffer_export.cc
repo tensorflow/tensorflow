@@ -2074,12 +2074,7 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
 }  // namespace
 
 namespace tflite {
-// TODO(hinsu): Support all valid MLIR modules in TFLite dialect by supporting
-// the following:
-//
-// * Quantization
-// * Ops with variable tensors
-//
+
 bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        const FlatbufferExportOptions& options,
                                        std::string* serialized_flatbuffer) {
