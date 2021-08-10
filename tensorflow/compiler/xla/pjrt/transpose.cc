@@ -1258,7 +1258,7 @@ std::vector<int> TransposePlan::ChooseParallelizationStrategy(
     const Loop& loop = loop_order_[i];
     CHECK_GE(available_parallelism, 1);
     int64_t iterations = loop_iterations(loop);
-    int kMinBytesPerThread = inner_kernel_is_memcpy_ ? (1 << 20) : (1 << 17);
+    int kMinBytesPerThread = inner_kernel_is_memcpy_ ? (1 << 20) : (1 << 26);
     int64_t min_iterations_per_thread =
         CeilOfRatio<int64_t>(kMinBytesPerThread, work_in_bytes[i]);
     int64_t parallel_work = CeilOfRatio(iterations, min_iterations_per_thread);
