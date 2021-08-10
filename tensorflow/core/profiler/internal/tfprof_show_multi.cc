@@ -199,7 +199,7 @@ string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
 
   std::vector<std::pair<string, std::tuple<int64, int64, int64>>>
       shape_count_vec(input_shapes_attr.begin(), input_shapes_attr.end());
-  std::sort(
+  std::stable_sort(
       shape_count_vec.begin(), shape_count_vec.end(),
       [](const std::pair<const string, std::tuple<int64, int64, int64>>& a,
          const std::pair<const string, std::tuple<int64, int64, int64>>& b) {
