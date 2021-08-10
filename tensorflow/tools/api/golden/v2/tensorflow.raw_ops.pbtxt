@@ -241,6 +241,10 @@ tf_module {
     argspec: "args=[\'resource\', \'value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "AssignVariableXlaConcatND"
+    argspec: "args=[\'resource\', \'inputs\', \'num_concats\', \'paddings\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
+  }
+  member_method {
     name: "Atan"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -3293,6 +3297,10 @@ tf_module {
     argspec: "args=[\'resource\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ReadVariableXlaSplitND"
+    argspec: "args=[\'resource\', \'T\', \'N\', \'num_splits\', \'paddings\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
+  }
+  member_method {
     name: "ReaderNumRecordsProduced"
     argspec: "args=[\'reader_handle\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -5319,6 +5327,14 @@ tf_module {
   member_method {
     name: "Xdivy"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "XlaConcatND"
+    argspec: "args=[\'inputs\', \'num_concats\', \'paddings\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSplitND"
+    argspec: "args=[\'input\', \'N\', \'num_splits\', \'paddings\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
   }
   member_method {
     name: "Xlog1py"

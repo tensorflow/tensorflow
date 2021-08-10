@@ -1822,7 +1822,8 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
       "PadV2", "Reverse", "ReverseV2", "ReverseSequence", "Slice", "Split",
       "SplitV", "StridedSlice", "StridedSliceGrad",
       "ResourceStridedSliceAssign", "Tile", "Transpose", "InvertPermutation",
-      "Unpack", "DeviceIndex", "TensorStridedSliceUpdate",
+      "Unpack", "DeviceIndex", "TensorStridedSliceUpdate", "XlaConcatND",
+      "XlaSplitND",
      }}};
   // clang-format on
   return result;
@@ -1840,6 +1841,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "AssignAddVariableOp",
                                      "AssignSubVariableOp",
                                      "AssignVariableOp",
+                                     "AssignVariableXlaConcatND",
                                      "AvgPool",
                                      "AvgPool3D",
                                      "AvgPool3DGrad",
@@ -1955,6 +1957,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "RandomUniform",
                                      "RandomUniformInt",
                                      "ReadVariableOp",
+                                     "ReadVariableXlaSplitND",
                                      "ResizeBilinear",
                                      "ResizeBilinearGrad",
                                      "ResizeNearestNeighbor",
@@ -2067,6 +2070,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "Where",
                                      "While",
                                      "XlaBroadcastHelper",
+                                     "XlaConcatND",
                                      "XlaConv",
                                      "XlaConvV2",
                                      "XlaDequantize",
@@ -2093,6 +2097,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaSetDynamicDimensionSize",
                                      "XlaSharding",
                                      "XlaSort",
+                                     "XlaSplitND",
                                      "XlaSpmdFullToShardShape",
                                      "XlaSpmdShardToFullShape",
                                      "XlaSvd",
