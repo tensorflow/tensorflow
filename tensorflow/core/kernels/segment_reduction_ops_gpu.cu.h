@@ -52,8 +52,7 @@ DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicMin, *dest = min(*dest, value))
 #undef DEFINE_REDUCE_UPDATE_OP_GPU
 
 template <typename ReduceOp>
-struct ReduceUpdateOpFor {
-};
+struct ReduceUpdateOpFor {};
 
 #define DEFINE_REDUCE_UPDATE_OP_FOR(reduce_op, atomic, nonatomic) \
   template <>                                                     \
@@ -144,11 +143,11 @@ __global__ void SegmentMeanNormalizeKernel(
     SegmentId nsegments, Index ninner,
     const Index* __restrict__ segment_offsets,  // [nsegments + 1]
     T* __restrict__ output) {                   // [nsegments, ninner]
-  for(SegmentId seg : GpuGridRangeY(nsegments)) {
+  for (SegmentId seg : GpuGridRangeY(nsegments)) {
     SegmentId segment_size = segment_offsets[seg + 1] - segment_offsets[seg];
     segment_size = max(segment_size, Index(1));  // Avoid division by zero
     T inv_norm = T(1) / static_cast<T>(segment_size);
-    for(Index i : GpuGridRangeX(ninner)) {
+    for (Index i : GpuGridRangeX(ninner)) {
       output[seg * ninner + i] *= inv_norm;
     }
   }
