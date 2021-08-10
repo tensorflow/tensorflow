@@ -1174,7 +1174,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       v = resource_variable_ops.ResourceVariable(initial_value=zero)
       return (i + 1, v.read_value())
 
-    with self.assertRaisesRegex(ValueError, "initializer"):
+    with self.assertRaisesRegex(ValueError, "initial_value"):
       control_flow_ops.while_loop(cond, body, [0, 0])
 
   def testVariableEager(self):

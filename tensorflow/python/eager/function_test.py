@@ -1136,12 +1136,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testTensorInitializationInFunctionRaisesError(self):
-    error_msg = ('Tensor-typed variable initializers must either be '
-                 'wrapped in an init_scope or callable.*')
 
     @def_function.function
     def tensor_init():
-      with self.assertRaisesRegex(ValueError, error_msg):
+      with self.assertRaisesRegex(ValueError, 'could not be lifted out'):
         resource_variable_ops.ResourceVariable(constant_op.constant(2.0))
 
     tensor_init()
