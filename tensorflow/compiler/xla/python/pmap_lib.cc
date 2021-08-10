@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pmap_lib.h"
 
 #include <algorithm>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -279,7 +280,7 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   return cache_entry->out_pytree_def.Unflatten(flat_sharded_device_arrays);
 }
 
-void BuildPmapSubmodule(pybind11::module& m) {
+void BuildPmapSubmodule(py::module& m) {
   py::module pmap_lib = m.def_submodule("pmap_lib", "Jax C++ pmap library");
 
   py::class_<NoSharding> no_sharding(pmap_lib, "NoSharding");
@@ -367,13 +368,47 @@ void BuildPmapSubmodule(pybind11::module& m) {
         return py::int_(hash);
       });
 
-  py::class_<ShardedDeviceArray> sda(pmap_lib, "ShardedDeviceArray");
-  sda.def(py::init<pybind11::handle, ShardingSpec, pybind11::list>())
-      .def_property_readonly("aval", &ShardedDeviceArray::GetAval)
+  py::class_<ShardedDeviceArrayBase> sda_base(pmap_lib,
+                                              "ShardedDeviceArrayBase");
+  sda_base.def(py::init<>());
+
+  py::class_<ShardedDeviceArray, ShardedDeviceArrayBase> sda(
+      pmap_lib, "ShardedDeviceArray");
+  sda.def(py::init<py::handle, ShardingSpec, py::list, py::handle>(),
+          py::arg("aval"), py::arg("sharding_spec"), py::arg("device_buffers"),
+          py::arg("indices"))
+      .def_property_readonly("aval", &ShardedDeviceArray::aval)
+      .def_property_readonly("indices", &ShardedDeviceArray::indices)
       .def_property_readonly("sharding_spec",
                              &ShardedDeviceArray::GetShardingSpec)
-      .def_property_readonly("device_buffers",
-                             &ShardedDeviceArray::GetDeviceBuffers);
+      .def_property("device_buffers", &ShardedDeviceArray::device_buffers,
+                    &ShardedDeviceArray::set_device_buffers)
+      .def_property("_npy_value", &ShardedDeviceArray::npy_value,
+                    &ShardedDeviceArray::set_npy_value)
+      .def_property("_one_replica_buffer_indices",
+                    &ShardedDeviceArray::one_replica_buffer_indices,
+                    &ShardedDeviceArray::set_one_replica_buffer_indices)
+      .def_property_readonly("shape",
+                             [](const ShardedDeviceArray& self) {
+                               return self.aval().attr("shape");
+                             })
+      .def_property_readonly("dtype",
+                             [](const ShardedDeviceArray& self) {
+                               return self.aval().attr("dtype");
+                             })
+      .def_property_readonly(
+          "size",
+          [](const ShardedDeviceArray& self) {
+            py::tuple shape = py::cast<py::tuple>(self.aval().attr("shape"));
+            int size = 1;
+            for (auto dim : shape) {
+              size *= py::cast<int>(dim);
+            }
+            return size;
+          })
+      .def_property_readonly("ndim", [](const ShardedDeviceArray& self) {
+        return py::len(self.aval().attr("shape"));
+      });
 
   py::class_<PmapFunction, std::unique_ptr<PmapFunction>> cfun(pmap_lib,
                                                                "PmapFunction");
