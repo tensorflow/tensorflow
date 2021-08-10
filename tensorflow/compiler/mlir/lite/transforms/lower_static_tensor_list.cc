@@ -635,9 +635,6 @@ struct ConvertTensorListPushBack
 // returned. 2) If the requested size is larger than the input tensorlist's
 // size. We need to create an additional tensorlist with 'size - input_size'
 // elements, and append it to the end of the input tensorlist.
-// TODO(haoliang): We could simplify this transformation by rewriting to pure
-// tensorlist ops and a few non-tensorlist ops (such as `SliceOp`). By operating
-// only on variant types, we could save some ops involved in rewriting this op.
 struct ConvertTensorListResize
     : public OpConversionPattern<TF::TensorListResizeOp> {
   using OpConversionPattern::OpConversionPattern;
