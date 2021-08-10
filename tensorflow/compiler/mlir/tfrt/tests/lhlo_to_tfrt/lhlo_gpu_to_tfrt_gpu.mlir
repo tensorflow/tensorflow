@@ -168,9 +168,9 @@ func @all_reduce(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result
   // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
   // CHECK: [[HANDLE:%[0-9]+]] = xlir.ccl.create [[CONTEXT]]
   // CHECK: [[CHAIN1:%[0-9]+]] = tfrt_gpu.ccl.all_reduce [[HANDLE]],
-  // CHECK-SAME: %arg2, %arg4, 7, 0, %arg0
+  // CHECK-SAME: %arg2, %arg4, {{7|ncclFloat32}}, {{0|ncclSum}}, %arg0
   // CHECK: [[CHAIN2:%[0-9]+]] = tfrt_gpu.ccl.all_reduce [[HANDLE]],
-  // CHECK-SAME: %arg3, %arg5, 7, 0, [[CHAIN1]]
+  // CHECK-SAME: %arg3, %arg5, {{7|ncclFloat32}}, {{0|ncclSum}}, [[CHAIN1]]
   // CHECK: [[CHAIN3:%[0-9]+]] = tfrt_gpu.ccl.execute %arg1, [[HANDLE]],
   // CHECK-SAME: [[CHAIN2]]
 
