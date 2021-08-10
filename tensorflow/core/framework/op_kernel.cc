@@ -1436,12 +1436,12 @@ Status SupportedDeviceTypesForNode(
       TF_RETURN_IF_ERROR(ValidateNodeDef(def, op_reg_data->op_def));
     }
 
-    std::sort(prioritized_device_types->begin(),
-              prioritized_device_types->end(),
-              [](const std::pair<DeviceType, int32>& a,
-                 const std::pair<DeviceType, int32>& b) {
-                return a.second > b.second;
-              });
+    std::stable_sort(prioritized_device_types->begin(),
+                     prioritized_device_types->end(),
+                     [](const std::pair<DeviceType, int32>& a,
+                        const std::pair<DeviceType, int32>& b) {
+                       return a.second > b.second;
+                     });
   } else {
     // Assumes that all device types support this node.
     for (const DeviceType& device_type : prioritized_types) {
