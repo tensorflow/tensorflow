@@ -109,6 +109,7 @@ cc_library(
     testonly = 1,
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":trt_conversion",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "//tensorflow/core:protos_all_cc",

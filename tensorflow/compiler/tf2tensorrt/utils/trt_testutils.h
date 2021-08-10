@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 
 #include <map>
+#include <numeric>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -32,6 +33,8 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/common/datavec.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor.pb.h"    // NOLINT
@@ -168,6 +171,41 @@ MATCHER(LayerNamesNonEmpty, "") {
     }
   }
   return true;
+}
+
+// GMock matchers for TRT_ShapedWeights
+MATCHER_P2(ShapedWeightsHasDimsAndValues, dims, expected_values, "") {
+  if (arg->shape_ != dims) {
+    return false;
+  }
+  if (arg->count() != expected_values.size()) {
+    return false;
+  }
+  using T = typename decltype(expected_values)::value_type;
+  auto actual_values = reinterpret_cast<T*>(arg->GetValues());
+  for (int i = 0; i < expected_values.size(); ++i) {
+    if (expected_values[i] != actual_values[i]) {
+      return false;
+    }
+  }
+}
+
+template <typename InCType, typename OutCType>
+std::vector<OutCType> CastTestVector(
+    const gtl::ArraySlice<InCType>& vals) {  // non-absl ok
+  std::vector<OutCType> res(vals.size());
+  std::transform(vals.begin(), vals.end(), res.begin(),
+                 [](const InCType in_val) -> OutCType {
+                   return static_cast<OutCType>(in_val);
+                 });
+  return res;
+}
+
+template <typename CType>
+std::vector<CType> InitTestVector(int size, CType start_value = CType(0)) {
+  std::vector<CType> res(size);
+  std::iota(res.begin(), res.end(), start_value);
+  return res;
 }
 
 }  // namespace convert

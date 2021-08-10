@@ -139,29 +139,7 @@ void ValidateWeights(const TRT_ShapedWeights& weights,
   }
 }
 
-template <typename CType>
-std::vector<CType> InitTestVector(int size, CType start_value = CType(0)) {
-  std::vector<CType> res;
-  res.reserve(size);
-  for (int i = 0; i < size; ++i) {
-    res.push_back(start_value + CType(i));
-  }
-  return res;
-}
 
-template <typename InCType, typename OutCType>
-struct StaticCaster {
-  OutCType operator()(InCType in) const { return static_cast<OutCType>(in); }
-};
-
-template <typename InCType, typename OutCType>
-std::vector<OutCType> CastTestVector(
-    const gtl::ArraySlice<InCType>& vals) {  // non-absl ok
-  std::vector<OutCType> res(vals.size());
-  std::transform(vals.begin(), vals.end(), res.begin(),
-                 StaticCaster<InCType, OutCType>());
-  return res;
-}
 
 TEST(TRT_ShapedWeights_Test, Basic) {
   // Test constructor with no arguments.
