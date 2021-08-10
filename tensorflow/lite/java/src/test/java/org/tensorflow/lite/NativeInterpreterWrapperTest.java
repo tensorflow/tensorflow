@@ -483,7 +483,7 @@ public final class NativeInterpreterWrapperTest {
       wrapper.run(inputs, outputs);
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("Invalid handle to Interpreter.");
+      assertThat(e).hasMessageThat().contains("Internal error: Found invalid handle");
     }
   }
 

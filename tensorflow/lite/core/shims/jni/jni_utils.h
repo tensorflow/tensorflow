@@ -12,16 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_LITE_CORE_SHIMS_JNI_JNI_UTILS_H_
+#define TENSORFLOW_LITE_CORE_SHIMS_JNI_JNI_UTILS_H_
 
-#include "tensorflow/lite/java/src/main/native/jni_utils.h"
+#include <jni.h>
 
-namespace tflite {
-namespace jni {
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-bool CheckJniInitializedOrThrow(JNIEnv* env) {
-  // No additional initialization is required.
-  return true;
-}
+bool TfLiteCheckInitializedOrThrow(JNIEnv* env);
 
-}  // namespace jni
-}  // namespace tflite
+#ifdef __cplusplus
+}  // extern "C"
+#endif
+
+#endif  // TENSORFLOW_LITE_CORE_SHIMS_JNI_JNI_UTILS_H_

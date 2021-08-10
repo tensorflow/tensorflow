@@ -1124,6 +1124,13 @@ GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/UInt64, uint64_t, uint64_t,
                        baseline_sub,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
+/// Test the experimental JIT-compiled kernel.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
+    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/Int16, int16_t, int16_t, baseline_sub,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
+
 TEST_F(BinaryOpsTest, SubUint32SpecialCases) {
   TestEqualShapes<uint32_t, uint32_t, uint32_t, uint32_t>(
       "Sub", /*shape=*/{20},

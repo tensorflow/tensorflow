@@ -40,6 +40,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -556,6 +557,43 @@ bool_flag(
 config_setting(
     name = "is_bef_executable_enabled",
     flag_values = {":enable_bef_executable": "True"},
+)
+
+gentbl_cc_library(
+    name = "xlir_opdefs_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-op-decls"],
+            "xlir_opdefs.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "xlir_opdefs.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "xlir_ops.td",
+    deps = [
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
+        "@tf_runtime//:OpBaseTdFiles",
+        "@tf_runtime//backends/gpu:GpuOpBaseTdFile",
+    ],
+)
+
+cc_library(
+    name = "xlir_opdefs",
+    srcs = ["xlir_ops.cc"],
+    hdrs = ["xlir_ops.h"],
+    deps = [
+        ":xlir_opdefs_inc_gen",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:SideEffectInterfaces",
+        "@tf_runtime//:basic_kernels_opdefs",
+        "@tf_runtime//:tensor_opdefs",
+        "@tf_runtime//backends/gpu:gpu_opdefs",
+    ],
 )
 
 cc_library(

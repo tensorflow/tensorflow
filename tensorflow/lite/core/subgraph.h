@@ -359,6 +359,17 @@ class Subgraph {
   void SetName(const char* name);
   const std::string& GetName() const;
 
+  // WARNING: This is an experimental API and subject to change.
+  // Dumps debugging info by the underlying memory planner.
+  // Note: to have minimal binary increase caused by this debug info dump for
+  // the TfLite library and allow users to plug-in their own memory planner
+  // debugger, we have utilized weak symbols to meet these two requirements. By
+  // default, there is no debugging info dumped. However, if the TfLite-provided
+  // lite:simple_memory_arena_debug_dump (i.e. containing the strong defintion)
+  // is linked to the program, calling this function will output memory usage
+  // information about tenosrs and ops.
+  void DumpMemoryPlannerDebugInfo() const;
+
  private:
   friend class InterpreterBuilder;
   friend class TestDelegate;

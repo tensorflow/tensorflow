@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,155 +12,207 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#include "tensorflow/core/data/service/data_service.h"
-
+#include <string>
 #include <vector>
 
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/test_cluster.h"
-#include "tensorflow/core/framework/dataset_options.pb.h"
+#include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
+using ::tensorflow::data::testing::InterleaveTextlineDataset;
+using ::tensorflow::data::testing::RangeDataset;
+using ::tensorflow::data::testing::RangeDatasetWithShardHint;
 using ::tensorflow::testing::IsOkAndHolds;
-using ::tensorflow::testing::StatusIs;
-using ::testing::HasSubstr;
+using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
+using ::testing::Pair;
+using ::testing::TestWithParam;
+using ::testing::UnorderedElementsAre;
+using ::testing::UnorderedElementsAreArray;
+using ::testing::Values;
 
-constexpr const char kProtocol[] = "grpc";
+tstring LocalTempFilename() {
+  std::string path;
+  CHECK(Env::Default()->LocalTempFilename(&path));
+  return tstring(path);
+}
 
-std::vector<ProcessingModeDef::ShardingPolicy> EnumerateShardingPolicies() {
-  std::vector<ProcessingModeDef::ShardingPolicy> result;
-  const ::tensorflow::protobuf::EnumDescriptor* enum_descriptor =
-      ::tensorflow::protobuf::GetEnumDescriptor<
-          ProcessingModeDef::ShardingPolicy>();
-  for (int i = 0; i < enum_descriptor->value_count(); ++i) {
-    result.push_back(static_cast<ProcessingModeDef::ShardingPolicy>(
-        enum_descriptor->value(i)->number()));
+std::vector<int64> Range(const int64 range) {
+  std::vector<int64> result;
+  for (int64 i = 0; i < range; ++i) {
+    result.push_back(i);
   }
   return result;
 }
 
-TEST(DataServiceTest, NoShard) {
-  ProcessingModeDef processing_mode;
-  processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
-  EXPECT_TRUE(IsNoShard(processing_mode));
-  EXPECT_FALSE(IsDynamicShard(processing_mode));
-  EXPECT_FALSE(IsStaticShard(processing_mode));
+TEST(DataServiceTest, RangeDataset_NoShard) {
+  TestCluster cluster(/*num_workers=*/5);
+  TF_ASSERT_OK(cluster.Initialize());
+  DatasetReader<int64> dataset_reader(cluster);
+
+  EXPECT_THAT(
+      dataset_reader.Read(RangeDataset(20), ProcessingModeDef::OFF,
+                          TARGET_WORKERS_AUTO),
+      IsOkAndHolds(UnorderedElementsAre(
+          Pair(cluster.WorkerAddress(0), ElementsAreArray(Range(20))),
+          Pair(cluster.WorkerAddress(1), ElementsAreArray(Range(20))),
+          Pair(cluster.WorkerAddress(2), ElementsAreArray(Range(20))),
+          Pair(cluster.WorkerAddress(3), ElementsAreArray(Range(20))),
+          Pair(cluster.WorkerAddress(4), ElementsAreArray(Range(20))))));
 }
 
-TEST(DataServiceTest, DynamicShard) {
-  ProcessingModeDef processing_mode;
-  processing_mode.set_sharding_policy(ProcessingModeDef::DYNAMIC);
-  EXPECT_FALSE(IsNoShard(processing_mode));
-  EXPECT_TRUE(IsDynamicShard(processing_mode));
-  EXPECT_FALSE(IsStaticShard(processing_mode));
-}
+TEST(DataServiceTest, RangeDataset_DynamicShard) {
+  TestCluster cluster(/*num_workers=*/5);
+  TF_ASSERT_OK(cluster.Initialize());
+  DatasetReader<int64> dataset_reader(cluster);
 
-TEST(DataServiceTest, StaticShard) {
-  ProcessingModeDef processing_mode;
-  std::vector<ProcessingModeDef::ShardingPolicy> policies = {
-      ProcessingModeDef::FILE, ProcessingModeDef::DATA,
-      ProcessingModeDef::FILE_OR_DATA, ProcessingModeDef::HINT};
-  for (const ProcessingModeDef::ShardingPolicy policy : policies) {
-    processing_mode.set_sharding_policy(policy);
-    EXPECT_FALSE(IsNoShard(processing_mode));
-    EXPECT_FALSE(IsDynamicShard(processing_mode));
-    EXPECT_TRUE(IsStaticShard(processing_mode));
+  TF_ASSERT_OK_AND_ASSIGN(
+      DatasetReader<int64>::WorkerResultMap worker_results,
+      dataset_reader.Read(RangeDataset(20), ProcessingModeDef::DYNAMIC,
+                          TARGET_WORKERS_AUTO));
+
+  std::vector<int64> result;
+  for (const auto& worker_result : worker_results) {
+    result.insert(result.end(), worker_result.second.begin(),
+                  worker_result.second.end());
   }
+  EXPECT_THAT(result, UnorderedElementsAreArray(Range(20)));
 }
 
-TEST(DataServiceTest, DefaultShardingPolicyIsNoShard) {
-  ProcessingModeDef processing_mode;
-  EXPECT_TRUE(IsNoShard(processing_mode));
-  EXPECT_FALSE(IsDynamicShard(processing_mode));
-  EXPECT_FALSE(IsStaticShard(processing_mode));
+using DataServiceTest_DataShard =
+    ::testing::TestWithParam<ProcessingModeDef::ShardingPolicy>;
+
+TEST_P(DataServiceTest_DataShard, RangeDataset_DataShard) {
+  TestCluster cluster(/*num_workers=*/5);
+  TF_ASSERT_OK(cluster.Initialize());
+  DatasetReader<int64> dataset_reader(cluster);
+
+  EXPECT_THAT(
+      dataset_reader.Read(RangeDataset(20), GetParam(), TARGET_WORKERS_LOCAL),
+      IsOkAndHolds(UnorderedElementsAre(
+          Pair(cluster.WorkerAddress(0), ElementsAre(0, 5, 10, 15)),
+          Pair(cluster.WorkerAddress(1), ElementsAre(1, 6, 11, 16)),
+          Pair(cluster.WorkerAddress(2), ElementsAre(2, 7, 12, 17)),
+          Pair(cluster.WorkerAddress(3), ElementsAre(3, 8, 13, 18)),
+          Pair(cluster.WorkerAddress(4), ElementsAre(4, 9, 14, 19)))));
 }
 
-TEST(DataServiceTest, ToAutoShardPolicy) {
-  EXPECT_THAT(ToAutoShardPolicy(ProcessingModeDef::FILE_OR_DATA),
-              IsOkAndHolds(AutoShardPolicy::AUTO));
-  EXPECT_THAT(ToAutoShardPolicy(ProcessingModeDef::HINT),
-              IsOkAndHolds(AutoShardPolicy::HINT));
-  EXPECT_THAT(ToAutoShardPolicy(ProcessingModeDef::OFF),
-              IsOkAndHolds(AutoShardPolicy::OFF));
-  EXPECT_THAT(ToAutoShardPolicy(ProcessingModeDef::DYNAMIC),
-              IsOkAndHolds(AutoShardPolicy::OFF));
+INSTANTIATE_TEST_SUITE_P(ShardingPolicy, DataServiceTest_DataShard,
+                         Values(ProcessingModeDef::FILE_OR_DATA,
+                                ProcessingModeDef::DATA));
+
+TEST(DataServiceTest, RangeDataset_HintShard) {
+  TestCluster cluster(/*num_workers=*/5);
+  TF_ASSERT_OK(cluster.Initialize());
+  DatasetReader<int64> dataset_reader(cluster);
+
+  EXPECT_THAT(
+      dataset_reader.Read(RangeDatasetWithShardHint(20),
+                          ProcessingModeDef::HINT, TARGET_WORKERS_LOCAL),
+      IsOkAndHolds(UnorderedElementsAre(
+          Pair(cluster.WorkerAddress(0), ElementsAre(0, 5, 10, 15)),
+          Pair(cluster.WorkerAddress(1), ElementsAre(1, 6, 11, 16)),
+          Pair(cluster.WorkerAddress(2), ElementsAre(2, 7, 12, 17)),
+          Pair(cluster.WorkerAddress(3), ElementsAre(3, 8, 13, 18)),
+          Pair(cluster.WorkerAddress(4), ElementsAre(4, 9, 14, 19)))));
 }
 
-TEST(DataServiceTest, ConvertValidShardingPolicyToAutoShardPolicy) {
-  for (const ProcessingModeDef::ShardingPolicy sharding_policy :
-       EnumerateShardingPolicies()) {
-    TF_EXPECT_OK(ToAutoShardPolicy(sharding_policy).status());
-  }
+TEST(DataServiceTest, TextlineDataset_NoShard) {
+  TestCluster cluster(/*num_workers=*/5);
+  TF_ASSERT_OK(cluster.Initialize());
+  DatasetReader<tstring> dataset_reader(cluster);
+  std::vector<tstring> filenames = {LocalTempFilename(), LocalTempFilename(),
+                                    LocalTempFilename(), LocalTempFilename(),
+                                    LocalTempFilename()};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DatasetDef dataset,
+      InterleaveTextlineDataset(
+          filenames, {"0", "1\n1", "2\n2\n2", "3\n3\n3\n3", "4\n4\n4\n4\n4"}));
+  std::vector<tstring> expected = {"0", "1", "2", "3", "4", "1", "2", "3",
+                                   "4", "2", "3", "4", "3", "4", "4"};
+  EXPECT_THAT(
+      dataset_reader.Read(dataset, ProcessingModeDef::OFF, TARGET_WORKERS_ANY),
+      IsOkAndHolds(UnorderedElementsAre(
+          Pair(cluster.WorkerAddress(0), ElementsAreArray(expected)),
+          Pair(cluster.WorkerAddress(1), ElementsAreArray(expected)),
+          Pair(cluster.WorkerAddress(2), ElementsAreArray(expected)),
+          Pair(cluster.WorkerAddress(3), ElementsAreArray(expected)),
+          Pair(cluster.WorkerAddress(4), ElementsAreArray(expected)))));
 }
 
-TEST(DataServiceTest, ConvertInvalidShardingPolicyToAutoShardPolicy) {
-  const ProcessingModeDef::ShardingPolicy sharding_policy =
-      static_cast<ProcessingModeDef::ShardingPolicy>(-100);
-  EXPECT_THAT(ToAutoShardPolicy(sharding_policy),
-              StatusIs(error::INTERNAL,
-                       HasSubstr("please update the policy mapping.")));
+TEST(DataServiceTest, TextlineDataset_DataShard) {
+  TestCluster cluster(/*num_workers=*/5);
+  TF_ASSERT_OK(cluster.Initialize());
+  DatasetReader<tstring> dataset_reader(cluster);
+  std::vector<tstring> filenames = {LocalTempFilename(), LocalTempFilename(),
+                                    LocalTempFilename(), LocalTempFilename(),
+                                    LocalTempFilename()};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DatasetDef dataset,
+      InterleaveTextlineDataset(
+          filenames, {"0", "1\n1", "2\n2\n2", "3\n3\n3\n3", "4\n4\n4\n4\n4"}));
+  EXPECT_THAT(dataset_reader.Read(dataset, ProcessingModeDef::DATA,
+                                  TARGET_WORKERS_LOCAL),
+              IsOkAndHolds(UnorderedElementsAre(
+                  Pair(cluster.WorkerAddress(0), ElementsAre("0", "1", "3")),
+                  Pair(cluster.WorkerAddress(1), ElementsAre("1", "2", "4")),
+                  Pair(cluster.WorkerAddress(2), ElementsAre("2", "3", "3")),
+                  Pair(cluster.WorkerAddress(3), ElementsAre("3", "4", "4")),
+                  Pair(cluster.WorkerAddress(4), ElementsAre("4", "2", "4")))));
 }
 
-TEST(DataServiceTest, ValidateProcessingMode) {
-  for (const ProcessingModeDef::ShardingPolicy policy :
-       EnumerateShardingPolicies()) {
-    ProcessingModeDef processing_mode;
-    processing_mode.set_sharding_policy(policy);
-    TF_EXPECT_OK(ValidateProcessingMode(processing_mode));
-  }
+using DataServiceTest_FileShard =
+    ::testing::TestWithParam<ProcessingModeDef::ShardingPolicy>;
+
+TEST_P(DataServiceTest_FileShard, TextlineDataset_FileShard) {
+  TestCluster cluster(/*num_workers=*/5);
+  TF_ASSERT_OK(cluster.Initialize());
+  DatasetReader<tstring> dataset_reader(cluster);
+  std::vector<tstring> filenames = {LocalTempFilename(), LocalTempFilename(),
+                                    LocalTempFilename(), LocalTempFilename(),
+                                    LocalTempFilename()};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DatasetDef dataset,
+      InterleaveTextlineDataset(
+          filenames, {"0", "1\n1", "2\n2\n2", "3\n3\n3\n3", "4\n4\n4\n4\n4"}));
+  EXPECT_THAT(
+      dataset_reader.Read(dataset, ProcessingModeDef::FILE_OR_DATA,
+                          TARGET_WORKERS_LOCAL),
+      IsOkAndHolds(UnorderedElementsAre(
+          Pair(cluster.WorkerAddress(0), ElementsAre("0")),
+          Pair(cluster.WorkerAddress(1), ElementsAre("1", "1")),
+          Pair(cluster.WorkerAddress(2), ElementsAre("2", "2", "2")),
+          Pair(cluster.WorkerAddress(3), ElementsAre("3", "3", "3", "3")),
+          Pair(cluster.WorkerAddress(4),
+               ElementsAre("4", "4", "4", "4", "4")))));
 }
 
-TEST(DataServiceTest, InvalidProcessingMode) {
-  ProcessingModeDef processing_mode;
-  processing_mode.set_sharding_policy(
-      static_cast<ProcessingModeDef::ShardingPolicy>(100));
-  EXPECT_THAT(ValidateProcessingMode(processing_mode),
-              StatusIs(error::INTERNAL,
-                       HasSubstr("does not specify a valid sharding policy.")));
-}
-
-TEST(DataServiceTest, ParseTargetWorkers) {
-  EXPECT_THAT(ParseTargetWorkers("AUTO"), IsOkAndHolds(TARGET_WORKERS_AUTO));
-  EXPECT_THAT(ParseTargetWorkers("Auto"), IsOkAndHolds(TARGET_WORKERS_AUTO));
-  EXPECT_THAT(ParseTargetWorkers("ANY"), IsOkAndHolds(TARGET_WORKERS_ANY));
-  EXPECT_THAT(ParseTargetWorkers("any"), IsOkAndHolds(TARGET_WORKERS_ANY));
-  EXPECT_THAT(ParseTargetWorkers("LOCAL"), IsOkAndHolds(TARGET_WORKERS_LOCAL));
-  EXPECT_THAT(ParseTargetWorkers("local"), IsOkAndHolds(TARGET_WORKERS_LOCAL));
-  EXPECT_THAT(ParseTargetWorkers(""), IsOkAndHolds(TARGET_WORKERS_AUTO));
-}
-
-TEST(DataServiceTest, ParseInvalidTargetWorkers) {
-  EXPECT_THAT(ParseTargetWorkers("TARGET_WORKERS_UNSPECIFIED"),
-              testing::StatusIs(error::INVALID_ARGUMENT));
-  EXPECT_THAT(ParseTargetWorkers("UNSET"),
-              testing::StatusIs(error::INVALID_ARGUMENT));
-}
-
-TEST(DataServiceTest, TargetWorkersToString) {
-  EXPECT_EQ(TargetWorkersToString(TARGET_WORKERS_AUTO), "AUTO");
-  EXPECT_EQ(TargetWorkersToString(TARGET_WORKERS_ANY), "ANY");
-  EXPECT_EQ(TargetWorkersToString(TARGET_WORKERS_LOCAL), "LOCAL");
-}
+INSTANTIATE_TEST_SUITE_P(ShardingPolicy, DataServiceTest_FileShard,
+                         Values(ProcessingModeDef::FILE_OR_DATA,
+                                ProcessingModeDef::FILE));
 
 TEST(DataServiceTest, GetWorkers) {
   TestCluster cluster(1);
   TF_ASSERT_OK(cluster.Initialize());
-  DataServiceDispatcherClient dispatcher(cluster.DispatcherAddress(),
-                                         kProtocol);
+  DataServiceDispatcherClient dispatcher(cluster.DispatcherAddress(), "grpc");
   std::vector<WorkerInfo> workers;
   TF_EXPECT_OK(dispatcher.GetWorkers(workers));
   EXPECT_EQ(1, workers.size());

@@ -817,3 +817,19 @@ void TFE_DeleteConfigKeyValue(TFE_Context* ctx, const char* key,
   }
   status->status = coord_agent->DeleteKeyValue(key);
 }
+
+void TFE_ReportErrorToCluster(TFE_Context* ctx, int error_code,
+                              const char* error_message, TF_Status* status) {
+  tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
+      tensorflow::unwrap(ctx)->GetDistributedManager();
+  tensorflow::CoordinationServiceAgent* coord_agent =
+      dist_mgr->GetCoordinationServiceAgent();
+  if (coord_agent == nullptr) {
+    status->status = tensorflow::errors::FailedPrecondition(
+        "Coordination service is not enabled.");
+    return;
+  }
+  tensorflow::Status s(static_cast<tensorflow::error::Code>(error_code),
+                       error_message);
+  status->status = coord_agent->ReportError(s);
+}

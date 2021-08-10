@@ -837,9 +837,34 @@ T baseline_rint(T x) {
 }
 
 #if defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-GENERATE_DEFAULT_TEST_2(
-    Rint, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, baseline_rint,
-    test::OpsTestConfig().ExpectStrictlyEqual().JITCompilation())
+GENERATE_DEFAULT_TEST_2(Rint, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+                        baseline_rint,
+                        test::OpsTestConfig().ExpectStrictlyEqual())
+TEST_F(UnaryOpsTest, RintWithCache) {
+  constexpr auto kTFJitCacheDirEnvVar = "TF_JIT_CACHE_DIR";
+  // First try to setup a unique directory for the file cache
+  auto *env = tensorflow::Env::Default();
+  std::string jit_dir;
+  auto max_tries = 5;
+  do {
+    ASSERT_GE(max_tries--, 0);
+  } while (!env->LocalTempFilename(&jit_dir));
+  auto *original_env = getenv(kTFJitCacheDirEnvVar);
+  setenv(kTFJitCacheDirEnvVar, jit_dir.c_str(), 1);
+
+  // Run the actual test
+  Test<Eigen::half, float, Eigen::half, float>(
+      "Rint", test::DefaultInputShape(), test::DefaultInput<Eigen::half>(),
+      baseline_rint, test::OpsTestConfig().ExpectStrictlyEqual());
+
+  // Test that the file cache is not empty after compiling
+  std::vector<std::string> children;
+  TF_ASSERT_OK(env->GetChildren(jit_dir, &children));
+  ASSERT_EQ(1, children.size());
+
+  setenv(kTFJitCacheDirEnvVar, original_env, 1);
+}
+
 #endif
 
 GENERATE_DEFAULT_TEST(Rint, DT_FLOAT, DT_FLOAT, baseline_rint,

@@ -22,8 +22,8 @@ limitations under the License.
 //
 // Aims to speed up the warmup time of neural nets.
 
-#ifndef TENSORFLOW_CORE_UTIL_AUTOTUNE_SERIALIZE_H_
-#define TENSORFLOW_CORE_UTIL_AUTOTUNE_SERIALIZE_H_
+#ifndef TENSORFLOW_CORE_UTIL_AUTOTUNE_MAPS_AUTOTUNE_SERIALIZE_H_
+#define TENSORFLOW_CORE_UTIL_AUTOTUNE_MAPS_AUTOTUNE_SERIALIZE_H_
 
 #include <string>
 
@@ -42,4 +42,4 @@ Status SerializeAutotuneMaps(std::string* output);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_UTIL_AUTOTUNE_SERIALIZE_H_
+#endif  // TENSORFLOW_CORE_UTIL_AUTOTUNE_MAPS_AUTOTUNE_SERIALIZE_H_

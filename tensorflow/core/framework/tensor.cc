@@ -34,12 +34,14 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -1209,7 +1211,7 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
     default: {
       // All irregular cases
       string ret;
-      if (print_v2) {
+      if (print_v2 && (dims() > 0)) {
         strings::StrAppend(&ret, "[");
       }
       // TODO(irving): Don't call flat every time around this
@@ -1219,7 +1221,11 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
         switch (dtype()) {
           case DT_VARIANT: {
             const Variant& v = flat<Variant>()(i);
-            strings::StrAppend(&ret, v.DebugString());
+            strings::StrAppend(&ret, "<", v.SummarizeValue(), ">");
+          } break;
+          case DT_RESOURCE: {
+            const ResourceHandle& r = flat<ResourceHandle>()(i);
+            strings::StrAppend(&ret, "<", r.SummarizeValue(), ">");
           } break;
           default:
             // TODO(zhifengc, josh11b): Pretty-print other types (bool,
@@ -1228,7 +1234,7 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
         }
       }
       if (max_entries < num_elts) strings::StrAppend(&ret, "...");
-      if (print_v2) {
+      if (print_v2 && (dims() > 0)) {
         strings::StrAppend(&ret, "]");
       }
       return ret;

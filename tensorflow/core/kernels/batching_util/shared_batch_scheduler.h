@@ -163,6 +163,9 @@ class SharedBatchScheduler
     // If this limit is reached, Schedule() will return an UNAVAILABLE error.
     // See the class documentation above for guidelines on how to tune this
     // parameter.
+    //
+    // Must be positive, or else invalid argument error will be returned at
+    // queue creation time.
     size_t max_enqueued_batches = 10;
 
     // If true, queue implementation would split one input batch task into
@@ -391,6 +394,12 @@ class Queue {
   // lock on 'mu_'.
   size_t SchedulingCapacityInternal() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Returns true if queue doesn't have capacity for this task.
+  //
+  // `task` must outlive this method.
+  bool BatchTaskExceedQueueCapacity(TaskType* task) const
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   // The task size of the last batch in the queue.
   size_t tail_batch_task_size() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -538,9 +547,9 @@ Status SharedBatchScheduler<TaskType>::AddQueue(
         "batch_timeout_micros must be non-negative; was ",
         options.batch_timeout_micros);
   }
-  if (options.max_enqueued_batches < 0) {
+  if (options.max_enqueued_batches == 0) {
     return errors::InvalidArgument(
-        "max_enqueued_batches must be non-negative; was ",
+        "max_enqueued_batches must be positive; was ",
         options.max_enqueued_batches);
   }
 
@@ -737,15 +746,13 @@ Status Queue<TaskType>::ScheduleWithLazySplit(std::unique_ptr<TaskType>* task) {
 
     DCHECK(!closed_);
 
-    const int64 open_batch_capacity =
-        max_execution_batch_size - this->tail_batch_task_size();
-    const size_t scheduling_capacity = SchedulingCapacityInternal();
-
-    if ((*task)->size() > scheduling_capacity) {
+    if (BatchTaskExceedQueueCapacity((*task).get())) {
       return errors::Unavailable(
           "The batch scheduling queue to which this task was submitted is "
           "full");
     }
+    const int64 open_batch_capacity =
+        max_execution_batch_size - this->tail_batch_task_size();
 
     auto input_batch = std::make_shared<BatchInputTask<TaskType>>(
         std::move(*task), open_batch_capacity, max_execution_batch_size,
@@ -810,14 +817,10 @@ Status Queue<TaskType>::ScheduleWithoutOrEagerSplit(
 
     DCHECK(!closed_);
 
-    const size_t scheduling_capacity = SchedulingCapacityInternal();
-
-    // The scenario when concurrent incoming batches arrives and use up all
-    // queue capacity isn't covered by unit test.
-    // The coverage boils down to sepcify "function library" in a way that,
-    // one batch task can synchronize with another task, and then two tasks
-    // run concurrently. An integration test might be a better fit.
-    if ((*task)->size() > scheduling_capacity) {
+    // TODO(b/161857471):
+    // Add test coverage when when concurrent incoming batches arrives and
+    // use up all queue capacity.
+    if (BatchTaskExceedQueueCapacity((*task).get())) {
       return errors::Unavailable(
           "The batch scheduling queue to which this task was submitted is "
           "full");
@@ -897,12 +900,42 @@ size_t Queue<TaskType>::SchedulingCapacity() const {
 template <typename TaskType>
 size_t Queue<TaskType>::SchedulingCapacityInternal() const {
   const int64 num_new_batches_schedulable =
-      options_.max_enqueued_batches - this->num_enqueued_batches();
+      static_cast<int64>(options_.max_enqueued_batches) -
+      this->num_enqueued_batches();
   const int64 execution_batch_size_limit = max_execution_batch_size();
   const int64 open_batch_capacity =
       execution_batch_size_limit - this->tail_batch_task_size();
+  // Note the returned value is guaranteed to be not negative, since
+  // enqueue operation could only happen if queue has enough capacity.
   return (num_new_batches_schedulable * execution_batch_size_limit) +
          open_batch_capacity;
+}
+
+template <typename TaskType>
+bool Queue<TaskType>::BatchTaskExceedQueueCapacity(TaskType* task) const {
+  // Queue creation requires that `enable_large_batch_splitting` is true
+  // when `enable_lazy_split` is true, so this covers both eager split and
+  // lazy split.
+  if (options_.enable_large_batch_splitting) {
+    return task->size() > SchedulingCapacityInternal();
+  }
+
+  // NOTE, the capacity checking below is loose and is retained
+  // for backward compatibility that was broken due to the merge of no-split
+  // and eager split.
+  // There are existing clients/models that rely on the loose check
+  // and can get errors after the merge. Retaining the old behavior
+  // allows such models to continue to work.
+  //
+  // We need to revisit/remove this check after we fix model configs.
+  bool batch_task_exceed_queue_capacity = false;
+  if (batches_.back()->size() + task->size() >
+      options_.input_batch_size_limit) {
+    if (batches_.size() >= options_.max_enqueued_batches) {
+      batch_task_exceed_queue_capacity = true;
+    }
+  }
+  return batch_task_exceed_queue_capacity;
 }
 
 template <typename TaskType>

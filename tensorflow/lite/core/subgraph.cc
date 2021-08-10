@@ -1750,6 +1750,11 @@ void Subgraph::SetName(const char* name) {
 
 const std::string& Subgraph::GetName() const { return name_; }
 
+void Subgraph::DumpMemoryPlannerDebugInfo() const {
+  if (memory_planner_ == nullptr) return;
+  memory_planner_->DumpDebugInfo(execution_plan());
+}
+
 TfLiteStatus Subgraph::PreserveAllTensorsExperimental() {
   if (memory_planner_) {
     ReportError(

@@ -385,6 +385,13 @@ Below is the list of currently supported quantized operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `PAD`
+
+* The first input and the output must be in 8-bit quantized format.
+* The second input (the input with the padding specification) must be static
+  (use `kTfLiteMmapRo` allocation type).
+* The numbers of padding elements must be non-negative.
+
 XNNPACK supports post-training dynamic range quantization: quantized weights
 are being unpacked, and then inference is performed with floating-point
 precision. By default, this feature is disabled. It can be enabled by adding

@@ -86,4 +86,12 @@ Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
   return Status::OK();
 }
 
+Status ReadStringsFromEnvVar(StringPiece env_var_name, StringPiece default_val,
+                             std::vector<string>* value) {
+  string str_val;
+  TF_RETURN_IF_ERROR(ReadStringFromEnvVar(env_var_name, default_val, &str_val));
+  *value = str_util::Split(str_val, ',');
+  return Status::OK();
+}
+
 }  // namespace tensorflow

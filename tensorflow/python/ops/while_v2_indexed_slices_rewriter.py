@@ -47,8 +47,8 @@ def rewrite_grad_indexed_slices(grads, body_grad_graph, loop_vars,
     grads: the input gradient Tensors to the while gradient computation.
     body_grad_graph: _WhileBodyGradFuncGraph.
     loop_vars: list of Tensors. The inputs to body_grad_graph.
-    forward_inputs: list of Tensors. The (flat) inputs to the forward-pass
-      While op.
+    forward_inputs: list of Tensors. The (flat) inputs to the forward-pass While
+      op.
 
   Returns:
     The new loop_vars to pass to body_grad_graph.
@@ -61,13 +61,15 @@ def rewrite_grad_indexed_slices(grads, body_grad_graph, loop_vars,
   # body_grad_graph.structured_outputs. However, structured_outputs may still
   # contain composite tensors such as IndexedSlices, unlike
   # body_grad_graph.outputs, which contains flattened composite tensors.
-  inputs_with_grads = [t for g, t in zip(grads, forward_inputs)
-                       if g is not None]
+  inputs_with_grads = [
+      t for g, t in zip(grads, forward_inputs) if g is not None
+  ]
   # Skip loop counter, maximum_iterations and total number of loop iterations.
   structured_outputs = body_grad_graph.structured_outputs[3:]
 
   for forward_input, output in zip(inputs_with_grads, structured_outputs):
-    if not isinstance(output, ops.IndexedSlices): continue
+    if not isinstance(output, ops.IndexedSlices):
+      continue
 
     if forward_input.dtype == dtypes.resource:
       # TODO(skyewm): In theory we should use this for all captured inputs, not
@@ -86,7 +88,7 @@ def _get_tensor_index_in_iterable(iterable, t):
   for i, elem in enumerate(iterable):
     if t is elem:
       return i
-  raise ValueError("%s is not in iterable" % str(t))
+  raise ValueError(f"Element `{t!r}` is not found in iterable `{iterable!r}`.")
 
 
 def _rewrite_output_as_tensor(body_grad_graph, grad_output_slices):
@@ -154,14 +156,14 @@ def _rewrite_input_as_indexed_slices(body_grad_graph, grad_output_slices,
       captured_t = body_grad_graph.captures.pop(t)
       body_grad_graph.inputs.remove(captured_t)
 
-    new_output_slices = _rewrite_grad_indexed_slices_output(grad_output_slices,
-                                                            input_slices)
+    new_output_slices = _rewrite_grad_indexed_slices_output(
+        grad_output_slices, input_slices)
 
   # Update body_grad_graph's inputs and outputs to reflect the new
   # IndexedSlices computation.
-  return _update_indexed_slices_param(
-      body_grad_graph, loop_vars, init_slices, input_slices, new_output_slices,
-      grad_output_slices)
+  return _update_indexed_slices_param(body_grad_graph, loop_vars, init_slices,
+                                      input_slices, new_output_slices,
+                                      grad_output_slices)
 
 
 def _create_grad_indexed_slices_init(grad_output_slices, forward_input):
@@ -184,16 +186,16 @@ def _create_grad_indexed_slices_init(grad_output_slices, forward_input):
   if values_out.shape.is_fully_defined():
     values_shape = tensor_shape.TensorShape([0] +
                                             values_out.shape.as_list()[1:])
-    values = array_ops.zeros(values_shape, dtype=values_out.dtype,
-                             name="values_init")
+    values = array_ops.zeros(
+        values_shape, dtype=values_out.dtype, name="values_init")
   else:
     if forward_input.dtype == dtypes.resource:
       forward_shape = gen_resource_variable_ops.variable_shape(forward_input)
     else:
       forward_shape = array_ops.shape(forward_input)
     values_shape = array_ops.concat([[0], forward_shape[1:]], 0)
-    values = array_ops.zeros(values_shape, dtype=values_out.dtype,
-                             name="values_init")
+    values = array_ops.zeros(
+        values_shape, dtype=values_out.dtype, name="values_init")
 
   # Create the initial indices tensor.
   indices = constant_op.constant([], indices_out.dtype, name="indices_init")
@@ -202,8 +204,8 @@ def _create_grad_indexed_slices_init(grad_output_slices, forward_input):
   # forward_input, since captured tensors don't change shape across loop
   # iterations.
   if forward_input.dtype == dtypes.resource:
-    shape = gen_resource_variable_ops.variable_shape(forward_input,
-                                                     name="shape_init")
+    shape = gen_resource_variable_ops.variable_shape(
+        forward_input, name="shape_init")
   else:
     shape = array_ops.shape(forward_input, name="shape_init")
 
@@ -241,8 +243,8 @@ def _rewrite_grad_indexed_slices_output(old_output_slices, new_input_slices):
 
   values = rewrite(old_output_slices.values.op, new_input_slices.values)
   indices = rewrite(old_output_slices.indices.op, new_input_slices.indices)
-  return ops.IndexedSlices(values=values, indices=indices,
-                           dense_shape=new_input_slices.dense_shape)
+  return ops.IndexedSlices(
+      values=values, indices=indices, dense_shape=new_input_slices.dense_shape)
 
 
 def _update_indexed_slices_param(graph, loop_vars, init_slices, input_slices,
@@ -262,8 +264,8 @@ def _update_indexed_slices_param(graph, loop_vars, init_slices, input_slices,
       init_slices.
     output_slices: the new IndexedSlices in graph that should be the
       corresponding output to input_slices.
-    old_output_slices: the IndexedSlices in graph that are currently
-      being output.
+    old_output_slices: the IndexedSlices in graph that are currently being
+      output.
 
   Returns:
     New loop_vars to pass to graph.
@@ -278,11 +280,11 @@ def _update_indexed_slices_param(graph, loop_vars, init_slices, input_slices,
       func_graph.flatten(old_output_slices)[0])
 
   graph.structured_outputs[structured_idx] = output_slices
-  graph.outputs = func_graph.flatten(
-      graph.structured_outputs)
+  graph.outputs = func_graph.flatten(graph.structured_outputs)
 
-  graph.inputs = (graph.inputs[:flat_idx] + _flatten(input_slices) +
-                  graph.inputs[flat_idx + 1:])
+  graph.inputs = (
+      graph.inputs[:flat_idx] + _flatten(input_slices) +
+      graph.inputs[flat_idx + 1:])
 
   return loop_vars[:flat_idx] + _flatten(init_slices) + loop_vars[flat_idx + 1:]
 

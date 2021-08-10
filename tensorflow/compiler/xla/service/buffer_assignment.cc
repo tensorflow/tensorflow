@@ -791,7 +791,8 @@ string BufferAssignment::ToString() const {
       used_values.push_back(p.first);
     }
   }
-  absl::StrAppend(&output, "\nTotal bytes used: ", total_size, "\n");
+  absl::StrAppend(&output, "\nTotal bytes used: ", total_size, " (",
+                  HumanReadableNumBytes(total_size), ")\n");
   absl::StrAppend(&output, "\nUsed values:\n");
   absl::c_sort(used_values, &CompareHloValuesById);
   for (const HloValue* value : used_values) {

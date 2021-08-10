@@ -28,9 +28,42 @@ namespace tflite {
 
 namespace {
 
-void dump_tensors(std::stringstream& out_stream,
-                  const flatbuffers::Vector<int32_t>* tensors,
-                  bool verbose = false) {
+// Dump details of the given tensor.
+void dump_tensor_detail(std::stringstream& out_stream,
+                        const tflite::Tensor* tensor, const int tensor_idx) {
+  out_stream << "T#" << tensor_idx;
+  out_stream << "(" << tensor->name()->str() << ") ";
+  // Prints `shape_signature` instead of `shape` if it's available since it
+  // supports dynamic shapes.
+  if (tensor->shape_signature()) {
+    out_stream << "shape_signature:[";
+    for (int i = 0; i < tensor->shape_signature()->Length(); ++i) {
+      const int j = tensor->shape_signature()->Get(i);
+      out_stream << j;
+      if (i != tensor->shape_signature()->Length() - 1) {
+        out_stream << ", ";
+      }
+    }
+    out_stream << "]";
+  } else {
+    out_stream << "shape:[";
+    for (int i = 0; i < tensor->shape()->Length(); ++i) {
+      const int j = tensor->shape()->Get(i);
+      out_stream << j;
+      if (i != tensor->shape()->Length() - 1) {
+        out_stream << ", ";
+      }
+    }
+    out_stream << "]";
+  }
+  out_stream << ", type:" << EnumNameTensorType(tensor->type());
+  out_stream << "\n";
+}
+
+// Dump list of input or output tensors.
+void dump_tensor_list(std::stringstream& out_stream,
+                      const flatbuffers::Vector<int32_t>* tensors,
+                      bool verbose = false) {
   for (int i = 0; i < tensors->Length(); ++i) {
     const int tensor_idx = tensors->Get(i);
     if (verbose) {
@@ -48,6 +81,7 @@ void dump_tensors(std::stringstream& out_stream,
   }
 }
 
+// Returns the string representation of the given OperatorCode.
 const std::string get_op_name(const OperatorCode* op_code) {
   auto builtin_code = GetBuiltinCode(op_code);
   if (builtin_code != BuiltinOperator_CUSTOM) {
@@ -57,17 +91,20 @@ const std::string get_op_name(const OperatorCode* op_code) {
   }
 }
 
+// Dump the given Operator node.
 void dump_node(std::stringstream& out_stream, const int node_no,
                const OperatorCode* op_code, const Operator* op,
                const SubGraph* subgraph) {
   out_stream << "Op#" << node_no << " " << get_op_name(op_code);
   out_stream << "(";
-  dump_tensors(out_stream, op->inputs());
+  dump_tensor_list(out_stream, op->inputs());
   out_stream << ") -> [";
-  dump_tensors(out_stream, op->outputs());
+  dump_tensor_list(out_stream, op->outputs());
   out_stream << "]\n";
 }
 
+// Dump the summary of the given TFLite flatbuffer model. It's printed at the
+// beginning of the analyzer output.
 void dump_model_summary(std::stringstream& out_stream,
                         const ::tflite::Model* model) {
   auto* subgraphs = model->subgraphs();
@@ -81,9 +118,9 @@ void dump_model_summary(std::stringstream& out_stream,
         model->operator_codes()->Get(first_op->opcode_index());
     out_stream << "For example, in Subgraph#0, the "
                << get_op_name(first_op_code) << " op takes\n";
-    dump_tensors(out_stream, first_op->inputs(), /*verbose=*/true);
+    dump_tensor_list(out_stream, first_op->inputs(), /*verbose=*/true);
     out_stream << " as input and produces ";
-    dump_tensors(out_stream, first_op->outputs(), /*verbose=*/true);
+    dump_tensor_list(out_stream, first_op->outputs(), /*verbose=*/true);
     out_stream << " as output.\n\n";
   }
 }
@@ -141,9 +178,9 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
       out_stream << " " << subgraph->name()->str();
     }
     out_stream << "(";
-    dump_tensors(out_stream, subgraph->inputs());
+    dump_tensor_list(out_stream, subgraph->inputs());
     out_stream << ") -> [";
-    dump_tensors(out_stream, subgraph->outputs());
+    dump_tensor_list(out_stream, subgraph->outputs());
     out_stream << "]\n";
     for (int j = 0; j < subgraph->operators()->Length(); ++j) {
       const Operator* op = subgraph->operators()->Get(j);
@@ -168,6 +205,15 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
                  << absl::StrJoin(gpu_incompatibile_nodes, ", ")
                  << " with TFLite runtime version " << TF_VERSION_STRING
                  << "\n";
+    }
+
+    // Dump Subgraph Tensors.
+    out_stream << "\nTensors of Subgraph#" << i << "\n";
+    auto tensors = subgraph->tensors();
+    for (int j = 0; j < tensors->Length(); ++j) {
+      auto tensor = tensors->Get(j);
+      out_stream << "  ";  // indents for tensors
+      dump_tensor_detail(out_stream, tensor, j);
     }
   }
   if (check_gpu_compatibility && model_is_gpu_compatibile) {

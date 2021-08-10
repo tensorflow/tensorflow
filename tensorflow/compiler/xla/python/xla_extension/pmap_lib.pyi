@@ -14,7 +14,8 @@
 # ==============================================================================
 
 import inspect
-from typing import Any, Callable, List, Sequence, Iterable, Tuple
+import numpy as np
+from typing import Any, Callable, List, Optional, Sequence, Iterable, Tuple
 
 _AvalDimSharding = Any
 _MeshDimAssignment = Any
@@ -61,8 +62,21 @@ class ShardedDeviceArray:
                __sharding_spec: ShardingSpec,
                __device_buffers: List[Any]) -> None: ...
   aval: Any
+  indices: Any
   sharding_spec: ShardingSpec
-  device_buffers: List[Any]
+  device_buffers: Optional[List[Any]]
+  _npy_value: Optional[np.ndarray]
+  _one_replica_buffer_indices: Optional[Any]
+
+  @property
+  def shape(self) -> Tuple[int]: ...
+  @property
+  def dtype(self) -> np.dtype: ...
+  @property
+  def size(self) -> int: ...
+  @property
+  def ndim(self) -> int: ...
+
 
 class PmapFunction:
   def __call__(self, *args, **kwargs) -> Any: ...

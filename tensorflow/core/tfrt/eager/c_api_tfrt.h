@@ -337,9 +337,6 @@ class TensorHandleInterface
  public:
   explicit TensorHandleInterface(Value&& v, CoreRuntime* corert);
 
-  explicit TensorHandleInterface(tensorflow::DataType dtype, Value&& v,
-                                 CoreRuntime* corert);
-
   void Release() override { Unref(); }
 
   tensorflow::DataType DataType() const override;
@@ -386,12 +383,6 @@ class TensorHandleInterface
 
  private:
   llvm::Optional<const TensorMetadata*> Metadata() const;
-
-  // If the tensor handle is generated as the result of a function, the datatype
-  // is known from the function output signature.
-  // Therefore, we can obtain the datatype earlier, before the function
-  // execution completes.
-  llvm::Optional<tensorflow::DataType> dtype_;
 
   CoreRuntime& corert_;
 

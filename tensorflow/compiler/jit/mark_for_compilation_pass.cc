@@ -1701,10 +1701,11 @@ Status MarkForCompilation(
     if (n->attrs().Find(kXlaAlreadyClustered)) {
       return Status::OK();
     }
-    // Skip the pass if we found TPUExecute ops in the graph, which indicates
-    // the graph is produced by TPU TF-XLA bridge and doesn't require auto
-    // clustering.
-    if (n->type_string() == "TPUExecute") {
+    // Skip the pass if we found TPUExecute or TPUExecuteAndUpdateVariables ops
+    // in the graph, which indicates the graph is produced by TPU TF-XLA bridge
+    // and doesn't require auto clustering.
+    if (n->type_string() == "TPUExecute" ||
+        n->type_string() == "TPUExecuteAndUpdateVariables") {
       return Status::OK();
     }
   }

@@ -261,6 +261,9 @@ tf_kernel_library(
         "gpu_op_xlogy.cc",
         "gpu_op_zeta.cc",
     ]),
+    copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
@@ -929,6 +932,7 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_sub_kernels",
+    jit_types = ["i16"],
     op = "sub",
     tile_size = "1024",
     types = [

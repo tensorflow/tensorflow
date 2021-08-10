@@ -199,8 +199,9 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       // respective slice locations. This would require a different GetNext()
       // overload that supports zero-copy, and might make sense in an
       // optimization pass.
-      TF_RETURN_IF_ERROR(CopyBatch(dataset()->parallel_copy_, ctx,
-                                   batch_elements, out_tensors));
+      TF_RETURN_IF_ERROR(
+          CopyBatch(ctx, batch_elements, dataset()->parallel_copy_,
+                    /*allocation_callback=*/nullptr, out_tensors));
 
       *end_of_sequence = false;
       return Status::OK();

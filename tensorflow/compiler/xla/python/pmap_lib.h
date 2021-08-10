@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
+#include "pybind11/cast.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
@@ -193,6 +194,10 @@ H AbslHashValue(H h, const ShardingSpec& key) {
   return h;
 }
 
+// Empty base-class to support isinstance(x, ShardedDeviceArrayBase) with both
+// the C++ and Python ShardedDeviceArray.
+class ShardedDeviceArrayBase {};
+
 // A ShardedDeviceArray is an ndarray sharded across devices.
 //
 // The purpose of a ShardedDeviceArray is to reduce the number of transfers when
@@ -207,31 +212,56 @@ H AbslHashValue(H h, const ShardingSpec& key) {
 
 // Design note: We move to C++, only what will need to be accessed by C++ to
 // execute a pmap computation. A large part of the logic is still in Python.
-class ShardedDeviceArray {
+class ShardedDeviceArray : public ShardedDeviceArrayBase {
  public:
   // `device_buffers` are expected to be xla::PyBuffer objects, but as there are
   // alternative backend implementations, this may not be guaranteed.
   // TODO(jblespiau): As soon as PjRtBuffer is supported by all
   // implementations, we should be able to store this with the C++ objects.
   ShardedDeviceArray(pybind11::handle aval, ShardingSpec sharding_spec,
-                     pybind11::list device_buffers)
+                     pybind11::list device_buffers, pybind11::handle indices)
       : aval_(pybind11::cast<pybind11::object>(aval)),
         sharding_spec_(std::move(sharding_spec)),
+        indices_(pybind11::cast<pybind11::object>(indices)),
         device_buffers_(device_buffers) {}
 
-  pybind11::object GetAval() const { return aval_; }
   const ShardingSpec& GetShardingSpec() const { return sharding_spec_; }
-  pybind11::list GetDeviceBuffers() const { return device_buffers_; }
+
+  // Accessors and mutators for Python values are named like the variables.
+  absl::optional<pybind11::list> device_buffers() const {
+    return device_buffers_;
+  }
+  void set_device_buffers(absl::optional<pybind11::list> device_buffers) {
+    device_buffers_ = device_buffers;
+  }
+  pybind11::object aval() const { return aval_; }
+  pybind11::object indices() const { return indices_; }
+
+  absl::optional<pybind11::object> npy_value() const { return npy_value_; }
+  void set_npy_value(pybind11::object npy_value) { npy_value_ = npy_value; }
+
+  absl::optional<pybind11::object> one_replica_buffer_indices() const {
+    return one_replica_buffer_indices_;
+  }
+  void set_one_replica_buffer_indices(pybind11::object obj) {
+    one_replica_buffer_indices_ = obj;
+  }
 
  private:
   // A ShapedArray indicating the shape and dtype of this array.
   pybind11::object aval_;
   // Describes how this array is sharded across `device_buffers`.
   ShardingSpec sharding_spec_;
+  // The `indices` used to slice numpy array into the underlying list of
+  // buffers. See the Python pxla.py:spec_to_indices function.
+  pybind11::object indices_;
   // The buffers containing the data for this array. Each buffer is the same
   // shape and on a different device. Buffers are in row-major order, with
   // replication treated as an extra innermost dimension.
-  pybind11::list device_buffers_;
+  absl::optional<pybind11::list> device_buffers_;
+
+  absl::optional<pybind11::object> npy_value_ = absl::nullopt;
+  absl::optional<pybind11::object> one_replica_buffer_indices_ = absl::nullopt;
 };
 
 void BuildPmapSubmodule(pybind11::module& m);

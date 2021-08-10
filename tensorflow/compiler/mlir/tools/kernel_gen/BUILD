@@ -14,7 +14,12 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
-load("//tensorflow/core/platform:build_config.bzl", "if_llvm_aarch64_available", "if_llvm_system_z_available")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "if_llvm_aarch64_available",
+    "if_llvm_system_z_available",
+    "tf_proto_library",
+)
 
 package(
     default_visibility = [":friends"],
@@ -35,6 +40,7 @@ cc_library(
     hdrs = ["kernel_creator.h"],
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
+        ":compile_cache_item_proto_cc",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
@@ -156,14 +162,18 @@ cc_library(
     hdrs = ["tf_framework_c_interface.h"],
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
+        ":compile_cache_item_proto_cc",
         ":kernel_creator",
         ":tf_gpu_runtime_wrappers",
         ":tf_jit_cache",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:strcat",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ExecutionEngine",
         "@llvm-project//mlir:ExecutionEngineUtils",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:mlir_runner_utils",
     ],
@@ -223,4 +233,10 @@ cc_library(
         "//tensorflow/stream_executor:stream_header",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
+)
+
+tf_proto_library(
+    name = "compile_cache_item_proto",
+    srcs = ["compile_cache_item.proto"],
+    cc_api_version = 2,
 )

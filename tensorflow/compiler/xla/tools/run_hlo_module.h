@@ -47,7 +47,8 @@ struct RunHloModuleOptions {
         input_format("hlo"),
         input_module(""),
         iterations(1),
-        output_literals_file("") {}
+        output_literals_file(""),
+        input_literals_file("") {}
   std::string platform;
   std::string reference_platform;
   bool print_literals;
@@ -61,6 +62,7 @@ struct RunHloModuleOptions {
   std::string input_module;
   int iterations;
   std::string output_literals_file;
+  std::string input_literals_file;
 };
 
 // Reads a HloModule from 'hlo_filename', runs it on the platform with the name

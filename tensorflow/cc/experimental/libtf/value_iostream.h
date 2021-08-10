@@ -76,11 +76,7 @@ class TaggedValueIOStreamVisitor {
     o_ << "Tensor";
     return o_;
   }
-  std::ostream& operator()(const TensorSpec& x) {
-    o_ << "TensorSpec(shape = " << x.shape.DebugString()
-       << ", dtype = " << x.dtype << ")";
-    return o_;
-  }
+
   template <class T>
   std::ostream& operator()(const T& x) {
     o_ << x;

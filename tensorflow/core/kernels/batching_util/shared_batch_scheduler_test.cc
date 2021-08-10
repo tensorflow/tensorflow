@@ -620,9 +620,12 @@ TEST_P(SharedBatchSchedulerTest, ConstMethods) {
     EXPECT_EQ(0, queue->SchedulingCapacity());
 
     // Attempting to enqueue one more task should yield an UNAVAILABLE error.
-    Status status = ScheduleTask(1, queue.get());
-    ASSERT_FALSE(status.ok());
-    EXPECT_EQ(error::UNAVAILABLE, status.code());
+    EXPECT_THAT(
+        ScheduleTask(1, queue.get()),
+        testing::StatusIs(error::UNAVAILABLE,
+                          "The batch scheduling queue to which this task was "
+                          "submitted is full"));
+
     EXPECT_EQ(max_enqueued_batches * 2, queue->NumEnqueuedTasks());
     EXPECT_EQ(0, queue->SchedulingCapacity());
 
@@ -757,7 +760,9 @@ TEST_P(SharedBatchSchedulerTest, QueueDestructorBlocksUntilAllTasksProcessed) {
   stop_teardown.Notify();
 }
 
-TEST_P(SharedBatchSchedulerTest, InvalidQueueOptions) {
+// Tests that `enable_lazy_split` could be enabled only if
+// `enable_large_batch_splitting` is enabled.
+TEST_P(SharedBatchSchedulerTest, InvalidLazySplitOptions) {
   auto callback = [](std::unique_ptr<Batch<FakeTask>> batch) {
     // do nothing.
   };
@@ -778,6 +783,29 @@ TEST_P(SharedBatchSchedulerTest, InvalidQueueOptions) {
       testing::StatusIs(error::INVALID_ARGUMENT,
                         "enable_lazy_split should be enabled only if "
                         "enable_large_batch_splitting is enabled."));
+}
+
+// Tests that queue must be configured with a positive capacity.
+TEST_P(SharedBatchSchedulerTest, InvalidZeroQueueCapacity) {
+  auto callback = [](std::unique_ptr<Batch<FakeTask>> batch) {
+    // do nothing.
+  };
+
+  auto scheduler = CreateSharedBatchScheduler(2);
+
+  const size_t input_batch_size_limit = 10;
+  const size_t batch_timeout_micros = 100 * 1000;  // 100 milliseconds
+  const size_t max_enqueued_batches = 0;
+  std::unique_ptr<Queue> queue;
+  EXPECT_THAT(
+      scheduler->AddQueue(tensorflow::serving::CreateQueueOptions(
+                              input_batch_size_limit, input_batch_size_limit,
+                              batch_timeout_micros, max_enqueued_batches,
+                              false /* enable_large_batch_splitting */,
+                              true /* enable_lazy_split */, get_split_func()),
+                          callback, &queue),
+      testing::StatusIs(error::INVALID_ARGUMENT,
+                        "max_enqueued_batches must be positive; was 0"));
 }
 
 // TODO(b/161857471):

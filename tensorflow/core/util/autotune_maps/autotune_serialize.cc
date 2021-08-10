@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 // For Google-internal use only.
-#include "tensorflow/core/util/autotune_serialize.h"
+#include "tensorflow/core/util/autotune_maps/autotune_serialize.h"
 
 #include <map>
 #include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/util/activation_mode.h"
-#include "tensorflow/core/util/autotune_map.pb.h"
+#include "tensorflow/core/util/autotune_maps/autotune_map.pb.h"
 #include "tensorflow/core/util/autotune_maps/autotune_maps_utils.h"
 #include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"

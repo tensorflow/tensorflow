@@ -153,14 +153,38 @@ Status RunAndCompare(
   std::vector<Literal> args = MakeFakeArguments(test_module.get(), engine,
                                                 options.use_large_float_range)
                                   .ConsumeValueOrDie();
-
+  // Use provided input literals as arguments, if any.
+  if (iteration_literals_proto != nullptr &&
+      iteration_literals_proto->arguments_size() != 0) {
+    if (iteration_literals_proto->arguments_size() != args.size()) {
+      return xla::InvalidArgument(
+          "Failed to use input literals as arguments; mismatched "
+          "number of expected arguments.");
+    } else {
+      for (int i = 0; i < args.size(); ++i) {
+        if (!literal_comparison::EqualShapes(
+                 xla::Shape(args[i].shape()),
+                 xla::Shape(iteration_literals_proto->arguments(i).shape()))
+                 .ok()) {
+          return xla::InvalidArgument(
+              "Failed to use input literals for argument %d "
+              "because of a shape mismatch.",
+              i);
+        }
+        TF_ASSIGN_OR_RETURN(args[i],
+                            xla::Literal::CreateFromProto(
+                                iteration_literals_proto->arguments(i)));
+      }
+    }
+  }
   if (options.print_literals) {
     for (int i = 0; i < args.size(); ++i) {
       std::cout << "\n** Argument " << i << " **\n"
                 << args[i].ToString() << "\n";
     }
   }
-  if (iteration_literals_proto != nullptr) {
+  if (iteration_literals_proto != nullptr &&
+      iteration_literals_proto->arguments_size() == 0) {
     for (int i = 0; i < args.size(); ++i) {
       *iteration_literals_proto->add_arguments() = args[i].ToProto();
     }
