@@ -1026,6 +1026,10 @@ struct Options {
   // If true, use buffer_interval_compare to determine which buffers to
   // prefetch across program boundaries.
   bool default_cross_program_prefetch_heuristic = false;
+
+  // Enable cross-program prefetch freeing optimization where the
+  // cross-program-prefetched buffer can be reused.
+  bool enable_cross_program_prefetch_freeing = true;
 };
 
 // A struct representing an asynchronous copy with its logical start and end

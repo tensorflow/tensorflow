@@ -1716,7 +1716,8 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
           << ", end-of-program prefetch start time = "
           << end_of_program_prefetch_start_time;
   bool free_buffer =
-      (end_of_program_prefetch_start_time > last_use_time &&
+      (options_.enable_cross_program_prefetch_freeing &&
+       end_of_program_prefetch_start_time > last_use_time &&
        end_of_program_prefetch_start_time < end_of_program_prefetch_end_time);
   int64_t cross_program_prefetch_end_time =
       free_buffer ? last_use_time : prefetch_candidate->end;
