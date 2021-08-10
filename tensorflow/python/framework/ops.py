@@ -1011,7 +1011,13 @@ class _EagerTensorBase(Tensor):
   __nonzero__ = __bool__
 
   def __format__(self, format_spec):
-    return self._numpy().__format__(format_spec)
+    if self._prefer_custom_summarizer():
+      return self._summarize_value().__format__(format_spec)
+    elif self.dtype.is_numpy_compatible:
+      # Not numpy_text here, otherwise the __format__ behaves differently.
+      return self._numpy().__format__(format_spec)
+    else:
+      return "<unprintable>".__format__(format_spec)
 
   def __reduce__(self):
     return convert_to_tensor, (self._numpy(),)
@@ -1026,7 +1032,7 @@ class _EagerTensorBase(Tensor):
     return self
 
   def __str__(self):
-    if self._has_custom_summarizer():
+    if self._prefer_custom_summarizer():
       value_text = self._summarize_value()
     else:
       value_text = numpy_text(self)
@@ -1034,7 +1040,7 @@ class _EagerTensorBase(Tensor):
                                                   self.dtype.name)
 
   def __repr__(self):
-    if self._has_custom_summarizer():
+    if self._prefer_custom_summarizer():
       value_text = "value=" + self._summarize_value()
     else:
       value_text = "numpy=" + numpy_text(self, is_repr=True)

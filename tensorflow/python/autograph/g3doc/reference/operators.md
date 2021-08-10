@@ -138,16 +138,12 @@ subject to restrictions of the respective implementations. For example,
 For loop: `for var in target: body`, extended with a per-iteration
 condition to handle early termination (e.g. due to a `break`).
 
-Args:
-  iter_: iteration target; same as `n` in `for _ in n`.
-  extra_test: optional extra per-iteration condition (as thunk).
-  body: loop body (as unary thunk); same as `def body(i): <b>` in
-      `for i in _: <b>`.
-  get_state: returns the current value of the loop variables
-  set_state: sets new values into the loop variables
-  symbol_names: human readable string representing each loop variable. Used for
-      error messages.
-  opts: additional, implementation-specific, keyword arguments.
+Args: iter_: iteration target; same as `n` in `for _ in n`. extra_test: optional
+extra per-iteration condition (as thunk). body: loop body (as unary thunk); same
+as `def body(i): <b>` in `for i in _: <b>`. get_state: returns the current value
+of the loop variables set_state: sets new values into the loop variables
+symbol_names: human readable string representing each loop variable. Used for
+error messages. opts: additional, implementation-specific, keyword arguments.
 
 Example:
 

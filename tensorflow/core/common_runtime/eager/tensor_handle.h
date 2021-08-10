@@ -135,6 +135,12 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
 
   ImmediateExecutionTensorHandle* Copy() override;
 
+  // Subclasses may return True to instruct the string formatter
+  // to use SummarizeValue instead of the NumPy formatter.
+  bool PreferCustomSummarizer() const override {
+    return dtype == DT_VARIANT || dtype == DT_RESOURCE;
+  }
+
   // Return the Tensor from the default device.
   Status Tensor(const tensorflow::Tensor** t) const;
   // Return the Tensor from the specified device which could be either the

@@ -37,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 
@@ -389,10 +390,23 @@ class TFETensorTest(test_util.TensorFlowTestCase):
                                 "Cannot convert .+ resource"):
       v._handle._numpy()
 
+  def test_numpyFailsForVariant(self):
+    variant_t = list_ops.tensor_list_reserve(
+        element_shape=[], num_elements=1, element_dtype=dtypes.float32)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Cannot convert .+ variant"):
+      variant_t._numpy()
+
   def testMemoryviewFailsForResource(self):
     v = variables.Variable(42)
     with self.assertRaisesRegex(BufferError, "Cannot convert .+ resource"):
       np.asarray(memoryview(v._handle))
+
+  def testMemoryviewFailsForVariant(self):
+    variant_t = list_ops.tensor_list_reserve(
+        element_shape=[], num_elements=1, element_dtype=dtypes.float32)
+    with self.assertRaisesRegex(BufferError, "Cannot convert .+ variant"):
+      np.asarray(memoryview(variant_t))
 
   def testMemoryviewIsReadonly(self):
     t = constant_op.constant([0.0])
@@ -433,6 +447,41 @@ class TFETensorTest(test_util.TensorFlowTestCase):
         handle_on_cpu, dtypes.float32)
 
     self.assertAllEqual(read_handle_on_cpu, read_handle_on_gpu)
+
+  def testEagerTensorFormat(self):
+    t = array_ops.constant(1)
+    self.assertEqual(f"{t}", "1")
+    self.assertEqual(str(t), "tf.Tensor(1, shape=(), dtype=int32)")
+    self.assertEqual(f"{t!s}", "tf.Tensor(1, shape=(), dtype=int32)")
+    self.assertEqual(repr(t), "<tf.Tensor: shape=(), dtype=int32, numpy=1>")
+    self.assertEqual(f"{t!r}", "<tf.Tensor: shape=(), dtype=int32, numpy=1>")
+
+  def testEagerTensorFormatForResource(self):
+    t = resource_variable_ops.VarHandleOp(shape=[], dtype=dtypes.float32)
+    self.assertEqual(f"{t}", "<Resource Tensor>")
+    self.assertEqual(
+        str(t), "tf.Tensor(<Resource Tensor>, shape=(), dtype=resource)")
+    self.assertEqual(f"{t!s}",
+                     "tf.Tensor(<Resource Tensor>, shape=(), dtype=resource)")
+    self.assertEqual(
+        repr(t),
+        "<tf.Tensor: shape=(), dtype=resource, value=<Resource Tensor>>")
+    self.assertEqual(
+        f"{t!r}",
+        "<tf.Tensor: shape=(), dtype=resource, value=<Resource Tensor>>")
+
+  def testEagerTensorFormatForVariant(self):
+    t = list_ops.tensor_list_reserve(
+        element_shape=[1], num_elements=1, element_dtype=dtypes.float32)
+    self.assertEqual(f"{t}", "<TensorList>")
+    self.assertEqual(
+        str(t), "tf.Tensor(<TensorList>, shape=(), dtype=variant)")
+    self.assertEqual(f"{t!s}",
+                     "tf.Tensor(<TensorList>, shape=(), dtype=variant)")
+    self.assertEqual(
+        repr(t), "<tf.Tensor: shape=(), dtype=variant, value=<TensorList>>")
+    self.assertEqual(
+        f"{t!r}", "<tf.Tensor: shape=(), dtype=variant, value=<TensorList>>")
 
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):

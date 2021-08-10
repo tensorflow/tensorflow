@@ -510,7 +510,7 @@ class CAPICustomDeviceTensorHandle
     return s.status;
   }
 
-  bool HasCustomSummarizer() const override {
+  bool PreferCustomSummarizer() const override {
     return methods_.summarize != nullptr;
   }
 

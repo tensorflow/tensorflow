@@ -238,12 +238,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       self.assertEqual("<tf.Variable 'Variable:0' shape=() dtype=int32,"
                        " numpy=<unavailable>>", text)
 
-  def testUnprintableHandle(self):
+  def testFormatResourceHandle(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
-      self.assertIn("<unprintable>", str(handle))
-      self.assertIn("<unprintable>", repr(handle))
+      self.assertIn("<Resource Tensor>", str(handle))
+      self.assertIn("<Resource Tensor>", repr(handle))
 
   @test_util.run_in_graph_and_eager_modes
   def testDtypeSurvivesIdentity(self):
