@@ -206,6 +206,7 @@ BatchResourceBase::BatchTask::CreateSplitTask(
   task->status = this->status;
   task->is_partial = true;
   task->start_time = this->start_time;
+  task->request_cost = this->request_cost;
 
   return task;
 }

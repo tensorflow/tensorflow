@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
+#include "tensorflow/core/common_runtime/request_cost.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -98,6 +99,17 @@ class BatchResourceBase : public ResourceBase {
     // of the new task
     std::unique_ptr<BatchTask> CreateSplitTask(
         int split_index, AsyncOpKernel::DoneCallback done_callback);
+
+    // RequestCost is for collecting the cost and must outlive the batching
+    // processing.
+    //
+    // For example, to collect cost in rpc processing, `request_cost` is owned
+    // by rpc handler and points to the RequestCost of an rpc which provides
+    // the inputs to this BatchTask.
+    //
+    // After the batch processing, the request cost will be incremented with
+    // this task's processing costs.
+    RequestCost* request_cost = nullptr;
 
    protected:
     virtual std::unique_ptr<BatchTask> CreateDerivedTask() {
