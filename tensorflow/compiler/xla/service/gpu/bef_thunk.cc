@@ -89,13 +89,11 @@ struct CoreRuntimeAndWorkQueue {
 class BefThunk : public Thunk {
  public:
   BefThunk(Thunk::Kind kind, ThunkInfo thunk_info,
-           std::vector<BufferAllocation::Slice> inputs,
-           std::vector<BufferAllocation::Slice> outputs,
+           std::vector<BufferAllocation::Slice> buffers,
            tfrt::BefBuffer bef_buffer,
            tfrt::RCReference<tfrt::BEFFile> bef_file, mlir::Operation* op)
       : Thunk(kind, thunk_info),
-        inputs_(std::move(inputs)),
-        outputs_(std::move(outputs)),
+        buffers_(std::move(buffers)),
         bef_buffer_(std::move(bef_buffer)),
         bef_file_(std::move(bef_file)) {
     // TODO(hanbinyoon): Also handle other collective ops.
@@ -108,8 +106,7 @@ class BefThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  std::vector<BufferAllocation::Slice> inputs_;
-  std::vector<BufferAllocation::Slice> outputs_;
+  const std::vector<BufferAllocation::Slice> buffers_;
   tfrt::BefBuffer bef_buffer_;
   tfrt::RCReference<tfrt::BEFFile> bef_file_;
   absl::optional<NcclCollectiveConfig> xccl_config_;
@@ -216,8 +213,8 @@ static StatusOr<CoreRuntimeAndWorkQueue> GetCoreRuntimeAndWorkQueue() {
 
 StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
     Thunk::ThunkInfo thunk_info, mlir::Operation* op,
-    std::vector<BufferAllocation::Slice> inputs,
-    std::vector<BufferAllocation::Slice> outputs) {
+    absl::Span<const BufferAllocation::Slice> inputs,
+    absl::Span<const BufferAllocation::Slice> outputs) {
   TF_ASSIGN_OR_RETURN(auto kind, GetThunkKind(op));
   auto module = CreateModule(op);
   TF_ASSIGN_OR_RETURN(tfrt::BefBuffer bef_buffer, ConvertToBef(*module));
@@ -229,8 +226,12 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
   if (!bef_file)
     return tensorflow::errors::Internal("Failed to load BEF file.");
 
+  std::vector<BufferAllocation::Slice> arg_buffers;
+  arg_buffers.insert(arg_buffers.end(), inputs.begin(), inputs.end());
+  arg_buffers.insert(arg_buffers.end(), outputs.begin(), outputs.end());
+
   return std::unique_ptr<Thunk>(
-      new BefThunk(kind, thunk_info, std::move(inputs), std::move(outputs),
+      new BefThunk(kind, thunk_info, std::move(arg_buffers),
                    std::move(bef_buffer), std::move(bef_file), op));
 }
 
@@ -360,11 +361,8 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   args.push_back(static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(stream)
                      .GetAsyncValue());
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 8> buffers;
-  for (auto input : inputs_) {
-    buffers.push_back(CreateGpuBuffer(params, input));
-  }
-  for (auto output : outputs_) {
-    buffers.push_back(CreateGpuBuffer(params, output));
+  for (auto& buffer : buffers_) {
+    buffers.push_back(CreateGpuBuffer(params, buffer));
   }
   for (auto& buffer : buffers) {
     args.push_back(buffer.get());
@@ -398,8 +396,9 @@ namespace xla {
 bool gpu::IsBefThunkEnabled() { return false; }
 
 StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefThunk(
-    Thunk::ThunkInfo, mlir::Operation*, std::vector<BufferAllocation::Slice>,
-    std::vector<BufferAllocation::Slice>) {
+    Thunk::ThunkInfo, mlir::Operation*,
+    absl::Span<const BufferAllocation::Slice>,
+    absl::Span<const BufferAllocation::Slice>) {
   return tensorflow::errors::FailedPrecondition("BefThunks are disabled.");
 }
 
