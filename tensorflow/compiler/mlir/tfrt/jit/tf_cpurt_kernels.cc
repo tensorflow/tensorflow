@@ -75,6 +75,7 @@ using ::tfrt::RepeatedArguments;
 using ::tfrt::RequestContext;
 using ::tfrt::StrCat;
 using ::tfrt::StringAttribute;
+using ::tfrt::TaskFunction;
 
 using ::tfrt::cpu::jit::CompilationOptions;
 using ::tfrt::cpu::jit::EmitErrors;
@@ -86,6 +87,8 @@ using ::tfrt::cpu::jit::ReturnAsyncStridedMemref;
 using ::tfrt::cpu::jit::ReturnStridedMemref;
 using ::tfrt::cpu::jit::ReturnValueConverter;
 
+using ::tensorflow::profiler::TraceMe;
+using ::tensorflow::profiler::TraceMeEncode;
 using ::tensorflow::tfd::KernelFallbackCompatRequestState;
 using ::tensorflow::tfrt_stub::FallbackTensor;
 
@@ -112,6 +115,19 @@ static Expected<Eigen::ThreadPoolInterface*> GetWorkerThreads(
 // -------------------------------------------------------------------------- //
 // Compile compilation unit attribute to an executable result.
 // -------------------------------------------------------------------------- //
+
+// Prints memref descriptor as a tensor type: tensor<NxMxf32>.
+static std::string AsTensorType(const MemrefDesc& desc) {
+  std::string str;
+  llvm::raw_string_ostream os(str);
+
+  os << "tensor<";
+  for (ssize_t size : desc.sizes) os << size << "x";
+  os << desc.dtype;
+  os << ">";
+
+  return str;
+}
 
 static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     CompilationUnitAttribute kernel, const ExecutionContext& exec_ctx) {
@@ -152,8 +168,68 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // We lost the race; some other invocation will do the compilation.
   if (!entry.allocated) return entry.ptr;
 
+  // Attributes required for tracing compilation.
+  int64_t request_id = exec_ctx.request_ctx()->id();
+
+  // Compilation (specialized executable compilation) events should be rare, so
+  // we can afford to do detailed tracing for every compilation. If compilation
+  // events happen too often, it is a much larger problem then the excessive
+  // tracing.
+
+  // Custom runner for compiling specializations that enqueues compilation task
+  // into the host context work queue and adds tracing.
+  auto runner = [kernel, request_id](ArrayRef<MemrefDesc> operands,
+                                     TaskFunction compile,
+                                     const ExecutionContext& exec_ctx) {
+    // Prepare arguments for the compilation tracing in the caller thread,
+    // because operands lifetime is shorter than the compilation task.
+    using SpecializationArg = std::pair<std::string, std::string>;
+    llvm::SmallVector<SpecializationArg> args(operands.size());
+    for (unsigned i = 0; i < operands.size(); ++i)
+      args[i] = {StrCat("%arg", i), AsTensorType(operands[i])};
+
+    // TODO(ezhulenev): BEF file that owns the CompilationUnitAttribute in
+    // theory can be unloaded before the completion of the compilation task.
+    // It can't happen right now, because we require specialized compilation to
+    // finish before returning the response, however for safety tracing
+    // attributes that require the kernel attribute should be constructed in the
+    // caller thread.
+
+    // Run the actual compilation asynchronous without blocking the caller.
+    EnqueueWork(exec_ctx, [request_id, kernel, compile = std::move(compile),
+                           args = std::move(args)]() mutable {
+      TraceMe trace_me([&] {
+        return TraceMeEncode("tf_cpurt.CompileSpecialization",
+                             {{"id", request_id},
+                              {"kernel_id", kernel.id()},
+                              {"executable", kernel.root_symbol()}});
+      });
+
+      for (SpecializationArg& arg : args) {
+        trace_me.AppendMetadata([&] {
+          return TraceMeEncode({{arg.first, arg.second}});
+        });
+      }
+
+      trace_me.AppendMetadata([&] {
+        return TraceMeEncode({{"src", kernel.serialized_operation()}});
+      });
+
+      compile();
+    });
+  };
+
   // Compile kernel asynchronously in the host context thread pool.
-  EnqueueWork(exec_ctx, [kernel, workers = *worker_threads, ptr = entry.ptr]() {
+  EnqueueWork(exec_ctx, [kernel, request_id, runner, workers = *worker_threads,
+                         ptr = entry.ptr]() {
+    TraceMe trace_me([&] {
+      return TraceMeEncode("tf_cpurt.CompileDefault",
+                           {{"id", request_id},
+                            {"kernel_id", kernel.id()},
+                            {"executable", kernel.root_symbol()},
+                            {"src", kernel.serialized_operation()}});
+    });
+
     CompilationOptions opts;
     // All entry memrefs must have alignment compatible with Tensorflow.
     opts.alignment = EIGEN_MAX_ALIGN_BYTES;  // Eigen included by tensor.h
@@ -166,7 +242,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Instantiate new JitExecutable from the MLIR source.
     Expected<JitExecutable> jit_executable =
-        JitExecutable::Instantiate(module, entrypoint, opts);
+        JitExecutable::Instantiate(module, entrypoint, opts, runner);
 
     // Set the entry async value state to error or concrete.
     if (auto err = jit_executable.takeError())
@@ -267,10 +343,10 @@ static void ExecuteImpl(Executable& executable,
                         RemainingResults results,
                         const ExecutionContext& exec_ctx) {
   // Bind execution trace to the request context.
-  profiler::TraceMe trace_me([&] {
-    return profiler::TraceMeEncode("tf_cpurt.Execute",
-                                   {{"id", exec_ctx.request_ctx()->id()},
-                                    {"executable", executable.name()}});
+  TraceMe trace_me([&] {
+    int64_t id = exec_ctx.request_ctx()->id();
+    return TraceMeEncode("tf_cpurt.Execute",
+                         {{"id", id}, {"executable", executable.name()}});
   });
 
   // Keep track of memory address to tensor mapping for result conversion.
