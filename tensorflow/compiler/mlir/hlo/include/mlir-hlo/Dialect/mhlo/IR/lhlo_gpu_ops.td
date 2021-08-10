@@ -45,7 +45,7 @@ def I32Buffer : MemRefOf<[I32]>;
 // calls generate or consume standard deviation, whereas LHLO ops generate or
 // consume variance (= std-dev ^ 2).
 
-def LHLOGPU_BatchNormGradOp : LHLOGPU_Op<"batch_norm_grad"> {
+def LHLOGPU_BatchNormGradOp : LHLOGPU_Op<"batch_norm_grad", [SameVariadicOperandSize]> {
   let summary = "Batch Normalization Gradient";
   let description = [{
     Calculates gradients of batch norm.
@@ -86,7 +86,7 @@ def LHLOGPU_BatchNormInferenceOp : LHLOGPU_Op<"batch_norm_inference"> {
     I64Attr:$feature_index);
 }
 
-def LHLOGPU_BatchNormTrainingOp : LHLOGPU_Op<"batch_norm_training"> {
+def LHLOGPU_BatchNormTrainingOp : LHLOGPU_Op<"batch_norm_training", [AttrSizedOperandSegments]> {
   let summary = "Batch Normalization for Training";
   let description = [{
     Normalizes an array across batch and spatial dimensions.

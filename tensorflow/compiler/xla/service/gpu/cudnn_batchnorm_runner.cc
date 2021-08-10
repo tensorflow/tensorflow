@@ -64,11 +64,6 @@ struct CudnnBatchNormBackwardParams {
   se::DeviceMemory<float> inv_stddev;
 };
 
-struct DnnBatchDescriptors {
-  se::dnn::BatchDescriptor input_desc;
-  se::dnn::BatchDescriptor scale_offset_desc;
-};
-
 void AssignCommonParams(const CudnnBatchNormConfig& config,
                         CudnnBatchNormParamsCommon* params,
                         const se::DeviceMemoryBase& operand,
@@ -171,18 +166,14 @@ void RunCudnnBatchNormBackwardImpl(CudnnBatchNormBackwardParams* params,
       se::DeviceMemory<ElemType>(params->grad_output),     //
       se::DeviceMemory<ElemType>(params->common.operand),  //
       params->common.scale,                                //
-      /*offset=*/null_device_ptr,                          //
       params->mean,                                        //
       params->inv_stddev,                                  //
-      /*y=*/null_elem_device_ptr,                          //
       params->common.operand_desc,                         //
       params->common.scale_offset_desc,                    //
       params->common.epsilon,                              //
-      se::dnn::ActivationMode::kNone,                      //
       &output_grad_data,                                   //
       &params->output_grad_scale,                          //
       &params->output_grad_offset,                         //
-      /*side_input_backprop=*/&null_elem_device_ptr,       //
       /*reserve_space_allocator=*/&reserve_space,          //
       /*workspace_allocator=*/workspace_allocator);
 }

@@ -782,13 +782,6 @@ StatusOr<Operation*> LhloDialectEmitter::EmitGemm(
     op.alpha_realAttr(builder_.getF64FloatAttr(config.alpha_real()));
     op.alpha_imagAttr(builder_.getF64FloatAttr(config.alpha_imag()));
     op.batch_sizeAttr(builder_.getI64IntegerAttr(config.batch_size()));
-    // Pass the metadata from hlo to mlir
-    const xla::OpMetadata metadata = custom_call->metadata();
-    std::string op_name = metadata.op_name();
-    std::string op_type = metadata.op_type();
-    op.op_nameAttr(builder_.getStringAttr(op_name));
-    op.op_typeAttr(builder_.getStringAttr(op_type));
-
     if (config.algorithm_case() ==
         xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
       op.algorithmAttr(builder_.getI64IntegerAttr(config.selected_algorithm()));
@@ -891,13 +884,6 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
         &custom_call->precision_config(), &builder_));
     op.result_scaleAttr(
         builder_.getF64FloatAttr(backend_config.conv_result_scale()));
-    // Pass the metadata from hlo to mlir
-    const xla::OpMetadata metadata = custom_call->metadata();
-    std::string op_name = metadata.op_name();
-    std::string op_type = metadata.op_type();
-    op.op_nameAttr(builder_.getStringAttr(op_name));
-    op.op_typeAttr(builder_.getStringAttr(op_type));
-
     auto config = mlir::lmhlo_gpu::ConvolutionBackendConfig::get(
         builder_.getI64IntegerAttr(backend_config.algorithm()),
         builder_.getBoolAttr(backend_config.tensor_ops_enabled()),

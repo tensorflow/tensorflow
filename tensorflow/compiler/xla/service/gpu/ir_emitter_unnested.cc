@@ -1349,7 +1349,7 @@ Status IrEmitterUnnested::EmitBatchNormThunk(mlir::Operation* op) {
 
     operand_slices.reserve(bn_train.arguments().size());
     for (mlir::Value operand : bn_train.arguments()) {
-      TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForMlir(operand));
+      TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(operand));
       operand_slices.push_back(slice);
     }
     // BatchNormTraining returns a tuple of three elements: data, calculated
@@ -1358,7 +1358,7 @@ Status IrEmitterUnnested::EmitBatchNormThunk(mlir::Operation* op) {
 
     output_slices.reserve(bn_train.outputs().size());
     for (mlir::Value out : bn_train.outputs()) {
-      TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForMlir(out));
+      TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(out));
       output_slices.push_back(slice);
     }
 
@@ -1402,14 +1402,12 @@ Status IrEmitterUnnested::EmitBatchNormThunk(mlir::Operation* op) {
 
     std::vector<BufferAllocation::Slice> operand_slices;
 
-    TF_ASSIGN_OR_RETURN(auto operand,
-                        GetAllocationSliceForMlir(bn_grad.operand()));
-    TF_ASSIGN_OR_RETURN(auto scale, GetAllocationSliceForMlir(bn_grad.scale()));
-    TF_ASSIGN_OR_RETURN(auto mean, GetAllocationSliceForMlir(bn_grad.mean()));
-    TF_ASSIGN_OR_RETURN(auto inv_stddev,
-                        GetAllocationSliceForMlir(bn_grad.stddev()));
+    TF_ASSIGN_OR_RETURN(auto operand, GetAllocationSlice(bn_grad.operand()));
+    TF_ASSIGN_OR_RETURN(auto scale, GetAllocationSlice(bn_grad.scale()));
+    TF_ASSIGN_OR_RETURN(auto mean, GetAllocationSlice(bn_grad.mean()));
+    TF_ASSIGN_OR_RETURN(auto inv_stddev, GetAllocationSlice(bn_grad.stddev()));
     TF_ASSIGN_OR_RETURN(auto grad_output,
-                        GetAllocationSliceForMlir(bn_grad.grad_output()));
+                        GetAllocationSlice(bn_grad.grad_output()));
 
     operand_slices.push_back(operand);
     operand_slices.push_back(scale);
@@ -1418,7 +1416,7 @@ Status IrEmitterUnnested::EmitBatchNormThunk(mlir::Operation* op) {
     operand_slices.push_back(grad_output);
     if (bn_grad.reserve_space()) {
       TF_ASSIGN_OR_RETURN(auto reserve_space,
-                          GetAllocationSliceForMlir(bn_grad.reserve_space()));
+                          GetAllocationSlice(bn_grad.reserve_space()));
       operand_slices.push_back(reserve_space);
     }
 
@@ -1427,17 +1425,16 @@ Status IrEmitterUnnested::EmitBatchNormThunk(mlir::Operation* op) {
     std::vector<BufferAllocation::Slice> output_slices;
 
     TF_ASSIGN_OR_RETURN(auto output_grad_data,
-                        GetAllocationSliceForMlir(bn_grad.grad_operand()));
+                        GetAllocationSlice(bn_grad.grad_operand()));
     TF_ASSIGN_OR_RETURN(auto output_grad_scale,
-                        GetAllocationSliceForMlir(bn_grad.grad_scale()));
+                        GetAllocationSlice(bn_grad.grad_scale()));
     TF_ASSIGN_OR_RETURN(auto output_grad_offset,
-                        GetAllocationSliceForMlir(bn_grad.grad_offset()));
+                        GetAllocationSlice(bn_grad.grad_offset()));
     output_slices.push_back(output_grad_data);
     output_slices.push_back(output_grad_scale);
     output_slices.push_back(output_grad_offset);
     if (bn_grad.scratch()) {
-      TF_ASSIGN_OR_RETURN(auto scratch,
-                          GetAllocationSliceForMlir(bn_grad.scratch()));
+      TF_ASSIGN_OR_RETURN(auto scratch, GetAllocationSlice(bn_grad.scratch()));
       output_slices.push_back(scratch);
     }
 

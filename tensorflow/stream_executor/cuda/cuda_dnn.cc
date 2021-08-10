@@ -4964,8 +4964,7 @@ bool CudnnSupport::DoBatchNormalizationForward(
     const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
     const DeviceMemory<float>& estimated_mean,
     const DeviceMemory<float>& estimated_variance,
-    const DeviceMemory<Eigen::half>& side_input,
-    const dnn::BatchDescriptor& x_desc,
+    const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<float>* y,
@@ -5217,21 +5216,13 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
 #if CUDNN_VERSION >= 7402
   if (reserve_space_data != nullptr || workspace_allocator != nullptr) {
     called = true;
-    const auto get_bn_ops = [&]() -> cudnnBatchNormOps_t {
-      if (side_input_backprop->is_null()) {
-        return activation_mode == dnn::ActivationMode::kNone
-                   ? CUDNN_BATCHNORM_OPS_BN
-                   : CUDNN_BATCHNORM_OPS_BN_ACTIVATION;
-      } else {
-        return CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION;
-      }
-    };
-    const cudnnBatchNormOps_t bn_ops = get_bn_ops();
+    const cudnnBatchNormOps_t bn_ops = CUDNN_BATCHNORM_OPS_BN;
 
     // We use Nan propagation to be consistent with
     // CudnnSupport::DoActivate(...).
     CudnnActivationDescriptor activation_desc(
-        activation_mode, CUDNN_PROPAGATE_NAN, x_desc.value_max());
+        stream_executor::dnn::ActivationMode::kNone, CUDNN_PROPAGATE_NAN,
+        x_desc.value_max());
     DeviceMemory<uint8> workspace;
     if (workspace_allocator != nullptr) {
       SE_ASSIGN_OR_RETURN(
