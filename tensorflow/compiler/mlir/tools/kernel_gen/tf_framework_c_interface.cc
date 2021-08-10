@@ -23,15 +23,19 @@ limitations under the License.
 #include "mlir/ExecutionEngine/ExecutionEngine.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tools/kernel_gen/compile_cache_item.pb.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_jit_cache.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/lib/io/path.h"
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_gpu_runtime_wrappers.h"
 #endif
+
+static constexpr absl::string_view kTFJitCacheDirEnvVar = "TF_JIT_CACHE_DIR";
 
 namespace mlir {
 namespace kernel_gen {
@@ -110,6 +114,12 @@ static void ReportError(void* op_kernel_ctx, ErrorCode error_code,
 
 namespace {
 
+std::string GetFileCachePath(const std::string cache_dir,
+                             const std::string& code) {
+  size_t hash = llvm::hash_value(code);
+  return tensorflow::io::JoinPath(cache_dir, std::to_string(hash));
+}
+
 // A callback to register all externally defined symbols needed by the kernel.
 llvm::orc::SymbolMap TFFrameworkSymbolMap(llvm::orc::MangleAndInterner mangle) {
   llvm::orc::SymbolMap symbol_map;
@@ -134,16 +144,59 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
     llvm::SmallVectorImpl<int64_t>& tile_sizes,
     llvm::SmallVectorImpl<int64_t>& unroll_factors, int64_t max_supported_rank,
     bool enable_ftz, bool cpu_codegen) {
+  std::string cache_dir;
+  if (const char* dir = getenv(kTFJitCacheDirEnvVar.data())) {
+    cache_dir = dir;
+  }
+
+  // Check if we already have a partially compiled module in the filesystem
+  // based cache.
+  CompilationCacheItem item;
+  auto tenv = tensorflow::Env::Default();
+  if (!cache_dir.empty() && tenv->RecursivelyCreateDir(cache_dir).ok()) {
+    std::string data;
+    if (tensorflow::ReadFileToString(tenv, GetFileCachePath(cache_dir, code),
+                                     &data)
+            .ok()) {
+      item.ParseFromString(data);
+      if (item.original_module() != code) {
+        item.Clear();
+      }
+    }
+  }
+
   // Create the kernel.
+  mlir::OwningModuleRef module;
   mlir::MLIRContext context;
-  xla::StatusOr<mlir::OwningModuleRef> status_or_module =
-      tensorflow::kernel_gen::GenerateKernelForTfCode(
-          context, code, architectures, tile_sizes, unroll_factors,
-          max_supported_rank, /*embed_memref_prints=*/false,
-          /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz, cpu_codegen,
-          /*jit_compile=*/false);
-  if (!status_or_module.ok()) return nullptr;
-  mlir::OwningModuleRef module = std::move(status_or_module.ValueOrDie());
+
+  if (item.result_module().empty()) {
+    // Otherwise, compile the module now.
+    xla::StatusOr<mlir::OwningModuleRef> status_or_module =
+        tensorflow::kernel_gen::GenerateKernelForTfCode(
+            context, code, architectures, tile_sizes, unroll_factors,
+            max_supported_rank, /*embed_memref_prints=*/false,
+            /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz,
+            cpu_codegen,
+            /*jit_compile=*/false);
+    if (!status_or_module.ok()) return nullptr;
+    module = std::move(status_or_module.ValueOrDie());
+
+    if (!cache_dir.empty() && tenv->RecursivelyCreateDir(cache_dir).ok()) {
+      // Save the compilation result here for future processes to use.
+      item.set_original_module(code);
+      llvm::raw_string_ostream stream(*item.mutable_result_module());
+      module.get().print(stream);
+      stream.flush();
+
+      tensorflow::WriteStringToFile(tenv, GetFileCachePath(cache_dir, code),
+                                    item.SerializeAsString())
+          .IgnoreError();
+    }
+  } else {
+    module = tensorflow::kernel_gen::SetupContextAndParseModule(
+                 context, item.result_module())
+                 .ValueOrDie();
+  }
 
   // Initialize LLVM targets.
   llvm::InitializeNativeTarget();
