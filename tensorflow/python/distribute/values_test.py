@@ -29,7 +29,6 @@ from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import packed_distributed_variable as packed
@@ -54,7 +53,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
@@ -366,25 +364,6 @@ class PerWorkerResourceTest(test.TestCase, parameterized.TestCase):
       datasets.append(dataset_fn())
 
     self.assertEqual(self._traced_once, expected_tracing_times)
-
-  @combinations.generate(
-      combinations.combine(
-          strategy=[
-              strategy_combinations.mirrored_strategy_with_one_cpu,
-          ],
-          mode=["eager"]))
-  def testPerWorkerResourceIndexing(self, strategy):
-    some_tensor = constant_op.constant([0, 1, 2], dtype=dtypes.int64)
-    initializer = lookup_ops.KeyValueTensorInitializer(some_tensor, some_tensor)
-    a_table = lookup_ops.StaticHashTable(initializer, default_value=-1)
-    host_to_resource = {
-        device_util.canonicalize(device_util.current()): a_table
-    }
-
-    per_worker_table = values_lib.PerWorkerResource(strategy, host_to_resource)
-
-    self.assertEqual(
-        per_worker_table[constant_op.constant(1, dtype=dtypes.int64)], 1)
 
 
 class DistributedDelegateTest(test.TestCase):

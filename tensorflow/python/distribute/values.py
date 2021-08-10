@@ -34,7 +34,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -1735,11 +1734,11 @@ class OnWritePolicy(VariablePolicy):
 
 
 class PerWorkerResource():
-  """A per-worker CapturableResource class for non-ParameterServer strategy.
+  """A per-worker CachableResource class for non-ParameterServer strategy.
 
   Resources that populate `host_to_resources` should be instances of classes
-  subclassing CapturableResource, although currently it's only used and tested
-  for StaticHashTable with TPUStrategy.
+  subclassing CachableResource, although currently it's only used and tested for
+  StaticHashTable with TPUStrategy.
   """
 
   def __init__(self, strategy, host_to_resources):
@@ -1751,12 +1750,6 @@ class PerWorkerResource():
                     "_strategy", "local_resource"):
       return getattr(self.local_resource(), name)
     return super(PerWorkerResource, self).__getattribute__(name)
-
-  def __getitem__(self, name):
-    if isinstance(self._host_to_resources[next(iter(self._host_to_resources))],
-                  lookup_ops.LookupInterface):
-      return self.local_resource().lookup(name)
-    return super(PerWorkerResource, self).__getitem__(name)
 
   def local_resource(self):
     """Returns the resource on the local worker."""
