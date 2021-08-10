@@ -81,11 +81,11 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
         tag_sets = [mg.meta_info_def.tags
                     for mg in self._saved_model.meta_graphs]
         raise ValueError(
-            ("Importing a SavedModel with tf.saved_model.load requires a "
-             "'tags=' argument if there is more than one MetaGraph. Got "
-             "'tags=None', but there are {} MetaGraphs in the SavedModel with "
-             "tag sets {}. Pass a 'tags=' argument to load this SavedModel.")
-            .format(len(self._saved_model.meta_graphs), tag_sets))
+            "Importing a SavedModel with `tf.saved_model.load` requires a "
+            "`tags=` argument if there is more than one MetaGraph. Got "
+            f"`tags=None`, but there are {len(self._saved_model.meta_graphs)} "
+            f"MetaGraphs in the SavedModel with tag sets: {tag_sets}. Pass a "
+            "`tags=` argument to load this SavedModel.")
       return self._saved_model.meta_graphs[0]
     return super(_EagerSavedModelLoader, self).get_meta_graph_def_from_tags(
         tags)

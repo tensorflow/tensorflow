@@ -792,7 +792,7 @@ class VariablePolicyEnumTest(test.TestCase):
         save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES,
         save_options.VariablePolicy.from_obj("eXpAnD_dIsTrIbUtEd_VaRiAbLeS"))
     for invalid in ["not_a_valid_value", 2.0, []]:
-      with self.assertRaisesRegex(ValueError, "Invalid VariablePolicy value"):
+      with self.assertRaisesRegex(ValueError, "invalid VariablePolicy value"):
         save_options.VariablePolicy.from_obj(invalid)
 
   def testNamingConvention(self):
@@ -913,7 +913,7 @@ class SavingOptionsTest(test.TestCase):
         experimental_variable_policy="expand_distributed_variables")
     self.assertEqual(save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES,
                      options.experimental_variable_policy)
-    with self.assertRaisesRegex(ValueError, "Invalid VariablePolicy value"):
+    with self.assertRaisesRegex(ValueError, "invalid VariablePolicy value"):
       options = save_options.SaveOptions(
           experimental_variable_policy="not_a_valid_value")
 

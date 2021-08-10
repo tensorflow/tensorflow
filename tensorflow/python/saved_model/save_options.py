@@ -88,7 +88,7 @@ class VariablePolicy(enum.Enum):
     for policy in VariablePolicy:
       if key == policy.value:
         return policy
-    raise ValueError('Invalid VariablePolicy value "%s".' % obj)
+    raise ValueError(f"Received invalid VariablePolicy value: {obj}.")
 
 
 @tf_export("saved_model.SaveOptions")
@@ -177,12 +177,14 @@ def _validate_namespace_whitelist(namespace_whitelist):
   if namespace_whitelist is None:
     return []
   if not isinstance(namespace_whitelist, list):
-    raise TypeError("Namespace whitelist must be a list of strings.")
+    raise TypeError("`namespace_whitelist` must be a list of strings. Got: "
+                    f"{namespace_whitelist} with type "
+                    f"{type(namespace_whitelist)}.")
 
   processed = []
   for namespace in namespace_whitelist:
     if not isinstance(namespace, six.string_types):
-      raise ValueError("Whitelisted namespace must be a string. Got: {} of type"
-                       " {}.".format(namespace, type(namespace)))
+      raise ValueError("Whitelisted namespace must be a string. Got: "
+                       f"{namespace} of type {type(namespace)}.")
     processed.append(compat.as_str(namespace))
   return processed

@@ -2147,7 +2147,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
     root.a = variables.Variable(3.)
     with self.assertRaisesRegex(
-        ValueError, "object has an attribute named a, which is reserved."):
+        ValueError, "object has an attribute named 'a', which is reserved."):
       save.save(root, path)
 
   def test_save_cached_variable(self):
