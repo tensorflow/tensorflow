@@ -198,8 +198,7 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
 
   @unittest.expectedFailure
   def testGetMatchingFilesWhenContainsGlob(self):
-    # https://git.io/JR8jL (#35489)
-    dir_path = os.path.join(self._base_dir, "dir_[special]")
+    dir_path = os.path.join(self._base_dir, "[dir_special]")
     file_io.create_dir(dir_path)
     files = ["file1.txt", "file*2?].txt"]
     for name in files:
@@ -208,7 +207,8 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     expected_match = [os.path.join(dir_path, name) for name in files]
     glob_pattern = os.path.join(dir_path, "*")
     self.assertItemsEqual(
-        file_io.get_matching_files(glob_pattern), expected_match)
+        file_io.get_matching_files(glob_pattern), expected_match,
+        "Check #35489 https://git.io/JR8jL")
 
   @run_all_path_types
   def testCreateRecursiveDir(self, join):
