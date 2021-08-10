@@ -744,6 +744,25 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     for _ in range(2):
       write_restore_compare()
 
+  @test_util.run_v2_only
+  def testDeterministicOpsErrors(self):
+    try:
+      config.enable_deterministic_ops(True)
+      random.set_global_generator(None)
+      with self.assertRaisesWithPredicateMatch(
+          RuntimeError,
+          '"get_global_generator" cannot be called if determinism is enabled'):
+        random.get_global_generator()
+      random.set_global_generator(random.Generator.from_seed(50))
+      random.get_global_generator()
+      with self.assertRaisesWithPredicateMatch(
+          RuntimeError,
+          '"from_non_deterministic_state" cannot be called when determinism '
+          "is enabled."):
+        random.Generator.from_non_deterministic_state()
+    finally:
+      config.enable_deterministic_ops(False)
+
 
 if __name__ == "__main__":
   config.set_soft_device_placement(False)

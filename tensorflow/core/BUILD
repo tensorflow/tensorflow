@@ -485,6 +485,7 @@ tf_cuda_library(
         "//tensorflow/core/util/sparse:framework_group",
         "//tensorflow/core/util:framework_srcs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
+        "//tensorflow/core/util:determinism_hdr",
         "//tensorflow/core/public:version.h",
         "//tensorflow/lite/kernels/shim:tf_headers",
     ] + if_mkl([
@@ -1682,6 +1683,7 @@ tf_cuda_library(
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/util:determinism",
         "//tensorflow/core/util:managed_stack_trace",
         "//tensorflow/core/util:einsum_op_util",
         "//tensorflow/core/util:padding",

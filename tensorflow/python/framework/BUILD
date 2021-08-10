@@ -1045,6 +1045,7 @@ py_library(
     srcs = ["random_seed.py"],
     srcs_version = "PY3",
     deps = [
+        ":config",
         ":ops",
     ],
 )
