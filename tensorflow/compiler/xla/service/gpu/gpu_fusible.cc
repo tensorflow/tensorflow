@@ -318,8 +318,7 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
 // Returns shared memory usage for a given instruction in bytes.
 static int64 SharedMemoryUsage(const HloInstruction& instr) {
   // For now we are only fusing reductions.
-  if (instr.opcode() == HloOpcode::kReduce &&
-      IsReductionFromOrToContiguousDimensions(instr)) {
+  if (IsReductionFromOrToContiguousDimensions(instr)) {
     ReductionDimensions reduction_info =
         GetReductionKindAndContiguousComponents(instr);
     int64_t primitive_size =
@@ -341,6 +340,26 @@ static int64 SharedMemoryUsage(const HloInstruction& instr) {
     return sum;
   }
   // Other fused expressions for now don't need the shared memory budget.
+  return 0;
+}
+
+// Codegen'ing unnested reductions requires a lot of registers, so a MOF
+// combining many of those runs a high risk of spilling.
+constexpr int64_t kMaxUnnestedReductionOutputsPerFusion = 8;
+
+// Returns the number of unnested reductions in the instruction output.
+static int64 NumUnnestedReductions(const HloInstruction& instr) {
+  if (IsReductionFromOrToContiguousDimensions(instr)) {
+    return 1;
+  }
+  if (instr.opcode() == HloOpcode::kFusion) {
+    int64_t sum = 0;
+    for (const HloInstruction* hlo :
+         instr.fused_instructions_computation()->MakeInstructionPostOrder()) {
+      sum += NumUnnestedReductions(*hlo);
+    }
+    return sum;
+  }
   return 0;
 }
 
@@ -375,6 +394,13 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
     VLOG(5) << "Shared memory usage of fusion of " << instr1.ToString()
             << " and " << instr2.ToString() << " would be over the budget of "
             << kSharedMemoryBudgetInBytes << "B";
+    return true;
+  }
+
+  if (NumUnnestedReductions(instr1) + NumUnnestedReductions(instr2) >
+      kMaxUnnestedReductionOutputsPerFusion) {
+    VLOG(5) << "Not fusing over " << kMaxUnnestedReductionOutputsPerFusion
+            << " unnested reductions in fusion";
     return true;
   }
 
