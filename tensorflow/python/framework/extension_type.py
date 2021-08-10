@@ -378,8 +378,11 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
       return value._tf_extension_type_packed_variant  # pylint: disable=protected-access
 
     tensor_or_composite = (ops.Tensor, composite_tensor.CompositeTensor)
+    # Retireve fields by the order of spec dict to preserve field ordering. This
+    # is needed as nest.flatten would sort dictionary entries by key.
+    value_tuple = tuple(value.__dict__[key] for key in self.__dict__)
     return tuple(
-        x for x in nest.flatten(value.__dict__)
+        x for x in nest.flatten(value_tuple)
         if isinstance(x, tensor_or_composite))
 
   def _from_components(self, components):  # TypeSpec API.
@@ -390,14 +393,16 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
               '_tf_extension_type_packed_variant': components
           })
 
+    spec_tuple = tuple(self.__dict__.values())
     components_iter = iter(components)
     flat = [
         next(components_iter) if isinstance(x, type_spec.TypeSpec) else x
-        for x in nest.flatten(self.__dict__)
+        for x in nest.flatten(spec_tuple)
     ]
     if list(components_iter):
       raise ValueError('Components do not match spec.')
-    fields = nest.pack_sequence_as(self.__dict__, flat)
+    value_tuple = nest.pack_sequence_as(spec_tuple, flat)
+    fields = dict(zip(self.__dict__.keys(), value_tuple))
 
     # Build the new value.  Bypass the constructor (__init__), in case the user
     # who defined the ExtensionType used a custom constructor.
@@ -414,7 +419,7 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
       if isinstance(x, type_spec.TypeSpec):
         components.append(x)
 
-    nest.map_structure(push_if_type_spec, self.__dict__)
+    nest.map_structure(push_if_type_spec, tuple(self.__dict__.values()))
     return tuple(components)
 
   @classmethod
