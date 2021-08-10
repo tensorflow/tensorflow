@@ -204,6 +204,7 @@ tfrt_cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "@llvm-project//mlir:Async",

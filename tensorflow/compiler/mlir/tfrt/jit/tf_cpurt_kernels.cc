@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tfrt/cpu/jit/async_runtime.h"  // from @tf_runtime
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tfrt/support/string_util.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_metadata.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_shape.h"  // from @tf_runtime
-#include "tfrt/tracing/tracing.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt {
@@ -266,7 +266,12 @@ static void ExecuteImpl(Executable& executable,
                         RepeatedArguments<FallbackTensor> operands,
                         RemainingResults results,
                         const ExecutionContext& exec_ctx) {
-  TFRT_TRACE_SCOPE(Default, StrCat("tf_cpurt.Execute: @", executable.name()));
+  // Bind execution trace to the request context.
+  profiler::TraceMe trace_me([&] {
+    return profiler::TraceMeEncode("tf_cpurt.Execute",
+                                   {{"id", exec_ctx.request_ctx()->id()},
+                                    {"executable", executable.name()}});
+  });
 
   // Keep track of memory address to tensor mapping for result conversion.
   auto ctx = std::make_unique<TensorflowConversionContext>(operands.size());
