@@ -29,6 +29,9 @@ namespace {
 // Define a dummy chunk for chunks that will be allocated in the default memory
 // space and for keeping track of number of asynchronous copies.
 const HeapSimulator::Chunk kDummyChunk{-1, -1};
+// For cross-program prefetched buffer, we only perform the freeing optimization
+// if the buffer occupies less of the execution time ratio than this value.
+const float kCrossProgramPrefetchOccupyFreeingLimit = 0.6;
 
 bool LooksLikeAnActivation(const HloInstruction* inst) {
   for (HloInstruction* user : inst->users()) {
@@ -345,6 +348,18 @@ int64_t InstructionCountPrefetchIntervalPicker::PreferredPrefetchStartTime(
                   prefetch_end_time - max_overlap_count_);
 }
 
+int64_t InstructionCountPrefetchIntervalPicker::EstimatedPrefetchEndTime(
+    const Shape& shape, int64_t start_time, int64_t end_time) const {
+  // For testing, assume the end time is the estimated prefetch end time.
+  return end_time;
+}
+
+float InstructionCountPrefetchIntervalPicker::GetLogicalIntervalElapsed(
+    int64_t start_time, int64_t end_time) const {
+  // For testing, just assume every HLO takes 1 second.
+  return static_cast<float>(end_time - start_time - 1);
+}
+
 void InstructionCountPrefetchIntervalPicker::Begin(const HloUse& use,
                                                    int64_t start_time,
                                                    int64_t end_time) {
@@ -561,6 +576,20 @@ int64_t CostAnalysisPrefetchIntervalPicker::LatestPrefetchEndTime(
        --new_prefetch_end_time) {
   }
   return new_prefetch_end_time;
+}
+
+int64_t CostAnalysisPrefetchIntervalPicker::EstimatedPrefetchEndTime(
+    const Shape& shape, int64_t start_time, int64_t end_time) const {
+  float async_copy_elapsed = cost_analysis_.GetAsyncCopyElapsed(shape);
+  int64_t estimated_end_time;
+  for (estimated_end_time = start_time + 1; estimated_end_time < end_time;
+       ++estimated_end_time) {
+    float interval = GetLogicalIntervalElapsed(start_time, estimated_end_time);
+    if (interval >= async_copy_elapsed) {
+      break;
+    }
+  }
+  return estimated_end_time;
 }
 
 void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
@@ -1591,8 +1620,10 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
 }
 
 bool operator<(const AsynchronousCopy& a, const AsynchronousCopy& b) {
-  return (a.start_time < b.start_time && a.end_time <= b.end_time) ||
-         (a.start_time <= b.start_time && a.end_time < b.end_time);
+  return (a.start_time < b.start_time &&
+          a.estimated_end_time <= b.estimated_end_time) ||
+         (a.start_time <= b.start_time &&
+          a.estimated_end_time < b.estimated_end_time);
 }
 
 void AsynchronousCopyOrdering::AddCopy(const AsynchronousCopy& copy) {
@@ -1608,17 +1639,19 @@ void AsynchronousCopyOrdering::RemoveCopy(const AsynchronousCopy& copy) {
 }
 
 absl::optional<AsynchronousCopy> AsynchronousCopyOrdering::ViolatesOrdering(
-    int64_t start_time, int64_t end_time) const {
+    int64_t start_time, int64_t estimated_end_time) const {
   // We allow identical start and end times. It is enough to check for just the
   // start time in case we find a match in ranges_ because the found value will
-  // either be identical to {start_time, end_time} (and this doesn't violate) or
-  // its start_time will be smaller and end_time will be larger (this violates).
-  auto copy_it = ranges_.find(
-      {start_time, end_time, MemorySpaceAssignment::MemorySpace::kAlternate});
+  // either be identical to {start_time, estimated_end_time} (and this doesn't
+  // violate) or its start_time will be smaller and estimated_end_time will be
+  // larger (this violates).
+  auto copy_it =
+      ranges_.find({start_time, estimated_end_time, estimated_end_time,
+                    MemorySpaceAssignment::MemorySpace::kAlternate});
   if (copy_it != ranges_.end() && copy_it->start_time != start_time) {
-    VLOG(4) << "Violates ordering: (" << start_time << ", " << end_time
-            << ") and (" << copy_it->start_time << ", " << copy_it->end_time
-            << ")";
+    VLOG(4) << "Violates ordering: (" << start_time << ", "
+            << estimated_end_time << ") and (" << copy_it->start_time << ", "
+            << copy_it->estimated_end_time << ")";
     return *copy_it;
   }
   return absl::nullopt;
@@ -1719,8 +1752,24 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
   VLOG(2) << "last use time = " << last_use_time
           << ", end-of-program prefetch start time = "
           << end_of_program_prefetch_start_time;
+  float total_execution_time =
+      options_.prefetch_interval_picker->GetLogicalIntervalElapsed(
+          0, instruction_schedule.size());
+  float buffer_occupied_time =
+      options_.prefetch_interval_picker->GetLogicalIntervalElapsed(
+          0, last_use_time) +
+      options_.prefetch_interval_picker->GetLogicalIntervalElapsed(
+          end_of_program_prefetch_start_time, end_of_program_prefetch_end_time);
+  float buffer_occupied_ratio = buffer_occupied_time / total_execution_time;
+  VLOG(2) << "Total execution time = " << total_execution_time
+          << ", buffer occupied time = " << buffer_occupied_time
+          << ", buffer occupied ratio = " << buffer_occupied_ratio;
+  // Freeing buffer only makes sense if the buffer will be free for a
+  // substantial time. Only perform this optimization if the ratio is below the
+  // limit.
   bool free_buffer =
       (options_.enable_cross_program_prefetch_freeing &&
+       buffer_occupied_ratio < kCrossProgramPrefetchOccupyFreeingLimit &&
        end_of_program_prefetch_start_time > last_use_time &&
        end_of_program_prefetch_start_time < end_of_program_prefetch_end_time);
   int64_t cross_program_prefetch_end_time =
@@ -2350,12 +2399,19 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
     int64_t end_time, int64_t copy_done_schedule_before_time,
     MemorySpaceAssignment::AllocationSequence* allocations,
     AliasedOffset* aliased_offset, bool is_cross_program_prefetch) {
+  // Estimate the time that async copy ends (this could be before copy done is
+  // scheduled) and use this to maintain async copy ordering.
+  int64_t estimated_async_copy_end_time =
+      options_.prefetch_interval_picker->EstimatedPrefetchEndTime(
+          prev_allocation.defining_position().shape(), start_time,
+          copy_done_schedule_before_time);
   VLOG(3) << "Copy to "
           << (memory_space == MemorySpaceAssignment::MemorySpace::kDefault
                   ? "default"
                   : "alternate")
           << " memory between " << start_time << " and "
-          << copy_done_schedule_before_time << " keeping until " << end_time;
+          << copy_done_schedule_before_time << " keeping until " << end_time
+          << ", estimated copy end time is " << estimated_async_copy_end_time;
   CHECK_LT(start_time, copy_done_schedule_before_time);
 
   allocations->push_back(
@@ -2365,8 +2421,9 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
 
   // Register the additional async copy with the interval tree to keep track of
   // the limit at any given time.
-  pending_async_copies_.push_back(
-      {start_time, copy_done_schedule_before_time, memory_space});
+  pending_async_copies_.push_back({start_time, estimated_async_copy_end_time,
+                                   copy_done_schedule_before_time,
+                                   memory_space});
   if (memory_space == MemorySpaceAssignment::MemorySpace::kAlternate) {
     prefetch_interval_tree_.Add(start_time, copy_done_schedule_before_time,
                                 kDummyChunk);
@@ -2646,12 +2703,16 @@ int64_t AlternateMemoryBestFitHeap::FindPrefetchEndTime(
     if (latest_prefetch_time < earliest_prefetch_time) {
       break;
     }
+    int64_t estimated_prefetch_end_time =
+        options_.prefetch_interval_picker->EstimatedPrefetchEndTime(
+            shape, latest_prefetch_time, prefetch_end_time);
+    VLOG(4) << "Estimated prefetch end time = " << estimated_prefetch_end_time;
 
     // Return either if there is no other violating asynchronous copy (since we
     // don't need to change the prefetch end time) or if the violating
     // asynchronous copy ends after the prefetch end time.
-    auto violating_async_copy =
-        ViolatesAsyncCopyOrdering(latest_prefetch_time, prefetch_end_time);
+    auto violating_async_copy = ViolatesAsyncCopyOrdering(
+        latest_prefetch_time, estimated_prefetch_end_time);
     if (!violating_async_copy ||
         violating_async_copy->end_time >= prefetch_end_time) {
       break;
@@ -2710,6 +2771,9 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
   BufferInterval alternate_mem_interval;
   alternate_mem_interval.buffer = request.allocation_value->value();
   alternate_mem_interval.size = request.size;
+  const HloUse& use = request.use->hlo_use;
+  const Shape& shape = ShapeUtil::GetSubshape(
+      use.instruction->operand(use.operand_number)->shape(), use.operand_index);
   // While uses might be allowed to have additional outstanding prefetches.
   int64_t extra_async_copy_limit =
       request.use->hlo_use.instruction->opcode() == HloOpcode::kWhile
@@ -2719,12 +2783,17 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
   while (!options_.prefetch_interval_picker->Done()) {
     alternate_mem_interval.start = options_.prefetch_interval_picker->Next();
     CHECK_LT(alternate_mem_interval.start, prefetch_end_time);
+    int64_t estimated_prefetch_end_time =
+        options_.prefetch_interval_picker->EstimatedPrefetchEndTime(
+            shape, alternate_mem_interval.start, prefetch_end_time);
     VLOG(4) << "Trying alternate memory allocation ("
-            << alternate_mem_interval.start << ", " << request.end_time << ")";
+            << alternate_mem_interval.start << ", " << request.end_time
+            << "), estimated prefetch end time = "
+            << estimated_prefetch_end_time;
     // If this additional asynchronous copy would violate the limit, try a
     // different interval.
     if (ViolatesAsyncCopyOrdering(alternate_mem_interval.start,
-                                  prefetch_end_time)) {
+                                  estimated_prefetch_end_time)) {
       VLOG(4) << "This would violate asynchronous copy ordering.";
       result_mark(Result::kFailViolatesAsyncCopyOrdering, result);
       continue;

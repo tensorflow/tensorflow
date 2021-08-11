@@ -5591,20 +5591,20 @@ TEST_F(AsynchronousCopyOrderingTest, Simple) {
   auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
   AsynchronousCopyOrdering ordering;
   EXPECT_FALSE(ordering.ViolatesOrdering(3, 11));
-  ordering.AddCopy({3, 11, alternate_mem_space});
+  ordering.AddCopy({3, 11, 11, alternate_mem_space});
   EXPECT_FALSE(ordering.ViolatesOrdering(1, 8));
-  ordering.AddCopy({1, 8, alternate_mem_space});
+  ordering.AddCopy({1, 8, 8, alternate_mem_space});
   EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
-  ordering.AddCopy({5, 14, alternate_mem_space});
+  ordering.AddCopy({5, 14, 14, alternate_mem_space});
   EXPECT_FALSE(ordering.ViolatesOrdering(7, 14));
-  ordering.AddCopy({7, 14, alternate_mem_space});
+  ordering.AddCopy({7, 14, 14, alternate_mem_space});
   EXPECT_TRUE(ordering.ViolatesOrdering(2, 16));
   EXPECT_TRUE(ordering.ViolatesOrdering(9, 12));
   EXPECT_TRUE(ordering.ViolatesOrdering(6, 17));
   EXPECT_FALSE(ordering.ViolatesOrdering(5, 13));
-  ordering.AddCopy({5, 13, alternate_mem_space});
+  ordering.AddCopy({5, 13, 13, alternate_mem_space});
   EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
-  ordering.AddCopy({5, 14, alternate_mem_space});
+  ordering.AddCopy({5, 14, 14, alternate_mem_space});
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {

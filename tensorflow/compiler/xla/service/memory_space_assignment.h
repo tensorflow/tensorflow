@@ -231,6 +231,16 @@ class PrefetchIntervalPicker {
     return proposed_prefetch_end_time;
   }
 
+  // Returns the estimated end time of a prefetch that starts at the given time.
+  virtual int64_t EstimatedPrefetchEndTime(const Shape& shape,
+                                           int64_t start_time,
+                                           int64_t end_time) const = 0;
+
+  // Returns the elapsed time in seconds between the logical interval that
+  // corresponds to the instruction schedule.
+  virtual float GetLogicalIntervalElapsed(int64_t start_time,
+                                          int64_t end_time) const = 0;
+
   // Begins the iterator for the first start time of the prefetch.
   virtual void Begin(const HloUse& use, int64_t start_time,
                      int64_t end_time) = 0;
@@ -302,6 +312,11 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
                                      int64_t latest_prefetch_start_time,
                                      int64_t prefetch_end_time) const override;
 
+  int64_t EstimatedPrefetchEndTime(const Shape& shape, int64_t start_time,
+                                   int64_t end_time) const override;
+  float GetLogicalIntervalElapsed(int64_t start_time,
+                                  int64_t end_time) const override;
+
   void Begin(const HloUse& use, int64_t start_time, int64_t end_time) override;
 
   int64_t Next() override;
@@ -359,6 +374,11 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
                                      int64_t latest_prefetch_start_time,
                                      int64_t prefetch_end_time) const override;
 
+  int64_t EstimatedPrefetchEndTime(const Shape& shape, int64_t start_time,
+                                   int64_t end_time) const override;
+  float GetLogicalIntervalElapsed(int64_t start_time,
+                                  int64_t end_time) const override;
+
   void Begin(const HloUse& use, int64_t start_time, int64_t end_time) override;
 
   int64_t Next() override;
@@ -375,10 +395,6 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
       const override;
 
  private:
-  // Returns the elapsed time in seconds between the logical interval that
-  // corresponds to the instruction schedule.
-  float GetLogicalIntervalElapsed(int64_t start_time, int64_t end_time) const;
-
   // Finds the minimum nest level in the given interval.
   int GetMinWhileNestLevel(int64_t start_time, int64_t end_time) const;
 
@@ -1033,9 +1049,11 @@ struct Options {
 };
 
 // A struct representing an asynchronous copy with its logical start and end
-// time and its destination memory space.
+// time (time that copy done is scheduled), estimated end time (time that the
+// async copy finishes),  and its destination memory space.
 struct AsynchronousCopy {
   int64_t start_time;
+  int64_t estimated_end_time;
   int64_t end_time;
   MemorySpaceAssignment::MemorySpace destination;
 };
