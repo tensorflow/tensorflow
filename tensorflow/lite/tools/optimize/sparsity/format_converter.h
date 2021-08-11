@@ -46,6 +46,30 @@ class FormatConverter {
                   const std::vector<int>& block_size = {},
                   const std::vector<int>& block_map = {});
 
+  /*
+   * Creates a sparse to dense converter.
+   * @param shape             Shape of the target dense tensor.
+   * @param traversal_order   In what order to traverse all dimensions,
+   *                          including block dimensions.
+   * @param format            Whether each dimension in the dense tensor is
+   *                          dense or sparse (not in the traversal order).
+   * @param dense_size        Size of each dense dimension in the sparse tensor.
+   *                          Should be 0 for sparse dimensions.
+   * @param segments          Segments of each dimension in the sparse tensor.
+   *                          Should be empty for dense dimensions.
+   * @param indices           Indices in the dense tensor for each dimension.
+   *                          Should be empty for dense dimensions.
+   * @param block_map         Map from block dimension to original tensor
+   *                          dimension.
+   */
+  FormatConverter(const std::vector<int>& shape,
+                  const std::vector<int>& traversal_order,
+                  const std::vector<TfLiteDimensionType>& format,
+                  const std::vector<int>& dense_size,
+                  const std::vector<std::vector<int>>& segments,
+                  const std::vector<std::vector<int>>& indices,
+                  const std::vector<int>& block_map = {});
+
   /* Creates a sparse to dense converter.
    * @param shape      Shape of the target dense tensor.
    * @param sparsity   Sparsity parameter of the sparse TfLiteTensor.
@@ -71,6 +95,16 @@ class FormatConverter {
                              T* dest_data, TfLiteContext* context = nullptr);
 
  private:
+  // Helper function for initializing this converter for sparse to dense
+  // conversion.
+  void InitSparseToDenseConverter(std::vector<int> shape,
+                                  std::vector<int> traversal_order,
+                                  std::vector<TfLiteDimensionType> format,
+                                  std::vector<int> dense_size,
+                                  std::vector<std::vector<int>> segments,
+                                  std::vector<std::vector<int>> indices,
+                                  std::vector<int> block_map);
+
   // A recursive function to fetch data from the compressed src_data buffer and
   // populate the dense buffer.
   void Populate(const T* src_data, std::vector<int> indices, int level,
