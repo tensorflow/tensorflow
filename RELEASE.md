@@ -41,6 +41,18 @@
     *   Deprecated and removed attrs() function in shape inference. All
         attributes should be queried by name now (rather than range returned)
         to enable changing the underlying storage there.
+    *   The following Python symbols were accidentally added in earlier versions
+        of TensorFlow and now are removed. Each symbol has a replacement that
+        should be used instead, but note the replacement's argument names are
+        different.
+        * `tf.quantize_and_dequantize_v4` (accidentally introduced in TensorFlow
+        2.4): Use `tf.quantization.quantize_and_dequantize_v2` instead.
+        * `tf.batch_mat_mul_v3` (accidentally introduced in TensorFlow 2.6): Use
+        `tf.linalg.matmul` instead.
+        * `tf.sparse_segment_sum_grad` (accidentally introduced in TensorFlow
+        2.6): Use `tf.raw_ops.SparseSegmentSumGrad` instead. Directly calling
+        this op is typically not necessary, as it is automatically used when
+        computing the gradient of `tf.sparse.segment_sum`.
 
 ## Known Caveats
 
