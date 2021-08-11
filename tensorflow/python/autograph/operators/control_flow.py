@@ -74,6 +74,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -462,10 +463,30 @@ def _py_for_stmt(iter_, extra_test, body, get_state, set_state):
     body = protected_body
 
   if extra_test is not None:
-    if extra_test():
+    def guarded_extra_test():
+      extra_test_result = extra_test()
+      try:
+        # Note: Using try/except and not tensor_util.is_tf_type to avoid
+        # performance degradation.
+        return bool(extra_test_result)
+      except errors_impl.OperatorNotAllowedInGraphError:
+        ag_logging.log(
+            1,
+            'Caught error while evaluating loop stop condition',
+            exc_info=True)
+        # TODO(mdan): We can pass the location of extra_test and show it here.
+        raise NotImplementedError(
+            'break and return statements which depend on a TF condition are not'
+            ' supported in Python for loops. Did you intend to make it a TF'
+            ' loop?\nSee '
+            'https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
+            'python/autograph/g3doc/reference/limitations.md'
+            '#consistency-of-control-flow-types for more info.')
+
+    if guarded_extra_test():
       for target in iter_:
         body(target)
-        if not extra_test():
+        if not guarded_extra_test():
           break
 
   else:
@@ -952,7 +973,28 @@ def _py_while_stmt(test, body, get_state, set_state, opts):
       before_iteration()
     body = protected_body
 
-  while test():
+  def guarded_test():
+    test_result = test()
+    try:
+      # Note: Using try/except and not tensor_util.is_tf_type to avoid
+      # performance degradation.
+      return bool(test_result)
+    except errors_impl.OperatorNotAllowedInGraphError:
+      ag_logging.log(
+          1,
+          'Caught error while evaluating while loop condition',
+          exc_info=True)
+      # TODO(mdan): distinguish beteen these two cases.
+      raise NotImplementedError(
+          'The condition of while loop started as non-Tensor, then changed to'
+          ' Tensor. This may happen either because variables changed type, or'
+          ' when a break or return statement inside the loop depends on a'
+          ' Tensor condition. In both cases, changing to a TF loop should'
+          ' remove the error.\nSee '
+          'https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
+          'python/autograph/g3doc/reference/limitations.md'
+          '#consistency-of-control-flow-types for more info.')
+  while guarded_test():
     body()
 
 
