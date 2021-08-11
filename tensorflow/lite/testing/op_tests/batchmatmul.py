@@ -92,8 +92,8 @@ def make_batchmatmul_tests(options):
           outputs, feed_dict=dict(zip(inputs, [input0_value])))
       return [input0_value], output_values
     else:
-      input1_shape = parameters["shapes"][3] if not adj_b else \
-          swap_last_two_dims(*parameters["shapes"][3])
+      input1_shape = parameters["shapes"][
+          3] if not adj_b else swap_last_two_dims(*parameters["shapes"][3])
       input1_value = create_tensor_data(
           parameters["dtype"], input1_shape, min_value=-1.0, max_value=1.0)
       output_values = sess.run(
