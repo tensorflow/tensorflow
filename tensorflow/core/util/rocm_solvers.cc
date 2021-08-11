@@ -235,7 +235,7 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
 
 #define GETRF_INSTANCE(Scalar, type_prefix)                                   \
   template <>                                                                 \
-  Status GpuSolver::Getrf<Scalar>(int m, int n, Scalar* A, int lda,          \
+  Status GpuSolver::Getrf<Scalar>(int m, int n, Scalar* A, int lda,           \
                                    int* dev_pivots, int* dev_lapack_info) {   \
     mutex_lock lock(handle_map_mutex);                                        \
     using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
@@ -249,9 +249,9 @@ TF_CALL_LAPACK_TYPES(GETRF_INSTANCE);
 
 #define GETRS_INSTANCE(Scalar, type_prefix)                                   \
   template <>                                                                 \
-  Status GpuSolver::Getrs<Scalar>(rocblas_operation trans, int n, int nrhs,  \
-                                   Scalar* A, int lda, const int* dev_pivots, \
-                                   Scalar* B, int ldb) {                      \
+  Status GpuSolver::Getrs<Scalar>(rocblas_operation trans, int n, int nrhs,   \
+                                  Scalar* A, int lda, const int* dev_pivots,  \
+                                  Scalar* B, int ldb, int* dev_lapack_info) { \
     mutex_lock lock(handle_map_mutex);                                        \
     using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getrs, type_prefix)(                 \
@@ -264,11 +264,12 @@ TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
 
 #define GETRF_BATCHED_INSTANCE(Scalar, type_prefix)                           \
   template <>                                                                 \
-  Status GpuSolver::GetrfBatched<Scalar>(                                   \
-                                   int m, int n, Scalar** A, int lda,         \
-                                   int* dev_pivots, rocblas_stride stride,    \
+  Status GpuSolver::GetrfBatched<Scalar>(                                     \
+                                   int n, Scalar** A, int lda,                \
+                                   int* dev_pivots,                           \
                                    DeviceLapackInfo* dev_info,                \
                                    const int batch_size) {                    \
+    rocblas_stride stride = n;                                                \
     mutex_lock lock(handle_map_mutex);                                        \
     using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
     ScratchSpace<uint8> dev_a =                                               \
@@ -279,7 +280,7 @@ TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
       return errors::Internal("GetrfBatched: Failed to copy ptrs to device"); \
     }                                                                         \
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getrf_batched, type_prefix)(         \
-        rocm_blas_handle_, m, n,                                              \
+        rocm_blas_handle_, n, n,                                              \
         reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda,            \
         dev_pivots, stride, dev_info->mutable_data(), batch_size));           \
     return Status::OK();                                                      \
@@ -290,10 +291,11 @@ TF_CALL_LAPACK_TYPES(GETRF_BATCHED_INSTANCE);
 
 #define GETRS_BATCHED_INSTANCE(Scalar, type_prefix)                               \
   template <>                                                                     \
-  Status GpuSolver::GetrsBatched<Scalar>(                                       \
+  Status GpuSolver::GetrsBatched<Scalar>(                                         \
       const rocblas_operation trans, int n, int nrhs, Scalar** A, int lda,        \
-      int* dev_pivots, rocblas_stride stride, Scalar** B, const int ldb,          \
+      int* dev_pivots, Scalar** B, const int ldb, int* host_lapack_info,          \
       const int batch_size) {                                                     \
+    rocblas_stride stride = n;                                                    \
     mutex_lock lock(handle_map_mutex);                                            \
     using ROCmScalar = typename ROCmComplexT<Scalar>::type;                       \
     ScratchSpace<uint8> dev_a =                                                   \

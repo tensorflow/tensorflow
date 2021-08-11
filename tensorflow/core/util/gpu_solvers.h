@@ -231,31 +231,31 @@ class GpuSolver {
 
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
-
-  template <typename Scalar>
+  template <typename Scalar>                                      
   Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots, int* info);
 
-  // Uses LU factorization to solve A * X = B.
+  // Uses LU factorization to solve A * X = B. 
   template <typename Scalar>
-  Status Getrs(const rocblas_operation trans, int n, int nrhs, Scalar* A,
-               int lda, const int* dev_pivots, Scalar* B, int ldb);
+  Status Getrs(const rocblas_operation trans, int n, int nrhs, Scalar* A, 
+               int lda, const int* dev_pivots, Scalar* B, int ldb,
+               int* dev_lapack_info);    
 
   template <typename Scalar>
   Status
-  GetrfBatched(int m, int n, Scalar** dev_A, int lda, int* dev_pivots,
-               rocblas_stride stride, DeviceLapackInfo* info, const int batch_count);
+  GetrfBatched(int n, Scalar** dev_A, int lda, int* dev_pivots,
+               DeviceLapackInfo* info, const int batch_count);
 
   template <typename Scalar>
   Status GetrsBatched(const rocblas_operation trans, int n, int nrhs,
                       Scalar** A, int lda, int* dev_pivots,
-                      rocblas_stride stride, Scalar** B, const int ldb,
+                      Scalar** B, const int ldb, int* lapack_info,
                       const int batch_count);
-
 
   template <typename Scalar>
   Status Trsm(rocblas_side side, rocblas_fill uplo, rocblas_operation trans,
               rocblas_diagonal diag, int m, int n, const Scalar* alpha,
               const Scalar* A, int lda, Scalar* B, int ldb);
+  
 #else //GOOGLE_CUDA
   // ====================================================================
   // Wrappers for cuSolverDN and cuBlas solvers start here.
