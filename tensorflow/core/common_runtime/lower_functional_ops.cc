@@ -112,9 +112,7 @@ Status LowerFunctionalOpsPass::Run(
   // When we do not keep lowered nodes fetchable, we still add a NoOp node to
   // the graph with the same name as lowered node, because it might be used as a
   // control output source, and it's currently not expressed in a graph.
-  bool keep_lowered_nodes_fetchable = keep_lowered_nodes_fetchable_.has_value()
-                                          ? *keep_lowered_nodes_fetchable_
-                                          : !HasArgsOrRetvals(*g);
+  bool keep_lowered_nodes_fetchable = !HasArgsOrRetvals(*g);
 
   // We disable lowering control flow to switch/merge variants for the
   // single-threaded executor and TFRT runtime, which does not support it.

@@ -57,6 +57,8 @@ PYBIND11_MAKE_OPAQUE(TFE_MonitoringCounter2);
 PYBIND11_MAKE_OPAQUE(TFE_MonitoringStringGauge0);
 PYBIND11_MAKE_OPAQUE(TFE_MonitoringStringGauge1);
 PYBIND11_MAKE_OPAQUE(TFE_MonitoringStringGauge2);
+PYBIND11_MAKE_OPAQUE(TFE_MonitoringStringGauge3);
+PYBIND11_MAKE_OPAQUE(TFE_MonitoringStringGauge4);
 PYBIND11_MAKE_OPAQUE(TFE_MonitoringIntGauge0);
 PYBIND11_MAKE_OPAQUE(TFE_MonitoringIntGauge1);
 PYBIND11_MAKE_OPAQUE(TFE_MonitoringIntGauge2);
@@ -207,8 +209,15 @@ TFE_OutputTensorHandles InputTFE_OutputTensorHandles(
 #else
   long sz = PyLong_AsLong(num_outputs.ptr());  // NOLINT
 #endif
+  // PyLong_AsLong might throw an error if an overflow occurs.
+  if (PyErr_Occurred()) {
+    PyErr_SetString(PyExc_ValueError, tensorflow::strings::StrCat(
+                                          "Number of outputs is too big: ", sz)
+                                          .c_str());
+    throw py::error_already_set();
+  }
   // We can't handle more than int32 sizes for number of outputs.
-  if (static_cast<long>(static_cast<int32>(sz)) != sz) {  // NOLINT
+  if (static_cast<long>(static_cast<int32_t>(sz)) != sz) {  // NOLINT
     PyErr_SetString(PyExc_ValueError, tensorflow::strings::StrCat(
                                           "Number of outputs is too big: ", sz)
                                           .c_str());
@@ -373,6 +382,8 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
       return IrExportStage::OPTIMIZED_HLO;
     } else if (s_stage == "optimized_hlo_serialized") {
       return IrExportStage::OPTIMIZED_HLO_SERIALIZED;
+    } else if (s_stage == "optimized_hlo_proto_serialized") {
+      return IrExportStage::OPTIMIZED_HLO_PROTO_SERIALIZED;
     } else if (s_stage == "optimized_hlo_dot") {
       return IrExportStage::OPTIMIZED_HLO_DOT;
     } else {
@@ -538,6 +549,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       m, "TFE_MonitoringStringGauge1");
   py::class_<TFE_MonitoringStringGauge2> TFE_MonitoringStringGauge2_class(
       m, "TFE_MonitoringStringGauge2");
+  py::class_<TFE_MonitoringStringGauge3> TFE_MonitoringStringGauge3_class(
+      m, "TFE_MonitoringStringGauge3");
+  py::class_<TFE_MonitoringStringGauge4> TFE_MonitoringStringGauge4_class(
+      m, "TFE_MonitoringStringGauge4");
   py::class_<TFE_MonitoringIntGauge0> TFE_MonitoringIntGauge0_class(
       m, "TFE_MonitoringIntGauge0");
   py::class_<TFE_MonitoringIntGauge1> TFE_MonitoringIntGauge1_class(
@@ -808,6 +823,52 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     // NOTE: different from TFE_ContextSyncExecutors that raises potential
     // errors, deliberately ignore executor statuses in cleanup.
   });
+  m.def(
+      "TFE_InsertConfigKeyValue",
+      [](py::handle& ctx, const char* config_key, const char* config_value) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
+        TFE_InsertConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                                 config_value, status.get());
+        Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
+  m.def(
+      "TFE_GetConfigKeyValue",
+      [](py::handle& ctx, const char* config_key, TF_Buffer& config_value) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
+        TFE_GetConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                              &config_value, status.get());
+        Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
+  m.def(
+      "TFE_DeleteConfigKeyValue",
+      [](py::handle& ctx, const char* config_key) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
+        TFE_DeleteConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                                 status.get());
+        Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
+  m.def(
+      "TFE_ReportErrorToCluster",
+      [](py::handle& ctx, int error_code, const char* error_message) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        TFE_ReportErrorToCluster(tensorflow::InputTFE_Context(ctx), error_code,
+                                 error_message, status.get());
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
   m.def("TFE_ContextSetSoftDevicePlacement", [](py::handle& ctx, bool enable) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
@@ -1298,6 +1359,38 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteStringGauge2", &TFE_MonitoringDeleteStringGauge2);
   m.def("TFE_MonitoringGetCellStringGauge2", &TFE_MonitoringGetCellStringGauge2,
+        py::return_value_policy::reference);
+
+  m.def(
+      "TFE_MonitoringNewStringGauge3",
+      [](const char* name, const char* description, const char* label1,
+         const char* label2, const char* label3) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        auto output = TFE_MonitoringNewStringGauge3(
+            name, status.get(), description, label1, label2, label3);
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        return output;
+      },
+      py::return_value_policy::reference);
+  m.def("TFE_MonitoringDeleteStringGauge3", &TFE_MonitoringDeleteStringGauge3);
+  m.def("TFE_MonitoringGetCellStringGauge3", &TFE_MonitoringGetCellStringGauge3,
+        py::return_value_policy::reference);
+
+  m.def(
+      "TFE_MonitoringNewStringGauge4",
+      [](const char* name, const char* description, const char* label1,
+         const char* label2, const char* label3, const char* label4) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        auto output = TFE_MonitoringNewStringGauge4(
+            name, status.get(), description, label1, label2, label3, label4);
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        return output;
+      },
+      py::return_value_policy::reference);
+  m.def("TFE_MonitoringDeleteStringGauge4", &TFE_MonitoringDeleteStringGauge4);
+  m.def("TFE_MonitoringGetCellStringGauge4", &TFE_MonitoringGetCellStringGauge4,
         py::return_value_policy::reference);
 
   // TFE_MonitoringBoolGauge Logic

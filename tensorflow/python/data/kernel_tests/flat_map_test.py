@@ -177,8 +177,10 @@ class FlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
 class FlatMapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                             parameterized.TestCase):
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     # Complicated way of saying range(start, start+25).
     def build_ds(start):
 
@@ -187,10 +189,25 @@ class FlatMapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
       return dataset_ops.Dataset.range(start, start + 5 * 5, 5).flat_map(map_fn)
 
-    self.run_core_tests(lambda: build_ds(0), 25)
+    verify_fn(self, lambda: build_ds(0), num_outputs=25)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testMapThenFlatMap(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testNested(self, verify_fn):
+
+    def build_ds():
+
+      inner_ds = dataset_ops.Dataset.from_tensor_slices(range(42))
+      ds = dataset_ops.Dataset.from_tensors(inner_ds)
+      return ds.flat_map(lambda x: x)
+
+    verify_fn(self, build_ds, num_outputs=42)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testMapThenFlatMap(self, verify_fn):
 
     def build_ds():
 
@@ -203,10 +220,12 @@ class FlatMapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
       return dataset_ops.Dataset.range(5).flat_map(flat_map_fn)
 
-    self.run_core_tests(build_ds, 500)
+    verify_fn(self, build_ds, num_outputs=500)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCaptureDefunInMapFn(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testCaptureDefunInMapFn(self, verify_fn):
 
     def build_ds():
 
@@ -220,7 +239,7 @@ class FlatMapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
       return dataset_ops.Dataset.range(100).flat_map(map_fn)
 
-    self.run_core_tests(build_ds, 100)
+    verify_fn(self, build_ds, num_outputs=100)
 
   @combinations.generate(test_base.default_test_combinations())
   def testDisallowVariableCapture(self):
@@ -250,8 +269,10 @@ class FlatMapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
     self.verify_error_on_save(build_ds, 500, errors.FailedPreconditionError)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSparseCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testSparse(self, verify_fn):
 
     def _map_fn(i):
       return sparse_tensor.SparseTensorValue(
@@ -264,7 +285,7 @@ class FlatMapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     def _build_ds():
       return dataset_ops.Dataset.range(10).map(_map_fn).flat_map(_flat_map_fn)
 
-    self.run_core_tests(_build_ds, 20)
+    verify_fn(self, _build_ds, num_outputs=20)
 
 
 if __name__ == "__main__":

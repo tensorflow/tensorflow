@@ -908,7 +908,7 @@ inline void Dequantize(const RuntimeShape& input_shape,
                        const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; i++) {
-    output_data[i] = Eigen::half_impl::half_to_float(input_data[i]);
+    output_data[i] = static_cast<float>(input_data[i]);
   }
 }
 

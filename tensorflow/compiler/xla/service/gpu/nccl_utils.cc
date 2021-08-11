@@ -46,6 +46,8 @@ ncclRedOp_t ToNcclReduction(ReductionKind kind) {
   }
 }
 
+namespace {
+
 StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type) {
   switch (element_type) {
     case S8:
@@ -64,13 +66,28 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type) {
     case F16:
       return ncclFloat16;
     case F32:
+    case C64:
       return ncclFloat32;
     case F64:
+    case C128:
       return ncclFloat64;
+#if defined(__CUDA_BF16_TYPES_EXIST__)
+    case BF16:
+      return ncclBfloat16;
+#endif
     default:
       return tensorflow::errors::InvalidArgument(absl::StrFormat(
           "Unsupported data type: %s", PrimitiveType_Name(element_type)));
   }
+}
+
+}  // namespace
+
+StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
+    PrimitiveType element_type) {
+  TF_ASSIGN_OR_RETURN(ncclDataType_t dtype, ToNcclDataType(element_type));
+  bool is_complex = primitive_util::IsComplexType(element_type);
+  return std::make_pair(dtype, is_complex ? 2 : 1);
 }
 
 bool IsGlobalNcclConfig() {
@@ -84,7 +101,7 @@ bool IsNcclLaunchModeParallel() {
   return is_launch_mode_parallel;
 }
 
-Status ToStatus(ncclResult_t s, const char* file, int64 line,
+Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                 const char* expr) {
   if (s == ncclSuccess) {
     return Status::OK();
@@ -94,7 +111,8 @@ Status ToStatus(ncclResult_t s, const char* file, int64 line,
                       ncclGetErrorString(s)));
 }
 
-Status ToStatus(cudaError_t s, const char* file, int64 line, const char* expr) {
+Status ToStatus(cudaError_t s, const char* file, int64_t line,
+                const char* expr) {
   if (s == cudaSuccess) {
     return Status::OK();
   }
@@ -159,12 +177,12 @@ StatusOr<std::unique_ptr<NcclClique>> CreateNcclClique(
     const NcclUniqueIdCallback* callback) {
   int num_participants = key.devices().size();
   ncclUniqueId unique_id;
-  if (callback) {  // Multi-host collective.
+  bool only_local_participants = num_participants == local_participants.size();
+  if (callback && !only_local_participants) {  // Multi-host collective.
     TF_ASSIGN_OR_RETURN(std::string id_string, (*callback)(key));
     TF_RETURN_IF_ERROR(ToNcclUniqueId(id_string, &unique_id));
   } else {
-    TF_RET_CHECK((num_participants == local_participants.size()) ||
-                 IsGlobalNcclConfig())
+    TF_RET_CHECK(only_local_participants || IsGlobalNcclConfig())
         << "If non-local devices are taking part of a collective API on GPU, "
            "the nccl_unique_id_callback must be provided by the client.";
     XLA_CUDA_RETURN_IF_ERROR(ncclGetUniqueId(&unique_id));
@@ -212,11 +230,6 @@ StatusOr<std::unique_ptr<NcclClique>> CreateNcclClique(
   TF_RETURN_IF_ERROR(status);
   return std::make_unique<NcclClique>(std::move(comms_by_device_ordinal));
 }
-
-struct NcclCliqueParticipantData : public ParticipantData {
-  using ParticipantData::ParticipantData;
-  std::string ToString() const override { return ""; }
-};
 
 class NcclCliqueRendezvous
     : public Rendezvous<NcclCliqueParticipantData, LockedNcclClique> {
@@ -315,13 +328,24 @@ StatusOr<NcclClique*> NcclCliqueMap::GetOrTryCreateIfAbsent(
     const NcclCliqueKey& key,
     const std::function<StatusOr<std::unique_ptr<NcclClique>>(
         const NcclCliqueKey&)>& value_factory) {
-  absl::MutexLock lock(&mu_);
-  auto it = map_.find(key);
-  if (it == map_.end()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<NcclClique> value, value_factory(key));
-    it = map_.emplace(key, std::move(value)).first;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = map_.find(key);
+    if (it != map_.end()) {
+      return it->second.get();
+    }
   }
-  return it->second.get();
+  // We release the lock to allow different cliques to be created in parallel
+  // (avoiding a potential deadlock in multi-host settings). This is safe
+  // provided that there aren't two threads trying to create cliques with the
+  // same key - which we know will not happen as this method is only called by
+  // the primary thread from the clique rendezvous. If this assumption is not
+  // valid, the method will return an error.
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<NcclClique> value, value_factory(key));
+  absl::MutexLock lock(&mu_);
+  auto result = map_.emplace(key, std::move(value));
+  TF_RET_CHECK(result.second) << "Clique already in cache.";
+  return result.first->second.get();
 }
 
 void NcclCliqueMap::ForEach(
@@ -333,25 +357,24 @@ void NcclCliqueMap::ForEach(
 }
 
 StatusOr<LockedNcclClique> AcquireNcclClique(
-    const RendezvousKey& rendezvous_key, int local_device_ordinal,
-    se::Stream* stream, const std::vector<LocalParticipant>& local_participants,
+    const NcclCliqueParticipantData& participant,
+    const std::vector<LocalParticipant>& local_participants,
     const NcclUniqueIdCallback* callback) {
-  VLOG(2) << "Rendezvous key: " << rendezvous_key.ToString()
+  VLOG(2) << "Rendezvous key: " << participant.rendezvous_key.ToString()
           << ", local participants: "
           << LocalParticipantsToString(local_participants);
 
   static auto& rendezvous_map =
       *new RefcountingHashMap<RendezvousKey, NcclCliqueRendezvous>();
 
-  NcclCliqueParticipantData participant(rendezvous_key, local_device_ordinal,
-                                        stream);
   return NcclCliqueRendezvous::SubmitParticipant(
       /*rendezvous_getter=*/
-      [&] {
+      [&, participant] {
         return rendezvous_map.GetOrCreateIfAbsent(
-            rendezvous_key, [&](const RendezvousKey& rendezvous_key) {
+            participant.rendezvous_key,
+            [&](const RendezvousKey& rendezvous_key) {
               return std::make_unique<NcclCliqueRendezvous>(
-                  rendezvous_key, local_participants, callback);
+                  participant.rendezvous_key, local_participants, callback);
             });
       },
       participant);

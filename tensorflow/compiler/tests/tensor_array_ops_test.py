@@ -247,7 +247,7 @@ class TensorArrayTest(xla_test.XLATestCase):
             dtype=tf_dtype, tensor_array_name="foo", size=3)
         lengths = constant_op.constant([1, 1, 1])
         w0 = ta.split(
-            convert([[1.0, 101.0], [2.0, 201.0], [3.0, 301.0]]),
+            convert([[1.0, 101.0], [2.0, 121.0], [3.0, 127.0]]),
             lengths=lengths)
         r0 = w0.read(0)
         r1 = w0.read(1)
@@ -256,8 +256,8 @@ class TensorArrayTest(xla_test.XLATestCase):
 
       d0, d1, d2 = self.evaluate(xla.compile(fn))
       self.assertAllEqual(convert([[1.0, 101.0]]), d0)
-      self.assertAllEqual(convert([[2.0, 201.0]]), d1)
-      self.assertAllEqual(convert([[3.0, 301.0]]), d2)
+      self.assertAllEqual(convert([[2.0, 121.0]]), d1)
+      self.assertAllEqual(convert([[3.0, 127.0]]), d2)
 
   @test_util.disable_control_flow_v2("b/122315872 (split)")
   def testTensorArraySplitRead(self):
@@ -1033,7 +1033,7 @@ class TensorArrayTest(xla_test.XLATestCase):
             dtype=tf_dtype, tensor_array_name="foo", size=10)
 
         indices = constant_op.constant([1, 8])
-        value = constant_op.constant(convert([[1.0, -1.0], [10.0, -10.0]]))
+        value = constant_op.constant(convert([[1.0, 5.0], [10.0, 20.0]]))
 
         w = ta.scatter(indices, value)
         r0 = w.read(id0)
@@ -1043,8 +1043,8 @@ class TensorArrayTest(xla_test.XLATestCase):
 
       # Test aggregation of read
       read_vals = session.run(xla.compile(fn), feed_dict={id0: 1, id1: 8})
-      self.assertAllEqual(convert([1.0, -1.0]), read_vals[0])
-      self.assertAllEqual(convert([10.0, -10.0]), read_vals[1])
+      self.assertAllEqual(convert([1.0, 5.0]), read_vals[0])
+      self.assertAllEqual(convert([10.0, 20.0]), read_vals[1])
 
   @test_util.disable_control_flow_v2("b/122315734 (scatter)")
   def testTensorArrayScatterRead(self):

@@ -649,7 +649,8 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
       # independently from the array upon which it operates (like python).
       ndims = array_ops.rank(x)
       shift = array_ops.where_v2(
-          math_ops.less(shift, 0), math_ops.mod(-shift, ndims),
+          math_ops.less(shift, 0),
+          math_ops.mod(-shift, ndims),  # pylint: disable=invalid-unary-operand-type
           ndims - math_ops.mod(shift, ndims))
       first = math_ops.range(0, shift)
       last = math_ops.range(shift, ndims)

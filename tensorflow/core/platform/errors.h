@@ -17,11 +17,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_ERRORS_H_
 
 #include <sstream>
+#include <string>
+#include <utility>
 
 #include "absl/strings/str_join.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/strcat.h"
 
@@ -63,10 +65,15 @@ inline const strings::AlphaNum& PrepareForStrCat(const strings::AlphaNum& a) {
 template <typename... Args>
 void AppendToMessage(::tensorflow::Status* status, Args... args) {
   std::vector<StackFrame> stack_trace = status->stack_trace();
+  const std::unordered_map<std::string, std::string> payloads =
+      status->GetAllPayloads();
   *status = ::tensorflow::Status(
       status->code(),
       ::tensorflow::strings::StrCat(status->error_message(), "\n\t", args...),
       std::move(stack_trace));
+  for (const std::pair<const std::string, std::string>& element : payloads) {
+    status->SetPayload(element.first, element.second);
+  }
 }
 
 // For propagating errors when calling a function.
@@ -155,6 +162,17 @@ std::string FormatColocationNodeForError(const T& names) {
 
 inline std::string FormatFunctionForError(const std::string& name) {
   return strings::StrCat("{{function_node ", name, "}}");
+}
+
+inline Status ReplaceErrorFromNonCommunicationOps(const Status s,
+                                                  const std::string& op_name) {
+  assert(IsUnavailable(s));
+  return Status(
+      error::INTERNAL,
+      strings::StrCat(
+          s.error_message(), "\nExecuting non-communication op <", op_name,
+          "> originally returned UnavailableError, and was replaced by "
+          "InternalError to avoid invoking TF network error handling logic."));
 }
 
 // The CanonicalCode() for non-errors.

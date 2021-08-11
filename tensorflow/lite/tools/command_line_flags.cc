@@ -14,6 +14,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstring>
+#include <functional>
 #include <iomanip>
 #include <numeric>
 #include <sstream>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
@@ -55,7 +57,7 @@ bool ParseFlag(const std::string& arg, int argv_position,
   }
   *value_parsing_ok = true;
   std::string flag_prefix = "--" + flag + "=";
-  if (arg.find(flag_prefix) != 0) {
+  if (!absl::StartsWith(arg, flag_prefix)) {
     return false;
   }
   bool has_value = arg.size() >= flag_prefix.size();
@@ -260,9 +262,10 @@ std::string Flag::GetTypeName() const {
   // Stores indexes of flag_list in a sorted order.
   std::vector<int> sorted_idx(flag_list.size());
   std::iota(std::begin(sorted_idx), std::end(sorted_idx), 0);
-  std::sort(sorted_idx.begin(), sorted_idx.end(), [&flag_list](int a, int b) {
-    return flag_list[a].GetFlagType() < flag_list[b].GetFlagType();
-  });
+  std::stable_sort(
+      sorted_idx.begin(), sorted_idx.end(), [&flag_list](int a, int b) {
+        return flag_list[a].GetFlagType() < flag_list[b].GetFlagType();
+      });
   // Counts number of positional flags will be shown.
   int positional_count = 0;
   std::ostringstream usage_text;

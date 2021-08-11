@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
 
+#include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_worker.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -80,11 +81,23 @@ class GrpcWorkerCache : public WorkerCachePartial {
     return Status::OK();
   }
 
+  Status GetCoordinationClientCache(std::unique_ptr<CoordinationClientCache>*
+                                        coordination_client_cache) override {
+#if defined(PLATFORM_GOOGLE)
+    coordination_client_cache->reset(
+        NewGrpcCoordinationClientCache(channel_cache_));
+    return Status::OK();
+#else
+    return errors::Unimplemented(
+        "Coordination service in open source is not yet implemented.");
+#endif
+  }
+
   void SetLogging(bool v) override { logger_.SetLogging(v); }
 
   void ClearLogs() override { logger_.ClearLogs(); }
 
-  bool RetrieveLogs(int64 step_id, StepStats* ss) override {
+  bool RetrieveLogs(int64_t step_id, StepStats* ss) override {
     return logger_.RetrieveLogs(step_id, ss);
   }
 
@@ -145,13 +158,13 @@ GrpcWorkerEnv::GrpcWorkerCacheThread::~GrpcWorkerCacheThread() {
 
 GrpcWorkerEnv* CreateGrpcWorkerEnv() {
   int num_cpus = port::NumSchedulableCPUs();
-  int64 num_completion_queues;
+  int64_t num_completion_queues;
   Status status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_QUEUES", 64,
                                       &num_completion_queues);
   if (!status.ok()) {
     LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_QUEUES: " << status;
   }
-  int64 num_threads;
+  int64_t num_threads;
   status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_THREADS", num_cpus,
                                &num_threads);
   if (!status.ok()) {

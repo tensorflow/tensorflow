@@ -9,6 +9,7 @@ load(
     "tf_cc_binary",
     "tf_copts",
     "tf_defines_nortti_if_lite_protos",
+    "tf_features_nolayering_check_if_android_or_ios",
     "tf_features_nomodules_if_mobile",
     "tf_opts_nortti_if_lite_protos",
     "tf_portable_full_lite_protos",
@@ -92,7 +93,8 @@ def tflite_flex_cc_library(
         models = [],
         additional_deps = [],
         testonly = 0,
-        visibility = ["//visibility:public"]):
+        visibility = ["//visibility:public"],
+        link_symbol = True):
     """A rule to generate a flex delegate with only ops to run listed models.
 
     Args:
@@ -130,7 +132,7 @@ def tflite_flex_cc_library(
                 full = [],
                 lite = ["TENSORFLOW_LITE_PROTOS"],
             ) + tf_defines_nortti_if_lite_protos(),
-            features = tf_features_nomodules_if_mobile(),
+            features = tf_features_nomodules_if_mobile() + tf_features_nolayering_check_if_android_or_ios(),
             linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
             includes = [
                 CUSTOM_KERNEL_HEADER.include_path,
@@ -150,12 +152,17 @@ def tflite_flex_cc_library(
         )
         portable_tensorflow_lib = ":%s_tensorflow_lib" % name
 
+    delegate_symbol = []
+    if link_symbol:
+        delegate_symbol.append(clean_dep("//tensorflow/lite/delegates/flex:delegate_symbol"))
+
     # Define a custom flex delegate with above tensorflow_lib.
     native.cc_library(
         name = name,
         hdrs = [
             clean_dep("//tensorflow/lite/delegates/flex:delegate.h"),
         ],
+        features = tf_features_nolayering_check_if_android_or_ios(),
         visibility = visibility,
         deps = [
             clean_dep("//tensorflow/lite/delegates/flex:delegate_data"),
@@ -172,7 +179,7 @@ def tflite_flex_cc_library(
                 clean_dep("//tensorflow/core:tensorflow"),
                 clean_dep("//tensorflow/lite/c:common"),
             ],
-        }) + additional_deps,
+        }) + additional_deps + delegate_symbol,
         testonly = testonly,
         alwayslink = 1,
     )

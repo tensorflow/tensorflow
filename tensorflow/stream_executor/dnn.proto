@@ -14,6 +14,7 @@ enum DataType {
   kInt32 = 4;
   kComplexFloat = 5;
   kComplexDouble = 6;
+  kBF16 = 7;
 }
 
 // Describes how a convolution input or output layer's data is formatted.
@@ -108,6 +109,23 @@ message AlgorithmProto {
   MathType math_type = 2;
   // cuDNN v8 uses a string to uniquely represent the backend plan.
   string exec_plan_id = 3;
+}
+
+// Proto definition of AlgorithmConfig in "dnn.h".
+// TODO(ruochengw): After cl/380702564 is submitted, add support for algorithm
+// configs with cuDNN Frontend APIs.
+message AlgorithmConfigProto {
+  // Use oneof to emulate optional semantics in proto2 since older
+  // version of proto3 cannot distinguish "unset field" and "default field".
+  oneof optional_algorithm {
+    AlgorithmProto algorithm = 1;
+  }
+  oneof optional_algorithm_no_scratch {
+    AlgorithmProto algorithm_no_scratch = 2;
+  }
+  oneof optional_scratch_size {
+    int64 scratch_size = 3;
+  }
 }
 
 // Convolution-specific parameters.

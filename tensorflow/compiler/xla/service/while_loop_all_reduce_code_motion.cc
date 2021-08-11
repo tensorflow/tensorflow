@@ -303,7 +303,7 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
             break;
           }
           case HloOpcode::kAdd: {
-            int64 buffer_index = 1 - user->operand_index(instruction);
+            int64_t buffer_index = 1 - user->operand_index(instruction);
             HloInstruction* accumulation_buffer =
                 user->mutable_operand(buffer_index);
 

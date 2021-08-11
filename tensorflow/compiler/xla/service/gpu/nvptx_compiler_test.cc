@@ -28,7 +28,46 @@ namespace gpu {
 using NVPTXCompilerTest = HloTestBase;
 
 TEST_F(NVPTXCompilerTest, AllReducePerformedInplace) {
-  const char* const hlo_string = R"(
+  const absl::string_view hlo_string = R"(
+HloModule Module
+
+summit {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  param0 = f32[128] parameter(0)
+  param1 = f32[128] parameter(1)
+  add = f32[128] add(param0, param1)
+  ROOT allreduce = f32[128] all-reduce(add), replica_groups={}, to_apply=summit
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  NVPTXCompiler compiler;
+  Compiler::CompileOptions compile_options;
+  TF_ASSERT_OK_AND_ASSIGN(auto module_and_buffer_assignment,
+                          compiler.RunHloPassesAndBufferAssignement(
+                              std::move(module),
+                              /*executor=*/nullptr,
+                              /*optimize=*/false, compile_options));
+
+  module = std::move(std::get<0>(module_and_buffer_assignment));
+  std::unique_ptr<BufferAssignment> buffer_assignment =
+      std::move(std::get<1>(module_and_buffer_assignment));
+
+  HloInstruction* all_reduce = module->entry_computation()->root_instruction();
+
+  ASSERT_EQ(
+      buffer_assignment->GetInstructionAllocation(all_reduce, {}),
+      buffer_assignment->GetInstructionAllocation(all_reduce->operand(0), {}));
+}
+
+TEST_F(NVPTXCompilerTest, AllReducePerformedInplaceTwoOperands) {
+  const absl::string_view hlo_string = R"(
 HloModule Module
 
 summit {

@@ -1010,7 +1010,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     self._predictions = np.array([[4, 8, 12], [8, 1, 3]])
     self._labels = np.array([[1, 9, 2], [-5, -5, 7]])
 
-    batch_size, dims = self._labels.shape
+    batch_size, dims = self._labels.shape  # pylint: disable=unpacking-non-sequence
 
     # Compute the expected loss 'manually'.
     total = np.zeros((batch_size,))

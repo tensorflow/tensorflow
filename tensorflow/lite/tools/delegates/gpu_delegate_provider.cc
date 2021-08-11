@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string>
+#include <utility>
 
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
@@ -57,6 +58,8 @@ class GpuDelegateProvider : public DelegateProvider {
   void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
+  std::pair<TfLiteDelegatePtr, int> CreateRankedTfLiteDelegate(
+      const ToolParams& params) const final;
 
   std::string GetName() const final { return "GPU"; }
 };
@@ -145,6 +148,20 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
     }
     gpu_opts.max_delegated_partitions =
         params.Get<int>("max_delegated_partitions");
+
+    // Serialization.
+    std::string serialize_dir =
+        params.Get<std::string>("delegate_serialize_dir");
+    std::string serialize_token =
+        params.Get<std::string>("delegate_serialize_token");
+    if (!serialize_dir.empty() && !serialize_token.empty()) {
+      gpu_opts.experimental_flags =
+          gpu_opts.experimental_flags |
+          TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_SERIALIZATION;
+      gpu_opts.serialization_dir = serialize_dir.c_str();
+      gpu_opts.model_token = serialize_token.c_str();
+    }
+
     delegate = evaluation::CreateGPUDelegate(&gpu_opts);
 #elif defined(REAL_IPHONE_DEVICE)
     TFLGpuDelegateOptions gpu_opts = {0};
@@ -183,5 +200,11 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
   return delegate;
 }
 
+std::pair<TfLiteDelegatePtr, int>
+GpuDelegateProvider::CreateRankedTfLiteDelegate(
+    const ToolParams& params) const {
+  auto ptr = CreateTfLiteDelegate(params);
+  return std::make_pair(std::move(ptr), params.GetPosition<bool>("use_gpu"));
+}
 }  // namespace tools
 }  // namespace tflite

@@ -28,9 +28,11 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
@@ -940,30 +942,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = apply_map(dataset, lambda x: [x, "hello", 10])
     self.assertDatasetProduces(dataset, [(i, b"hello", 10) for i in range(10)])
 
-  @combinations.generate(_test_combinations())
-  def testWarnOnLookupTable(self, apply_map):
-
-    def collecting_function(x):
-      _ = lookup_ops.HashTable(
-          lookup_ops.KeyValueTensorInitializer(["a"], [1.]), 0.0, name="t1")
-      return x
-
-    warnings.simplefilter("always")
-    with warnings.catch_warnings(record=True) as w:
-      dataset = dataset_ops.Dataset.range(10)
-      _ = apply_map(dataset, collecting_function)
-    # NOTE(mrry): Python 3 prints other warnings in addition to the one we are
-    # testing, so we search for the expected warning.
-    self.assertGreaterEqual(len(w), 1)
-    found_warning = False
-    for warning in w:
-      if ("Creating resources inside a function passed to Dataset.map() is "
-          "not supported." in str(warning)):
-        found_warning = True
-        break
-    self.assertTrue(found_warning)
-
-  @combinations.generate(test_base.default_test_combinations())
+  @combinations.generate(test_base.graph_only_combinations())
   def testWarnOnSeedFromOuterGraph(self):
     with ops.Graph().as_default() as g:
       g.seed = 10
@@ -1312,8 +1291,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
           map_function,
           num_parallel_calls=2,
           deterministic=local_determinism)
-      opts = dataset_ops.Options()
-      opts.experimental_deterministic = global_determinism
+      opts = options_lib.Options()
+      opts.deterministic = global_determinism
       dataset = dataset.with_options(opts)
       return dataset
 
@@ -1334,6 +1313,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeBuffer(self):
+    if pywrap_sanitizers.is_tsan_enabled():
+      self.skipTest("Creating a large buffer causes OOM when using tsan.")
     # Tensor of size 512M
     dataset = dataset_ops.Dataset.from_tensors(
         array_ops.ones((128, 1024, 1024), dtype=dtypes.float32))
@@ -1353,8 +1334,9 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations(),
                          combinations.combine(num_parallel_calls=[None, 2])))
-  def testCore(self, num_parallel_calls):
+  def testCore(self, verify_fn, num_parallel_calls):
 
     tensor_slice_len = 7
     num_epochs = 2
@@ -1372,7 +1354,7 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       return (dataset_ops.Dataset.from_tensor_slices(components).map(
           _map_fn, num_parallel_calls=num_parallel_calls).repeat(num_epochs))
 
-    self.run_core_tests(_build_ds, tensor_slice_len * num_epochs)
+    verify_fn(self, _build_ds, tensor_slice_len * num_epochs)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
@@ -1406,8 +1388,9 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations(),
                          combinations.combine(num_parallel_calls=[None, 2])))
-  def testCaptureConstantInMapFn(self, num_parallel_calls):
+  def testCaptureConstantInMapFn(self, verify_fn, num_parallel_calls):
     num_outputs = 10
 
     def _build_ds():
@@ -1415,12 +1398,13 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
           lambda x: x + constant_var, num_parallel_calls=num_parallel_calls))
 
-    self.run_core_tests(_build_ds, num_outputs)
+    verify_fn(self, _build_ds, num_outputs)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations(),
                          combinations.combine(num_parallel_calls=[None, 2])))
-  def testCaptureDefunInMapFn(self, num_parallel_calls):
+  def testCaptureDefunInMapFn(self, verify_fn, num_parallel_calls):
     num_outputs = 10
 
     def _build_ds():
@@ -1432,12 +1416,13 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       return dataset_ops.Dataset.range(num_outputs).map(
           defun_fn, num_parallel_calls=num_parallel_calls)
 
-    self.run_core_tests(_build_ds, num_outputs)
+    verify_fn(self, _build_ds, num_outputs)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations(),
                          combinations.combine(num_parallel_calls=[None, 2])))
-  def testBuildDefunInMapFn(self, num_parallel_calls):
+  def testBuildDefunInMapFn(self, verify_fn, num_parallel_calls):
     num_outputs = 10
 
     def _build_ds():
@@ -1455,12 +1440,13 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       return dataset_ops.Dataset.range(num_outputs).map(
           defun_fn, num_parallel_calls=num_parallel_calls)
 
-    self.run_core_tests(_build_ds, num_outputs)
+    verify_fn(self, _build_ds, num_outputs)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations(),
                          combinations.combine(num_parallel_calls=[None, 2])))
-  def testSparseCore(self, num_parallel_calls):
+  def testSparse(self, verify_fn, num_parallel_calls):
 
     def _sparse(i):
       return sparse_tensor.SparseTensorValue(
@@ -1473,7 +1459,7 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           _sparse, num_parallel_calls=num_parallel_calls)
 
     num_outputs = 10
-    self.run_core_tests(lambda: _build_ds(num_outputs), num_outputs)
+    verify_fn(self, lambda: _build_ds(num_outputs), num_outputs=num_outputs)
 
 
 if __name__ == "__main__":

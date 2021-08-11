@@ -167,12 +167,13 @@ class FilterCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     return dataset_ops.Dataset.range(100).filter(
         lambda x: math_ops.not_equal(math_ops.mod(x, div), 2))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testFilterCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     div = 3
     num_outputs = sum(x % 3 != 2 for x in range(100))
-    self.run_core_tests(lambda: self._build_filter_range_graph(div),
-                        num_outputs)
+    verify_fn(self, lambda: self._build_filter_range_graph(div), num_outputs)
 
   def _build_filter_dict_graph(self):
     return dataset_ops.Dataset.range(10).map(lambda x: {
@@ -181,10 +182,12 @@ class FilterCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     }).filter(lambda d: math_ops.equal(d["bar"] % 2, 0)).map(
         lambda d: d["foo"] + d["bar"])
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testFilterDictCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testDict(self, verify_fn):
     num_outputs = sum((x**2) % 2 == 0 for x in range(10))
-    self.run_core_tests(self._build_filter_dict_graph, num_outputs)
+    verify_fn(self, self._build_filter_dict_graph, num_outputs)
 
   def _build_sparse_filter(self):
 
@@ -198,10 +201,11 @@ class FilterCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     return dataset_ops.Dataset.range(10).map(_map_fn).filter(_filter_fn).map(
         lambda x, i: x)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSparseCore(self):
-    num_outputs = 5
-    self.run_core_tests(self._build_sparse_filter, num_outputs)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testSparse(self, verify_fn):
+    verify_fn(self, self._build_sparse_filter, num_outputs=5)
 
 
 if __name__ == "__main__":

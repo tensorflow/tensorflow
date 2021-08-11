@@ -77,7 +77,7 @@ def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
   # TensorFlow.
   if fft_shape.is_fully_defined() and input_tensor.shape.ndims is not None:
     # Slice the last FFT-rank dimensions from input_tensor's shape.
-    input_fft_shape = input_tensor.shape[-fft_shape.ndims:]
+    input_fft_shape = input_tensor.shape[-fft_shape.ndims:]  # pylint: disable=invalid-unary-operand-type
 
     if input_fft_shape.is_fully_defined():
       # In reverse, we only pad the inner-most dimension to fft_length / 2 + 1.

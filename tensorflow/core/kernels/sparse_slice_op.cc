@@ -67,15 +67,15 @@ class SparseSliceOp : public OpKernel {
                     " but got length ", input_size.NumElements()));
 
     sparse::SparseTensor sparse_tensor;
-    OP_REQUIRES_OK(context,
-                   sparse::SparseTensor::Create(
-                       input_indices, input_values,
-                       TensorShape(input_shape.vec<int64>()), &sparse_tensor));
+    OP_REQUIRES_OK(
+        context, sparse::SparseTensor::Create(
+                     input_indices, input_values,
+                     TensorShape(input_shape.vec<int64_t>()), &sparse_tensor));
 
-    const gtl::ArraySlice<int64> start(input_start.flat<int64>().data(),
-                                       input_dims);
-    const gtl::ArraySlice<int64> size(input_size.flat<int64>().data(),
-                                      input_dims);
+    const gtl::ArraySlice<int64_t> start(input_start.flat<int64_t>().data(),
+                                         input_dims);
+    const gtl::ArraySlice<int64_t> size(input_size.flat<int64_t>().data(),
+                                        input_dims);
 
     const sparse::SparseTensor output =
         sparse::SparseTensor::Slice<T>(sparse_tensor, start, size);
@@ -89,7 +89,7 @@ class SparseSliceOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(2, {output_shape.dims()}, &shape));
     for (int dim = 0; dim < output_shape.dims(); ++dim) {
-      shape->vec<int64>()(dim) = output_shape.dim_size(dim);
+      shape->vec<int64_t>()(dim) = output_shape.dim_size(dim);
     }
   }
 

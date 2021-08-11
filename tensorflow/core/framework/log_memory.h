@@ -59,7 +59,7 @@ class LogMemory {
   static bool IsEnabled();
 
   // Log the beginning of a step.
-  static void RecordStep(int64 step_id, const std::string& handle);
+  static void RecordStep(int64_t step_id, const std::string& handle);
 
   // Log a tensor buffer allocation. The name indicates which kernel
   // made the allocation. If the allocation is made through an
@@ -68,7 +68,7 @@ class LogMemory {
   // op_kernel.h, e.g. Op Kernel construction or an optimization pass
   // such as constant folding.
   static void RecordTensorAllocation(const std::string& kernel_name,
-                                     int64 step_id, const Tensor& tensor);
+                                     int64_t step_id, const Tensor& tensor);
 
   // Log a tensor buffer deallocation. The deallocation is triggered
   // when the buffer's refcount falls to zero, and the tracking
@@ -76,12 +76,13 @@ class LogMemory {
   // kernel. The allocation_id/allocator_name should match a
   // corresponding tensor previously passed in to
   // RecordTensorAllocation.
-  static void RecordTensorDeallocation(int64 allocation_id,
+  static void RecordTensorDeallocation(int64_t allocation_id,
                                        const std::string& allocator_name);
 
   // Log the use of a tensor as an output from a kernel.
-  static void RecordTensorOutput(const std::string& kernel_name, int64 step_id,
-                                 int index, const Tensor& tensor);
+  static void RecordTensorOutput(const std::string& kernel_name,
+                                 int64_t step_id, int index,
+                                 const Tensor& tensor);
 
   // Log a "raw" allocation, which is just a buffer sized in
   // bytes. The Eigen allocator, and memory copies, record their
@@ -92,7 +93,7 @@ class LogMemory {
   // is executing, otherwise step_id is one of the SpecialStepIds
   // defined in op_kernel.h, e.g. Op Kernel construction or an
   // optimization pass such as constant folding.
-  static void RecordRawAllocation(const std::string& operation, int64 step_id,
+  static void RecordRawAllocation(const std::string& operation, int64_t step_id,
                                   size_t num_bytes, void* ptr,
                                   Allocator* allocator);
 
@@ -101,9 +102,9 @@ class LogMemory {
   // enqueued using the buffer. A deferred deallocation should always
   // be followed by a matching non-deferred deallocation when the
   // buffer is actually returned and can be reused.
-  static void RecordRawDeallocation(const std::string& operation, int64 step_id,
-                                    void* ptr, Allocator* allocator,
-                                    bool deferred);
+  static void RecordRawDeallocation(const std::string& operation,
+                                    int64_t step_id, void* ptr,
+                                    Allocator* allocator, bool deferred);
 };
 
 }  // namespace tensorflow

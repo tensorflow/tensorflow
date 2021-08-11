@@ -33,8 +33,6 @@ namespace tensorflow {
 class LowerFunctionalOpsPass : public GraphOptimizationPass {
  public:
   LowerFunctionalOpsPass() = default;
-  LowerFunctionalOpsPass(bool keep_lowered_nodes_fetchable)
-      : keep_lowered_nodes_fetchable_(keep_lowered_nodes_fetchable) {}
 
   Status Run(const GraphOptimizationPassOptions& options) override;
 
@@ -42,13 +40,6 @@ class LowerFunctionalOpsPass : public GraphOptimizationPass {
       LowerFunctionalOpsConstants::kLowerUsingSwitchMergeAttr;
   static constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
       LowerFunctionalOpsConstants::kLowerAsMultiDeviceFunctionAttr;
-
- private:
-  // If defined use the value to control if functional ops must be fetchable
-  // after lowering (we add IdentityN in place of all lowered nodes). If not
-  // defined, this option will be inferred automatically from the graph (in
-  // presence of _Retval or _Arg nodes we do not need to keep nodes fetchable).
-  absl::optional<bool> keep_lowered_nodes_fetchable_;
 };
 
 }  // namespace tensorflow

@@ -100,25 +100,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "map_vectorization_benchmark",
-    srcs = ["map_vectorization_benchmark.py"],
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:session",
-        "//tensorflow/python/data/benchmarks:benchmark_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
     name = "matching_files_benchmark",
     size = "small",
     srcs = ["matching_files_benchmark.py"],

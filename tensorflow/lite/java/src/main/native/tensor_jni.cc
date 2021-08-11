@@ -22,34 +22,89 @@ limitations under the License.
 #include "tensorflow/lite/core/shims/c/common.h"
 #include "tensorflow/lite/core/shims/cc/interpreter.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/string_util.h"
 
 using tflite::jni::ThrowException;
 using tflite_shims::Interpreter;
 
-namespace {
-
-static const char* kByteArrayClassPath = "[B";
-static const char* kStringClassPath = "java/lang/String";
-
+namespace tflite {
 // Convenience handle for obtaining a TfLiteTensor given an interpreter and
 // tensor index.
 //
 // Historically, the Java Tensor class used a TfLiteTensor pointer as its native
 // handle. However, this approach isn't generally safe, as the interpreter may
 // invalidate all TfLiteTensor* handles during inference or allocation.
-class TensorHandle {
+class TensorHandleImpl {
  public:
-  TensorHandle(Interpreter* interpreter, int tensor_index)
+  virtual ~TensorHandleImpl() {}
+  virtual TfLiteTensor* tensor() const = 0;
+  virtual int index() const { return -1; }
+};
+
+class InterpreterTensorHandle : public TensorHandleImpl {
+ public:
+  InterpreterTensorHandle(Interpreter* interpreter, int tensor_index)
       : interpreter_(interpreter), tensor_index_(tensor_index) {}
 
-  TfLiteTensor* tensor() const { return interpreter_->tensor(tensor_index_); }
-  int index() const { return tensor_index_; }
+  TfLiteTensor* tensor() const override {
+    return interpreter_->tensor(tensor_index_);
+  }
+
+  int index() const override { return tensor_index_; }
 
  private:
   Interpreter* const interpreter_;
   const int tensor_index_;
 };
+
+#if !TFLITE_DISABLE_SELECT_JAVA_APIS
+class SignatureRunnerTensorHandle : public TensorHandleImpl {
+ public:
+  SignatureRunnerTensorHandle(SignatureRunner* runner, const char* name,
+                              bool is_input)
+      : signature_runner_(runner), name_(name), is_input_(is_input) {}
+
+  TfLiteTensor* tensor() const override {
+    if (is_input_) {
+      return signature_runner_->input_tensor(name_.c_str());
+    }
+    return const_cast<TfLiteTensor*>(
+        signature_runner_->output_tensor(name_.c_str()));
+  }
+
+ private:
+  SignatureRunner* signature_runner_;
+  std::string name_;
+  bool is_input_;
+};
+#endif
+
+class TensorHandle {
+ public:
+  TensorHandle(Interpreter* interpreter, int tensor_index) {
+    impl_.reset(new InterpreterTensorHandle(interpreter, tensor_index));
+  }
+
+#if !TFLITE_DISABLE_SELECT_JAVA_APIS
+  TensorHandle(SignatureRunner* runner, const char* name, bool is_input) {
+    impl_.reset(new SignatureRunnerTensorHandle(runner, name, is_input));
+  }
+#endif
+
+  TfLiteTensor* tensor() const { return impl_->tensor(); }
+  int index() const { return impl_->index(); }
+
+ private:
+  std::unique_ptr<TensorHandleImpl> impl_;
+};
+}  // namespace tflite
+
+namespace {
+using tflite::TensorHandle;
+
+static const char* kByteArrayClassPath = "[B";
+static const char* kStringClassPath = "java/lang/String";
 
 TfLiteTensor* GetTensorFromHandle(JNIEnv* env, jlong handle) {
   if (handle == 0) {
@@ -416,6 +471,48 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_Tensor_create(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jint tensor_index) {
   Interpreter* interpreter = reinterpret_cast<Interpreter*>(interpreter_handle);
   return reinterpret_cast<jlong>(new TensorHandle(interpreter, tensor_index));
+}
+
+JNIEXPORT jlong JNICALL
+Java_org_tensorflow_lite_Tensor_createSignatureInputTensor(
+    JNIEnv* env, jclass clazz, jlong signature_runner_handle,
+    jstring input_name) {
+#if TFLITE_DISABLE_SELECT_JAVA_APIS
+  ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                 "Not supported: createSignatureInputTensor");
+  return -1;
+#else
+  tflite::SignatureRunner* runner =
+      reinterpret_cast<tflite::SignatureRunner*>(signature_runner_handle);
+  if (runner == nullptr) return -1;
+  const char* input_name_ptr = env->GetStringUTFChars(input_name, nullptr);
+  TensorHandle* handle =
+      new TensorHandle(runner, input_name_ptr, /*is_input=*/true);
+  // Release the memory before returning.
+  env->ReleaseStringUTFChars(input_name, input_name_ptr);
+  return reinterpret_cast<jlong>(handle);
+#endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
+}
+
+JNIEXPORT jlong JNICALL
+Java_org_tensorflow_lite_Tensor_createSignatureOutputTensor(
+    JNIEnv* env, jclass clazz, jlong signature_runner_handle,
+    jstring output_name) {
+#if TFLITE_DISABLE_SELECT_JAVA_APIS
+  ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                 "Not supported: createSignatureOutputTensor");
+  return -1;
+#else
+  tflite::SignatureRunner* runner =
+      reinterpret_cast<tflite::SignatureRunner*>(signature_runner_handle);
+  if (runner == nullptr) return -1;
+  const char* output_name_ptr = env->GetStringUTFChars(output_name, nullptr);
+  TensorHandle* handle =
+      new TensorHandle(runner, output_name_ptr, /*is_input=*/false);
+  // Release the memory before returning.
+  env->ReleaseStringUTFChars(output_name, output_name_ptr);
+  return reinterpret_cast<jlong>(handle);
+#endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_lite_Tensor_delete(JNIEnv* env,

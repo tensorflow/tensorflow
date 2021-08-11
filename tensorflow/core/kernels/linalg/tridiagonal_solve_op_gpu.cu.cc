@@ -97,6 +97,15 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
   explicit TridiagonalSolveOpGpuLinalg(OpKernelConstruction* context)
       : Base(context) {
     OP_REQUIRES_OK(context, context->GetAttr("partial_pivoting", &pivoting_));
+    perturb_singular_ = false;
+    if (context->HasAttr("perturb_singular")) {
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("perturb_singular", &perturb_singular_));
+    }
+    OP_REQUIRES(
+        context, perturb_singular_ == false,
+        errors::Unimplemented("The solver to support perturb_singular is"
+                              " not implemented on GPU."));
   }
 
   void ValidateInputMatrixShapes(
@@ -231,6 +240,7 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
   }
 
   bool pivoting_;
+  bool perturb_singular_;
 };
 
 template <class Scalar>

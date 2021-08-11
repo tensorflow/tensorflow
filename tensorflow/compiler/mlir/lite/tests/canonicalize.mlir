@@ -1,4 +1,22 @@
-// RUN: tf-opt -pass-pipeline='func(canonicalize)' -split-input-file -verify-diagnostics %s | FileCheck %s
+// RUN: tf-opt -pass-pipeline='builtin.func(canonicalize)' -split-input-file -verify-diagnostics %s | FileCheck %s
+
+// CHECK-LABEL: @squeeze_folder
+func @squeeze_folder(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %0 = "tfl.squeeze"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK: return %arg0
+  return %0 : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @squeeze_folder
+func @squeeze_folder(%arg0 : tensor<?x?xf32>) -> tensor<*xf32> {
+  %0 = "tfl.squeeze"(%arg0) : (tensor<?x?xf32>) -> tensor<*xf32>
+  // CHECK: "tfl.squeeze"
+  return %0 : tensor<*xf32>
+}
+
+// -----
 
 // Checks that tfl.reshape shape operand is converted to a vector if it is possible
 func @reshape_vector_shape(tensor<4x4x4xf32>) -> tensor<16x4xf32> {
@@ -58,8 +76,8 @@ func @reshape_keepAdjacentWithMultipleUse(tensor<4x4x4xf32>) -> (tensor<16x4xf32
   return %0, %1 : tensor<16x4xf32>, tensor<64xf32>
 
 // CHECK-LABEL: func @reshape_keepAdjacentWithMultipleUse
-// CHECK:  %[[CST:.*]]  = constant dense<[16, 4]> : tensor<2xi32>
-// CHECK:  %[[CST_0:.*]]  = constant dense<64> : tensor<1xi32>
+// CHECK-DAG:  %[[CST:.*]]  = constant dense<[16, 4]> : tensor<2xi32>
+// CHECK-DAG:  %[[CST_0:.*]]  = constant dense<64> : tensor<1xi32>
 // CHECK:  %[[RESHAPE_1:.*]] = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<4x4x4xf32>, tensor<2xi32>) -> tensor<16x4xf32>
 // CHECK:  %[[RESHAPE_2:.*]] = "tfl.reshape"(%arg0, %[[CST_0]]) : (tensor<4x4x4xf32>, tensor<1xi32>) -> tensor<64xf32>
 // CHECK:  return  %[[RESHAPE_1]],  %[[RESHAPE_2]]
@@ -108,6 +126,16 @@ func @RemoveRedundantPack(%arg0: tensor<2x5xf32>) -> (tensor<2x5xf32>, tensor<5x
   // CHECK: %[[UNPACK:.*]]:2 = "tfl.unpack"
   // CHECK-NOT: pack
   // CHECK: return %arg0, %[[UNPACK]]#0 : tensor<2x5xf32>, tensor<5xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @ReplacePackWithReshape
+func @ReplacePackWithReshape(%arg0: tensor<5xf32>) -> tensor<1x5xf32> {
+  %1 = "tfl.pack"(%arg0) {axis = 0 : i32, values_count = 1 : i32} : (tensor<5xf32>) -> (tensor<1x5xf32>)
+  // CHECK: reshape
+  // CHECK-NOT: pack
+  return %1: tensor<1x5xf32>
 }
 
 // -----
@@ -179,30 +207,30 @@ func @WhileCanonicalizeBug1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f3
 // Do not remove resource arugments if they are not read-only variables to keep
 // the graph's control dependency.
 // CHECK-LABEL: WhileWithNonReadOnlyVariableResources
-func @WhileWithNonReadOnlyVariableResources(%arg0: tensor<i32>) -> tensor<!tf.resource> {
+func @WhileWithNonReadOnlyVariableResources(%arg0: tensor<i32>) -> tensor<!tf_type.resource> {
   %0 = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
   %1 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
   %2 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %3 = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
-  %4 = "tf.StackV2"(%3) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf.resource>
+  %4 = "tf.StackV2"(%3) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf_type.resource>
   %5:5 = "tfl.while"(%2, %3, %2, %4, %0) ( {
-  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<!tf.resource>, %arg5: tensor<f32>):  // no predecessors
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<!tf_type.resource>, %arg5: tensor<f32>):  // no predecessors
     %9 = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
     %10 = "tf.Less"(%arg3, %9) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "tfl.yield"(%10) : (tensor<i1>) -> ()
   },  {
-  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<!tf.resource>, %arg5: tensor<f32>):  // no predecessors
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<!tf_type.resource>, %arg5: tensor<f32>):  // no predecessors
     %9 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %10 = "tf.Cast"(%arg3) {Truncate = false, device = ""} : (tensor<i32>) -> tensor<f32>
     %11 = "tf.AddV2"(%arg3, %9) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-    %12 = "tf.StackPushV2"(%arg4, %10) {device = "", swap_memory = false} : (tensor<!tf.resource>, tensor<f32>) -> tensor<f32>
+    %12 = "tf.StackPushV2"(%arg4, %10) {device = "", swap_memory = false} : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<f32>
     %13 = "tf.AddV2"(%arg1, %9) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-    "tfl.yield"(%13, %arg2, %11, %arg4, %12) : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.resource>, tensor<f32>) -> ()
-  }) {is_stateless = false} : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.resource>, tensor<f32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf.resource>, tensor<f32>)
-  return %5#3 : tensor<!tf.resource>
+    "tfl.yield"(%13, %arg2, %11, %arg4, %12) : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf_type.resource>, tensor<f32>) -> ()
+  }) {is_stateless = false} : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf_type.resource>, tensor<f32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf_type.resource>, tensor<f32>)
+  return %5#3 : tensor<!tf_type.resource>
 
 // CHECK: "tfl.while"
-// CHECK: (tensor<i32>, tensor<i32>, tensor<!tf.resource>) -> (tensor<i32>, tensor<i32>, tensor<!tf.resource>)
+// CHECK: (tensor<i32>, tensor<i32>, tensor<!tf_type.resource>) -> (tensor<i32>, tensor<i32>, tensor<!tf_type.resource>)
 }
 
 // CHECK-LABEL: @RemoveFcZeroBias

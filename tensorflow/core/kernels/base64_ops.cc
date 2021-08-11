@@ -39,7 +39,7 @@ class EncodeBase64Op : public OpKernel {
     auto input = input_tensor.flat<tstring>();
     auto output = output_tensor->flat<tstring>();
 
-    for (int64 i = 0; i < input.dimension(0); ++i) {
+    for (int64_t i = 0; i < input.dimension(0); ++i) {
       OP_REQUIRES_OK(context, Base64Encode(input(i), pad_, &output(i)));
     }
   }
@@ -64,7 +64,7 @@ class DecodeBase64Op : public OpKernel {
     auto input = input_tensor.flat<tstring>();
     auto output = output_tensor->flat<tstring>();
 
-    for (int64 i = 0; i < input.dimension(0); ++i) {
+    for (int64_t i = 0; i < input.dimension(0); ++i) {
       OP_REQUIRES_OK(context, Base64Decode(input(i), &output(i)));
     }
   }

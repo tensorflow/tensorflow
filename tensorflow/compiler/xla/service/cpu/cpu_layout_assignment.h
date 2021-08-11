@@ -30,11 +30,8 @@ class CpuLayoutAssignment : public LayoutAssignment {
  public:
   explicit CpuLayoutAssignment(
       ComputationLayout* entry_computation_layout,
-      std::function<bool(const HloInstruction*)>
-          instruction_can_change_layout_func,
       const TargetMachineFeatures* target_machine_features)
-      : LayoutAssignment(entry_computation_layout,
-                         std::move(instruction_can_change_layout_func)),
+      : LayoutAssignment(entry_computation_layout),
         target_machine_features_(*target_machine_features) {}
   ~CpuLayoutAssignment() override {}
 

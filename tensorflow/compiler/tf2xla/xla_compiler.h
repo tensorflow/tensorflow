@@ -324,10 +324,10 @@ class XlaCompiler {
   Status initialization_status_;
 
   // Returns the next step sequence number.
-  int64 NextStepId();
+  int64_t NextStepId();
 
   // Internal sequence number for steps executed on the compilation device.
-  int64 next_step_id_;
+  int64_t next_step_id_;
 
   XlaCompilationDevice* device_;  // Owned by device_mgr_
   StaticDeviceMgr device_mgr_;

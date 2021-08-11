@@ -19,6 +19,8 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <memory>
+
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 
 struct NnApi {
@@ -1321,7 +1323,7 @@ struct NnApi {
    */
   int (*ANeuralNetworksMemoryDesc_addInputRole)(
       ANeuralNetworksMemoryDesc* desc,
-      const ANeuralNetworksCompilation* compilation, int32_t index,
+      const ANeuralNetworksCompilation* compilation, uint32_t index,
       float frequency);
 
   /**
@@ -1790,5 +1792,23 @@ struct NnApi {
  * exist, a null pointer is stored.
  */
 const NnApi* NnApiImplementation();
+
+// Forward declaration for CreateNnApiFromSupportLibrary below.
+struct NnApiSLDriverImplFL5;
+
+/**
+ * Allocate a new NnApi structure instance and fill it with function pointers
+ * from NnApiSLDriverImplFL5 instance. Functions that are not present in the
+ * support library are assigned null pointers.
+ *
+ * The NN API Support Library Driver must support at least NNAPI Feature Level 5
+ * (introduced in SDK level 31), but this might point to a compatible struct
+ * that also supports a higher NNAPI Feature Level. These cases can be
+ * distinguished by examining the base.implFeatureLevel field, which should be
+ * set to the supported feature level (which must be >=
+ * ANEURALNETWORKS_FEATURE_LEVEL_5).
+ */
+std::unique_ptr<const NnApi> CreateNnApiFromSupportLibrary(
+    const NnApiSLDriverImplFL5* nnapi_support_library_driver);
 
 #endif  // TENSORFLOW_LITE_NNAPI_NNAPI_IMPLEMENTATION_H_

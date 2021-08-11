@@ -1517,11 +1517,5 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
   return Status::OK();
 }
 
-void FunctionOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                 const GraphDef& optimized_graph,
-                                 double result) {
-  // Nothing to do for FunctionOptimizer.
-}
-
 }  // end namespace grappler
 }  // end namespace tensorflow

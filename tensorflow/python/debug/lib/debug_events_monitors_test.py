@@ -70,10 +70,10 @@ class DebugEventsMonitorTest(dumping_callback_test_lib.DumpingCallbackTestBase,
       ("FullTensor", "FULL_TENSOR"),
   )
   def testOnExecutionIsCalled(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dump_debug_info(
-        self.dump_root, tensor_debug_mode=tensor_debug_mode)
     x = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float32)
     y = constant_op.constant([[-1], [1]], dtype=dtypes.float32)
+    writer = dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode=tensor_debug_mode)
     math_ops.matmul(x, y)
     writer.FlushNonExecutionFiles()
     writer.FlushExecutionFiles()
@@ -115,6 +115,7 @@ class DebugEventsMonitorTest(dumping_callback_test_lib.DumpingCallbackTestBase,
       ("FullTensor", "FULL_TENSOR"),
   )
   def testOnGraphExecutionTraceIsCalled(self, tensor_debug_mode):
+    xs = constant_op.constant([2., 6., 8., 1., 2.], dtype=dtypes.float32)
     writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
 
@@ -124,7 +125,6 @@ class DebugEventsMonitorTest(dumping_callback_test_lib.DumpingCallbackTestBase,
       unique_xs, indices = array_ops.unique(xs)
       return math_ops.reduce_sum(unique_xs), indices
 
-    xs = constant_op.constant([2., 6., 8., 1., 2.], dtype=dtypes.float32)
     unique_sum(xs)
     writer.FlushNonExecutionFiles()
     writer.FlushExecutionFiles()

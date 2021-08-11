@@ -111,7 +111,7 @@ static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
     return MaybeOwningDeviceMemory{se::DeviceMemoryBase{}};
   }
 
-  int64 buffer_size = allocation.size();
+  int64_t buffer_size = allocation.size();
   TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory out,
                       memory_allocator->Allocate(device_ordinal, buffer_size));
   VLOG(3) << "buffer allocated " << buffer_size << " bytes [" << out->opaque()
@@ -140,9 +140,11 @@ StatusOr<std::vector<MaybeOwningDeviceMemory>> CpuExecutable::CreateBufferTable(
                                         device_ordinal));
   }
 
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
-                      assignment_->GetUniqueTopLevelOutputSlice());
-  VLOG(3) << "result index: " << result_slice.index();
+  if (VLOG_IS_ON(3)) {
+    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                        assignment_->GetUniqueTopLevelOutputSlice());
+    VLOG(3) << "result index: " << result_slice.index();
+  }
   return std::move(buffers);
 }
 
@@ -172,7 +174,7 @@ Status CpuExecutable::ExecuteComputeFunction(
   size_t profile_counters_size =
       hlo_execution_profile ? hlo_execution_profile->profile_counters().size()
                             : 0;
-  int64* profile_counters =
+  int64_t* profile_counters =
       hlo_execution_profile
           ? hlo_execution_profile->mutable_profile_counters()->data()
           : nullptr;
@@ -291,7 +293,7 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
       } else {
         VLOG(3) << "Using copy-protection: aliasing is specified, but the "
                    "buffer is not donated; allocating a fresh buffer";
-        int64 allocation_size =
+        int64_t allocation_size =
             ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(root_shape, index));
         TF_ASSIGN_OR_RETURN(
             se::OwningDeviceMemory allocated_buffer,
@@ -335,7 +337,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     const HloComputation* entry_comp = hlo_module_->entry_computation();
     CHECK_EQ(entry_comp->num_parameters(), arguments.size())
         << "Wrong number of arguments passed when running executable";
-    for (int64 i = 0; i < entry_comp->num_parameters(); ++i) {
+    for (int64_t i = 0; i < entry_comp->num_parameters(); ++i) {
       const Shape& expected_shape =
           entry_comp->parameter_instruction(i)->shape();
       const Shape& actual_shape = arguments[i].Buffers().shape();
@@ -393,7 +395,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   return std::move(result);
 }
 
-/*static*/ int64 CpuExecutable::ShapeSizeBytes(const Shape& shape) {
+/*static*/ int64_t CpuExecutable::ShapeSizeBytes(const Shape& shape) {
   // On the cpu, opaques are pointers.
   if (shape.IsOpaque()) {
     return sizeof(void*);
@@ -402,7 +404,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
   }
   // Each dynamic dimension size is represented as a S32.
-  int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+  int64_t metadata_size = sizeof(int32) * shape.dimensions_size();
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*)) + metadata_size;
 }
 
@@ -411,7 +413,7 @@ const InstructionValueSet& CpuExecutable::GetRootValueSet() const {
       module().entry_computation()->root_instruction());
 }
 
-int64 CpuExecutable::SizeOfGeneratedCodeInBytes() const {
+int64_t CpuExecutable::SizeOfGeneratedCodeInBytes() const {
   return jit_->SizeOfGeneratedCodeInBytes();
 }
 

@@ -22,8 +22,8 @@ limitations under the License.
 
 #include "absl/time/time.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_api_delegate.h"
+#include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/testing/tflite_model_reader.h"
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -43,7 +43,19 @@ void FillInputTensor(tflite::Interpreter* interpreter) {
     if (tensor_ptr->type == kTfLiteInt32) {
       int* p = interpreter->typed_input_tensor<int>(k);
       for (int i = 0; i < tensor_elements_count; ++i) {
-        p[i] = i % 2;
+        p[i] = i % 32;
+      }
+    }
+    if (tensor_ptr->type == kTfLiteInt8) {
+      int8_t* p = interpreter->typed_input_tensor<int8_t>(k);
+      for (int i = 0; i < tensor_elements_count; ++i) {
+        p[i] = i % 256 - 128;
+      }
+    }
+    if (tensor_ptr->type == kTfLiteUInt8) {
+      uint8_t* p = interpreter->typed_input_tensor<uint8_t>(k);
+      for (int i = 0; i < tensor_elements_count; ++i) {
+        p[i] = i % 256;
       }
     }
   }
@@ -52,20 +64,42 @@ void FillInputTensor(tflite::Interpreter* interpreter) {
 void CompareCPUGPUResults(tflite::Interpreter* cpu, tflite::Interpreter* gpu,
                           float eps) {
   for (int i = 0; i < cpu->outputs().size(); ++i) {
-    const float* cpu_out = cpu->typed_output_tensor<float>(i);
-    const float* gpu_out = gpu->typed_output_tensor<float>(i);
-    auto out_n = tflite::NumElements(cpu->tensor(cpu->outputs()[i]));
+    TfLiteTensor* tensor_ptr = cpu->tensor(cpu->outputs()[i]);
+    const auto tensor_elements_count = tflite::NumElements(tensor_ptr);
+
+    std::cout << "Output " << tensor_ptr->name << ":" << std::endl;
+
     const int kMaxPrint = 10;
     int printed = 0;
     int total_different = 0;
-    for (int k = 0; k < out_n; ++k) {
-      const float abs_diff = fabs(cpu_out[k] - gpu_out[k]);
+    for (int k = 0; k < tensor_elements_count; ++k) {
+      float cpu_val = 0.0f;
+      float gpu_val = 0.0f;
+      if (tensor_ptr->type == kTfLiteFloat32) {
+        const float* cpu_out = cpu->typed_output_tensor<float>(i);
+        const float* gpu_out = gpu->typed_output_tensor<float>(i);
+        cpu_val = cpu_out[k];
+        gpu_val = gpu_out[k];
+      }
+      if (tensor_ptr->type == kTfLiteInt8) {
+        int8_t* cpu_out = cpu->typed_output_tensor<int8_t>(i);
+        int8_t* gpu_out = gpu->typed_output_tensor<int8_t>(i);
+        cpu_val = cpu_out[k];
+        gpu_val = gpu_out[k];
+      }
+      if (tensor_ptr->type == kTfLiteUInt8) {
+        uint8_t* cpu_out = cpu->typed_output_tensor<uint8_t>(i);
+        uint8_t* gpu_out = gpu->typed_output_tensor<uint8_t>(i);
+        cpu_val = cpu_out[k];
+        gpu_val = gpu_out[k];
+      }
+      const float abs_diff = fabs(cpu_val - gpu_val);
       if (abs_diff > eps) {
         total_different++;
         if (printed < kMaxPrint) {
-          std::cout << "Output #" << i << ": element #" << k << ": CPU value - "
-                    << cpu_out[k] << ", GPU value - " << gpu_out[k]
-                    << ", abs diff - " << abs_diff << std::endl;
+          std::cout << "Element #" << k << ": CPU value - " << cpu_val
+                    << ", GPU value - " << gpu_val << ", abs diff - "
+                    << abs_diff << std::endl;
           printed++;
         }
         if (printed == kMaxPrint) {
@@ -132,7 +166,7 @@ int main(int argc, char** argv) {
   options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
   options.inference_priority2 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
   options.inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
-  options.experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_NONE;
+  options.experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
   options.max_delegated_partitions = 1;
   auto* gpu_delegate = TfLiteGpuDelegateV2Create(&options);
   status = gpu_inference->ModifyGraphWithDelegate(gpu_delegate);

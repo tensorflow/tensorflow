@@ -34,7 +34,7 @@ class TpuCompilationCacheEntryUnloader : public ResourceBase {
 
   ~TpuCompilationCacheEntryUnloader() override {
     absl::MutexLock lock(&mu_);
-    for (int64 uid : cache_entry_uids_) {
+    for (int64_t uid : cache_entry_uids_) {
       Status s = cache_->MarkEntryForEviction(uid);
       if (!s.ok()) {
         LOG(WARNING) << "MarkEntryForEviction in "
@@ -47,7 +47,7 @@ class TpuCompilationCacheEntryUnloader : public ResourceBase {
   }
 
   // Add cache entry uid to be unloaded in destructor.
-  void AddCacheEntryUid(int64 uid) {
+  void AddCacheEntryUid(int64_t uid) {
     absl::MutexLock lock(&mu_);
     cache_entry_uids_.insert(uid);
   }
@@ -60,7 +60,7 @@ class TpuCompilationCacheEntryUnloader : public ResourceBase {
   TF_DISALLOW_COPY_AND_ASSIGN(TpuCompilationCacheEntryUnloader);
   mutable absl::Mutex mu_;
   TpuCompilationCacheInterface* cache_;  // Not owned.
-  absl::flat_hash_set<int64> cache_entry_uids_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_set<int64_t> cache_entry_uids_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace tpu

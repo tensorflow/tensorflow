@@ -78,7 +78,7 @@ tf_module {
   }
   member_method {
     name: "stateless_normal"
-    argspec: "args=[\'shape\', \'seed\', \'mean\', \'stddev\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\'], "
+    argspec: "args=[\'shape\', \'seed\', \'mean\', \'stddev\', \'dtype\', \'name\', \'alg\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\', \'auto_select\'], "
   }
   member_method {
     name: "stateless_parameterized_truncated_normal"
@@ -90,11 +90,11 @@ tf_module {
   }
   member_method {
     name: "stateless_truncated_normal"
-    argspec: "args=[\'shape\', \'seed\', \'mean\', \'stddev\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\'], "
+    argspec: "args=[\'shape\', \'seed\', \'mean\', \'stddev\', \'dtype\', \'name\', \'alg\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\', \'auto_select\'], "
   }
   member_method {
     name: "stateless_uniform"
-    argspec: "args=[\'shape\', \'seed\', \'minval\', \'maxval\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \"<dtype: \'float32\'>\", \'None\'], "
+    argspec: "args=[\'shape\', \'seed\', \'minval\', \'maxval\', \'dtype\', \'name\', \'alg\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \"<dtype: \'float32\'>\", \'None\', \'auto_select\'], "
   }
   member_method {
     name: "truncated_normal"

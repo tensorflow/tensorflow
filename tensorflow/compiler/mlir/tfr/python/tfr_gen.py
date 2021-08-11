@@ -234,7 +234,7 @@ class OpDefCache(object):
     self._op_defs = {}
 
   def lookup(self, f_name, func_def=None, optional=False):
-    if f_name in self._op_defs.keys():
+    if f_name in self._op_defs:
       return self._op_defs[f_name]
 
     if isinstance(func_def, types.FunctionType):
@@ -277,7 +277,7 @@ class OpDefCache(object):
     return (op_def, derived_attrs)
 
   def mlir_external_funcs(self):
-    tfr_funcs = []
+    tfr_funcs = set()
     for _, (op_def, derived_attrs) in sorted(self._op_defs.items()):
       tfr_func = '\ntfr.func @tf__{}_('.format(_camel_to_snake(op_def.name))
 
@@ -297,7 +297,7 @@ class OpDefCache(object):
       attrs_with_default = [
           attr for attr in non_derived_attrs if attr.HasField('default_value')
       ]
-      attr_names = set()
+      attr_names = {'f32_', 'i32_', 'i64_', 'i1_'}  # reserved
       for attr_def in attrs_no_default + attrs_with_default:
         inputs.append(_get_type_info_from_proto(None, attr_def))
         attr_names.add(attr_def.name)
@@ -310,9 +310,9 @@ class OpDefCache(object):
       inputs = ','.join(inputs)
       outputs = ','.join(outputs)
       attrs = ','.join(sorted(derived_attrs.union(attr_names)))
-      tfr_funcs.append('{}{}) -> ({}) attributes {{{}}}'.format(
+      tfr_funcs.add('{}{}) -> ({}) attributes {{{}}}'.format(
           tfr_func, inputs, outputs, attrs))
-    return tfr_funcs
+    return sorted(list(tfr_funcs))
 
 
 _PY_TYPE_TO_TFR = {
@@ -341,12 +341,13 @@ QN = qual_names.QN
 # TODO(mdan): Fix this with an importable module.
 AG_MODULE = api._TRANSPILER.get_extra_locals()['ag__']  # pylint:disable=protected-access
 
+# When an item is callable, the signature is (*operand_types) -> result_type(s)
 TFR_BUILTINS = {
     '_tfr_quant_act_range': (TFRTypes.TENSOR, TFRTypes.TENSOR),
     '_tfr_quant_rescale': TFRTypes.TENSOR,
-    '_tfr_quant_raw_data': TFRTypes.TENSOR,
+    '_tfr_quant_raw_data': lambda input_type: input_type,
     '_tfr_quant_qparam': (TFRTypes.TENSOR, TFRTypes.TENSOR),
-    '_tfr_quant_scale_factor': (TFRTypes.TENSOR),
+    '_tfr_quant_scale_factor': TFRTypes.TENSOR,
 }
 
 
@@ -472,6 +473,8 @@ class TFRTypeResolver(type_inference.Resolver):
 
     elif f_type == (TFRTypes.TFR_BUILTIN_FUNC,):
       op_name = name.qn[0]
+      if callable(TFR_BUILTINS[op_name]):
+        return {TFR_BUILTINS[op_name](*[list(arg)[0] for arg in args])}, None
       return {TFR_BUILTINS[op_name]}, None
 
     elif f_type == (TFRTypes.TF_TENSOR_SHAPE_FUNC,):
@@ -1229,7 +1232,11 @@ class TFRGen(transformer.CodeGenerator):
     """emit mlir constant statement from default value of the ArgDef proto."""
     name = self._ssa_name('cst')
     cst_ty = _get_type_from_proto(None, attr_def)
-    cst_val = _get_val_from_proto(cst_ty, attr_def.default_value)
+    try:
+      cst_val = _get_val_from_proto(cst_ty, attr_def.default_value)
+    except AttributeError:
+      raise AttributeError(
+          f'attribute "{attr_def.name}" does not have default_value')
     if cst_ty == TFRTypes.ATTR:
       self._emit_with_loc('\n{} = tfr.constant {} -> {}'.format(
           name, cst_val, cst_ty))
@@ -1245,13 +1252,15 @@ class TFRGen(transformer.CodeGenerator):
 
   def _visit_tfr_builtins(self, op_name, args, node):
     arg_strs = []
-    ty_strs = []
+    arg_tys = []
     for arg in args:
       value, ty = self.visit(arg)
       arg_strs.append(value)
-      ty_strs.append(str(ty))
+      arg_tys.append(ty)
     tfr_op_name = 'tfr.' + op_name[5:]
-    ret_tys = TFR_BUILTINS[op_name]
+    ret_tys = (
+        TFR_BUILTINS[op_name](*arg_tys)
+        if callable(TFR_BUILTINS[op_name]) else TFR_BUILTINS[op_name])
     # Convert the tfr builtin returns to a list.
     if isinstance(ret_tys, tuple):
       ret_tys = list(ret_tys)
@@ -1261,8 +1270,8 @@ class TFRGen(transformer.CodeGenerator):
     ret_str, ret_ssa_values = self._get_mlir_ssa_values(op_name, ret_tys)
 
     arg_str = ', '.join(arg_strs)
-    arg_ty_str = ', '.join(ty_strs)
-    ret_ty_str = ', '.join([str(ty) for ty in ret_tys])
+    arg_ty_str = ', '.join(str(ty) for ty in arg_tys)
+    ret_ty_str = ', '.join(str(ty) for ty in ret_tys)
     self._emit_with_loc('\n{} = {}({}) : ({}) -> ({})'.format(
         ret_str, tfr_op_name, arg_str, arg_ty_str, ret_ty_str), node)
     return list(zip(ret_ssa_values, ret_tys))
@@ -1501,9 +1510,9 @@ def tfr_gen(func, op_defs):
   return mlir_code
 
 
-def tfr_gen_from_module(source, method_prefix=None, op_libraries=None):
+def tfr_funcs_gen_from_module(source, op_defs, method_prefix=None,
+                              op_libraries=None):
   """Parse the input source module and emit the TFR functions."""
-  op_defs = OpDefCache()
 
   # Load the op library so the op is added to the op registry. This is
   # required when the op cc_library couldn't be statically linked in open
@@ -1541,5 +1550,14 @@ def tfr_gen_from_module(source, method_prefix=None, op_libraries=None):
   # functions called.
   py_funcs = sorted(py_funcs, key=lambda x: x.__code__.co_firstlineno)
   mlir_funcs = [tfr_gen(func, op_defs) for func in py_funcs]
+
+  return mlir_funcs
+
+
+def tfr_gen_from_module(source, method_prefix=None, op_libraries=None,
+                        op_defs=OpDefCache()):
+  """Parse the input source module and emit the TFR and external functions."""
+  mlir_funcs = tfr_funcs_gen_from_module(
+      source, op_defs, method_prefix, op_libraries)
 
   return '\n'.join(mlir_funcs + op_defs.mlir_external_funcs())

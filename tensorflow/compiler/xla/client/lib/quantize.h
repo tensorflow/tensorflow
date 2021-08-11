@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace xla {
 
-constexpr int64 kBitsOfByte = 8;
+constexpr int64_t kBitsOfByte = 8;
 
 // Represents the range used for quantization
 struct QuantizedRange {
@@ -48,19 +48,19 @@ struct QuantizedRange {
 
 template <typename T>
 inline std::vector<uint32> PackToUint32(absl::Span<const T> input) {
-  const int64 kElementsPerPack = sizeof(uint32) / sizeof(T);
-  const int64 input_size = input.size();
-  const int64 output_size = CeilOfRatio(input_size, kElementsPerPack);
+  const int64_t kElementsPerPack = sizeof(uint32) / sizeof(T);
+  const int64_t input_size = input.size();
+  const int64_t output_size = CeilOfRatio(input_size, kElementsPerPack);
 
   std::vector<uint32> output_vec;
-  constexpr int64 kShiftBits = sizeof(T) / sizeof(uint8) * kBitsOfByte;
+  constexpr int64_t kShiftBits = sizeof(T) / sizeof(uint8) * kBitsOfByte;
 
-  for (int64 i = 0; i < output_size; i++) {
+  for (int64_t i = 0; i < output_size; i++) {
     uint32 result = 0;
-    for (int64 p = 0; p < kElementsPerPack; p++) {
-      int64 index = i * kElementsPerPack + p;
+    for (int64_t p = 0; p < kElementsPerPack; p++) {
+      int64_t index = i * kElementsPerPack + p;
       if (index < input_size) {
-        int64 total_shift_bits = kShiftBits * (kElementsPerPack - p - 1);
+        int64_t total_shift_bits = kShiftBits * (kElementsPerPack - p - 1);
         result |= (input[index] << total_shift_bits);
       }
     }
@@ -90,7 +90,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
             : (static_cast<float>(std::numeric_limits<T>::max()) -
                std::numeric_limits<T>::min() + 1) /
                   2.0f;
-    const int64 unpack_size = sizeof(uint32) / sizeof(T);
+    const int64_t unpack_size = sizeof(uint32) / sizeof(T);
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(input));
 
     auto element_type = shape.element_type();
@@ -121,7 +121,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
       bit_mask |= 0x000000ff;
     }
 
-    std::vector<int64> shift_transpose_dimensions(shape.dimensions_size());
+    std::vector<int64_t> shift_transpose_dimensions(shape.dimensions_size());
     std::iota(shift_transpose_dimensions.begin(),
               shift_transpose_dimensions.end(), 0);
     shift_transpose_dimensions.insert(shift_transpose_dimensions.begin(), 1,
@@ -156,7 +156,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
           "Only MIN_COMBINED mode is supported in xla::Dequantize Op.");
     }
 
-    std::vector<int64> transpose_dimensions(shape.dimensions_size());
+    std::vector<int64_t> transpose_dimensions(shape.dimensions_size());
     std::iota(transpose_dimensions.begin(), transpose_dimensions.end(), 1);
     std::reverse(transpose_dimensions.begin(), transpose_dimensions.end());
     transpose_dimensions.insert(transpose_dimensions.begin() + 1, 1, 0);
@@ -173,7 +173,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
     }
 
     // Transpose the result to be [d0, d1, ..., dn-1, dn * unpack_size].
-    std::vector<int64> result_dimensions(shape.dimensions_size());
+    std::vector<int64_t> result_dimensions(shape.dimensions_size());
     std::iota(result_dimensions.begin(), result_dimensions.end(), 0);
     std::reverse(result_dimensions.begin(), result_dimensions.end());
 

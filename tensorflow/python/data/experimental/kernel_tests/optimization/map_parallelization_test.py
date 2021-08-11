@@ -24,6 +24,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -64,7 +65,7 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     next_nodes = ["ParallelMap"] if should_optimize else ["Map"]
     dataset = dataset_ops.Dataset.range(5).apply(
         testing.assert_next(next_nodes)).map(function)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_parallelization = True
     dataset = dataset.with_options(options)
@@ -78,7 +79,7 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       return x + captured_t
     dataset = dataset_ops.Dataset.range(5).apply(
         testing.assert_next(["ParallelMap"])).map(fn)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_parallelization = True
     dataset = dataset.with_options(options)
@@ -92,7 +93,7 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       return x + captured_t
     dataset = dataset_ops.Dataset.range(5).apply(
         testing.assert_next(["Map"])).map(fn)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_parallelization = True
     dataset = dataset.with_options(options)
@@ -111,11 +112,11 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(4).apply(
         testing.assert_next(next_nodes)).map(lambda x: x + 2)
 
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_parallelization = True
     if apply_autotune is not None:
-      options.experimental_optimization.autotune = apply_autotune
+      options.autotune.enabled = apply_autotune
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[2, 3, 4, 5])
 
@@ -129,7 +130,7 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.range(1, 4).interleave(
         map_func=func, cycle_length=2, block_length=2)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_parallelization = True
     dataset = dataset.with_options(options)
@@ -145,7 +146,7 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       return ds
 
     dataset = dataset_ops.Dataset.range(1, 4).flat_map(map_func=func)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_parallelization = True
     dataset = dataset.with_options(options)

@@ -49,7 +49,11 @@ namespace xla {
   V(kAddDependency, "add-dependency", 2)                                       \
   V(kAfterAll, "after-all", kHloOpcodeIsVariadic)                              \
   V(kAllGather, "all-gather", kHloOpcodeIsVariadic)                            \
+  V(kAllGatherStart, "all-gather-start", kHloOpcodeIsVariadic)                 \
+  V(kAllGatherDone, "all-gather-done", 1)                                      \
   V(kAllReduce, "all-reduce", kHloOpcodeIsVariadic)                            \
+  V(kAllReduceStart, "all-reduce-start", kHloOpcodeIsVariadic)                 \
+  V(kAllReduceDone, "all-reduce-done", 1)                                      \
   V(kAllToAll, "all-to-all", kHloOpcodeIsVariadic)                             \
   V(kAtan2, "atan2", 2)                                                        \
   V(kBatchNormGrad, "batch-norm-grad", 5)                                      \
@@ -119,6 +123,7 @@ namespace xla {
   V(kRecvDone, "recv-done", 1)                                                 \
   V(kReduce, "reduce", kHloOpcodeIsVariadic)                                   \
   V(kReducePrecision, "reduce-precision", 1)                                   \
+  V(kReduceScatter, "reduce-scatter", kHloOpcodeIsVariadic)                    \
   V(kReduceWindow, "reduce-window", kHloOpcodeIsVariadic)                      \
   V(kRemainder, "remainder", 2)                                                \
   V(kReplicaId, "replica-id", 0)                                               \

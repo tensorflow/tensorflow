@@ -1998,7 +1998,7 @@ class CustomMetricsTest(test.TestCase):
     y_pred = constant_op.constant([[0, 0, 1, 5, 0], [1, 1, 1, 1, 1],
                                    [0, 1, 0, 1, 0], [1, 10, 1, 1, 1]])
 
-    update_op = btp_obj.update_state(y_true, y_pred)
+    update_op = btp_obj.update_state(y_true, y_pred)  # pylint: disable=assignment-from-no-return
     self.evaluate(update_op)
     result = btp_obj.result()
     self.assertEqual(7, self.evaluate(result))

@@ -133,13 +133,21 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
 // Canonicalize operations in functions.
 struct TensorFlowOptimizePass
     : public TensorFlowOptimizePassBase<TensorFlowOptimizePass> {
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
-    auto func = getFunction();
-    populateWithGenerated(patterns);
-    patterns.insert<SimplifyBroadcastReshape>(&getContext());
-    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  LogicalResult initialize(MLIRContext *context) override {
+    OwningRewritePatternList pattern_list(context);
+    populateWithGenerated(pattern_list);
+    pattern_list.insert<SimplifyBroadcastReshape>(context);
+    patterns = std::move(pattern_list);
+    return success();
   }
+
+  void runOnFunction() override {
+    auto func = getFunction();
+    if (failed(applyPatternsAndFoldGreedily(func, patterns)))
+      signalPassFailure();
+  }
+
+  FrozenRewritePatternSet patterns;
 };
 
 }  // namespace

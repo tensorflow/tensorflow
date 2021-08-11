@@ -847,13 +847,10 @@ def add_tests(test_cls):
             setattr(
                 test_cls,
                 test_name,
-                test_util.run_deprecated_v1(test_template_fn(
-                    use_placeholder,
-                    shape_info,
-                    dtype,
-                    adjoint,
-                    adjoint_arg,
-                    test_cls.use_blockwise_arg())))
+                test_util.run_deprecated_v1(
+                    test_template_fn(  # pylint: disable=too-many-function-args
+                        use_placeholder, shape_info, dtype, adjoint,
+                        adjoint_arg, test_cls.use_blockwise_arg())))
       else:
         if hasattr(test_cls, base_test_name):
           raise RuntimeError("Test %s defined more than once" % base_test_name)

@@ -109,7 +109,14 @@ def _get_inputs_tensor_info_from_meta_graph_def(meta_graph_def,
 
   Returns:
     A dictionary that maps input tensor keys to TensorInfos.
+
+  Raises:
+    ValueError if `signature_def_key` is not found in the MetaGraphDef.
   """
+  if signature_def_key not in meta_graph_def.signature_def:
+    raise ValueError(
+        f'Could not find signature "{signature_def_key}". Please choose from: '
+        f'{", ".join(meta_graph_def.signature_def.keys())}')
   return meta_graph_def.signature_def[signature_def_key].inputs
 
 
@@ -660,7 +667,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
-    data = np.load(file_io.FileIO(filename, mode='rb'), allow_pickle=True)
+    data = np.load(file_io.FileIO(filename, mode='rb'), allow_pickle=True)  # pylint: disable=unexpected-keyword-arg
 
     # When a variable_name key is specified for the input file
     if variable_name:

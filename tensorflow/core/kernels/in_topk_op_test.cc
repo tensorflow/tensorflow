@@ -65,23 +65,23 @@ static Graph* InTopK(int num_targets, int num_classes, T top_k) {
 #define BM_NAME(T, TARGETS, CLASSES, K, DEVICE) \
   BM_InTopK##_##T##_##TARGETS##_##CLASSES##_##K##_##DEVICE
 
-#define BM_InTopK(T, TARGETS, CLASSES, K, DEVICE)                              \
-  static void BM_NAME(T, TARGETS, CLASSES, K,                                  \
-                      DEVICE)(::testing::benchmark::State & state) {           \
-    test::Benchmark(#DEVICE, InTopK<T>(TARGETS, CLASSES, K),                   \
-                    /*old_benchmark_api=*/false)                               \
-        .Run(state);                                                           \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * TARGETS * \
-                            CLASSES);                                          \
-  }                                                                            \
+#define BM_InTopK(T, TARGETS, CLASSES, K, DEVICE)                      \
+  static void BM_NAME(T, TARGETS, CLASSES, K,                          \
+                      DEVICE)(::testing::benchmark::State & state) {   \
+    test::Benchmark(#DEVICE, InTopK<T>(TARGETS, CLASSES, K),           \
+                    /*old_benchmark_api=*/false)                       \
+        .Run(state);                                                   \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * \
+                            TARGETS * CLASSES);                        \
+  }                                                                    \
   BENCHMARK(BM_NAME(T, TARGETS, CLASSES, K, DEVICE))->UseRealTime();
 
-BM_InTopK(int64, 64, 1000, 10, cpu);
-BM_InTopK(int64, 64, 10000, 10, cpu);
+BM_InTopK(int64_t, 64, 1000, 10, cpu);
+BM_InTopK(int64_t, 64, 10000, 10, cpu);
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
-BM_InTopK(int64, 64, 1000, 10, gpu);
-BM_InTopK(int64, 64, 10000, 10, gpu);
+BM_InTopK(int64_t, 64, 1000, 10, gpu);
+BM_InTopK(int64_t, 64, 10000, 10, gpu);
 #endif  // defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 
 }  // namespace tensorflow

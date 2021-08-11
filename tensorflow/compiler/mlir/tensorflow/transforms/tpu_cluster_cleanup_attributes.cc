@@ -18,10 +18,8 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
-
-// This pass eliminate `_tpu_replicate` and `device` attribute on operations
-// that are contained in a tf_device.cluster op.
 
 namespace mlir {
 namespace TFTPU {
@@ -32,8 +30,8 @@ constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
 constexpr char kDeviceAttr[] = "device";
 
 class TPUCleanupClusterAttributesPass
-    : public PassWrapper<TPUCleanupClusterAttributesPass,
-                         OperationPass<ModuleOp>> {
+    : public TF::TPUCleanupClusterAttributesPassBase<
+          TPUCleanupClusterAttributesPass> {
  public:
   void runOnOperation() override {
     getOperation().walk([](tf_device::ClusterOp cluster) {
@@ -56,10 +54,6 @@ class TPUCleanupClusterAttributesPass
     });
   }
 };
-
-PassRegistration<TPUCleanupClusterAttributesPass> pass(
-    "tf-tpu-cleanup-cluster-attributes",
-    "Eliminate _tpu_replicate and other attributes from ops in a cluster");
 
 }  // namespace
 

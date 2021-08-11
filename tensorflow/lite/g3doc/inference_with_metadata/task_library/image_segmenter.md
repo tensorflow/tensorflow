@@ -61,7 +61,7 @@ dependencies {
     // Other dependencies
 
     // Import the Task Vision Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.1.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.2.0'
 }
 ```
 
@@ -89,7 +89,7 @@ for more options to configure `ImageSegmenter`.
 ```c++
 // Initialization
 ImageSegmenterOptions options;
-options.mutable_model_file_with_metadata()->set_file_name(model_file);
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
 std::unique_ptr<ImageSegmenter> image_segmenter = ImageSegmenter::CreateFromOptions(options).value();
 
 // Run inference

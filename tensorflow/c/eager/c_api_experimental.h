@@ -175,6 +175,31 @@ TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
 TFE_MonitoringGetCellStringGauge2(TFE_MonitoringStringGauge2* gauge,
                                   const char* label1, const char* label2);
 
+// APIs for String Gauge with 3 labels.
+typedef struct TFE_MonitoringStringGauge3 TFE_MonitoringStringGauge3;
+TF_CAPI_EXPORT extern TFE_MonitoringStringGauge3* TFE_MonitoringNewStringGauge3(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1, const char* label2, const char* label3);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge3(
+    TFE_MonitoringStringGauge3* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
+TFE_MonitoringGetCellStringGauge3(TFE_MonitoringStringGauge3* gauge,
+                                  const char* label1, const char* label2,
+                                  const char* label3);
+
+// APIs for String Gauge with 4 labels.
+typedef struct TFE_MonitoringStringGauge4 TFE_MonitoringStringGauge4;
+TF_CAPI_EXPORT extern TFE_MonitoringStringGauge4* TFE_MonitoringNewStringGauge4(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1, const char* label2, const char* label3,
+    const char* label4);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge4(
+    TFE_MonitoringStringGauge4* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
+TFE_MonitoringGetCellStringGauge4(TFE_MonitoringStringGauge4* gauge,
+                                  const char* label1, const char* label2,
+                                  const char* label3, const char* label4);
+
 typedef struct TFE_MonitoringBoolGaugeCell TFE_MonitoringBoolGaugeCell;
 TF_CAPI_EXPORT extern void TFE_MonitoringBoolGaugeCellSet(
     TFE_MonitoringBoolGaugeCell* cell, bool value);
@@ -628,6 +653,41 @@ TF_CAPI_EXPORT extern void TFE_GetExecutedOpNames(TFE_Context* ctx,
 TF_CAPI_EXPORT extern void TFE_SetLogicalCpuDevices(TFE_Context* ctx,
                                                     int num_cpus,
                                                     const char* prefix,
+                                                    TF_Status* status);
+
+// Set configuration key and value using coordination service.
+// If coordination service is enabled, the key-value will be stored on the
+// leader and become accessible to all workers in the cluster.
+// Currently, a config key can only be set with one value, and subsequently
+// setting the same key will lead to errors.
+//
+// Note that the key-values are only expected to be used for cluster
+// configuration data, and should not be used for storing large amount of data
+// or being accessed very frequently.
+TF_CAPI_EXPORT extern void TFE_InsertConfigKeyValue(TFE_Context* ctx,
+                                                    const char* key,
+                                                    const char* value,
+                                                    TF_Status* status);
+
+// Get configuration key and value using coordination service.
+// The config key must be set before getting its value. Getting value of
+// non-existing config keys will result in errors.
+TF_CAPI_EXPORT extern void TFE_GetConfigKeyValue(TFE_Context* ctx,
+                                                 const char* key,
+                                                 TF_Buffer* value_buf,
+                                                 TF_Status* status);
+
+// Delete configuration key-value. If `key` is a directory, recursively clean up
+// all key-values under the path specified by `key`.
+TF_CAPI_EXPORT extern void TFE_DeleteConfigKeyValue(TFE_Context* ctx,
+                                                    const char* key,
+                                                    TF_Status* status);
+
+// Report error (specified by error_code and error_message) to other tasks in
+// the cluster.
+TF_CAPI_EXPORT extern void TFE_ReportErrorToCluster(TFE_Context* ctx,
+                                                    int error_code,
+                                                    const char* error_message,
                                                     TF_Status* status);
 
 #ifdef __cplusplus

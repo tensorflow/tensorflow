@@ -88,8 +88,9 @@ def build_all_signature_defs(receiver_tensors,
   if not isinstance(receiver_tensors, dict):
     receiver_tensors = {SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors}
   if export_outputs is None or not isinstance(export_outputs, dict):
-    raise ValueError('export_outputs must be a dict and not'
-                     '{}'.format(type(export_outputs)))
+    raise ValueError('`export_outputs` must be a dict. Received '
+                     f'{export_outputs} with type '
+                     f'{type(export_outputs).__name__}.')
 
   signature_def_map = {}
   excluded_signatures = {}
@@ -219,7 +220,7 @@ def get_timestamped_export_dir(export_dir_base):
     logging.warn('Directory {} already exists; retrying (attempt {}/{})'.format(
         compat.as_str(result_dir), attempts, MAX_DIRECTORY_CREATION_ATTEMPTS))
   raise RuntimeError('Failed to obtain a unique export directory name after '
-                     '{} attempts.'.format(MAX_DIRECTORY_CREATION_ATTEMPTS))
+                     f'{MAX_DIRECTORY_CREATION_ATTEMPTS} attempts.')
 
 
 def get_temp_export_dir(timestamped_export_dir):
@@ -275,10 +276,10 @@ def export_outputs_for_mode(
   """
   if mode not in SIGNATURE_KEY_MAP:
     raise ValueError(
-        'Export output type not found for mode: {}. Expected one of: {}.\n'
+        f'Export output type not found for `mode`: {mode}. Expected one of: '
+        f'{list(SIGNATURE_KEY_MAP.keys())}.\n'
         'One likely error is that V1 Estimator Modekeys were somehow passed to '
-        'this function. Please ensure that you are using the new ModeKeys.'
-        .format(mode, SIGNATURE_KEY_MAP.keys()))
+        'this function. Please ensure that you are using the new ModeKeys.')
   signature_key = SIGNATURE_KEY_MAP[mode]
   if mode_keys.is_predict(mode):
     return get_export_outputs(serving_export_outputs, predictions)
@@ -311,13 +312,13 @@ def get_export_outputs(export_outputs, predictions):
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: default_output}
 
   if not isinstance(export_outputs, dict):
-    raise TypeError('export_outputs must be dict, given: {}'.format(
-        export_outputs))
+    raise TypeError(
+        f'`export_outputs` must be dict, received: {export_outputs}.')
   for v in export_outputs.values():
     if not isinstance(v, export_output_lib.ExportOutput):
       raise TypeError(
-          'Values in export_outputs must be ExportOutput objects. '
-          'Given: {}'.format(export_outputs))
+          'Values in `export_outputs` must be ExportOutput objects, '
+          f'received: {export_outputs}.')
 
   _maybe_add_default_serving_output(export_outputs)
 
@@ -347,9 +348,10 @@ def _maybe_add_default_serving_output(export_outputs):
     if (signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
         not in export_outputs):
       raise ValueError(
-          'Multiple export_outputs were provided, but none of them is '
-          'specified as the default.  Do this by naming one of them with '
-          'signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY.')
+          'Multiple `export_outputs` were provided, but none of them are '
+          'specified as the default. Use'
+          '`tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY` to '
+          'specify a default.')
 
   return export_outputs
-# LINT.ThenChange(//tensorflow/python/keras/saving/utils_v1/export_utils.py)
+# LINT.ThenChange(//keras/saving/utils_v1/export_utils.py)

@@ -142,10 +142,10 @@ REGISTER_OP("BatchMatMulV3")
     .Input("y: Tb")
     .Output("output: Tout")
     .Attr(
-        "Ta: {bfloat16, half, float, double, int8, int16, int32, int64, "
+        "Ta: {bfloat16, half, float, double, uint8, int8, int16, int32, int64, "
         "complex64, complex128}")
     .Attr(
-        "Tb: {bfloat16, half, float, double, int8, int16, int32, int64, "
+        "Tb: {bfloat16, half, float, double, uint8, int8, int16, int32, int64, "
         "complex64, complex128}")
     .Attr(
         "Tout: {bfloat16, half, float, double, int16, int32, int64, complex64, "
@@ -497,7 +497,7 @@ REGISTER_OP("DivNoNan")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {half, float, double, complex64, complex128}")
+    .Attr("T: {half, float, bfloat16, double, complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("FloorDiv")
@@ -601,7 +601,9 @@ REGISTER_OP("FloorMod")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {int32, int64, uint32, uint64, bfloat16, half, float, double}")
+    .Attr(
+        "T: {int8, int16, int32, int64, uint8, uint16, uint32, uint64, "
+        "bfloat16, half, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("TruncateMod")
@@ -838,8 +840,8 @@ REGISTER_OP("Select")
 
       // rank of shape and data is known.
 
-      const int32 cond_rank = c->Rank(cond);
-      const int32 data_rank = c->Rank(data);
+      const int32_t cond_rank = c->Rank(cond);
+      const int32_t data_rank = c->Rank(data);
 
       if (cond_rank == 0) {
         // The rank of 'cond' is a scalar.
@@ -1070,7 +1072,7 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
     return shape_inference::UnknownShape(c);
   }
 
-  const int32 input_rank = c->Rank(input_shape);
+  const int32_t input_rank = c->Rank(input_shape);
   if (input_rank <= 1) {
     // Reducing a scalar/vector must return a scalar.
     return shape_inference::ScalarShape(c);
@@ -1090,14 +1092,14 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
     return Status::OK();
   }
 
-  int64 dimension_val;
+  int64_t dimension_val;
   if (dim_t->dtype() == DT_INT32) {
     dimension_val = dim_t->scalar<int32>()();
   } else {
-    dimension_val = dim_t->scalar<int64>()();
+    dimension_val = dim_t->scalar<int64_t>()();
   }
 
-  int64 axis = dimension_val < 0 ? dimension_val + input_rank : dimension_val;
+  int64_t axis = dimension_val < 0 ? dimension_val + input_rank : dimension_val;
   if (axis < 0 || axis >= input_rank) {
     return errors::InvalidArgument(
         "Dimension (", dimension_val, ") must be in the range [", -input_rank,
@@ -1364,7 +1366,7 @@ REGISTER_OP("SparseSegmentSumGrad")
     .Input("segment_ids: Tsegmentids")
     .Input("output_dim0: int32")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn);
@@ -1374,7 +1376,7 @@ REGISTER_OP("SparseSegmentMean")
     .Input("indices: Tidx")
     .Input("segment_ids: Tsegmentids")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionShapeFn);
@@ -1385,7 +1387,7 @@ REGISTER_OP("SparseSegmentMeanWithNumSegments")
     .Input("segment_ids: Tsegmentids")
     .Input("num_segments: Tnumsegments")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
@@ -1397,7 +1399,7 @@ REGISTER_OP("SparseSegmentMeanGrad")
     .Input("segment_ids: Tsegmentids")
     .Input("output_dim0: int32")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn);
@@ -1407,7 +1409,7 @@ REGISTER_OP("SparseSegmentSqrtN")
     .Input("indices: Tidx")
     .Input("segment_ids: Tsegmentids")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionShapeFn);
@@ -1418,7 +1420,7 @@ REGISTER_OP("SparseSegmentSqrtNWithNumSegments")
     .Input("segment_ids: Tsegmentids")
     .Input("num_segments: Tnumsegments")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
@@ -1430,7 +1432,7 @@ REGISTER_OP("SparseSegmentSqrtNGrad")
     .Input("segment_ids: Tsegmentids")
     .Input("output_dim0: int32")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn);
@@ -1479,7 +1481,7 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
                       Eigen::numext::abs(delta))
                    : (Eigen::numext::ceil(
                          Eigen::numext::abs((limit - start) / delta))));
-  c->set_output(0, c->Vector(static_cast<int64>(size)));
+  c->set_output(0, c->Vector(static_cast<int64_t>(size)));
   return Status::OK();
 }
 
@@ -1554,7 +1556,7 @@ REGISTER_OP("LinSpace")
         return Status::OK();
       }
 
-      int64 num;
+      int64_t num;
       if (num_t->dtype() == DT_INT32) {
         num = num_t->scalar<int32>()();
       } else {
@@ -1658,7 +1660,7 @@ REGISTER_OP("HistogramFixedWidth")
       // If nbins is available, set the shape from nbins.
       const Tensor* nbins_input = c->input_tensor(2);
       if (nbins_input != nullptr) {
-        int64 nbins;
+        int64_t nbins;
         TF_RETURN_IF_ERROR(c->GetScalarFromTensor(nbins_input, &nbins));
         // nbins has to be positive.
         if (nbins <= 0) {
@@ -1690,7 +1692,7 @@ REGISTER_OP("Bincount")
       }
 
       // Return `[size]` shape if size is known.
-      int32 size_val = size_tensor->scalar<int32>()();
+      int32_t size_val = size_tensor->scalar<int32>()();
       if (size_val < 0) {
         return errors::InvalidArgument("size (", size_val,
                                        ") must be non-negative");
@@ -1721,7 +1723,7 @@ REGISTER_OP("DenseBincount")
         return Status::OK();
       }
 
-      int64 size_val;
+      int64_t size_val;
       DataType dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
       if (dtype == DT_INT32) {
@@ -1762,7 +1764,7 @@ REGISTER_OP("SparseBincount")
         return Status::OK();
       }
 
-      int64 size_val;
+      int64_t size_val;
       DataType dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
       if (dtype == DT_INT32) {
@@ -2081,12 +2083,12 @@ REGISTER_OP("SobolSample")
       const Tensor* dim_t = c->input_tensor(0);
       const Tensor* num_results_t = c->input_tensor(1);
 
-      int32 dim = dim_t == nullptr ? InferenceContext::kUnknownDim
-                                   : dim_t->scalar<int32>()();
+      int32_t dim = dim_t == nullptr ? InferenceContext::kUnknownDim
+                                     : dim_t->scalar<int32>()();
 
-      int32 num_results = num_results_t == nullptr
-                              ? InferenceContext::kUnknownDim
-                              : num_results_t->scalar<int32>()();
+      int32_t num_results = num_results_t == nullptr
+                                ? InferenceContext::kUnknownDim
+                                : num_results_t->scalar<int32>()();
 
       c->set_output(0, c->Matrix(num_results, dim));
       return Status::OK();

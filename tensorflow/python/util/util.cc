@@ -326,6 +326,16 @@ int IsResourceVariableHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
+// Returns 1 if `o` is a OwnedIterator.
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsOwnedIteratorHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "OwnedIterator");
+  });
+  return check_cache->CachedLookup(o);
+}
+
 // Returns 1 if `o` is a ResourceVariable.
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
@@ -925,6 +935,7 @@ bool IsEagerTensorSlow(PyObject* o) { return IsEagerTensorHelper(o) == 1; }
 bool IsResourceVariable(PyObject* o) {
   return IsResourceVariableHelper(o) == 1;
 }
+bool IsOwnedIterator(PyObject* o) { return IsOwnedIteratorHelper(o) == 1; }
 bool IsVariable(PyObject* o) { return IsVariableHelper(o) == 1; }
 bool IsIndexedSlices(PyObject* o) { return IsIndexedSlicesHelper(o) == 1; }
 bool IsDispatchable(PyObject* o) { return IsDispatchableHelper(o) == 1; }

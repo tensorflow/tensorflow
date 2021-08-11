@@ -216,17 +216,17 @@ For example:
 %1 = "tf.opB"() : () -> tensor<i32>
 %2 = "tf.opC"() : () -> tensor<f32>
 %3 = "tf.opD"() : () -> tensor<f32>
-%4 = "tf.opE"() : () -> tensor<!tf.resource>
-%5 = "tf.opF"() : () -> tensor<!tf.resource>
-%6 = "tf.opG"() : () -> tensor<!tf.string>
-%7 = "tf.opH"() : () -> tensor<!tf.string>
-%8 = "tf.opI"() : () -> tensor<!tf.variant>
+%4 = "tf.opE"() : () -> tensor<!tf_type.resource>
+%5 = "tf.opF"() : () -> tensor<!tf_type.resource>
+%6 = "tf.opG"() : () -> tensor<!tf_type.string>
+%7 = "tf.opH"() : () -> tensor<!tf_type.string>
+%8 = "tf.opI"() : () -> tensor<!tf_type.variant>
 %9 = "tf.opJ"() : () -> tensor<i1>
 %output:8 = tf_device.replicate([%0, %1] as %input_0: tensor<i32>,
                                 [%2, %3] as %input_1: tensor<f32>,
-                                [%4, %5] as %input_2: tensor<!tf.resource>,
-                                [%6, %7] as %input_3: tensor<!tf.string>,
-                                %8 as %input_4: tensor<!tf.variant>)
+                                [%4, %5] as %input_2: tensor<!tf_type.resource>,
+                                [%6, %7] as %input_3: tensor<!tf_type.string>,
+                                %8 as %input_4: tensor<!tf_type.variant>)
                 {n = 2 : i32,
                  devices = {DEVICE_ALIAS_0 = ["/DEVICE:0", "/DEVICE:1"],
                             DEVICE_ALIAS_1 = ["/DEVICE:2", "/DEVICE:3"]}} {
@@ -235,25 +235,25 @@ For example:
   // "/DEVICE:1"/"/DEVICE:3", depending on which device alias is used.
   %k = "tf_device.launch"() ( {
     %9 = "tf.opK"(%input_0, %input_4, %9) :
-      (tensor<i32>, tensor<!tf.variant>, tensor<i1>) -> tensor<i32>
+      (tensor<i32>, tensor<!tf_type.variant>, tensor<i1>) -> tensor<i32>
     tf_device.return %9 : tensor<i32>
   }) {device = "DEVICE_ALIAS_0"} : () -> tensor<i32>
   %l = "tf_device.launch"() ( {
     %10 = "tf.opL"(%input_1, %input_4, %9) :
-      (tensor<f32>, tensor<!tf.variant>, tensor<i1>) -> tensor<f32>
+      (tensor<f32>, tensor<!tf_type.variant>, tensor<i1>) -> tensor<f32>
     tf_device.return %10 : tensor<f32>
   }) {device = "DEVICE_ALIAS_1"} : () -> tensor<f32>
   %m = "tf_device.launch"() ( {
     %11 = "tf.opM"(%input_2, %input_4, %9) :
-      (tensor<!tf.resource>, tensor<!tf.variant>, tensor<i1>)
-        -> tensor<!tf.resource>
-    tf_device.return %11 : tensor<!tf.resource>
+      (tensor<!tf_type.resource>, tensor<!tf_type.variant>, tensor<i1>)
+        -> tensor<!tf_type.resource>
+    tf_device.return %11 : tensor<!tf_type.resource>
   }) {device = "/DEVICE:4"} : () -> tensor<f32>
   %n = "tf.opN"(%input_3, %input_4, %9) :
-    (tensor<!tf.string>, tensor<!tf.variant>, tensor<i1>)
-      -> tensor<!tf.string>
+    (tensor<!tf_type.string>, tensor<!tf_type.variant>, tensor<i1>)
+      -> tensor<!tf_type.string>
   tf_device.return %k, %l, %m, %n :
-    tensor<i32>, tensor<f32>, tensor<!tf.resource>, tensor<!tf.string>
+    tensor<i32>, tensor<f32>, tensor<!tf_type.resource>, tensor<!tf_type.string>
 }
 // %output#0 corresponds to %k returned from "/DEVICE:0"
 // %output#1 corresponds to %k returned from "/DEVICE:1"

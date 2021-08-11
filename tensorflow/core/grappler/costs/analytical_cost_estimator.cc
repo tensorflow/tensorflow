@@ -98,9 +98,9 @@ Status AddCostNode(ReadyNodeManager* node_manager, const OpContext& op_context,
     output_info->set_dtype(output.dtype());
     *output_info->mutable_shape() = output.shape();
 
-    int64 size = DataTypeSize(output.dtype());
+    int64_t size = DataTypeSize(output.dtype());
     for (const auto& dim : output.shape().dim()) {
-      size = MultiplyWithoutOverflow(size, std::max<int64>(1, dim.size()));
+      size = MultiplyWithoutOverflow(size, std::max<int64_t>(1, dim.size()));
       if (size < 0) {
         return errors::InvalidArgument(
             "Integer overflow encountered in dimension size.");

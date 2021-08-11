@@ -1,6 +1,10 @@
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load(
+    "//tensorflow/lite:build_def.bzl",
+    "tflite_copts",
+)
 
 package(
     default_visibility = [
@@ -14,6 +18,40 @@ exports_files(glob([
 ]))
 
 cc_library(
+    name = "reduced_precision_support",
+    srcs = [],
+    hdrs = [
+        "reduced_precision_support.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ],
+)
+
+tf_cc_test(
+    name = "reduced_precision_support_test",
+    srcs = ["reduced_precision_support_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":reduced_precision_support",
+        ":test_util",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
+        "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "modify_model_interface",
     srcs = ["modify_model_interface.cc"],
     hdrs = ["modify_model_interface.h"],
@@ -24,6 +62,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
@@ -189,6 +228,7 @@ cc_library(
     srcs = ["operator_property.cc"],
     hdrs = ["operator_property.h"],
     compatible_with = get_compatible_with_cloud(),
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
@@ -237,6 +277,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@flatbuffers",
         "//tensorflow/lite:framework",
         # TODO(suharshs): Move the relevant quantization utils to a non-internal location.

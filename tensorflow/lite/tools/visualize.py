@@ -426,21 +426,35 @@ def CreateDictFromFlatbuffer(buffer_data):
   return FlatbufferToDict(model, preserve_as_numpy=False)
 
 
-def create_html(tflite_input):
-  """Returns html description with the given tflite model in `tflite_input` file."""
+def create_html(tflite_input, input_is_filepath=True):  # pylint: disable=invalid-name
+  """Returns html description with the given tflite model.
+
+  Args:
+    tflite_input: TFLite flatbuffer model path or model object.
+    input_is_filepath: Tells if tflite_input is a model path or a model object.
+
+  Returns:
+    Dump of the given tflite model in HTML format.
+
+  Raises:
+    RuntimeError: If the input is not valid.
+  """
 
   # Convert the model into a JSON flatbuffer using flatc (build if doesn't
   # exist.
-  if not os.path.exists(tflite_input):
-    raise RuntimeError("Invalid filename %r" % tflite_input)
-  if tflite_input.endswith(".tflite") or tflite_input.endswith(".bin"):
-    with open(tflite_input, "rb") as file_handle:
-      file_data = bytearray(file_handle.read())
-    data = CreateDictFromFlatbuffer(file_data)
-  elif tflite_input.endswith(".json"):
-    data = json.load(open(tflite_input))
+  if input_is_filepath:
+    if not os.path.exists(tflite_input):
+      raise RuntimeError("Invalid filename %r" % tflite_input)
+    if tflite_input.endswith(".tflite") or tflite_input.endswith(".bin"):
+      with open(tflite_input, "rb") as file_handle:
+        file_data = bytearray(file_handle.read())
+      data = CreateDictFromFlatbuffer(file_data)
+    elif tflite_input.endswith(".json"):
+      data = json.load(open(tflite_input))
+    else:
+      raise RuntimeError("Input file was not .tflite or .json")
   else:
-    raise RuntimeError("Input file was not .tflite or .json")
+    data = CreateDictFromFlatbuffer(tflite_input)
   html = ""
   html += _CSS
   html += "<h1>TensorFlow Lite Model</h2>"

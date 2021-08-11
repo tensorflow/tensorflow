@@ -33,7 +33,7 @@ namespace tensorflow {
 // kernel context `ctx`.
 static std::vector<int> GetResourceVariableIndices(OpKernelContext* ctx) {
   std::vector<int> out;
-  for (int64 i = 0; i < ctx->num_inputs(); i++) {
+  for (int64_t i = 0; i < ctx->num_inputs(); i++) {
     if (ctx->input(i).dtype() == DT_RESOURCE) {
       out.push_back(i);
     }
@@ -75,7 +75,14 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(execution_inputs.status());
 
   VLOG(2) << "Executing computation: " << name();
+  StatusOr<absl::optional<xla::DeviceAssignment>> device_assignment =
+      ResolveDeviceAssignment(ctx, result->collective_reduce_info);
+  TF_RETURN_IF_ERROR(device_assignment.status());
+
   xla::ExecutableRunOptions run_options;
+  if (*device_assignment) {
+    run_options.set_device_assignment(&**device_assignment);
+  }
   run_options.set_stream(stream);
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());

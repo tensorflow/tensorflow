@@ -40,9 +40,9 @@ class ClientTest : public ClientLibraryTestBase {};
 XLA_TEST_F(ClientTest, ExecuteWithLayout) {
   XlaBuilder b(TestName());
 
-  std::vector<std::vector<int64>> layouts = {{0, 1}, {1, 0}};
-  for (const std::vector<int64>& execute_layout : layouts) {
-    for (const std::vector<int64>& transfer_layout : layouts) {
+  std::vector<std::vector<int64_t>> layouts = {{0, 1}, {1, 0}};
+  for (const std::vector<int64_t>& execute_layout : layouts) {
+    for (const std::vector<int64_t>& transfer_layout : layouts) {
       Add(ConstantR2<int32>(&b, {{1, 2}, {3, 4}}),
           ConstantR2<int32>(&b, {{10, 20}, {30, 40}}));
       TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());

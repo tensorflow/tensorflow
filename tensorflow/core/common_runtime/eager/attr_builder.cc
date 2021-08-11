@@ -140,7 +140,7 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
   Status AttrBuilder::Get(StringPiece attr_name, TYPE* value) const {   \
     auto it = encoded_attrs_.find(string(attr_name));                   \
     if (it == encoded_attrs_.end()) {                                   \
-      return errors::NotFound("No attr named'", attr_name,              \
+      return errors::NotFound("No attr named '", attr_name,             \
                               "' found in AttrBuilder for ", op_name_); \
     }                                                                   \
     attr_tmp_.ParseFromString(it->second);                              \
@@ -151,10 +151,27 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
 
 DEFINE_GET_ATTR(float, f, "float");
 DEFINE_GET_ATTR(int, i, "int");
+DEFINE_GET_ATTR(int64_t, i, "int");
 DEFINE_GET_ATTR(bool, b, "bool");
 DEFINE_GET_ATTR(tensorflow::DataType, type, "type");
 
 #undef DEFINE_GET_ATTR
+
+template <>
+Status AttrBuilder::Get(StringPiece attr_name,
+                        absl::InlinedVector<DataType, 4>* value) const {
+  auto it = encoded_attrs_.find(string(attr_name));
+  if (it == encoded_attrs_.end()) {
+    return errors::NotFound("No attr named '", attr_name,
+                            "' found in AttrBuilder for ", op_name_);
+  }
+  attr_tmp_.ParseFromString(it->second);
+  TF_RETURN_IF_ERROR(AttrValueHasType(attr_tmp_, "list(type)"));
+  for (size_t i = 0; i < attr_tmp_.list().type_size(); i++) {
+    value->push_back(attr_tmp_.list().type(i));
+  }
+  return Status::OK();
+}
 
 AttrBuilder& AttrBuilder::NumInputs(int n) {
   DCHECK(!node_def_finalized_) << "Calling NumInputs after BuildNodeDef.";
@@ -312,6 +329,12 @@ void AttrBuilder::GetNameAttrList(
     tensorflow::NameAttrList* name_and_attrs) const {
   FillAttrValueMap(name_and_attrs->mutable_attr());
   name_and_attrs->set_name(op_name());
+}
+
+Status AttrBuilder::GetTypeList(
+    absl::string_view attr_name,
+    absl::InlinedVector<DataType, 4>* type_list) const {
+  return Get(attr_name, type_list);
 }
 
 bool AttrBuilder::GetInt(absl::string_view attr_name, int64_t* result) const {

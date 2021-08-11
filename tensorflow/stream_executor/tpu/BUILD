@@ -275,9 +275,9 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_executable",
-    srcs = ["tpu_executable.cc"],
-    hdrs = ["tpu_executable.h"],
+    name = "tpu_op_executable",
+    srcs = ["tpu_op_executable.cc"],
+    hdrs = ["tpu_op_executable.h"],
     deps = [
         ":c_api_conversions",
         ":proto_helper",
@@ -358,6 +358,21 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "tpu_executable",
+    srcs = ["tpu_executable.cc"],
+    hdrs = ["tpu_executable.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":c_api_conversions",
+        ":status_helper",
+        ":tpu_executable_interface",
+        ":tpu_executor",
+        ":tpu_executor_c_api_hdrs",
+        "//tensorflow/core/tpu:tpu_executor_api",
     ],
 )
 

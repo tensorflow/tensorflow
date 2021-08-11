@@ -446,7 +446,7 @@ class RemapperTensorToHashBucketTest : public RemapperTest {
     ASSERT_EQ(tensors_expected.size(), 1);
     auto tensors = EvaluateNodes(output, item.fetch, item.feed);
     ASSERT_EQ(tensors.size(), 1);
-    test::ExpectTensorEqual<int64>(tensors[0], tensors_expected[0]);
+    test::ExpectTensorEqual<int64_t>(tensors[0], tensors_expected[0]);
   }
 };
 

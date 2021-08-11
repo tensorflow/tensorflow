@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -417,13 +418,13 @@ void RemoveClusterAliasedOutputs(OpBuilder* builder,
   cluster.erase();
 }
 
-struct TPUExtractHeadTailOutsideCompilation
-    : public PassWrapper<TPUExtractHeadTailOutsideCompilation,
-                         OperationPass<ModuleOp>> {
+struct TPUExtractHeadTailOutsideCompilationPass
+    : public TF::TPUExtractHeadTailOutsideCompilationPassBase<
+          TPUExtractHeadTailOutsideCompilationPass> {
   void runOnOperation() override;
 };
 
-void TPUExtractHeadTailOutsideCompilation::runOnOperation() {
+void TPUExtractHeadTailOutsideCompilationPass::runOnOperation() {
   auto& side_effect_analysis = getAnalysis<TF::SideEffectAnalysis>();
   // Get runtime devices information from the closest parent module.
   auto module = getOperation();
@@ -454,13 +455,8 @@ void TPUExtractHeadTailOutsideCompilation::runOnOperation() {
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractHeadTailOutsideCompilationPass() {
-  return std::make_unique<TPUExtractHeadTailOutsideCompilation>();
+  return std::make_unique<TPUExtractHeadTailOutsideCompilationPass>();
 }
-
-static PassRegistration<TPUExtractHeadTailOutsideCompilation> pass(
-    "tf-tpu-extract-head-tail-outside-compilation",
-    "Extracts TPU head or tail outside compilation to separate "
-    "parallel_execute.");
 
 }  // namespace TFTPU
 }  // namespace mlir

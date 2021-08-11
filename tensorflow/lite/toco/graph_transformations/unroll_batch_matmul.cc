@@ -30,8 +30,8 @@ limitations under the License.
 namespace toco {
 namespace {
 
-absl::InlinedVector<int64, 4> ToInlinedVector(const std::vector<int>& vec) {
-  return absl::InlinedVector<int64, 4>(vec.begin(), vec.end());
+absl::InlinedVector<int64_t, 4> ToInlinedVector(const std::vector<int>& vec) {
+  return absl::InlinedVector<int64_t, 4>(vec.begin(), vec.end());
 }
 
 std::vector<std::string> SliceInput(
@@ -91,7 +91,7 @@ std::vector<std::string> SliceInput(
 }
 
 std::vector<int32> GetTransposePerm(const Array& input_array) {
-  const int32 dims = input_array.shape().dimensions_count();
+  const int32_t dims = input_array.shape().dimensions_count();
   std::vector<int32> perm_array_val(dims);
   for (int i = 0; i < dims; ++i) {
     perm_array_val[i] = i;
@@ -103,7 +103,7 @@ std::vector<int32> GetTransposePerm(const Array& input_array) {
 
 std::vector<int32> GetTransposeShape(const Shape& input_shape,
                                      const std::vector<int32>& perm_array_val) {
-  const int32 dims = input_shape.dimensions_count();
+  const int32_t dims = input_shape.dimensions_count();
   std::vector<int32> output_shape(dims);
   for (int i = 0; i < dims; ++i) {
     output_shape[i] = input_shape.dims(perm_array_val[i]);
@@ -246,7 +246,7 @@ TransposeOperator* TransposeInput(const std::string& input, Model* model) {
   // Explicitly cast 64-bit sizes to int in order to avoid MSVC warnings.
   std::transform(result_batch_shape.begin(), result_batch_shape.end(),
                  std::back_inserter(result_shape),
-                 [](const int64 dim) { return static_cast<int>(dim); });
+                 [](const int64_t dim) { return static_cast<int>(dim); });
   result_shape.push_back(input_array_a.shape().dims(dims_a - 2));
   result_shape.push_back(input_array_b.shape().dims(dims_b - 1));
 

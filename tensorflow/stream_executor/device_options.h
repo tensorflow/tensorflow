@@ -22,8 +22,9 @@ limitations under the License.
 
 #include <map>
 
-#include "tensorflow/stream_executor/platform/port.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/stream_executor/platform/logging.h"
+#include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
 
@@ -72,8 +73,21 @@ struct DeviceOptions {
     return !(*this == other);
   }
 
-  std::string ToString() {
-    return flags_ == 0 ? "none" : "kDoNotReclaimStackAllocation";
+  std::string ToString() const {
+    std::vector<std::string> flags_on;
+    if (flags_ & kDoNotReclaimStackAllocation) {
+      flags_on.push_back("kDoNotReclaimStackAllocation");
+    }
+    if (flags_ & kScheduleSpin) {
+      flags_on.push_back("kScheduleSpin");
+    }
+    if (flags_ & kScheduleYield) {
+      flags_on.push_back("kScheduleYield");
+    }
+    if (flags_ & kScheduleBlockingSync) {
+      flags_on.push_back("kScheduleBlockingSync");
+    }
+    return flags_on.empty() ? "none" : absl::StrJoin(flags_on, "|");
   }
 
   // Platform-specific device options. Expressed as key-value pairs to avoid

@@ -71,7 +71,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
       NodeDef* buffer_size_node = graph.GetNode(node.input(1));
       // We only consider to rewrite if `buffer_size` is constant.
       if (buffer_size_node->op() == "Const") {
-        int64 initial_buffer_size =
+        int64_t initial_buffer_size =
             buffer_size_node->attr().at("value").tensor().int64_val(0);
         if (initial_buffer_size != data::model::kAutotune) {
           TF_RETURN_IF_ERROR(graph.UpdateFanin(node.name(),
@@ -132,12 +132,6 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   return Status::OK();
-}
-
-void AutotuneBufferSizes::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                   const GraphDef& optimize_output,
-                                   double result) {
-  // no-op
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(AutotuneBufferSizes, "autotune_buffer_sizes");

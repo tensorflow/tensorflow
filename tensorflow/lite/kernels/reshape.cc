@@ -48,21 +48,37 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
   // special -1 value, meaning it will be calculated automatically based on the
   // input. Here we calculate what that dimension should be so that the number
   // of output elements is the same as the number of input elements.
-  int64_t num_input_elements = NumElements(input);
+  int64_t non_zero_num_input_elements = 1, num_input_elements = 1;
+  const RuntimeShape& input_shape = GetTensorShape(input);
+  for (int i = 0; i < input_shape.DimensionsCount(); ++i) {
+    const int value = input_shape.Dims(i);
+    num_input_elements *= value;
+    if (value != 0) {
+      non_zero_num_input_elements *= value;
+    }
+  }
 
-  int64_t num_output_elements = 1;
+  int64_t non_zero_num_output_elements = 1, num_output_elements = 1;
   int stretch_dim = -1;
   for (int i = 0; i < output_shape->size; ++i) {
-    int value = output_shape->data[i];
+    const int value = output_shape->data[i];
     if (value == -1) {
       TF_LITE_ENSURE_EQ(context, stretch_dim, -1);
       stretch_dim = i;
-    } else {
-      num_output_elements *= value;
+      continue;
+    } else if (value != 0) {
+      non_zero_num_output_elements *= value;
     }
+    num_output_elements *= value;
   }
+
   if (stretch_dim != -1) {
-    output_shape->data[stretch_dim] = num_input_elements / num_output_elements;
+    if (num_input_elements == 0 && num_output_elements != 0) {
+      output_shape->data[stretch_dim] = 0;
+    } else {
+      output_shape->data[stretch_dim] =
+          non_zero_num_input_elements / non_zero_num_output_elements;
+    }
     num_output_elements *= output_shape->data[stretch_dim];
   }
 

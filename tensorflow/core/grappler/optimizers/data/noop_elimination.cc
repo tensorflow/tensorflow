@@ -167,11 +167,6 @@ Status NoOpElimination::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void NoOpElimination::Feedback(Cluster* cluster, const GrapplerItem& item,
-                               const GraphDef& optimize_output, double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(NoOpElimination, "noop_elimination");
 
 }  // namespace grappler

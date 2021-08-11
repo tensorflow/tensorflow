@@ -203,7 +203,7 @@ void CurlHttpRequest::AddHeader(const string& name, const string& value) {
       curl_headers_, strings::StrCat(name, ": ", value).c_str());
 }
 
-void CurlHttpRequest::AddResolveOverride(const string& hostname, int64 port,
+void CurlHttpRequest::AddResolveOverride(const string& hostname, int64_t port,
                                          const string& ip_addr) {
   CheckNotSent();
   // Resolve values are hostname:port:IP.add.ress

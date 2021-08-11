@@ -214,6 +214,10 @@ PYBIND11_MODULE(tpu_client_extension, m) {
   py::class_<TpuDevice, PjRtDevice, std::shared_ptr<TpuDevice>>(m, "TpuDevice")
       .def_property_readonly("coords", &TpuDevice::coords)
       .def_property_readonly("core_on_chip", &TpuDevice::core_on_chip)
+      .def_property_readonly("client",
+                             [](TpuDevice* device) {
+                               return device->tpu_client()->shared_from_this();
+                             })
       // TODO(skye): this is a horrible hack because falling back to
       // PjRtDevice::platform_name() segfaults, due to TpuDevice::client_ being
       // uninitialized. This can be removed when PyTpuClient subclasses

@@ -129,12 +129,9 @@ def register_revived_type(identifier, predicate, versions):
     registration.identifier = identifier
     if registration.version in version_numbers:
       raise AssertionError(
-          "Got multiple registrations with version {} for type {}".format(
-              registration.version, identifier))
+          f"Got multiple registrations with version {registration.version} for "
+          f"type {identifier}.")
     version_numbers.add(registration.version)
-  if identifier in _REVIVED_TYPE_REGISTRY:
-    raise AssertionError(
-        "Duplicate registrations for type {}".format(identifier))
 
   _REVIVED_TYPE_REGISTRY[identifier] = (predicate, versions)
   _TYPE_IDENTIFIERS.append(identifier)

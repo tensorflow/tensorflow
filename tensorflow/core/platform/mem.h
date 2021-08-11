@@ -60,12 +60,12 @@ void MallocExtension_ReleaseToSystem(std::size_t num_bytes);
 std::size_t MallocExtension_GetAllocatedSize(const void* p);
 
 struct MemoryInfo {
-  int64 total = 0;
-  int64 free = 0;
+  int64_t total = 0;
+  int64_t free = 0;
 };
 
 struct MemoryBandwidthInfo {
-  int64 bw_used = 0;  // memory bandwidth used across all CPU (in MBs/second)
+  int64_t bw_used = 0;  // memory bandwidth used across all CPU (in MBs/second)
 };
 
 // Retrieves the host memory information. If any of the fields in the returned
@@ -78,7 +78,7 @@ MemoryInfo GetMemoryInfo();
 MemoryBandwidthInfo GetMemoryBandwidthInfo();
 
 // Returns the amount of RAM available in bytes, or INT64_MAX if unknown.
-static inline int64 AvailableRam() { return GetMemoryInfo().free; }
+static inline int64_t AvailableRam() { return GetMemoryInfo().free; }
 
 }  // namespace port
 }  // namespace tensorflow

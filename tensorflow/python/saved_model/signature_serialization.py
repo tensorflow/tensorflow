@@ -70,8 +70,10 @@ def _validate_inputs(concrete_function):
   if any(isinstance(inp, resource_variable_ops.VariableSpec)
          for inp in nest.flatten(
              concrete_function.structured_input_signature)):
-    raise ValueError(("Functions that expect tf.Variable inputs cannot be "
-                      "exported as signatures."))
+    raise ValueError(
+        f"Unable to serialize concrete_function '{concrete_function.name}'"
+        f"with tf.Variable input. Functions that expect tf.Variable "
+        "inputs cannot be exported as signatures.")
 
 
 def _get_signature_name_changes(concrete_function):
@@ -131,9 +133,9 @@ def canonicalize_signatures(signatures):
     original_function = signature_function = _get_signature(function)
     if signature_function is None:
       raise ValueError(
-          ("Expected a TensorFlow function to generate a signature for, but "
-           "got {}. Only `tf.functions` with an input signature or "
-           "concrete functions can be used as a signature.").format(function))
+          "Expected a TensorFlow function for which to generate a signature, "
+          f"but got {function}. Only `tf.functions` with an input signature or "
+          "concrete functions can be used as a signature.")
 
     wrapped_functions[original_function] = signature_function = (
         wrapped_functions.get(original_function) or
@@ -211,16 +213,16 @@ def _normalize_outputs(outputs, function_name, signature_key):
   for key, value in outputs.items():
     if not isinstance(key, compat.bytes_or_text_types):
       raise ValueError(
-          ("Got a dictionary with a non-string key {!r} in the output of the "
-           "function {} used to generate the SavedModel signature {!r}.")
-          .format(key, compat.as_str_any(function_name), signature_key))
+          f"Got a dictionary with a non-string key {key!r} in the output of "
+          f"the function {compat.as_str_any(function_name)} used to generate "
+          f"the SavedModel signature {signature_key!r}.")
     if not isinstance(value, (ops.Tensor, composite_tensor.CompositeTensor)):
       raise ValueError(
-          ("Got a non-Tensor value `{!r}` for key {!r} in the output of the "
-           "function {} used to generate the SavedModel signature {!r}. "
-           "Outputs for functions used as signatures must be a single Tensor, "
-           "a sequence of Tensors, or a dictionary from string to Tensor.")
-          .format(value, key, compat.as_str_any(function_name), signature_key))
+          f"Got a non-Tensor value {value!r} for key {key!r} in the output of "
+          f"the function {compat.as_str_any(function_name)} used to generate "
+          f"the SavedModel signature {signature_key!r}. "
+          "Outputs for functions used as signatures must be a single Tensor, "
+          "a sequence of Tensors, or a dictionary from string to Tensor.")
   return outputs
 
 
@@ -303,12 +305,10 @@ def validate_saveable_view(saveable_view):
     if name == SIGNATURE_ATTRIBUTE_NAME:
       if not isinstance(dep, _SignatureMap):
         raise ValueError(
-            ("Exporting an object {} which has an attribute named "
-             "'{signatures}'. This is a reserved attribute used to store "
-             "SavedModel signatures in objects which come from "
-             "`tf.saved_model.load`. Delete this attribute "
-             "(e.g. 'del obj.{signatures}') before saving if this shadowing is "
-             "acceptable.").format(
-                 saveable_view.root,
-                 signatures=SIGNATURE_ATTRIBUTE_NAME))
+            f"Exporting an object {saveable_view.root} which has an attribute "
+            f"named '{SIGNATURE_ATTRIBUTE_NAME}'. This is a reserved attribute "
+            "used to store SavedModel signatures in objects which come from "
+            "`tf.saved_model.load`. Delete this attribute "
+            f"(e.g. `del obj.{SIGNATURE_ATTRIBUTE_NAME}`) before saving if "
+            "this shadowing is acceptable.")
       break

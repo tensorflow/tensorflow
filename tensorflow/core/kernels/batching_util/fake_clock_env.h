@@ -53,7 +53,7 @@ class FakeClockEnv : public EnvWrapper {
 
   // Methods that this class implements.
   uint64 NowMicros() const override;
-  void SleepForMicroseconds(int64 micros) override;
+  void SleepForMicroseconds(int64_t micros) override;
 
  private:
   mutable mutex mu_;

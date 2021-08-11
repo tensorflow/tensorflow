@@ -369,7 +369,7 @@ void BM_CSE(::testing::benchmark::State& state) {
     InitGraph(s, graph);
     int N = graph->num_node_ids();
     if (first) {
-      testing::SetLabel(strings::StrCat("Per graph node.  Nodes: ", N));
+      state.SetLabel(strings::StrCat("Per graph node.  Nodes: ", N));
       first = false;
     }
     {

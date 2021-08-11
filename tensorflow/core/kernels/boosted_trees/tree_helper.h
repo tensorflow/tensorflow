@@ -31,9 +31,9 @@ struct SplitCandidate {
   SplitCandidate() {}
 
   // Index in the tensor of node_ids for the feature with idx feature_idx.
-  int64 candidate_idx = 0;
+  int64_t candidate_idx = 0;
 
-  int64 feature_id = 0;
+  int64_t feature_id = 0;
   float gain = 0.0;
   int32 threshold = 0.0;
   int32 dimension_id = 0;
@@ -67,7 +67,7 @@ static void CalculateWeightsAndGains(const Eigen::VectorXf& g,
                                      const float l2, Eigen::VectorXf* weight,
                                      float* gain) {
   const float kEps = 1e-15;
-  const int32 logits_dim = g.size();
+  const int32_t logits_dim = g.size();
   if (logits_dim == 1) {
     // The formula for weight is -(g+l1*sgn(w))/(H+l2), for gain it is
     // (g+l1*sgn(w))^2/(h+l2).

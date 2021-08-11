@@ -110,13 +110,13 @@ StatusOr<HouseHolderResult> HouseRow(XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
                                      PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-  const int64 num_dims = a_shape.rank();
-  const int64 n = ShapeUtil::GetDimension(a_shape, -1);
+  const int64_t num_dims = a_shape.rank();
+  const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
   XlaOp zero = ScalarLike(i, 0);
   XlaOp x = DynamicSliceInMinorDims(a, {i, zero}, {1, n});
 
-  const int64 num_batch_dims = num_dims - 2;
-  std::vector<int64> batch_dims(num_batch_dims);
+  const int64_t num_batch_dims = num_dims - 2;
+  std::vector<int64_t> batch_dims(num_batch_dims);
   for (int k = 0; k < num_batch_dims; ++k) {
     batch_dims[k] = ShapeUtil::GetDimension(a_shape, k);
   }
@@ -134,7 +134,7 @@ StatusOr<HouseHolderResult> HouseRow(XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
                   CreateScalarAddComputation(x_shape.element_type(), builder),
                   {num_dims - 1}));
 
-  std::vector<int64> broadcast_dims(num_dims - 1);
+  std::vector<int64_t> broadcast_dims(num_dims - 1);
   std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
   auto x_0j = DynamicSliceInMinorDims(x, {zero, j}, {1, 1});
   auto mu = Mul(sigma, Sqrt(Square(Div(x_0j, sigma, broadcast_dims)) + one),
@@ -175,13 +175,13 @@ StatusOr<HouseHolderResult> HouseCol(XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
                                      PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-  const int64 num_dims = a_shape.rank();
-  const int64 m = ShapeUtil::GetDimension(a_shape, -2);
+  const int64_t num_dims = a_shape.rank();
+  const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
   XlaOp zero = ScalarLike(i, 0);
   XlaOp x = DynamicSliceInMinorDims(a, {zero, j}, {m, 1});
 
-  const int64 num_batch_dims = num_dims - 2;
-  std::vector<int64> batch_dims(num_batch_dims);
+  const int64_t num_batch_dims = num_dims - 2;
+  std::vector<int64_t> batch_dims(num_batch_dims);
   for (int k = 0; k < num_batch_dims; ++k) {
     batch_dims[k] = ShapeUtil::GetDimension(a_shape, k);
   }
@@ -199,7 +199,7 @@ StatusOr<HouseHolderResult> HouseCol(XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
                   CreateScalarAddComputation(x_shape.element_type(), builder),
                   {num_dims - 2}));
 
-  std::vector<int64> broadcast_dims(num_dims - 1);
+  std::vector<int64_t> broadcast_dims(num_dims - 1);
   std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
   broadcast_dims[num_dims - 2] = num_dims - 1;
   auto x_0i = DynamicSliceInMinorDims(x, {i, zero}, {1, 1});
@@ -253,14 +253,14 @@ StatusOr<SVDResult> HouseHolderBidiagonalization(
     XlaOp a, XlaOp eps, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-  const int64 num_dims = a_shape.rank();
-  const int64 num_batch_dims = num_dims - 2;
-  std::vector<int64> batch_dims(num_batch_dims);
+  const int64_t num_dims = a_shape.rank();
+  const int64_t num_batch_dims = num_dims - 2;
+  std::vector<int64_t> batch_dims(num_batch_dims);
   for (int i = 0; i < num_batch_dims; ++i) {
     batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
   }
-  const int64 m = ShapeUtil::GetDimension(a_shape, -2);
-  const int64 n = ShapeUtil::GetDimension(a_shape, -1);
+  const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
+  const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
   XlaOp u_init = Broadcast(
       IdentityMatrix(builder, a_shape.element_type(), m, m), batch_dims);
   XlaOp v_init = Broadcast(
@@ -455,14 +455,14 @@ StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p, XlaOp q,
   XlaOp d = svd_result.d;
   XlaBuilder* builder = d.builder();
   TF_ASSIGN_OR_RETURN(Shape d_shape, builder->GetShape(d));
-  const int64 num_dims = d_shape.rank();
-  const int64 num_batch_dims = num_dims - 2;
-  std::vector<int64> batch_dims(num_batch_dims);
+  const int64_t num_dims = d_shape.rank();
+  const int64_t num_batch_dims = num_dims - 2;
+  std::vector<int64_t> batch_dims(num_batch_dims);
   for (int i = 0; i < num_batch_dims; ++i) {
     batch_dims[i] = ShapeUtil::GetDimension(d_shape, i);
   }
-  const int64 m = ShapeUtil::GetDimension(d_shape, -2);
-  const int64 n = ShapeUtil::GetDimension(d_shape, -1);
+  const int64_t m = ShapeUtil::GetDimension(d_shape, -2);
+  const int64_t n = ShapeUtil::GetDimension(d_shape, -1);
 
   TF_ASSIGN_OR_RETURN(OneSidedJacobiRotation onesided_jacobi,
                       GetOneSidedJacobiRotation(d, p, q, eps));
@@ -470,13 +470,13 @@ StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p, XlaOp q,
   auto zero = ScalarLike(p, 0);
 
   // Zero out a_{pq} explicitly.
-  std::vector<int64> pq_dims(batch_dims.begin(), batch_dims.end());
+  std::vector<int64_t> pq_dims(batch_dims.begin(), batch_dims.end());
   pq_dims.push_back(1);
   pq_dims.push_back(1);
   auto pq_zero = ScalarLike(d, 0.0);
   auto pq_zeros = Broadcast(pq_zero, pq_dims);
 
-  std::vector<int64> broadcast_dims(batch_dims.size());
+  std::vector<int64_t> broadcast_dims(batch_dims.size());
   std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
   broadcast_dims.push_back(num_dims - 1);
 
@@ -566,12 +566,12 @@ StatusOr<XlaOp> ComputeToleranceComparison(XlaOp w, XlaOp epsilon) {
   XlaBuilder* builder = w.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w));
   auto num_dims = static_cast<int32>(shape.rank());
-  int64 n = shape.dimensions(num_dims - 1);
+  int64_t n = shape.dimensions(num_dims - 1);
   shape.set_dimensions(num_dims - 2, n);
   auto w_sliced = SliceInMinorDims(w, {0, 0}, {n, n});
   auto diag = GetMatrixDiagonal(w_sliced);
   diag = Select(Lt(diag, ZerosLike(diag)), -diag, diag);
-  std::vector<int64> broadcasted_dims(num_dims - 1);
+  std::vector<int64_t> broadcasted_dims(num_dims - 1);
   std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
   auto broadcast_to_rows =
       BroadcastInDim(diag, shape.dimensions(), broadcasted_dims);
@@ -719,12 +719,12 @@ StatusOr<std::vector<XlaOp>> WhileLoopFn(
 StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(SVDResult result) {
   XlaBuilder* builder = result.d.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(result.d));
-  const int64 num_dims = shape.rank();
+  const int64_t num_dims = shape.rank();
   auto dimensions = shape.dimensions();
-  const int64 m = ShapeUtil::GetDimension(shape, -2);
-  const int64 n = ShapeUtil::GetDimension(shape, -1);
+  const int64_t m = ShapeUtil::GetDimension(shape, -2);
+  const int64_t n = ShapeUtil::GetDimension(shape, -1);
 
-  std::vector<int64> broadcast_dims(num_dims - 1);
+  std::vector<int64_t> broadcast_dims(num_dims - 1);
   std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
   broadcast_dims[num_dims - 2] = num_dims - 1;
 
@@ -805,7 +805,7 @@ StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(SVDResult result) {
 //
 //    return U, np.diag(D), V
 //
-SVDResult SVD(XlaOp a, int64 max_iter, float epsilon,
+SVDResult SVD(XlaOp a, int64_t max_iter, float epsilon,
               PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   auto return_error = [&](const Status& status) {
@@ -820,14 +820,14 @@ SVDResult SVD(XlaOp a, int64 max_iter, float epsilon,
     return return_error(shape_with_status.status());
   }
   Shape a_shape = shape_with_status.ValueOrDie();
-  const int64 num_dims = a_shape.rank();
-  const int64 num_batch_dims = num_dims - 2;
-  std::vector<int64> batch_dims(num_batch_dims);
+  const int64_t num_dims = a_shape.rank();
+  const int64_t num_batch_dims = num_dims - 2;
+  std::vector<int64_t> batch_dims(num_batch_dims);
   for (int i = 0; i < num_batch_dims; ++i) {
     batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
   }
-  int64 m = ShapeUtil::GetDimension(a_shape, -2);
-  int64 n = ShapeUtil::GetDimension(a_shape, -1);
+  int64_t m = ShapeUtil::GetDimension(a_shape, -2);
+  int64_t n = ShapeUtil::GetDimension(a_shape, -1);
   bool maybe_transpose = m < n;
 
   if (maybe_transpose) {

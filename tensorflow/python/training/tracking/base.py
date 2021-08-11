@@ -704,11 +704,6 @@ class Trackable(object):
     """
     return "_generic_user_object"
 
-  @property
-  def _tracking_metadata(self):
-    """String containing object metadata, which is saved to the SavedModel."""
-    return ""
-
   def _no_dependency(self, value):
     """If automatic dependency tracking is enabled, ignores `value`."""
     return value

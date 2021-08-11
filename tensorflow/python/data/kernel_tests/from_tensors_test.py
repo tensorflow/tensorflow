@@ -303,12 +303,12 @@ class FromTensorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
     return dataset_ops.Dataset.from_tensors(components)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testFromTensorsCore(self):
-    # Equal length components
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     arr = np.array(1)
-    num_outputs = 1
-    self.run_core_tests(lambda: self._build_tensor_dataset(arr), num_outputs)
+    verify_fn(self, lambda: self._build_tensor_dataset(arr), num_outputs=1)
 
 
 if __name__ == "__main__":

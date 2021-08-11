@@ -74,7 +74,7 @@ class MergeV2CheckpointsOpTest : public OpsTestBase {
     WriteCheckpoint(prefixes[0], {"tensor0"},
                     {Constant<float>(0, TensorShape({10}))});
     WriteCheckpoint(prefixes[1], {"tensor1", "tensor2"},
-                    {Constant<int64>(1, TensorShape({1, 16, 18})),
+                    {Constant<int64_t>(1, TensorShape({1, 16, 18})),
                      Constant<bool>(true, TensorShape({}))});
 
     // Now merges.
@@ -102,8 +102,8 @@ class MergeV2CheckpointsOpTest : public OpsTestBase {
     {
       Tensor val1;
       TF_EXPECT_OK(reader.Lookup("tensor1", &val1));
-      test::ExpectTensorEqual<int64>(
-          Constant<int64>(1, TensorShape({1, 16, 18})), val1);
+      test::ExpectTensorEqual<int64_t>(
+          Constant<int64_t>(1, TensorShape({1, 16, 18})), val1);
     }
     {
       Tensor val2;

@@ -25,11 +25,10 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 using tensorflow::int32;
-using tensorflow::int64;
 using tensorflow::uint64;
 
 using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
-                                     int64*, uint64*);
+                                     int64_t*, uint64_t*);
 
 // Dispatches 'num_partitions - 1' calls to 'function_ptr' in parallel.
 // Calls 'function_ptr' for first partition inline.
@@ -61,8 +60,8 @@ using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
 //
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
     void* result_ptr, const void* run_options_ptr, const void** params,
-    void** buffer_table, uint64* prof_counters, int32 num_partitions,
-    int64* partitions, int32 num_partitioned_dims, void* function_ptr) {
+    void** buffer_table, uint64_t* prof_counters, int32_t num_partitions,
+    int64_t* partitions, int32_t num_partitioned_dims, void* function_ptr) {
   VLOG(2) << "ParallelForkJoin ENTRY"
           << " num_partitions: " << num_partitions
           << " num_partitioned_dims: " << num_partitioned_dims;
@@ -79,12 +78,12 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
   ComputeFunctionType function =
       reinterpret_cast<ComputeFunctionType>(function_ptr);
   // Compute partition stride in 'partitions' array.
-  const int64 stride = 2 * num_partitioned_dims;
+  const int64_t stride = 2 * num_partitioned_dims;
 
   // Dispatch 'num_partitions - 1' compute functions to run in parallel.
   tensorflow::BlockingCounter bc(num_partitions - 1);
-  for (int32 i = 1; i < num_partitions; ++i) {
-    const int64 offset = i * stride;
+  for (int32_t i = 1; i < num_partitions; ++i) {
+    const int64_t offset = i * stride;
     run_options->intra_op_thread_pool()->enqueueNoNotification(
         [i, function, result_ptr, run_options_ptr, buffer_table, prof_counters,
          partitions, offset, &bc]() {

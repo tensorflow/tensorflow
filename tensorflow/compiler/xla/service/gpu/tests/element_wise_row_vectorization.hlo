@@ -181,7 +181,7 @@ ENTRY main {
 
 // -----
 
-HloModule NoRowBroadcasting
+HloModule ScalarBroadcasting
 
 %fused_computation.5 (param_0: f32[], param_1: f32[512,14,14,672]) -> f32[512,14,14,672] {
   %param_0 = f32[] parameter(0)
@@ -197,9 +197,8 @@ ENTRY main {
   ROOT %fusion.5 = f32[512,14,14,672] fusion(%param_0, %param_1), kind=kLoop, calls=%fused_computation.5
 }
 
-// Check that we didn't do anything. The block size didn't change.
 // CHECK-LABEL: fusion_5
-// CHECK: .reqntid 256, 1, 1
+// CHECK: .reqntid 128, 1, 1
 // CHECK: ld.global.nc.f
 
 // -----
@@ -253,11 +252,8 @@ ENTRY %computation {
 // CHECK-LLVM-LABEL: @fusion_7
 // CHECK-LLVM-NOT: row_index
 
-
 // -----
 HloModule RowToLong
-
-
 
 ENTRY main {
   %param_0 = f32[2024]{0} parameter(0)

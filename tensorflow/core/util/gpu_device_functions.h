@@ -563,14 +563,14 @@ __global__ void SetZero(const int count, T* __restrict__ ptr) {
 }
 
 // Helper to set all tensor entries to a specific value.
-template <typename T>
-__global__ void SetToValue(const int count, T* __restrict__ ptr, T value) {
+template <typename T, typename Tvalue = T>
+__global__ void SetToValue(const int count, T* __restrict__ ptr, Tvalue value) {
   // Check that the grid is one dimensional and index doesn't overflow.
   assert(blockDim.y == 1);
   assert(blockDim.z == 1);
   assert(blockDim.x * gridDim.x / blockDim.x == gridDim.x);
   for (int i : GpuGridRangeX(count)) {
-    ptr[i] = value;
+    ptr[i] = static_cast<T>(value);
   }
 }
 
@@ -636,7 +636,6 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
   static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "Not little endian");
 #endif
-  namespace half_impl = Eigen::half_impl;
   intptr_t intptr = reinterpret_cast<intptr_t>(ptr);
   assert(!(intptr & 0x1));  // should be 2-aligned.
   if (intptr & 0x2) {
@@ -644,19 +643,23 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
     uint32* address = reinterpret_cast<uint32*>(intptr - 2);
     uint32 result = GpuAtomicCasHelper(address, [accumulate](uint32 arg) {
       unsigned short high = static_cast<unsigned short>(arg >> 16);
-      Eigen::half acc = accumulate(half_impl::raw_uint16_to_half(high));
-      return (static_cast<uint32>(acc.x) << 16) | (arg & 0xffff);
+      Eigen::half acc = accumulate(Eigen::numext::bit_cast<Eigen::half>(high));
+      return (static_cast<uint32>(Eigen::numext::bit_cast<uint16>(acc)) << 16) |
+             (arg & 0xffff);
     });
-    return half_impl::raw_uint16_to_half(static_cast<uint16>(result >> 16));
+    return Eigen::numext::bit_cast<Eigen::half>(
+        static_cast<uint16>(result >> 16));
   } else {
     // The half is in the first part of the uint32 (lower 16 bits).
     uint32* address = reinterpret_cast<uint32*>(intptr);
     uint32 result = GpuAtomicCasHelper(address, [accumulate](uint32 arg) {
       unsigned short low = static_cast<unsigned short>(arg & 0xffff);
-      Eigen::half acc = accumulate(half_impl::raw_uint16_to_half(low));
-      return (arg & 0xffff0000) | static_cast<uint32>(acc.x);
+      Eigen::half acc = accumulate(Eigen::numext::bit_cast<Eigen::half>(low));
+      return (arg & 0xffff0000) |
+             static_cast<uint32>(Eigen::numext::bit_cast<uint16>(acc));
     });
-    return half_impl::raw_uint16_to_half(static_cast<uint16>(result & 0xffff));
+    return Eigen::numext::bit_cast<Eigen::half>(
+        static_cast<uint16>(result & 0xffff));
   }
 }
 
@@ -768,14 +771,13 @@ __device__ inline double GpuAtomicSub(double* ptr, double value) {
   return GpuAtomicAdd(ptr, -value);
 }
 
-__device__ inline tensorflow::int64 GpuAtomicSub(tensorflow::int64* ptr,
-                                                 tensorflow::int64 value) {
+__device__ inline int64_t GpuAtomicSub(int64_t* ptr, int64_t value) {
   return GpuAtomicAdd(ptr, -value);
 }
 
 __device__ inline tensorflow::uint64 GpuAtomicSub(tensorflow::uint64* ptr,
                                                   tensorflow::uint64 value) {
-  return GpuAtomicAdd(ptr, -static_cast<tensorflow::int64>(value));
+  return GpuAtomicAdd(ptr, -static_cast<int64_t>(value));
 }
 
 __device__ inline Eigen::half GpuAtomicSub(Eigen::half* ptr,
@@ -844,9 +846,10 @@ __device__ inline tensorflow::uint64 GpuAtomicMax(tensorflow::uint64* ptr,
       [value](tensorflow::uint64 a) { return max(a, value); });
 }
 
-__device__ inline int64 GpuAtomicMax(int64* ptr, int64 value) {
-  return detail::GpuAtomicCasHelper(detail::ToCudaSupportedPtr(ptr),
-                                    [value](int64 a) { return max(a, value); });
+__device__ inline int64_t GpuAtomicMax(int64_t* ptr, int64_t value) {
+  return detail::GpuAtomicCasHelper(
+      detail::ToCudaSupportedPtr(ptr),
+      [value](int64_t a) { return max(a, value); });
 }
 #endif
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMax, CudaAtomicMax);
@@ -910,9 +913,10 @@ __device__ inline tensorflow::uint64 GpuAtomicMin(tensorflow::uint64* ptr,
       [value](tensorflow::uint64 a) { return min(a, value); });
 }
 
-__device__ inline int64 GpuAtomicMin(int64* ptr, int64 value) {
-  return detail::GpuAtomicCasHelper(detail::ToCudaSupportedPtr(ptr),
-                                    [value](int64 a) { return min(a, value); });
+__device__ inline int64_t GpuAtomicMin(int64_t* ptr, int64_t value) {
+  return detail::GpuAtomicCasHelper(
+      detail::ToCudaSupportedPtr(ptr),
+      [value](int64_t a) { return min(a, value); });
 }
 #endif
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMin, CudaAtomicMin);

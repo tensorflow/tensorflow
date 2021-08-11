@@ -38,9 +38,6 @@ class FunctionOptimizer : public GraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override;
-
  private:
   friend class FunctionOptimizerTest;
 

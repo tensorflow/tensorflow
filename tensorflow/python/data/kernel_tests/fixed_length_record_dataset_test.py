@@ -219,18 +219,19 @@ class FixedLengthRecordDatasetCheckpointTest(
     FixedLengthRecordDatasetTestBase, checkpoint_test_base.CheckpointTestBase,
     parameterized.TestCase):
 
-  def _build_iterator_graph(self, num_epochs, compression_type=None):
+  def _build_dataset(self, num_epochs, compression_type=None):
     filenames = self._createFiles()
     return readers.FixedLengthRecordDataset(
         filenames, self._record_bytes, self._header_bytes,
         self._footer_bytes).repeat(num_epochs)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testFixedLengthRecordCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     num_epochs = 5
     num_outputs = num_epochs * self._num_files * self._num_records
-    self.run_core_tests(lambda: self._build_iterator_graph(num_epochs),
-                        num_outputs)
+    verify_fn(self, lambda: self._build_dataset(num_epochs), num_outputs)
 
 
 if __name__ == "__main__":

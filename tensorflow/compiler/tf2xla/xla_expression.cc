@@ -118,7 +118,7 @@ StatusOr<Tensor> XlaExpression::ResolveDynamism(xla::Client* client) const {
       // Constant values are considered static.
       Tensor constant_false(DT_BOOL, constant_value()->shape());
       auto flat = constant_false.flat<bool>();
-      for (int64 i = 0; i < flat.size(); ++i) flat(i) = false;
+      for (int64_t i = 0; i < flat.size(); ++i) flat(i) = false;
       return constant_false;
     }
     case Kind::kXlaOp:
@@ -140,7 +140,7 @@ StatusOr<Tensor> XlaExpression::ResolveDynamism(xla::Client* client) const {
 
   // The XLA layout is specified minor to major, and TensorFlow uses a major to
   // minor order.
-  std::vector<int64> layout_indices(shape.dims());
+  std::vector<int64_t> layout_indices(shape.dims());
   std::iota(layout_indices.rbegin(), layout_indices.rend(), 0);
   xla::ValueInference value_inference(handle().builder());
   TF_ASSIGN_OR_RETURN(xla::LiteralSlice literal,
@@ -168,7 +168,7 @@ StatusOr<absl::optional<Tensor>> XlaExpression::ResolveConstant(
   TF_ASSIGN_OR_RETURN(TensorShape shape, GetShape());
   if (mode == xla::ValueInferenceMode::kLowerBound ||
       mode == xla::ValueInferenceMode::kUpperBound) {
-    std::vector<int64> layout_indices(shape.dims());
+    std::vector<int64_t> layout_indices(shape.dims());
     std::iota(layout_indices.rbegin(), layout_indices.rend(), 0);
     xla::ValueInference value_inference(handle().builder());
     TF_ASSIGN_OR_RETURN(xla::OptionalLiteral literal,

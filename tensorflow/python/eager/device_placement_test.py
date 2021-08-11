@@ -107,6 +107,8 @@ class SoftDevicePlacementTest(test.TestCase, parameterized.TestCase):
                                   ('int32', [1], dtypes.int32),
                                   ('string', ['a'], None))
   def testSoftPlacedCPUConstant(self, value, dtype):
+    if test_util.is_gpu_available():
+      self.skipTest('CPU only test')
     with ops.device('GPU:0'):
       a = constant_op.constant(value, dtype=dtype)
     self.assertIn('CPU:0', a.device)
@@ -150,6 +152,12 @@ class HardDevicePlacementTest(test.TestCase, parameterized.TestCase):
     context._reset_context()
     config.set_soft_device_placement(enabled=False)
     context.context().log_device_placement = True
+    cpus = context.context().list_physical_devices('CPU')
+    # Set 2 virtual CPUs
+    context.context().set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
     self.assertEqual(config.get_soft_device_placement(), False)
     self.assertEqual(context.context().soft_device_placement, False)
 
@@ -165,20 +173,48 @@ class HardDevicePlacementTest(test.TestCase, parameterized.TestCase):
       self.assertIn('GPU:0', y.device)
       self.assertIn('GPU:0', y.backing_device)
 
-  @parameterized.named_parameters(('float_cpu0', 'CPU:0', 1.0, None),
-                                  ('int32_cpu0', 'CPU:0', [1], dtypes.int32),
-                                  ('string_cpu0', 'CPU:0', ['a'], None),
-                                  ('float_gpu0', 'GPU:0', 1.0, None),
-                                  ('int32_gpu0', 'GPU:0', [1], dtypes.int32),
-                                  ('string_gpu0', 'GPU:0', ['a'], None),
-                                  ('float_gpu99', 'GPU:99', 1.0, None),
-                                  ('int32_gpu99', 'GPU:99', [1], dtypes.int32),
-                                  ('string_gpu99', 'GPU:99', ['a'], None))
+  @test_util.run_gpu_only
+  def testSimpleConstantsExplicitGPU(self):
+    config.set_device_policy('explicit')
+    with ops.device('GPU:0'):
+      self.assertAllClose(1., array_ops.ones([]))
+      self.assertAllClose(0., array_ops.zeros([]))
+      self.assertAllClose([1.], array_ops.fill([1], 1.))
+
+  def testSimpleConstantsExplicitCPU(self):
+    config.set_device_policy('explicit')
+    with ops.device('CPU:1'):
+      self.assertAllClose(1., array_ops.ones([]))
+      self.assertAllClose(0., array_ops.zeros([]))
+      self.assertAllClose([1.], array_ops.fill([1], 1.))
+      self.assertAllClose(2., constant_op.constant(1.) * 2.)
+
+  @parameterized.named_parameters(
+      ('float_cpu0', 'CPU:0', 1.0, None),
+      ('int32_cpu0', 'CPU:0', [1], dtypes.int32),
+      ('string_cpu0', 'CPU:0', ['a'], None),
+      ('float_cpu1', 'CPU:1', 1.0, None),
+      ('int32_cpu1', 'CPU:1', [1], dtypes.int32),
+      ('string_cpu1', 'CPU:1', ['a'], None),
+  )
   def testHardPlacedCPUConstant(self, device, value, dtype):
     with ops.device(device):
       a = constant_op.constant(value, dtype=dtype)
-      self.assertIn('CPU:0', a.device)
-      self.assertIn('CPU:0', a.backing_device)
+      self.assertIn(device, a.device)
+
+  @parameterized.named_parameters(
+      ('float', 'GPU:0', 1.0, None),
+      ('int32', 'GPU:0', [1], dtypes.int32),
+      ('string', 'GPU:0', ['a'], None),
+  )
+  def testHardPlacedGPUConstant(self, device, value, dtype):
+    if not test_util.is_gpu_available():
+      self.skipTest('Test requires a GPU')
+    with ops.device(device):
+      a = constant_op.constant(value, dtype=dtype)
+      self.assertIn(device, a.device)
+      if a.dtype == dtypes.float32:
+        self.assertIn(device, a.backing_device)
 
 
 class ClusterPlacementTest(test.TestCase):

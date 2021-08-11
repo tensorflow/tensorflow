@@ -148,9 +148,9 @@ TEST_F(HloCseTest, ConstantsSameValueDifferentType) {
   constants.push_back(builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(42))));
   constants.push_back(builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint64>(42.0))));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint64_t>(42.0))));
   constants.push_back(builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64>(42.0))));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64_t>(42.0))));
   constants.push_back(builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<double>(42.0))));
   constants.push_back(builder.AddInstruction(
@@ -160,13 +160,13 @@ TEST_F(HloCseTest, ConstantsSameValueDifferentType) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f))));
 
   const Shape shape_r0 = ShapeUtil::MakeShape(F32, {});
-  for (int64 i = 0; i < constants.size(); ++i) {
+  for (int64_t i = 0; i < constants.size(); ++i) {
     constants[i] = builder.AddInstruction(
         HloInstruction::CreateConvert(shape_r0, constants[i]));
   }
   HloInstruction* root = builder.AddInstruction(HloInstruction::CreateBinary(
       shape_r0, HloOpcode::kAdd, constants[0], constants[1]));
-  for (int64 i = 2; i < constants.size(); ++i) {
+  for (int64_t i = 2; i < constants.size(); ++i) {
     root = builder.AddInstruction(HloInstruction::CreateBinary(
         shape_r0, HloOpcode::kAdd, root, constants[i]));
   }
@@ -690,23 +690,27 @@ TEST_F(HloCseTest, CompareComputations) {
 }
 
 TEST_F(HloCseTest, ConstantsSameValueInDifferentDomains) {
-  // Test that constants with the same value but in different domains (disjoint
-  // in this case) are not collapsed.
+  // Test that constants and iotas with the same value but in different domains
+  // (disjoint in this case) are not collapsed.
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(42)));
   builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(42)));
+  builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(S32, {42}), 0));
+  builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(S32, {42}), 0));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_EQ(2, computation->instruction_count());
+  EXPECT_EQ(4, computation->instruction_count());
 
   HloCSE cse(/*is_layout_sensitive=*/false);
   EXPECT_FALSE(cse.Run(module.get()).ValueOrDie());
 
-  EXPECT_EQ(2, computation->instruction_count());
+  EXPECT_EQ(4, computation->instruction_count());
 }
 
 TEST_F(HloCseTest, Domain) {
@@ -741,6 +745,28 @@ ENTRY %entry {
   EXPECT_EQ(add->operand(0), add->operand(1));
   EXPECT_NE(add->operand(0), sub->operand(1));
   EXPECT_NE(add->operand(1), sub->operand(1));
+}
+
+TEST_F(HloCseTest, Iota) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    ENTRY entry {
+      i1 = s64[16,16] iota(), iota_dimension=0
+      i2 = s64[16,16] iota(), iota_dimension=0
+      i3 = s64[17,16] iota(), iota_dimension=0
+      i4 = s64[16,16] iota(), iota_dimension=1
+      ROOT root = (s64[16,16], s64[16,16], s64[17,16], s64[16,16]) tuple(i1, i2, i3, i4)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+  EXPECT_TRUE(changed);
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->operand(0), root->operand(1));
+  EXPECT_NE(root->operand(0), root->operand(2));
+  EXPECT_NE(root->operand(0), root->operand(3));
 }
 
 }  // namespace

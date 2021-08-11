@@ -46,6 +46,26 @@ public final class Tensor {
   }
 
   /**
+   * Creates a Tensor wrapper for a Signature input.
+   *
+   * <p>The caller is responsible for closing the created wrapper, and ensuring the provided native
+   * SignatureRunner is valid until the tensor is closed.
+   */
+  static Tensor fromSignatureInput(long signatureRunnerHandle, String inputName) {
+    return new Tensor(createSignatureInputTensor(signatureRunnerHandle, inputName));
+  }
+
+  /**
+   * Creates a Tensor wrapper for a Signature output.
+   *
+   * <p>The caller is responsible for closing the created wrapper, and ensuring the provided native
+   * SignatureRunner is valid until the tensor is closed.
+   */
+  static Tensor fromSignatureOutput(long signatureRunnerHandle, String outputName) {
+    return new Tensor(createSignatureOutputTensor(signatureRunnerHandle, outputName));
+  }
+
+  /**
    * Quantization parameters that corresponds to the table, {@code QuantizationParameters}, in the
    * <a
    * href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema.fbs">TFLite
@@ -141,7 +161,7 @@ public final class Tensor {
   }
 
   /**
-   * Returns the (global) index of the tensor within the owning {@link Interpreter}.
+   * Returns the (global) index of the tensor within the subgraph of the owning {@link Interpreter}.
    *
    * @hide
    */
@@ -571,6 +591,12 @@ public final class Tensor {
   }
 
   private static native long create(long interpreterHandle, int tensorIndex);
+
+  private static native long createSignatureInputTensor(
+      long signatureRunnerHandle, String inputName);
+
+  private static native long createSignatureOutputTensor(
+      long signatureRunnerHandle, String outputName);
 
   private static native void delete(long handle);
 

@@ -25,7 +25,7 @@ sudo python3.8 -m pip install pep8
 
 # Install pylint
 sudo python3.8 -m pip install setuptools --upgrade
-sudo python3.8 -m pip install pylint==2.7.2
+sudo python3.8 -m pip install pylint==2.7.4
 python3.8 -m pylint --version
 
 # Run tensorflow sanity checks.

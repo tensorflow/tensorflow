@@ -26,6 +26,7 @@ import re
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -43,6 +44,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
@@ -236,12 +238,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       self.assertEqual("<tf.Variable 'Variable:0' shape=() dtype=int32,"
                        " numpy=<unavailable>>", text)
 
-  def testUnprintableHandle(self):
+  def testFormatResourceHandle(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
-      self.assertIn("<unprintable>", str(handle))
-      self.assertIn("<unprintable>", repr(handle))
+      self.assertIn("<Resource Tensor>", str(handle))
+      self.assertIn("<Resource Tensor>", repr(handle))
 
   @test_util.run_in_graph_and_eager_modes
   def testDtypeSurvivesIdentity(self):
@@ -326,7 +328,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     c = constant_op.constant(1.)
     identity = array_ops.identity_n([c, v.handle])
     # TODO(b/137403775): Remove this.
-    custom_gradient.copy_handle_data(v.handle, identity[1])
+    handle_data_util.copy_handle_data(v.handle, identity[1])
 
     g = gradients_impl.gradients(identity[0], [c, v.handle])
     self.assertEqual(g[1].dtype, dtypes.float64)
@@ -1172,7 +1174,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       v = resource_variable_ops.ResourceVariable(initial_value=zero)
       return (i + 1, v.read_value())
 
-    with self.assertRaisesRegex(ValueError, "initializer"):
+    with self.assertRaisesRegex(ValueError, "initial_value"):
       control_flow_ops.while_loop(cond, body, [0, 0])
 
   def testVariableEager(self):
@@ -1370,7 +1372,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     # NOTE(ebrevdo): shape_and_type lacks append() in some versions of protobuf.
     variant_shape_and_type_data.shape_and_type.extend([
         cpp_shape_inference_pb2.CppShapeInferenceResult.HandleShapeAndType(
-            shape=stored_shape, dtype=stored_dtype)])
+            shape=stored_shape,
+            dtype=stored_dtype,
+            type=full_type_pb2.FullTypeDef())
+    ])
     return variant_shape_and_type_data
 
   @def_function.function

@@ -22,30 +22,22 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/python/profiler/internal/python_hooks.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
-// This profiler interface enable Python function call tracing, and forward
-// the events to TraceMeRecorder.
+// This profiler interface enables Python function call tracing.
 class PythonTracer : public ProfilerInterface {
  public:
   explicit PythonTracer(const PythonHooksOptions& options)
       : options_(options) {}
   ~PythonTracer() override;
 
-  // Starts recording TraceMes.
   Status Start() override;
 
-  // Stops recording TraceMes.
   Status Stop() override;
-
-  // Populates user traces and thread names in response.
-  // The user traces and thread names are in no particular order.
-  Status CollectData(RunMetadata* run_metadata) override;
 
   Status CollectData(XSpace* space) override;
 
@@ -63,7 +55,7 @@ PythonTracer::~PythonTracer() {
 
 Status PythonTracer::Start() {
   if (recording_) {
-    return errors::Internal("TraceMeRecorder already started");
+    return errors::Internal("PythonTracer already started");
   }
   VLOG(1) << __FUNCTION__;
   recording_ = true;
@@ -73,22 +65,11 @@ Status PythonTracer::Start() {
 
 Status PythonTracer::Stop() {
   if (!recording_) {
-    return errors::Internal("TraceMeRecorder not started");
+    return errors::Internal("PythonTracer not started");
   }
   VLOG(1) << __FUNCTION__;
   context_ = PythonHooks::GetSingleton()->Stop();
   recording_ = false;
-  return Status::OK();
-}
-
-Status PythonTracer::CollectData(RunMetadata* run_metadata) {
-  // This ProfilerInterface rely on HostTracer to serialize its trace.
-  // Make sure unpaired traceme don't get recorded, because it will end up
-  // in the wrong threads.
-  // We had assumed HostTracer::Stop is called when ProfilerSession try to
-  // serialize PythonTracer.
-  VLOG(2) << "Collecting data to RunMetaData from PythonTracer.";
-  context_.reset();
   return Status::OK();
 }
 

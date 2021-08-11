@@ -1,18 +1,8 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_native_cc_binary")
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-)
-load(
-    "//third_party/mlir:tblgen.bzl",
-    "gentbl_cc_library",
-)
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [
@@ -23,7 +13,6 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["//third_party/mlir:subpackages"],
     packages = ["//tensorflow/compiler/mlir/..."],
 )
 
@@ -33,10 +22,13 @@ exports_files([
     "quantization_utils.h",
 ])
 
-filegroup(
+td_library(
     name = "quantization_td_files",
     srcs = [
         "quantization.td",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:QuantizationOpsTdFiles",
     ],
@@ -57,7 +49,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "quantization.td",
-    td_srcs = [
+    deps = [
         ":quantization_td_files",
     ],
 )
@@ -110,6 +102,7 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/tools/optimize:quantization_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -130,6 +123,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],

@@ -10,9 +10,11 @@ pybind_extension(
     srcs = [
         "analyzer_wrapper.cc",
     ],
+    link_in_framework = True,
     module_name = "_pywrap_analyzer_wrapper",
     deps = [
         ":model_analyzer",
+        "//tensorflow/compiler/mlir/lite:flatbuffer_to_mlir",
         "@pybind11",
     ],
 )
@@ -24,7 +26,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite:model_builder",
+        "//tensorflow/lite:version",
+        "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
+        "//tensorflow/lite/tools/versioning:gpu_compatibility",
+        "@com_google_absl//absl/strings",
     ],
 )

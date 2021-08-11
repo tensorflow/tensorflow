@@ -5,7 +5,6 @@
 # need to run on machines with GPUs present.
 
 load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load(
@@ -128,6 +127,25 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "gpu_reduce_scatter_creator_test",
+    srcs = ["gpu_reduce_scatter_creator_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service/gpu:gpu_reduce_scatter_creator",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+tf_cc_test(
     name = "gpu_spmd_partitioner_test",
     srcs = ["gpu_spmd_partitioner_test.cc"],
     deps = [
@@ -191,6 +209,23 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "gemm_broadcast_folding_rewrite_test",
+    srcs = [
+        "gemm_broadcast_folding_rewrite_test.cc",
+    ],
+    tags = tf_cuda_tests_tags() + [
+        "no_rocm",
+    ],
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -468,7 +503,7 @@ tf_cc_test(
 tf_cc_test(
     name = "gpu_kernel_tiling_test",
     srcs = ["gpu_kernel_tiling_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = ["no_rocm"] + tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/service:hlo",
@@ -607,6 +642,20 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "bef_executable_test",
+    srcs = ["bef_executable_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:test_macros_header",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 tf_cc_test(
     name = "sorting_test",
     srcs = ["sorting_test.cc"],
@@ -658,14 +707,12 @@ glob_lit_tests(
         "no_pip",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
+    exclude = ["execute_memzero_thunk.mlir"],
     tags_override = {
         "reduction_vectorization_sm_all.hlo": ["no_rocm"],
         "element_wise_row_vectorization.hlo": ["no_rocm"],
     },
-    test_file_exts = [
-        "hlo",
-        "mlir",
-    ],
+    test_file_exts = ["hlo"],
 )
 
 # Bundle together all of the test utilities that are used by tests.
@@ -674,23 +721,6 @@ filegroup(
     testonly = True,
     data = [
         ":hlo_to_llvm_ir",
-        ":xla-thunks-opt",
         "@llvm-project//llvm:FileCheck",
-    ],
-)
-
-# Binary with only the thunks dialect registered, for testing purposes.
-tf_cc_binary(
-    name = "xla-thunks-opt",
-    srcs = ["xla_thunks_opt.cc"],
-    deps = [
-        "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/xla/service/gpu:xla_thunks_ops",
-        "//tensorflow/core:lib",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:Shape",
     ],
 )

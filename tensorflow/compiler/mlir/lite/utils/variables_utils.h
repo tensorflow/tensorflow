@@ -25,6 +25,9 @@ namespace utils {
 // variables.
 bool IsSupportedVariableType(Operation* op);
 
+// Returns true if 'type' is supported by native tflite variables.
+bool IsSupportedVariableType(ShapedType type);
+
 }  // namespace utils
 }  // namespace TFL
 }  // namespace mlir

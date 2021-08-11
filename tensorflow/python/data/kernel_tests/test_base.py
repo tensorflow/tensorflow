@@ -222,7 +222,13 @@ class DatasetTestBase(test.TestCase):
           dataset, requires_initialization=requires_initialization)
       result = []
       for _ in range(len(expected_output)):
-        result.append(self.evaluate(get_next()))
+        try:
+          result.append(self.evaluate(get_next()))
+        except errors.OutOfRangeError:
+          raise AssertionError(
+              "Dataset ended early, producing %d elements out of %d. "
+              "Dataset output: %s" %
+              (len(result), len(expected_output), str(result)))
       self._compareOutputToExpected(result, expected_output, assert_items_equal)
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(get_next())

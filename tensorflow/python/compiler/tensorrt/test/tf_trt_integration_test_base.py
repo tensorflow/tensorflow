@@ -31,7 +31,6 @@ import warnings
 import numpy as np
 import six
 
-from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import get_linked_tensorrt_version
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -104,10 +103,9 @@ def IsQuantizationWithCalibration(params):
   return IsQuantizationMode(params.precision_mode) and params.use_calibration
 
 
-def IsTensorRTVersionGreaterEqual(major, minor=0, patch=0):
-  ver = get_linked_tensorrt_version()
-  return ver[0] > major or (ver[0] == major and ver[1] > minor) or (
-      ver[0] == major and ver[1] == minor and ver[2] >= patch)
+def IsQuantizationWithoutCalibration(params):
+  return IsQuantizationMode(
+      params.precision_mode) and not params.use_calibration
 
 
 class GraphState(object):
@@ -169,6 +167,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     """Setup method."""
     super(TfTrtIntegrationTestBase, self).setUp()
     warnings.simplefilter("always")
+
+    if not is_tensorrt_enabled():
+      self.skipTest("Test requires TensorRT")
 
   def _GetTensorSpec(self, shape, mask, dtype, name):
     # Set dimension i to None if mask[i] == False
@@ -837,9 +838,15 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
           self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
         self.assertIn(
             self._RemoveGraphSequenceNumber(node.name), expected_engines)
-        self.assertEqual(
-            self._ToBytes(run_params.precision_mode),
-            node.attr["precision_mode"].s, node.name)
+        if IsQuantizationWithoutCalibration(run_params):
+          # TODO(bixia): Refine this check by inspecting nodes in the engine.
+          if self._ToBytes("INT8") != node.attr["precision_mode"].s:
+            self.assertEqual(
+                self._ToBytes("FP16"), node.attr["precision_mode"].s, node.name)
+        else:
+          self.assertEqual(
+              self._ToBytes(run_params.precision_mode),
+              node.attr["precision_mode"].s, node.name)
 
         self.assertEqual(run_params.dynamic_engine, is_dynamic_engine,
                          node.name)

@@ -149,7 +149,6 @@ filegroup(
         "bcast.h",
         "command_line_flags.h",
         "debug_events_writer.h",
-        "determinism.h",
         "device_name_utils.h",
         "dump_graph.h",
         "einsum_op_util.h",
@@ -217,7 +216,6 @@ filegroup(
         "bcast.cc",
         "command_line_flags.cc",
         "debug_events_writer.cc",
-        "determinism.cc",
         "device_name_utils.cc",
         "dump_graph.cc",
         "equal_graph_def.cc",
@@ -479,6 +477,7 @@ cc_library(
     hdrs = ["managed_stack_trace.h"],
     visibility = [
         "//tensorflow/c/eager:__pkg__",
+        "//tensorflow/compiler/mlir/tensorflow:__pkg__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
         "//tensorflow/core/framework:__pkg__",
@@ -606,6 +605,48 @@ cc_library(
     ],
 )
 
+# Note: This rule should not be used as a dependency for kernels. Use the
+# "determinism_for_kernels" rule below instead.
+cc_library(
+    name = "determinism",
+    srcs = ["determinism.cc"],
+    hdrs = ["determinism.h"],
+    copts = tf_copts(),
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/util:env_var",
+    ],
+    alwayslink = 1,
+)
+
+filegroup(
+    name = "determinism_hdr",
+    srcs = ["determinism.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+cc_library(
+    name = "determinism_hdr_lib",
+    hdrs = [":determinism_hdr"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:private"],
+)
+
+# This alias should be used as a dependency for kernels which use determinism,
+# as well any other rules which are in the same shared library as the kernels.
+# This rule does not include the determinism.cc file for nonstatic builds. The
+# reason is that for nonstatic builds, the shared object which contains the
+# kernels (e.g. _pywrap_tensorflow_internal.so) must not contain the global
+# variable in determinism.cc, since the global variable is already in
+# libtensorflow_framework.so.
+alias(
+    name = "determinism_for_kernels",
+    actual = if_static(":determinism", ":determinism_hdr_lib"),
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
 tf_kernel_library(
     name = "cuda_solvers",
     srcs = ["cuda_solvers.cc"],
@@ -643,6 +684,7 @@ tf_kernel_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
         "//tensorflow/stream_executor/rocm:rocblas_plugin",
+        "//tensorflow/stream_executor/rocm:rocblas_wrapper",
         "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",

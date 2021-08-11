@@ -28,7 +28,7 @@ def TestOneInput(input_bytes):
   random_dtype_index = fh.get_int(min_int=0, max_int=1)
   input_dtype = input_supported_dtypes[random_dtype_index]
   input_shape = fh.get_int_list(
-      min_length=0, max_length=3, min_int=0, max_int=3)
+      min_length=0, max_length=6, min_int=0, max_int=10)
   seed = fh.get_int()
   input_tensor = tf.random.uniform(
       shape=input_shape, dtype=input_dtype, seed=seed, maxval=10)
@@ -51,7 +51,7 @@ def TestOneInput(input_bytes):
   ]
   random_dtype_index = fh.get_int(min_int=0, max_int=5)
   x_dtype = x_supported_dtypes[random_dtype_index]
-  x_shape = fh.get_int_list(min_length=0, max_length=8, min_int=0, max_int=8)
+  x_shape = fh.get_int_list(min_length=0, max_length=6, min_int=0, max_int=10)
   seed = fh.get_int()
   try:
     x = tf.random.uniform(shape=x_shape, dtype=x_dtype, seed=seed, maxval=10)

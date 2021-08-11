@@ -67,6 +67,8 @@ const absl::string_view kUnknownOp = "";  // op types are non-empty strings
 const absl::string_view kDatasetOp = "Dataset";
 const absl::string_view kMemcpyHToDOp = "MemcpyHToD";
 const absl::string_view kMemcpyDToHOp = "MemcpyDToH";
+const absl::string_view kMemcpyDToDOp = "MemcpyDToD";
+const absl::string_view kMemcpyHToHOp = "MemcpyHToH";
 
 bool IsTfOpName(absl::string_view op_name) {
   // TODO(b/177602927): Confirm the naming convention with the TF team.
@@ -104,6 +106,12 @@ TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
     } else if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYDToH")) {
       tf_op.category = Category::kMemcpyDToH;
       tf_op.type = kMemcpyDToHOp;
+    } else if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYDToD")) {
+      tf_op.category = Category::kMemcpyDToD;
+      tf_op.type = kMemcpyDToDOp;
+    } else if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYHToH")) {
+      tf_op.category = Category::kMemcpyHToH;
+      tf_op.type = kMemcpyHToHOp;
     }
     // TODO(ckluk): Include the corresponding Ops on TPU.
   } else if (parts[0] == kIterator) {
@@ -122,12 +130,16 @@ TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
   return tf_op;
 }
 
-std::vector<absl::string_view> ParseTfNameScopes(const TfOp& tf_op) {
+std::vector<absl::string_view> ParseTfNameScopes(absl::string_view tf_op_name) {
   std::vector<absl::string_view> name_scopes =
-      absl::StrSplit(tf_op.name, kNameScopeSeparator);
+      absl::StrSplit(tf_op_name, kNameScopeSeparator);
   // The last element is an op name not TF name scope.
   if (!name_scopes.empty()) name_scopes.pop_back();
   return name_scopes;
+}
+
+std::vector<absl::string_view> ParseTfNameScopes(const TfOp& tf_op) {
+  return ParseTfNameScopes(tf_op.name);
 }
 
 std::string TfOpEventName(const TfOp& tf_op) {

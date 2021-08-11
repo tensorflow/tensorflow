@@ -175,8 +175,8 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testBatchResultSize(self):
     # 3x3x3 matrices, 3x3x1 right-hand sides.
-    matrix = np.array([1., 0., 0., 0., 1., 0., 0., 0., 1.] * 3).reshape(3, 3, 3)
-    rhs = np.array([1., 2., 3.] * 3).reshape(3, 3, 1)
+    matrix = np.array([1., 0., 0., 0., 1., 0., 0., 0., 1.] * 3).reshape(3, 3, 3)  # pylint: disable=too-many-function-args
+    rhs = np.array([1., 2., 3.] * 3).reshape(3, 3, 1)  # pylint: disable=too-many-function-args
     answer = linalg_ops.matrix_solve(matrix, rhs)
     ls_answer = linalg_ops.matrix_solve_ls(matrix, rhs)
     self.assertEqual(ls_answer.get_shape(), [3, 3, 1])

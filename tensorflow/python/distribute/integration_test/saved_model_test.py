@@ -663,13 +663,13 @@ class PSStrategySaveAndLoadTest(test.TestCase):
     # ShardedVariable loading only works in v1.
     self.assertAllEqual(self.load_and_run_v1(model_dir, {"x": 1}), [6, 6, 6, 6])
 
-    with self.assertRaisesWithLiteralMatch(
-        ValueError, "Loading `ShardedVariable` is not supported"):
+    with self.assertRaisesRegex(
+        ValueError, "Loading a saved_model containing ShardedVariable"):
       with strategy.scope():
         tf.saved_model.load(model_dir)
 
-    with self.assertRaisesWithLiteralMatch(
-        ValueError, "Loading `ShardedVariable` is not supported"):
+    with self.assertRaisesRegex(
+        ValueError, "Loading a saved_model containing ShardedVariable"):
       tf.saved_model.load(model_dir)
 
   def test_load_with_partitioner_raises_error(self):

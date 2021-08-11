@@ -406,7 +406,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     Returns:
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       mat = ops.convert_to_tensor_v2_with_dispatch(mat, name="mat")
       mat_diag = array_ops.matrix_diag_part(mat)
       new_diag = 1 + mat_diag
@@ -748,7 +748,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
     Returns:
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       # Shape [B1,...,Bb, 1]
       multiplier_vector = array_ops.expand_dims(self.multiplier, -1)
 

@@ -15,39 +15,53 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/worker_impl.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "grpcpp/create_channel.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/data/dataset.pb.h"
+#include "tensorflow/core/data/service/auto_shard_rewriter.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
-#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
+#include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/utils.h"
+#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/snappy.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace data {
+namespace {
 
 const constexpr uint64 kRetryIntervalMicros = 5ull * 1000 * 1000;
 
-namespace {
 // Moves the element into the response. If the tensor contains a single
 // CompressedElement variant, the move will be zero-copy. Otherwise, the tensor
 // data will be serialized as TensorProtos.
@@ -73,6 +87,10 @@ Status MoveElementToResponse(std::vector<Tensor>&& element,
   return Status::OK();
 }
 }  // namespace
+
+mutex LocalWorkers::mu_(LINKER_INITIALIZED);
+LocalWorkers::AddressToWorkerMap* LocalWorkers::local_workers_ =
+    new AddressToWorkerMap();
 
 DataServiceWorkerImpl::DataServiceWorkerImpl(
     const experimental::WorkerConfig& config)
@@ -180,6 +198,13 @@ Status DataServiceWorkerImpl::GetElementResult(
     cv_.notify_all();
   });
   TF_RETURN_IF_ERROR(task->task_runner->GetNext(*request, *result));
+
+  if (result->end_of_sequence) {
+    mutex_lock l(mu_);
+    VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
+    pending_completed_tasks_.insert(request->task_id());
+    task_completion_cv_.notify_one();
+  }
   return Status::OK();
 }
 
@@ -201,58 +226,28 @@ Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
   }
   task = absl::make_unique<Task>(task_def);
   VLOG(3) << "Began processing for task " << task_def.task_id()
-          << " with processing mode " << task_def.processing_mode();
+          << " with processing mode "
+          << task_def.processing_mode_def().DebugString();
   return Status::OK();
 }
 
 Status DataServiceWorkerImpl::EnsureTaskInitialized(
     DataServiceWorkerImpl::Task& task) {
+  if (task.task_def.worker_address() != worker_address_) {
+    return errors::Internal(absl::Substitute(
+        "Dispatcher's worker address $0 does not match worker's address $1.",
+        task.task_def.worker_address(), worker_address_));
+  }
+
   mutex_lock l(task.mu);
   if (task.initialized) {
     return Status::OK();
   }
-  standalone::Dataset::Params params;
-  std::unique_ptr<standalone::Dataset> dataset;
-  std::unique_ptr<standalone::Iterator> iterator;
-
-  switch (task.task_def.dataset_case()) {
-    case TaskDef::kDatasetDef:
-      TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
-          params, task.task_def.dataset_def().graph(), &dataset));
-      break;
-    case TaskDef::kPath: {
-      DatasetDef def;
-      Status s = ReadDatasetDef(task.task_def.path(), def);
-      if (!s.ok()) {
-        LOG(INFO) << "Failed to read dataset from " << task.task_def.path()
-                  << ": " << s << ". Falling back to reading from dispatcher.";
-        TF_RETURN_IF_ERROR(
-            dispatcher_->GetDatasetDef(task.task_def.dataset_id(), def));
-      }
-      TF_RETURN_IF_ERROR(
-          standalone::Dataset::FromGraph(params, def.graph(), &dataset));
-      break;
-    }
-    case TaskDef::DATASET_NOT_SET:
-      return errors::Internal("Unrecognized dataset case: ",
-                              task.task_def.dataset_case());
-  }
-  switch (task.task_def.processing_mode()) {
-    case DISTRIBUTED_EPOCH: {
-      auto split_provider = absl::make_unique<DataServiceSplitProvider>(
-          config_.dispatcher_address(), config_.protocol(),
-          task.task_def.job_id(), config_.dispatcher_timeout_ms());
-      TF_RETURN_IF_ERROR(
-          dataset->MakeIterator(std::move(split_provider), &iterator));
-      break;
-    }
-    case PARALLEL_EPOCHS:
-      TF_RETURN_IF_ERROR(dataset->MakeIterator(&iterator));
-      break;
-    default:
-      return errors::InvalidArgument("Unrecognized processing mode: ",
-                                     task.task_def.processing_mode());
-  }
+  TF_ASSIGN_OR_RETURN(DatasetDef dataset_def, GetDatasetDef(task.task_def));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<standalone::Dataset> dataset,
+                      MakeDataset(dataset_def, task.task_def));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<standalone::Iterator> iterator,
+                      MakeDatasetIterator(*dataset, task.task_def));
   auto task_iterator = absl::make_unique<StandaloneTaskIterator>(
       std::move(dataset), std::move(iterator));
   TF_RETURN_IF_ERROR(TaskRunner::Create(
@@ -261,6 +256,70 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
   task.initialized = true;
   VLOG(3) << "Created iterator for task " << task.task_def.task_id();
   return Status::OK();
+}
+
+StatusOr<DatasetDef> DataServiceWorkerImpl::GetDatasetDef(
+    const TaskDef& task_def) const {
+  switch (task_def.dataset_case()) {
+    case TaskDef::kDatasetDef:
+      return task_def.dataset_def();
+    case TaskDef::kPath: {
+      DatasetDef def;
+      Status s = ReadDatasetDef(task_def.path(), def);
+      if (!s.ok()) {
+        LOG(INFO) << "Failed to read dataset from " << task_def.path() << ": "
+                  << s << ". Falling back to reading from dispatcher.";
+        TF_RETURN_IF_ERROR(
+            dispatcher_->GetDatasetDef(task_def.dataset_id(), def));
+      }
+      return def;
+    }
+    case TaskDef::DATASET_NOT_SET:
+      return errors::Internal("Unrecognized dataset case: ",
+                              task_def.dataset_case());
+  }
+}
+
+StatusOr<std::unique_ptr<standalone::Dataset>>
+DataServiceWorkerImpl::MakeDataset(const DatasetDef& dataset_def,
+                                   const TaskDef& task_def) const {
+  TF_ASSIGN_OR_RETURN(AutoShardRewriter auto_shard_rewriter,
+                      AutoShardRewriter::Create(task_def));
+  // `ApplyAutoShardRewrite` does nothing if auto-sharding is disabled.
+  TF_ASSIGN_OR_RETURN(
+      GraphDef rewritten_graph,
+      auto_shard_rewriter.ApplyAutoShardRewrite(dataset_def.graph()));
+  std::unique_ptr<standalone::Dataset> dataset;
+  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
+      standalone::Dataset::Params(), rewritten_graph, &dataset));
+  return dataset;
+}
+
+StatusOr<std::unique_ptr<standalone::Iterator>>
+DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
+                                           const TaskDef& task_def) const {
+  std::unique_ptr<standalone::Iterator> iterator;
+  if (IsNoShard(task_def.processing_mode_def()) ||
+      IsStaticShard(task_def.processing_mode_def())) {
+    TF_RETURN_IF_ERROR(dataset.MakeIterator(&iterator));
+    return iterator;
+  }
+
+  if (IsDynamicShard(task_def.processing_mode_def())) {
+    std::vector<std::unique_ptr<SplitProvider>> split_providers;
+    split_providers.reserve(task_def.num_split_providers());
+    for (int i = 0; i < task_def.num_split_providers(); ++i) {
+      split_providers.push_back(absl::make_unique<DataServiceSplitProvider>(
+          config_.dispatcher_address(), config_.protocol(), task_def.job_id(),
+          i, config_.dispatcher_timeout_ms()));
+    }
+    TF_RETURN_IF_ERROR(
+        dataset.MakeIterator(std::move(split_providers), &iterator));
+    return iterator;
+  }
+
+  return errors::InvalidArgument("Unrecognized processing mode: ",
+                                 task_def.processing_mode_def().DebugString());
 }
 
 void DataServiceWorkerImpl::StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_) {
@@ -284,17 +343,11 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
   TF_RETURN_IF_ERROR(GetElementResult(request, &result));
   response->set_end_of_sequence(result.end_of_sequence);
   response->set_skip_task(result.skip);
-  if (response->end_of_sequence()) {
-    mutex_lock l(mu_);
-    VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
-    pending_completed_tasks_.insert(request->task_id());
-    task_completion_cv_.notify_one();
-  } else if (!response->skip_task()) {
+  if (!response->end_of_sequence() && !response->skip_task()) {
     TF_RETURN_IF_ERROR(
         MoveElementToResponse(std::move(result.components), *response));
     VLOG(3) << "Producing an element for task " << request->task_id();
   }
-
   return Status::OK();
 }
 
@@ -360,13 +413,13 @@ Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
 
 void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
   while (true) {
-    int64 next_heartbeat_micros =
+    int64_t next_heartbeat_micros =
         Env::Default()->NowMicros() + (config_.heartbeat_interval_ms() * 1000);
     {
       mutex_lock l(mu_);
       while (!cancelled_ &&
              Env::Default()->NowMicros() < next_heartbeat_micros) {
-        int64 time_to_wait_micros =
+        int64_t time_to_wait_micros =
             next_heartbeat_micros - Env::Default()->NowMicros();
         heartbeat_cv_.wait_for(l,
                                std::chrono::microseconds(time_to_wait_micros));
@@ -388,7 +441,7 @@ void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
 }
 
 Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
-  std::vector<int64> current_tasks;
+  std::vector<int64_t> current_tasks;
   {
     mutex_lock l(mu_);
     for (const auto& task : tasks_) {
@@ -396,7 +449,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     }
   }
   std::vector<TaskDef> new_tasks;
-  std::vector<int64> task_ids_to_delete;
+  std::vector<int64_t> task_ids_to_delete;
   TF_RETURN_IF_ERROR(dispatcher_->WorkerHeartbeat(
       worker_address_, transfer_address_, current_tasks, new_tasks,
       task_ids_to_delete));
@@ -412,7 +465,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
       }
     }
     tasks_to_delete.reserve(task_ids_to_delete.size());
-    for (int64 task_id : task_ids_to_delete) {
+    for (int64_t task_id : task_ids_to_delete) {
       VLOG(3) << "Deleting task " << task_id
               << " at the request of the dispatcher";
       tasks_to_delete.push_back(std::move(tasks_[task_id]));
@@ -424,6 +477,35 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     StopTask(*task);
   }
   return Status::OK();
+}
+
+void LocalWorkers::Add(absl::string_view worker_address,
+                       std::shared_ptr<DataServiceWorkerImpl> worker) {
+  DCHECK(worker != nullptr) << "Adding a nullptr local worker is disallowed.";
+  VLOG(1) << "Register local worker at address " << worker_address;
+  mutex_lock l(mu_);
+  (*local_workers_)[worker_address] = worker;
+}
+
+std::shared_ptr<DataServiceWorkerImpl> LocalWorkers::Get(
+    absl::string_view worker_address) {
+  tf_shared_lock l(mu_);
+  AddressToWorkerMap::const_iterator it = local_workers_->find(worker_address);
+  if (it == local_workers_->end()) {
+    return nullptr;
+  }
+  return it->second;
+}
+
+bool LocalWorkers::Empty() {
+  tf_shared_lock l(mu_);
+  return local_workers_->empty();
+}
+
+void LocalWorkers::Remove(absl::string_view worker_address) {
+  VLOG(1) << "Remove local worker at address " << worker_address;
+  mutex_lock l(mu_);
+  local_workers_->erase(worker_address);
 }
 
 }  // namespace data

@@ -102,21 +102,21 @@ string PrintMemory(const char* ptr, size_t n) {
   return ret;
 }
 
-string SliceDebugString(const TensorShape& shape, const int64 flat) {
+string SliceDebugString(const TensorShape& shape, const int64_t flat) {
   // Special case rank 0 and 1
   const int dims = shape.dims();
   if (dims == 0) return "";
   if (dims == 1) return strings::StrCat("[", flat, "]");
 
   // Compute strides
-  gtl::InlinedVector<int64, 32> strides(dims);
+  gtl::InlinedVector<int64_t, 32> strides(dims);
   strides.back() = 1;
   for (int i = dims - 2; i >= 0; i--) {
     strides[i] = strides[i + 1] * shape.dim_size(i + 1);
   }
 
   // Unflatten index
-  int64 left = flat;
+  int64_t left = flat;
   string result;
   for (int i = 0; i < dims; i++) {
     strings::StrAppend(&result, i ? "," : "[", left / strides[i]);
@@ -126,8 +126,10 @@ string SliceDebugString(const TensorShape& shape, const int64 flat) {
   return result;
 }
 
-#ifdef INTEL_MKL
 bool IsMKLEnabled() {
+#ifndef INTEL_MKL
+  return false;
+#endif  // !INTEL_MKL
   static absl::once_flag once;
 #ifdef ENABLE_MKL
   // Keeping TF_DISABLE_MKL env variable for legacy reasons.
@@ -163,6 +165,5 @@ bool IsMKLEnabled() {
   return oneDNN_enabled;
 #endif  // ENABLE_MKL
 }
-#endif  // INTEL_MKL
 
 }  // namespace tensorflow

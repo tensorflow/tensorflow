@@ -53,6 +53,51 @@ LogicalResult VerifyCollectivePermuteSourceTargetPairs(
   return success();
 }
 
+LogicalResult VerifyReduceScatter(Operation *op, TypeRange operand_types,
+                                  TypeRange result_types,
+                                  uint64_t scatter_dimension) {
+  // If operand and result are both ranked, then the size of the scatter
+  // dimension in the operand should be a multiple of the size of the scatter
+  // dimension in the result.
+  for (auto it : llvm::zip(operand_types, result_types)) {
+    auto operand_type = std::get<0>(it).cast<ShapedType>();
+    auto result_type = std::get<1>(it).cast<ShapedType>();
+    if (!operand_type.hasRank() || !result_type.hasRank()) continue;
+    if (operand_type.getRank() != result_type.getRank())
+      return op->emitOpError() << "operand and result should have same rank";
+    if (scatter_dimension >= operand_type.getRank())
+      return op->emitOpError()
+             << "scatter dim should be less than operand/result rank";
+    if (operand_type.isDynamicDim(scatter_dimension) ||
+        result_type.isDynamicDim(scatter_dimension))
+      continue;
+    if (operand_type.getDimSize(scatter_dimension) == 0)
+      return op->emitOpError() << "operand scatter dimension cannot be zero";
+    if (result_type.getDimSize(scatter_dimension) == 0)
+      return op->emitOpError() << "result scatter dimension cannot be zero";
+    if ((operand_type.getDimSize(scatter_dimension) %
+         result_type.getDimSize(scatter_dimension)) != 0)
+      return op->emitOpError()
+             << "operand scatter dimension has size "
+             << operand_type.getDimSize(scatter_dimension)
+             << ", expected to be a multiple of result scatter dimension size "
+             << result_type.getDimSize(scatter_dimension);
+
+    // Non scatter dimensions should be equal.
+    for (uint64_t index : llvm::seq<uint64_t>(0, operand_type.getRank())) {
+      if (index == scatter_dimension || operand_type.isDynamicDim(index) ||
+          result_type.isDynamicDim(index))
+        continue;
+      if (operand_type.getDimSize(index) != result_type.getDimSize(index))
+        return op->emitOpError()
+               << "non scatter dimensions should be same for operand ("
+               << operand_type.getDimSize(index) << ") and result ("
+               << result_type.getDimSize(index) << ")";
+    }
+  }
+  return success();
+}
+
 namespace {
 // Custom formatting for convolution window attributes.
 void printWindowAttribute(OpAsmPrinter &p, DenseElementsAttr attribute) {

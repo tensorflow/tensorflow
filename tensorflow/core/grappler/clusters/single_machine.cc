@@ -152,7 +152,7 @@ Status SingleMachine::Run(const GraphDef& graph_def,
     TF_RETURN_IF_ERROR(session_->Create(graph_def));
     if (!init_ops_.empty()) {
       init_metadata_ = RunMetadata();
-      int64 timeout_s = timeout_s_ + expected_init_time_s_;
+      int64_t timeout_s = timeout_s_ + expected_init_time_s_;
       TF_RETURN_IF_ERROR(
           RunWithTimeout({}, init_ops_, &init_metadata_, timeout_s));
       // The compute cost for init ops is likely to be pessimistic since init
@@ -247,7 +247,7 @@ Status SingleMachine::RunWithTimeout(
 Status SingleMachine::RunWithTimeout(
     const std::vector<std::pair<string, Tensor>>& feed,
     const std::vector<string>& fetch, RunMetadata* run_metadata,
-    int64 timeout_s) {
+    int64_t timeout_s) {
   // We shouldn't be running or closing the session at this point.
   {
     mutex_lock l(close_mu_);
@@ -330,7 +330,7 @@ Status SingleMachine::ShutdownSession() {
     thread_pool_.reset();
     n->Notify();
   });
-  int64 timeout_us = 1000000ll * timeout_s_;
+  int64_t timeout_us = 1000000ll * timeout_s_;
   const bool notified = WaitForNotificationWithTimeout(n.get(), timeout_us);
   if (!notified) {
     // Let the caller know that we can't shutdown the session properly since

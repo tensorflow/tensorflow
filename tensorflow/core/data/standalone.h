@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_STANDALONE_H_
 #define TENSORFLOW_CORE_DATA_STANDALONE_H_
 
+#include <functional>
 #include <memory>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -99,11 +101,13 @@ class Dataset {
   // Creates an iterator for this dataset.
   Status MakeIterator(std::unique_ptr<Iterator>* result);
   // Creates an iterator, optionally with a split provider.
-  Status MakeIterator(std::unique_ptr<SplitProvider> split_provider,
-                      std::unique_ptr<Iterator>* result);
+  Status MakeIterator(
+      std::vector<std::unique_ptr<SplitProvider>> split_providers,
+      std::unique_ptr<Iterator>* result);
 
-  // Creates a split provider for this dataset.
-  Status MakeSplitProvider(std::unique_ptr<SplitProvider>* result);
+  // Creates split providers for this dataset.
+  Status MakeSplitProviders(
+      std::vector<std::unique_ptr<SplitProvider>>* result);
   // Returns a pointer to the underlying dataset.
   const DatasetBase* Get() const;
 
@@ -117,11 +121,12 @@ class Dataset {
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
-  std::unique_ptr<thread::ThreadPool> pool_;
+  std::unique_ptr<thread::ThreadPool> interop_threadpool_;
   std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   std::function<void(std::function<void()>)> runner_;
   ResourceMgr resource_mgr_;
   CancellationManager cancellation_manager_;
+  UnboundedThreadPool unbounded_thread_pool_;
 };
 
 }  // namespace standalone

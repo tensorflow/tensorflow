@@ -1391,7 +1391,7 @@ class BaseSession(SessionInterface):
                     '\nby modifying the config for creating the session eg.'
                     '\nsession_config.graph_options.rewrite_options.'
                     'disable_meta_optimizer = True')
-      raise type(e)(node_def, op, message)
+      raise type(e)(node_def, op, message)  # pylint: disable=no-value-for-parameter
 
   def _extend_graph(self):
     with self._graph._session_run_lock():  # pylint: disable=protected-access
@@ -1440,7 +1440,7 @@ class BaseSession(SessionInterface):
         fetches.append(mover[1])
       handles = self.run(fetches, feed_dict=feeds)
       for handle_mover, handle in zip(handle_movers, handles):
-        np_val = np.array(handle.handle, dtype=np.object)
+        np_val = np.array(handle.handle, dtype=np.object_)
         feed_name = handle_mover[0]
         feed_tensor = feed_map[feed_name][0]
         feed_dict[feed_tensor.ref()] = np_val
@@ -1566,6 +1566,15 @@ class Session(BaseSession):
       allow_soft_placement=True,
       log_device_placement=True))
   ```
+
+  @compatibility(TF2)
+  `Session` does not work with either eager execution or `tf.function`, and you
+  should not invoke it directly. To migrate code that uses sessions to TF2,
+  rewrite the code without it. See the
+  [migration
+  guide](https://www.tensorflow.org/guide/migrate#1_replace_v1sessionrun_calls)
+  on replacing `Session.run` calls.
+  @end_compatibility
   """
 
   def __init__(self, target='', graph=None, config=None):

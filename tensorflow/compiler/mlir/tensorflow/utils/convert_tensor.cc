@@ -32,10 +32,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/bfloat16.h"
@@ -139,7 +139,7 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     CONVERT_FLAT(DT_INT8, int8)
     CONVERT_FLAT(DT_INT16, int16)
     CONVERT_FLAT(DT_INT32, int32)
-    CONVERT_FLAT(DT_INT64, int64)
+    CONVERT_FLAT(DT_INT64, int64_t)
     CONVERT_FLAT(DT_UINT8, uint8)
     CONVERT_FLAT(DT_UINT16, uint16)
     CONVERT_FLAT(DT_UINT32, uint32)
@@ -167,8 +167,73 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
 #undef CONVERT_FLAT
 }
 
+// Returns the number of elements present in this TensorProto, or -1 if that
+// could not be determined. This might be less than the shape of the proto might
+// indicate, if we're storing a splat tensor.
+int NumberOfMaterializedElements(const TensorProto& tensor) {
+  if (!tensor.tensor_content().empty()) return -1;
+    // We don't know which element type this protocol buffer is storing, and the
+    // metaprogramming facilities for TensorProto are too limited to check their
+    // number without knowing this, so we need to manually dispatch to each
+    // possible member of TensorProto, depening on its dtype.
+#define MATCH(DTYPE, FIELD) \
+  case DTYPE:               \
+    return tensor.FIELD##_val().size()
+
+  switch (tensor.dtype()) {
+    MATCH(DT_FLOAT, float);
+    MATCH(DT_DOUBLE, double);
+    MATCH(DT_INT8, int);
+    MATCH(DT_UINT8, int);
+    MATCH(DT_INT16, int);
+    MATCH(DT_UINT16, int);
+    MATCH(DT_INT32, int);
+    MATCH(DT_UINT32, uint32);
+    MATCH(DT_INT64, int64);
+    MATCH(DT_UINT64, uint64);
+    MATCH(DT_BOOL, bool);
+    MATCH(DT_HALF, half);
+    MATCH(DT_BFLOAT16, half);
+    MATCH(DT_STRING, string);
+
+    // TODO(b/188995810): DenseElementsAttr::get doesn't support complex
+    // Attributes being passed, so we bail out for now. This should just be
+    //   MATCH(DT_COMPLEX64, scomplex) / 2;
+    //   MATCH(DT_COMPLEX128, dcomplex) / 2;
+    // when DenseElementsAttr is updated.
+    case DT_COMPLEX64:
+    case DT_COMPLEX128:
+    default:
+      return -1;
+  }
+}
+
 StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
                                           Builder* builder) {
+  // If there is only one actual element in the proto, but its shape would
+  // indicate there are more values, then this is representing a splat tensor.
+  // We can create an MLIR Attribute more efficiently in this case.
+  TensorShape input_tensor_shape(input_tensor.tensor_shape());
+  if (NumberOfMaterializedElements(input_tensor) == 1 &&
+      input_tensor_shape.num_elements() > 1) {
+    // We first convert this TensorProto to one of shape [1]. We then create an
+    // Attribute for that proto, and finally splat the Attribute.
+
+    TensorProto tensor_copy = input_tensor;
+    auto* shape = tensor_copy.mutable_tensor_shape();
+    shape->clear_dim();
+    shape->add_dim()->set_size(1);
+
+    TF_ASSIGN_OR_RETURN(ElementsAttr single_attr,
+                        ConvertTensorProto(tensor_copy, builder));
+
+    std::vector<int64_t> original_dimensions;
+    for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
+    return mlir::SplatElementsAttr::get(
+        single_attr.getType().clone(original_dimensions),
+        single_attr.getValue({0}));
+  }
+
   Tensor t;
   if (!t.FromProto(input_tensor))
     return InvalidArgument("Failed to parse input_tensor.");
@@ -285,12 +350,13 @@ void ConvertFloatElementsAttr(const mlir::DenseElementsAttr attr,
 void ConvertHalfElementsAttr(const mlir::DenseElementsAttr attr,
                              protobuf::RepeatedField<int>* output) {
   if (attr.isSplat()) {
-    if (attr.getSplatValue<Eigen::half>().x != Eigen::half(0))
-      output->Add(attr.getSplatValue<Eigen::half>().x);
+    if (attr.getSplatValue<Eigen::half>() != Eigen::half(0))
+      output->Add(
+          Eigen::numext::bit_cast<uint16_t>(attr.getSplatValue<Eigen::half>()));
   } else {
     output->Reserve(attr.getNumElements());
     for (const Eigen::half value : attr.getValues<Eigen::half>())
-      output->AddAlreadyReserved(value.x);
+      output->AddAlreadyReserved(Eigen::numext::bit_cast<uint16_t>(value));
   }
 }
 
@@ -325,12 +391,13 @@ void ConvertUIntElementsAttr(const mlir::DenseElementsAttr attr,
 void ConvertBfloat16ElementsAttr(const mlir::DenseElementsAttr attr,
                                  protobuf::RepeatedField<int>* output) {
   if (attr.isSplat()) {
-    if (attr.getSplatValue<bfloat16>().value != bfloat16(0))
-      output->Add(attr.getSplatValue<bfloat16>().value);
+    if (attr.getSplatValue<bfloat16>() != bfloat16(0))
+      output->Add(
+          Eigen::numext::bit_cast<uint16_t>(attr.getSplatValue<bfloat16>()));
   } else {
     output->Reserve(attr.getNumElements());
     for (const bfloat16 value : attr.getValues<bfloat16>())
-      output->AddAlreadyReserved(value.value);
+      output->AddAlreadyReserved(Eigen::numext::bit_cast<uint16_t>(value));
   }
 }
 

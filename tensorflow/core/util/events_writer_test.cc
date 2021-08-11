@@ -35,7 +35,7 @@ namespace {
 // shorthand
 Env* env() { return Env::Default(); }
 
-void WriteSimpleValue(EventsWriter* writer, double wall_time, int64 step,
+void WriteSimpleValue(EventsWriter* writer, double wall_time, int64_t step,
                       const string& tag, float simple_value) {
   Event event;
   event.set_wall_time(wall_time);

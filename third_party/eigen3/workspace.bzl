@@ -6,8 +6,10 @@ def repo():
     """Imports Eigen."""
 
     # Attention: tools parse and update these lines.
-    EIGEN_COMMIT = "3d9051ea84a5089b277c88dac456b3b1576bfa7f"
-    EIGEN_SHA256 = "1e473b94966cd3084c6df5b4fe0612ea681ac0ae6624bd151950262c29ebb917"
+    # LINT.IfChange
+    EIGEN_COMMIT = "5ad8b9bfe2bf75620bc89467c5cc051fc2a597df"
+    EIGEN_SHA256 = "b47c1f5e54961a4289b5c690a54d78b20ae0a769a8914d81cfea764018de9b48"
+    # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/eigen.cmake)
 
     tf_http_archive(
         name = "eigen_archive",

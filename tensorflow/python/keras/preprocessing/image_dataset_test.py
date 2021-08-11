@@ -280,13 +280,13 @@ class ImageDatasetFromDirectoryTest(keras_parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'No images found.'):
       _ = image_dataset.image_dataset_from_directory(directory)
 
-  def test_image_dataset_from_directory_smart_resize(self):
+  def test_image_dataset_from_directory_crop_to_aspect_ratio(self):
     if PIL is None:
       return  # Skip test if PIL is not available.
 
     directory = self._prepare_directory(num_classes=2, count=5)
     dataset = image_dataset.image_dataset_from_directory(
-        directory, batch_size=5, image_size=(18, 18), smart_resize=True)
+        directory, batch_size=5, image_size=(18, 18), crop_to_aspect_ratio=True)
     batch = next(iter(dataset))
     self.assertLen(batch, 2)
     self.assertEqual(batch[0].shape, (5, 18, 18, 3))

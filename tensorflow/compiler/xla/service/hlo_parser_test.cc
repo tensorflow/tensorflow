@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
@@ -42,7 +43,7 @@ using absl::string_view;
 struct TestData {
   string test_name;
   string module_string;
-  int64 replica_count = 1;
+  int64_t replica_count = 1;
   bool enable_verification = true;
 };
 
@@ -421,7 +422,20 @@ R"(HloModule custom_call
 
 ENTRY %CustomCall () -> f32[1,2,3] {
   %constant = f32[1]{0} constant({12345})
-  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", literal=(f32[1] {0.1})
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", literal=s32[2]{0} {1, 2}
+}
+
+)"
+},
+
+// CustomCall with literal tuple.
+{
+"CustomCallWithLiteralTuple",
+R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", literal=( s32[4]{0} {4, 128, 128, 3}, pred[4]{0} {1, 0, 0, 0} )
 }
 
 )"
@@ -434,7 +448,7 @@ R"(HloModule custom_call
 
 ENTRY %CustomCall () -> f32[1,2,3] {
   %constant = f32[1]{0} constant({12345})
-  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", literal=(f32[] 0.1)
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", literal=f32[] 0.1
 }
 
 )"
@@ -1094,6 +1108,18 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 
 )"
 },
+// CustomCall that returns a status.
+{
+"CustomCallWithStatusReturningVersion",
+R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call.1 = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo", api_version=API_VERSION_STATUS_RETURNING
+}
+
+)"
+},
 // Parse c64 literal
 {
 "ParseC64Literal",
@@ -1598,7 +1624,7 @@ ENTRY CRS {
 
 )"
 },
-// all-reduce with all-reduce-id
+// all-reduce with channel-id
 {
 "AllReduceAllReduce",
 R"(HloModule CRS
@@ -1613,6 +1639,43 @@ ENTRY CRS {
   input = f32[8]{0} parameter(0)
   crs.1 = f32[8]{0} all-reduce(input), channel_id=1, replica_groups={{0}}, to_apply=add
   ROOT crs.0 = f32[8]{0} all-reduce(input), channel_id=1, replica_groups={{0}}, to_apply=add
+}
+
+)"
+},
+// all-reduce start and done
+{
+"AllReduceStartAndDone",
+R"(HloModule CRS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  crs = (f32[8]{0}, f32[8]{0}) all-reduce-start(input), replica_groups={}, to_apply=add
+  ROOT done = f32[8]{0} all-reduce-done(crs)
+}
+
+)"
+},
+// reduce-scatter
+{
+"ReduceScatter",
+R"(HloModule RS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  ROOT ars = f32[4]{0} reduce-scatter(input), replica_groups={{0,1}}, dimensions={0}, to_apply=add
 }
 
 )"
@@ -1712,6 +1775,61 @@ ENTRY CollectivePermuteInPlaceUpdate {
 )",
 /*replica_count=*/4
 },
+// collective-permute with in-place updates with multiple targets per source
+{
+"CollectivePermuteInPlaceUpdateMultipleReadWrite",
+R"(HloModule CollectivePermuteInPlaceUpdateMultipleReadWrite
+
+ENTRY CollectivePermuteInPlaceUpdate {
+  constant.3 = s32[] constant(2)
+  constant.1 = s32[] constant(0)
+  output_offset.3 = (s32[], s32[], s32[]) tuple(constant.3, constant.1, constant.1)
+  constant.4 = s32[] constant(3)
+  output_offset.4 = (s32[], s32[], s32[]) tuple(constant.4, constant.1, constant.1)
+  input = f32[8,8,128]{2,1,0} parameter(0)
+  constant = f32[] constant(1)
+  output = f32[8,8,128]{2,1,0} broadcast(constant), dimensions={}
+  input_offset.1 = (s32[], s32[], s32[]) tuple(constant.1, constant.1, constant.1)
+  constant.2 = s32[] constant(1)
+  input_offset.2 = (s32[], s32[], s32[]) tuple(constant.2, constant.1, constant.1)
+  input_offset = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple(input_offset.1, input_offset.2)
+  output_offset = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple(input_offset.1, input_offset.2)
+  ROOT root = f32[8,8,128]{2,1,0} collective-permute(input, output, input_offset, output_offset), source_target_pairs={{0,1},{1,2},{2,3},{0,3},{2,1},{3,2}}, slice_sizes={{1,8,128},{1,8,128}}
+}
+
+)",
+/*replica_count=*/4
+},
+{
+"CollectivePermuteInPlaceUpdateTupleMultipleReadWrite",
+R"(HloModule hlo_runner_test_0.1
+
+ENTRY hlo_runner_test_0.1 {
+  replica_id = u32[] replica-id()
+  broadcast.0 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(replica_id), dimensions={}
+  tuple.input = (u32[2,8,128]{2,1,0:T(2,128)}, u32[2,8,128]{2,1,0:T(2,128)}) tuple(broadcast.0, broadcast.0)
+  constant.1 = u32[] constant(1000)
+  broadcast.1 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(constant.1), dimensions={}
+  broadcast.2 = u32[4,8,128]{2,1,0:T(2,128)} broadcast(constant.1), dimensions={}
+  tuple.output = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple(broadcast.1, broadcast.2)
+  constant.2 = s32[] constant(0)
+  tuple.2 = (s32[], s32[], s32[]) tuple(constant.2, constant.2, constant.2)
+  constant.3 = s32[] constant(1)
+  tuple.3 = (s32[], s32[], s32[]) tuple(constant.3, constant.2, constant.2)
+  tuple.4 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple(tuple.2, tuple.3)
+  tuple.7 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple(tuple.2, tuple.2)
+  tuple.8 = (((s32[], s32[], s32[]), (s32[], s32[], s32[])), ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) tuple(tuple.4, tuple.7)
+  constant.4 = s32[] constant(2)
+  tuple.5 = (s32[], s32[], s32[]) tuple(constant.4, constant.2, constant.2)
+  tuple.6 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple(tuple.2, tuple.5)
+  tuple.9 = (((s32[], s32[], s32[]), (s32[], s32[], s32[])), ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) tuple(tuple.4, tuple.6)
+  ROOT collective-permute.53 = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) collective-permute(tuple.input, tuple.output, tuple.8, tuple.9), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,1},{1,0}}, slice_sizes={{1,8,128},{1,8,128},{2,8,128},{2,8,128}}
+}
+
+)",
+/*replica_count=*/4
+},
+
 // collective-permute tuple with in-place updates
 {
 "CollectivePermuteTupleInPlaceUpdate",
@@ -1811,6 +1929,17 @@ R"(HloModule CustomCallWithWindowAndDimLabelsAndFeatureGroupCount
 
 ENTRY Computation {
   ROOT r = f32[100]{0} custom-call(), window={size=2x2}, dim_labels=b01f_01io->b01f, feature_group_count=2, custom_call_target="target"
+}
+
+)"
+    },
+// custom-call with unknown dim labels.
+{
+"CustomCallWithUnknownDimLabels",
+R"(HloModule CustomCallWithUnknownDimLabels
+
+ENTRY Computation {
+  ROOT r = f32[100]{0} custom-call(), window={size=2x2}, dim_labels=?b01f_0?1io->b01?f, custom_call_target="target"
 }
 
 )"
@@ -2327,6 +2456,19 @@ ENTRY %NegativeNan () -> bf16[2] {
   EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
 }
 
+TEST_F(HloParserTest, NanPayload) {
+  const string original = R"(HloModule NanPayload_module
+
+ENTRY %NanPayload () -> bf16[2] {
+  ROOT %constant = bf16[2]{0} constant({-nan(0x7f), -nan(0x3f)})
+}
+
+)";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
+}
+
 TEST_F(HloParserTest, AttributesAnyOrder) {
   const string original = R"(HloModule any_order_module
 
@@ -2355,16 +2497,22 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 )";
 
   ExpectHasSubstr(ParseAndReturnUnverifiedModule(
-                      absl::StrCat(prefix, ",dim_labels=00_01_10", suffix))
+                      absl::StrCat(prefix, ",dim_labels=00_01->10", suffix))
                       .status()
                       .error_message(),
-                  "expects dim labels pattern");
+                  "expects unique");
 
   ExpectHasSubstr(ParseAndReturnUnverifiedModule(
-                      absl::StrCat(prefix, ",dim_labels=010_1100->010", suffix))
+                      absl::StrCat(prefix, ",dim_labels=012_0123->210", suffix))
                       .status()
                       .error_message(),
-                  "must have the same rank");
+                  "must have same number of spatial dimensions");
+
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(
+                      absl::StrCat(prefix, ",dim_labels=013_0123->210", suffix))
+                      .status()
+                      .error_message(),
+                  "expects [0-2bf?]");
 }
 
 TEST_F(HloParserTest, UnexpectedAttribute) {
@@ -2821,15 +2969,29 @@ TEST_F(HloParserTest, ParseShardingPartialReplication) {
   const string original = "{devices=[2,2]0,1,2,3 last_tile_dim_replicate}";
   TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(), original);
-  Array<int64> group_tiling({2});
+  Array<int64_t> group_tiling({2});
   group_tiling(0) = 0;
   group_tiling(1) = 1;
-  std::vector<int64> group0_members({0, 1});
-  std::vector<int64> group1_members({2, 3});
+  std::vector<int64_t> group0_members({0, 1});
+  std::vector<int64_t> group1_members({2, 3});
   EXPECT_EQ(
       HloSharding::PartialTile(group_tiling, {group0_members, group1_members})
           .ToString(),
       original);
+}
+
+TEST_F(HloParserTest, ParseShardingSubGroup) {
+  const string original =
+      "{devices=[2,2,2,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 "
+      "last_tile_dims={replicated, manual}}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  Array<int64_t> tile_assignment({2, 2, 2, 2});
+  tile_assignment.FillIota(0);
+  std::vector<OpSharding::Type> sharding_types = {OpSharding::REPLICATED,
+                                                  OpSharding::MANUAL};
+  EXPECT_EQ(HloSharding::Subgroup(tile_assignment, sharding_types).ToString(),
+            original);
 }
 
 TEST_F(HloParserTest, ParseFrontendAttributes) {
@@ -2849,6 +3011,13 @@ TEST_F(HloParserTest, ParseWindow) {
 
 TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
   const string original = "b0f_0io->b0f";
+  TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
+                          ParseConvolutionDimensionNumbers(original));
+  EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
+}
+
+TEST_F(HloParserTest, ParseConvolutionDimensionNumbersWithUnknownDims) {
+  const string original = "b0?f_?0?io->?b?0?f";
   TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
                           ParseConvolutionDimensionNumbers(original));
   EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
@@ -3200,6 +3369,34 @@ ENTRY %CustomCallIncompatibleOperandConstraints (p0: f32[42,2,3], p1: f32[123,4]
       "operand 1 is not compatible with operand shape");
 }
 
+TEST_F(HloParserTest, CustomCallWithNonexistentVersion) {
+  const string original = R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call.1 = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo", api_version=API_VERSION_THAT_DOESNT_EXIST
+}
+
+)";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "Unknown API version");
+}
+
+TEST_F(HloParserTest, CustomCallWithUnspecifiedVersion) {
+  const string original = R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call.1 = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo", api_version=API_VERSION_UNSPECIFIED
+}
+
+)";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "Invalid API version");
+}
+
 TEST_F(HloParserTest, AllowShapeWhitespace) {
   const string text = R"(
 HloModule module
@@ -3267,6 +3464,15 @@ TEST_F(HloParserTest, ParseShapeStringWithLayout) {
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
   Shape expected = ShapeUtil::MakeShapeWithLayout(F32, {123, 456}, {0, 1});
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseShapeStringWithInvalidLayout) {
+  string shape_string = "f32[123,456]invalid{}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShape(F32, {123, 456});
+  ASSERT_TRUE(ShapeUtil::Compatible(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
 }
@@ -3593,6 +3799,21 @@ ENTRY InferUnaryShape {
   EXPECT_TRUE(ShapeUtil::Equal(
       module->entry_computation()->ComputeProgramShape().result(),
       ShapeUtil::MakeScalarShape(F32)));
+}
+
+TEST_F(HloParserTest, CheckAliasPassthroughParams) {
+  const char* const hlo_string = R"(
+HloModule TestModule, alias_passthrough_params=true
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_TRUE(result.ValueOrDie()->config().alias_passthrough_params());
 }
 
 }  // namespace

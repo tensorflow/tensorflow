@@ -353,8 +353,9 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   VLOG(1) << "Called TRTOptimization Pass " << name_
           << " on a grappler item with id=" << item.id;
   TF_ASSIGN_OR_RETURN(bool do_function_conversion, ShouldConvertFunction(item));
-  if (item.id != "tf_graph" && !do_function_conversion) {
-    VLOG(1) << "Not optimizing this grappler item.";
+  if (minimum_segment_size_ == -1 ||
+      (item.id != "tf_graph" && !do_function_conversion)) {
+    VLOG(1) << "Not optimizing this grappler item: " << item.id;
     *optimized_graph = item.graph;
     return Status::OK();
   }
@@ -415,11 +416,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   VLOG(1) << "Returning from " << name_;
   return status;
 }
-
-void TRTOptimizationPass::Feedback(grappler::Cluster* cluster,
-                                   const grappler::GrapplerItem& item,
-                                   const GraphDef& optimized_graph,
-                                   double result) {}
 
 class VerboseCustomGraphOptimizerRegistrar
     : public grappler::CustomGraphOptimizerRegistrar {

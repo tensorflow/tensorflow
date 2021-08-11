@@ -61,7 +61,7 @@ void InitializeTensor(DataType type, Tensor* tensor) {
       flat(i) = static_cast<float>(i % period) / 10.0f;
     }
   } else if (type == DT_INT64) {
-    auto flat = tensor->flat<int64>();
+    auto flat = tensor->flat<int64_t>();
     // Populate numbers 0, 1, 2, ..., 5, 6, 0, 1, 2, ...
     for (int i = 0; i < flat.size(); i++) {
       flat(i) = i % period;
@@ -328,7 +328,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
         // Define the shapes following the comment of CooSparse.
         // TODO(yuefengz): we probably want to use different dim values for the
         // three tensors of a SparseTensor.
-        int64 dim = std::max(1, cfg.placeholder_unknown_output_shape_dim);
+        int64_t dim = std::max(1, cfg.placeholder_unknown_output_shape_dim);
         TensorShape shape_1d({dim});
         TensorShape shape_2d({dim, dim});
 

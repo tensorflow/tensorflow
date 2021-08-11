@@ -14,7 +14,8 @@
 # ==============================================================================
 
 import inspect
-from typing import Any, Callable, List, Sequence
+import numpy as np
+from typing import Any, Callable, List, Optional, Sequence, Iterable, Tuple
 
 _AvalDimSharding = Any
 _MeshDimAssignment = Any
@@ -46,11 +47,14 @@ class Replicated:
 
 class ShardingSpec:
   def __init__(self,
-               sharding: Sequence[_AvalDimSharding],
-               mesh_mapping: Sequence[_MeshDimAssignment]) -> None: ...
-  sharding: Sequence[_AvalDimSharding]
-  mesh_mapping: Sequence[_MeshDimAssignment]
+               sharding: Iterable[_AvalDimSharding],
+               mesh_mapping: Iterable[_MeshDimAssignment]) -> None: ...
+  @property
+  def sharding(self) -> Tuple[_AvalDimSharding]: ...
+  @property
+  def mesh_mapping(self) -> Tuple[_MeshDimAssignment]: ...
   def __eq__(self, __other: ShardingSpec) -> bool: ...
+  def __hash__(self) -> int: ...
 
 class ShardedDeviceArray:
   def __init__(self,
@@ -58,12 +62,26 @@ class ShardedDeviceArray:
                __sharding_spec: ShardingSpec,
                __device_buffers: List[Any]) -> None: ...
   aval: Any
+  indices: Any
   sharding_spec: ShardingSpec
-  device_buffers: List[Any]
+  device_buffers: Optional[List[Any]]
+  _npy_value: Optional[np.ndarray]
+  _one_replica_buffer_indices: Optional[Any]
+
+  @property
+  def shape(self) -> Tuple[int]: ...
+  @property
+  def dtype(self) -> np.dtype: ...
+  @property
+  def size(self) -> int: ...
+  @property
+  def ndim(self) -> int: ...
+
 
 class PmapFunction:
-   def __call__(self, *args, **kwargs) -> Any: ...
-   __signature__: inspect.Signature
+  def __call__(self, *args, **kwargs) -> Any: ...
+  __signature__: inspect.Signature
+  def _cache_size(self) -> int: ...
 
 def pmap(__fun: Callable[..., Any],
          __cache_miss: Callable[..., Any],

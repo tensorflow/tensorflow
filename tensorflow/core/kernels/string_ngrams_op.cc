@@ -53,6 +53,12 @@ class StringNGramsOp : public tensorflow::OpKernel {
   }
 
   void Compute(tensorflow::OpKernelContext* context) override {
+    for (int ngram_width : ngram_widths_) {
+      OP_REQUIRES(
+          context, ngram_width > 0,
+          errors::InvalidArgument("ngram_widths must contain positive values"));
+    }
+
     const tensorflow::Tensor* data;
     OP_REQUIRES_OK(context, context->input("data", &data));
     const auto& input_data = data->flat<tstring>().data();
@@ -238,7 +244,7 @@ REGISTER_KERNEL_BUILDER(Name("StringNGrams")
                         StringNGramsOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("StringNGrams")
                             .Device(tensorflow::DEVICE_CPU)
-                            .TypeConstraint<int64>("Tsplits"),
+                            .TypeConstraint<int64_t>("Tsplits"),
                         StringNGramsOp<int64>);
 
 }  // namespace text

@@ -143,10 +143,10 @@ class XlaOpKernelContext {
 
   // Converts a constant scalar int32 or int64 tensor into an int64.
   Status ConstantInputAsIntScalar(
-      int index, int64* out,
+      int index, int64_t* out,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
   Status ConstantInputAsIntScalar(
-      absl::string_view name, int64* out,
+      absl::string_view name, int64_t* out,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
 
   // Converts a constant scalar float32 or float64 tensor into a float64.
@@ -156,19 +156,19 @@ class XlaOpKernelContext {
 
   // Converts a constant 1D int32 or int64 tensor into a vector of int64s.
   Status ConstantInputAsIntVector(
-      int index, std::vector<int64>* out,
+      int index, std::vector<int64_t>* out,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
   Status ConstantInputAsIntVector(
-      absl::string_view name, std::vector<int64>* out,
+      absl::string_view name, std::vector<int64_t>* out,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
 
   // Reshapes and converts a constant int32 or int64 tensor into a vector of
   // int64s.
   Status ConstantInputReshapedToIntVector(
-      int index, std::vector<int64>* out,
+      int index, std::vector<int64_t>* out,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
   Status ConstantInputReshapedToIntVector(
-      absl::string_view name, std::vector<int64>* out,
+      absl::string_view name, std::vector<int64_t>* out,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
 
   // Converts a constant int32 or int64 Tensor into an xla int64 Literal.
@@ -255,7 +255,7 @@ class XlaOpKernelContext {
     return dynamic_dimension_is_minus_one_;
   }
 
-  bool is_dynamic_dimension(int64 dim_size) { return dim_size == -1; }
+  bool is_dynamic_dimension(int64_t dim_size) { return dim_size == -1; }
 
   // Reads the current value of the resource variable referred to by input
   // `index`. If `shape` is not nullptr, sets `*shape` to the shape of the
@@ -336,7 +336,7 @@ class XlaOpKernelContext {
   // returns a non-Ok status. If InputShape(index).num_elements() !=
   // new_shape.num_elements(), returns an error status.
   Status ConstantInputReshaped(
-      int index, absl::Span<const int64> new_dims,
+      int index, absl::Span<const int64_t> new_dims,
       xla::Literal* constant_literal,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
 

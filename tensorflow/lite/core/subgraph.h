@@ -30,11 +30,16 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/macros.h"
+#include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
+#include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
+
+class SingleOpModel;  // Class for friend declarations.
+
 namespace delegates {
 namespace test_utils {
 class TestDelegate;  // Class for friend declarations.
@@ -44,11 +49,14 @@ class TestDelegate;  // Class for friend declarations.
 class Subgraph {
  public:
   friend class Interpreter;
+  friend class SingleOpModel;
 
   Subgraph(ErrorReporter* error_reporter,
            TfLiteExternalContext** external_contexts,
            std::vector<std::unique_ptr<Subgraph>>* subgraphs,
-           resource::ResourceMap* resources);
+           resource::ResourceMap* resources,
+           resource::ResourceIDMap* resource_ids,
+           resource::InitializationStatusMap* initialization_status_map);
 
   Subgraph(const Subgraph&) = delete;
 
@@ -171,6 +179,16 @@ class Subgraph {
   // WARNING: Experimental interface, subject to change.
   // TODO(ycling): Move this function to an external context interface.
   resource::ResourceMap& resources() { return *resources_; }
+
+  // WARNING: Experimental interface, subject to change.
+  // TODO(b/149099381): Move this function to an external context interface.
+  resource::ResourceIDMap& resource_ids() { return *resource_ids_; }
+
+  // WARNING: Experimental interface, subject to change.
+  // TODO(b/149099381): Move this function to an external context interface.
+  resource::InitializationStatusMap& initialization_status_map() {
+    return *initialization_status_map_;
+  }
 
   size_t tensors_size() const { return tensors_.size(); }
 
@@ -340,6 +358,17 @@ class Subgraph {
 
   void SetName(const char* name);
   const std::string& GetName() const;
+
+  // WARNING: This is an experimental API and subject to change.
+  // Dumps debugging info by the underlying memory planner.
+  // Note: to have minimal binary increase caused by this debug info dump for
+  // the TfLite library and allow users to plug-in their own memory planner
+  // debugger, we have utilized weak symbols to meet these two requirements. By
+  // default, there is no debugging info dumped. However, if the TfLite-provided
+  // lite:simple_memory_arena_debug_dump (i.e. containing the strong defintion)
+  // is linked to the program, calling this function will output memory usage
+  // information about tenosrs and ops.
+  void DumpMemoryPlannerDebugInfo() const;
 
  private:
   friend class InterpreterBuilder;
@@ -543,6 +572,17 @@ class Subgraph {
       struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
       TfLiteDelegateParams** partition_params_array, int* num_partitions);
 
+  // Retrieves named metadata from the TFLite model. Returns kTfLiteOk if
+  // metadata is successfully obtained.
+  // See the Metadata table in TFLite schema.
+  TfLiteStatus GetModelMetadata(const char* name, const char** ptr,
+                                size_t* bytes);
+
+  // Entry point for C node plugin API to get model metadata based on name.
+  static TfLiteStatus GetModelMetadata(const struct TfLiteContext* context,
+                                       const char* name, const char** ptr,
+                                       size_t* bytes);
+
   // Used to clear partitioning_preview_cache_, in case
   // PreviewDelegatePartitioning was called.
   void FreeDelegatePartitioningData();
@@ -622,6 +662,15 @@ class Subgraph {
   // condition and body subgraphs.
   bool OpMightHaveSideEffect(const TfLiteNode* node,
                              const TfLiteRegistration* registration) const;
+
+  // Returns new GraphInfo object based on the current Subgraph.
+  std::unique_ptr<GraphInfo> CreateGraphInfo();
+
+  // Store a ptr to the model metadata owned by the Interpreter.
+  // Since the lifetime of the Interpreter exceeds the Subgraph, metadata
+  // remains valid for the latter's lifetime.
+  // Also sets relevant fields on context_ based on known metadata.
+  TfLiteStatus SetMetadata(const std::map<std::string, std::string>* metadata);
 
   // The state of the Interpreter.
   enum State {
@@ -737,7 +786,7 @@ class Subgraph {
   // A pointer to vector of subgraphs. The vector is owned by the interpreter.
   std::vector<std::unique_ptr<Subgraph>>* subgraphs_ = nullptr;
 
-  // True if all tensors in the graph has static size after calling
+  // True if not all tensors in the graph has static size after calling
   // `PrepareOpsStartingAt` function (which is called by the `AllocateTensors`
   // public function).
   // The value is invalid before `PrepareOpStartingAt` is called.
@@ -755,12 +804,23 @@ class Subgraph {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap* resources_ = nullptr;
 
+  // A map of resources IDs. Owned by interpreter and shared by multiple
+  // subgraphs.
+  resource::ResourceIDMap* resource_ids_ = nullptr;
+
+  // A map of initialization statuses, that indicate whether the intialization
+  // subgraph invocation is done or not.
+  resource::InitializationStatusMap* initialization_status_map_;
+
   // Name of the subgraph (analogous to function name).
   std::string name_;
 
   // Whether memory planner should be instantiated to retain intermediates for
   // debugging.
   bool preserve_all_tensors_ = false;
+
+  // Model-metadata owned by the Interpreter.
+  const std::map<std::string, std::string>* metadata_ = nullptr;
 };
 
 }  // namespace tflite

@@ -47,12 +47,12 @@ class CallGraphTest : public HloTestBase {
   // Build and return a computation which takes a scalar and maps (kMap) the
   // given computation to the value 'callsites' number of times.
   std::unique_ptr<HloComputation> MakeMappingComputation(
-      HloComputation* map_computation, int64 callsites) {
+      HloComputation* map_computation, int64_t callsites) {
     HloComputation::Builder builder(TestName() + ".MappingComputation");
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     HloInstruction* last_value = param0;
-    for (int64 i = 0; i < callsites; ++i) {
+    for (int64_t i = 0; i < callsites; ++i) {
       last_value = builder.AddInstruction(HloInstruction::CreateMap(
           kScalarShape, {last_value}, map_computation));
     }
@@ -62,13 +62,13 @@ class CallGraphTest : public HloTestBase {
   // Build and return a computation which takes a scalar and calls (kCall) the
   // given computation with value 'callsites' number of times.
   std::unique_ptr<HloComputation> MakeCallingComputation(
-      HloComputation* callee_computation, int64 callsites,
+      HloComputation* callee_computation, int64_t callsites,
       const string& suffix = ".CallingComputation") {
     HloComputation::Builder builder(TestName() + suffix);
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     HloInstruction* last_value = param0;
-    for (int64 i = 0; i < callsites; ++i) {
+    for (int64_t i = 0; i < callsites; ++i) {
       last_value = builder.AddInstruction(HloInstruction::CreateCall(
           kScalarShape, {last_value}, callee_computation));
     }

@@ -371,6 +371,9 @@ Status TpuNodeDeviceFactory::CreateDevices(
     options.device_ordinal = i;
     options.compilation_device_name = DEVICE_TPU_XLA_JIT;
     options.use_multiple_streams = true;
+    // We set `use_global_compute_stream` to true for TPUs as TPUs can only
+    // have one program running on each core at the same time.
+    options.use_global_compute_stream = true;
     options.shape_representation_fn = &TpuShapeRepresentation;
     options.padded_shape_fn = &TpuPaddedShapeFn;
     auto device = absl::make_unique<XlaDevice>(session_options, options);
@@ -426,7 +429,7 @@ Status TpuSystemDeviceFactory::CreateDevices(
     return Status::OK();
   }
 
-  int64 memory_limit;
+  int64_t memory_limit;
   TF_RETURN_IF_ERROR(tpu::TpuPlatform::TpuMemoryLimit(&memory_limit));
 
   // Creates a device that represents a TPU distributed system.

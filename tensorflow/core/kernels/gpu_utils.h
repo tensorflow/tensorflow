@@ -77,7 +77,15 @@ inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
 // settles is O(threshold ^ 2). So we recommend that number of warmup runs
 // for any benchmarks.
 template <typename Parameters, typename Config>
-class AutoTuneMap {
+class AutotuneMap {
+ private:
+  // Retrieves the hash code of Parameters class.
+  struct Hasher {
+    std::size_t operator()(const Parameters& parameter) const {
+      return parameter.hash();
+    }
+  };
+
  public:
   bool Find(const Parameters& params, Config* config) const {
     mutex_lock lock(mu_);
@@ -145,8 +153,29 @@ class AutoTuneMap {
     autotune_global_count_++;
   }
 
+  std::unordered_map<Parameters, Config, Hasher> GetMap() const {
+    mutex_lock lock(mu_);
+    std::unordered_map<Parameters, Config, Hasher> map;
+    for (const auto& entry : params_config_map_) {
+      map.insert(std::make_pair(entry.first, entry.second.config));
+    }
+    return map;
+  }
+
+  // Only for testing
+  void ClearMap() {
+    mutex_lock lock(mu_);
+    params_config_map_.clear();
+  }
+
  private:
-  AutoTuneMap(const std::string& name) : name_(name) {
+  // Underlying data structure of values in the map.
+  struct ValueType {
+    Config config;
+    int32 score;
+    int32 count;
+  };
+  AutotuneMap(const std::string& name) : name_(name) {
     min_score_threshold_ = 1;
     int min_warmup_iterations = 10;
     const char* threshold_str = getenv("TF_AUTOTUNE_THRESHOLD");
@@ -167,13 +196,7 @@ class AutoTuneMap {
   }
 
   template <class Group, class Params, class Cfg>
-  friend class AutoTuneSingleton;
-
-  struct Hasher {
-    std::size_t operator()(const Parameters& parameter) const {
-      return parameter.hash();
-    }
-  };
+  friend class AutotuneSingleton;
 
   std::string GetActionSummary(StringPiece action, const Parameters& params,
                                const Config& config) {
@@ -183,11 +206,7 @@ class AutoTuneMap {
   }
 
   mutable mutex mu_;
-  struct ValueType {
-    Config config;
-    int32 score;
-    int32 count;
-  };
+
   std::unordered_map<Parameters, ValueType, Hasher> params_config_map_
       TF_GUARDED_BY(mu_);
   std::string name_;
@@ -196,7 +215,7 @@ class AutoTuneMap {
   int32 max_autotune_global_count_;
   int32 autotune_global_count_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AutoTuneMap);
+  TF_DISALLOW_COPY_AND_ASSIGN(AutotuneMap);
 };
 
 // A Singleton helper that manages the global autotune results by groups.
@@ -204,11 +223,11 @@ class AutoTuneMap {
 // different autotune results, even if their Parameters and Configs are the
 // same.
 template <class Group, typename Parameters, typename Config>
-class AutoTuneSingleton {
+class AutotuneSingleton {
  public:
-  typedef AutoTuneMap<Parameters, Config> AutoTuneType;
-  static AutoTuneType* GetInstance() {
-    static AutoTuneType* instance = new AutoTuneType(Group::name());
+  typedef AutotuneMap<Parameters, Config> AutotuneType;
+  static AutotuneType* GetInstance() {
+    static AutotuneType* instance = new AutotuneType(Group::name());
     return instance;
   }
 };

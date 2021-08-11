@@ -89,9 +89,9 @@ class EventFileWriterV2(object):
               shape=[])
           self._add_event_op = summary_ops_v2.import_event(
               self._event_placeholder)
-        self._init_op = file_writer.init()
-        self._flush_op = file_writer.flush()
-        self._close_op = file_writer.close()
+        self._init_op = file_writer.init()  # pylint: disable=assignment-from-no-return
+        self._flush_op = file_writer.flush()  # pylint: disable=assignment-from-no-return
+        self._close_op = file_writer.close()  # pylint: disable=assignment-from-no-return
       self._session.run(self._init_op)
 
   def get_logdir(self):

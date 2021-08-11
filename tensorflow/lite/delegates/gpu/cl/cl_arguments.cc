@@ -337,17 +337,8 @@ absl::Status CLArguments::ResolveSelector(
     const std::string& object_name, const std::string& selector,
     const std::vector<std::string>& function_args,
     const std::vector<std::string>& template_args, std::string* result) {
-  const GPUObjectDescriptor* desc_ptr;
-  auto it_ref = args.object_refs_.find(object_name);
-  auto it_obj = args.objects_.find(object_name);
-  if (it_ref != args.object_refs_.end()) {
-    desc_ptr = it_ref->second.get();
-  } else if (it_obj != args.objects_.end()) {
-    desc_ptr = it_obj->second.get();
-  } else {
-    return absl::NotFoundError(
-        absl::StrCat("No object with name - ", object_name));
-  }
+  GPUObjectDescriptor* desc_ptr;
+  RETURN_IF_ERROR(args.GetDescriptor(object_name, &desc_ptr));
   auto names = desc_ptr->GetGPUResources(gpu_info).GetNames();
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
   if (tensor_desc && (selector == "Write" || selector == "Linking")) {

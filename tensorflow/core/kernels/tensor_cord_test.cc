@@ -210,7 +210,7 @@ void TensorCopyFromTensorBenchmark(benchmark::State& state, int num_elem,
     t(i).insert(0, string_size, 'a');
   }
   for (auto _ : state) {
-    testing::DoNotOptimize(tensor::DeepCopy(strings));
+    benchmark::DoNotOptimize(tensor::DeepCopy(strings));
   }
 }
 

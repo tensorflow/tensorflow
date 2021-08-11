@@ -16,6 +16,21 @@ package(
     licenses = ["notice"],
 )
 
+cc_library(
+    name = "device_profiler_session",
+    hdrs = ["device_profiler_session.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+    ] + if_not_android([
+        ":profiler_session",
+        "//tensorflow/core/profiler/convert:xplane_to_step_stats",
+    ]),
+)
+
 tf_profiler_pybind_cc_library_wrapper(
     name = "profiler_session_for_pybind",
     actual = ":profiler_session",
@@ -31,7 +46,6 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
     ] + if_static([
         ":profiler_session_impl",
     ]),
@@ -92,6 +106,21 @@ cc_library(
         "//tensorflow/core/profiler:profiler_options_proto_cc",
     ],
     alwayslink = True,
+)
+
+tf_cc_test(
+    name = "profiler_factory_test",
+    srcs = ["profiler_factory_test.cc"],
+    deps = [
+        ":profiler_factory",
+        ":profiler_interface",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/memory",
+    ],
 )
 
 cc_library(
@@ -238,9 +267,8 @@ filegroup(
     srcs = [
         "annotated_traceme.h",
         "connected_traceme.h",
+        "device_profiler_session.h",
         "profiler_interface.h",
-        "profiler_session.cc",
-        "profiler_session.h",
         "scoped_annotation.h",
         "traceme.h",
         "traceme_encode.h",

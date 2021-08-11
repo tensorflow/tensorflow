@@ -103,7 +103,12 @@ Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
 }
 
 void MlirXlaOpKernel::Compile(XlaOpKernelContext* ctx) {
-  OP_REQUIRES_OK(ctx, ConstructXlaOp(ctx));
+  auto status = ConstructXlaOp(ctx);
+  if (!status.ok()) {
+    errors::AppendToMessage(&status, "Failure to legalize ", def().name(),
+                            " using MlirXlaOpKernel in the tf2xla bridge.");
+  }
+  OP_REQUIRES_OK(ctx, status);
 }
 
 }  // namespace tensorflow

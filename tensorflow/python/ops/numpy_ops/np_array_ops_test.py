@@ -601,7 +601,7 @@ class ArrayMethodsTest(test.TestCase):
           self.match(
               np_array_ops.compress(arg1, arg2, *args, **kwargs),
               np.compress(
-                  np.asarray(arg1).astype(np.bool), arg2, *args, **kwargs))
+                  np.asarray(arg1).astype(np.bool_), arg2, *args, **kwargs))
 
     run_test([True], 5)
     run_test([False], 5)
@@ -1064,6 +1064,7 @@ class ArrayMethodsTest(test.TestCase):
   def testMoveaxis(self):
 
     def _test(*args):
+      # pylint: disable=no-value-for-parameter
       expected = np.moveaxis(*args)
       raw_ans = np_array_ops.moveaxis(*args)
 
@@ -1114,7 +1115,7 @@ class ArrayMethodsTest(test.TestCase):
 
     for dtype in test_types:
       for shape in test_shapes:
-        if np.issubdtype(dtype, np.complex):
+        if np.issubdtype(dtype, np.complexfloating):
           arr = (np.asarray(state.randn(*shape) * 100, dtype=dtype) +
                  1j * np.asarray(state.randn(*shape) * 100, dtype=dtype))
         else:

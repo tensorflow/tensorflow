@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/numbers.h"
@@ -129,16 +130,21 @@ bool IsGPUVersionInRange(int gpu_version, int min_version, int max_version) {
   return gpu_version >= min_version && gpu_version < max_version;
 }
 
-GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
+GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
   GpuInfo info;
-  const auto device_name = GetDeviceInfo<std::string>(id, CL_DEVICE_NAME);
-  const auto vendor_name = GetDeviceInfo<std::string>(id, CL_DEVICE_VENDOR);
-  const auto opencl_c_version =
+  info.opencl_info.platform_version =
+      GetPlatformInfo(platform_id, CL_PLATFORM_VERSION);
+  info.opencl_info.device_name = GetDeviceInfo<std::string>(id, CL_DEVICE_NAME);
+  info.opencl_info.vendor_name =
+      GetDeviceInfo<std::string>(id, CL_DEVICE_VENDOR);
+  info.opencl_info.opencl_c_version =
       GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION);
-  const std::string gpu_description =
-      absl::StrCat(device_name, " ", vendor_name, " ", opencl_c_version);
+  const std::string gpu_description = absl::StrCat(
+      info.opencl_info.device_name, " ", info.opencl_info.vendor_name, " ",
+      info.opencl_info.opencl_c_version);
   GetGpuInfoFromDeviceDescription(gpu_description, GpuApi::kOpenCl, &info);
-  info.opencl_info.cl_version = ParseCLVersion(opencl_c_version);
+  info.opencl_info.cl_version =
+      ParseCLVersion(info.opencl_info.opencl_c_version);
   info.opencl_info.extensions =
       absl::StrSplit(GetDeviceInfo<std::string>(id, CL_DEVICE_EXTENSIONS), ' ');
   info.opencl_info.supports_fp16 = false;
@@ -221,6 +227,8 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   info.opencl_info.max_work_group_total_size =
       GetDeviceInfo<size_t>(id, CL_DEVICE_MAX_WORK_GROUP_SIZE);
 
+  info.opencl_info.base_addr_align_in_bits =
+      GetDeviceInfo<cl_uint>(id, CL_DEVICE_MEM_BASE_ADDR_ALIGN);
   info.opencl_info.image_pitch_alignment = 0;
   if (info.opencl_info.cl_version == OpenClVersion::kCl2_0 ||
       info.opencl_info.cl_version == OpenClVersion::kCl2_1 ||
@@ -261,7 +269,9 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
 }  // namespace
 
 CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
-    : info_(GpuInfoFromDeviceID(id)), id_(id), platform_id_(platform_id) {
+    : info_(GpuInfoFromDeviceID(id, platform_id)),
+      id_(id),
+      platform_id_(platform_id) {
   if (info_.IsAdreno() &&
       info_.adreno_info.adreno_gpu == AdrenoGpu::kAdreno630) {
     acceleration::AndroidInfo android_info;

@@ -29,7 +29,8 @@ StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(pybind11::handle buffer,
                                                         bool take_ownership);
 
 StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, std::shared_ptr<PyClient> client);
+    const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
+    std::shared_ptr<PyClient> gpu_client);
 
 }  // namespace xla
 

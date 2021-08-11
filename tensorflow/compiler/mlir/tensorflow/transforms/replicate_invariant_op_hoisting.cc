@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -37,7 +38,8 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 
 struct ReplicateInvariantOpHoistingPass
-    : public PassWrapper<ReplicateInvariantOpHoistingPass, FunctionPass> {
+    : public TF::ReplicateInvariantOpHoistingPassBase<
+          ReplicateInvariantOpHoistingPass> {
   void runOnFunction() override;
 };
 

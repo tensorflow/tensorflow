@@ -583,6 +583,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   @test_util.disable_tfrt('PyFunc is not supported in TFRT.')
   def testPyFunctionAsync(self):
+    self.skipTest('flaky; b/194307407')
 
     def simple_fn(v):
       one = constant_op.constant(1.)
@@ -1097,8 +1098,9 @@ class SendRecvTest(test_util.TensorFlowTestCase):
 
   @test_util.disable_tfrt('Send/Receive not supported in TFRT yet.')
   def testBasic(self):
-    t0 = constant_op.constant(1.0)
-    t1 = constant_op.constant(2.0)
+    with ops.device(self.cpu_device):
+      t0 = constant_op.constant(1.0)
+      t1 = constant_op.constant(2.0)
     self._send(t0, 't0', self.cpu_device)
     self._send(t1, 't1', self.cpu_device)
     self.assertAllEqual(

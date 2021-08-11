@@ -299,6 +299,13 @@ void CreateRemoteRunCalls(MLIRContext *context,
 
 class ClusterTFOpsByHostPass
     : public PassWrapper<ClusterTFOpsByHostPass, OperationPass<ModuleOp>> {
+  StringRef getArgument() const final { return "cluster-tf-ops-by-host"; }
+
+  StringRef getDescription() const final {
+    return "Cluster the TensorFlow ops by host so that each function only "
+           "contains ops placed on the same host";
+  }
+
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     ModuleOp module_op = getOperation();
@@ -339,10 +346,7 @@ std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateClusterTFOpsByHostPass() {
   return std::make_unique<ClusterTFOpsByHostPass>();
 }
 
-static PassRegistration<ClusterTFOpsByHostPass> pass(
-    "cluster-tf-ops-by-host",
-    "Cluster the TensorFlow ops by host so that each function only contains "
-    "ops placed on the same host");
+static PassRegistration<ClusterTFOpsByHostPass> pass;
 
 }  // namespace TF
 }  // namespace mlir

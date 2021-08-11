@@ -46,6 +46,7 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.types import core
 
@@ -261,6 +262,7 @@ class VariableMetaclass(type):
         aggregation=aggregation,
         shape=shape)
 
+  @traceback_utils.filter_traceback
   def __call__(cls, *args, **kwargs):
     if cls is VariableV1:
       return cls._variable_v1_call(*args, **kwargs)
@@ -817,14 +819,13 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        op = v.scatter_nd_sub(indices, updates)
-        with tf.compat.v1.Session() as sess:
-          print sess.run(op)
+        v.scatter_nd_sub(indices, updates)
+        print(v)
     ```
 
-    The resulting update to v would look like this:
+    After the update `v` would look like this:
 
-        [1, -9, 3, -6, -6, 6, 7, -4]
+        [1, -9, 3, -6, -4, 6, 7, -4]
 
     See `tf.scatter_nd` for more details about how to make updates to
     slices.
@@ -864,9 +865,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        add = v.scatter_nd_add(indices, updates)
-        with tf.compat.v1.Session() as sess:
-          print sess.run(add)
+        v.scatter_nd_add(indices, updates)
+        print(v)
     ```
 
     The resulting update to v would look like this:
@@ -911,9 +911,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        op = v.scatter_nd_assign(indices, updates)
-        with tf.compat.v1.Session() as sess:
-          print sess.run(op)
+        v.scatter_nd_update(indices, updates)
+        print(v)
     ```
 
     The resulting update to v would look like this:
@@ -3125,6 +3124,15 @@ def global_variables(scope=None):
   An alternative to global variables are local variables. See
   `tf.compat.v1.local_variables`
 
+  @compatibility(TF2)
+  Not compatible with eager execution and `tf.function`. In particular, Graph
+  collections are deprecated in TF2. Instead please create a
+  [tf.Module](https://www.tensorflow.org/guide/intro_to_modules)
+  container for all your model state, including variables.
+  You can then list all the variables in your `tf.Module` through the
+  `variables` attribute.
+  @end_compatibility
+
   Args:
     scope: (Optional.) A string. If supplied, the resulting list is filtered to
       include only items whose `name` attribute matches `scope` using
@@ -3217,6 +3225,14 @@ def trainable_variables(scope=None):
   `GraphKeys.TRAINABLE_VARIABLES`. This convenience function returns the
   contents of that collection.
 
+  @compatibility(TF2)
+  Not compatible with eager execution and `tf.function`. In particular, Graph
+  collections are deprecated in TF2. Instead please create a `tf.Module`
+  container for all your model state, including variables.
+  You can then list all the trainable variables in your `tf.Module` through the
+  `trainable_variables` attribute.
+  @end_compatibility
+
   Args:
     scope: (Optional.) A string. If supplied, the resulting list is filtered to
       include only items whose `name` attribute matches `scope` using
@@ -3266,6 +3282,11 @@ def variables_initializer(var_list, name="init"):
   If `var_list` is empty, however, the function still returns an Op that can
   be run. That Op just has no effect.
 
+  @compatibility(TF2)
+  In TF2, variables are initialized immediately when they are created. There is
+  no longer a need to run variable initializers before using them.
+  @end_compatibility
+
   Args:
     var_list: List of `Variable` objects to initialize.
     name: Optional name for the returned operation.
@@ -3292,6 +3313,11 @@ def global_variables_initializer():
 
   This is just a shortcut for `variables_initializer(global_variables())`
 
+  @compatibility(TF2)
+  In TF2, variables are initialized immediately when they are created. There is
+  no longer a need to run variable initializers before using them.
+  @end_compatibility
+
   Returns:
     An Op that initializes global variables in the graph.
   """
@@ -3313,6 +3339,11 @@ def local_variables_initializer():
   """Returns an Op that initializes all local variables.
 
   This is just a shortcut for `variables_initializer(local_variables())`
+
+  @compatibility(TF2)
+  In TF2, variables are initialized immediately when they are created. There is
+  no longer a need to run variable initializers before using them.
+  @end_compatibility
 
   Returns:
     An Op that initializes all local variables in the graph.

@@ -77,7 +77,7 @@ void HloModuleMetadata::set_prepartitioning_metadata(
       running_passes_.push_back(added_pass_metadata);
       next_pass_id_ =
           std::max(next_pass_id_,
-                   static_cast<int64>(added_pass_metadata->pass_id()) + 1);
+                   static_cast<int64_t>(added_pass_metadata->pass_id()) + 1);
     } else {
       *prepartitioning_metadata_->add_pass_metadata() = pass_metadata;
     }

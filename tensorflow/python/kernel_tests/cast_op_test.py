@@ -43,7 +43,7 @@ class CastOpTest(test.TestCase):
       return dtypes.int32
     elif dtype == np.int64:
       return dtypes.int64
-    elif dtype == np.bool:
+    elif dtype == np.bool_:
       return dtypes.bool
     elif dtype == np.complex64:
       return dtypes.complex64
@@ -79,10 +79,10 @@ class CastOpTest(test.TestCase):
       for to_type in type_list:
         self._test(x.astype(from_type), to_type, use_gpu)
 
-    self._test(x.astype(np.bool), np.float32, use_gpu)
+    self._test(x.astype(np.bool_), np.float32, use_gpu)
     self._test(x.astype(np.uint8), np.float32, use_gpu)
     if not use_gpu:
-      self._test(x.astype(np.bool), np.int32, use_gpu)
+      self._test(x.astype(np.bool_), np.int32, use_gpu)
       self._test(x.astype(np.int32), np.int32, use_gpu)
 
   def _testAll(self, x):

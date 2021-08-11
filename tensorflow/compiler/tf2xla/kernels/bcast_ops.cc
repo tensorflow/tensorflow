@@ -45,7 +45,7 @@ class BCastArgsOp : public XlaOpKernel {
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in_shape),
                   errors::InvalidArgument("In[", i, "] must be a vector.",
                                           in_shape.DebugString()));
-      std::vector<int64> shape;
+      std::vector<int64_t> shape;
       OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(i, &shape));
       shapes.push_back(BCast::Vec(shape.begin(), shape.end()));
     }
@@ -55,9 +55,9 @@ class BCastArgsOp : public XlaOpKernel {
                     "Incompatible shapes: [", absl::StrJoin(shapes[0], ","),
                     "] vs. [", absl::StrJoin(shapes[1], ","), "]"));
 
-    const int64 len = bcast.output_shape().size();
+    const int64_t len = bcast.output_shape().size();
     Tensor output(DT_INT32, TensorShape({len}));
-    for (int64 i = 0; i < len; ++i) {
+    for (int64_t i = 0; i < len; ++i) {
       output.flat<int32>()(i) = static_cast<int32>(bcast.output_shape()[i]);
     }
     ctx->SetConstantOutput(0, output);
@@ -94,7 +94,7 @@ class BCastGradArgsOp : public XlaOpKernel {
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in_shape),
                   errors::InvalidArgument("In[", i, "] must be a vector.",
                                           in_shape.DebugString()));
-      std::vector<int64> vec;
+      std::vector<int64_t> vec;
       OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(i, &vec));
 
       shapes.push_back(BCast::Vec(vec.begin(), vec.end()));
@@ -110,9 +110,9 @@ class BCastGradArgsOp : public XlaOpKernel {
 
  private:
   void Output(XlaOpKernelContext* ctx, int idx, const BCast::Vec& v) {
-    const int64 len = v.size();
+    const int64_t len = v.size();
     Tensor constant(DT_INT32, TensorShape({len}));
-    for (int64 i = 0; i < len; ++i) {
+    for (int64_t i = 0; i < len; ++i) {
       constant.flat<int32>()(i) = static_cast<int32>(v[i]);
     }
     ctx->SetConstantOutput(idx, constant);

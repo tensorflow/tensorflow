@@ -94,7 +94,7 @@ class TridiagonalSolveOpTest(test.TestCase):
       result = self.evaluate(result)
       if expected is None:
         self.assertAllEqual(
-            np.zeros_like(result, dtype=np.bool), np.isfinite(result))
+            np.zeros_like(result, dtype=np.bool_), np.isfinite(result))
       else:
         self.assertAllClose(result, expected)
 

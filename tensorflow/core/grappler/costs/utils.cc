@@ -197,8 +197,8 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
   return inputs;
 }
 
-int64 CalculateTensorSize(const OpInfo::TensorProperties& prop) {
-  int64 size = DataTypeSize(BaseType(prop.dtype()));
+int64_t CalculateTensorSize(const OpInfo::TensorProperties& prop) {
+  int64_t size = DataTypeSize(BaseType(prop.dtype()));
   TensorShapeProto shape = prop.shape();
 
   // Can't infer the size if the rank is unknown. It has to be at least a
@@ -216,11 +216,11 @@ int64 CalculateTensorSize(const OpInfo::TensorProperties& prop) {
     }
   }
 
-  int64 num_elems = TensorShape(shape).num_elements();
+  int64_t num_elems = TensorShape(shape).num_elements();
   return num_elems * size;
 }
 
-int64 CalculateOutputSize(
+int64_t CalculateOutputSize(
     const std::vector<OpInfo::TensorProperties>& output_properties,
     const int port_num) {
   if (port_num < 0) return 4;  // 4B for control dependency.

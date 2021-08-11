@@ -58,6 +58,7 @@ public final class TensorTest {
 
   @Before
   public void setUp() {
+    TestInit.init();
     wrapper = new NativeInterpreterWrapper(MODEL_PATH);
     float[] oneD = {1.23f, 6.54f, 7.81f};
     float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};

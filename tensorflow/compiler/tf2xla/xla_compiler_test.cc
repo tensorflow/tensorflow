@@ -736,11 +736,11 @@ TEST_F(XlaCompilerTest, ResourceManager) {
 TEST_F(XlaCompilerTest, DeterministicCompilation) {
   // Builds a graph that contains a node with two output edges. The compiler
   // should always traverse them in the same order.
-  const int64 test_count = 2;
+  const int64_t test_count = 2;
 
   std::vector<XlaCompiler::CompilationResult> results(test_count);
 
-  for (int64 i = 0; i < test_count; ++i) {
+  for (int64_t i = 0; i < test_count; ++i) {
     Scope scope = Scope::NewRootScope().ExitOnError();
     auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
     auto b = ops::Neg(scope.WithOpName("B"), a);
@@ -764,7 +764,7 @@ TEST_F(XlaCompilerTest, DeterministicCompilation) {
                                        std::move(graph), args, &results[i]));
   }
 
-  for (int64 i = 1; i < test_count; ++i) {
+  for (int64_t i = 1; i < test_count; ++i) {
     const auto& m1 = results[i - 1].computation->proto();
     const auto& m2 = results[i].computation->proto();
     ASSERT_EQ(m1.computations_size(), m2.computations_size());
@@ -1829,7 +1829,7 @@ TEST_F(XlaCompilerTest, SetShardingForReturnedTuple) {
   auto node_name_index = graph->BuildNodeNameIndex();
   Node* ret_node = node_name_index["B"];
   ASSERT_NE(ret_node, nullptr);
-  xla::Array<int64> tile_assignment({2});
+  xla::Array<int64_t> tile_assignment({2});
   tile_assignment.FillIota(0);
   xla::HloSharding sharding = xla::HloSharding::Tile(tile_assignment);
   ret_node->AddAttr("_XlaSharding", sharding.ToProto().SerializeAsString());

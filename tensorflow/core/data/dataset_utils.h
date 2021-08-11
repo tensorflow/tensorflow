@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 #define TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 
+#include <functional>
+#include <string>
+
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -33,7 +36,7 @@ constexpr int kShardHint = -1;
 template <typename T>
 Status CreateHandle(OpKernelContext* ctx, T* resource,
                     const string& container_name, ResourceHandle* handle) {
-  static std::atomic<int64> resource_id_counter(0);
+  static std::atomic<int64_t> resource_id_counter(0);
   string unique_name =
       strings::StrCat(container_name, resource_id_counter.fetch_add(1));
   ResourceMgr* mgr = ctx->resource_manager();
@@ -104,19 +107,6 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<Tensor>& received);
 
-// Writes dataset elements to the checkpoint writer using the given key prefix.
-// The elements can be read back by passing the same key prefix to
-// ReadElementsFromCheckpoint. Only one list of elements can be written under
-// the same key_prefix.
-Status WriteElementsToCheckpoint(
-    IteratorStateWriter* writer, StringPiece key_prefix,
-    const std::vector<std::vector<Tensor>>& elements);
-
-// Reads dataset elements from the checkpoint reader using the given key prefix.
-Status ReadElementsFromCheckpoint(IteratorStateReader* reader,
-                                  StringPiece key_prefix,
-                                  std::vector<std::vector<Tensor>>* elements);
-
 // Dataset op level determinism policy.
 class DeterminismPolicy {
  public:
@@ -162,88 +152,8 @@ class DeterminismPolicy {
 //
 // By TensorFlow convention, if both seeds are 0, they should be replaced with
 // non-deterministically chosen seeds.
-std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds);
-
-// Helper class for reading data from a vector of VariantTensorData objects.
-class VariantTensorDataReader : public IteratorStateReader {
- public:
-  explicit VariantTensorDataReader(
-      const std::vector<const VariantTensorData*>& data);
-
-  Status ReadScalar(StringPiece key, int64* val) const override;
-  Status ReadScalar(StringPiece key, tstring* val) const override;
-  Status ReadTensor(StringPiece key, Tensor* val) const override;
-  bool Contains(StringPiece key) const override;
-
-  Status ReadScalar(StringPiece name, StringPiece key,
-                    int64* val) const override;
-  Status ReadScalar(StringPiece name, StringPiece key,
-                    tstring* val) const override;
-  Status ReadTensor(StringPiece name, StringPiece key,
-                    Tensor* val) const override;
-  bool Contains(StringPiece name, StringPiece key) const override;
-
- private:
-  template <typename T>
-  Status ReadScalarInternal(StringPiece key, T* val) const;
-  Status ReadTensorInternal(StringPiece key, Tensor* val) const;
-
-  template <typename T>
-  Status ReadScalarInternal(StringPiece name, StringPiece key, T* val) const;
-  Status ReadTensorInternal(StringPiece name, StringPiece key,
-                            Tensor* val) const;
-
-  std::map<string, std::map<string, size_t>> map_;
-  std::map<string, const VariantTensorData*> data_;  // Not owned.
-};
-
-// Helper class used to build a list of VariantTensorData objects, one for each
-// iterator which is determined from the key supplied from the Write* calls.
-// Sample usage:
-// VariantTensorDataWriter writer;
-// writer.WriteScalar(full_name("buffer_size"), buffer_.size());
-// writer.WriteScalar(full_name("num_threads"), threadpool_.size());
-// ....
-// std::vector<std::unique_ptr<VariantTensorData>> variants;
-// writer.ReleaseData(&variants);
-// Now the VariantTensorData objects can be used to serialize.
-class VariantTensorDataWriter : public IteratorStateWriter {
- public:
-  Status WriteScalar(StringPiece key, const int64 val) override;
-  Status WriteScalar(StringPiece key, const tstring& val) override;
-  Status WriteTensor(StringPiece key, const Tensor& val) override;
-
-  Status WriteScalar(StringPiece name, StringPiece key,
-                     const int64 val) override;
-  Status WriteScalar(StringPiece name, StringPiece key,
-                     const tstring& val) override;
-  Status WriteTensor(StringPiece name, StringPiece key,
-                     const Tensor& val) override;
-
-  // Releases the built VariantTensorData's to `variants`. Clears out all
-  // class state.
-  void ReleaseData(std::vector<std::unique_ptr<VariantTensorData>>* variants);
-
-  // Obtains a read-only version of the VariantTensorData's built.
-  void GetData(std::vector<const VariantTensorData*>* variants);
-
- private:
-  void MaybeFlush();
-  void Reset();
-
-  template <typename T>
-  Status WriteScalarInternal(StringPiece key, const T& val);
-  Status WriteTensorInternal(StringPiece key, const Tensor& val);
-
-  template <typename T>
-  Status WriteScalarInternal(StringPiece name, StringPiece key, const T& val);
-  Status WriteTensorInternal(StringPiece name, StringPiece key,
-                             const Tensor& val);
-
-  bool is_flushed_ = false;
-  std::map<string, std::unique_ptr<VariantTensorData>> data_;
-  std::map<string, std::vector<string>> keys_;
-};
+std::pair<int64_t, int64_t> MaybeOverrideSeeds(
+    std::pair<int64_t, int64_t> seeds);
 
 // Adds the functions in `to_add` to `base`. If a function with a matching
 // signature already exists in `base`, replaces it with the function from
@@ -252,6 +162,14 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
                             const FunctionLibraryDefinition& to_add);
 Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
                             const FunctionDefLibrary& to_add);
+
+// Determines whether the given function is stateful.
+Status IsFunctionStateful(const FunctionLibraryDefinition& library,
+                          const FunctionDef& function_def);
+
+// Determines whether the given node is stateful.
+Status IsNodeStateful(const FunctionLibraryDefinition& library,
+                      const NodeDef& node);
 
 // Creates a runner that runs functions with limited parallelism.
 std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
@@ -291,16 +209,16 @@ bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match);
 void StripDevicePlacement(FunctionDefLibrary* library);
 
 // Copies partial of the batch output.
-Status CopyPartialBatch(int64 num_elements, const Tensor& value,
+Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
                         Tensor* output);
 
 // Reads a batch when restoring the iterator.
-Status ReadBatch(int64 batch_size, const string& iterator_prefix,
-                 const string& batch_prefix, IteratorContext* ctx,
-                 IteratorStateReader* reader, std::vector<Tensor>* batch);
+Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
+                 int64_t batch_size, const string& iterator_prefix,
+                 const string& batch_prefix, std::vector<Tensor>* batch);
 
 // Writes a batch when saving the iterator.
-Status WriteBatch(int64 batch_size, int64 num_elements,
+Status WriteBatch(int64_t batch_size, int64_t num_elements,
                   const string& iterator_prefix, const string& batch_prefix,
                   IteratorStateWriter* writer, std::vector<Tensor>* batch);
 
@@ -314,15 +232,24 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
 
 // Processes a batch to output. In the case a partial batch is encountered, copy
 // only partial of the batch.
-Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
-                    const Status& status, IteratorContext* ctx,
-                    std::vector<Tensor>* output, bool* end_of_sequence,
-                    std::vector<Tensor>* batch);
+Status ProcessBatch(int64_t batch_size, int64_t num_elements,
+                    bool drop_remainder, const Status& status,
+                    IteratorContext* ctx, std::vector<Tensor>* output,
+                    bool* end_of_sequence, std::vector<Tensor>* batch);
 
 // Copies the input elements to a batch.
-Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
-                 std::vector<Tensor>* out_tensors,
-                 std::vector<std::vector<Tensor>>* batch_elements);
+//
+// The `batch_elements` argument contains the individual elements to copy into a
+// batch. The `parallel_copy` argument indicates whether to parallelize the
+// copy. The `allocation_callback` argument can be used to pass a callback to
+// invoke upon successful allocation of the memory for the batch. The
+// `out_tensors` argument will be used to store the resulting batch (one for
+// each component of the input).
+Status CopyBatch(IteratorContext* ctx,
+                 const std::vector<std::vector<Tensor>>& batch_elements,
+                 bool parallel_copy,
+                 std::function<Status()> allocation_callback,
+                 std::vector<Tensor>* out_tensors);
 
 // Computes the set of experiments to apply based on the job name, rollout
 // percentage of registered experiments, and the TF_DATA_EXPERIMENT_OPT_IN and
@@ -370,17 +297,17 @@ bool ShouldApplyOptimizations(
 class DatasetExperimentRegistry {
  public:
   // Registers the experiment.
-  static void Register(const string& experiment, int64 rollout_pct);
+  static void Register(const string& experiment, int64_t rollout_pct);
 
   // Returns all registered experiments.
-  static absl::flat_hash_map<string, int64> Experiments();
+  static absl::flat_hash_map<string, int64_t> Experiments();
 };
 
 // Helper class to register a dataset experiment.
 class DatasetExperimentRegistrar {
  public:
   explicit DatasetExperimentRegistrar(const string& experiment,
-                                      int64 rollout_pct) {
+                                      int64_t rollout_pct) {
     DatasetExperimentRegistry::Register(experiment, rollout_pct);
   }
 };

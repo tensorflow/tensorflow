@@ -9,7 +9,7 @@ func @preserve_unreachable_tpu_replicate_metadata() {
     // CHECK: "tf.NoOp"
     %1 = tf_executor.island wraps "tf.NoOp"() : () -> ()
     // CHECK: "tf.TPUReplicateMetadata"
-    %2 = tf_executor.island(%1) wraps "tf.TPUReplicateMetadata"() {allow_soft_placement = false, computation_shape = [], device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, padding_map = [], step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = true, use_tpu = true} : () -> ()
+    %2 = tf_executor.island(%1) wraps "tf.TPUReplicateMetadata"() {allow_soft_placement = false, computation_shape = [], device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = true, use_tpu = true} : () -> ()
     tf_executor.fetch %0 : !tf_executor.control
   }
   return
@@ -22,7 +22,7 @@ func @preserve_unreachable_tpu_compilation_result() {
     // CHECK: "tf.NoOp"
     %1 = tf_executor.island wraps "tf.NoOp"() : () -> ()
     // CHECK: "tf.TPUCompilationResult"
-    %2, %3 = tf_executor.island(%1) wraps "tf.TPUCompilationResult"() : () -> tensor<!tf.string>
+    %2, %3 = tf_executor.island(%1) wraps "tf.TPUCompilationResult"() : () -> tensor<!tf_type.string>
     tf_executor.fetch %0 : !tf_executor.control
   }
   return

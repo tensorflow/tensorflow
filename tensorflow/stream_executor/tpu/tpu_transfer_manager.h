@@ -65,7 +65,7 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
   Status ResetDevices(
       absl::Span<stream_executor::StreamExecutor* const> executor) override;
 
-  int64 GetByteSizeRequirement(const xla::Shape& shape) const override;
+  int64_t GetByteSizeRequirement(const xla::Shape& shape) const override;
 
   StatusOr<xla::Shape> ChooseCompactLayoutForShape(
       const xla::Shape& host_shape) const override;
@@ -93,9 +93,6 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
 
  private:
   XLA_TransferManager* manager_;
-  Status UpdateShapesFromMetadata(
-      const xla::MutableBorrowingLiteral& metadata_literal,
-      xla::Shape* device_shape);
 };
 
 }  // namespace tpu

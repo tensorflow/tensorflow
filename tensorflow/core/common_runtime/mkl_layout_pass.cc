@@ -1072,17 +1072,22 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     // Substring that should be checked for in device name for CPU device.
     const char* const kCPUDeviceSubStr = "CPU";
+    const char* const kXLACPUDeviceSubStr = "XLA_CPU";
 
-    // If Op has been specifically assigned to a non-CPU device, then No.
+    // If Op has been specifically assigned to a non-CPU or XLA_CPU device, then
+    // No.
     if (!n->assigned_device_name().empty() &&
-        !absl::StrContains(n->assigned_device_name(), kCPUDeviceSubStr)) {
+        (!absl::StrContains(n->assigned_device_name(), kCPUDeviceSubStr) ||
+         absl::StrContains(n->assigned_device_name(), kXLACPUDeviceSubStr))) {
       result = false;
       reason = "Op has been assigned a runtime device that is not CPU.";
     }
 
-    // If user has specifically assigned this op to a non-CPU device, then No.
+    // If user has specifically assigned this op to a non-CPU or XLA_CPU device,
+    // then No.
     if (!n->def().device().empty() &&
-        !absl::StrContains(n->def().device(), kCPUDeviceSubStr)) {
+        (!absl::StrContains(n->def().device(), kCPUDeviceSubStr) ||
+         absl::StrContains(n->def().device(), kXLACPUDeviceSubStr))) {
       result = false;
       reason = "User has assigned a device that is not CPU.";
     }
@@ -3703,24 +3708,6 @@ MklLayoutRewritePass::CheckForQuantizedNodeRewrite(const Node* n) const {
   if (type_attrs_present) {
     for (auto ri = rinfo_.cbegin(); ri != rinfo_.cend(); ++ri) {
       if (n->type_string().compare(ri->name) == 0 && ri->rewrite_rule(n)) {
-        // Currently OneDNN optimization does not support int8 with native
-        // format.
-        if (NativeFormatEnabled()) {
-          static absl::once_flag once;
-          absl::call_once(once, [] {
-#if defined(ENABLE_MKL)
-            VLOG(0) << "MklLayoutRewritePass::RewriteInfo does not support INT8"
-                    << "data type for native format. Please set the environment"
-                    << " variable TF_ENABLE_MKL_NATIVE_FORMAT to false. ";
-#else
-            VLOG(0) << "MklLayoutRewritePass::RewriteInfo does not support INT8"
-                    << " data type for native format. Please switch to Intel "
-                    << "Optimized Tensorflow and set the environment variable "
-                    << "TF_ENABLE_MKL_NATIVE_FORMAT to false.";
-#endif  // defined(ENABLE_MKL)
-          });
-          return nullptr;
-        }
         return &*ri;
       }
     }

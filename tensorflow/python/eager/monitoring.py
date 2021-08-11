@@ -71,6 +71,14 @@ _string_gauge_methods = [
         create=pywrap_tfe.TFE_MonitoringNewStringGauge2,
         delete=pywrap_tfe.TFE_MonitoringDeleteStringGauge2,
         get_cell=pywrap_tfe.TFE_MonitoringGetCellStringGauge2),
+    _MetricMethod(
+        create=pywrap_tfe.TFE_MonitoringNewStringGauge3,
+        delete=pywrap_tfe.TFE_MonitoringDeleteStringGauge3,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellStringGauge3),
+    _MetricMethod(
+        create=pywrap_tfe.TFE_MonitoringNewStringGauge4,
+        delete=pywrap_tfe.TFE_MonitoringDeleteStringGauge4,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellStringGauge4),
 ]
 _bool_gauge_methods = [
     _MetricMethod(

@@ -870,6 +870,11 @@ def _remove_redundant_quantize_ops(model):
     output_tensor_idx = op.outputs[0]
     if output_tensor_idx in redundant_quant_tensors:
       requantize_op = redundant_quant_tensors[output_tensor_idx]
+      if model.signatureDefs:
+        signature_def = model.signatureDefs[0]
+        for output in signature_def.outputs:
+          if output.tensorIndex == op.outputs[0]:
+            output.tensorIndex = op.inputs[0]
       # Reset the input of the requantize op to the float input
       requantize_op.inputs[0] = op.inputs[0]
       operators.remove(op)
@@ -880,6 +885,11 @@ def _remove_redundant_quantize_ops(model):
     if output_tensor_idx in output_dequant_tensors:
       dequant_op = output_dequant_tensors[output_tensor_idx]
       subgraph.outputs[subgraph.outputs == dequant_op.outputs[0]] = op.inputs[0]
+      if model.signatureDefs:
+        signature_def = model.signatureDefs[0]
+        for output in signature_def.outputs:
+          if output.tensorIndex == dequant_op.outputs[0]:
+            output.tensorIndex = op.inputs[0]
       operators.remove(op)
       operators.remove(dequant_op)
 

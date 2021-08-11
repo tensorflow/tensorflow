@@ -19,6 +19,8 @@ include "mlir/Dialect/Shape/IR/ShapeOps.td"
 include "mlir/Dialect/Tensor/IR/TensorOps.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
+def HasSameType : Constraint<CPred<"$0.getType() == $1.getType()">>;
+
 // Canonicalization patterns.
 
 def DynamicBroadcastToOwnShape_1 : Pat<
@@ -36,8 +38,6 @@ def DynamicBroadcastToOwnShape_4 : Pat<
   (HLO_DynamicBroadcastInDimOp:$op $x, (Tensor_CastOp (Shape_ShapeOfOp $x)), $attr),
   (Tensor_CastOp $x)>;
 
-def HasSameType : Constraint<CPred<"$0.getType() == $1.getType()">>;
-
 def ShapeOfDynamicReshape : Pat<
   (Shape_ShapeOfOp:$op (HLO_DynamicReshapeOp $x, $shape)),
   (replaceWithValue $shape),
@@ -52,3 +52,18 @@ def IdentityBroadcastInDimReshape : Pat<
   (HLO_ReshapeOp:$op (HLO_BroadcastInDimOp $input, $dims)),
   (replaceWithValue $input),
   [(HasSameType $input, $op)]>;
+
+def EliminateIdentityConvert : Pat<
+  (HLO_ConvertOp:$res $src),
+  (replaceWithValue $src),
+  [(HasSameType $res, $src)]>;
+
+def EliminateRedundantReshape : Pat<
+  (HLO_ReshapeOp:$res (HLO_ReshapeOp $src)),
+  (replaceWithValue $src),
+  [(HasSameType $res, $src)]>;
+
+def EliminateIdentityReshape : Pat<
+  (HLO_ReshapeOp:$res $src),
+  (replaceWithValue $src),
+  [(HasSameType $res, $src)]>;

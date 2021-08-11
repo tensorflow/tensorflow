@@ -21,10 +21,12 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
+#include "pybind11/cast.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
+#include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/core/platform/logging.h"
 
 // TODO(jblespiau): The current implementation moves the Python logic to C++,
@@ -54,11 +56,16 @@ struct NoSharding {
   bool operator!=(const NoSharding& other) const { return false; }
 };
 
+template <typename H>
+H AbslHashValue(H h, const NoSharding& key) {
+  return h;
+}
+
 // `Chunked` means that the dimension is split into np.prod(chunks) chunks
 // and the split dimension itself is preserved inside the map.
 // Those chunks are distributed over `len(chunks)` ShardedAxes axes
 // (major-to-minor).
-// For example, for a tensor `t` or shape [N] sharded using [Chunked([p])] (with
+// For example, for a tensor `t` of shape [N] sharded using [Chunked([p])] (with
 // p  dividing N, let S = N // p) the tensor will be split into p chunks of
 // shape [S], such sharded_t[k] = t[k * S: (k+1)*S] (left included, right
 // excluded) for k in {0, ... p-1}.
@@ -72,6 +79,12 @@ struct Chunked {
   bool operator!=(const Chunked& other) const { return chunks != other.chunks; }
 };
 
+template <typename H>
+H AbslHashValue(H h, const Chunked& key) {
+  h = H::combine(std::move(h), key.chunks);
+  return h;
+}
+
 // `Unstacked` means that the dimension is split into chunks of size 1, and
 // doesn't appear inside the map. `size` is always the dimension size.
 // For example, a Tensor t of shape [N] will be sharded into N tensors of shape
@@ -84,6 +97,12 @@ struct Unstacked {
   bool operator==(const Unstacked& other) const { return size == other.size; }
   bool operator!=(const Unstacked& other) const { return size != other.size; }
 };
+
+template <typename H>
+H AbslHashValue(H h, const Unstacked& key) {
+  h = H::combine(std::move(h), key.size);
+  return h;
+}
 
 using AvalDimSharding = absl::variant<NoSharding, Chunked, Unstacked>;
 
@@ -102,6 +121,13 @@ struct ShardedAxis {
   bool operator==(const ShardedAxis& other) const { return axis == other.axis; }
   bool operator!=(const ShardedAxis& other) const { return axis != other.axis; }
 };
+
+template <typename H>
+H AbslHashValue(H h, const ShardedAxis& key) {
+  h = H::combine(std::move(h), key.axis);
+  return h;
+}
+
 struct Replicated {
   int replicas;
   bool operator==(const Replicated& other) const {
@@ -112,16 +138,27 @@ struct Replicated {
   }
 };
 
+template <typename H>
+H AbslHashValue(H h, const Replicated& key) {
+  h = H::combine(std::move(h), key.replicas);
+  return h;
+}
+
 using MeshDimAssignment = absl::variant<ShardedAxis, Replicated>;
 
-// Describes how each axis is sharded (if it is), and how it'smapped to the
-// devices mesh.
+// Describes how each axis is sharded (if it is), and how it's mapped to the
+// devices mesh. See Jax pxla.py for the documentation.
 class ShardingSpec {
  public:
   ShardingSpec(std::vector<AvalDimSharding> sharding,
                std::vector<MeshDimAssignment> mesh_mapping)
       : sharding_(std::move(sharding)),
         mesh_mapping_(std::move(mesh_mapping)) {}
+  ShardingSpec(pybind11::iterable py_sharding,
+               pybind11::iterable py_mesh_mapping)
+      : sharding_(xla::IterableToVector<AvalDimSharding>(py_sharding)),
+        mesh_mapping_(
+            xla::IterableToVector<MeshDimAssignment>(py_mesh_mapping)) {}
 
   const std::vector<AvalDimSharding>& GetSharding() const { return sharding_; }
   const std::vector<MeshDimAssignment>& GetMeshMapping() const {
@@ -133,6 +170,9 @@ class ShardingSpec {
   }
 
   bool operator!=(const ShardingSpec& other) const { return !(*this == other); }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ShardingSpec& key);
 
  private:
   //  `sharding` specifies how the array is supposed to get partitioned into
@@ -146,6 +186,17 @@ class ShardingSpec {
   //  replicated.
   std::vector<MeshDimAssignment> mesh_mapping_;
 };
+
+template <typename H>
+H AbslHashValue(H h, const ShardingSpec& key) {
+  h = H::combine(std::move(h), key.sharding_);
+  h = H::combine(std::move(h), key.mesh_mapping_);
+  return h;
+}
+
+// Empty base-class to support isinstance(x, ShardedDeviceArrayBase) with both
+// the C++ and Python ShardedDeviceArray.
+class ShardedDeviceArrayBase {};
 
 // A ShardedDeviceArray is an ndarray sharded across devices.
 //
@@ -161,32 +212,56 @@ class ShardingSpec {
 
 // Design note: We move to C++, only what will need to be accessed by C++ to
 // execute a pmap computation. A large part of the logic is still in Python.
-class ShardedDeviceArray {
+class ShardedDeviceArray : public ShardedDeviceArrayBase {
  public:
-  ShardedDeviceArray(
-      pybind11::handle aval, ShardingSpec sharding_spec,
-      // Buffers are expected to be xla::PyBuffer objects, but as there are
-      // alternative backend implementations, this may not be guaranteed.
-      // TODO(jblespiau): As soon as PjRtBuffer is supported by all
-      // implementations, we should be able to store this with the C++ objects.
-      pybind11::list device_buffers)
+  // `device_buffers` are expected to be xla::PyBuffer objects, but as there are
+  // alternative backend implementations, this may not be guaranteed.
+  // TODO(jblespiau): As soon as PjRtBuffer is supported by all
+  // implementations, we should be able to store this with the C++ objects.
+  ShardedDeviceArray(pybind11::handle aval, ShardingSpec sharding_spec,
+                     pybind11::list device_buffers, pybind11::handle indices)
       : aval_(pybind11::cast<pybind11::object>(aval)),
         sharding_spec_(std::move(sharding_spec)),
+        indices_(pybind11::cast<pybind11::object>(indices)),
         device_buffers_(device_buffers) {}
 
-  pybind11::object GetAval() const { return aval_; }
   const ShardingSpec& GetShardingSpec() const { return sharding_spec_; }
-  pybind11::list GetDeviceBuffers() const { return device_buffers_; }
+
+  // Accessors and mutators for Python values are named like the variables.
+  absl::optional<pybind11::list> device_buffers() const {
+    return device_buffers_;
+  }
+  void set_device_buffers(absl::optional<pybind11::list> device_buffers) {
+    device_buffers_ = device_buffers;
+  }
+  pybind11::object aval() const { return aval_; }
+  pybind11::object indices() const { return indices_; }
+
+  absl::optional<pybind11::object> npy_value() const { return npy_value_; }
+  void set_npy_value(pybind11::object npy_value) { npy_value_ = npy_value; }
+
+  absl::optional<pybind11::object> one_replica_buffer_indices() const {
+    return one_replica_buffer_indices_;
+  }
+  void set_one_replica_buffer_indices(pybind11::object obj) {
+    one_replica_buffer_indices_ = obj;
+  }
 
  private:
   // A ShapedArray indicating the shape and dtype of this array.
   pybind11::object aval_;
   // Describes how this array is sharded across `device_buffers`.
   ShardingSpec sharding_spec_;
+  // The `indices` used to slice numpy array into the underlying list of
+  // buffers. See the Python pxla.py:spec_to_indices function.
+  pybind11::object indices_;
   // The buffers containing the data for this array. Each buffer is the same
   // shape and on a different device. Buffers are in row-major order, with
   // replication treated as an extra innermost dimension.
-  pybind11::list device_buffers_;
+  absl::optional<pybind11::list> device_buffers_;
+
+  absl::optional<pybind11::object> npy_value_ = absl::nullopt;
+  absl::optional<pybind11::object> one_replica_buffer_indices_ = absl::nullopt;
 };
 
 void BuildPmapSubmodule(pybind11::module& m);

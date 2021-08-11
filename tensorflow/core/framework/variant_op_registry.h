@@ -60,6 +60,9 @@ enum VariantDeviceCopyDirection {
   DEVICE_TO_DEVICE = 3,
 };
 
+class UnaryVariantOpRegistry;
+extern UnaryVariantOpRegistry* UnaryVariantOpRegistryGlobal();
+
 class UnaryVariantOpRegistry {
  public:
   typedef std::function<bool(Variant*)> VariantDecodeFn;
@@ -174,9 +177,7 @@ class UnaryVariantOpRegistry {
 
   // Get a pointer to a global UnaryVariantOpRegistry object
   static UnaryVariantOpRegistry* Global() {
-    static UnaryVariantOpRegistry* global_unary_variant_op_registry =
-        new UnaryVariantOpRegistry;
-    return global_unary_variant_op_registry;
+    return UnaryVariantOpRegistryGlobal();
   }
 
   // Get a pointer to a global persistent string storage object.

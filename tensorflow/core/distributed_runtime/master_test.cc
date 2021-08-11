@@ -62,7 +62,7 @@ class MasterTest : public ::testing::Test {
   // rpc calls.
 
   Status CreateSession(const GraphDef& def, string* handle,
-                       int64* initial_version) {
+                       int64_t* initial_version) {
     ::grpc::ClientContext ctx;
     CreateSessionRequest req;
     *(req.mutable_graph_def()) = def;
@@ -78,7 +78,7 @@ class MasterTest : public ::testing::Test {
   }
 
   Status ExtendSession(const string& handle, const GraphDef& def,
-                       int64 current_version, int64* new_version) {
+                       int64_t current_version, int64_t* new_version) {
     ::grpc::ClientContext ctx;
     ExtendSessionRequest req;
     req.set_session_handle(handle);
@@ -140,7 +140,7 @@ class MasterTest : public ::testing::Test {
 TEST_F(MasterTest, CreateClose) {
   GraphDef def;  // Empty.
   string handle;
-  int64 initial_version;
+  int64_t initial_version;
   TF_ASSERT_OK(CreateSession(def, &handle, &initial_version));
   EXPECT_TRUE(errors::IsAborted(CloseSession("randombits")));
   EXPECT_TRUE(CloseSession(handle).ok());
@@ -159,7 +159,7 @@ TEST_F(MasterTest, ListDevices) {
 TEST_F(MasterTest, Reset) {
   GraphDef def;  // Empty.
   string s1, s2;
-  int64 initial_version1, initial_version2;
+  int64_t initial_version1, initial_version2;
   TF_ASSERT_OK(CreateSession(def, &s1, &initial_version1));
   TF_ASSERT_OK(CreateSession(def, &s2, &initial_version2));
   EXPECT_TRUE(Reset().ok());
@@ -170,7 +170,7 @@ TEST_F(MasterTest, Reset) {
 TEST_F(MasterTest, Extend) {
   GraphDef def_0;  // Empty.
   string handle;
-  int64 initial_version;
+  int64_t initial_version;
   TF_ASSERT_OK(CreateSession(def_0, &handle, &initial_version));
 
   Tensor A_expected(DT_FLOAT, TensorShape({2, 2}));
@@ -183,7 +183,7 @@ TEST_F(MasterTest, Extend) {
   test::graph::Constant(&graph_1, A_expected, "A");
   GraphDef def_1;
   test::graph::ToGraphDef(&graph_1, &def_1);
-  int64 version_1;
+  int64_t version_1;
   TF_ASSERT_OK(ExtendSession(handle, def_1, initial_version, &version_1));
   EXPECT_GT(version_1, initial_version);
   Tensor A(DT_FLOAT, TensorShape({2, 2}));
@@ -194,7 +194,7 @@ TEST_F(MasterTest, Extend) {
   test::graph::Constant(&graph_2, x_expected, "x");
   GraphDef def_2;
   test::graph::ToGraphDef(&graph_2, &def_2);
-  int64 version_2;
+  int64_t version_2;
   EXPECT_TRUE(errors::IsAborted(
       ExtendSession("randombits", def_2, version_1, &version_2)));
   TF_ASSERT_OK(ExtendSession(handle, def_2, version_1, &version_2));
@@ -211,7 +211,7 @@ TEST_F(MasterTest, Extend) {
 TEST_F(MasterTest, ExtendUpdateStatefulFails) {
   GraphDef def_0;  // Empty.
   string handle;
-  int64 initial_version;
+  int64_t initial_version;
   TF_ASSERT_OK(CreateSession(def_0, &handle, &initial_version));
 
   Graph graph_1(OpRegistry::Global());
@@ -219,7 +219,7 @@ TEST_F(MasterTest, ExtendUpdateStatefulFails) {
   GraphDef def_1;
   test::graph::ToGraphDef(&graph_1, &def_1);
 
-  int64 version_1, version_2;
+  int64_t version_1, version_2;
   TF_ASSERT_OK(ExtendSession(handle, def_1, initial_version, &version_1));
   EXPECT_GT(version_1, initial_version);
   EXPECT_TRUE(errors::IsInvalidArgument(
@@ -230,7 +230,7 @@ TEST_F(MasterTest, ExtendUpdateStatefulFails) {
 TEST_F(MasterTest, ExtendTwiceFails) {
   GraphDef def_0;  // Empty.
   string handle;
-  int64 initial_version;
+  int64_t initial_version;
   TF_ASSERT_OK(CreateSession(def_0, &handle, &initial_version));
 
   Graph graph_1(OpRegistry::Global());
@@ -238,7 +238,7 @@ TEST_F(MasterTest, ExtendTwiceFails) {
   GraphDef def_1;
   test::graph::ToGraphDef(&graph_1, &def_1);
 
-  int64 version_1;
+  int64_t version_1;
   TF_ASSERT_OK(ExtendSession(handle, def_1, initial_version, &version_1));
   EXPECT_GT(version_1, initial_version);
   EXPECT_TRUE(errors::IsAborted(
@@ -249,7 +249,7 @@ TEST_F(MasterTest, ExtendTwiceFails) {
 TEST_F(MasterTest, ConcurrentExtendOnlyOneSucceeds) {
   GraphDef def_0;  // Empty.
   string handle;
-  int64 initial_version;
+  int64_t initial_version;
   TF_ASSERT_OK(CreateSession(def_0, &handle, &initial_version));
 
   Graph graph_1(OpRegistry::Global());
@@ -264,7 +264,7 @@ TEST_F(MasterTest, ConcurrentExtendOnlyOneSucceeds) {
   auto extend_fn = [this, handle, def_1, initial_version, &n, &mu, &succeeded,
                     &failed]() {
     n.WaitForNotification();
-    int64 new_version;
+    int64_t new_version;
     Status s = ExtendSession(handle, def_1, initial_version, &new_version);
     EXPECT_TRUE(s.ok() || errors::IsAborted(s));
     {
@@ -300,7 +300,7 @@ TEST_F(MasterTest, ConcurrentExtendAndRun) {
   test::graph::ToGraphDef(&graph_0, &def_0);
 
   string handle;
-  int64 initial_version;
+  int64_t initial_version;
   TF_ASSERT_OK(CreateSession(def_0, &handle, &initial_version));
 
   Graph graph_1(OpRegistry::Global());
@@ -345,7 +345,7 @@ TEST_F(MasterTest, ConcurrentExtendAndRun) {
   auto extend_fn = [this, handle, def_1, initial_version, &extend_done,
                     &extend_can_start]() {
     extend_can_start.WaitForNotification();
-    int64 version_1;
+    int64_t version_1;
     TF_ASSERT_OK(ExtendSession(handle, def_1, initial_version, &version_1));
     extend_done.Notify();
   };
@@ -382,7 +382,7 @@ TEST_F(MasterTest, EigenProblem) {
   test::graph::ToGraphDef(&graph, &def);
 
   string handle;
-  int64 initial_version;
+  int64_t initial_version;
   TF_CHECK_OK(CreateSession(def, &handle, &initial_version));
 
   // Temps supporting the computation of the convergence condition.

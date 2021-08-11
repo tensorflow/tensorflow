@@ -308,7 +308,7 @@ class ProfileContext(object):
 
   @contextlib.contextmanager
   def _new_step(self):
-    acquired = self._lock.acquire(False)
+    acquired = self._lock.acquire(False)  # pylint: disable=assignment-from-no-return
     yield (self._step, acquired)
     self._step += 1
     self._trace_next_step = False

@@ -61,14 +61,14 @@ class ReverseSequenceOp : public XlaOpKernel {
     const auto input = context->Input(0);
     const auto seq_lens = context->Input(1);
 
-    const int64 batch_size = input_shape.dim_size(batch_dim_);
+    const int64_t batch_size = input_shape.dim_size(batch_dim_);
     if (batch_size == 0) {
       context->SetOutput(0, input);
       return;
     }
 
     const xla::PrimitiveType seq_lens_type = context->input_xla_type(1);
-    const int64 max_seq_len = input_shape.dim_size(seq_dim_);
+    const int64_t max_seq_len = input_shape.dim_size(seq_dim_);
 
     // Create [batch, sequence, 2] tensor that contains the indices where the
     // real data belongs

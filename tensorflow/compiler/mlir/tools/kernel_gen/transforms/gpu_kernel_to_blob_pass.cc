@@ -51,14 +51,14 @@ class GpuKernelToBlobPass
     : public GpuKernelToBlobPassBase<GpuKernelToBlobPass> {
  public:
   GpuKernelToBlobPass(mlir::StringRef blob_annotation,
-                      llvm::ArrayRef<std::string> architectures,
-                      bool generate_fatbin, bool print_ptx, bool enable_ftz) {
+                      llvm::ArrayRef<std::string> architectures, bool print_ptx,
+                      bool print_llvmir, bool enable_ftz) {
     if (!blob_annotation.empty()) {
       blob_annotation_ = blob_annotation.str();
     }
     architectures_ = architectures;
-    generate_fatbin_ = generate_fatbin;
     print_ptx_ = print_ptx;
+    print_llvmir_ = print_llvmir;
     enable_ftz_ = enable_ftz;
   }
 
@@ -82,25 +82,21 @@ class GpuKernelToBlobPass
     if (architectures_.empty()) {
       return InternalError("Expected at least one GPU architecture.");
     }
-    if (!generate_fatbin_ && architectures_.size() > 1) {
-      return InternalError(
-          "Can only generate machine code for more than one architecture as a "
-          "fatbin.");
-    }
 
     llvm::LLVMContext llvmContext;
     auto llvmModule = mlir::translateModuleToLLVMIR(gpu_module, llvmContext);
 
-#if TENSORFLOW_USE_ROCM
     if (!llvmModule) {
-      return InternalError("Could not translate MLIR module to ROCDL IR");
+      return InternalError("Could not translate MLIR module to LLVM IR");
     }
 
-    llvmModule->setModuleIdentifier("acme");
+    llvmModule->setModuleIdentifier(gpu_module.getName());
 
+#if TENSORFLOW_USE_ROCM
     xla::HloModuleConfig config;
     xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
     options.set_xla_gpu_ftz(enable_ftz_);
+    options.set_xla_gpu_dump_llvmir(print_llvmir_);
     config.set_debug_options(options);
 
     using AmdGpuHsaco = std::vector<tensorflow::uint8>;
@@ -112,28 +108,15 @@ class GpuKernelToBlobPass
         return InternalError(
             "Could not parse ROCm architecture prefix (expected gfx)");
       }
-      uint32_t arch;
-      if (!absl::SimpleAtoi(consumable_arch, &arch)) {
-        return InternalError("Could not parse ROCm architecture number");
-      }
-
       std::string libdevice_dir = tensorflow::RocdlRoot();
       auto llvm_module_copy = llvm::CloneModule(*llvmModule);
-      xla::gpu::GpuVersion gpu_version{std::make_pair(arch, arch_str)};
+      xla::gpu::GpuVersion gpu_version{arch_str};
       auto hsaco_or = xla::gpu::amdgpu::CompileToHsaco(
           llvm_module_copy.get(), gpu_version, config, libdevice_dir);
       if (!hsaco_or.ok()) {
         return InternalError("Failure when generating HSACO");
       }
-
       auto hsaco = hsaco_or.ValueOrDie();
-      if (!generate_fatbin_) {
-        // Skip fatbin generation and return the first and only GPU machine
-        // code. This is currently only used for `tf_to_gpu_binary` and will
-        // eventually disappear.
-        return hsaco;
-      }
-
       images.push_back({arch_str, std::move(hsaco)});
     }
 
@@ -142,18 +125,19 @@ class GpuKernelToBlobPass
     return tensorflow::se::BundleGpuAsm(images, tensorflow::RocmRoot());
 
 #elif GOOGLE_CUDA
-    if (!llvmModule) {
-      return InternalError("Could not translate MLIR module to NVVM");
-    }
-
-    llvmModule->setModuleIdentifier("acme");
     llvmModule->setDataLayout(xla::gpu::nvptx::kDataLayout);
 
     xla::HloModuleConfig config;
     xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
     options.set_xla_gpu_ftz(enable_ftz_);
+    options.set_xla_gpu_dump_llvmir(print_llvmir_);
     // Make sure we use full precision division operations.
     (*options.mutable_xla_backend_extra_options())["-nvptx-prec-divf32"] = "2";
+    // Disable tail sinking as it interferes with load/store vectorization. If
+    // we have common tails that is intentional.
+    (*options.mutable_xla_backend_extra_options())["-simplifycfg-sink-common"] =
+        "false";
+
     config.set_debug_options(options);
 
     auto enable_fusion = [](llvm::TargetMachine* target) {
@@ -182,15 +166,16 @@ class GpuKernelToBlobPass
         return InternalError("Could not parse cuda architecture number");
       }
 
-      uint32_t cc_major = arch / 10;
-      uint32_t cc_minor = arch % 10;
+      int cc_major = arch / 10;
+      int cc_minor = arch % 10;
       // Module may be changed by CompileToPtx.
       auto llvm_module_copy = llvm::CloneModule(*llvmModule);
       TF_ASSIGN_OR_RETURN(
           std::string ptx,
-          xla::gpu::nvptx::CompileToPtx(llvm_module_copy.get(),
-                                        std::make_pair(cc_major, cc_minor),
-                                        config, libdevice_dir, enable_fusion));
+          xla::gpu::nvptx::CompileToPtx(
+              llvm_module_copy.get(),
+              tensorflow::se::CudaComputeCapability{cc_major, cc_minor}, config,
+              libdevice_dir, enable_fusion));
 
       if (print_ptx_) {
         llvm::dbgs() << "Generated PTX code for module '"
@@ -202,13 +187,6 @@ class GpuKernelToBlobPass
       TF_ASSIGN_OR_RETURN(std::vector<uint8_t> gpu_asm,
                           tensorflow::se::CompileGpuAsm(
                               cc_major, cc_minor, ptx.c_str(), gpu_asm_opts));
-
-      if (!generate_fatbin_) {
-        // Skip fatbin generation and return the first and only GPU machine
-        // code. This is currently only used for `tf_to_gpu_binary` and will
-        // eventually disappear.
-        return gpu_asm;
-      }
 
       // Collect cubin (and ptx image if requested).
       images.push_back({absl::StrCat("sm_", arch), std::move(gpu_asm)});
@@ -253,9 +231,9 @@ class GpuKernelToBlobPass
 
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
     mlir::StringRef blob_annotation, ArrayRef<std::string> architectures,
-    bool generate_fatbin, bool print_ptx, bool enable_ftz) {
+    bool print_ptx, bool print_llvmir, bool enable_ftz) {
   return std::make_unique<GpuKernelToBlobPass>(
-      blob_annotation, architectures, generate_fatbin, print_ptx, enable_ftz);
+      blob_annotation, architectures, print_ptx, print_llvmir, enable_ftz);
 }
 
 }  // namespace transforms

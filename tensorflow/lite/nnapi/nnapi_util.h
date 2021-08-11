@@ -21,16 +21,25 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/nnapi/nnapi_implementation.h"
+
 namespace tflite {
 namespace nnapi {
 
 // Return std::vector consisting of pointers to null-terminated device names.
-// These names are guaranteed valid for the lifetime of the application.
+// These names are guaranteed to be valid for the lifetime of the application.
 std::vector<const char*> GetDeviceNamesList();
+// An overload that uses a client-provided NnApi* structure to request available
+// devices instead of the static one provided by NnApiImplementation().
+// The names are guaranteed to be valid for the lifetime of the application.
+std::vector<const char*> GetDeviceNamesList(const NnApi* nnapi);
 
 // Return a string containing the names of all available devices.
 // Will take the format: "DeviceA,DeviceB,DeviceC"
 std::string GetStringDeviceNamesList();
+// An overload that uses a client-provided NnApi* structure to request available
+// devices instead of the static one provided by NnApiImplementation().
+std::string GetStringDeviceNamesList(const NnApi* nnapi);
 
 }  // namespace nnapi
 }  // namespace tflite

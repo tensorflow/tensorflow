@@ -85,6 +85,13 @@ namespace cutil = TF::collection_ops_util;
 // The pass also works across control flow and functional calls.
 struct StackOpsDecompositionPass
     : public PassWrapper<StackOpsDecompositionPass, OperationPass<ModuleOp>> {
+  StringRef getArgument() const final { return "tf-stack-ops-decomposition"; }
+
+  StringRef getDescription() const final {
+    return "Decompose stack operations into local variable operations. Needs "
+           "static shapes.";
+  }
+
   void runOnOperation() override;
 };
 
@@ -582,10 +589,7 @@ void StackOpsDecompositionPass::runOnOperation() {
   }
 }
 
-static PassRegistration<StackOpsDecompositionPass> pass(
-    "tf-stack-ops-decomposition",
-    "Decompose stack operations into local variable operations. Needs static "
-    "shapes.");
+static PassRegistration<StackOpsDecompositionPass> pass;
 
 }  // namespace
 

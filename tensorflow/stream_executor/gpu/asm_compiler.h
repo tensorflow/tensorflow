@@ -18,10 +18,17 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
+#include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
+#include "tensorflow/stream_executor/stream_executor_pimpl.h"
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_driver.h"
+#endif  // GOOGLE_CUDA
 
 namespace stream_executor {
 namespace gpu {
@@ -79,6 +86,38 @@ port::StatusOr<std::vector<uint8>> BundleGpuAsm(
 // single image.
 port::StatusOr<std::vector<uint8>> LinkGpuAsm(
     gpu::GpuContext* context, std::vector<CubinOrPTXImage> images);
+
+#if GOOGLE_CUDA
+// Maintains a cache of pointers to loaded kernels
+template <typename... Args>
+port::StatusOr<std::shared_ptr<TypedKernel<Args...>>> LoadKernelOrGetPtr(
+    StreamExecutor* executor, absl::string_view kernel_name,
+    absl::string_view ptx, absl::Span<const uint8> cubin_data) {
+  using KernelPtrCacheKey =
+      std::tuple<CUcontext, absl::string_view, absl::string_view>;
+
+  static tensorflow::mutex kernel_ptr_cache_mutex(
+      tensorflow::LINKER_INITIALIZED);
+  static auto& kernel_ptr_cache TF_GUARDED_BY(kernel_ptr_cache_mutex) =
+      *new absl::flat_hash_map<KernelPtrCacheKey,
+                               std::shared_ptr<TypedKernel<Args...>>>();
+  CUcontext current_context = cuda::CurrentContextOrDie();
+  KernelPtrCacheKey kernel_ptr_cache_key{current_context, kernel_name, ptx};
+  tensorflow::mutex_lock lock(kernel_ptr_cache_mutex);
+
+  auto it = kernel_ptr_cache.find(kernel_ptr_cache_key);
+  if (it == kernel_ptr_cache.end()) {
+    TF_ASSIGN_OR_RETURN(
+        std::shared_ptr<TypedKernel<Args...>> loaded,
+        executor->CreateTypedKernel<Args...>(kernel_name, ptx, cubin_data));
+    it =
+        kernel_ptr_cache.emplace(kernel_ptr_cache_key, std::move(loaded)).first;
+  }
+
+  CHECK(it != kernel_ptr_cache.end());
+  return it->second;
+}
+#endif  // GOOGLE_CUDA
 
 }  // namespace stream_executor
 

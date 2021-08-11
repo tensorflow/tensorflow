@@ -215,8 +215,9 @@ tf_cuda_library(
         ":worker_interface",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/lib:profiler_session",
+        "//tensorflow/core/profiler/lib:device_profiler_session",
     ],
 )
 
@@ -278,6 +279,7 @@ cc_library(
         ":worker_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_client",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
     ],
 )
@@ -614,6 +616,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/distributed_runtime:worker",
+        "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/kernels:collective_ops",
         "@com_google_absl//absl/container:flat_hash_map",
     ],

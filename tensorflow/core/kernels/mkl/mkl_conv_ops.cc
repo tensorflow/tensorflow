@@ -650,10 +650,12 @@ class MklConvOp : public OpKernel {
       auto src_tf_shape = GetTfShape(context, kInputIndex_Src, native_format);
       auto filter_tf_shape =
           GetTfShape(context, kInputIndex_Filter, native_format);
+      bool is_grouped_convolution = false;
       conv_utl.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &src_dims, &filter_dims, &strides,
           &dilations, &dst_dims_tf_order, &dst_dims_mkl_order, &padding_left,
-          &padding_right, (fuse_pad_ || pad_attr_enabled), is_depthwise);
+          &padding_right, &is_grouped_convolution,
+          (fuse_pad_ || pad_attr_enabled), is_depthwise);
 
       if (!context->status().ok()) return;
 
@@ -730,8 +732,9 @@ class MklConvOp : public OpKernel {
       // Although filter shape (filter_dims) required is in MKL-DNN order,
       // the layout is Tensorflow's layout (HWIO) and (HWIGO) for
       // depthwise/group convolutions.
-      auto filter_format = is_conv2d ? (is_depthwise ? memory::format_tag::hwigo
-                                                     : memory::format_tag::hwio)
+      auto filter_format = is_conv2d ? ((is_depthwise || is_grouped_convolution)
+                                            ? memory::format_tag::hwigo
+                                            : memory::format_tag::hwio)
                                      : memory::format_tag::dhwio;
 
       DCHECK(!filter_mkl_shape.IsMklTensor());

@@ -23,9 +23,11 @@ import time
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -39,6 +41,8 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -267,12 +271,27 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.batch(
           batch_size=6, num_parallel_calls=2,
           deterministic=local_determinism).unbatch()
-      opts = dataset_ops.Options()
-      opts.experimental_deterministic = global_determinism
+      opts = options_lib.Options()
+      opts.deterministic = global_determinism
       dataset = dataset.with_options(opts)
       return dataset
 
     self.checkDeterminism(dataset_fn, expect_determinism, elements)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testCheckpointLargeBatches(self):
+    if pywrap_sanitizers.is_tsan_enabled():
+      self.skipTest('Creating a large buffer causes OOM when using tsan.')
+    # Batches of size 512M
+    dataset = dataset_ops.Dataset.from_tensors(
+        array_ops.ones((64, 1024, 1024), dtype=dtypes.float32)).repeat()
+    dataset = dataset.batch(2, num_parallel_calls=5)
+    iterator = iter(dataset)
+    next(iterator)  # request an element to fill the buffer
+    ckpt = trackable_utils.Checkpoint(iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, self.get_temp_dir(), max_to_keep=1)
+    manager.save()
 
 
 class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
@@ -285,14 +304,16 @@ class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
     return dataset_ops.Dataset.from_tensor_slices(components).batch(batch_size)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     tensor_slice_len = 8
     batch_size = 2
     num_outputs = tensor_slice_len // batch_size
-    self.run_core_tests(
-        lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
-        num_outputs)
+    verify_fn(self,
+              lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
+              num_outputs)
 
   def _sparse(self, i):
     return sparse_tensor.SparseTensorValue(
@@ -301,16 +322,20 @@ class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   def _build_dataset_sparse(self, batch_size=5):
     return dataset_ops.Dataset.range(10).map(self._sparse).batch(batch_size)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSparseCore(self):
-    self.run_core_tests(self._build_dataset_sparse, 2)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testSparse(self, verify_fn):
+    verify_fn(self, self._build_dataset_sparse, num_outputs=2)
 
   def _build_dataset_nested_sparse(self):
     return dataset_ops.Dataset.range(10).map(self._sparse).batch(5).batch(2)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testNestedSparseCore(self):
-    self.run_core_tests(self._build_dataset_nested_sparse, 1)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testNestedSparse(self, verify_fn):
+    verify_fn(self, self._build_dataset_nested_sparse, num_outputs=1)
 
 
 if __name__ == '__main__':

@@ -180,6 +180,7 @@ class SingleOpModel {
 
   // Set a delegate that is applied right after graph is prepared. This is
   // useful for testing other runtimes like NN API or GPU.
+  // Note: the caller still owns the memory of the passed-in `delegate`.
   void SetDelegate(TfLiteDelegate* delegate) { delegate_ = delegate; }
 
   TfLiteStatus ApplyDelegate();
@@ -485,10 +486,8 @@ class SingleOpModel {
 
   // Build the interpreter for this model. Also, resize and allocate all
   // tensors given the shapes of the inputs.
-  // Note: 'apply_delegate' also serves to tell whether default TfLite delegates
-  // should be applied implicitly for a test case. For example, when testing the
-  // specific implementation of a TfLite delegate, it might be necessary to set
-  // this to false.
+  // Note, if `allocate_and_delegate` is `false`, then the value of
+  // `apply_delegate` is ignored.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         int num_threads, bool allow_fp32_relax_to_fp16,
                         bool apply_delegate, bool allocate_and_delegate = true);
@@ -864,7 +863,7 @@ class SingleOpModel {
   std::vector<int32_t> outputs_;
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
-  TfLiteDelegate* delegate_ = nullptr;
+  TfLiteDelegate* delegate_ = nullptr;  // not own the memory.
   int num_applied_delegates_ = 0;
 };
 

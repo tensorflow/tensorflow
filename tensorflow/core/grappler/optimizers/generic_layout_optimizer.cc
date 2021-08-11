@@ -459,12 +459,5 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
   return Status::OK();
 }
 
-void GenericLayoutOptimizer::Feedback(Cluster* cluster,
-                                      const GrapplerItem& item,
-                                      const GraphDef& optimize_output,
-                                      double result) {
-  // Takes no feedback.
-}
-
 }  // end namespace grappler
 }  // end namespace tensorflow

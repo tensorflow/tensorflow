@@ -182,11 +182,11 @@ const OpDef& Node::op_def() const { return *props_->op_def; }
 NodeDef* Node::mutable_def() { return &props_->node_def; }
 
 int32 Node::num_inputs() const { return props_->input_types.size(); }
-DataType Node::input_type(int32 i) const { return props_->input_types[i]; }
+DataType Node::input_type(int32_t i) const { return props_->input_types[i]; }
 const DataTypeVector& Node::input_types() const { return props_->input_types; }
 
 int32 Node::num_outputs() const { return props_->output_types.size(); }
-DataType Node::output_type(int32 o) const { return props_->output_types[o]; }
+DataType Node::output_type(int32_t o) const { return props_->output_types[o]; }
 const DataTypeVector& Node::output_types() const {
   return props_->output_types;
 }

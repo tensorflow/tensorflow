@@ -83,17 +83,18 @@ class Topology(object):
       self._device_coordinates = np.asarray(device_coordinates, np.int32)
       if len(self._mesh_shape) != 4 or any(self._mesh_shape < 1):
         raise ValueError("`mesh_shape` must be a sequence of 4 positive "
-                         "entries; got {}".format(self._mesh_shape))
+                         f"entries; got `mesh_shape={self._mesh_shape}`")
 
       if (len(self._device_coordinates.shape) != 3 or
           self._device_coordinates.shape[2] != len(self._mesh_shape)):
-        raise ValueError("`device_coordinates` must be a rank 3 int32 array "
-                         "with minor dimension equal to the mesh shape rank"
-                         "got {} {} {} mesh_shape={},len {}".format(
-                             self._device_coordinates.shape,
-                             len(self._device_coordinates.shape),
-                             self._device_coordinates.shape[2],
-                             self._mesh_shape, len(self._mesh_shape)))
+        raise ValueError(
+            "`device_coordinates` must be a rank 3 int32 array "
+            "with minor dimension equal to the `mesh_shape` rank"
+            "got device_coordinates={} len(device_coordinates)={} device_coordinates.shape[2]={} mesh_shape={}, len(mesh_shape)={}"
+            .format(self._device_coordinates.shape,
+                    len(self._device_coordinates.shape),
+                    self._device_coordinates.shape[2], self._mesh_shape,
+                    len(self._mesh_shape)))
 
     self._topology_tasks, self._topology_devices = self._invert_topology()
 
@@ -130,7 +131,9 @@ class Topology(object):
 
     coords = np.array(proto.device_coordinates, dtype=np.int32)
     if any(coords < 0):
-      raise ValueError("`device_coordinates` must be >= 0")
+      raise ValueError(
+          "All values in `device_coordinates` must be >= 0, got {}"
+          .format(coords))
     coords = coords.reshape((proto.num_tasks, proto.num_tpu_devices_per_task,
                              len(proto.mesh_shape)))
     self._device_coordinates = coords

@@ -54,7 +54,7 @@ dependencies {
     // Other dependencies
 
     // Import the Task Text Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.1.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.2.0'
 }
 ```
 
@@ -86,7 +86,7 @@ Add the TensorFlowLiteTaskText pod in Podfile
 ```
 target 'MySwiftAppWithTaskAPI' do
   use_frameworks!
-  pod 'TensorFlowLiteTaskText', '~> 0.0.1-nightly'
+  pod 'TensorFlowLiteTaskText', '~> 0.2.0'
 end
 ```
 
@@ -113,12 +113,9 @@ for more details.
 
 ```c++
 // Initialization
-std::unique_ptr<NLClassifier> classifier = NLClassifier::CreateFromFileAndOptions(
-    model_path,
-    {
-      .input_tensor_name=kInputTensorName,
-      .output_score_tensor_name=kOutputScoreTensorName,
-    }).value();
+NLClassifierOptions options;
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
+std::unique_ptr<NLClassifier> classifier = NLClassifier::CreateFromOptions(options).value();
 
 // Run inference
 std::vector<core::Category> categories = classifier->Classify(kInput);

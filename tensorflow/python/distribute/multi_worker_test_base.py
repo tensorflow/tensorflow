@@ -218,10 +218,14 @@ class MultiProcessCluster(object):
   This class is not thread-safe.
   """
 
-  def __init__(self, cluster_resolver):
+  def __init__(self,
+               cluster_resolver,
+               stream_output=False,
+               collective_leader=None):
     self._cluster_resolver = cluster_resolver
     self._cluster_spec = cluster_resolver.cluster_spec().as_dict()
     self._rpc_layer = cluster_resolver.rpc_layer
+    self._stream_output = stream_output
     self._start_events = {}
     self._finish_events = {}
     self._mpr_manager = multi_process_runner.manager()
@@ -233,14 +237,23 @@ class MultiProcessCluster(object):
       task_id = cluster_resolver.task_id
       rpc_layer = cluster_resolver.rpc_layer
 
-      logging.info(
-          'Starting server with cluster_spec = %r, task_type = %r, '
-          'task_id = %r, rpc_layer = %r', cluster_spec, task_type, task_id,
-          rpc_layer)
-
       # TODO(yuefengz): support GPU clusters.
       server_config = config_pb2.ConfigProto()
       server_config.device_count['GPU'] = 0
+
+      if collective_leader:
+        server_config.experimental.collective_group_leader = collective_leader
+        server_config.experimental.collective_nccl = False
+
+        logging.info(
+            'Enabling collective ops with cluster_spec = %r, task_type = %r, '
+            'task_id = %r, rpc_layer = %r, collective_leader = %s',
+            cluster_spec, task_type, task_id, rpc_layer, collective_leader)
+      else:
+        logging.info(
+            'Starting server with cluster_spec = %r, task_type = %r, '
+            'task_id = %r, rpc_layer = %r', cluster_spec, task_type, task_id,
+            rpc_layer)
 
       server_lib.Server(
           cluster_spec,
@@ -280,7 +293,7 @@ class MultiProcessCluster(object):
         self._cluster_spec,
         args=(self._start_events, self._finish_events),
         rpc_layer=self._rpc_layer,
-        stream_output=False,
+        stream_output=self._stream_output,
         return_output=False,
         use_dill_for_args=False)
     self._mpr.start()
@@ -348,7 +361,9 @@ def create_multi_process_cluster(num_workers,
                                  num_ps,
                                  has_chief=False,
                                  has_eval=False,
-                                 rpc_layer='grpc'):
+                                 rpc_layer='grpc',
+                                 stream_output=False,
+                                 collective_leader=None):
   cluster_spec = create_cluster_spec(
       has_chief=has_chief,
       num_workers=num_workers,
@@ -357,7 +372,9 @@ def create_multi_process_cluster(num_workers,
 
   cluster = MultiProcessCluster(
       SimpleClusterResolver(
-          server_lib.ClusterSpec(cluster_spec), rpc_layer=rpc_layer))
+          server_lib.ClusterSpec(cluster_spec), rpc_layer=rpc_layer),
+      stream_output=stream_output,
+      collective_leader=collective_leader)
   cluster.start()
   return cluster
 

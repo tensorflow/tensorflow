@@ -88,6 +88,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
@@ -1548,6 +1549,42 @@ def run_cuda_only(func=None):
   return decorator
 
 
+def run_gpu_or_tpu(func=None):
+  """Execute the decorated test only if a physical GPU or TPU is available.
+
+  This function is intended to be applied to tests that require the presence
+  of a physical GPU or TPU. It complies with the following rules:
+  - If a GPU is available, the test will run on the GPU.
+  - If a GPU is absent and a TPU is available, the test will run on the TPU.
+  - If both GPU and TPU are absent, the test will be skipped.
+
+  Args:
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+
+  Returns:
+    Returns a decorator that will conditionally skip the decorated test method.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError("`run_gpu_or_tpu` only supports test methods.")
+
+    def decorated(self, *args, **kwargs):
+      if config.list_physical_devices("GPU"):
+        return f(self, "GPU", *args, **kwargs)
+
+      if config.list_physical_devices("TPU"):
+        return f(self, "TPU", *args, **kwargs)
+
+      self.skipTest("Test requires GPU or TPU")
+
+    return decorated
+
+  return decorator if func is None else decorator(func)
+
+
 def with_forward_compatibility_horizons(*horizons):
   """Executes the decorated test with the specified forward-compat horizons.
 
@@ -2093,6 +2130,8 @@ class TensorFlowTestCase(googletest.TestCase):
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
+    # Make sure we get unfiltered stack traces during the test
+    traceback_utils.disable_traceback_filtering()
     if is_xla_enabled():
       pywrap_tf_session.TF_SetXlaAutoJitMode("2")
       pywrap_tf_session.TF_SetXlaMinClusterSize(1)
@@ -2870,7 +2909,7 @@ class TensorFlowTestCase(googletest.TestCase):
       AssertionError: If `a` and `b` are unexpectedly close at all elements.
     """
     try:
-      self.assertAllClose(a, b,  rtol=rtol, atol=atol, msg=msg)
+      self.assertAllClose(a, b, rtol=rtol, atol=atol, msg=msg)
     except AssertionError:
       return
     msg = msg or ""

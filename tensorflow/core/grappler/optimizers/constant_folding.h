@@ -33,7 +33,7 @@ namespace grappler {
 
 const char kConstantFoldingConst[] = "ConstantFolding";
 const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
-extern const int64 kMaxConstantSize;
+extern const int64_t kMaxConstantSize;
 
 // Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
@@ -60,9 +60,6 @@ class ConstantFolding : public GraphOptimizer {
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* output) override;
-
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimize_output, double result) override;
 
  private:
   bool ForwardInputs(NodeDef* node, absl::Span<const int> inputs_to_forward);

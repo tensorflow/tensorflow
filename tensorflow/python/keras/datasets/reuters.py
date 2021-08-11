@@ -111,7 +111,7 @@ def load_data(path='reuters.npz',
       origin=origin_folder + 'reuters.npz',
       file_hash=
       'd6586e694ee56d7a4e65172e12b3e987c03096cb01eab99753921ef915959916')
-  with np.load(path, allow_pickle=True) as f:
+  with np.load(path, allow_pickle=True) as f:  # pylint: disable=unexpected-keyword-arg
     xs, labels = f['x'], f['y']
 
   rng = np.random.RandomState(seed)
@@ -140,8 +140,8 @@ def load_data(path='reuters.npz',
     xs = [[w for w in x if skip_top <= w < num_words] for x in xs]
 
   idx = int(len(xs) * (1 - test_split))
-  x_train, y_train = np.array(xs[:idx]), np.array(labels[:idx])
-  x_test, y_test = np.array(xs[idx:]), np.array(labels[idx:])
+  x_train, y_train = np.array(xs[:idx], dtype='object'), np.array(labels[:idx])
+  x_test, y_test = np.array(xs[idx:], dtype='object'), np.array(labels[idx:])
 
   return (x_train, y_train), (x_test, y_test)
 

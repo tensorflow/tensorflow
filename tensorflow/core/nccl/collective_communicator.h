@@ -19,9 +19,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Creates a NcclCommunicator if built with NCCL support, otherwise it returns
-// nullptr.
-std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator();
+// Creates a NcclCommunicator if built with NCCL support (unless configured to
+// use no GPU devices), otherwise it returns nullptr.
+std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator(
+    const ConfigProto& config);
 
 }  // namespace tensorflow
 

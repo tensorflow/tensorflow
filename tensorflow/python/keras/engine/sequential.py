@@ -113,7 +113,6 @@ class Sequential(functional.Functional):
     # Skip the init in FunctionalModel since model doesn't have input/output yet
     super(functional.Functional, self).__init__(  # pylint: disable=bad-super-call
         name=name, autocast=False)
-    base_layer.keras_api_gauge.get_cell('Sequential').set(True)
     self.supports_masking = True
     self._compute_output_and_mask_jointly = True
     self._auto_track_sub_layers = False
@@ -410,7 +409,7 @@ class Sequential(functional.Functional):
     # TODO(omalleyt): b/123540974 This function is not really safe to call
     # by itself because it will duplicate any updates and losses in graph
     # mode by `call`ing the Layers again.
-    outputs = self.call(inputs, mask=mask)
+    outputs = self.call(inputs, mask=mask)  # pylint: disable=unexpected-keyword-arg
     return getattr(outputs, '_keras_mask', None)
 
   def predict_proba(self, x, batch_size=32, verbose=0):

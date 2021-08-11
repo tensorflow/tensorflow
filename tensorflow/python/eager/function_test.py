@@ -155,6 +155,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(sq.numpy().reshape(-1), [10, 14, 14, 20])
     self.assertAllEqual(sq2.numpy().reshape(-1), [52, 76, 74, 108])
 
+  def testPythonFunctionNotCallable(self):
+    with self.assertRaisesRegex(TypeError, 'is not a callable object'):
+      def_function.function(1)
+
   def testOnExitCallback(self):
     values = []
     def append_1():
@@ -663,7 +667,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    with self.assertRaisesRegex(ValueError, r'Got type: set'):
+    with self.assertRaisesRegex(ValueError, r'got.*set'):
       f(set([]))
 
   def testFuncName(self):
@@ -1132,12 +1136,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testTensorInitializationInFunctionRaisesError(self):
-    error_msg = ('Tensor-typed variable initializers must either be '
-                 'wrapped in an init_scope or callable.*')
 
     @def_function.function
     def tensor_init():
-      with self.assertRaisesRegex(ValueError, error_msg):
+      with self.assertRaisesRegex(ValueError, 'could not be lifted out'):
         resource_variable_ops.ResourceVariable(constant_op.constant(2.0))
 
     tensor_init()
@@ -2041,16 +2043,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined = function.defun(func)
     defined(0, baz=20)
-
-    def cache_keys():
-      """Sanitizes cache keys of non-input metadata."""
-      return tuple(key[0] for key in total_function_cache(defined))
-
-    # `True` corresponds to the fact that we're executing eagerly
-    self.assertIn(('UURRRuDu', (0, 1, 20)), cache_keys())
+    self.assertLen(total_function_cache(defined), 1)
 
     defined(1)  # bar=1, baz=2
-    self.assertIn(('UURRRuDu', (1, 1, 2)), cache_keys())
+    self.assertLen(total_function_cache(defined), 2)
 
     # This matches the previous call.
     defined(foo=1)
@@ -2058,7 +2054,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined(1, 2, 3)
     self.assertLen(total_function_cache(defined), 3)
-    self.assertIn(('UURRRuDu', (1, 2, 3)), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
@@ -2067,6 +2062,29 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # This matches the previous call.
     defined(1, baz=3, bar=2)
     self.assertLen(total_function_cache(defined), 3)
+
+  def testDatasetIteratorCaching(self):
+    def func(it1, it2):
+      next(it1)
+      next(it2)
+      return 0
+
+    defined = function.defun(func)
+
+    d = dataset_ops.DatasetV2.from_tensor_slices([1, 2, 3])
+    it1 = iter(d)
+    it2 = iter(d)
+    _ = defined(it1, it2)  # The two iterators are different
+    self.assertLen(total_function_cache(defined), 1)
+
+    it3 = iter(d)
+    it4 = iter(d)
+    _ = defined(it3, it4)  # The two iterators are different, should not retrace
+    self.assertLen(total_function_cache(defined), 1)
+
+    it5 = iter(d)
+    _ = defined(it5, it5)  # The two iterators are the same, should retrace
+    self.assertLen(total_function_cache(defined), 2)
 
   def testFunctoolsPartialUnwrappedCorrectly(self):
 
@@ -2250,7 +2268,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # Signatures must consist exclusively of `TensorSpec` objects.
     signature = [(2, 3), tensor_spec.TensorSpec([2, 3], dtypes.float32)]
-    with self.assertRaisesRegex(TypeError, 'Invalid input_signature.*'):
+    with self.assertRaisesRegex(TypeError, 'input_signature.*nested sequence'):
       def_function.function(foo, input_signature=signature)
 
     # Signatures must be either lists or tuples on their outermost levels.
@@ -2277,9 +2295,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
-    with self.assertRaisesRegex(
-        TypeError, r'takes 1 positional arguments \(as specified by the '
-        r'input_signature\) but 2 were given'):
+    with self.assertRaisesRegex(TypeError, 'specifies 1 .* got 2'):
       defined(array_ops.ones([2]), array_ops.ones([2]))
     with self.assertRaisesRegex(ValueError,
                                 'Structure of Python function inputs.*'):
@@ -2289,6 +2305,27 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                                 'inputs incompatible with input_signature'):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
+
+  def testMismatchedConcreteSignatureRaisesError(self):
+
+    @def_function.function
+    def run_test():
+      @def_function.function
+      def f(x):
+        return x
+
+      with self.assertRaisesRegex(
+          TypeError, 'ConcreteFunction .* was constructed .* but was called'):
+        f.get_concrete_function(1)(constant_op.constant(1))
+
+      with self.assertRaisesRegex(TypeError, r'f\(x\) expected .* but got .*'):
+        f.get_concrete_function(constant_op.constant(1))(1)
+
+      with self.assertRaisesRegex(
+          TypeError, 'ConcreteFunction .* was constructed .* but was called'):
+        f.get_concrete_function(1)(2)
+
+    run_test()
 
   def testInputsIncompatibleWithNestedSignatureRaisesError(self):
 
@@ -2619,7 +2656,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def add(x, y):
       return math_ops.add(x, y)
 
-    with self.assertRaisesRegex(ValueError, '.*Unsupported attribute type.*'):
+    with self.assertRaisesRegex(ValueError,
+                                'Attribute experimental_1 must be .* Got .*'):
       with context.graph_mode(), self.cached_session():
         with ops.get_default_graph().as_default():
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
@@ -3745,7 +3783,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           testcase_name='ExtraPositionalArg',
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2, 3),
-          error=r'func\(x, y\) takes 2 positional arguments but 3 were given'),
+          error=r'func\(x, y\) takes 2 .* got 3'),
       dict(
           testcase_name='MissingKeywordOnlyArg',
           conc_args=lambda: (1, 2),
@@ -3820,7 +3858,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2),
           call_kwargs=lambda: {'x': 3},
-          error=r"func\(x, y\) got two values for argument 'x'"),
+          error=r"func\(x, y\) got two values for 'x'"),
   ])
   # pylint: enable=g-long-lambda
   @test_util.run_in_graph_and_eager_modes
@@ -3874,13 +3912,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
               'x': constant_op.constant(1),
               'y': constant_op.constant(1)
           },
-          error=r"func\(x, y\) got two values for argument 'x'"),
+          error=r"func\(x, y\) got two values for 'x'"),
       dict(
           testcase_name='ExtraPositionalArg',
           conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
           call_args=lambda: (constant_op.constant(1), constant_op.constant(2),
                              constant_op.constant(3)),
-          error=r'func\(x, y\) takes 2 positional arguments but 3 were given'),
+          error=r'func\(x, y\) takes 2 .* got 3'),
       dict(
           testcase_name='UnexpectedKeywordArg',
           conc_args=lambda: (constant_op.constant(1),),
@@ -4473,7 +4511,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           return x + y
 
     foo = Foo()
-    with self.assertRaisesRegex(TypeError, 'got two values for argument'):
+    with self.assertRaisesRegex(TypeError, 'got two values'):
       foo.add1(2, x=3)  # pylint: disable=redundant-keyword-arg,no-value-for-parameter
 
   def testWithExtraWrapperMissingArgs(self):
@@ -5187,6 +5225,16 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       lazy_capture()
 
+  def testFunctoolsLruCache(self):
+    self.skipTest(
+        "b/194845243: inspect.getfullargspec doesn't unwrap Python decorators.")
+
+    @def_function.function
+    @functools.lru_cache(maxsize=2)
+    def f(a):
+      return 2 * a
+
+    self.assertAllEqual(f(1), array_ops.constant(2))
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

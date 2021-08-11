@@ -157,6 +157,12 @@ class RaggedTensorToVariantOp : public OpKernel {
       return;
     }
 
+    // Checked here instead of at input in case batched_input_ is false
+    OP_REQUIRES(context, ragged_nested_splits_len > 0,
+                errors::InvalidArgument(
+                    "rt_nested_splits must be a list of one or more, but "
+                    "received rt_nested_splits of length 0."));
+
     // Unbatch the Ragged Tensor and encode the components.
     std::vector<RaggedTensorVariant> unbatched_ragged_input;
     auto batched_splits_top_vec =
@@ -260,7 +266,7 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
 
 #define REGISTER_KERNELS(value_type)                  \
   REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, int32) \
-  REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, int64)
+  REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, int64_t)
 TF_CALL_POD_TYPES(REGISTER_KERNELS);
 TF_CALL_tstring(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);

@@ -72,12 +72,14 @@ HloComputation::HloComputation(
       unique_id_(-1),
       root_instruction_(root_instruction),
       fusion_instruction_(fusion_instruction),
-      is_fusion_computation_(fusion_instruction != nullptr) {
+      is_fusion_computation_(fusion_instruction != nullptr),
+      custom_call_instruction_(nullptr),
+      is_custom_call_computation_(false) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
     if (instruction->opcode() == HloOpcode::kParameter) {
-      int64 param_no = instruction->parameter_number();
+      int64_t param_no = instruction->parameter_number();
       CHECK(param_no >= 0 && param_no < parameter_count)
           << "\nERROR: invalid parameter number.  Expected [0, "
           << parameter_count << "), got " << param_no;
@@ -155,7 +157,7 @@ HloInstruction* HloComputation::AddEntryComputationParameter(
 }
 
 Status HloComputation::ReplaceEntryComputationParameter(
-    int64 param_no, HloInstruction* old_instruction,
+    int64_t param_no, HloInstruction* old_instruction,
     std::unique_ptr<HloInstruction> instruction) {
   CHECK_GE(param_no, 0);
   CHECK_LT(param_no, param_instructions_.size());
@@ -174,7 +176,7 @@ Status HloComputation::ReplaceEntryComputationParameter(
   return ForceRemoveInstruction(old_instruction);
 }
 
-Status HloComputation::RemoveParameter(int64 param_no) {
+Status HloComputation::RemoveParameter(int64_t param_no) {
   CHECK_GE(param_no, 0);
   CHECK_LT(param_no, param_instructions_.size());
   CHECK(IsFusionComputation());
@@ -208,8 +210,8 @@ Status HloComputation::RemoveUnusedParametersFromAnyComputation() {
 
 Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
   CHECK(allow_non_fusion || IsFusionComputation());
-  int64 removed = 0;
-  for (int64 i = 0; i < param_instructions_.size(); ++i) {
+  int64_t removed = 0;
+  for (int64_t i = 0; i < param_instructions_.size(); ++i) {
     HloInstruction* param_instruction = param_instructions_[i];
     if (param_instruction->user_count() == 0 &&
         param_instruction != root_instruction()) {
@@ -220,7 +222,7 @@ Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
     }
 
     if (removed > 0) {
-      const int64 param_no = i - removed;
+      const int64_t param_no = i - removed;
       HloInstruction* new_instr = AddInstructionInternal(
           HloInstruction::CreateParameter(param_no, param_instruction->shape(),
                                           StrCat("param_", param_no)));
@@ -416,11 +418,13 @@ void HloComputation::ComputeInstructionPostOrder(
     visited->insert({current, kVisiting});
 
     const auto get_channel_id =
-        [](HloInstruction* inst) -> absl::optional<int64> {
+        [](HloInstruction* inst) -> absl::optional<int64_t> {
       switch (inst->opcode()) {
         case HloOpcode::kRecvDone:
-          return inst->channel_id();
         case HloOpcode::kAllReduce:
+        case HloOpcode::kAllGather:
+        case HloOpcode::kAllToAll:
+        case HloOpcode::kReduceScatter:
           return inst->channel_id();
         default:
           return absl::nullopt;
@@ -446,7 +450,7 @@ void HloComputation::ComputeInstructionPostOrder(
       // processed first. This will produce a more natural ordering and a nicer
       // result for things like HLO stringification.
       const auto& operands = inst->operands();
-      for (int64 i = operands.size() - 1; i >= 0; --i) {
+      for (int64_t i = operands.size() - 1; i >= 0; --i) {
         add_dfs_stack(operands[i]);
       }
 
@@ -472,11 +476,19 @@ void HloComputation::ComputeInstructionPostOrder(
 HloComputation::ChannelDependencyGroup
 HloComputation::ComputeChannelDependencies() const {
   ChannelDependencyGroup channel_dependency_group;
+  if (parent() && parent()->config().has_static_device_assignment() &&
+      (parent()->config().static_device_assignment().computation_count() == 1 ||
+       parent()->config().use_spmd_partitioning())) {
+    return channel_dependency_group;
+  }
   for (const auto& instruction : instructions_) {
     switch (instruction->opcode()) {
       case HloOpcode::kSend:
       case HloOpcode::kRecvDone:
-      case HloOpcode::kAllReduce: {
+      case HloOpcode::kAllReduce:
+      case HloOpcode::kAllGather:
+      case HloOpcode::kAllToAll:
+      case HloOpcode::kReduceScatter: {
         auto channel_id = instruction->channel_id();
         if (channel_id) {
           channel_dependency_group[channel_id.value()].push_back(
@@ -670,12 +682,12 @@ HloComputationProto HloComputation::ToProto() const {
 /* static */ StatusOr<std::unique_ptr<HloComputation>>
 HloComputation::CreateFromProto(
     const HloComputationProto& proto,
-    const absl::flat_hash_map<int64, HloComputation*>& computation_map,
+    const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
     bool prohibit_empty_literal) {
-  absl::flat_hash_map<int64, HloInstruction*> instruction_map;
-  absl::flat_hash_map<HloInstruction*, int64> to_proto_id;
+  absl::flat_hash_map<int64_t, HloInstruction*> instruction_map;
+  absl::flat_hash_map<HloInstruction*, int64_t> to_proto_id;
   std::vector<std::unique_ptr<HloInstruction>> instructions;
-  int64 parameter_count = 0;
+  int64_t parameter_count = 0;
   for (const HloInstructionProto& instruction_proto : proto.instructions()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloInstruction> instruction,
                         HloInstruction::CreateFromProto(
@@ -705,7 +717,7 @@ HloComputation::CreateFromProto(
     int parameters_seen_count = 0;
     for (auto& instruction : instructions) {
       if (instruction->opcode() == HloOpcode::kParameter) {
-        int64 param_no = instruction->parameter_number();
+        int64_t param_no = instruction->parameter_number();
         TF_RET_CHECK(param_no >= 0 && param_no < parameter_count)
             << "Invalid parameter number.  Expected [0, " << parameter_count
             << "), got " << param_no;
@@ -765,7 +777,7 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
                         HloComputation* computation)>& copy_leaf) {
   if (instruction->shape().IsTuple()) {
     std::vector<HloInstruction*> elements;
-    for (int64 i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
+    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
          i++) {
       HloInstruction* gte =
           AddInstruction(HloInstruction::CreateGetTupleElement(

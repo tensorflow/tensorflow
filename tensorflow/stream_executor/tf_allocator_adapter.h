@@ -39,9 +39,9 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
 
   ~TfAllocatorAdapter() override;
 
-  port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+  port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
                                               bool retry_on_failure,
-                                              int64 memory_space) override;
+                                              int64_t memory_space) override;
 
   port::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override;
 
@@ -78,9 +78,9 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
     }
   }
 
-  port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+  port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
                                               bool retry_on_failure,
-                                              int64 memory_space) override {
+                                              int64_t memory_space) override {
     CHECK_LT(device_ordinal, per_device_allocators_.size());
     return per_device_allocators_[device_ordinal].Allocate(
         device_ordinal, size, retry_on_failure, memory_space);

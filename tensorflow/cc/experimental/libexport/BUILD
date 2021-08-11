@@ -7,19 +7,11 @@ load(
 package(
     default_visibility =
         [
+            "//tensorflow/cc/experimental/libtf:__subpackages__",
             "//tensorflow/cc/saved_model:__subpackages__",
             "//tensorflow/python/saved_model:__subpackages__",
         ],
     licenses = ["notice"],
-)
-
-cc_library(
-    name = "constants",
-    srcs = ["constants.cc"],
-    hdrs = ["constants.h"],
-    deps = [
-        "//tensorflow/core/platform:macros",
-    ],
 )
 
 cc_library(
@@ -46,22 +38,29 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "metrics",
-    srcs = ["metrics.cc"],
-    hdrs = ["metrics.h"],
+    name = "load",
+    srcs = ["load.cc"],
+    hdrs = ["load.h"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/cc/saved_model:constants",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:statusor",
     ],
 )
 
 tf_cc_test(
-    name = "metrics_test",
+    name = "load_test",
     size = "small",
-    srcs = ["metrics_test.cc"],
+    srcs = ["load_test.cc"],
     deps = [
-        ":metrics",
+        ":load",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
     ],
 )

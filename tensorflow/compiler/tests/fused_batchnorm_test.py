@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.compiler.tests import test_utils
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
@@ -217,6 +218,12 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(*DATA_FORMATS)
   def testGradientTraining(self, data_format):
+    # disable_mlir_bridge for GPUs as there is no legalization for GPU with
+    # MLIR.
+    # TODO(b/189039456): Customize FusedBatchNorm legalization for GPU in MLIR.
+    if test_util.is_mlir_bridge_enabled() and self.device == "XLA_GPU":
+      self.skipTest("b/189039456")
+
     # TODO(b/64270657): Use gradient_checker here in addition to comparing with
     # this reference implementation.
     channel = 3

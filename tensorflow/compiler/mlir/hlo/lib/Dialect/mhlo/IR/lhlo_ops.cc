@@ -33,6 +33,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"
+#include "mlir-hlo/utils/lhlo_utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
@@ -86,46 +87,6 @@ static LogicalResult Verify(AbsOp op) {
 // AllToAllOp
 //===----------------------------------------------------------------------===//
 
-// Verifies replica groups attached to collective communication operations.
-// If the attribute is not empty, it must be a rank 2 tensor, and each replica
-// should appear exactly once. If `is_uniform_sized` is true, then we also check
-// that each group is of the same size. If the operation has
-// `use_global_device_id` set, then replica group cannot be empty.
-template <typename OpT>
-LogicalResult VerifyReplicaGroups(OpT op, bool is_uniform_sized) {
-  DenseIntElementsAttr attr = op.replica_groups();
-  auto replica_group_type = attr.getType().dyn_cast<RankedTensorType>();
-  if (!replica_group_type || replica_group_type.getRank() != 2 ||
-      !replica_group_type.getElementType().isInteger(/*width=*/64))
-    return op.emitOpError(
-        "replica groups should be a rank 2 tensor of 64 bit integers");
-
-  if (replica_group_type.getShape().equals(ArrayRef<int64_t>{0, 0}))
-    return success();
-
-  int64_t max_replica_id_seen = 0;
-  llvm::SmallSet<int64_t, 8> replica_seen;
-  for (int64_t id : attr.getValues<int64_t>()) {
-    if (is_uniform_sized && id == -1) {
-      return op.emitOpError("Invalid replica id -1");
-    }
-    if (id != -1) {
-      if (!replica_seen.insert(id).second) {
-        return op.emitOpError("replica id #") << id << " seen more than once";
-      }
-      max_replica_id_seen = std::max(max_replica_id_seen, id);
-    }
-  }
-
-  for (int64_t id = 0; id <= max_replica_id_seen; id++) {
-    if (!replica_seen.contains(id)) {
-      return op.emitOpError("replica id #")
-             << id << " not seen in replica groups";
-    }
-  }
-  return success();
-}
-
 // TODO(jurahul): Add verification for output shape.
 static LogicalResult Verify(AllGatherOp op) {
   return VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
@@ -140,22 +101,20 @@ static LogicalResult Verify(AllToAllOp op) {
 // AllReduceOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(AllReduceOp op) {
-  if (failed(VerifyReplicaGroups(op, /*is_uniform_sized=*/false)))
-    return failure();
+static LogicalResult Verify(AllReduceOp op) { return VerifyAllReduce(op); }
 
-  // AllReduce has variadic operands and results that have the same size.
-  // Each member of the operand should have the same type as the corresponding
-  // member of the result.
-  for (auto it : llvm::enumerate(
-           llvm::zip(op.operands().getTypes(), op.results().getTypes()))) {
-    Type operandType = std::get<0>(it.value());
-    Type resultType = std::get<1>(it.value());
-    if (operandType != resultType)
-      return op.emitOpError("requires operand #")
-             << it.index() << " (type: " << operandType << ") and result #"
-             << it.index() << " (type: " << resultType << ") to have same type";
-  }
+//===----------------------------------------------------------------------===//
+// ReduceScatterOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(ReduceScatterOp op) {
+  if (failed(VerifyReplicaGroups(op, /*is_uniform_sized=*/true)))
+    return failure();
+  if (failed(mlir::hlo::VerifyReduceScatter(
+          op, /*operand_types=*/op.operands().getTypes(),
+          /*result_types=*/op.results().getTypes(),
+          /*scatter_dimension=*/op.scatter_dimension())))
+    return failure();
   return success();
 }
 

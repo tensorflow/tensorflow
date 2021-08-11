@@ -23,6 +23,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstdlib>
 
+#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
+#include "tensorflow/lite/nnapi/sl/public/NeuralNetworksSupportLibraryImpl.h"
+
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
 #endif  // __ANDROID__
@@ -113,6 +116,34 @@ uint32_t CalculateAndroidSdkVersion(NnApi const& nnapi) {
   }
   return sdk_version;
 }
+#else
+
+ASharedMemory_create_fn getASharedMemory_create() {
+  // ASharedMemory_create has different implementations in Android depending on
+  // the partition. Generally it can be loaded from libandroid.so but in vendor
+  // partition (e.g. if a HAL wants to use NNAPI) it is only accessible through
+  // libcutils.
+  void* libandroid = nullptr;
+  libandroid = dlopen("libandroid.so", RTLD_LAZY | RTLD_LOCAL);
+  if (libandroid != nullptr) {
+    return reinterpret_cast<ASharedMemory_create_fn>(
+        LoadFunction(libandroid, "ASharedMemory_create", false));
+  }
+
+  std::string libandroid_error = dlerror();
+  void* cutils_handle = dlopen("libcutils.so", RTLD_LAZY | RTLD_LOCAL);
+  if (cutils_handle != nullptr) {
+    return reinterpret_cast<ASharedMemory_create_fn>(
+        LoadFunction(cutils_handle, "ashmem_create_region", false));
+  }
+
+  NNAPI_LOG(
+      "nnapi error: unable to open both library %s (%s) and library %s "
+      "(%s)",
+      "libandroid.so", libandroid_error.c_str(), "libcutils.so", dlerror());
+  return nullptr;
+}
+
 #endif  // __ANDROID__
 
 #define LOAD_FUNCTION(handle, name)         \
@@ -194,25 +225,8 @@ const NnApi LoadNnApi() {
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksEvent_wait);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksEvent_free);
 
-  // ASharedMemory_create has different implementations in Android depending on
-  // the partition. Generally it can be loaded from libandroid.so but in vendor
-  // partition (e.g. if a HAL wants to use NNAPI) it is only accessible through
-  // libcutils.
 #ifdef __ANDROID__
-  void* libandroid = nullptr;
-  libandroid = dlopen("libandroid.so", RTLD_LAZY | RTLD_LOCAL);
-  if (libandroid != nullptr) {
-    LOAD_FUNCTION(libandroid, ASharedMemory_create);
-  } else {
-    void* cutils_handle = dlopen("libcutils.so", RTLD_LAZY | RTLD_LOCAL);
-    if (cutils_handle != nullptr) {
-      LOAD_FUNCTION_RENAME(cutils_handle, ASharedMemory_create,
-                           "ashmem_create_region");
-    } else {
-      NNAPI_LOG("nnapi error: unable to open neither libraries %s and %s",
-                "libandroid.so", "libcutils.so");
-    }
-  }
+  nnapi.ASharedMemory_create = getASharedMemory_create();
 #else
   // Mock ASharedMemory_create only if libneuralnetworks.so was successfully
   // loaded. This ensures identical behaviour on platforms which use this
@@ -320,6 +334,116 @@ const NnApi LoadNnApi() {
 }
 
 }  // namespace
+
+std::unique_ptr<const NnApi> CreateNnApiFromSupportLibrary(
+    const NnApiSLDriverImplFL5* nnapi_support_library_driver) {
+  auto nnapi = std::make_unique<NnApi>();
+  nnapi->nnapi_exists = true;
+  nnapi->android_sdk_version = ANEURALNETWORKS_FEATURE_LEVEL_5;
+  nnapi->nnapi_runtime_feature_level =
+      nnapi_support_library_driver->base.implFeatureLevel;
+
+#define ASSIGN_SL_FUNCTION_TO_NNAPI(name) \
+  nnapi->name = nnapi_support_library_driver->name;
+
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemory_createFromFd);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemory_free);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_create);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_free);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_finish);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_addOperand);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_setOperandValue);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      ANeuralNetworksModel_setOperandSymmPerChannelQuantParams);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_setOperandValueFromMemory);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_addOperation);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_identifyInputsAndOutputs);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      ANeuralNetworksModel_relaxComputationFloat32toFloat16);
+  // ANeuralNetworksCompilation_create is not available in the support library
+  // because its clients are expected to know which accelerator they want to
+  // use. ANeuralNetworksCompilation_createForDevices is available to create
+  // compilation for specified devices.
+  nnapi->ANeuralNetworksCompilation_create = nullptr;
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksCompilation_free);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksCompilation_setPreference);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksCompilation_finish);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_create);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_free);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setInput);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setInputFromMemory);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setOutput);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setOutputFromMemory);
+  // Support library doesn't support regular asynchronous execution.
+  nnapi->ANeuralNetworksExecution_startCompute = nullptr;
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksEvent_wait);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksEvent_free);
+
+#ifdef __ANDROID__
+  nnapi->ASharedMemory_create = getASharedMemory_create();
+#else
+  nnapi->ASharedMemory_create = ASharedMemory_create;
+#endif  // __ANDROID__
+
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworks_getDeviceCount);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworks_getDevice);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksDevice_getName);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksDevice_getVersion);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksDevice_getFeatureLevel);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksDevice_getType);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      ANeuralNetworksModel_getSupportedOperationsForDevices);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksCompilation_createForDevices);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksCompilation_setCaching);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksCompilation_setTimeout);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksCompilation_setPriority);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_compute);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setTimeout);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setLoopTimeout);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_getOutputOperandRank);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      ANeuralNetworksExecution_getOutputOperandDimensions);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksBurst_create);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksBurst_free);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_burstCompute);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemory_createFromAHardwareBuffer);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setMeasureTiming);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_getDuration);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksDevice_getExtensionSupport);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_getExtensionOperandType);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_getExtensionOperationType);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_setOperandExtensionData);
+
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemoryDesc_create);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemoryDesc_free);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemoryDesc_addInputRole);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemoryDesc_addOutputRole);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemoryDesc_setDimensions);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemoryDesc_finish);
+
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemory_createFromDesc);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemory_copy);
+
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksEvent_createFromSyncFenceFd);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksEvent_getSyncFenceFd);
+
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      ANeuralNetworksExecution_startComputeWithDependencies);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      ANeuralNetworksExecution_enableInputAndOutputPadding);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setReusable);
+
+  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworks_getRuntimeFeatureLevel);
+
+  // There are several functions that are defined in the SL but are not yet used
+  // in the delegate:
+  //   * ANeuralNetworksDevice_wait
+  //   * ANeuralNetworksModel_setOperandValueFromModel
+  //   * ANeuralNetworks_getDefaultLoopTimeout
+  //   * ANeuralNetworks_getMaximumLoopTimeout
+
+  return nnapi;
+}
 
 const NnApi* NnApiImplementation() {
   static const NnApi nnapi = LoadNnApi();

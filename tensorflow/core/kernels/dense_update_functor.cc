@@ -36,7 +36,7 @@ struct DenseUpdate<CPUDevice, string, ASSIGN> {
                   typename TTypes<tstring>::ConstFlat update) {
     if (params.dimension(0) == 1) {
       params.data()->resize(update.data()->size());
-      auto work = [&params, &update](int64 start, int64 end) {
+      auto work = [&params, &update](int64_t start, int64_t end) {
         memmove(const_cast<char*>(params.data()->data()) + start,
                 update.data()->data() + start, end - start);
       };
@@ -45,14 +45,14 @@ struct DenseUpdate<CPUDevice, string, ASSIGN> {
                                         .1, 0),
                     work);
     } else {
-      auto work = [&params, &update](int64 start, int64 end) {
+      auto work = [&params, &update](int64_t start, int64_t end) {
         for (int i = start; i < end; ++i) {
           params.data()[i].resize(update.data()[i].size());
           memmove(const_cast<char*>(params.data()[i].data()),
                   update.data()[i].data(), update.data()[i].size());
         }
       };
-      int64 estimated_string_size;
+      int64_t estimated_string_size;
       if (update.size() > 0) {
         // first element of the tensor seems as good a guess as any of the sizes
         // of the strings contained within...

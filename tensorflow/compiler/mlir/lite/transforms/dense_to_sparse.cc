@@ -39,11 +39,11 @@ const float kBlockOverRandomSparsityRatio = 0.9;
 
 Eigen::half APFloatToEigenHalf(const APFloat& val) {
   uint16_t raw_data = val.bitcastToAPInt().getZExtValue();
-  return Eigen::half_impl::raw_uint16_to_half(raw_data);
+  return Eigen::numext::bit_cast<Eigen::half>(raw_data);
 }
 
 APFloat EigenHalfToAPFloat(const Eigen::half& val) {
-  uint16_t raw_data = val.x;
+  uint16_t raw_data = Eigen::numext::bit_cast<uint16_t>(val);
   return APFloat(APFloat::IEEEhalf(), APInt(16, raw_data));
 }
 
@@ -285,6 +285,16 @@ std::vector<T> BuildSparsityParameterAttribute(
 //          sparsity, and add Densify() op to fall back to dense execution.
 struct DenseToSparse : public PassWrapper<DenseToSparse, FunctionPass> {
   void runOnFunction() override;
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-dense-to-sparse";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Convert dense tensor to sparse format.";
+  }
 };
 
 void DenseToSparse::runOnFunction() {
@@ -423,8 +433,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDenseToSparsePass() {
   return absl::make_unique<DenseToSparse>();
 }
 
-static PassRegistration<DenseToSparse> pass(
-    "tfl-dense-to-sparse", "Convert dense tensor to sparse format.");
+static PassRegistration<DenseToSparse> pass;
 
 }  // namespace TFL
 }  // namespace mlir

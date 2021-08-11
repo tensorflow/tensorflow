@@ -16,6 +16,7 @@ limitations under the License.
 // This is the legalization pattern definition file for TF to XLA.
 
 include "mlir/IR/OpBase.td"
+include "mlir/Dialect/Shape/IR/ShapeOps.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "mlir/Dialect/Tensor/IR/TensorOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
@@ -23,6 +24,7 @@ include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.
 include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
 def SignedIntTensor : TensorOf<[I1, I8, I16, I32, I64]>;
+def UnsignedIntTensor : TensorOf<[UI8, UI16, UI32, UI64]>;
 
 // IEEE compliant floating point tensors.
 def IEEEFloatTensor : TensorOf<[F16, F32, F64]>;
@@ -31,8 +33,6 @@ def IEEEFloatTensor : TensorOf<[F16, F32, F64]>;
 // BatchNorm op patterns.
 //===----------------------------------------------------------------------===//
 
-def FeatureDimension : NativeCodeCall<
-    "getFeatureDimensionAttr($_builder, $0.getValue(), $1)">;
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
 
@@ -55,21 +55,6 @@ def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
 def CastElementsToI64Elements : NativeCodeCall<
   "hlo::ConvertElementsAttr("
     "$0.cast<ElementsAttr>(), $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
-
-def : Pattern<
-    (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
-                         $exponential_avg_factor, $data_format,
-                         FalseBoolAttr:$is_training),
-    [(HLO_BatchNormInferenceOp $x, $scale, $offset, $mean, $variance,
-                               $epsilon, (FeatureDimension $data_format, $x)),
-     // We already guaranteed that the last four results has no use so it
-     // does not matter what value we provide here for replacement.
-     /*batch_mean=*/(replaceWithValue $x),
-     /*batch_variance=*/(replaceWithValue $x),
-     /*reserve_space_1=*/(replaceWithValue $x),
-     /*reserve_space_2=*/(replaceWithValue $x)],
-    [(HasNoUseOf:$root__1), (HasNoUseOf:$root__2),
-     (HasNoUseOf:$root__3), (HasNoUseOf:$root__4)]>;
 
 //===----------------------------------------------------------------------===//
 // Assert op pattern.
@@ -111,8 +96,11 @@ def LowerRightShiftSigned :
        (BinBroadcastDimensions $l, $r)),
       [(SignedIntTensor $r)]>;
 
-// TODO(hinsu): Lower unsigned types to HLO_ShiftRightLogical once the HLO op
-// supports unsigned integers.
+def LowerRightShiftUnsigned :
+  Pat<(TF_RightShiftOp AnyTensor:$l, AnyTensor:$r),
+      (HLOClient_BroadcastShiftRightLogicalOp $l, $r,
+       (BinBroadcastDimensions $l, $r)),
+      [(UnsignedIntTensor $r)]>;
 
 // Performs a substitution of FloorDiv, pseudo code below:
 //
@@ -213,7 +201,7 @@ def : Pat<(TF_RiscDotOp $a, $b, $transpose_a, $transpose_b),
 class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
   : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r)),
-        [(SignedIntTensor $l)]>;
+        [(AnyTypeOf<[SignedIntTensor, UnsignedIntTensor]> $l)]>;
 
 foreach fromToBinPair = [[TF_LogicalAndOp, HLOClient_BroadcastAndOp],
                          [TF_LogicalOrOp, HLOClient_BroadcastOrOp],
@@ -357,7 +345,7 @@ def : Pat<(TF_PadV2Op $input, (ConstantLikeMatcher ElementsAttr:$padding), $c),
 // Identity op patterns.
 //===----------------------------------------------------------------------===//
 
-foreach src = [TF_IdentityOp, TF_StopGradientOp] in
+foreach src = [TF_IdentityOp, TF_StopGradientOp, TF__EagerConstOp] in
   def : Pat<(src $op), (replaceWithValue $op)>;
 
 // TODO(b/32223192): Support CheckNumerics in HLO.
@@ -455,23 +443,28 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
           )]>;
 
 //===----------------------------------------------------------------------===//
-// Nullary op patterns.
+// Lower `tf.ZerosLike`
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_ConstOp:$res ElementsAttr:$value),
-          (Tensor_CastOp (HLO_ConstOp $value)),
-          [(HLO_Tensor $res)]>;
+def : Pat<(TF_ZerosLikeOp AnyTensor:$arg),
+          (HLO_ConstantLike<"0"> $arg)>;
+
+//===----------------------------------------------------------------------===//
+// Lower `tf.OnesLike`
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_OnesLikeOp AnyTensor:$arg),
+          (HLO_ConstantLike<"1"> $arg)>;
 
 //===----------------------------------------------------------------------===//
 // Elu op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_EluOp AnyRankedTensor:$features),
+def : Pat<(TF_EluOp AnyTensor:$features),
           (HLO_SelectOp
-           (HLOClient_BroadcastCompareOp
+           (HLO_CompareOp
               $features,
-              (HLO_ConstOp:$zero (GetScalarOfType<0> $features)),
-              (BinBroadcastDimensions $zero, $features),
+              (HLO_ConstantLike<"0">:$zero $features),
               HLO_COMPARISON_DIRECTION_GT, (HLO_DEFAULT_COMPARISON_TYPE)),
            $features,
            (HLO_Expm1Op $features))>;
@@ -514,22 +507,42 @@ def : Pat<(TF_Relu6Op AnyRankedTensor:$input),
           [(TF_SintOrFpTensor $input)]>;
 
 // ReluGrad(gradients, features) = gradients * (features > 0)
-//
-// $gradients needs to be of static shape so that on_true and on_false operands
-// of SelectOp have same shape.
-//
-// $features needs to be ranked for computation of the broadcast dimensions for
-// CompareOp.
-//
-// TODO(hinsu): Relax $gradients static shape requirement when there is a way
-// to create splat tensor of dynamic shape in HLO.
-def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$features),
+// The condition that $gradients and $features need to have the same shape is
+// implicitly enforced: $zero is created to have the same shape as $features,
+// HLO_SelectOp enforces that $gradients and $zero have the same shape.
+def : Pat<(TF_ReluGradOp AnyTensor:$gradients, AnyTensor:$features),
           (HLO_SelectOp
-            (HLOClient_BroadcastCompareOp $features,
-              (HLO_ConstOp (GetScalarOfType<0> $features)),
-              (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_GT,
-              (HLO_DEFAULT_COMPARISON_TYPE)),
-            $gradients, (HLO_ConstOp (ConstantSplat<"0"> $gradients)))>;
+            (HLO_CompareOp $features, (HLO_ConstantLike<"0">:$zero $features),
+              HLO_COMPARISON_DIRECTION_GT, (HLO_DEFAULT_COMPARISON_TYPE)),
+            $gradients, $zero)>;
+
+//===----------------------------------------------------------------------===//
+// Softsign op patterns.
+//===----------------------------------------------------------------------===//
+
+/// Converts a TF::SoftsignOp to HLO.
+/// Softsign(features) = features / (1 + abs(features))
+def : Pat<(TF_SoftsignOp AnyTensor:$input),
+          (HLO_DivOp
+            $input,
+            (HLO_AddOp (HLO_ConstantLike<"1"> $input), (HLO_AbsOp $input))
+          )
+         >;
+
+/// Converts a TF::SoftsignGradOp to HLO.
+/// SoftsignGrad(gradient, features) = gradient / ((1 + abs(features)) ^ 2)
+def : Pattern<
+        (TF_SoftsignGradOp AnyRankedTensor:$gradients, AnyRankedTensor:$features),
+        [(HLOClient_BroadcastAddOp:$add
+          (HLO_ConstOp:$one (GetScalarOfType<1> $features)), (HLO_AbsOp $features),
+          (BinBroadcastDimensions $one, $features)
+         ),
+         (HLOClient_BroadcastDivOp
+           $gradients,
+           (HLO_MulOp $add, $add),
+           (BinBroadcastDimensions $gradients, $add)
+         )
+        ]>;
 
 //===----------------------------------------------------------------------===//
 // Slice op patterns.
@@ -652,8 +665,12 @@ def : Pat<(TF_TransposeOp:$res $arg, (ConstantLikeMatcher ElementsAttr:$permutat
 // TODO(hinsu): Update once HLO supports dynamic reshaping ops.
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
   def : Pat<(TfOp:$res $arg, $ignored),
-            (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
+            (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)],
+            (addBenefit 2)>;
 }
+
+def : Pat<(TF_ReshapeOp:$res $arg, $shape),
+          (HLOClient_DynamicReshapeOp $arg, $shape)>;
 
 // Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
 def : Pat<(TF_SignOp $x), (HLO_SignOp $x)>;

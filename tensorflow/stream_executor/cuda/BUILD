@@ -409,15 +409,14 @@ cc_library(
         ":cudnn_lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@cudnn_frontend_archive//:cudnn_frontend",
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
-        # copybara:comment_begin(OSS only)
-        "@cudnn_frontend_archive//:cudnn_frontend",
-        # copybara:comment_end
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:tensor_float_32_utils",
+        "//tensorflow/core/util:determinism",
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:plugin_registry",
@@ -696,4 +695,10 @@ tf_cuda_cc_test(
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
     ],
+)
+
+filegroup(
+    name = "cudnn_wrappers",
+    srcs = glob(["*.inc"]),
+    visibility = ["//visibility:public"],
 )

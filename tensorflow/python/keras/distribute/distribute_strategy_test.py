@@ -21,9 +21,9 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.experimental.ops import cardinality
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import writers
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import readers
 from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import collective_all_reduce_strategy
@@ -264,7 +264,6 @@ def all_strategy_minus_default_and_tpu_combinations():
           strategy_combinations.one_device_strategy_gpu,
           strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           strategy_combinations.mirrored_strategy_with_two_gpus,
-          strategy_combinations.mirrored_strategy_with_two_gpus_no_merge_call,
       ],
       mode=['graph', 'eager'])
 
@@ -1319,9 +1318,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.mirrored_strategy_with_two_gpus,
-              strategy_combinations
-              .mirrored_strategy_with_two_gpus_no_merge_call,
+              strategy_combinations.mirrored_strategy_with_two_gpus
           ],
           mode=['graph', 'eager']))
   def test_learning_phase_value(self, distribution):
@@ -1637,9 +1634,9 @@ class TestDistributionStrategyWithDatasetsFile(test.TestCase,
 
     dataset = dataset.filter(dummy_op).batch(8, drop_remainder=True)
 
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.auto_shard_policy = \
-        distribute_options.AutoShardPolicy.FILE
+        options_lib.AutoShardPolicy.FILE
     dataset = dataset.with_options(options)
 
     model.predict(dataset, steps=1)
@@ -2057,9 +2054,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.mirrored_strategy_with_two_gpus,
-              strategy_combinations
-              .mirrored_strategy_with_two_gpus_no_merge_call,
+              strategy_combinations.mirrored_strategy_with_two_gpus
           ],
           mode=['graph', 'eager'],
           reduction=[
@@ -2215,9 +2210,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
               strategy_combinations.one_device_strategy,
               strategy_combinations.one_device_strategy_gpu,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.mirrored_strategy_with_two_gpus,
-              strategy_combinations
-              .mirrored_strategy_with_two_gpus_no_merge_call,
+              strategy_combinations.mirrored_strategy_with_two_gpus
           ],
           mode=['eager']))
   def test_distribution_strategy_with_add_metric_object(

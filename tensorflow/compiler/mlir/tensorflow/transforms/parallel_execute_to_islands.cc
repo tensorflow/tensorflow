@@ -81,6 +81,15 @@ namespace {
 
 struct ParallelExecuteToIslandsPass
     : public PassWrapper<ParallelExecuteToIslandsPass, FunctionPass> {
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-parallel-execute-to-islands";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Lowers device parallel_execute to executor islands";
+  }
   void runOnFunction() override;
 };
 
@@ -203,9 +212,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateParallelExecuteToIslandsPass() {
   return std::make_unique<ParallelExecuteToIslandsPass>();
 }
 
-static PassRegistration<ParallelExecuteToIslandsPass> pass(
-    "tf-parallel-execute-to-islands",
-    "Lowers device parallel_execute to executor islands");
+static PassRegistration<ParallelExecuteToIslandsPass> pass;
 
 }  // namespace TFDevice
 }  // namespace mlir

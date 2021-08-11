@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -43,6 +44,10 @@ T_2_3 = tensor_spec.TensorSpec([2, 3])
 R_1_N = ragged_tensor.RaggedTensorSpec([1, None])
 R_1_N_N = ragged_tensor.RaggedTensorSpec([1, None, None])
 R_2_1_N = ragged_tensor.RaggedTensorSpec([2, 1, None])
+
+# TensorSpecs for nrows & row_splits in the _to_components encoding.
+NROWS_SPEC = tensor_spec.TensorSpec([], dtypes.int64)
+PARTITION_SPEC = row_partition.RowPartitionSpec()
 
 
 # pylint: disable=g-long-lambda
@@ -117,11 +122,14 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
     self.assertEqual(serialization, expected)
 
   @parameterized.parameters([
-      (StructuredTensorSpec([1, 2, 3], {}), {}),
-      (StructuredTensorSpec([], {'a': T_1_2}), {'a': T_1_2}),
+      (StructuredTensorSpec([1, 2, 3], {}),
+       ({}, NROWS_SPEC, (PARTITION_SPEC, PARTITION_SPEC))),
+      (StructuredTensorSpec([], {'a': T_1_2}),
+       ({'a': T_1_2}, (), ())),
       (StructuredTensorSpec([1, 2], {'a': T_1_2, 'b': R_1_N}),
-       {'a': T_1_2, 'b': R_1_N}),
-      (StructuredTensorSpec([], {'a': T_1_2}), {'a': T_1_2}),
+       ({'a': T_1_2, 'b': R_1_N}, NROWS_SPEC, (PARTITION_SPEC,))),
+      (StructuredTensorSpec([], {'a': T_1_2}),
+       ({'a': T_1_2}, (), ())),
   ])  # pyformat: disable
   def testComponentSpecs(self, spec, expected):
     self.assertEqual(spec._component_specs, expected)
@@ -141,11 +149,11 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
       },
   ])  # pyformat: disable
   def testToFromComponents(self, shape, fields, field_specs):
-    components = fields
     struct = StructuredTensor.from_fields(fields, shape)
     spec = StructuredTensorSpec(shape, field_specs)
     actual_components = spec._to_components(struct)
-    self.assertAllTensorsEqual(actual_components, components)
+    self.assertLen(actual_components, 3)
+    self.assertAllTensorsEqual(actual_components[0], fields)
     rt_reconstructed = spec._from_components(actual_components)
     self.assertAllEqual(struct, rt_reconstructed)
 
@@ -155,7 +163,7 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
     components = spec._to_components(struct)
     rt_reconstructed = spec._from_components(components)
     self.assertAllEqual(struct, rt_reconstructed)
-    self.assertEqual(components, ((), ()))
+    self.assertEqual(components, ({}, (), ()))
 
   def testToFromComponentsEmptyTensor(self):
     struct = StructuredTensor.from_fields(fields={}, shape=[1, 2, 3])
@@ -163,8 +171,9 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
     components = spec._to_components(struct)
     rt_reconstructed = spec._from_components(components)
     self.assertAllEqual(struct, rt_reconstructed)
-    self.assertLen(components, 2)
-    nrows, row_partitions = components
+    self.assertLen(components, 3)
+    fields, nrows, row_partitions = components
+    self.assertEmpty(fields)
     self.assertAllEqual(nrows, 1)
     self.assertLen(row_partitions, 2)
     self.assertIsInstance(row_partitions[0], row_partition.RowPartition)

@@ -108,8 +108,8 @@ bool FileSystem::FilesExist(const std::vector<string>& files,
 
 Status FileSystem::DeleteRecursively(const string& dirname,
                                      TransactionToken* token,
-                                     int64* undeleted_files,
-                                     int64* undeleted_dirs) {
+                                     int64_t* undeleted_files,
+                                     int64_t* undeleted_dirs) {
   CHECK_NOTNULL(undeleted_files);
   CHECK_NOTNULL(undeleted_dirs);
 

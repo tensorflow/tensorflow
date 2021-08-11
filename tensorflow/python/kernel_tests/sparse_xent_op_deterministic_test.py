@@ -18,11 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 import numpy as np
 
 from tensorflow.python.eager import backprop
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -58,7 +57,7 @@ class SparseSoftmaxCrossEntropyWithLogitsDeterminismExceptionsTest(
           with self.assertRaisesRegex(
               errors_impl.UnimplementedError,
               "Deterministic GPU implementation of " +
-              "SparseSoftmaxCrossEntropyWithLogits not available."):
+              "SparseSoftmaxXentWithLogitsOp not available."):
             result = nn_ops.sparse_softmax_cross_entropy_with_logits_v2(
                 labels=labels, logits=logits)
             self.evaluate(result)
@@ -143,9 +142,6 @@ class SparseSoftmaxCrossEntropyWithLogitsDeterministicTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  # Note that the effect of setting the following environment variable to
-  # 'true' is not tested. Unless we can find a simpler pattern for testing these
-  # environment variables, it would require this file to be made into a base
-  # and then two more test files to be created.
-  os.environ["TF_DETERMINISTIC_OPS"] = "1"
+  # TODO(reedwm): Merge this test with sparse_xent_op_test.py.
+  config.enable_deterministic_ops(True)
   test.main()

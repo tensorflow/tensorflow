@@ -434,10 +434,10 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
             "Operators are incompatible. Expected `x` to have dimension"
             " {} but got {}.".format(
                 left_operator.domain_dimension, right_operator.range_dimension))
-      with self._name_scope(name):
+      with self._name_scope(name):  # pylint: disable=not-callable
         return linear_operator_algebra.matmul(left_operator, right_operator)
 
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       arg_dim = -1 if adjoint_arg else -2
       block_dimensions = (self._block_range_dimensions() if adjoint
                           else self._block_domain_dimensions())
@@ -548,7 +548,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
     Returns:
       A `Tensor` with shape `[..., M]` and same `dtype` as `self`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       block_dimensions = (self._block_range_dimensions() if adjoint
                           else self._block_domain_dimensions())
       if linear_operator_util.arg_is_blockwise(block_dimensions, x, -1):
@@ -673,10 +673,10 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
             "Operators are incompatible. Expected `rhs` to have dimension"
             " {} but got {}.".format(
                 left_operator.domain_dimension, right_operator.range_dimension))
-      with self._name_scope(name):
+      with self._name_scope(name):  # pylint: disable=not-callable
         return linear_operator_algebra.solve(left_operator, right_operator)
 
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       block_dimensions = (self._block_domain_dimensions() if adjoint
                           else self._block_range_dimensions())
       arg_dim = -1 if adjoint_arg else -2
@@ -800,7 +800,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
     Raises:
       NotImplementedError:  If `self.is_non_singular` or `is_square` is False.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       block_dimensions = (self._block_domain_dimensions() if adjoint
                           else self._block_range_dimensions())
       if linear_operator_util.arg_is_blockwise(block_dimensions, rhs, -1):

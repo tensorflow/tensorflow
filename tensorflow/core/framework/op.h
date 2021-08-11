@@ -265,6 +265,10 @@ class OpDefBuilderWrapper {
     builder_.SetShapeFn(std::move(fn));
     return *this;
   }
+  OpDefBuilderWrapper& SetIsDistributedCommunication() {
+    builder_.SetIsDistributedCommunication();
+    return *this;
+  }
 
   // Type constructor to support type inference. Similar to SetShapeFn, it
   // allows programmatic control over the output type of an op, including

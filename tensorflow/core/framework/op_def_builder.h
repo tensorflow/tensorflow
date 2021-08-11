@@ -142,6 +142,7 @@ class OpDefBuilder {
   OpDefBuilder& SetIsAggregate();
   OpDefBuilder& SetIsStateful();
   OpDefBuilder& SetAllowsUninitializedInput();
+  OpDefBuilder& SetIsDistributedCommunication();
 
   // Deprecate the op at a certain GraphDef version.
   OpDefBuilder& Deprecated(int version, std::string explanation);

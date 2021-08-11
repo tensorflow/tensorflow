@@ -102,6 +102,16 @@ class XlaExpression {
 
   // Return the bound of the expression, if available.
   absl::optional<Tensor> value_bound() const { return value_bound_; }
+
+  // Set the dynamism of the expression, indicating whether or not each value in
+  // this expression is dynamic.
+  void set_value_dynamism(Tensor tensor) {
+    value_dynamism_.emplace(std::move(tensor));
+  }
+
+  // Return the dynamism of the expression, if available.
+  absl::optional<Tensor> value_dynamism() const { return value_dynamism_; }
+
   XlaResource* resource() const { return resource_; }
 
   // Returns a human-readable summary of the expression.
@@ -149,6 +159,9 @@ class XlaExpression {
 
   // The bound of the expression, if available.
   absl::optional<Tensor> value_bound_;
+
+  // Indicate whether each value inside a tensor is dynamic or not.
+  absl::optional<Tensor> value_dynamism_;
 
   // The resource, if kind_ == kResource. Not owned.
   XlaResource* resource_ = nullptr;

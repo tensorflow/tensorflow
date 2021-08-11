@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #ifdef GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/collective_nccl.h"
@@ -85,7 +86,7 @@ class NcclTestBase : public ::testing::Test {
   NcclTestBase(CollectiveType collective_type, const string& collective_name)
       : collective_type_(collective_type),
         collective_name_(collective_name),
-        nccl_communicator_(MaybeCreateNcclCommunicator()),
+        nccl_communicator_(MaybeCreateNcclCommunicator(config_proto_)),
         work_queue_(std::make_shared<UnboundedWorkQueue>(
             Env::Default(), "collective_executor")),
         col_exec_(nullptr),
@@ -123,9 +124,9 @@ class NcclTestBase : public ::testing::Test {
     }
     if (!dev_mgr_)
       dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
-    col_exec_ = new BaseCollectiveExecutor(
-        &col_exec_mgr_, /*remote_access=*/nullptr, kStepId, dev_mgr_.get(),
-        /*gpu_ring_order=*/nullptr, work_queue_);
+    col_exec_ =
+        new BaseCollectiveExecutor(&col_exec_mgr_, /*remote_access=*/nullptr,
+                                   kStepId, dev_mgr_.get(), work_queue_);
 
     // Initialize collective params.
     col_params_ = new CollectiveParams();
@@ -141,12 +142,14 @@ class NcclTestBase : public ::testing::Test {
     const string task_name = "/job:worker/replica:0/task:0";
     col_params_->group.num_devices_per_task[task_name] = num_ranks;
     for (int rank = 0; rank < num_ranks; ++rank) {
-      col_params_->group.device_names.push_back(device_names[rank % num_gpus]);
+      DeviceAttributes device;
+      device.set_name(device_names[rank % num_gpus]);
+      col_params_->group.devices.push_back(device);
       col_params_->group.task_names.push_back(task_name);
     }
     for (int rank = 0; rank < num_ranks; ++rank) {
       instances_.push_back(absl::make_unique<DeviceInstance>(
-          rank, col_params_->group.device_names[rank], this));
+          rank, col_params_->group.devices[rank].name(), this));
     }
   }
 
@@ -433,6 +436,7 @@ class NcclTestBase : public ::testing::Test {
   const string collective_name_;
   std::vector<std::unique_ptr<tensorflow::Device>> gpus_;
   TestCollectiveExecutorMgr col_exec_mgr_;
+  ConfigProto config_proto_;
   std::unique_ptr<NcclCommunicatorInterface> nccl_communicator_;
   std::shared_ptr<UnboundedWorkQueue> work_queue_;
   CollectiveExecutor* col_exec_;

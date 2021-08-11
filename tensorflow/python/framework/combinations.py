@@ -48,7 +48,8 @@ class EagerGraphCombination(test_combinations.TestCombination):
       return [ops.Graph().as_default(), context.graph_mode()]
     else:
       raise ValueError(
-          "'mode' has to be either 'eager' or 'graph' and not {}".format(mode))
+          "Argument 'mode' must be either 'eager' or 'graph'. "
+          f"Received: {mode}.")
 
   def parameter_modifiers(self):
     return [test_combinations.OptionalParameter("mode")]

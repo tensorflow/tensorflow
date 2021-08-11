@@ -170,7 +170,7 @@ class NestOfTensorsSpec(type_spec.TypeSpec):
         self.spec._fields, collections_abc.Sequence) and all(
             isinstance(f, six.string_types) for f in self.spec._fields):
       return "%s(%r)" % (type(self).__name__, self._serialize())
-    return super(type_spec.TypeSpec, self).__repr__()
+    return super(type_spec.TypeSpec, self).__repr__()  # pylint: disable=bad-super-call
 
   @classmethod
   def from_value(cls, value):

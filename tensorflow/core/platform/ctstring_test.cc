@@ -328,4 +328,55 @@ TEST(TF_CTStringTest, ResizeReserve) {
 
     TF_TString_Dealloc(&s70);
   }
+  {
+    // ReserveAmortized
+    TF_TString s70;
+
+    TF_TString_Init(&s70);
+
+    TF_TString_ReserveAmortized(&s70, TF_TString_SmallCapacity - 1);
+
+    EXPECT_EQ(TF_TString_SmallCapacity, TF_TString_GetCapacity(&s70));
+    EXPECT_EQ(0, TF_TString_GetSize(&s70));
+    EXPECT_EQ(TF_TSTR_SMALL, TF_TString_GetType(&s70));
+
+    TF_TString_ReserveAmortized(&s70, TF_TString_SmallCapacity);
+
+    EXPECT_EQ(TF_TString_SmallCapacity, TF_TString_GetCapacity(&s70));
+    EXPECT_EQ(0, TF_TString_GetSize(&s70));
+    EXPECT_EQ(TF_TSTR_SMALL, TF_TString_GetType(&s70));
+
+    TF_TString_Copy(&s70, "hello", 5);
+
+    EXPECT_EQ(5, TF_TString_GetSize(&s70));
+    EXPECT_EQ(TF_TString_SmallCapacity, TF_TString_GetCapacity(&s70));
+    EXPECT_EQ(TF_TSTR_SMALL, TF_TString_GetType(&s70));
+
+    TF_TString_ReserveAmortized(&s70, 100);
+
+    // Test 16 byte alignment (7*16 - 1 = 111)
+    EXPECT_EQ(111, TF_TString_GetCapacity(&s70));
+    EXPECT_EQ(5, TF_TString_GetSize(&s70));
+    EXPECT_EQ(TF_TSTR_LARGE, TF_TString_GetType(&s70));
+
+    TF_TString_AssignView(&s70, kLongString, kLongStringLen);
+    TF_TString_ReserveAmortized(&s70, 10);
+
+    EXPECT_EQ(TF_TSTR_VIEW, TF_TString_GetType(&s70));
+    EXPECT_EQ(0, TF_TString_GetCapacity(&s70));
+
+    TF_TString_ReserveAmortized(&s70, 100);
+
+    // Converted to LARGE since it can no longer fit in SMALL.
+    EXPECT_EQ(TF_TSTR_LARGE, TF_TString_GetType(&s70));
+    EXPECT_EQ(111, TF_TString_GetCapacity(&s70));
+
+    TF_TString_ReserveAmortized(&s70, 200);
+
+    EXPECT_EQ(TF_TSTR_LARGE, TF_TString_GetType(&s70));
+    // 223 = 2*previous_capacity+1
+    EXPECT_EQ(223, TF_TString_GetCapacity(&s70));
+
+    TF_TString_Dealloc(&s70);
+  }
 }

@@ -29,13 +29,14 @@ limitations under the License.
 namespace mlir {
 namespace {
 // Add logger to bridge passmanager.
-void EnableLogging(PassManager *pm) {
+// Enable timing statistics per pass for the bridge passmanager.
+void EnableDetailedLogging(PassManager *pm) {
   // Print the whole module after each pass, which requires disabling
   // multi-threading as well.
   pm->getContext()->disableMultithreading();
   pm->enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
       /*print_module_scope=*/true));
-  pm->enableTiming(std::make_unique<tensorflow::BridgeTimingConfig>());
+  pm->enableTiming();
 }
 }  // namespace
 
@@ -49,7 +50,7 @@ tensorflow::Status RunTPUBridge(
   ::tensorflow::applyTensorflowAndCLOptions(bridge);
   if (enable_logging || VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("tpu_bridge_before", module);
-    if (VLOG_IS_ON(2)) EnableLogging(&bridge);
+    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
   }
 
   // Populate a passmanager with the list of passes that implement the bridge.
@@ -82,6 +83,9 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // functionalization is ran before import. Ops can be lifted out of
   // tf_executor dialect islands/graphs.
   pm.addNestedPass<FuncOp>(CreateExecutorDialectToFunctionalConversionPass());
+  // Guarantee all functions have one use, which enables more exact shape
+  // inference.
+  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   // Run shape inference so that tf_executor/tf_device ops created later will
   // likely to inherit more concrete types.
   pm.addPass(TF::CreateTFShapeInferencePass());
@@ -157,7 +161,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(CreateTPURewritePass());
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
-  pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
+  pm.addPass(CreateTPUMergeVariablesWithExecutePass());
   pm.addNestedPass<FuncOp>(
       TF::CreateHoistReplicateInvariantResourceWritesPass());
   pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
@@ -166,6 +170,9 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
+  // Guarantee all functions have one use, which enables more exact shape
+  // inference.
+  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   pm.addPass(TF::CreateTFShapeInferencePass());
   // For V1 compatibility, we process a module where the graph does not have
   // feeds and fetched. We extract first the TPU computation in a submodule,
@@ -211,7 +218,7 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
   PassManager bridge(module.getContext());
   if (enable_logging || VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("standard_pipeline_before", module);
-    if (VLOG_IS_ON(2)) EnableLogging(&bridge);
+    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
   }
 
   StandardPipelineOptions pipeline_options;

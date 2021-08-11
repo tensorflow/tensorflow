@@ -785,8 +785,9 @@ class ParameterServerStrategyTest(
           experimental_fetch_to_device=prefetch_to_device)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
-    dataset = distribution.experimental_distribute_dataset(
-        dataset, options=input_options)
+    dataset = distribution.experimental_distribute_dataset(  # pylint: disable=assignment-from-no-return
+        dataset,
+        options=input_options)
     if isinstance(dataset, input_lib.DistributedDatasetV1):
       item = dataset.make_initializable_iterator().get_next()
     else:
@@ -807,8 +808,9 @@ class ParameterServerStrategyTest(
         experimental_fetch_to_device=False)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
-    dataset = distribution.experimental_distribute_dataset(
-        dataset, options=input_options)
+    dataset = distribution.experimental_distribute_dataset(  # pylint: disable=assignment-from-no-return
+        dataset,
+        options=input_options)
     if isinstance(dataset, input_lib.DistributedDatasetV1):
       item = dataset.make_initializable_iterator().get_next()
     else:

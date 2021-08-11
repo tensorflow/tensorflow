@@ -24,18 +24,31 @@ namespace mlir {
 namespace TF {
 
 namespace {
-// Returns int or float DenseElementsAttr with scalar shape with the given
-// element type and the integer value.
+// Returns int, float or complex DenseElementsAttr with scalar shape with the
+// given element type and the integer value.
 static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
-  if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
+  if (auto float_ty = ty.dyn_cast<FloatType>()) {
     FloatAttr attr = FloatAttr::get(float_ty, raw_value);
     return DenseElementsAttr::get(scalar_ty, attr);
   }
 
-  auto int_ty = ty.cast<IntegerType>();
-  IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
-  return DenseElementsAttr::get(scalar_ty, attr);
+  if (auto int_ty = ty.dyn_cast<IntegerType>()) {
+    IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
+    return DenseElementsAttr::get(scalar_ty, attr);
+  }
+
+  if (auto complex_ty = ty.dyn_cast<ComplexType>()) {
+    Type complex_element_ty = complex_ty.getElementType();
+    if (complex_element_ty.isF32()) {
+      return DenseElementsAttr::get(
+          scalar_ty, static_cast<std::complex<float>>(raw_value));
+    } else if (complex_element_ty.isF64()) {
+      return DenseElementsAttr::get(
+          scalar_ty, static_cast<std::complex<double>>(raw_value));
+    }
+  }
+  llvm_unreachable("unsupported type");
 }
 
 // Returns subtype of `resource` if present. Otherwise an unranked tensor type

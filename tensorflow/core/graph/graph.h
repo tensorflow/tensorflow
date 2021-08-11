@@ -107,11 +107,11 @@ class Node {
 
   // input and output types
   int32 num_inputs() const;
-  DataType input_type(int32 i) const;
+  DataType input_type(int32_t i) const;
   const DataTypeVector& input_types() const;
 
   int32 num_outputs() const;
-  DataType output_type(int32 o) const;
+  DataType output_type(int32_t o) const;
   const DataTypeVector& output_types() const;
 
   // The device requested by the user.  For the actual assigned device,
@@ -207,6 +207,10 @@ class Node {
   bool IsArg() const { return class_ == NC_ARG; }
   // Is this node a function output
   bool IsRetval() const { return class_ == NC_RETVAL; }
+
+  bool IsDistributedCommunication() const {
+    return op_def().is_distributed_communication();
+  }
 
   template <typename T>
   void AddAttr(const std::string& name, const T& val) {
@@ -785,7 +789,7 @@ class Graph {
   std::unordered_map<string, TypeRef> node_name_to_out_type_;
 
   // Number of nodes alive.
-  int64 num_nodes_ = 0;
+  int64_t num_nodes_ = 0;
 
   // Map from edge ids to allocated edges.  edges_[id] may be nullptr if
   // the edge with that id was removed from the graph.
@@ -878,6 +882,10 @@ inline bool IsScopedAllocator(const Node* n) { return n->IsScopedAllocator(); }
 
 inline bool IsHostMemoryPreserving(const Node* node) {
   return IsIdentity(node) || IsControlFlow(node);
+}
+
+inline bool IsDistributedCommunication(const Node* n) {
+  return n->IsDistributedCommunication();
 }
 
 // NOTE: We declare Reference type of NodeIter and NeighborIter as Node* (see

@@ -675,7 +675,6 @@ tf_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_spec",
@@ -695,6 +694,7 @@ tf_py_test(
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/summary",
         "//third_party/py/numpy",
     ],
 )

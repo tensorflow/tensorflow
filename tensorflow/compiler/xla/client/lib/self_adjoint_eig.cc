@@ -36,12 +36,12 @@ limitations under the License.
 
 namespace xla {
 
-SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
+SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64_t max_iter,
                                     float tol, bool sort_eigenvalues) {
   XlaBuilder* builder = a.builder();
   XlaOp result = builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    const int64 num_dims = a_shape.rank();
+    const int64_t num_dims = a_shape.rank();
     if (num_dims < 2) {
       return InvalidArgument(
           "Arguments to Eigen decomposition must have rank >= 2: got shape %s.",
@@ -56,8 +56,8 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
           a_shape.ToString());
     }
 
-    const int64 m = ShapeUtil::GetDimension(a_shape, -2);
-    const int64 n = ShapeUtil::GetDimension(a_shape, -1);
+    const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
+    const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
 
     if (m != n) {
       return InvalidArgument(
@@ -67,7 +67,7 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
     }
 
     const int num_batch_dims = a_shape.dimensions().size() - 2;
-    const std::vector<int64> batch_dims(
+    const std::vector<int64_t> batch_dims(
         a_shape.dimensions().begin(),
         a_shape.dimensions().begin() + num_batch_dims);
 
@@ -75,7 +75,7 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
         primitive_util::IsComplexType(type)
             ? primitive_util::ComplexComponentType(type)
             : type;
-    std::vector<int64> eigvals_dims = batch_dims;
+    std::vector<int64_t> eigvals_dims = batch_dims;
     eigvals_dims.push_back(m);
     Shape eigh_shape = ShapeUtil::MakeTupleShape(
         {a_shape, ShapeUtil::MakeShape(eigvals_type, eigvals_dims)});

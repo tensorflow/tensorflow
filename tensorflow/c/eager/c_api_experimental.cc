@@ -27,10 +27,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/strcat.h"
 
@@ -302,6 +304,55 @@ TFE_MonitoringStringGaugeCell* TFE_MonitoringGetCellStringGauge2(
     TFE_MonitoringStringGauge2* gauge, const char* label1, const char* label2) {
   return static_cast<TFE_MonitoringStringGaugeCell*>(
       static_cast<void*>(gauge->gauge->GetCell(label1, label2)));
+}
+
+TFE_MonitoringStringGauge3* TFE_MonitoringNewStringGauge3(
+    const char* name, TF_Status* status, const char* description,
+    const char* label1, const char* label2, const char* label3) {
+  auto* result = new TFE_MonitoringStringGauge3(
+      {name, description, label1, label2, label3});
+  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  if (!result->gauge->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteStringGauge3(TFE_MonitoringStringGauge3* gauge) {
+  delete gauge;
+}
+
+TFE_MonitoringStringGaugeCell* TFE_MonitoringGetCellStringGauge3(
+    TFE_MonitoringStringGauge3* gauge, const char* label1, const char* label2,
+    const char* label3) {
+  return static_cast<TFE_MonitoringStringGaugeCell*>(
+      static_cast<void*>(gauge->gauge->GetCell(label1, label2, label3)));
+}
+
+TFE_MonitoringStringGauge4* TFE_MonitoringNewStringGauge4(
+    const char* name, TF_Status* status, const char* description,
+    const char* label1, const char* label2, const char* label3,
+    const char* label4) {
+  auto* result = new TFE_MonitoringStringGauge4(
+      {name, description, label1, label2, label3, label4});
+  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  if (!result->gauge->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteStringGauge4(TFE_MonitoringStringGauge4* gauge) {
+  delete gauge;
+}
+
+TFE_MonitoringStringGaugeCell* TFE_MonitoringGetCellStringGauge4(
+    TFE_MonitoringStringGauge4* gauge, const char* label1, const char* label2,
+    const char* label3, const char* label4) {
+  return static_cast<TFE_MonitoringStringGaugeCell*>(static_cast<void*>(
+      gauge->gauge->GetCell(label1, label2, label3, label4)));
 }
 
 void TFE_MonitoringBoolGaugeCellSet(TFE_MonitoringBoolGaugeCell* cell,
@@ -581,9 +632,9 @@ void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
 TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx, TF_DataType dtype,
                                   const int64_t* dims, int num_dims,
                                   TF_Status* status) {
-  std::vector<tensorflow::int64> dimvec(num_dims);
+  std::vector<int64_t> dimvec(num_dims);
   for (int i = 0; i < num_dims; ++i) {
-    dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
+    dimvec[i] = static_cast<int64_t>(dims[i]);
   }
 
   if (ctx == nullptr) {
@@ -712,4 +763,73 @@ void TFE_SetLogicalCpuDevices(TFE_Context* ctx, int num_cpus,
   }
 
   status->status = tensorflow::unwrap(ctx)->AddDevices(std::move(devices));
+}
+
+void TFE_InsertConfigKeyValue(TFE_Context* ctx, const char* key,
+                              const char* value, TF_Status* status) {
+  tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
+      tensorflow::unwrap(ctx)->GetDistributedManager();
+  tensorflow::CoordinationServiceAgent* coord_agent =
+      dist_mgr->GetCoordinationServiceAgent();
+  if (coord_agent == nullptr) {
+    status->status = tensorflow::errors::FailedPrecondition(
+        "Coordination service agent is not enabled.");
+    return;
+  }
+  status->status = coord_agent->InsertKeyValue(key, value);
+}
+
+void TFE_GetConfigKeyValue(TFE_Context* ctx, const char* key,
+                           TF_Buffer* value_buf, TF_Status* status) {
+  tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
+      tensorflow::unwrap(ctx)->GetDistributedManager();
+  tensorflow::CoordinationServiceAgent* coord_agent =
+      dist_mgr->GetCoordinationServiceAgent();
+  if (coord_agent == nullptr) {
+    status->status = tensorflow::errors::FailedPrecondition(
+        "Coordination service is not enabled.");
+    return;
+  }
+  auto status_or_value = coord_agent->GetKeyValue(key);
+  status->status = status_or_value.status();
+  if (!status_or_value.ok()) return;
+
+  const std::string& value_string = status_or_value.ValueOrDie();
+  void* data = tensorflow::port::Malloc(value_string.length());
+  value_string.copy(static_cast<char*>(data), value_string.length(), 0);
+  value_buf->data = data;
+  value_buf->length = value_string.length();
+  value_buf->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
+}
+
+void TFE_DeleteConfigKeyValue(TFE_Context* ctx, const char* key,
+                              TF_Status* status) {
+  tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
+      tensorflow::unwrap(ctx)->GetDistributedManager();
+  tensorflow::CoordinationServiceAgent* coord_agent =
+      dist_mgr->GetCoordinationServiceAgent();
+  if (coord_agent == nullptr) {
+    status->status = tensorflow::errors::FailedPrecondition(
+        "Coordination service is not enabled.");
+    return;
+  }
+  status->status = coord_agent->DeleteKeyValue(key);
+}
+
+void TFE_ReportErrorToCluster(TFE_Context* ctx, int error_code,
+                              const char* error_message, TF_Status* status) {
+  tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
+      tensorflow::unwrap(ctx)->GetDistributedManager();
+  tensorflow::CoordinationServiceAgent* coord_agent =
+      dist_mgr->GetCoordinationServiceAgent();
+  if (coord_agent == nullptr) {
+    status->status = tensorflow::errors::FailedPrecondition(
+        "Coordination service is not enabled.");
+    return;
+  }
+  tensorflow::Status s(static_cast<tensorflow::error::Code>(error_code),
+                       error_message);
+  status->status = coord_agent->ReportError(s);
 }

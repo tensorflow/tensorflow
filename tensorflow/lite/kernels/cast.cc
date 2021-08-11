@@ -133,7 +133,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       // Unsupported type.
       TF_LITE_UNSUPPORTED_TYPE(context, input->type, "Cast");
   }
-  return kTfLiteOk;
 }
 }  // namespace cast
 

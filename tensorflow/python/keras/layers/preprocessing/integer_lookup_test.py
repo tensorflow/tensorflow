@@ -26,7 +26,10 @@ from tensorflow.python import keras
 from tensorflow.python import tf2
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -118,6 +121,14 @@ class IntegerLookupLayerTest(keras_parameterized.TestCase,
           validate_training=False,
           adapt_data=vocab_data)
     self.assertAllClose(expected_output, output_data)
+
+  def test_layer_with_list_input(self):
+    vocab = [12, 36, 1138, 42]
+    data = [[12, 1138, 42], [42, 1000, 36]]  # Note OOV tokens
+    layer = integer_lookup.IntegerLookup(vocabulary=vocab)
+    output = layer(data)
+    expected_output = np.array([[1, 3, 4], [4, 0, 2]])
+    self.assertEqual(output.numpy().tolist(), expected_output.tolist())
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -316,6 +327,23 @@ class IntegerLookupOutputTest(keras_parameterized.TestCase,
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_int_output_no_oov(self):
+    vocab_data = [42, 1138, 725, 1729]
+    valid_input = np.array([[42, 1138, 725, 1729], [1729, 725, 42, 0]])
+    invalid_input = np.array([[42, 1138, 725, 203], [1729, 725, 42, 203]])
+    expected_output = [[1, 2, 3, 4], [4, 3, 1, 0]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = integer_lookup.IntegerLookup(
+        vocabulary=vocab_data, mask_token=0, num_oov_indices=0)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_data = model.predict(valid_input)
+    self.assertAllEqual(expected_output, output_data)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "found OOV values.*203"):
+      _ = model.predict(invalid_input)
+
   def test_inverse_output(self):
     vocab_data = [-1, 42, 1138, 725, 1729]
     input_array = np.array([[1, 2, 3, 4], [4, 3, 1, 0]])
@@ -393,7 +421,26 @@ class IntegerLookupVocabularyTest(
       layer = integer_lookup.IntegerLookup()
       layer([[1]])
 
-  def test_binary_output(self):
+  def test_one_hot_output(self):
+    vocab_data = [2, 3, 4, 5]
+    input_array = np.array([2, 3, 4, 5, 6])
+    expected_output = [
+        [0, 1, 0, 0, 0],
+        [0, 0, 1, 0, 0],
+        [0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 1],
+        [1, 0, 0, 0, 0],
+    ]
+
+    input_data = keras.Input(shape=(1,), dtype=dtypes.int64)
+    layer = integer_lookup.IntegerLookup(
+        vocabulary=vocab_data, output_mode="one_hot")
+    res = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=res)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_multi_hot_output(self):
     vocab_data = [2, 3, 4, 5]
     input_array = np.array([[2, 2, 3, 4], [0, 1, 5, 2]])
     expected_output = [[0, 1, 1, 1, 0], [1, 1, 0, 0, 1]]
@@ -506,6 +553,17 @@ class IntegerLookupVocabularyTest(
         errors_impl.FailedPreconditionError,
         ".*HashTable has different value for same key.*42.*"):
       _ = integer_lookup.IntegerLookup(vocabulary=vocab_path)
+
+  def test_tensor_vocab(self):
+    vocab_data = [-1, 42, 1138, 725, 1729]
+    vocab_tensor = constant_op.constant(vocab_data, dtypes.int64)
+    layer = integer_lookup.IntegerLookup(vocabulary=vocab_tensor)
+    returned_vocab = layer.get_vocabulary()
+    self.assertAllEqual(vocab_data, returned_vocab)
+    self.assertAllEqual(layer.vocabulary_size(), 5)
+    fn = def_function.function(lambda: layer.set_vocabulary(vocab_tensor))
+    with self.assertRaisesRegex(RuntimeError, "Cannot set a tensor vocabulary"):
+      fn()
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)

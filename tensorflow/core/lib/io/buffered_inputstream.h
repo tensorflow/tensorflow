@@ -41,11 +41,12 @@ class BufferedInputStream : public InputStreamInterface {
 
   ~BufferedInputStream() override;
 
-  tensorflow::Status ReadNBytes(int64 bytes_to_read, tstring* result) override;
+  tensorflow::Status ReadNBytes(int64_t bytes_to_read,
+                                tstring* result) override;
 
-  tensorflow::Status SkipNBytes(int64 bytes_to_skip) override;
+  tensorflow::Status SkipNBytes(int64_t bytes_to_skip) override;
 
-  int64 Tell() const override;
+  int64_t Tell() const override;
 
   // Seek to this offset within the file.
   //
@@ -56,7 +57,7 @@ class BufferedInputStream : public InputStreamInterface {
   // Note: When seeking backwards in a stream, this implementation uses
   // Reset() + SkipNBytes(), so its performance will be dependent
   // largely on the performance of SkipNBytes().
-  tensorflow::Status Seek(int64 position);
+  tensorflow::Status Seek(int64_t position);
 
   // Read one text line of data into "*result" until end-of-file or a
   // \n is read.  (The \n is not included in the result.)  Overwrites

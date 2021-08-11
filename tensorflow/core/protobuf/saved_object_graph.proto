@@ -77,11 +77,12 @@ message SavedUserObject {
   string identifier = 1;
   // Version information from the producer of this SavedUserObject.
   VersionDef version = 2;
+  // Metadata for deserializing this object.
+  //
   // Deprecated! At the time of deprecation, Keras was the only user of this
   // field, and its saving and loading code will be updated shortly.
-  // Please save your application-specific metadata to separate file
-  // Initialization-related metadata.
-  string metadata = 3;
+  // Please save your application-specific metadata to a separate file.
+  string metadata = 3 [deprecated = true];
 }
 
 // A SavedAsset points to an asset in the MetaGraph.

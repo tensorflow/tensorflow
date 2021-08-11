@@ -66,26 +66,50 @@ stream_executor::port::StatusOr<ConstantOp> CreateConstOpWithSingleValue(
                                 "Unsupported type");
     }
   } else if (auto itype = element_type.dyn_cast<mlir::IntegerType>()) {
-    switch (itype.getWidth()) {
-      case 8:
-        attr = DenseElementsAttr::get<int8_t>(scalar_type,
-                                              static_cast<int8_t>(value));
-        break;
-      case 16:
-        attr = DenseElementsAttr::get<int16_t>(scalar_type,
-                                               static_cast<int16_t>(value));
-        break;
-      case 32:
-        attr = DenseElementsAttr::get<int32_t>(scalar_type,
-                                               static_cast<int32_t>(value));
-        break;
-      case 64:
-        attr = DenseElementsAttr::get<int64_t>(scalar_type,
-                                               static_cast<int64_t>(value));
-        break;
-      default:
-        return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
-                                  "Unsupported type");
+    if (element_type.isSignedInteger()) {
+      switch (itype.getWidth()) {
+        case 8:
+          attr = DenseElementsAttr::get<int8_t>(scalar_type,
+                                                static_cast<int8_t>(value));
+          break;
+        case 16:
+          attr = DenseElementsAttr::get<int16_t>(scalar_type,
+                                                 static_cast<int16_t>(value));
+          break;
+        case 32:
+          attr = DenseElementsAttr::get<int32_t>(scalar_type,
+                                                 static_cast<int32_t>(value));
+          break;
+        case 64:
+          attr = DenseElementsAttr::get<int64_t>(scalar_type,
+                                                 static_cast<int64_t>(value));
+          break;
+        default:
+          return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+                                    "Unsupported type");
+      }
+    } else {
+      switch (itype.getWidth()) {
+        case 8:
+          attr = DenseElementsAttr::get<uint8_t>(scalar_type,
+                                                 static_cast<uint8_t>(value));
+          break;
+        case 16:
+          attr = DenseElementsAttr::get<uint16_t>(scalar_type,
+                                                  static_cast<uint16_t>(value));
+          break;
+        case 32:
+          attr = DenseElementsAttr::get<uint32_t>(scalar_type,
+                                                  static_cast<uint32_t>(value));
+          break;
+        case 64:
+          attr = DenseElementsAttr::get<uint64_t>(scalar_type,
+                                                  static_cast<uint64_t>(value));
+          break;
+        default:
+          return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+                                    "Unsupported type");
+      }
     }
   } else {
     return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,

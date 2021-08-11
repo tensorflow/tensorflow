@@ -21,7 +21,10 @@ import numpy as np
 from tensorflow.python import keras
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -151,13 +154,51 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     output_data = model.predict(input_array)
     self.assertAllEqual(expected_output, output_data)
 
+  def test_int_output_no_oov(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    valid_input = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", ""]])
+    invalid_input = np.array([["earth", "wind", "and", "michigan"],
+                              ["fire", "and", "earth", "michigan"]])
+    expected_output = [[1, 2, 3, 4], [4, 3, 1, 0]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = string_lookup.StringLookup(
+        vocabulary=vocab_data, mask_token="", num_oov_indices=0)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_data = model.predict(valid_input)
+    self.assertAllEqual(expected_output, output_data)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "found OOV values.*michigan"):
+      _ = model.predict(invalid_input)
+
   def test_no_vocab(self):
     with self.assertRaisesRegex(
         ValueError, "You must set the layer's vocabulary"):
       layer = string_lookup.StringLookup()
       layer([["a"]])
 
-  def test_binary_output(self):
+  def test_one_hot_output(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array(["earth", "wind", "and", "fire", "michigan"])
+    expected_output = [
+        [0, 1, 0, 0, 0],
+        [0, 0, 1, 0, 0],
+        [0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 1],
+        [1, 0, 0, 0, 0],
+    ]
+
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    layer = string_lookup.StringLookup(
+        vocabulary=vocab_data, output_mode="one_hot")
+    res = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=res)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_multi_hot_output(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "wind", "and", "fire"],
                             ["fire", "and", "earth", "michigan"]])
@@ -345,6 +386,16 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     output_data = model.predict(input_array)
     self.assertAllEqual(expected_output, output_data)
 
+  def test_tensor_vocab(self):
+    vocab_data = ["[UNK]", "wind", "and", "fire"]
+    vocab_tensor = constant_op.constant(vocab_data)
+    layer = string_lookup.StringLookup(vocabulary=vocab_tensor)
+    returned_vocab = layer.get_vocabulary()
+    self.assertAllEqual(vocab_data, returned_vocab)
+    self.assertAllEqual(layer.vocabulary_size(), 4)
+    fn = def_function.function(lambda: layer.set_vocabulary(vocab_tensor))
+    with self.assertRaisesRegex(RuntimeError, "Cannot set a tensor vocabulary"):
+      fn()
 
 if __name__ == "__main__":
   test.main()

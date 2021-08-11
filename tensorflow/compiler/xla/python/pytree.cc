@@ -586,12 +586,16 @@ std::unique_ptr<PyTreeDef> PyTreeDef::Compose(const PyTreeDef& inner) const {
 /*static*/ std::unique_ptr<PyTreeDef> PyTreeDef::Tuple(
     const std::vector<PyTreeDef>& defs) {
   auto out = absl::make_unique<PyTreeDef>();
+  int num_leaves = 0;
   for (const PyTreeDef& def : defs) {
     absl::c_copy(def.traversal_, std::back_inserter(out->traversal_));
+    num_leaves += def.num_leaves();
   }
   Node node;
   node.kind = PyTreeKind::kTuple;
   node.arity = defs.size();
+  node.num_leaves = num_leaves;
+  node.num_nodes = out->traversal_.size() + 1;
   out->traversal_.push_back(node);
   return out;
 }

@@ -50,6 +50,12 @@ namespace {
 // computation.
 struct FusedKernelMatcherPass
     : public PassWrapper<FusedKernelMatcherPass, FunctionPass> {
+  StringRef getArgument() const final { return "tf-fused-kernel-matcher"; }
+
+  StringRef getDescription() const final {
+    return "Matches computations corresponding to optimized fused kernels";
+  }
+
   void runOnFunction() override;
 };
 
@@ -257,9 +263,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass() {
   return std::make_unique<FusedKernelMatcherPass>();
 }
 
-static PassRegistration<FusedKernelMatcherPass> pass(
-    "tf-fused-kernel-matcher",
-    "Matches computations corresponding to optimized fused kernels");
+static PassRegistration<FusedKernelMatcherPass> pass;
 
 }  // namespace TF
 

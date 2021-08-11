@@ -74,11 +74,34 @@ cc_library(
 )
 
 cc_library(
+    name = "resource_variable_ops",
+    srcs = [
+        "resource_variable_ops.cc",
+    ],
+    hdrs = [
+        "resource_variable_ops.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/c/eager:abstract_context",
+        "//tensorflow/c/eager:abstract_operation",
+        "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c/eager:c_api_unified_internal",
+        "//tensorflow/c/eager:tracing_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
+cc_library(
     name = "ops",
     hdrs = [
         "array_ops.h",
         "math_ops.h",
         "nn_ops.h",
+        "resource_variable_ops.h",
     ],
     visibility = [
         "//tensorflow:internal",
@@ -87,6 +110,7 @@ cc_library(
         ":array_ops",
         ":math_ops",
         ":nn_ops",
+        ":resource_variable_ops",
         "//tensorflow/c/eager:abstract_context",
         "//tensorflow/c/eager:abstract_operation",
         "//tensorflow/c/eager:abstract_tensor_handle",
@@ -100,6 +124,7 @@ filegroup(
         "array_ops.h",
         "math_ops.h",
         "nn_ops.h",
+        "resource_variable_ops.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",

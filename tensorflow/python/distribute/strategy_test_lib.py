@@ -751,7 +751,7 @@ class RemoteSingleWorkerMirroredStrategyBase(DistributionTestBase):
 
   def _testMakeInputFnIteratorWithDataset(self, distribution):
     dataset_fn = lambda: dataset_ops.Dataset.range(100)
-    num_gpus = self._get_num_gpus()
+    num_gpus = self._get_num_gpus()  # pylint: disable=assignment-from-no-return
     num_workers = 1
 
     expected_values = [[i+j for j in range(num_gpus)] * num_workers
@@ -775,7 +775,8 @@ class RemoteSingleWorkerMirroredStrategyBase(DistributionTestBase):
       dataset = dataset_ops.Dataset.range(100)
       it = dataset_ops.make_one_shot_iterator(dataset)
       return it.get_next
-    num_gpus = self._get_num_gpus()
+
+    num_gpus = self._get_num_gpus()  # pylint: disable=assignment-from-no-return
     num_workers = 1
 
     expected_values = []

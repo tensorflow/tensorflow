@@ -149,7 +149,7 @@ def MobileNetV2(input_shape=None,
           of filters in each layer.
       - If `alpha` > 1.0, proportionally increases the number
           of filters in each layer.
-      - If `alpha` = 1, default number of filters from the paper
+      - If `alpha` = 1.0, default number of filters from the paper
           are used at each layer.
     include_top: Boolean, whether to include the fully-connected
       layer at the top of the network. Defaults to `True`.
@@ -404,13 +404,13 @@ def MobileNetV2(input_shape=None,
   if weights == 'imagenet':
     if include_top:
       model_name = ('mobilenet_v2_weights_tf_dim_ordering_tf_kernels_' +
-                    str(alpha) + '_' + str(rows) + '.h5')
+                    str(float(alpha)) + '_' + str(rows) + '.h5')
       weight_path = BASE_WEIGHT_PATH + model_name
       weights_path = data_utils.get_file(
           model_name, weight_path, cache_subdir='models')
     else:
       model_name = ('mobilenet_v2_weights_tf_dim_ordering_tf_kernels_' +
-                    str(alpha) + '_' + str(rows) + '_no_top' + '.h5')
+                    str(float(alpha)) + '_' + str(rows) + '_no_top' + '.h5')
       weight_path = BASE_WEIGHT_PATH + model_name
       weights_path = data_utils.get_file(
           model_name, weight_path, cache_subdir='models')

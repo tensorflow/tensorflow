@@ -31,15 +31,16 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename T>
 struct BiasGPU {
   static void compute(const GPUDevice& d, const T* input, const T* bias,
-                      T* output, int32 batch, int32 height, int32 width,
-                      int32 depth, int32 channel, TensorFormat data_format);
+                      T* output, int32_t batch, int32_t height, int32_t width,
+                      int32_t depth, int32_t channel, TensorFormat data_format);
 };
 
 template <typename T>
 struct BiasGradGPU {
   static void compute(const GPUDevice& device, const T* output_backprop,
-                      T* bias_backprop, int32 batch, int32 height, int32 width,
-                      int32 depth, int32 channel, TensorFormat data_format);
+                      T* bias_backprop, int32_t batch, int32_t height,
+                      int32_t width, int32_t depth, int32_t channel,
+                      TensorFormat data_format);
 
   static void DoRowReduction(OpKernelContext* context, T* output,
                              const T* input, int rows, int cols);

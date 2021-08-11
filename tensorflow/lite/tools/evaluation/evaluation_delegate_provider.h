@@ -29,6 +29,7 @@ limitations under the License.
 namespace tflite {
 namespace evaluation {
 
+using ProvidedDelegateList = tflite::tools::ProvidedDelegateList;
 class DelegateProviders {
  public:
   DelegateProviders();
@@ -57,29 +58,30 @@ class DelegateProviders {
 
   // Create a list of TfLite delegates based on what have been initialized (i.e.
   // 'params_').
-  std::vector<TfLiteDelegatePtr> CreateAllDelegates() const {
-    return CreateAllDelegates(params_);
+  std::vector<ProvidedDelegateList::ProvidedDelegate> CreateAllDelegates()
+      const {
+    return delegate_list_util_.CreateAllRankedDelegates();
   }
 
   // Create a list of TfLite delegates based on the given TfliteInferenceParams
   // 'params' but considering what have been initialized (i.e. 'params_').
-  std::vector<TfLiteDelegatePtr> CreateAllDelegates(
+  std::vector<ProvidedDelegateList::ProvidedDelegate> CreateAllDelegates(
       const TfliteInferenceParams& params) const {
-    return CreateAllDelegates(std::move(GetAllParams(params)));
+    auto converted = GetAllParams(params);
+    ProvidedDelegateList util(&converted);
+    return util.CreateAllRankedDelegates();
   }
 
  private:
-  // Create a list of TfLite delegates based on the provided 'params'.
-  std::vector<TfLiteDelegatePtr> CreateAllDelegates(
-      const tools::ToolParams& params) const;
-
   // Contain delegate-related parameters that are initialized from command-line
   // flags.
   tools::ToolParams params_;
 
-  const tools::DelegateProviderList& delegates_list_;
-  // Key is the delegate name, and the value is the index to the
-  // 'delegates_list_'.
+  // A helper to create TfLite delegates.
+  ProvidedDelegateList delegate_list_util_;
+
+  // Key is the delegate name, and the value is the index to a TfLite delegate
+  // provider in the "delegate_list_util_.providers()" list.
   const std::unordered_map<std::string, int> delegates_map_;
 };
 

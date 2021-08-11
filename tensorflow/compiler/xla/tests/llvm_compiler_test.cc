@@ -54,7 +54,7 @@ class GpuDummyCompiler : public GpuCompiler {
   }
 
   GpuVersion GetGpuVersion(se::StreamExecutor*) override {
-    return std::make_pair(0, 0);
+    return se::CudaComputeCapability{0, 0};
   }
 
   StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(

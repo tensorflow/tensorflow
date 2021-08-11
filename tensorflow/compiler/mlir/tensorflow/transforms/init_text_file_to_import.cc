@@ -46,6 +46,13 @@ class InitTextFileToImportPass
     saved_model_dir_ = saved_model_dir;
   }
 
+  StringRef getArgument() const final { return "tf-init-text-file-to-import"; }
+
+  StringRef getDescription() const final {
+    return "convert InitializeTableFromTextFileV2 ops to LookupTableImportV2Op "
+           "to remove the dependency on asset files";
+  }
+
  private:
   void runOnFunction() override;
 
@@ -161,10 +168,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass(
   return std::make_unique<InitTextFileToImportPass>(saved_model_dir);
 }
 
-static PassRegistration<InitTextFileToImportPass> pass(
-    "tf-init-text-file-to-import",
-    "convert InitializeTableFromTextFileV2 ops to LookupTableImportV2Op to "
-    "remove the dependency on asset files");
+static PassRegistration<InitTextFileToImportPass> pass;
 
 }  // namespace TF
 }  // namespace mlir

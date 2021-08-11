@@ -29,10 +29,10 @@ limitations under the License.
 namespace tensorflow {
 
 StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
-                                 absl::Span<int64 const> output_dims) {
+                                 absl::Span<int64_t const> output_dims) {
   xla::XlaBuilder* builder = input.builder();
   TF_ASSIGN_OR_RETURN(xla::Shape input_shape, builder->GetShape(input));
-  absl::Span<int64 const> input_dims =
+  absl::Span<int64_t const> input_dims =
       xla::AsInt64Slice(input_shape.dimensions());
 
   if (input_dims == output_dims) {
@@ -46,8 +46,8 @@ StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
         absl::StrJoin(output_dims, ","), "]");
   }
 
-  std::vector<int64> broadcast_dims;
-  std::vector<int64> broadcast_shape;
+  std::vector<int64_t> broadcast_dims;
+  std::vector<int64_t> broadcast_shape;
   auto input_it = input_dims.rbegin();
   for (auto output_it = output_dims.rbegin(); output_it != output_dims.rend();
        ++output_it) {
@@ -79,7 +79,7 @@ StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
 
   absl::c_reverse(broadcast_dims);
   int broadcast_shape_size = broadcast_shape.size();
-  for (int64& broadcast_dim : broadcast_dims) {
+  for (int64_t& broadcast_dim : broadcast_dims) {
     broadcast_dim = broadcast_shape_size - broadcast_dim - 1;
   }
   absl::c_reverse(broadcast_shape);

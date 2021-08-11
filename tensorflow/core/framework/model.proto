@@ -86,8 +86,8 @@ message ModelProto {
     double input_processing_time_sum = 12;
     int64 input_processing_time_count = 13;
 
-    // Inputs of this node.
-    repeated Node inputs = 14;
+    // IDs of inputs of this node.
+    repeated int64 inputs = 14;
 
     // Class of this node.
     NodeClass node_class = 15;
@@ -101,15 +101,18 @@ message ModelProto {
     double memory_ratio = 17;
   }
 
-  // Output node of this model.
-  Node output = 1;
+  // Map of node IDs to nodes of this model.
+  map<int64, Node> nodes = 1;
+
+  // ID of the output node of this model.
+  int64 output = 2;
 
   // Counter for node IDs of this model.
-  int64 id_counter = 2;
+  int64 id_counter = 3;
 
   // Indicates whether the modeling framework should collect resource usage,
   // e.g. CPU, memory.
-  bool collect_resource_usage = 3;
+  bool collect_resource_usage = 4;
 
   // Contains parameters of the model autotuning optimization.
   message OptimizationParams {
@@ -127,5 +130,5 @@ message ModelProto {
     double model_input_time = 4;
   }
 
-  OptimizationParams optimization_params = 4;
+  OptimizationParams optimization_params = 5;
 }

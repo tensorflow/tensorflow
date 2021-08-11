@@ -694,7 +694,7 @@ void BM_InEdgeIteration(::testing::benchmark::State& state) {
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
 
-  int64 sum = 0;
+  int64_t sum = 0;
   for (auto s : state) {
     for (const Node* node : graph.nodes()) {
       for (auto e : node->in_edges()) {
@@ -735,7 +735,7 @@ void BM_GraphCreation(::testing::benchmark::State& state) {
   // Warmup step.
   Graph graph(registry);
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
-  int64 sum = 0;
+  int64_t sum = 0;
   for (auto s : state) {
     Graph graph(registry);
     TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
@@ -774,7 +774,7 @@ void BM_ToGraphDef(::testing::benchmark::State& state) {
   // Warmup step.
   Graph graph(registry);
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
-  int64 sum = 0;
+  int64_t sum = 0;
   for (auto s : state) {
     GraphDef graph_def;
     graph.ToGraphDef(&graph_def);

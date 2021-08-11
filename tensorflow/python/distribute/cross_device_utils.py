@@ -237,9 +237,9 @@ class CollectiveKeys(object):
     with self._lock:
       group = self._instance_key_table.get(group_key, None)
       if group is None:
-        raise ValueError('group {} not found'.format(group_key))
+        raise ValueError(f'Group {group_key} is not found.')
       if device not in group:
-        raise ValueError('{} not in group {}'.format(device, group_key))
+        raise ValueError(f'Device {device} is not present in group {group_key}')
       v = group[device]
       group[device] += 1
       return v
@@ -460,7 +460,7 @@ class CollectiveReplicaLauncher(object):
       RuntimeError: if called in eager mode.
     """
     if context.executing_eagerly():
-      raise RuntimeError('all_gather in eager mode is not supported')
+      raise RuntimeError('all_gather is not supported in eager mode.')
 
     with ops.device(self._device), \
          ops.control_dependencies([array_ops.identity(input_tensor)]):
@@ -523,7 +523,7 @@ class CollectiveReplicaLauncher(object):
     """
     if context.executing_eagerly():
       raise RuntimeError(
-          'all_reduce_indexed_slices in eager mode is not supported')
+          'all_reduce_indexed_slices is not supported in eager mode.')
 
     # Current CollectiveAllGather implementations require input IndexedSlices to
     # have consistent length across the board, we handle the reduction of
@@ -591,11 +591,15 @@ def divide_by_n_tensors_or_indexed_slices(value, n):
 
 
 def copy_tensor_or_indexed_slices_to_device(value, device):
+  """Copies a tensor or IndexedSlices to a device."""
   with ops.device(device):
     if isinstance(value, ops.IndexedSlices):
       copied_values = array_ops.identity(value.values)
       copied_indices = array_ops.identity(value.indices)
-      copied_shape = array_ops.identity(value.dense_shape)
+      if value.dense_shape is not None:
+        copied_shape = array_ops.identity(value.dense_shape)
+      else:
+        copied_shape = None
       result = ops.IndexedSlices(copied_values, copied_indices, copied_shape)
     else:
       result = array_ops.identity(value)

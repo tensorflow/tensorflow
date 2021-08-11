@@ -35,7 +35,7 @@ from tensorflow.python.framework import type_spec
 class Encoder(json.JSONEncoder):
   """JSON encoder and decoder that handles TensorShapes and tuples."""
 
-  def default(self, obj):
+  def default(self, obj):  # pylint: disable=method-hidden
     """Encodes objects for types that aren't handled by the default encoder."""
     if isinstance(obj, tensor_shape.TensorShape):
       items = obj.as_list() if obj.rank is not None else None

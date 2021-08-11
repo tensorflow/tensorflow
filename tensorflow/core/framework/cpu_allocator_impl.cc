@@ -46,14 +46,14 @@ static const double kLargeAllocationWarningThreshold = 0.1;
 
 // Cache first invocation to port::AvailableRam, as it can be expensive.
 static int64_t LargeAllocationWarningBytes() {
-  static int64_t value = static_cast<int64>(port::AvailableRam() *
-                                            kLargeAllocationWarningThreshold);
+  static int64_t value = static_cast<int64_t>(port::AvailableRam() *
+                                              kLargeAllocationWarningThreshold);
   return value;
 }
 
 static int64_t TotalAllocationWarningBytes() {
-  static int64_t value = static_cast<int64>(port::AvailableRam() *
-                                            kTotalAllocationWarningThreshold);
+  static int64_t value = static_cast<int64_t>(port::AvailableRam() *
+                                              kTotalAllocationWarningThreshold);
   return value;
 }
 
@@ -89,9 +89,9 @@ class CPUAllocator : public Allocator {
       ++stats_.num_allocs;
       stats_.bytes_in_use += alloc_size;
       stats_.peak_bytes_in_use =
-          std::max<int64>(stats_.peak_bytes_in_use, stats_.bytes_in_use);
+          std::max<int64_t>(stats_.peak_bytes_in_use, stats_.bytes_in_use);
       stats_.largest_alloc_size =
-          std::max<int64>(stats_.largest_alloc_size, alloc_size);
+          std::max<int64_t>(stats_.largest_alloc_size, alloc_size);
 
       if (stats_.bytes_in_use > TotalAllocationWarningBytes() &&
           total_allocation_warning_count_ < kMaxTotalAllocationWarnings) {

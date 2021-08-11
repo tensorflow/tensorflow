@@ -36,7 +36,7 @@ class CollectiveReduceV2Op : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    int64 group_key, group_size;
+    int64_t group_key, group_size;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("group_key", &group_key));
     OP_REQUIRES_OK(ctx,
                    ctx->ConstantInputAsIntScalar("group_size", &group_size));

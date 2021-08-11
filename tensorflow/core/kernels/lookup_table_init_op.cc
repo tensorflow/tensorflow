@@ -141,7 +141,7 @@ class InitializeTableFromTextFileOp : public OpKernel {
     OP_REQUIRES(ctx, !vocab_filename.empty(),
                 errors::InvalidArgument("filename cannot be empty."));
 
-    int64 memory_used_before = 0;
+    int64_t memory_used_before = 0;
     if (ctx->track_allocations()) {
       memory_used_before = table->MemoryUsed();
     }
@@ -183,11 +183,11 @@ class InitializeTableFromTextFileOp : public OpKernel {
   }
 
   mutex mu_;
-  int64 vocab_size_;
+  int64_t vocab_size_;
   char delimiter_;
-  int64 key_index_;
-  int64 value_index_;
-  int64 offset_ = 0;
+  int64_t key_index_;
+  int64_t value_index_;
+  int64_t offset_ = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InitializeTableFromTextFileOp);
 };

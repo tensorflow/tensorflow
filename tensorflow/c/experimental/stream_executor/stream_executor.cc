@@ -258,7 +258,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     return port::Status::OK();
   }
 
-  DeviceMemoryBase Allocate(uint64 size, int64 memory_space) override {
+  DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) override {
     SP_DeviceMemoryBase mem = {SP_DEVICE_MEMORY_BASE_STRUCT_SIZE};
     stream_executor_->allocate(&device_, size, memory_space, &mem);
     port::Status status = ValidateSPDeviceMemoryBase(mem);
@@ -592,9 +592,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     return false;
   }
 
-  bool DeviceMemoryUsage(int64* free, int64* total) const override {
-    static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
-                  "64-bit int types should match in size");
+  bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override {
     return stream_executor_->device_memory_usage(
         &device_, reinterpret_cast<int64_t*>(free),
         reinterpret_cast<int64_t*>(total));

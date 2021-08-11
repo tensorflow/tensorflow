@@ -65,7 +65,7 @@ TEST_F(LayoutTest, StreamOut) {
 
 TEST_F(LayoutTest, Equality) {
   EXPECT_EQ(Layout(), Layout());
-  const std::vector<int64> empty_dims;
+  const std::vector<int64_t> empty_dims;
   EXPECT_EQ(Layout(empty_dims), Layout(empty_dims));
   EXPECT_NE(Layout(), Layout(empty_dims));
   EXPECT_EQ(Layout({0, 1, 2, 3}), Layout({0, 1, 2, 3}));

@@ -670,7 +670,7 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     filename = os.path.join(self._base_dir, "a.npz")
     np.savez_compressed(filename, {"a": 1, "b": 2})
     with gfile.GFile(filename, "rb") as f:
-      info = np.load(f, allow_pickle=True)
+      info = np.load(f, allow_pickle=True)  # pylint: disable=unexpected-keyword-arg
     _ = [i for i in info.items()]
 
   def testHasAtomicMove(self):

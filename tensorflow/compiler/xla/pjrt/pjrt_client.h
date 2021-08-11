@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/optional.h"
@@ -116,11 +117,14 @@ class PjRtDevice {
 class PjRtBuffer;
 
 // Helper struct for cross host transfers, returned by the callback from a call
-// to PjRtBuffer::MakeCrossHostReceiveBuffers.
+// to PjRtBuffer::MakeCrossHostReceiveBuffers or
+// PjRtBuffer::MakeCrossHostReceiveBuffersForGather.
 struct PjRtCrossHostRecvBuffer {
-  // serialized_descriptor should be transmitted to the sender and passed to a
-  // call to src_buffer->CopyToRemoteDevice.
-  std::string serialized_descriptor;
+  // There is one serialized_descriptor per sub-buffer being gathered (i.e. a
+  // single descriptor if the buffer is returned from a call to
+  // MakeCrossHostReceiveBuffers). The descriptor should be transmitted to the
+  // sender(s) and passed to a call to src_buffer->CopyToRemoteDevice.
+  absl::InlinedVector<std::string, 1> serialized_descriptors;
   // The buffer that will hold the result of the transfer.
   std::unique_ptr<PjRtBuffer> buffer;
 };
@@ -216,6 +220,18 @@ class PjRtClient {
   virtual StatusOr<absl::optional<std::string>> ExecutableFingerprint(
       const PjRtExecutable& executable) const = 0;
 
+  // Returns a platform-specific serialization of `executable`. The
+  // serialization is not guaranteed to be stable over time. `executable` must
+  // have been produced by this client.
+  virtual StatusOr<std::string> SerializeExecutable(
+      const PjRtExecutable& executable) const = 0;
+
+  // Deserializes a serialized executable as produced by
+  // SerializeExecutable(). `serialized` must have been produced by a client of
+  // the same platform and version as this one.
+  virtual StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      absl::string_view serialized, CompileOptions options) = 0;
+
   // Creates a buffer on the device without initializing or copying any data.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) = 0;
@@ -247,6 +263,9 @@ class PjRtClient {
 
     // Returns the number of buffers managed by this object.
     virtual size_t buffer_count() const = 0;
+
+    // Returns the destination device of the transfers.
+    virtual PjRtDevice* device() const = 0;
 
     // Returns buffer_index, which can be passed to downstream consumers
     // immediately and will become available once transfers complete. May not
@@ -290,8 +309,9 @@ class PjRtClient {
     // but before the buffers are made available to their consumers. 'data' must
     // remain in scope until on_done is called.
     virtual Status TransferRawDataToSubBuffer(
-        int buffer_index, const void* data, int64 offset, int64 transfer_size,
-        bool is_last_transfer, std::function<void()> on_done) = 0;
+        int buffer_index, const void* data, int64_t offset,
+        int64_t transfer_size, bool is_last_transfer,
+        std::function<void()> on_done) = 0;
 
     // Indicates that a client error occurred and the transfers will never
     // complete. Puts all buffers in an error state. For the stream executor
@@ -336,10 +356,19 @@ class PjRtClient {
     // kImmutableUntilTransferCompletes.
     kZeroCopy,
   };
+
   // on_done_with_host_buffer is optional and may be null.
   // on_done_with_host_buffer will be called iff an OK status is returned.
+  //
+  // `data` points to the backing array of the host buffer. Caution:
+  // `byte_strides` are allowed to be negative, in which case `data` may need
+  // to point to the interior of the buffer, not necessarily its start.
+  //
+  // If byte_strides is omitted, the array is assumed to have a dense layout
+  // with dimensions in major-to-minor order.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
-      const void* data, const Shape& shape,
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      absl::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer, PjRtDevice* device) = 0;
 
@@ -378,6 +407,39 @@ class PjRtClient {
       absl::Span<const Shape> shapes, PjRtDevice* device,
       PjRtCrossHostRecvNotifier&& notifier) = 0;
 
+  // Asynchronously makes a vector of PjRtBuffers that can be used to receive
+  // cross host transfers, as in MakeCrossHostReceiveBuffers above, however
+  // each buffer expects to be "gathered" using multiple sends, one for each of
+  // a set of sub-slices of the destination buffer.
+  //
+  // For each value in shapes there is a corresponding FullGatherDetails struct
+  // that describes the sub-slices.
+  struct GatherDetails {
+    // The dimensions of the corresponding buffer that the gather slices
+    // into. These dimensions must be the major dimensions in the on-device
+    // layout of the buffer, and must all be untiled. The scatter acts as if
+    // the buffer were transposed/reshaped so that all of these dimensions were
+    // combined into a single dimension whose size is the product of the
+    // dimensions, and the slice indices correspond to indices in that single
+    // combined dimension.
+    //
+    // For example, if the shape is [3, 4, 128, 128] with [3, 4] as the major
+    // dimensions in the layout, and dimensions = {0, 1}, then the buffer is
+    // treated as if it were shape [12, 128, 128] and the indices in
+    // slice_boundaries range in [0, 12].
+    absl::InlinedVector<int, 3> dimensions;
+    // The cumulative indices in dimension of the slices. For example, if
+    // shape.dimensions(dimension)==10, setting slice_boundaries to {2, 5, 10}
+    // would correspond to 3 slices of sizes {2, 3, 5} respectively. If the last
+    // entry in slice_boundaries is less than the size of the combined gather
+    // dimension, the trailing data in the buffer is undefined after the receive
+    // completes.
+    std::vector<int64_t> slice_boundaries;
+  };
+  virtual void MakeCrossHostReceiveBuffersForGather(
+      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
+      PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) = 0;
+
   // Create ChannelHandles for XLA send/recv.
   virtual StatusOr<ChannelHandle> CreateChannelHandle() = 0;
   virtual StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() = 0;
@@ -385,8 +447,7 @@ class PjRtClient {
 
   // TODO(zhangqiaorjc): Experimental API to be removed.
   // Defragment device memory.
-  virtual Status Defragment(absl::Span<PjRtBuffer* const> buffers,
-                            absl::Span<PjRtExecutable* const> executables) = 0;
+  virtual Status Defragment() = 0;
 };
 
 // Holds a reference from Python to a tuple of device buffers. A PjRtBuffer
@@ -467,7 +528,7 @@ class PjRtBuffer {
   // is called if and only if CopyRawToHost returns OK. on_ready will be called
   // with a non-OK status if the buffer asynchronously transitions to an error
   // state.
-  virtual Status CopyRawToHost(void* dst, int64 offset, int64 transfer_size,
+  virtual Status CopyRawToHost(void* dst, int64_t offset, int64_t transfer_size,
                                std::function<void(Status)> on_ready) = 0;
 
   // Drops the buffer's reference to its associated device memory, leaving the
@@ -521,6 +582,26 @@ class PjRtBuffer {
   // the callback along with the corresponding destination buffer.
   virtual Status CopyToRemoteDevice(
       absl::string_view serialized_descriptor) = 0;
+  struct ScatterDetails {
+    // The dimensions of the corresponding buffer that the scatter slices
+    // across. These dimensions must be the major dimensions in the on-device
+    // layout of the buffer, and must all be untiled. The scatter acts as if
+    // the buffer were transposed/reshaped so that all of these dimensions were
+    // combined into a single dimension whose size is the product of the
+    // dimensions, and the slice indices correspond to indices in that single
+    // combined dimension.
+    //
+    // For example, if the shape is [3, 4, 128, 128] with [3, 4] as the major
+    // dimensions in the layout, and dimensions = {0, 1}, then the buffer is
+    // treated as if it were shape [12, 128, 128] and the indices in slices
+    // range in [0, 12].
+    absl::InlinedVector<int, 3> dimensions;
+    // The start and end indices of the slices.
+    std::vector<std::pair<int64_t, int64_t>> slices;
+  };
+  virtual Status CopyToRemoteDeviceScattered(
+      absl::Span<const std::string> serialized_descriptors,
+      const ScatterDetails& scatter_details) = 0;
 
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.
@@ -574,7 +655,7 @@ class PjRtExecutable {
 
   virtual int num_partitions() const = 0;
 
-  virtual int64 SizeOfGeneratedCodeInBytes() const = 0;
+  virtual int64_t SizeOfGeneratedCodeInBytes() const = 0;
 
   virtual const DeviceAssignment& device_assignment() const = 0;
 
@@ -623,6 +704,9 @@ class PjRtExecutable {
 
   // Asynchronously free resources after the last execution completes.
   virtual void Delete() = 0;
+
+  // True if on-device resources associated with the executable are freed.
+  virtual bool IsDeleted() = 0;
 };
 
 }  // namespace xla

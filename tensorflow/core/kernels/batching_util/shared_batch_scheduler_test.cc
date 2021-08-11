@@ -15,11 +15,24 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 
+#include <memory>
+#include <string>
+#include <thread>  // NOLINT(build/c++11)
+#include <tuple>
+#include <utility>
+
+#include "absl/base/call_once.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/kernels/batching_util/fake_clock_env.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -39,6 +52,14 @@ class FakeTask : public BatchTask {
 
   TF_DISALLOW_COPY_AND_ASSIGN(FakeTask);
 };
+
+using Queue = BatchScheduler<FakeTask>;
+using Scheduler = SharedBatchScheduler<FakeTask>;
+using QueueOptions = Scheduler::QueueOptions;
+using SplitFunc =
+    std::function<Status(std::unique_ptr<FakeTask>* input_task,
+                         int first_output_task_size, int input_batch_size_limit,
+                         std::vector<std::unique_ptr<FakeTask>>* output_tasks)>;
 
 // Creates a FakeTask of size 'task_size', and calls 'scheduler->Schedule()' on
 // that task. Returns the resulting status.
@@ -65,7 +86,127 @@ std::unique_ptr<Thread> CreateFakeClockAdvancerThread(
       }));
 }
 
-TEST(SharedBatchSchedulerTest, Basic) {
+// Creates a shared-batch-scheduler.
+std::shared_ptr<Scheduler> CreateSharedBatchScheduler(
+    int num_batch_threads, Env* env = Env::Default()) {
+  Scheduler::Options options;
+  options.num_batch_threads = num_batch_threads;
+  options.env = env;
+
+  std::shared_ptr<Scheduler> shared_batch_scheduler;
+  TF_CHECK_OK(Scheduler::Create(options, &shared_batch_scheduler));
+
+  return shared_batch_scheduler;
+}
+
+// Creates a queue with the given `queue_options`.
+//
+// Caller takes ownership of returned queue.
+std::unique_ptr<Queue> CreateQueue(
+    std::shared_ptr<Scheduler> scheduler, Scheduler::QueueOptions queue_options,
+    internal::Queue<FakeTask>::ProcessBatchCallback process_batch_callback) {
+  std::unique_ptr<BatchScheduler<FakeTask>> queue;
+  TF_CHECK_OK(
+      scheduler->AddQueue(queue_options, process_batch_callback, &queue));
+  return queue;
+}
+
+// Creates QueueOptions based on input parameters.
+QueueOptions CreateQueueOptions(size_t max_execution_batch_size,
+                                size_t input_batch_size_limit,
+                                size_t batch_timeout_micros,
+                                size_t max_enqueued_batches,
+                                bool enable_large_batch_splitting,
+                                bool enable_lazy_split, SplitFunc split_func) {
+  QueueOptions queue_options;
+  queue_options.max_enqueued_batches = max_enqueued_batches;
+  queue_options.max_execution_batch_size = max_execution_batch_size;
+  queue_options.input_batch_size_limit = input_batch_size_limit;
+  queue_options.batch_timeout_micros = batch_timeout_micros;
+  queue_options.enable_large_batch_splitting = enable_large_batch_splitting;
+  queue_options.enable_lazy_split = enable_lazy_split;
+  if (enable_large_batch_splitting) {
+    queue_options.split_input_task_func = split_func;
+  }
+  return queue_options;
+}
+
+class SharedBatchSchedulerTest
+    : public ::testing::TestWithParam<std::tuple<bool, bool>> {
+ protected:
+  QueueOptions CreateQueueOptions(size_t max_execution_batch_size,
+                                  size_t input_batch_size_limit,
+                                  size_t batch_timeout_micros,
+                                  size_t max_enqueued_batches) {
+    return tensorflow::serving::CreateQueueOptions(
+        max_execution_batch_size, input_batch_size_limit, batch_timeout_micros,
+        max_enqueued_batches, enable_input_batch_split(), enable_lazy_split(),
+        get_split_func());
+  }
+  bool enable_input_batch_split() const { return std::get<0>(GetParam()); }
+
+  bool enable_lazy_split() const { return std::get<1>(GetParam()); }
+
+  SplitFunc get_split_func() const {
+    if (enable_input_batch_split()) {
+      // TODO(b/194294263)
+      // Add a common split_metadata function, and share the duplicated code.
+      return
+          [](std::unique_ptr<FakeTask>* input_task,
+             int open_batch_remaining_slot, int max_batch_size,
+             std::vector<std::unique_ptr<FakeTask>>* output_tasks) -> Status {
+            std::unique_ptr<FakeTask> owned_input_task = std::move(*input_task);
+            const int input_task_size = owned_input_task->size();
+            const int task_size_from_open_batch =
+                (open_batch_remaining_slot > 0)
+                    ? (input_task_size + max_batch_size -
+                       open_batch_remaining_slot)
+                    : input_task_size;
+
+            int num_batches = (task_size_from_open_batch + max_batch_size - 1) /
+                              max_batch_size;
+
+            int head_batch_task_size, tail_batch_task_size;
+            if (open_batch_remaining_slot == 0) {
+              head_batch_task_size = std::min(input_task_size, max_batch_size);
+            } else {
+              head_batch_task_size =
+                  std::min(open_batch_remaining_slot, input_task_size);
+            }
+            if (input_task_size <= open_batch_remaining_slot) {
+              tail_batch_task_size = input_task_size;
+            } else {
+              tail_batch_task_size = task_size_from_open_batch % max_batch_size;
+              if (tail_batch_task_size == 0) {
+                tail_batch_task_size = max_batch_size;
+              }
+            }
+
+            auto get_task_size = [head_batch_task_size, tail_batch_task_size,
+                                  max_batch_size,
+                                  num_batches](int batch_id) -> int {
+              if (batch_id == 0) {
+                return head_batch_task_size;
+              }
+              if (batch_id == num_batches - 1) {
+                return tail_batch_task_size;
+              }
+              return max_batch_size;
+            };
+
+            output_tasks->resize(num_batches);
+            for (int i = 0; i < num_batches; i++) {
+              (*output_tasks)[i] = std::make_unique<FakeTask>(get_task_size(i));
+            }
+
+            return Status::OK();
+          };
+    }
+    return nullptr;
+  }
+};
+
+TEST_P(SharedBatchSchedulerTest, Basic) {
   for (int num_batch_threads : {1, 2, 3}) {
     for (const bool delete_scheduler_early : {false, true}) {
       for (const bool delete_queue_1_early : {false, true}) {
@@ -89,23 +230,21 @@ TEST(SharedBatchSchedulerTest, Basic) {
               EXPECT_EQ(4, batch->task(1).size());
             };
         {
-          SharedBatchScheduler<FakeTask>::Options options;
-          options.num_batch_threads = num_batch_threads;
-          std::shared_ptr<SharedBatchScheduler<FakeTask>> scheduler;
-          TF_ASSERT_OK(
-              SharedBatchScheduler<FakeTask>::Create(options, &scheduler));
+          auto scheduler = CreateSharedBatchScheduler(num_batch_threads);
 
           // Create two queues.
-          SharedBatchScheduler<FakeTask>::QueueOptions queue_options;
-          queue_options.input_batch_size_limit = 10;
-          queue_options.batch_timeout_micros = 10 * 1000 * 1000;  // 10 seconds
-          queue_options.max_enqueued_batches = 2;
-          std::unique_ptr<BatchScheduler<FakeTask>> queue_0;
-          TF_ASSERT_OK(
-              scheduler->AddQueue(queue_options, queue_0_callback, &queue_0));
-          std::unique_ptr<BatchScheduler<FakeTask>> queue_1;
-          TF_ASSERT_OK(
-              scheduler->AddQueue(queue_options, queue_1_callback, &queue_1));
+
+          const size_t input_batch_size_limit = 10;
+          const size_t batch_timeout_micros = 1 * 1000 * 1000;  // 1 second
+          const size_t max_enqueued_batches = 2;
+          const auto queue_options =
+              CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
+                                 batch_timeout_micros, max_enqueued_batches);
+          auto queue_0 =
+              CreateQueue(scheduler, queue_options, queue_0_callback);
+
+          auto queue_1 =
+              CreateQueue(scheduler, queue_options, queue_1_callback);
 
           if (delete_scheduler_early) {
             // Delete our copy of the scheduler. The queues should keep it alive
@@ -130,12 +269,18 @@ TEST(SharedBatchSchedulerTest, Basic) {
   }
 }
 
-TEST(SharedBatchSchedulerTest, ObeyBatchSizeConstraint) {
+TEST_P(SharedBatchSchedulerTest, ObeyBatchSizeConstraint) {
+  // Set up a fake clock, which only advances when we explicitly tell it to.
+  test_util::FakeClockEnv env(Env::Default());
+  Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
   // Set up a callback that captures the batches' task sizes.
   mutex mu;
   std::vector<std::vector<size_t>> callback_data;
-  auto callback = [&mu,
-                   &callback_data](std::unique_ptr<Batch<FakeTask>> batch) {
+  Notification all_batches_processed;
+  auto callback = [&mu, &callback_data, &all_batches_processed](
+                      std::unique_ptr<Batch<FakeTask>> batch) {
     ASSERT_TRUE(batch->IsClosed());
     std::vector<size_t> batch_data;
     batch_data.reserve(batch->num_tasks());
@@ -145,48 +290,69 @@ TEST(SharedBatchSchedulerTest, ObeyBatchSizeConstraint) {
     {
       mutex_lock l(mu);
       callback_data.push_back(batch_data);
+      if (callback_data.size() == 2) {
+        all_batches_processed.Notify();
+      }
     }
   };
 
   // Run a batch scheduler and inject some tasks.
   {
-    SharedBatchScheduler<FakeTask>::Options options;
-    options.num_batch_threads = 2;
-    std::shared_ptr<SharedBatchScheduler<FakeTask>> scheduler;
-    TF_ASSERT_OK(SharedBatchScheduler<FakeTask>::Create(options, &scheduler));
-    SharedBatchScheduler<FakeTask>::QueueOptions queue_options;
-    queue_options.input_batch_size_limit = 10;
-    queue_options.batch_timeout_micros = 10 * 1000 * 1000;  // 10 seconds
-    queue_options.max_enqueued_batches = 2;
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    TF_ASSERT_OK(scheduler->AddQueue(queue_options, callback, &queue));
+    auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/2, &env);
 
-    // First batch.
-    TF_ASSERT_OK(ScheduleTask(3, queue.get()));
-    TF_ASSERT_OK(ScheduleTask(5, queue.get()));
+    const size_t input_batch_size_limit = 10;
+    const size_t batch_timeout_micros = 10 * 1000;  // 10 milli-seconds
+    const size_t max_enqueued_batches = 2;
+    auto queue = CreateQueue(
+        scheduler,
+        CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
+                           batch_timeout_micros, max_enqueued_batches),
+        callback);
 
-    // Second batch (due to size overage).
-    TF_ASSERT_OK(ScheduleTask(3 /* (3+5) + 3 > 10 */, queue.get()));
-    TF_ASSERT_OK(ScheduleTask(1, queue.get()));
-    TF_ASSERT_OK(ScheduleTask(6, queue.get()));
+    if (enable_input_batch_split()) {
+      // First batch.
+      TF_ASSERT_OK(ScheduleTask(3, queue.get()));
+      TF_ASSERT_OK(ScheduleTask(5, queue.get()));
 
-    // (Empty third batch, since the second batch exactly hit the size limit,
-    // which should never get sent to the callback.)
+      // Second batch
+      // Task spans over first batch and second batch, so contributes two tasks.
+      TF_ASSERT_OK(ScheduleTask(3 /* (3+5) + 3 > 10 */, queue.get()));
+      TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+      TF_ASSERT_OK(ScheduleTask(6, queue.get()));
+      TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+    } else {
+      // First batch.
+      TF_ASSERT_OK(ScheduleTask(3, queue.get()));
+      TF_ASSERT_OK(ScheduleTask(5, queue.get()));
+
+      // Second batch (due to size overage).
+      TF_ASSERT_OK(ScheduleTask(3 /* (3+5) + 3 > 10 */, queue.get()));
+      TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+      TF_ASSERT_OK(ScheduleTask(6, queue.get()));
+      // (Empty third batch, since the second batch exactly hit the size limit,
+      // which should never get sent to the callback.)
+    }
+
+    // Advance clock to trigger batch processing.
+    env.AdvanceByMicroseconds(20 * 1000);
+    all_batches_processed.WaitForNotification();
+    // Expect a certain grouping of the tasks into batches.
+    if (enable_input_batch_split()) {
+      EXPECT_THAT(
+          callback_data,
+          ::testing::UnorderedElementsAreArray(std::vector<std::vector<size_t>>{
+              std::vector<size_t>{3, 5, 2}, std::vector<size_t>{1, 1, 6, 1}}));
+    } else {
+      EXPECT_THAT(callback_data,
+                  ::testing::UnorderedElementsAreArray(
+                      std::vector<std::vector<size_t>>{{3, 5}, {3, 1, 6}}));
+    }
+    start_teardown.Notify();
   }
-
-  // Expect a certain grouping of the tasks into batches.
-  ASSERT_EQ(2, callback_data.size());
-  ASSERT_TRUE((callback_data[0].size() == 2 && callback_data[1].size() == 3) ||
-              (callback_data[0].size() == 3 && callback_data[1].size() == 2));
-  const std::vector<size_t>& callback_data_a =
-      callback_data[0].size() == 2 ? callback_data[0] : callback_data[1];
-  const std::vector<size_t>& callback_data_b =
-      callback_data[0].size() == 2 ? callback_data[1] : callback_data[0];
-  EXPECT_EQ((std::vector<size_t>{3, 5}), callback_data_a);
-  EXPECT_EQ((std::vector<size_t>{3, 1, 6}), callback_data_b);
+  stop_teardown.Notify();
 }
 
-TEST(SharedBatchSchedulerTest, ObeysTimeout) {
+TEST_P(SharedBatchSchedulerTest, ObeysTimeout) {
   // Set up a fake clock, which only advances when we explicitly tell it to.
   test_util::FakeClockEnv env(Env::Default());
   Notification start_teardown, stop_teardown;
@@ -196,32 +362,35 @@ TEST(SharedBatchSchedulerTest, ObeysTimeout) {
   {
     Notification first_batch_processed, second_batch_processed,
         third_batch_processed;
-    auto callback =
-        [&first_batch_processed, &second_batch_processed,
-         &third_batch_processed](std::unique_ptr<Batch<FakeTask>> batch) {
-          ASSERT_TRUE(batch->IsClosed());
-          if (batch->size() == 1) {
-            first_batch_processed.Notify();
-          } else if (batch->size() == 2) {
-            second_batch_processed.Notify();
-          } else if (batch->size() == 3) {
-            third_batch_processed.Notify();
-          } else {
-            EXPECT_TRUE(false) << "Unexpected batch size";
-          }
-        };
+    bool notify_first_batch = false, notify_second_batch = false,
+         notify_third_batch = false;
+    auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      ASSERT_TRUE(batch->IsClosed());
+      if (notify_first_batch && (!first_batch_processed.HasBeenNotified())) {
+        first_batch_processed.Notify();
+        return;
+      }
+      if (notify_second_batch && (!second_batch_processed.HasBeenNotified())) {
+        second_batch_processed.Notify();
+        return;
+      }
+      if (notify_third_batch && (!third_batch_processed.HasBeenNotified())) {
+        third_batch_processed.Notify();
+        return;
+      }
 
-    SharedBatchScheduler<FakeTask>::Options options;
-    options.num_batch_threads = 1;
-    options.env = &env;
-    std::shared_ptr<SharedBatchScheduler<FakeTask>> scheduler;
-    TF_ASSERT_OK(SharedBatchScheduler<FakeTask>::Create(options, &scheduler));
-    SharedBatchScheduler<FakeTask>::QueueOptions queue_options;
-    queue_options.input_batch_size_limit = 4;
-    queue_options.batch_timeout_micros = 10;
-    queue_options.max_enqueued_batches = 2;
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    TF_ASSERT_OK(scheduler->AddQueue(queue_options, callback, &queue));
+      EXPECT_TRUE(false) << "Unexpected condition";
+    };
+
+    auto scheduler = CreateSharedBatchScheduler(1, &env);
+
+    const size_t input_batch_size_limit = 4;
+    const size_t batch_timeout_micros = 10;
+    const size_t max_enqueued_batches = 2;
+    QueueOptions options =
+        CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
+                           batch_timeout_micros, max_enqueued_batches);
+    auto queue = CreateQueue(scheduler, options, callback);
 
     // Create an underfull batch, and ensure that it gets processed when the
     // clock hits the timeout.
@@ -229,6 +398,7 @@ TEST(SharedBatchSchedulerTest, ObeysTimeout) {
     env.AdvanceByMicroseconds(9);
     Env::Default()->SleepForMicroseconds(10 * 1000 /* 10 milliseconds */);
     EXPECT_FALSE(first_batch_processed.HasBeenNotified());
+    notify_first_batch = true;
     env.AdvanceByMicroseconds(1);
     first_batch_processed.WaitForNotification();
 
@@ -238,6 +408,7 @@ TEST(SharedBatchSchedulerTest, ObeysTimeout) {
     TF_ASSERT_OK(ScheduleTask(2, queue.get()));
     Env::Default()->SleepForMicroseconds(10 * 1000 /* 10 milliseconds */);
     EXPECT_FALSE(second_batch_processed.HasBeenNotified());
+    notify_second_batch = true;
     TF_ASSERT_OK(ScheduleTask(3, queue.get()));
     second_batch_processed.WaitForNotification();
 
@@ -246,6 +417,7 @@ TEST(SharedBatchSchedulerTest, ObeysTimeout) {
     env.AdvanceByMicroseconds(9);
     Env::Default()->SleepForMicroseconds(10 * 1000 /* 10 milliseconds */);
     EXPECT_FALSE(third_batch_processed.HasBeenNotified());
+    notify_third_batch = true;
     env.AdvanceByMicroseconds(1);
     third_batch_processed.WaitForNotification();
 
@@ -254,7 +426,7 @@ TEST(SharedBatchSchedulerTest, ObeysTimeout) {
   stop_teardown.Notify();
 }
 
-TEST(SharedBatchSchedulerTest, ObeysTimeoutWithRealClock) {
+TEST_P(SharedBatchSchedulerTest, ObeysTimeoutWithRealClock) {
   Notification first_batch_processed, second_batch_processed;
   auto callback = [&first_batch_processed, &second_batch_processed](
                       std::unique_ptr<Batch<FakeTask>> batch) {
@@ -268,16 +440,16 @@ TEST(SharedBatchSchedulerTest, ObeysTimeoutWithRealClock) {
     }
   };
 
-  SharedBatchScheduler<FakeTask>::Options options;
-  options.num_batch_threads = 2;
-  std::shared_ptr<SharedBatchScheduler<FakeTask>> scheduler;
-  TF_ASSERT_OK(SharedBatchScheduler<FakeTask>::Create(options, &scheduler));
-  SharedBatchScheduler<FakeTask>::QueueOptions queue_options;
-  queue_options.input_batch_size_limit = 10;
-  queue_options.batch_timeout_micros = 100 * 1000;  // 100 milliseconds
-  queue_options.max_enqueued_batches = 2;
-  std::unique_ptr<BatchScheduler<FakeTask>> queue;
-  TF_ASSERT_OK(scheduler->AddQueue(queue_options, callback, &queue));
+  auto scheduler = CreateSharedBatchScheduler(2);
+
+  const size_t input_batch_size_limit = 10;
+  const size_t batch_timeout_micros = 100 * 1000;  // 100 milliseconds
+  const size_t max_enqueued_batches = 2;
+  auto queue = CreateQueue(
+      scheduler,
+      CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
+                         batch_timeout_micros, max_enqueued_batches),
+      callback);
 
   // Submit a single task that doesn't fill up the batch.
   // Ensure that it gets processed due to the timeout.
@@ -289,8 +461,8 @@ TEST(SharedBatchSchedulerTest, ObeysTimeoutWithRealClock) {
   second_batch_processed.WaitForNotification();
 }
 
-TEST(SharedBatchSchedulerTest,
-     WithZeroTimeoutBatchesScheduledAsSoonAsThreadIsAvailable) {
+TEST_P(SharedBatchSchedulerTest,
+       WithZeroTimeoutBatchesScheduledAsSoonAsThreadIsAvailable) {
   // Set up a fake clock, and never advance the time.
   test_util::FakeClockEnv env(Env::Default());
   Notification start_teardown, stop_teardown;
@@ -311,19 +483,18 @@ TEST(SharedBatchSchedulerTest,
       }
     };
 
-    SharedBatchScheduler<FakeTask>::Options options;
-    options.num_batch_threads = 2;
-    options.env = &env;
-    std::shared_ptr<SharedBatchScheduler<FakeTask>> scheduler;
-    TF_ASSERT_OK(SharedBatchScheduler<FakeTask>::Create(options, &scheduler));
-    SharedBatchScheduler<FakeTask>::QueueOptions queue_options;
+    auto scheduler = CreateSharedBatchScheduler(2, &env);
+
     // Set a large batch size, so that we don't hit the batch size limit.
-    queue_options.input_batch_size_limit = 100;
+    const size_t batch_size_limit = 100;
     // Process a batch as soon as a thread is available.
-    queue_options.batch_timeout_micros = 0;
-    queue_options.max_enqueued_batches = 2;
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    TF_ASSERT_OK(scheduler->AddQueue(queue_options, callback, &queue));
+    const size_t batch_timeout_micros = 0;
+    const size_t max_enqueued_batches = 2;
+    auto queue = CreateQueue(
+        scheduler,
+        CreateQueueOptions(batch_size_limit, batch_size_limit,
+                           batch_timeout_micros, max_enqueued_batches),
+        callback);
 
     TF_ASSERT_OK(ScheduleTask(1, queue.get()));
     first_batch_processed.WaitForNotification();
@@ -336,7 +507,7 @@ TEST(SharedBatchSchedulerTest,
   stop_teardown.Notify();
 }
 
-TEST(SharedBatchSchedulerTest, Fairness) {
+TEST_P(SharedBatchSchedulerTest, Fairness) {
   test_util::FakeClockEnv env(Env::Default());
   Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
@@ -365,15 +536,11 @@ TEST(SharedBatchSchedulerTest, Fairness) {
           queue_1_first_batch_proceed.WaitForNotification();
         };
 
-    SharedBatchScheduler<FakeTask>::Options options;
-    options.num_batch_threads = 1;
-    options.env = &env;
-    std::shared_ptr<SharedBatchScheduler<FakeTask>> scheduler;
-    TF_ASSERT_OK(SharedBatchScheduler<FakeTask>::Create(options, &scheduler));
-    SharedBatchScheduler<FakeTask>::QueueOptions queue_options;
-    queue_options.input_batch_size_limit = 10;
-    queue_options.batch_timeout_micros = 1;
-    queue_options.max_enqueued_batches = 100 /* give plenty of room */;
+    auto scheduler = CreateSharedBatchScheduler(1, &env);
+    size_t input_batch_size_limit = 10;
+    QueueOptions queue_options = CreateQueueOptions(
+        input_batch_size_limit, input_batch_size_limit,
+        1 /* batch_timeout_micros */, 100 /* give plenty of room */);
     std::vector<std::unique_ptr<BatchScheduler<FakeTask>>> queues(2);
     TF_ASSERT_OK(
         scheduler->AddQueue(queue_options, queue_0_callback, &queues[0]));
@@ -407,7 +574,7 @@ TEST(SharedBatchSchedulerTest, Fairness) {
   stop_teardown.Notify();
 }
 
-TEST(SharedBatchSchedulerTest, ConstMethods) {
+TEST_P(SharedBatchSchedulerTest, ConstMethods) {
   for (const int max_enqueued_batches : {1, 2, 5}) {
     Notification processing, proceed;
     auto callback = [&processing,
@@ -418,16 +585,16 @@ TEST(SharedBatchSchedulerTest, ConstMethods) {
       proceed.WaitForNotification();
     };
 
-    SharedBatchScheduler<FakeTask>::Options options;
-    options.num_batch_threads = 1;
-    std::shared_ptr<SharedBatchScheduler<FakeTask>> scheduler;
-    TF_ASSERT_OK(SharedBatchScheduler<FakeTask>::Create(options, &scheduler));
-    SharedBatchScheduler<FakeTask>::QueueOptions queue_options;
-    queue_options.input_batch_size_limit = 2;
-    queue_options.batch_timeout_micros = 0;
-    queue_options.max_enqueued_batches = max_enqueued_batches;
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    TF_ASSERT_OK(scheduler->AddQueue(queue_options, callback, &queue));
+    auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads*/ 1);
+
+    const size_t input_batch_size_limit = 2;
+    const size_t batch_timeout_micros = 0;
+    auto queue = CreateQueue(
+        scheduler,
+        CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
+                           batch_timeout_micros, max_enqueued_batches),
+        callback);
+
     EXPECT_EQ(2, queue->max_task_size());
     EXPECT_EQ(0, queue->NumEnqueuedTasks());
     EXPECT_EQ(max_enqueued_batches * 2, queue->SchedulingCapacity());
@@ -453,9 +620,12 @@ TEST(SharedBatchSchedulerTest, ConstMethods) {
     EXPECT_EQ(0, queue->SchedulingCapacity());
 
     // Attempting to enqueue one more task should yield an UNAVAILABLE error.
-    Status status = ScheduleTask(1, queue.get());
-    ASSERT_FALSE(status.ok());
-    EXPECT_EQ(error::UNAVAILABLE, status.code());
+    EXPECT_THAT(
+        ScheduleTask(1, queue.get()),
+        testing::StatusIs(error::UNAVAILABLE,
+                          "The batch scheduling queue to which this task was "
+                          "submitted is full"));
+
     EXPECT_EQ(max_enqueued_batches * 2, queue->NumEnqueuedTasks());
     EXPECT_EQ(0, queue->SchedulingCapacity());
 
@@ -463,7 +633,7 @@ TEST(SharedBatchSchedulerTest, ConstMethods) {
   }
 }
 
-TEST(SharedBatchSchedulerTest, OneFullQueueDoesntBlockOtherQueues) {
+TEST_P(SharedBatchSchedulerTest, OneFullQueueDoesntBlockOtherQueues) {
   Notification queue_0_processing, queue_0_proceed;
   auto queue_0_callback = [&queue_0_processing, &queue_0_proceed](
                               std::unique_ptr<Batch<FakeTask>> batch) {
@@ -489,14 +659,15 @@ TEST(SharedBatchSchedulerTest, OneFullQueueDoesntBlockOtherQueues) {
         }
       };
 
-  SharedBatchScheduler<FakeTask>::Options options;
-  options.num_batch_threads = 2;
-  std::shared_ptr<SharedBatchScheduler<FakeTask>> scheduler;
-  TF_ASSERT_OK(SharedBatchScheduler<FakeTask>::Create(options, &scheduler));
-  SharedBatchScheduler<FakeTask>::QueueOptions queue_options;
-  queue_options.input_batch_size_limit = 10;
-  queue_options.batch_timeout_micros = 0;
-  queue_options.max_enqueued_batches = 2;
+  auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads*/ 2);
+
+  const size_t input_batch_size_limit = 10;
+  const size_t batch_timeout_micros = 0;
+  const size_t max_enqueued_batches = 2;
+  QueueOptions queue_options =
+      CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
+                         batch_timeout_micros, max_enqueued_batches);
+
   std::unique_ptr<BatchScheduler<FakeTask>> queue_0;
   TF_ASSERT_OK(scheduler->AddQueue(queue_options, queue_0_callback, &queue_0));
   std::unique_ptr<BatchScheduler<FakeTask>> queue_1;
@@ -523,7 +694,7 @@ TEST(SharedBatchSchedulerTest, OneFullQueueDoesntBlockOtherQueues) {
   queue_0_proceed.Notify();
 }
 
-TEST(SharedBatchSchedulerTest, QueueDestructorBlocksUntilAllTasksProcessed) {
+TEST_P(SharedBatchSchedulerTest, QueueDestructorBlocksUntilAllTasksProcessed) {
   test_util::FakeClockEnv env(Env::Default());
   Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
@@ -544,17 +715,15 @@ TEST(SharedBatchSchedulerTest, QueueDestructorBlocksUntilAllTasksProcessed) {
           ++current_batch;
         };
 
-    SharedBatchScheduler<FakeTask>::Options options;
-    options.num_batch_threads = 1;
-    options.env = &env;
-    std::shared_ptr<SharedBatchScheduler<FakeTask>> scheduler;
-    TF_ASSERT_OK(SharedBatchScheduler<FakeTask>::Create(options, &scheduler));
-    SharedBatchScheduler<FakeTask>::QueueOptions queue_options;
-    queue_options.input_batch_size_limit = 10;
-    queue_options.batch_timeout_micros = 0;
-    queue_options.max_enqueued_batches = 2;
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    TF_ASSERT_OK(scheduler->AddQueue(queue_options, callback, &queue));
+    auto scheduler = CreateSharedBatchScheduler(1, &env);
+
+    const size_t batch_size_limit = 10;
+    const size_t batch_timeout_micros = 0;
+    const size_t max_enqueued_batches = 2;
+    QueueOptions queue_options =
+        CreateQueueOptions(batch_size_limit, batch_size_limit,
+                           batch_timeout_micros, max_enqueued_batches);
+    auto queue = CreateQueue(scheduler, queue_options, callback);
 
     // Clog up the queue.
     int num_enqueued_batches = 0;
@@ -590,6 +759,175 @@ TEST(SharedBatchSchedulerTest, QueueDestructorBlocksUntilAllTasksProcessed) {
   }
   stop_teardown.Notify();
 }
+
+// Tests that `enable_lazy_split` could be enabled only if
+// `enable_large_batch_splitting` is enabled.
+TEST_P(SharedBatchSchedulerTest, InvalidLazySplitOptions) {
+  auto callback = [](std::unique_ptr<Batch<FakeTask>> batch) {
+    // do nothing.
+  };
+
+  auto scheduler = CreateSharedBatchScheduler(2);
+
+  const size_t input_batch_size_limit = 10;
+  const size_t batch_timeout_micros = 100 * 1000;  // 100 milliseconds
+  const size_t max_enqueued_batches = 2;
+  std::unique_ptr<Queue> queue;
+  EXPECT_THAT(
+      scheduler->AddQueue(tensorflow::serving::CreateQueueOptions(
+                              input_batch_size_limit, input_batch_size_limit,
+                              batch_timeout_micros, max_enqueued_batches,
+                              false /* enable_large_batch_splitting */,
+                              true /* enable_lazy_split */, get_split_func()),
+                          callback, &queue),
+      testing::StatusIs(error::INVALID_ARGUMENT,
+                        "enable_lazy_split should be enabled only if "
+                        "enable_large_batch_splitting is enabled."));
+}
+
+// Tests that queue must be configured with a positive capacity.
+TEST_P(SharedBatchSchedulerTest, InvalidZeroQueueCapacity) {
+  auto callback = [](std::unique_ptr<Batch<FakeTask>> batch) {
+    // do nothing.
+  };
+
+  auto scheduler = CreateSharedBatchScheduler(2);
+
+  const size_t input_batch_size_limit = 10;
+  const size_t batch_timeout_micros = 100 * 1000;  // 100 milliseconds
+  const size_t max_enqueued_batches = 0;
+  std::unique_ptr<Queue> queue;
+  EXPECT_THAT(
+      scheduler->AddQueue(tensorflow::serving::CreateQueueOptions(
+                              input_batch_size_limit, input_batch_size_limit,
+                              batch_timeout_micros, max_enqueued_batches,
+                              false /* enable_large_batch_splitting */,
+                              true /* enable_lazy_split */, get_split_func()),
+                          callback, &queue),
+      testing::StatusIs(error::INVALID_ARGUMENT,
+                        "max_enqueued_batches must be positive; was 0"));
+}
+
+// TODO(b/161857471):
+// Add test coverage when input-split and no-split returns differently.
+INSTANTIATE_TEST_SUITE_P(
+    Parameter, SharedBatchSchedulerTest,
+    ::testing::Values(std::make_tuple(/*enable_input_batch_split=*/true,
+                                      /*enable_lazy_split=*/true),
+                      std::make_tuple(/*enable_input_batch_split=*/true,
+                                      /*enable_lazy_split=*/false),
+                      std::make_tuple(/*enable_input_batch_split=*/false,
+                                      /*enable_lazy_split=*/false)));
+
+#ifdef PLATFORM_GOOGLE
+// This benchmark relies on https://github.com/google/benchmark features,
+// (in particular, `Benchmark::ThreadRange`) not available in open-sourced TF
+//  codebase.
+
+static std::vector<std::unique_ptr<Queue>>* queues =
+    new std::vector<std::unique_ptr<Queue>>();
+
+// Store queue labels, which are used to label benchmark results.
+static std::vector<std::string>* queue_labels = new std::vector<std::string>();
+
+// Create queues and add them to `queues` to keep them alive.
+// Adds labels in `queue_labels`.
+void CreateQueues() {
+  // The split function is guaranteed (in the context of test) to process task
+  // of size one, so it adds `input_task` into `output_tasks` directly, and
+  // simulates a computation that takes some cpu cycles and time to complete.
+  auto split_func_for_size_one_task =
+      [](std::unique_ptr<FakeTask>* input_task, int open_batch_remaining_slot,
+         int max_batch_size,
+         std::vector<std::unique_ptr<FakeTask>>* output_tasks) -> Status {
+    output_tasks->push_back(std::move(*input_task));
+
+    Notification notify;
+    std::thread busy_waiter([&] {
+      while (!notify.HasBeenNotified()) {
+      }
+    });
+
+    std::thread notifier([&] {
+      Env::Default()->SleepForMicroseconds(1);
+      notify.Notify();
+    });
+    busy_waiter.join();
+    notifier.join();
+    return Status::OK();
+  };
+
+  internal::Queue<FakeTask>::ProcessBatchCallback process_batch_callback =
+      [](std::unique_ptr<Batch<FakeTask>> task) {
+        // process_batch_callback is supposed to take ownership of `task`.
+        // do nothing since `task` will be freed up when the callback returns.
+      };
+  const size_t max_execution_batch_size = 64;
+  const size_t input_batch_size_limit = 128;
+  const size_t batch_timeout_micros = 10;
+  // Each queue has its own shared-batch-scheduler with the same parameter, so
+  // scheduling behavior are approximately the same.
+  queues->push_back(CreateQueue(
+      CreateSharedBatchScheduler(5),
+      CreateQueueOptions(max_execution_batch_size, input_batch_size_limit,
+                         batch_timeout_micros, INT_MAX /* unbounded queue */,
+                         true /* enable_large_batch_splitting */,
+                         false /* enable_lazy_split */,
+                         split_func_for_size_one_task),
+      process_batch_callback));
+  queue_labels->push_back(std::string("EagerSplit"));
+
+  queues->push_back(CreateQueue(
+      CreateSharedBatchScheduler(5),
+      CreateQueueOptions(max_execution_batch_size, input_batch_size_limit,
+                         batch_timeout_micros, INT_MAX /* unbounded queue */,
+                         false /* enable_large_batch_splitting */,
+
+                         false /* enable_lazy_split */, nullptr /* no func */),
+      process_batch_callback));
+  queue_labels->push_back(std::string("NoSplit"));
+
+  queues->push_back(CreateQueue(
+      CreateSharedBatchScheduler(5),
+      CreateQueueOptions(max_execution_batch_size, input_batch_size_limit,
+                         batch_timeout_micros, INT_MAX /* unbounded queue */,
+                         true /* enable_large_batch_splitting */,
+                         true /* enable_lazy_split */,
+                         split_func_for_size_one_task),
+      process_batch_callback));
+  queue_labels->push_back(std::string("LazySplit"));
+}
+
+void BM_QueueSchedule(::testing::benchmark::State& state) {
+  static absl::once_flag once;
+  absl::call_once(once, []() { CreateQueues(); });
+
+  const int queue_index = state.range(1);
+  Queue* queue = (*queues)[queue_index].get();
+
+  const string label =
+      strings::StrCat(state.threads, "-Threads", (*queue_labels)[queue_index]);
+  state.SetLabel(label);
+  for (auto s : state) {
+    for (int i = 0; i < state.range(0); i++) {
+      auto batch_task = std::make_unique<FakeTask>(1);
+
+      auto status = queue->Schedule(&batch_task);
+      tensorflow::testing::DoNotOptimize(status);
+    }
+  }
+}
+
+BENCHMARK(BM_QueueSchedule)->Apply([](benchmark::internal::Benchmark* b) {
+  b->ThreadRange(1,
+                 port::NumSchedulableCPUs() * tensorflow::port::CPUIDNumSMT());
+
+  for (int queue_index : {0, 1, 2}) {
+    b->ArgPair(10000, queue_index);
+  }
+});
+
+#endif  // PLATFORM_GOOGLE
 
 }  // namespace
 }  // namespace serving

@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/pmap_lib.h"
 
+#include <algorithm>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/notification.h"
@@ -157,26 +161,25 @@ PmapCacheEntry* PmapFunction::AddCacheEntry(const py::args& args,
     return cache_entry;
   }
 
-  py::dict pmap_data = py::cast<py::dict>(tuple[1]);
-  if (py::cast<int>(pmap_data["version"]) != 1) {
+  py::tuple pmap_data = py::cast<py::tuple>(tuple[1]);
+  if (py::cast<int>(pmap_data.attr("version")) != 1) {
     throw std::runtime_error(absl::StrCat(
         "The versions of jaxlib and Jax are incompatible (pmap cpp version 1 "
         "expected, but got ",
-        py::cast<int>(pmap_data["version"]),
+        py::cast<int>(pmap_data.attr("version")),
         "Upgrade jaxlib and jax. Provided data was:",
         py::cast<std::string>(py::str(py::repr(pmap_data)))));
   }
-  // { "version": 1,
-  //   "xla_executable": xla_executable,
-  //   "in_handler": in_handler,
-  //   "out_handler": out_handler,
-  //   "out_pytree_def": out_pytree_def }
-  auto executable =
-      py::cast<std::shared_ptr<xla::PyExecutable>>(pmap_data["xla_executable"]);
+  // See api.py::_PmapFastpathData in the JAX code base for the expected
+  // namedtuple.
+  auto executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
+      pmap_data.attr("xla_executable"));
   cache_entry->executable = std::move(executable);
-  cache_entry->handle_args = py::cast<py::function>(pmap_data["in_handler"]);
-  cache_entry->out_handler = py::cast<py::function>(pmap_data["out_handler"]);
-  auto out_tree = py::cast<xla::PyTreeDef>(pmap_data["out_pytree_def"]);
+  cache_entry->handle_args =
+      py::cast<py::function>(pmap_data.attr("in_handler"));
+  cache_entry->out_handler =
+      py::cast<py::function>(pmap_data.attr("out_handler"));
+  auto out_tree = py::cast<xla::PyTreeDef>(pmap_data.attr("out_pytree_def"));
   cache_entry->out_pytree_def = std::move(out_tree);
 
   cache_entry->compilation_complete.Notify();
@@ -196,14 +199,20 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   }
 
   // Get dynamic argument signatures.
+  GlobalJitState& global_state = jax::GetGlobalState();
+  ThreadLocalJitState& tls = jax::GetLocalState();
+  const bool jax_enable_x64 = tls.enable_x64.value_or(global_state.enable_x64);
+  arguments.signature.jax_enable_x64 = jax_enable_x64;
   for (py::handle arg : arguments.flat_dynamic_args) {
-    auto signature_or_error = xla::PyArgSignatureOfValue(arg, GetEnableX64());
+    auto signature_or_error = xla::PyArgSignatureOfValue(arg, jax_enable_x64);
     if (!signature_or_error.ok()) {
       return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
     }
     arguments.signature.dynamic_arg_signatures.push_back(
         std::move(signature_or_error).ValueOrDie());
   }
+  arguments.signature.global_extra_jit_context = global_state.extra_jit_context;
+  arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
 
   // Retrieve/Maybe add the executable to the cache.
   PmapCacheEntry* cache_entry = GetCacheEntryIfPresent(arguments.signature);
@@ -236,14 +245,16 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   }
 
   py::object handled_args = cache_entry->handle_args(arg_list);
+  // The Python shard_args returns `[num_args, num_devices]`.
   py::list list_of_list_of_buffers = py::cast<py::list>(handled_args);
 
   arguments.keep_alive_objects.push_back(
       py::cast<py::object>(list_of_list_of_buffers));
-  // Should be `[num_devices x num_args]`.
+  // arg_buffers is `[num_args x num_devices]`.
   std::vector<std::vector<xla::PyBuffer::object>> arg_buffers;
-  arg_buffers.reserve(list_of_list_of_buffers.size());
-  for (int i = 0; i < list_of_list_of_buffers.size(); ++i) {
+  const int num_args = list_of_list_of_buffers.size();
+  arg_buffers.reserve(num_args);
+  for (int i = 0; i < num_args; ++i) {
     std::vector<xla::PyBuffer::object> buffers;
     buffers.reserve(py::cast<py::list>(list_of_list_of_buffers[i]).size());
     for (auto& buf : list_of_list_of_buffers[i]) {
@@ -252,6 +263,10 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
     arg_buffers.push_back(std::move(buffers));
   }
 
+  // TODO(jblespiau): `ExecuteShardedOnLocalDevices` performs an inversion of
+  // the [args, num_devices] axis. When moving shard_args to C++, we can prevent
+  // this by calling Execute directly.
+  // A vector of [num_outputs, num_devices].
   std::vector<std::vector<xla::PyBuffer::object>> outputs = ValueOrThrow(
       cache_entry->executable->ExecuteShardedOnLocalDevices(arg_buffers));
 
@@ -265,15 +280,20 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   return cache_entry->out_pytree_def.Unflatten(flat_sharded_device_arrays);
 }
 
-void BuildPmapSubmodule(pybind11::module& m) {
+void BuildPmapSubmodule(py::module& m) {
   py::module pmap_lib = m.def_submodule("pmap_lib", "Jax C++ pmap library");
 
   py::class_<NoSharding> no_sharding(pmap_lib, "NoSharding");
   no_sharding.def(py::init<>())
       .def("__repr__",
            [](const NoSharding& chuncked) { return "NoSharding()"; })
-      .def("__eq__", [](const NoSharding& self, py::object obj) {
-        return py::isinstance<NoSharding>(obj);
+      .def("__eq__",
+           [](const NoSharding& self, py::object obj) {
+             return py::isinstance<NoSharding>(obj);
+           })
+      .def("__hash__", [](const NoSharding& self) {
+        const size_t hash = absl::Hash<NoSharding>()(self);
+        return py::int_(hash);
       });
 
   py::class_<Chunked> chunked(pmap_lib, "Chunked");
@@ -329,27 +349,73 @@ void BuildPmapSubmodule(pybind11::module& m) {
 
   py::class_<ShardingSpec> sharding_spec(pmap_lib, "ShardingSpec");
   sharding_spec
-      .def(py::init<std::vector<AvalDimSharding>,
-                    std::vector<MeshDimAssignment>>(),
-           py::arg("sharding"), py::arg("mesh_mapping"))
-      .def_property_readonly("sharding", &ShardingSpec::GetSharding)
-      .def_property_readonly("mesh_mapping", &ShardingSpec::GetMeshMapping)
-      .def("__eq__", [](const ShardingSpec& self, const ShardingSpec& other) {
-        return self == other;
+      .def(py::init<py::iterable, py::iterable>(), py::arg("sharding"),
+           py::arg("mesh_mapping"))
+      .def_property_readonly(
+          "sharding",
+          [](const ShardingSpec& self) {
+            return xla::SpanToTuple(absl::MakeConstSpan(self.GetSharding()));
+          })
+      .def_property_readonly(
+          "mesh_mapping",
+          [](const ShardingSpec& self) {
+            return xla::SpanToTuple(absl::MakeConstSpan(self.GetMeshMapping()));
+          })
+      .def("__eq__", [](const ShardingSpec& self,
+                        const ShardingSpec& other) { return self == other; })
+      .def("__hash__", [](const ShardingSpec& self) {
+        const size_t hash = absl::Hash<ShardingSpec>()(self);
+        return py::int_(hash);
       });
 
-  py::class_<ShardedDeviceArray> sda(pmap_lib, "ShardedDeviceArray");
-  sda.def(py::init<pybind11::handle, ShardingSpec, pybind11::list>())
-      .def_property_readonly("aval", &ShardedDeviceArray::GetAval)
+  py::class_<ShardedDeviceArrayBase> sda_base(pmap_lib,
+                                              "ShardedDeviceArrayBase");
+  sda_base.def(py::init<>());
+
+  py::class_<ShardedDeviceArray, ShardedDeviceArrayBase> sda(
+      pmap_lib, "ShardedDeviceArray");
+  sda.def(py::init<py::handle, ShardingSpec, py::list, py::handle>(),
+          py::arg("aval"), py::arg("sharding_spec"), py::arg("device_buffers"),
+          py::arg("indices"))
+      .def_property_readonly("aval", &ShardedDeviceArray::aval)
+      .def_property_readonly("indices", &ShardedDeviceArray::indices)
       .def_property_readonly("sharding_spec",
                              &ShardedDeviceArray::GetShardingSpec)
-      .def_property_readonly("device_buffers",
-                             &ShardedDeviceArray::GetDeviceBuffers);
+      .def_property("device_buffers", &ShardedDeviceArray::device_buffers,
+                    &ShardedDeviceArray::set_device_buffers)
+      .def_property("_npy_value", &ShardedDeviceArray::npy_value,
+                    &ShardedDeviceArray::set_npy_value)
+      .def_property("_one_replica_buffer_indices",
+                    &ShardedDeviceArray::one_replica_buffer_indices,
+                    &ShardedDeviceArray::set_one_replica_buffer_indices)
+      .def_property_readonly("shape",
+                             [](const ShardedDeviceArray& self) {
+                               return self.aval().attr("shape");
+                             })
+      .def_property_readonly("dtype",
+                             [](const ShardedDeviceArray& self) {
+                               return self.aval().attr("dtype");
+                             })
+      .def_property_readonly(
+          "size",
+          [](const ShardedDeviceArray& self) {
+            py::tuple shape = py::cast<py::tuple>(self.aval().attr("shape"));
+            int size = 1;
+            for (auto dim : shape) {
+              size *= py::cast<int>(dim);
+            }
+            return size;
+          })
+      .def_property_readonly("ndim", [](const ShardedDeviceArray& self) {
+        return py::len(self.aval().attr("shape"));
+      });
 
   py::class_<PmapFunction, std::unique_ptr<PmapFunction>> cfun(pmap_lib,
                                                                "PmapFunction");
   cfun.def("__call__", &PmapFunction::Call);
   cfun.def_property_readonly("__signature__", &PmapFunction::PythonSignature);
+  // All private members are only for testing/debugging purposes
+  cfun.def("_cache_size", &PmapFunction::cache_size);
 
   pmap_lib.def(
       "pmap",

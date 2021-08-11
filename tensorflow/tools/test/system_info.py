@@ -28,4 +28,4 @@ def main(unused_args):
 
 
 if __name__ == "__main__":
-  app.run()
+  app.run()  # pylint: disable=no-value-for-parameter

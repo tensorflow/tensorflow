@@ -1526,13 +1526,13 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
   def testDoubleContrastFloat(self):
     x_shape = [1, 2, 2, 3]
     x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
-    x_np = np.array(x_data, dtype=np.float).reshape(x_shape) / 255.
+    x_np = np.array(x_data, dtype=np.float64).reshape(x_shape) / 255.
 
     y_data = [
         -45.25, -90.75, -92.5, 62.75, 169.25, 333.5, 28.75, -84.75, 349.5,
         134.75, 409.25, -116.5
     ]
-    y_np = np.array(y_data, dtype=np.float).reshape(x_shape) / 255.
+    y_np = np.array(y_data, dtype=np.float64).reshape(x_shape) / 255.
 
     self._testContrast(x_np, y_np, contrast_factor=2.0)
 
@@ -4234,11 +4234,13 @@ class JpegTest(test_util.TensorFlowTestCase):
         image1_crop = image_ops.crop_to_bounding_box(image1, y, x, h, w)
 
         # Combined decode+crop.
-        image2 = image_ops.decode_and_crop_jpeg(jpeg0, crop_window)
+        image2 = image_ops.decode_and_crop_jpeg(jpeg0, crop_window, channels=3)
 
-        # Combined decode+crop should have the same shape inference
-        self.assertAllEqual(image1_crop.get_shape().as_list(),
-                            image2.get_shape().as_list())
+        # Combined decode+crop should have the same shape inference on image
+        # sizes.
+        image1_shape = image1_crop.get_shape().as_list()
+        image2_shape = image2.get_shape().as_list()
+        self.assertAllEqual(image1_shape, image2_shape)
 
         # CropAndDecode should be equal to DecodeJpeg+Crop.
         image1_crop, image2 = self.evaluate([image1_crop, image2])
@@ -4794,7 +4796,7 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
     self._test(a + 1, tot_var)
 
     # If we negate all pixel-values then the total variation is unchanged.
-    self._test(-a, tot_var)
+    self._test(-a, tot_var)  # pylint: disable=invalid-unary-operand-type
 
     # Scale the pixel-values by a float. This scales the total variation as
     # well.

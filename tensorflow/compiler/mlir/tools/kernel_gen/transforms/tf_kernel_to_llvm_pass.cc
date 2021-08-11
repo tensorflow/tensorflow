@@ -18,8 +18,13 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
+#include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/MathToLibm/MathToLibm.h"  // from @llvm-project
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -39,7 +44,7 @@ namespace transforms {
 namespace {
 
 constexpr StringRef kTfWrapperLibaryLaunchHelperName =
-    "tfKernelGenLaunchKernel";
+    "_mlir_ciface_tf_launch_kernel";
 
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
@@ -219,7 +224,7 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
         loc, kTfWrapperLibaryLaunchHelperName, function_type);
   }
   rewriter.create<LLVM::CallOp>(
-      loc, llvm_void_type_, rewriter.getSymbolRefAttr(function),
+      loc, TypeRange(), rewriter.getSymbolRefAttr(function),
       ArrayRef<Value>{
           context_arg, module_blob, kernel_name_global, adaptor.gridSizeX(),
           adaptor.gridSizeY(), adaptor.gridSizeZ(), adaptor.blockSizeX(),
@@ -250,13 +255,19 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     type_converter.addConversion([&](tf_framework::OpKernelContextType type) {
       return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
     });
+    type_converter.addConversion([&](tf_framework::JITCallableType type) {
+      return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
+    });
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
-
     populateStdExpandOpsPatterns(patterns);
+    populateMemRefToLLVMConversionPatterns(type_converter, patterns);
+    populateMathToLLVMConversionPatterns(type_converter, patterns);
     populateStdToLLVMConversionPatterns(type_converter, patterns);
     populateComplexToLLVMConversionPatterns(type_converter, patterns);
+    populateVectorToLLVMConversionPatterns(type_converter, patterns);
+    populateMathToLibmConversionPatterns(patterns, 0);
     tf_framework::PopulateTFFrameworkToLLVMConversionPatterns(&type_converter,
                                                               &patterns);
     patterns.insert<ConvertLaunchFuncOpToTfRuntimeCallPattern>(
@@ -267,7 +278,7 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     target.addIllegalDialect<StandardOpsDialect, complex::ComplexDialect,
                              gpu::GPUDialect, tf_framework::TFFrameworkDialect,
                              math::MathDialect>();
-    target.addIllegalOp<LLVM::DialectCastOp>();
+    target.addIllegalOp<UnrealizedConversionCastOp>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();
     // Do not look into gpu modules, only consider host-side.

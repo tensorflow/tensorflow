@@ -34,7 +34,8 @@ void TemporaryMemoryManager::ForceDeallocateAll() {
 }
 
 void TemporaryMemoryManager::MarkFinalized(
-    const DeviceMemoryBase& device_memory, uint64 generation, bool must_exist) {
+    const DeviceMemoryBase& device_memory, uint64_t generation,
+    bool must_exist) {
   absl::MutexLock lock(&mutex_);
   auto it = records_.find(device_memory);
   if (it == records_.end()) {
@@ -64,7 +65,7 @@ void TemporaryMemoryManager::DeallocateFinalizedTemporaries() {
 }
 
 bool TemporaryMemoryManager::IsFinalized(const DeviceMemoryBase& device_memory,
-                                         uint64 allocation_generation) const {
+                                         uint64_t allocation_generation) const {
   absl::MutexLock lock(&mutex_);
   auto it = records_.find(device_memory);
   if (it == records_.end()) {
@@ -80,7 +81,7 @@ bool TemporaryMemoryManager::IsFinalized(const DeviceMemoryBase& device_memory,
 }
 
 bool TemporaryMemoryManager::HasAllocated(const DeviceMemoryBase& device_memory,
-                                          uint64 generation) const {
+                                          uint64_t generation) const {
   absl::MutexLock lock(&mutex_);
   auto it = records_.find(device_memory);
   if (it == records_.end()) {
@@ -90,9 +91,9 @@ bool TemporaryMemoryManager::HasAllocated(const DeviceMemoryBase& device_memory,
 }
 
 port::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>>
-TemporaryMemoryManager::AllocateArrayBase(uint64 element_count,
-                                          uint64 element_size) {
-  uint64 byte_size = element_count * element_size;
+TemporaryMemoryManager::AllocateArrayBase(uint64_t element_count,
+                                          uint64_t element_size) {
+  uint64_t byte_size = element_count * element_size;
   DeviceMemoryBase device_memory =
       stream_->parent()->AllocateArray<uint8>(byte_size);
   if (device_memory == nullptr) {
@@ -101,7 +102,7 @@ TemporaryMemoryManager::AllocateArrayBase(uint64 element_count,
                                      byte_size, " bytes"));
   }
 
-  uint64 generation;
+  uint64_t generation;
 
   // Add the record before instantiating the device memory instance so we can
   // check the allocation invariant at TemporaryDeviceMemory construction time.

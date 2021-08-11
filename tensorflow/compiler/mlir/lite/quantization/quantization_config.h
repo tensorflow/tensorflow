@@ -26,9 +26,12 @@ limitations under the License.
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
 namespace mlir {
 namespace TFL {
+
+using ::tflite::optimize::ReducedPrecisionSupport;
 
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
@@ -91,6 +94,8 @@ struct QuantizationSpecs {
   // the tensors with known names.
   std::string serialized_quant_stats = "";
 
+  // A bitmask to encode support for reduced precision inference in the model.
+  ReducedPrecisionSupport support_mask = ReducedPrecisionSupport::None;
   // Whether run the passes to propagate the quantization parameters and graph
   // rewrites. Returns false if the inference_type is DT_FLOAT or
   // `weight_quantization` flag is set.
@@ -132,6 +137,11 @@ struct QuantizationSpecs {
   // Whether add the NumericVerify ops to verify numbers before and after
   // quantization.
   bool verify_numeric = false;
+  // Whether to add verification for layer by layer, or on whole model. When
+  // disabled (per-layer) float and quantized ops will be run from same input
+  // (output of previous quantized layer). When enabled, float and quantized ops
+  // will run with respective float and quantized output of previous ops.
+  bool whole_model_verify = false;
 };
 
 // Parses the command line flag strings to the quantization specification for

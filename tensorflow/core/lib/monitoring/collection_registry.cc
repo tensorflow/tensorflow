@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 
+// We replace this implementation with a null implementation for mobile
+// platforms.
+#ifndef IS_MOBILE_PLATFORM
+
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -108,3 +112,5 @@ std::unique_ptr<CollectedMetrics> CollectionRegistry::CollectMetrics(
 
 }  // namespace monitoring
 }  // namespace tensorflow
+
+#endif  // IS_MOBILE_PLATFORM

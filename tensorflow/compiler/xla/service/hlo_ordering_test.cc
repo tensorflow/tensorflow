@@ -434,7 +434,7 @@ TEST_F(HloOrderingTest,
   TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
                           HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
 
-  EXPECT_TRUE(ordering.ExecutesBefore(root, dead));
+  EXPECT_FALSE(ordering.ExecutesBefore(root, dead));
   EXPECT_FALSE(ordering.ExecutesBefore(dead, root));
 
   EXPECT_FALSE(ordering.LiveRangeStrictlyBefore(
@@ -490,7 +490,7 @@ TEST_F(HloOrderingTest,
   TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
                           HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
 
-  EXPECT_TRUE(ordering.ExecutesBefore(root, dead));
+  EXPECT_FALSE(ordering.ExecutesBefore(root, dead));
   EXPECT_FALSE(ordering.ExecutesBefore(dead, root));
 
   EXPECT_FALSE(ordering.LiveRangeStrictlyBefore(
@@ -531,6 +531,61 @@ ENTRY InterferenceWithOuterRoot {
   EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(multiply),
                                     dataflow->GetValueDefinedAt(add),
                                     *dataflow));
+}
+
+TEST_F(HloOrderingTest, RootNotLastInstruction) {
+  // This is a test for b/189219227. When the root instruction is scheduled not
+  // as the last instruction, it still lives out. If the only use of a value is
+  // this early root, we want HloOrdering to tell us that it actually doesn't
+  // execute before the operations that come after the root.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+body2 {
+  p_body2 = (f32[2]{0}) parameter(0)
+  p_body2.1 = f32[2]{0} get-tuple-element(p_body2), index=0
+  add.3 = f32[2]{0} add(p_body2.1, p_body2.1)
+  ROOT root2 = (f32[2]{0}) tuple(add.3)
+}
+
+condition2 {
+  p_cond2 = (f32[2]{0}) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+body {
+  p_body = (f32[2]{0}) parameter(0)
+  p_body.1 = f32[2]{0} get-tuple-element(p_body), index=0
+  ROOT root = (f32[2]{0}) tuple(p_body.1)
+  copy = f32[2]{0} copy(p_body.1)
+  tuple = (f32[2]{0}) tuple(copy)
+  while.1 = (f32[2]{0}) while(tuple), condition=condition2, body=body2
+}
+
+condition {
+  p_cond = (f32[2]{0}) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  const0 = f32[2]{0} constant({1, 2})
+  while_init = (f32[2]{0}) tuple(const0)
+  ROOT while.0 = (f32[2]{0}) while(while_init), condition=condition, body=body
+}
+)";
+  HloModuleConfig hlo_config;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string, hlo_config));
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  SequentialHloOrdering ordering(module->schedule());
+  auto root = FindInstruction(module.get(), "root");
+  auto p_body_2 = FindInstruction(module.get(), "p_body2");
+
+  auto tuple_use = HloUse{root, 0};
+  auto value = dataflow->GetUniqueValueAt(p_body_2, {0});
+  EXPECT_FALSE(
+      ordering.UsesBeforeValueDefinition({&tuple_use}, value, *dataflow));
 }
 
 }  // namespace

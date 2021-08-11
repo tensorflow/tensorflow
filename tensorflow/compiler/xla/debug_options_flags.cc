@@ -72,7 +72,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
-  opts.set_xla_gpu_deterministic_reductions(false);
+  opts.set_xla_gpu_deterministic_reductions(true);
   opts.set_xla_cpu_enable_xprof_traceme(false);
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
@@ -85,7 +85,7 @@ static DebugOptions* flag_values;
 static std::vector<tensorflow::Flag>* flag_objects;
 
 // Maps pass -> initial fuel values (parsed when AllocateFlags was run).
-static absl::flat_hash_map<string, int64>* initial_fuel;
+static absl::flat_hash_map<string, int64_t>* initial_fuel;
 
 // Maps pass -> whether fuel was ever consumed for that pass.
 static absl::node_hash_map<string, std::atomic<bool>>* fuel_ever_consumed;
@@ -94,11 +94,11 @@ static absl::node_hash_map<string, std::atomic<bool>>* fuel_ever_consumed;
 //
 // All threads start off using this global fuel pool, but ResetThreadLocalFuel()
 // switches them to a thread-local fuel pool.
-static absl::node_hash_map<string, std::atomic<int64>>* global_fuel;
+static absl::node_hash_map<string, std::atomic<int64_t>>* global_fuel;
 
 // If we're using thread-local fuel, this stores it.
 static thread_local std::unique_ptr<
-    absl::node_hash_map<string, std::atomic<int64>>>
+    absl::node_hash_map<string, std::atomic<int64_t>>>
     thread_fuel;  // NOLINT (global variable with nontrivial destructor)
 
 // Logs a warning if a pass's fuel was never consumed, on the theory that this
@@ -133,8 +133,8 @@ static void AllocateFlags() {
 
   // Returns a lambda that calls "member_setter" on "flag_values" with the
   // argument passed in to the lambda.
-  auto int32_setter_for = [](void (DebugOptions::*member_setter)(int32)) {
-    return [member_setter](int32 value) {
+  auto int32_setter_for = [](void (DebugOptions::*member_setter)(int32_t)) {
+    return [member_setter](int32_t value) {
       (flag_values->*member_setter)(value);
       return true;
     };
@@ -193,9 +193,9 @@ static void AllocateFlags() {
   // locking on the fuel global variables.  This means that it's
   // illegal/undefined behavior to modify this flag value while the compiler is
   // running.
-  initial_fuel = new absl::flat_hash_map<string, int64>();
+  initial_fuel = new absl::flat_hash_map<string, int64_t>();
   fuel_ever_consumed = new absl::node_hash_map<string, std::atomic<bool>>();
-  global_fuel = new absl::node_hash_map<string, std::atomic<int64>>();
+  global_fuel = new absl::node_hash_map<string, std::atomic<int64_t>>();
   auto setter_for_xla_fuel = [](string xla_fuel_value) {
     initial_fuel->clear();
     global_fuel->clear();
@@ -212,7 +212,7 @@ static void AllocateFlags() {
       }
       const auto& pass = pass_and_fuel[0];
       const auto& fuel_str = pass_and_fuel[1];
-      int64 fuel;
+      int64_t fuel;
       if (!absl::SimpleAtoi(fuel_str, &fuel)) {
         LOG(ERROR) << absl::StreamFormat(
             "Illegal value for --xla_fuel. Saw %s, but expected token %s to be "
@@ -634,9 +634,25 @@ static void AllocateFlags() {
       bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_ops),
       flag_values->xla_gpu_deterministic_ops(),
       "Guarantees run-to-run determinism on GPU."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_enable_async_all_reduce",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_all_reduce),
+      flag_values->xla_gpu_enable_async_all_reduce(),
+      "Converts synchronous all-reduce ops into asynchronous."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_disable_metadata",
+      bool_setter_for(&DebugOptions::set_xla_dump_disable_metadata),
+      flag_values->xla_dump_disable_metadata(),
+      "Disable dumping HLO metadata in HLO dumps."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_hlo_pipeline_re",
+      string_setter_for(&DebugOptions::set_xla_dump_hlo_pipeline_re),
+      flag_values->xla_dump_hlo_pipeline_re(),
+      "If specified, dumps HLO before and after optimization passes in the "
+      "pass pipelines that match this regular expression."));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
-}
+}  // NOLINT(readability/fn_size)
 
 void AppendDebugOptionsFlags(std::vector<tensorflow::Flag>* flag_list) {
   absl::call_once(flags_init, &AllocateFlags);
@@ -652,7 +668,7 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
 void ResetThreadLocalFuel() {
   absl::call_once(flags_init, &AllocateFlags);
 
-  thread_fuel.reset(new absl::node_hash_map<string, std::atomic<int64>>());
+  thread_fuel.reset(new absl::node_hash_map<string, std::atomic<int64_t>>());
   CHECK(initial_fuel != nullptr);
   for (const auto& kv : *initial_fuel) {
     thread_fuel->emplace(kv.first, kv.second);
@@ -672,11 +688,11 @@ bool ConsumeFuel(absl::string_view pass, bool* just_ran_out) {
   if (it == fuel_pool->end()) {
     return true;
   }
-  std::atomic<int64>& remaining_fuel = it->second;
+  std::atomic<int64_t>& remaining_fuel = it->second;
   std::atomic<bool>& fuel_has_been_consumed = fuel_ever_consumed->at(pass);
   fuel_has_been_consumed = true;
 
-  int64 remaining = remaining_fuel.fetch_sub(1);
+  int64_t remaining = remaining_fuel.fetch_sub(1);
   if (just_ran_out != nullptr) {
     *just_ran_out = remaining == 0;
   }

@@ -21,6 +21,8 @@ from __future__ import print_function
 from typing import Union
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import errors
+from tensorflow.python.util import _pywrap_determinism
 from tensorflow.python.util import _pywrap_tensor_float_32_execution
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -251,7 +253,10 @@ def get_soft_device_placement():
     1. there's no GPU implementation for the OP
     2. no GPU devices are known or registered
     3. need to co-locate with reftype input(s) which are from CPU
-
+  
+  If disabled, the placement is strict and CPU fallback is not allowed.
+  An error is raised when an Op cannot be placed onto its intended device.
+  
   Returns:
     If soft placement is enabled.
   """
@@ -296,7 +301,8 @@ def get_device_policy():
   elif device_policy == context.DEVICE_PLACEMENT_EXPLICIT:
     return 'explicit'
   else:
-    raise ValueError('Not a valid device policy: %r' % device_policy)
+    raise errors.InternalError(
+        f'Got an invalid device policy: {device_policy!r}.')
 
 
 @tf_export('config.experimental.set_device_policy')
@@ -339,7 +345,10 @@ def set_device_policy(device_policy):
   elif device_policy is None:
     context.context().device_policy = None
   else:
-    raise ValueError('Not a valid device policy: %r' % device_policy)
+    raise ValueError(
+        f'Invalid argument `device_policy`: {device_policy!r}. Please refer to '
+        'https://www.tensorflow.org/api_docs/python/tf/config/experimental/set_device_policy '
+        'for valid `device_policy` arguments.')
 
 
 @tf_export('config.experimental.get_synchronous_execution')
@@ -519,6 +528,8 @@ def set_visible_devices(devices, device_type=None):
   context.context().set_visible_devices(devices, device_type)
 
 
+# TODO(b/188089869): Redesign memory stats related APIs before move them out of
+# experimental.
 @tf_export('config.experimental.get_memory_info')
 def get_memory_info(device):
   """Get memory info for the chosen device, as a dict.
@@ -539,7 +550,8 @@ def get_memory_info(device):
 
   More keys may be added in the future, including device-specific keys.
 
-  Currently raises an exception for the CPU.
+  Currently only supports GPU and TPU. If called on a CPU device, an exception
+  will be raised.
 
   For GPUs, TensorFlow will allocate all the memory by default, unless changed
   with `tf.config.experimental.set_memory_growth`. The dict specifies only the
@@ -547,9 +559,9 @@ def get_memory_info(device):
   TensorFlow has allocated on the GPU.
 
   Args:
-    device: Device string to get the memory information for, e.g. `"GPU:0"`. See
-      https://www.tensorflow.org/api_docs/python/tf/device for specifying device
-        strings.
+    device: Device string to get the memory information for, e.g. `"GPU:0"`,
+    `"TPU:0"`. See https://www.tensorflow.org/api_docs/python/tf/device for
+      specifying device strings.
 
   Returns:
     A dict with keys `'current'` and `'peak'`, specifying the current and peak
@@ -564,6 +576,9 @@ def get_memory_info(device):
   return context.context().get_memory_info(device)
 
 
+# TODO(b/188089869): Redesign memory stats related APIs before move them out of
+# experimental.
+# TODO(b/189498350): Unify the behavior on CPU, GPU and TPU.
 @tf_export('config.experimental.reset_memory_stats')
 def reset_memory_stats(device):
   """Resets the tracked memory stats for the chosen device.
@@ -587,12 +602,13 @@ def reset_memory_stats(device):
   ...   peak2 = tf.config.experimental.get_memory_info('GPU:0')['peak']
   ...   assert peak2 < peak1  # tf.float32 consumes less memory than tf.float64.
 
-  Currently raises an exception for the CPU.
+  Currently only supports GPU and TPU. If called on a CPU device, an exception
+  will be raised.
 
   Args:
-    device: Device string to reset the memory stats, e.g. `"GPU:0"`. See
-      https://www.tensorflow.org/api_docs/python/tf/device for specifying device
-        strings.
+    device: Device string to reset the memory stats, e.g. `"GPU:0"`, `"TPU:0"`.
+      See https://www.tensorflow.org/api_docs/python/tf/device for specifying
+      device strings.
 
   Raises:
     ValueError: No device found with the device name, like '"nonexistent"'.
@@ -798,6 +814,10 @@ def set_logical_device_configuration(device, logical_devices):
   Specifying a list of `tf.config.LogicalDeviceConfiguration` objects allows
   multiple devices to be created on the same `tf.config.PhysicalDevice`.
 
+  Logical device configurations can be modified by calling this function as
+  long as the runtime is uninitialized. After the runtime is initialized
+  calling this function raises a RuntimeError.
+
   The following example splits the CPU into 2 logical devices:
 
   >>> physical_devices = tf.config.list_physical_devices('CPU')
@@ -898,3 +918,37 @@ def disable_mlir_bridge():
 def disable_mlir_graph_optimization():
   """Disables experimental MLIR-Based TensorFlow Compiler Optimizations."""
   context.context().enable_mlir_graph_optimization = False
+
+
+def enable_deterministic_ops(enabled):
+  """Enable or disable the use of deterministic ops.
+
+  When enabled, many ops will be made deterministic. This means that if you run
+  the same op multiple times, it will have the same outputs (and stateful ops
+  will have the same side effects). This function is described in [the
+  determinism
+  RFC](https://github.com/tensorflow/community/blob/master/rfcs/20210119-determinism.md).
+
+  The determinism functionality is not yet complete. Certain ops will raise a
+  NotImplemented error when run after determinism is enabled, because they do
+  not yet have a deterministic implementation. Certain other ops will instead
+  silently run nondeterministically, either because the NotImplemented error has
+  not been added yet or that the TensorFlow developers do not yet know the op is
+  nondeterministic. This function will not be exported as part of the TensorFlow
+  API until all known nondeterministic ops raise a NotImplemented error.
+
+  Currently, enabling determinism after certain ops have already been run may
+  cause future runs of such ops to be run nondeterministically. This is because
+  Autotune for ops like Conv2D may select and cache a nondeterministic
+  algorithm, which will still be used once determinism is enabled. It is
+  therefore recommended to enable determinism only before running any ops.
+
+  Args:
+    enabled: Bool indicating whether to enable deterministic ops.
+  """
+  _pywrap_determinism.enable(enabled)
+
+
+def deterministic_ops_enabled():
+  """Returns True if deterministic ops have been enabled."""
+  return _pywrap_determinism.is_enabled()

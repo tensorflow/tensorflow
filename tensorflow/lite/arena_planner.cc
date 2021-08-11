@@ -249,6 +249,12 @@ bool ArenaPlanner::HasNonPersistentMemory() {
   return arena_.GetBufferSize() != 0;
 }
 
+void ArenaPlanner::DumpDebugInfo(const std::vector<int>& execution_plan) const {
+  arena_.DumpDebugInfo("kTfLiteArenaRw Dump:", execution_plan);
+  persistent_arena_.DumpDebugInfo("kTfLiteArenaRwPersistent Dump:",
+                                  execution_plan);
+}
+
 TfLiteStatus ArenaPlanner::Commit() {
   TF_LITE_ENSURE_STATUS(arena_.Commit(context_));
   TF_LITE_ENSURE_STATUS(persistent_arena_.Commit(context_));

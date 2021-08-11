@@ -76,11 +76,15 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
     https://keras.io/guides/transfer_learning/).
 
   Note: each Keras Application expects a specific kind of input preprocessing.
-  For ModelNetV3, input preprocessing is included as part of the model
-  (as a `Rescaling` layer), and thus
+  For ModelNetV3, by default input preprocessing is included as a part of the
+  model (as a `Rescaling` layer), and thus
   `tf.keras.applications.mobilenet_v3.preprocess_input` is actually a
-  pass-through function. ModelNetV3 models expect their inputs to be float
-  tensors of pixels with values in the [0-255] range.
+  pass-through function. In this use case, ModelNetV3 models expect their inputs
+  to be float tensors of pixels with values in the [0-255] range.
+  At the same time, preprocessing as a part of the model (i.e. `Rescaling`
+  layer) can be disabled by setting `include_preprocessing` argument to False.
+  With preprocessing disabled ModelNetV3 models expect their inputs to be float
+  tensors of pixels with values in the [-1, 1] range.
 
   Args:
     input_shape: Optional shape tuple, to be specified if you would
@@ -137,10 +141,13 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
       `classifier_activation=None` to return the logits of the "top" layer.
       When loading pretrained weights, `classifier_activation` can only
       be `None` or `"softmax"`.
+    include_preprocessing: Boolean, whether to include the preprocessing
+      layer (`Rescaling`) at the bottom of the network. Defaults to `True`.
 
   Call arguments:
     inputs: A floating point `numpy.array` or a `tf.Tensor`, 4D with 3 color
-      channels, with values in the range [0, 255].
+      channels, with values in the range [0, 255] if `include_preprocessing`
+      is True and in the range [-1, 1] otherwise.
 
   Returns:
     A `keras.Model` instance.
@@ -159,7 +166,8 @@ def MobileNetV3(stack_fn,
                 classes=1000,
                 pooling=None,
                 dropout_rate=0.2,
-                classifier_activation='softmax'):
+                classifier_activation='softmax',
+                include_preprocessing=True):
   if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
@@ -261,7 +269,8 @@ def MobileNetV3(stack_fn,
     se_ratio = 0.25
 
   x = img_input
-  x = layers.Rescaling(scale=1. / 127.5, offset=-1.)(x)
+  if include_preprocessing:
+    x = layers.Rescaling(scale=1. / 127.5, offset=-1.)(x)
   x = layers.Conv2D(
       16,
       kernel_size=3,
@@ -292,11 +301,7 @@ def MobileNetV3(stack_fn,
       axis=channel_axis, epsilon=1e-3,
       momentum=0.999, name='Conv_1/BatchNorm')(x)
   x = activation(x)
-  x = layers.GlobalAveragePooling2D()(x)
-  if channel_axis == 1:
-    x = layers.Reshape((last_conv_ch, 1, 1))(x)
-  else:
-    x = layers.Reshape((1, 1, last_conv_ch))(x)
+  x = layers.GlobalAveragePooling2D(keepdims=True)(x)
   x = layers.Conv2D(
       last_point_ch,
       kernel_size=1,
@@ -360,7 +365,8 @@ def MobileNetV3Small(input_shape=None,
                      classes=1000,
                      pooling=None,
                      dropout_rate=0.2,
-                     classifier_activation='softmax'):
+                     classifier_activation='softmax',
+                     include_preprocessing=True):
 
   def stack_fn(x, kernel, activation, se_ratio):
 
@@ -383,7 +389,7 @@ def MobileNetV3Small(input_shape=None,
 
   return MobileNetV3(stack_fn, 1024, input_shape, alpha, 'small', minimalistic,
                      include_top, weights, input_tensor, classes, pooling,
-                     dropout_rate, classifier_activation)
+                     dropout_rate, classifier_activation, include_preprocessing)
 
 
 @keras_export('keras.applications.MobileNetV3Large')
@@ -396,7 +402,8 @@ def MobileNetV3Large(input_shape=None,
                      classes=1000,
                      pooling=None,
                      dropout_rate=0.2,
-                     classifier_activation='softmax'):
+                     classifier_activation='softmax',
+                     include_preprocessing=True):
 
   def stack_fn(x, kernel, activation, se_ratio):
 
@@ -425,7 +432,7 @@ def MobileNetV3Large(input_shape=None,
 
   return MobileNetV3(stack_fn, 1280, input_shape, alpha, 'large', minimalistic,
                      include_top, weights, input_tensor, classes, pooling,
-                     dropout_rate, classifier_activation)
+                     dropout_rate, classifier_activation, include_preprocessing)
 
 
 MobileNetV3Small.__doc__ = BASE_DOCSTRING.format(name='MobileNetV3Small')
@@ -441,7 +448,7 @@ def hard_sigmoid(x):
 
 
 def hard_swish(x):
-  return layers.Multiply()([hard_sigmoid(x), x])
+  return layers.Multiply()([x, hard_sigmoid(x)])
 
 
 # This function is taken from the original tf repo.
@@ -462,12 +469,9 @@ def _depth(v, divisor=8, min_value=None):
 
 
 def _se_block(inputs, filters, se_ratio, prefix):
-  x = layers.GlobalAveragePooling2D(name=prefix + 'squeeze_excite/AvgPool')(
-      inputs)
-  if backend.image_data_format() == 'channels_first':
-    x = layers.Reshape((filters, 1, 1))(x)
-  else:
-    x = layers.Reshape((1, 1, filters))(x)
+  x = layers.GlobalAveragePooling2D(
+      keepdims=True, name=prefix + 'squeeze_excite/AvgPool')(
+          inputs)
   x = layers.Conv2D(
       _depth(filters * se_ratio),
       kernel_size=1,

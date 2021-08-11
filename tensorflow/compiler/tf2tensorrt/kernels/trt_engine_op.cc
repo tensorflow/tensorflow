@@ -55,7 +55,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace {
-static Logger logger;
+Logger& logger = *Logger::GetLogger();
 using absl::StrAppend;
 using absl::StrCat;
 using ::nvinfer1::IRuntime;
@@ -446,13 +446,7 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
             << ", thus setting _use_implicit_batch=true";
     use_implicit_batch_ = true;
   }
-#if !IS_TRT_VERSION_GE(6, 0, 0, 0)
-  if (!use_implicit_batch_) {
-    VLOG(2) << "Need at least TensorRT 6.0 for explicit batch mode. Setting "
-            << "_use_implicit_batch=true";
-    use_implicit_batch_ = true;
-  }
-#endif
+
   status =
       context->GetAttr("_profile_generation_mode", &profile_generation_mode_);
   if (status.code() == tensorflow::error::NOT_FOUND) {
@@ -484,9 +478,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
             "without the input_shapes attribute), then you need to convert the "
             "original model again to TensorRT in order to set the attribute "
             "input_shapes."));
-    OP_REQUIRES(context, !calibration_mode_,
-                errors::InvalidArgument(
-                    "Explicit batch mode does not support calibration"));
 
     string profile_strategy_name;
     status = context->GetAttr("profile_strategy", &profile_strategy_name);
@@ -504,6 +495,12 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
       [](PartialTensorShape shape) { return !shape.IsFullyDefined(); });
   VLOG(2) << "TRTEngineOp has_dynamic_shape_input_: "
           << has_dynamic_shape_input_;
+
+  if (has_dynamic_shape_input_ && !use_implicit_batch_) {
+    OP_REQUIRES(context, !calibration_mode_,
+                errors::InvalidArgument(
+                    "Dynamic shape mode does not support calibration"));
+  }
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
@@ -837,13 +834,14 @@ Status TRTEngineOp::ExecuteTrtEngine(
   auto& cuda_engine = engine_context->cuda_engine;
 
   if (VLOG_IS_ON(2)) {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     VLOG(2) << "  Network name: " << cuda_engine->getName();
-#endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
     VLOG(2) << "  Activation size: " << cuda_engine->getDeviceMemorySize()
             << " bytes";
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
+    // getWorkspaceSize() is deprecated as of TRT 8
     VLOG(2) << "  Workspace size: " << cuda_engine->getWorkspaceSize()
             << " bytes";
+#endif  // #if !IS_TRT_VERSION_GE(8, 0, 0, 0)
     VLOG(2) << "  Datatype of " << cuda_engine->getNbBindings()
             << " inputs/outputs";
     string binding_types = "";

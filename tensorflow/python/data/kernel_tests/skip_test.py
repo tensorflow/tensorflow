@@ -54,17 +54,12 @@ class SkipDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
           combinations.combine(count=[5], num_outputs=[5]) +
           combinations.combine(count=[20, 10, -1], num_outputs=[0]) +
           combinations.combine(count=[0], num_outputs=[10])))
-  def testCore(self, count, num_outputs):
-    self.run_core_tests(lambda: self._build_skip_dataset(count), num_outputs)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testInvalidSkip(self):
-    with self.assertRaisesRegex(ValueError,
-                                "Shape must be rank 0 but is rank 1"):
-      self.run_core_tests(lambda: self._build_skip_dataset([1, 2]), 0)
+  def test(self, verify_fn, count, num_outputs):
+    verify_fn(self, lambda: self._build_skip_dataset(count), num_outputs)
 
 
 if __name__ == "__main__":

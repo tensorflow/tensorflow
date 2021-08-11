@@ -734,7 +734,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     f = test_util.run_in_graph_and_eager_modes(inc)
     f(self, with_brackets=False)
-    f = test_util.run_in_graph_and_eager_modes()(inc)
+    f = test_util.run_in_graph_and_eager_modes()(inc)  # pylint: disable=assignment-from-no-return
     f(self, with_brackets=True)
 
     self.assertEqual(len(l), 4)

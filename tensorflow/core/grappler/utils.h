@@ -221,7 +221,7 @@ class NodeMapInternal {
 
  private:
   // Helper method to get the NodeDef pointer of i-th node in a graph.
-  NodeDefT* GetNodeDefFromGraph(GraphDefT* graph, int64 i) const;
+  NodeDefT* GetNodeDefFromGraph(GraphDefT* graph, int64_t i) const;
 
   const absl::flat_hash_set<NodeDefT*> empty_set_;
   absl::node_hash_map<string, NodeDefT*> nodes_;
@@ -268,7 +268,7 @@ class SetVector {
 
   bool Empty() const { return vector_.empty(); }
 
-  void Reserve(int64 size) { vector_.reserve(size); }
+  void Reserve(int64_t size) { vector_.reserve(size); }
 
  private:
   gtl::FlatSet<T, Hash> set_;
@@ -307,7 +307,7 @@ string AddPrefixToNodeName(const string& name, const string& prefix);
 // If returning false, the 'fn' may still continue to execute in the
 // thread-pool. It is the responsibility of the caller to reset the thread-pool
 // as appropriate.
-bool ExecuteWithTimeout(std::function<void()> fn, int64 timeout_in_ms,
+bool ExecuteWithTimeout(std::function<void()> fn, int64_t timeout_in_ms,
                         thread::ThreadPool* thread_pool);
 
 // Returns the node name prefixed with conventional symbol '^'

@@ -188,8 +188,8 @@ Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
   if (index_type == nullptr) {
     index_type = b_->getInt64Ty();
   }
-  int64 total_threads = launch_dimensions_.launch_bound();
-  int64 num_elements = ShapeUtil::ElementsIn(shape_);
+  int64_t total_threads = launch_dimensions_.launch_bound();
+  int64_t num_elements = ShapeUtil::ElementsIn(shape_);
   // If all the elements are handled by the current threads, no need
   // to add a loop inside the kernel.
   if (total_threads * launch_config_.unroll_factor >= num_elements) {
@@ -198,7 +198,7 @@ Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
   }
 
   KernelSupportLibrary ksl(b_, llvm_ir::UnrollMode::kDefaultUnroll);
-  auto constant = [&](int64 val) {
+  auto constant = [&](int64_t val) {
     return llvm::ConstantInt::get(index_type, val);
   };
 

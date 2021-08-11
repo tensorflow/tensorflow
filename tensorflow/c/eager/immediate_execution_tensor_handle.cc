@@ -29,8 +29,19 @@ std::string ImmediateExecutionTensorHandle::DebugString() const {
   if (!SummarizeValue(value_string).ok()) {
     value_string = "<error computing value>";
   }
+  if (value_string.length() > 100) {
+    // The default NumPy-style output can be distractingly long in error
+    // messages.
+    value_string = absl::StrCat(value_string.substr(0, 100), " [...]");
+  }
+  Status s;
+  const char* device_name = DeviceName(&s);
+  if (!s.ok()) {
+    device_name = "<error fetching device name>";
+  }
   return absl::StrCat("TensorHandle(", value_string, ", shape=", shape_string,
-                      ", dtype=", DataType_Name(DataType()), ")");
+                      ", dtype=", DataType_Name(DataType()), ", device=\"",
+                      device_name, "\")");
 }
 
 Status ImmediateExecutionTensorHandle::SummarizeValue(

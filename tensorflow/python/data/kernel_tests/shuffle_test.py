@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import variables
@@ -163,6 +164,24 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     for i in range(5):
       self.assertEqual(10, counts[i])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testInputInitializations(self):
+    num_rounds = 3
+    def compute_orders(dataset):
+      orders = []
+      for _ in range(num_rounds):
+        orders.append(self.getDatasetOutput(dataset))
+      return orders
+
+    dataset = dataset_ops.Dataset.range(10).shuffle(10, seed=1)
+    first_orders = compute_orders(dataset)
+    dataset = dataset_ops.Dataset.range(10)
+
+    # Adding shuffle(1) should not change the order.
+    dataset = dataset_ops.Dataset.range(10).shuffle(10, seed=1).shuffle(1)
+    second_orders = compute_orders(dataset)
+    self.assertEqual(first_orders, second_orders)
+
   @combinations.generate(
       combinations.times(
           test_base.graph_only_combinations(),
@@ -223,6 +242,32 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
           results.append(run_results)
 
         self.assertNotEqual(results[0], results[1])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShuffleManyEmptyEpochs(self):
+    sizes = [0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0]
+    sizes_iter = iter(sizes)
+    def gen():
+      for i in range(next(sizes_iter)):
+        yield i
+
+    dataset = dataset_ops.Dataset.from_generator(
+        gen, output_signature=tensor_spec.TensorSpec((), dtypes.int64))
+    dataset = dataset.shuffle(10).repeat(len(sizes)).take(3)
+    self.assertDatasetProduces(dataset, [0, 0, 1], assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShuffleInfiniteRepeatNonemptyFollowedByEmpty(self):
+    sizes = [1, 0, 2, 10]
+    sizes_iter = iter(sizes)
+    def gen():
+      for i in range(next(sizes_iter)):
+        yield i
+
+    dataset = dataset_ops.Dataset.from_generator(
+        gen, output_signature=tensor_spec.TensorSpec((), dtypes.int64))
+    dataset = dataset.shuffle(10).repeat().take(3)
+    self.assertDatasetProduces(dataset, [0, 0, 1], assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
@@ -388,17 +433,18 @@ class ShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
           combinations.combine(
               reshuffle_each_iteration=[True, False],
               buffer_size=[1, 3, 5, 8, 10])))
-  def testShuffleCore(self, reshuffle_each_iteration, buffer_size):
+  def test(self, verify_fn, reshuffle_each_iteration, buffer_size):
     seed = 55
     range_limit = 5
     num_repeats = 2
     num_outputs = range_limit * num_repeats
     # pylint: disable=g-long-lambda
-    self.run_core_tests(
-        lambda: self._build_shuffle_dataset(
+    verify_fn(
+        self, lambda: self._build_shuffle_dataset(
             range_limit=range_limit,
             num_repeats=num_repeats,
             buffer_size=buffer_size,
