@@ -45,15 +45,6 @@ namespace convert {
   return ::testing::ElementsAreArray(matchers);
 }
 
-nvinfer1::Dims CreateDims(const std::vector<int>& d) {
-  nvinfer1::Dims dims;
-  dims.nbDims = d.size();
-  for (int i = 0; i < d.size(); ++i) {
-    dims.d[i] = d[i];
-  }
-  return dims;
-}
-
 NodeDef MakeNodeDef(const std::string& name, const std::string& op,
                     const std::vector<std::string>& inputs,
                     const std::map<std::string, AttrValue> attrs) {

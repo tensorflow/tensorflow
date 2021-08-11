@@ -173,8 +173,8 @@ TEST(TRT_ShapedWeights_Test, Basic) {
   // Test constructor with DataType and nvinfer1::Dims arguments.
   {
     TrtWeightStore store;
-    TRT_ShapedWeights weights =
-        store.GetTempWeights(nvinfer1::DataType::kFLOAT, CreateDims({2, 5}));
+    TRT_ShapedWeights weights = store.GetTempWeights(
+        nvinfer1::DataType::kFLOAT, nvinfer_factory::dims::Create({2, 5}));
     TRT_ShapedWeights copy(weights);
     for (auto ptr : {&weights, &copy}) {
       nvinfer1::Weights trt_weights = ptr->GetTrtWeights();
@@ -556,8 +556,9 @@ TEST_F(ConverterTest, ConvertNode) {
     return Status::OK();
   };
   NodeDef node_def = MakeNodeDef("my_op", "MyOp", {"my_input"});
-  TF_EXPECT_OK(converter_->AddInputTensor(
-      "my_input", nvinfer1::DataType::kFLOAT, CreateDims({123}), 1));
+  TF_EXPECT_OK(
+      converter_->AddInputTensor("my_input", nvinfer1::DataType::kFLOAT,
+                                 nvinfer_factory::dims::Create({123}), 1));
 
   // Converter not registered.
   EXPECT_THAT(converter_->ConvertNode(node_def),
@@ -592,11 +593,14 @@ TEST_F(ConverterTest, AddAndGetInputs) {
   node_def.add_input("weird_input:2:3:4:0");
 
   TF_EXPECT_OK(converter_->AddInputTensor("input", nvinfer1::DataType::kFLOAT,
-                                          CreateDims({1}), 1));
+                                          nvinfer_factory::dims::Create({1}),
+                                          1));
   TF_EXPECT_OK(converter_->AddInputTensor("input:1", nvinfer1::DataType::kINT32,
-                                          CreateDims({2, 3}), 1));
-  TF_EXPECT_OK(converter_->AddInputTensor(
-      "weird_input:2:3:4", nvinfer1::DataType::kHALF, CreateDims({5, 3}), 1));
+                                          nvinfer_factory::dims::Create({2, 3}),
+                                          1));
+  TF_EXPECT_OK(
+      converter_->AddInputTensor("weird_input:2:3:4", nvinfer1::DataType::kHALF,
+                                 nvinfer_factory::dims::Create({5, 3}), 1));
 
   std::vector<TRT_TensorOrWeights> inputs;
   TF_EXPECT_OK(GetInputs(node_def, &inputs));
@@ -643,8 +647,9 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
 
   // Run the conversion.
   NodeDef node_def = MakeNodeDef("my_op", "MyOp", {"my_input"});
-  TF_EXPECT_OK(converter_->AddInputTensor(
-      "my_input", nvinfer1::DataType::kFLOAT, CreateDims({1, 2}), 1));
+  TF_EXPECT_OK(
+      converter_->AddInputTensor("my_input", nvinfer1::DataType::kFLOAT,
+                                 nvinfer_factory::dims::Create({1, 2}), 1));
   TF_EXPECT_OK(converter_->ConvertNode(node_def));
 
   // Mark a weight as output, should fail.
@@ -668,7 +673,7 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
 
 TEST_F(ConverterTest, TransposeTensor) {
   ITensorProxyPtr input_tensor = converter_->network()->addInput(
-      "", nvinfer1::DataType::kFLOAT, CreateDims({2, 3, 5}));
+      "", nvinfer1::DataType::kFLOAT, nvinfer_factory::dims::Create({2, 3, 5}));
   ITensorProxyPtr output_tensor = nullptr;
   NodeDef dummy_node_def = MakeNodeDef("dummy_op", "DummyOp", {});
   // Rank doesn't match.
@@ -702,18 +707,19 @@ void TestPrepareTensorForShape(
   TRT_TensorOrWeights input;
   if (input_is_tensor) {
     input = TRT_TensorOrWeights(converter->network()->addInput(
-        "", nvinfer1::DataType::kFLOAT, CreateDims(input_dims)));
+        "", nvinfer1::DataType::kFLOAT,
+        nvinfer_factory::dims::Create(input_dims)));
   } else {
     input = TRT_TensorOrWeights(weight_store->GetTempWeights(
-        nvinfer1::DataType::kFLOAT, CreateDims(input_dims)));
+        nvinfer1::DataType::kFLOAT, nvinfer_factory::dims::Create(input_dims)));
   }
   ITensorProxyPtr output_tensor = nullptr;
 
   NodeDef dummy_node_def = MakeNodeDef("dummy_op", "DummyOp", {});
   for (bool validation_only : {false, true}) {
-    const Status status =
-        PrepareTensorForShape(converter, input, CreateDims(reshape_dims),
-                              validation_only, &output_tensor, dummy_node_def);
+    const Status status = PrepareTensorForShape(
+        converter, input, nvinfer_factory::dims::Create(reshape_dims),
+        validation_only, &output_tensor, dummy_node_def);
     if (expected_code == error::OK) {
       TF_EXPECT_OK(status);
       if (validation_only) {
@@ -817,8 +823,8 @@ template <typename T>
 void TestGetWeightRange(ConverterTest* test, TrtWeightStore* weight_store) {
   nvinfer1::DataType trt_type;
   TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &trt_type));
-  TRT_ShapedWeights weights =
-      weight_store->GetTempWeights(trt_type, CreateDims({2, 3}));
+  TRT_ShapedWeights weights = weight_store->GetTempWeights(
+      trt_type, nvinfer_factory::dims::Create({2, 3}));
   const std::vector<T> values = {T(3), T(1), T(2), T(6), T(5), T(4)};
   memcpy(weights.GetValues(), values.data(), weights.size_bytes());
 
@@ -889,10 +895,11 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
                                        bool is_tensor, int batch_size = -1) {
       if (is_tensor) {
         return TRT_TensorOrWeights{nvinfer1::DataType::kFLOAT,
-                                   CreateDims(shape), batch_size};
+                                   nvinfer_factory::dims::Create(shape),
+                                   batch_size};
       }
       TRT_ShapedWeights weights;
-      weights.shape_ = CreateDims(shape);
+      weights.shape_ = nvinfer_factory::dims::Create(shape);
       return TRT_TensorOrWeights(weights);
     };
 
@@ -979,10 +986,10 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
 
 TEST_F(ConverterTest, CreateConstantLayer) {
   for (auto dtype : {nvinfer1::DataType::kFLOAT, nvinfer1::DataType::kINT32}) {
-    TRT_ShapedWeights weights =
-        weight_store_->GetTempWeights(dtype, CreateDims({2, 3, 5}));
-    ITensorProxyPtr tensor =
-        converter_->CreateConstantLayer(weights, CreateDims({3, 10}));
+    TRT_ShapedWeights weights = weight_store_->GetTempWeights(
+        dtype, nvinfer_factory::dims::Create({2, 3, 5}));
+    ITensorProxyPtr tensor = converter_->CreateConstantLayer(
+        weights, nvinfer_factory::dims::Create({3, 10}));
     ASSERT_NE(nullptr, tensor->trt_tensor());
     EXPECT_EQ(dtype, tensor->getType())
         << "Expected " << DebugString(dtype) << " vs. actual "
@@ -1334,7 +1341,7 @@ class OpConverterTest : public ::testing::Test {
     // Add weights for conversion.
     nvinfer1::DataType dtype;
     TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &dtype));
-    const nvinfer1::Dims trt_dims = CreateDims(dims);
+    const nvinfer1::Dims trt_dims = nvinfer_factory::dims::Create(dims);
     const int64_t num_elements = TRT_ShapedWeights::count(trt_dims);
     QCHECK_EQ(num_elements, values.size())
         << num_elements << " vs " << values.size();
@@ -2832,7 +2839,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertBiasAdd) {
         dims_array[1] = 2;
         dims_array[trt_input_rank] = 3;
       }
-      const int num_input = TrtTensorDimsNumElements(CreateDims(dims_array));
+      const int num_input =
+          TrtTensorDimsNumElements(nvinfer_factory::dims::Create(dims_array));
       ASSERT_EQ(trt_input_rank > 1 ? 6 : (data_format == "NHWC" ? 3 : 2),
                 num_input);
       std::vector<float> input_data(num_input, 0);

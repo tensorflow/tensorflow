@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <numeric>
 #include <tuple>
+
 #include "absl/strings/str_join.h"
 
 namespace tensorflow {
@@ -111,8 +112,25 @@ inline std::ostream& operator<<(std::ostream& os,
   os << "}";
   return os;
 }
-
 }  // namespace nvinfer1
+
+namespace nvinfer_factory {
+
+namespace dims {
+
+// Creates a nvinfer1::Dims from the given vector.
+template <typename T = int,
+          typename std::enable_if<std::is_integral<T>::value>::type* = nullptr>
+nvinfer1::Dims Create(const std::vector<T>& list) {
+  assert(list.size() <= nvinfer1::Dims::MAX_DIMS);
+  nvinfer1::Dims dim;
+  dim.nbDims = list.size();
+  std::copy(list.begin(), list.end(), dim.d);
+  return dim;
+}
+
+}  // namespace dims
+}  // namespace nvinfer_factory
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 

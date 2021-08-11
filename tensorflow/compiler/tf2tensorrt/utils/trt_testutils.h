@@ -76,9 +76,6 @@ NodeDef MakeConstNodeDef(const std::string& name, const std::vector<T>& vals) {
 // Returns true if the given two nvinfer1::Dims are equal.
 bool TrtDimsEquals(const nvinfer1::Dims& lhs, const nvinfer1::Dims& rhs);
 
-// Creates an nvinfer1::Dims struct from the given vector.
-nvinfer1::Dims CreateDims(const std::vector<int>& d);
-
 // A gmock matcher that check that elements of a float vector match to a given
 // tolerance.
 ::testing::Matcher<std::vector<float>> ArrayFloatNear(
@@ -135,12 +132,8 @@ MATCHER(LayerNamesNonEmpty, "") {
 // Checks that the weight dimensions are values are equal to the given values.
 // Example: EXPECT_THAT(my_weights,
 //                      ShapedWeightsHasDimsAndValues({1, 2},{1.0f, 2.0f}))
-MATCHER_P2(ShapedWeightsHasDimsAndValuesHelper, dims_vec, expected_values, "") {
-  nvinfer1::Dims dims;
-  dims.nbDims =
-      std::min(static_cast<int>(dims_vec.size()), nvinfer1::Dims::MAX_DIMS);
-  std::copy_n(dims_vec.begin(), dims.nbDims, dims.d);
-  if (arg.shape_ != dims) {
+MATCHER_P2(ShapedWeightsHasDimsAndValuesHelper, dims, expected_values, "") {
+  if (arg.shape_ != nvinfer_factory::dims::Create(dims)) {
     return false;
   }
   if (arg.count() != expected_values.size()) {
