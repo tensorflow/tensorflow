@@ -58,7 +58,7 @@ class GatherNdOp : public OpKernel {
 
 #define REGISTER_GATHER_ND_ALL_INDICES(dev, type) \
   REGISTER_GATHER_ND_FULL(dev, type, int32);      \
-  REGISTER_GATHER_ND_FULL(dev, type, int64)
+  REGISTER_GATHER_ND_FULL(dev, type, int64_t)
 
 #define REGISTER_GATHER_ND_CPU(type) REGISTER_GATHER_ND_ALL_INDICES(CPU, type)
 
@@ -100,7 +100,7 @@ namespace functor {
 
 #define DECLARE_GPU_SPECS(T)         \
   DECLARE_GPU_SPECS_INDEX(T, int32); \
-  DECLARE_GPU_SPECS_INDEX(T, int64)
+  DECLARE_GPU_SPECS_INDEX(T, int64_t)
 
 TF_CALL_int32(DECLARE_GPU_SPECS);
 TF_CALL_int64(DECLARE_GPU_SPECS);

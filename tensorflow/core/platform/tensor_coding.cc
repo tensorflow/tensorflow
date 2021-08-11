@@ -51,7 +51,7 @@ bool DecodeStringList(const string& src, tstring* strings, int64_t n) {
     if (!core::GetVarint32(&reader, &v)) return false;
     tot += v;
   }
-  if (tot != static_cast<int64>(reader.size())) {
+  if (tot != static_cast<int64_t>(reader.size())) {
     return false;
   }
 
@@ -107,7 +107,7 @@ class StringListDecoderImpl : public StringListDecoder {
       if (!core::GetVarint32(&reader_, &size)) return false;
       total += size;
     }
-    if (total != static_cast<int64>(reader_.size())) {
+    if (total != static_cast<int64_t>(reader_.size())) {
       return false;
     }
     return true;
@@ -230,7 +230,7 @@ class CordStringListDecoderImpl : public StringListDecoder {
       if (!::strings::CordReaderReadVarint(&reader_, &size)) return false;
       total += size;
     }
-    if (total != static_cast<int64>(reader_.Available())) {
+    if (total != static_cast<int64_t>(reader_.Available())) {
       return false;
     }
     return true;

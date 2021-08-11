@@ -216,22 +216,22 @@ TEST_F(FinalizeDatasetOpTest, NoOptimizationNodeName) {
 std::vector<GetNextTestCase<FinalizeDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/NoOptimizationFinalizeParams(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {3}, {6}, {9}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {3}, {6}, {9}})},
           {/*dataset_params=*/MaxIntraOpParallelismParams(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {3}, {6}, {9}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {3}, {6}, {9}})},
           {/*dataset_params=*/PrivateThreadPoolParams(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {3}, {6}, {9}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {3}, {6}, {9}})},
           {/*dataset_params=*/ModelParams(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {3}, {6}, {9}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {3}, {6}, {9}})},
           {/*dataset_params=*/OptimizationsDefaultParams(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {3}, {6}, {9}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {3}, {6}, {9}})},
           {/*dataset_params=*/AllChainedDatasetsParams(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {3}, {6}, {9}})}};
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {3}, {6}, {9}})}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(FinalizeDatasetOpTest, FinalizeDatasetParams,

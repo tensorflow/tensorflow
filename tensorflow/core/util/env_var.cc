@@ -46,7 +46,7 @@ Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
 }
 
 Status ReadInt64FromEnvVar(StringPiece env_var_name, int64_t default_val,
-                           int64* value) {
+                           int64_t* value) {
   *value = default_val;
   const char* tf_env_var_val = getenv(string(env_var_name).c_str());
   if (tf_env_var_val == nullptr) {

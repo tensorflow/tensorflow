@@ -213,7 +213,7 @@ class StepDetails {
 };
 
 // Map from step_id to the events happened in that step.
-using StepEvents = absl::flat_hash_map<int64 /*step_id*/, StepDetails>;
+using StepEvents = absl::flat_hash_map<int64_t /*step_id*/, StepDetails>;
 
 // Equality test for StepEvents.
 bool operator==(const StepEvents& a, const StepEvents& b);

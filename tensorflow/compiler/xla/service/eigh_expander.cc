@@ -147,7 +147,7 @@ StatusOr<Eigh2x2> HermitianEigenDecomposition2x2(XlaOp w_tl, XlaOp w_tr,
 void ApplyJacobiRotationOverRows(Eigh2x2 rotation, XlaOp& tl, XlaOp& tr,
                                  XlaOp& bl, XlaOp& br) {
   Shape shape = tl.builder()->GetShape(tl).ValueOrDie();
-  std::vector<int64> broadcast_dims(shape.dimensions().size() - 1);
+  std::vector<int64_t> broadcast_dims(shape.dimensions().size() - 1);
   absl::c_iota(broadcast_dims, 0);
   auto c = BroadcastInDim(rotation.c, shape.dimensions(), broadcast_dims);
   auto s = BroadcastInDim(rotation.s, shape.dimensions(), broadcast_dims);
@@ -167,7 +167,7 @@ void ApplyJacobiRotationOverRows(Eigh2x2 rotation, XlaOp& tl, XlaOp& tr,
 void ApplyJacobiRotationOverCols(Eigh2x2 rotation, XlaOp& tl, XlaOp& tr,
                                  XlaOp& bl, XlaOp& br) {
   Shape shape = tl.builder()->GetShape(tl).ValueOrDie();
-  std::vector<int64> broadcast_dims(shape.dimensions().size() - 1);
+  std::vector<int64_t> broadcast_dims(shape.dimensions().size() - 1);
   absl::c_iota(broadcast_dims, 0);
   broadcast_dims.back() = shape.dimensions().size() - 1;
   auto c = BroadcastInDim(rotation.c, shape.dimensions(), broadcast_dims);
@@ -358,7 +358,7 @@ Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
   const int64_t num_dims = v_shape.rank();
   auto dimensions = v_shape.dimensions();
 
-  std::vector<int64> broadcast_dims(num_dims - 1);
+  std::vector<int64_t> broadcast_dims(num_dims - 1);
   std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
   broadcast_dims[num_dims - 2] = num_dims - 1;
   w = BroadcastInDim(w, dimensions, broadcast_dims);
@@ -457,7 +457,7 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
     }
 
     const int64_t num_batch_dims = num_dims - 2;
-    std::vector<int64> batch_dims(num_batch_dims);
+    std::vector<int64_t> batch_dims(num_batch_dims);
     for (int i = 0; i < num_batch_dims; ++i) {
       batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
     }
@@ -468,7 +468,7 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
 
     a = Symmetrize(a, lower);
 
-    const int64_t k = CeilOfRatio(n, int64{2});
+    const int64_t k = CeilOfRatio(n, int64_t{2});
     // tl = A[:n // 2, :n // 2]
     // bl = A[n // 2:, :n // 2]
     // tr = A[:n // 2, n // 2:]

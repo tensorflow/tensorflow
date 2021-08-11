@@ -71,11 +71,11 @@ bool OCReadIncreasing<uint64>(StringPiece* src, uint64* result) {
 
 // Read/WriteIncreasing<int64>
 template <>
-void OCWriteIncreasing<int64>(string* dest, const int64& val) {
+void OCWriteIncreasing<int64_t>(string* dest, const int64_t& val) {
   OrderedCode::WriteSignedNumIncreasing(dest, val);
 }
 template <>
-bool OCReadIncreasing<int64>(StringPiece* src, int64* result) {
+bool OCReadIncreasing<int64_t>(StringPiece* src, int64_t* result) {
   return OrderedCode::ReadSignedNumIncreasing(src, result);
 }
 
@@ -288,11 +288,11 @@ TEST(Uint64, EncodeDecode) { TestNumbers<uint64>(1); }
 TEST(Uint64, Ordering) { TestNumberOrdering<uint64>(); }
 
 TEST(Int64, EncodeDecode) {
-  TestNumbers<int64>(1);
-  TestNumbers<int64>(-1);
+  TestNumbers<int64_t>(1);
+  TestNumbers<int64_t>(-1);
 }
 
-TEST(Int64, Ordering) { TestNumberOrdering<int64>(); }
+TEST(Int64, Ordering) { TestNumberOrdering<int64_t>(); }
 
 // Returns the bitwise complement of s.
 inline string StrNot(const string& s) {
@@ -316,8 +316,8 @@ TEST(OrderedCodeInvalidEncodingsTest, Overflow) {
 
   // 1 << 63 and ~(1 << 63), increasing and decreasing
   const string k2xx63 = "\xff\xc0\x80" + string(7, 0);
-  TestInvalidEncoding<int64>(k2xx63);
-  TestInvalidEncoding<int64>(StrNot(k2xx63));
+  TestInvalidEncoding<int64_t>(k2xx63);
+  TestInvalidEncoding<int64_t>(StrNot(k2xx63));
 }
 
 TEST(OrderedCodeInvalidEncodingsDeathTest, NonCanonical) {
@@ -355,7 +355,7 @@ TEST(OrderedCodeInvalidEncodingsDeathTest, NonCanonical) {
                          RandomString(&rnd, n - header.length() - 1);
     EXPECT_EQ(n, non_minimal.length());
 
-    EXPECT_NE(OCWrite<int64>(0), non_minimal);
+    EXPECT_NE(OCWrite<int64_t>(0), non_minimal);
 #ifndef NDEBUG
     StringPiece s(non_minimal);
     EXPECT_DEATH(OrderedCode::ReadSignedNumIncreasing(&s, nullptr),
@@ -424,8 +424,8 @@ void BM_ReadNum(::testing::benchmark::State& state, T multiplier) {
   BENCHMARK(BM_Read##name)
 
 BENCHMARK_NUM(NumIncreasing, uint64, 1);
-BENCHMARK_NUM(SignedNum, int64, 1);
-BENCHMARK_NUM(SignedNumNegative, int64, -1);
+BENCHMARK_NUM(SignedNum, int64_t, 1);
+BENCHMARK_NUM(SignedNumNegative, int64_t, -1);
 
 #undef BENCHMARK_NUM
 
@@ -767,7 +767,7 @@ TEST(EncodingIsExpected, Unsigned) {
 }
 
 TEST(EncodingIsExpected, Signed) {
-  std::vector<std::pair<int64, string>> data = {
+  std::vector<std::pair<int64_t, string>> data = {
       {0ll, ByteSequence("\200")},
       {1ll, ByteSequence("\201")},
       {2ll, ByteSequence("\202")},

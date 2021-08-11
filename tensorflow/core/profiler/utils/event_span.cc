@@ -81,7 +81,7 @@ class PriorityTracker {
   // The current maximum priority.
   EventType current_max_priority_;
   // A count for each possible priority.
-  std::vector<int64> priority_count_;
+  std::vector<int64_t> priority_count_;
 
  public:
   PriorityTracker() {
@@ -206,7 +206,7 @@ std::string PrintStepMarker(const StepMarker& step_marker) {
 }
 
 std::string PrintStepEvents(const StepEvents& step_events) {
-  std::vector<int64> step_ids;
+  std::vector<int64_t> step_ids;
   step_ids.reserve(step_events.size());
   for (const auto& id_details : step_events) {
     step_ids.push_back(id_details.first);

@@ -127,7 +127,7 @@ class HistogramFixedWidthOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("HistogramFixedWidth")                    \
                               .Device(DEVICE_CPU)                        \
                               .TypeConstraint<type>("T")                 \
-                              .TypeConstraint<int64>("dtype"),           \
+                              .TypeConstraint<int64_t>("dtype"),         \
                           HistogramFixedWidthOp<CPUDevice, type, int64>)
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);

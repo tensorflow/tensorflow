@@ -133,10 +133,10 @@ class ScopedStepContainer {
   template <typename T>
   Status LookupOrCreate(ResourceMgr* rm, const std::string& name, T** resource,
                         std::function<Status(T**)> creator) TF_MUST_USE_RESULT;
-  int64 StepId() const { return step_id_; }
+  int64_t StepId() const { return step_id_; }
 
  private:
-  const int64 step_id_;
+  const int64_t step_id_;
   const std::string container_;
   const std::function<void(const string&)> cleanup_;
   mutex mu_;

@@ -67,7 +67,7 @@ xla::XlaOp BuildUninitializedTensorList(xla::XlaBuilder* b,
 // Returns leading dimension for the TensorList as well as a dynamic op
 // representing the dynamic size. Input can be initialized or uninitialized
 // TensorList. Non-nested and nested TensorLists are both supported.
-Status GetLeadingDimForTensorList(xla::XlaOp list, int64* leading_dim,
+Status GetLeadingDimForTensorList(xla::XlaOp list, int64_t* leading_dim,
                                   bool* leading_dim_is_dynamic,
                                   xla::XlaOp* leading_dim_dynamic_size);
 

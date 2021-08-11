@@ -56,10 +56,11 @@ void CopyFrontendAttributes(HloInstruction* old_while_op,
 // while loop init, body, and condition. The final shape returned is still the
 // same as before.
 static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
-    HloInstruction* while_op, absl::flat_hash_set<int64>& used_tuple_indices) {
+    HloInstruction* while_op,
+    absl::flat_hash_set<int64_t>& used_tuple_indices) {
   // Build up maps from the old/new to the new/old tuple indices.
-  std::vector<int64> new_to_old_tuple_idx(used_tuple_indices.begin(),
-                                          used_tuple_indices.end());
+  std::vector<int64_t> new_to_old_tuple_idx(used_tuple_indices.begin(),
+                                            used_tuple_indices.end());
   absl::c_sort(new_to_old_tuple_idx);
 
   HloModule* module = while_op->GetModule();
@@ -71,7 +72,7 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
 
   auto print_no_metadata = HloPrintOptions().set_print_metadata(false);
 
-  absl::flat_hash_map<int64, int64> old_to_new_tuple_idx;
+  absl::flat_hash_map<int64_t, int64_t> old_to_new_tuple_idx;
   for (int64_t new_idx = 0; new_idx < new_to_old_tuple_idx.size(); ++new_idx) {
     int64_t old_idx = new_to_old_tuple_idx[new_idx];
     old_to_new_tuple_idx[old_idx] = new_idx;
@@ -278,7 +279,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     return false;
   }
 
-  absl::flat_hash_set<int64> used_tuple_indices;
+  absl::flat_hash_set<int64_t> used_tuple_indices;
   for (HloComputation* comp : {while_body, while_cond}) {
     // The HLO verifier ensures that while_input's shape matches while_init's
     // shape, which we verified above is a tuple.
@@ -307,7 +308,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     }
   }
 
-  absl::flat_hash_set<int64> used_indices_after_loop;
+  absl::flat_hash_set<int64_t> used_indices_after_loop;
   if (while_op == while_op->parent()->root_instruction()) {
     for (int64_t i = 0; i < while_body_root->operand_count(); ++i) {
       used_indices_after_loop.insert(i);
@@ -366,7 +367,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
 // RemoveDeadTupleIndices.
 static StatusOr<HloInstruction*> TryRemoveRepeatedWhileTupleIndicesHelper(
     HloInstruction* while_op, const int64_t tuple_index,
-    absl::flat_hash_set<int64>& duplicates) {
+    absl::flat_hash_set<int64_t>& duplicates) {
   HloComputation* while_cond = while_op->while_condition();
   HloComputation* while_body = while_op->while_body();
   HloInstruction* while_init = while_op->mutable_operand(0);
@@ -398,7 +399,7 @@ static StatusOr<HloInstruction*> TryRemoveRepeatedWhileTupleIndicesHelper(
   }
 
   // We know which tuple indices are useful; i.e, those which aren't duplicates.
-  absl::flat_hash_set<int64> used_tuple_indices;
+  absl::flat_hash_set<int64_t> used_tuple_indices;
   for (int index = 0; index < while_init->shape().tuple_shapes_size();
        ++index) {
     if (!duplicates.count(index)) {
@@ -454,7 +455,7 @@ static StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
     auto& while_shape = while_init->shape();
     VLOG(2) << "Iterating " << index_to_investigate;
 
-    absl::flat_hash_set<int64> duplicates;
+    absl::flat_hash_set<int64_t> duplicates;
     auto* pivot_init_elem = while_init->operand(index_to_investigate);
     auto* pivot_body_elem = while_body_root->operand(index_to_investigate);
     if (pivot_body_elem->opcode() == HloOpcode::kGetTupleElement &&
@@ -538,7 +539,7 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
   TF_RET_CHECK(
       ShapeUtil::Compatible(while_init->shape(), while_body_root->shape()));
 
-  absl::flat_hash_set<int64> constant_tuple_indices;
+  absl::flat_hash_set<int64_t> constant_tuple_indices;
   const auto& while_shape = while_init->shape();
   for (int64_t i = 0; i < while_shape.tuple_shapes_size(); ++i) {
     auto* init_elem = while_init->operand(i);
@@ -690,7 +691,7 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   }
 
   // Remove while loops with static trip count of 0.
-  optional<int64> trip_count =
+  optional<int64_t> trip_count =
       ComputeWhileLoopTripCount(while_op, /*max_brute_force_iters=*/1);
   if (trip_count && *trip_count == 0) {
     // The loop never executes, so the value of the loop is the value of its
@@ -1038,9 +1039,9 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
   Shape while_shape = while_init->shape();
 
   // The tuple index of the trip counter, if one is present.
-  absl::optional<int64> trip_counter;
+  absl::optional<int64_t> trip_counter;
   // Maps the tuple index of each induction variable to its constant increment.
-  absl::flat_hash_map<int64, const HloConstantInstruction*> induction_vars;
+  absl::flat_hash_map<int64_t, const HloConstantInstruction*> induction_vars;
   for (int64_t i = 0; i < while_body_root->operand_count(); ++i) {
     HloInstruction* constant;
     if (!Match(while_body_root->mutable_operand(i),

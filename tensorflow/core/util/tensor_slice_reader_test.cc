@@ -304,7 +304,7 @@ void SimpleIntXHelper(
   }
 
 TEST_SIMPLE_INT(int32, int32)
-TEST_SIMPLE_INT(int64, int64)
+TEST_SIMPLE_INT(int64_t, int64_t)
 TEST_SIMPLE_INT(int16, int32)
 TEST_SIMPLE_INT(int8, int32)
 TEST_SIMPLE_INT(uint8, int32)

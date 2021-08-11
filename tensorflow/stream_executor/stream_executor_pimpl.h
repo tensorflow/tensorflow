@@ -48,7 +48,7 @@ class Stream;
 // Structure used for device memory leak checking.
 struct AllocRecord {
   // The requested allocation size of the buffer.
-  uint64 bytes;
+  uint64_t bytes;
 
   // Holds a representation of the stack at the time the associated buffer was
   // allocated. Produced in a form described in
@@ -124,11 +124,12 @@ class StreamExecutor {
   // Synchronously allocates an array on the device of type T with element_count
   // elements.
   template <typename T>
-  DeviceMemory<T> AllocateArray(uint64 element_count, int64_t memory_space = 0);
+  DeviceMemory<T> AllocateArray(uint64_t element_count,
+                                int64_t memory_space = 0);
 
   // As AllocateArray(), but returns a ScopedDeviceMemory<T>.
   template <typename T>
-  ScopedDeviceMemory<T> AllocateOwnedArray(uint64 element_count) {
+  ScopedDeviceMemory<T> AllocateOwnedArray(uint64_t element_count) {
     return ScopedDeviceMemory<T>(this, AllocateArray<T>(element_count));
   }
 
@@ -165,8 +166,8 @@ class StreamExecutor {
   //    sub-buffer after parent deallocation is expected to be safe. This will
   //    render your code non-platform-portable, however.
   template <typename T>
-  DeviceMemory<T> GetSubBuffer(DeviceMemory<T> *parent, uint64 element_offset,
-                               uint64 element_count);
+  DeviceMemory<T> GetSubBuffer(DeviceMemory<T> *parent, uint64_t element_offset,
+                               uint64_t element_count);
 
   // Finds a symbol and returns device memory allocated to the symbol. The
   // symbol is searched in any kernels that were previously loaded through
@@ -204,7 +205,7 @@ class StreamExecutor {
   // See
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-unified-memory-programming-hd
   // for more details on unified memory.
-  void *UnifiedMemoryAllocate(uint64 bytes);
+  void *UnifiedMemoryAllocate(uint64_t bytes);
 
   // Deallocates unified memory space previously allocated with
   // UnifiedMemoryAllocate.
@@ -214,7 +215,7 @@ class StreamExecutor {
   // Memory allocated in this manner (or allocated and registered with
   // HostMemoryRegister() is required for use in asynchronous memcpy operations,
   // such as Stream::ThenMemcpy.
-  void *HostMemoryAllocate(uint64 size);
+  void *HostMemoryAllocate(uint64_t size);
 
   // Deallocates a region of host memory allocated by HostMemoryAllocate().
   void HostMemoryDeallocate(void *location);
@@ -225,7 +226,7 @@ class StreamExecutor {
   // is used to register memory allocated outside the StreamExecutor;
   // HostMemoryAllocate implicitly registers its allocations and
   // HostMemoryDeallocate implicitly deregisters on deallocation.
-  bool HostMemoryRegister(void *location, uint64 size) SE_MUST_USE_RESULT;
+  bool HostMemoryRegister(void *location, uint64_t size) SE_MUST_USE_RESULT;
 
   // Unregisters a region of host memory registered with HostMemoryRegister.
   // This should be done before deallocating the region with delete[]/free/etc.
@@ -238,26 +239,26 @@ class StreamExecutor {
   // Blocks the caller while "size" bytes are zeroed out (in POD fashion) at the
   // given location in device memory.
   port::Status SynchronousMemZero(DeviceMemoryBase *location,
-                                  uint64 size) SE_MUST_USE_RESULT;
+                                  uint64_t size) SE_MUST_USE_RESULT;
 
   // Blocks the caller while "size" bytes are initialized to "value" (in POD
   // fashion) at the given location in device memory.
   port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                 uint64 size) SE_MUST_USE_RESULT;
+                                 uint64_t size) SE_MUST_USE_RESULT;
 
   // [deprecated] Blocks the caller while a data segment of the given size is
   // copied from the host source to the device destination.
   ABSL_DEPRECATED(
       "Prefer SynchronousMemcpyH2D, to avoid error-prone API usage.")
   bool SynchronousMemcpy(DeviceMemoryBase *device_dst, const void *host_src,
-                         uint64 size) SE_MUST_USE_RESULT;
+                         uint64_t size) SE_MUST_USE_RESULT;
 
   // [deprecated] Blocks the caller while a data segment of the given size is
   // copied from the device source to the host destination.
   ABSL_DEPRECATED(
       "Prefer SynchronousMemcpyD2H, to avoid error-prone API usage.")
   bool SynchronousMemcpy(void *host_dst, const DeviceMemoryBase &device_src,
-                         uint64 size) SE_MUST_USE_RESULT;
+                         uint64_t size) SE_MUST_USE_RESULT;
 
   // Same as SynchronousMemcpy(DeviceMemoryBase*, ...) above.
   port::Status SynchronousMemcpyH2D(const void *host_src, int64_t size,
@@ -293,20 +294,20 @@ class StreamExecutor {
   // device source to the device destination.
   bool SynchronousMemcpy(DeviceMemoryBase *device_dst,
                          const DeviceMemoryBase &device_src,
-                         uint64 size) SE_MUST_USE_RESULT;
+                         uint64_t size) SE_MUST_USE_RESULT;
 
   // Enqueues an operation onto stream to zero out size bytes at the given
   // device memory location. Neither stream nor location may be null. Returns
   // whether the operation was successfully enqueued onto the stream.
   port::Status MemZero(Stream *stream, DeviceMemoryBase *location,
-                       uint64 size) SE_MUST_USE_RESULT;
+                       uint64_t size) SE_MUST_USE_RESULT;
 
   // Enqueues an operation onto stream to set 32-bit patterns starting at
   // location, for byte count given by size. size must be 32-bit quantified
   // (i.e. evently divisible by 4). Returns whether the operation was
   // successfully enqueued onto the stream.
   port::Status Memset32(Stream *stream, DeviceMemoryBase *location,
-                        uint32 pattern, uint64 size);
+                        uint32 pattern, uint64_t size);
 
   // Enables peer access from this StreamExecutor to memory
   // allocated by other, such that launched device code, memcpies, etc may
@@ -331,7 +332,7 @@ class StreamExecutor {
 
   // If implemented, returns device specific measurement of load
   // (e.g. pending requests).
-  int64 GetDeviceLoad() const;
+  int64_t GetDeviceLoad() const;
 
   // Returns the underlying device memory usage information, if it is available.
   // If it is not available (false is returned), free/total may not be
@@ -341,7 +342,7 @@ class StreamExecutor {
   // so allocations via other StreamExecutors that have the same underlying
   // device
   // will be reflected in "free".
-  bool DeviceMemoryUsage(int64 *free, int64 *total) const;
+  bool DeviceMemoryUsage(int64_t *free, int64_t *total) const;
 
   // The device count reported by this StreamExecutor's platform.
   // Note: on OpenCL we implicitly select platform zero at the moment.
@@ -452,7 +453,7 @@ class StreamExecutor {
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
       dnn::DataType data_type, const dnn::AlgorithmConfig &algorithm_config,
-      float dropout, uint64 seed, ScratchAllocator *state_allocator,
+      float dropout, uint64_t seed, ScratchAllocator *state_allocator,
       bool use_padded_io);
 
   // Create a RNN sequence descriptor that specifies either the input or output
@@ -582,7 +583,7 @@ class StreamExecutor {
   // Synchronously allocates size bytes on the underlying platform and returns
   // a DeviceMemoryBase representing that allocation. In the case of failure,
   // nullptr is returned.
-  DeviceMemoryBase Allocate(uint64 size, int64_t memory_space);
+  DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space);
 
   // Gets-or-creates (creates with memoization) an RngSupport datatype that can
   // be used for random-number-generation routines on the current platform.
@@ -609,19 +610,19 @@ class StreamExecutor {
   // Entrains a memcpy operation onto stream, with a host destination location
   // host_dst and a device memory source, with target size size.
   bool Memcpy(Stream *stream, void *host_dst,
-              const DeviceMemoryBase &device_src, uint64 size);
+              const DeviceMemoryBase &device_src, uint64_t size);
 
   // Entrains a memcpy operation onto stream, with a device destination location
   // and a host memory source, with target size size.
   bool Memcpy(Stream *stream, DeviceMemoryBase *device_dst,
-              const void *host_src, uint64 size);
+              const void *host_src, uint64_t size);
 
   // Entrains a memcpy operation onto stream, with a device destination location
   // and a device source location, with target size size. Peer access should
   // have been enabled between the StreamExecutors owning the device memory
   // regions.
   bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *device_dst,
-                            const DeviceMemoryBase &device_src, uint64 size);
+                            const DeviceMemoryBase &device_src, uint64_t size);
 
   // Entrains on a stream a user-specified function to be run on the host.
   // See Stream::ThenDoHostCallback for full details.
@@ -685,7 +686,7 @@ class StreamExecutor {
   // Adds an AllocRecord for 'opaque' of size 'bytes' to the record map, for
   // leak checking. NULL buffer pointers and buffer sizes of 0 will not be
   // tracked.
-  void CreateAllocRecord(void *opaque, uint64 bytes);
+  void CreateAllocRecord(void *opaque, uint64_t bytes);
 
   // Removes the AllocRecord keyed by 'opaque' from the record map. NULL
   // pointers will not be erased (as they're not tracked, per above).
@@ -778,11 +779,11 @@ class StreamExecutor {
   std::set<TraceListener *> listeners_ TF_GUARDED_BY(mu_);
 
   // Allocated memory in bytes.
-  int64 mem_alloc_bytes_;
+  int64_t mem_alloc_bytes_;
 
   // Memory limit in bytes. Value less or equal to 0 indicates there is no
   // limit.
-  int64 memory_limit_bytes_;
+  int64_t memory_limit_bytes_;
 
   StreamExecutorMemoryAllocator allocator_;
 
@@ -846,9 +847,9 @@ StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
 }
 
 template <typename T>
-inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64 element_count,
+inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64_t element_count,
                                                      int64_t memory_space) {
-  uint64 bytes = sizeof(T) * element_count;
+  uint64_t bytes = sizeof(T) * element_count;
   return DeviceMemory<T>(Allocate(bytes, memory_space));
 }
 
@@ -902,8 +903,8 @@ DeviceMemory<T> StreamExecutor::AllocateZeroed() {
 
 template <typename T>
 DeviceMemory<T> StreamExecutor::GetSubBuffer(DeviceMemory<T> *parent,
-                                             uint64 element_offset,
-                                             uint64 element_count) {
+                                             uint64_t element_offset,
+                                             uint64_t element_count) {
   if (element_offset + element_count > parent->ElementCount()) {
     LOG(ERROR) << "requested sub-buffer allocation (offset + size) is greater "
                << "than parent allocation size: (" << element_offset << " + "

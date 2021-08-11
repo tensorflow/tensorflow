@@ -69,9 +69,9 @@ void deallocate_buffer(void* data, size_t len, void* arg) {
 namespace {
 TF_Tensor* CreateTensor(TF_ManagedBuffer* buf, TF_DataType dtype,
                         const int64_t* dims, int num_dims, size_t len) {
-  std::vector<tensorflow::int64> dimvec(num_dims);
+  std::vector<int64_t> dimvec(num_dims);
   for (int i = 0; i < num_dims; ++i) {
-    dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
+    dimvec[i] = static_cast<int64_t>(dims[i]);
   }
 
   // TODO(gjn): Make the choice of interface a compile-time configuration.
@@ -260,14 +260,12 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype,
                               const tensorflow::TensorShape& shape) {
   static char empty;
   int64_t nelems = 1;
-  std::vector<tensorflow::int64> dims;
+  std::vector<int64_t> dims;
   for (int i = 0; i < shape.dims(); ++i) {
     dims.push_back(shape.dim_size(i));
     nelems *= shape.dim_size(i);
   }
   CHECK_EQ(nelems, 0);
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
-                "64-bit int types should match in size");
   return TF_NewTensor(
       dtype, reinterpret_cast<const int64_t*>(dims.data()), shape.dims(),
       reinterpret_cast<void*>(&empty), 0, [](void*, size_t, void*) {}, nullptr);

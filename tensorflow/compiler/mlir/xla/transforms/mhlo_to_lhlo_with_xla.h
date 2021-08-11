@@ -125,7 +125,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // actual number of operands and results generated for MLIR in `num_arguments`
   // and `num_results`.
   xla::Status CreateOperands(const xla::HloInstruction* instr,
-                             absl::optional<xla::int64> num_operands,
+                             absl::optional<int64_t> num_operands,
                              TokenLoweringMode token_mode,
                              SmallVectorImpl<Value>& operands,
                              size_t& num_arguments, size_t& num_results);
@@ -133,7 +133,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   template <typename OpType>
   xla::StatusOr<OpType> CreateOpWithoutAttrs(
       const xla::HloInstruction* instr,
-      absl::optional<xla::int64> num_operands = absl::nullopt) {
+      absl::optional<int64_t> num_operands = absl::nullopt) {
     size_t unused;
     return CreateOpWithoutAttrs<OpType>(instr, unused, unused, num_operands);
   }
@@ -142,7 +142,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   xla::StatusOr<OpType> CreateOpWithoutAttrs(
       const xla::HloInstruction* instr, size_t& num_arguments,
       size_t& num_results,
-      absl::optional<xla::int64> num_operands = absl::nullopt);
+      absl::optional<int64_t> num_operands = absl::nullopt);
 
   template <typename OpType>
   OpType CreateOpWithoutAttrs(const xla::HloInstruction* instr,

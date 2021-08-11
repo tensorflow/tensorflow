@@ -106,7 +106,7 @@ class WeightedQuantilesBuffer {
     return ret;
   }
 
-  int64 Size() const { return vec_.size(); }
+  int64_t Size() const { return vec_.size(); }
   bool IsFull() const { return vec_.size() >= max_size_; }
   void Clear() { vec_.clear(); }
 

@@ -269,7 +269,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       return name_utils::DatasetDebugString(kDatasetType, params);
     }
 
-    int64 Cardinality() const override { return input_->Cardinality(); }
+    int64_t Cardinality() const override { return input_->Cardinality(); }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
@@ -537,7 +537,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         Status status;
         std::vector<Tensor> return_values;
         bool end_of_input = false;
-        int64 id = -1;
+        int64_t id = -1;
       };
 
       void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
@@ -851,7 +851,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                                const Status& status)
           TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            CodeKey(index), static_cast<int64>(status.code())));
+            CodeKey(index), static_cast<int64_t>(status.code())));
         if (!status.ok()) {
           TF_RETURN_IF_ERROR(writer->WriteScalar(ErrorMessageKey(index),
                                                  status.error_message()));
@@ -900,7 +900,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       const bool deterministic_;
       const bool autotune_;
       // Counts the number of outstanding calls.
-      int64 num_calls_ TF_GUARDED_BY(*mu_) = 0;
+      int64_t num_calls_ TF_GUARDED_BY(*mu_) = 0;
       std::unique_ptr<IteratorBase> input_impl_;
       // Buffer for storing the invocation results.
       std::deque<std::shared_ptr<InvocationResult>> invocation_results_
@@ -921,7 +921,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     const std::vector<string> ragged_keys_;
     const std::map<string, int> key_to_output_index_;
     const example::FastParseExampleConfig config_;
-    const int64 num_parallel_calls_;
+    const int64_t num_parallel_calls_;
     const DataTypeVector sparse_types_;
     const DataTypeVector dense_types_;
     const DataTypeVector ragged_value_types_;

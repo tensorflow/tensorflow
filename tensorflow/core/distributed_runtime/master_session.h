@@ -137,13 +137,13 @@ class MasterSession : public core::RefCounted {
 
   std::atomic_ulong last_access_time_usec_;
 
-  std::atomic<int64> partial_run_handle_counter_ = {0};
+  std::atomic<int64_t> partial_run_handle_counter_ = {0};
 
   uint64 NewStepId(int64_t graph_key);
 
   mutex mu_;
   std::unique_ptr<GraphExecutionState> execution_state_ TF_GUARDED_BY(mu_);
-  int64 graph_version_;
+  int64_t graph_version_;
 
   // We keep a map from a signature of a run request to the
   // ReffedClientGraph the can execute it.  We keep up to one old copy
@@ -154,7 +154,7 @@ class MasterSession : public core::RefCounted {
   typedef std::unordered_map<uint64, ReffedClientGraph*> RCGMap;
   RCGMap run_graphs_ TF_GUARDED_BY(mu_);
   RCGMap partial_run_graphs_ TF_GUARDED_BY(mu_);
-  int64 next_callable_handle_ TF_GUARDED_BY(mu_) = 0;
+  int64_t next_callable_handle_ TF_GUARDED_BY(mu_) = 0;
   RCGMap callables_ TF_GUARDED_BY(mu_);
 
   struct PerStepState {
@@ -175,8 +175,8 @@ class MasterSession : public core::RefCounted {
     std::unordered_map<string, bool> pending_outputs;  // true if fetched
     ReffedClientGraph* rcg = nullptr;
     uint64 step_id;
-    int64 collective_graph_key;
-    int64 count = 0;
+    int64_t collective_graph_key;
+    int64_t count = 0;
     PerStepState pss;
     std::unique_ptr<ProfileHandler> ph;
     bool step_started = false;
@@ -199,12 +199,12 @@ class MasterSession : public core::RefCounted {
   bool closed_ TF_GUARDED_BY(mu_) = false;
   bool garbage_collected_ TF_GUARDED_BY(mu_) = false;
 
-  std::unordered_map<uint64, int64> subgraph_execution_counts_
+  std::unordered_map<uint64, int64_t> subgraph_execution_counts_
       TF_GUARDED_BY(mu_);
 
   // We need to ensure that certain nodes added (e.g., send and recv
   // nodes) are unique across all sub-graphs within this session.
-  int64 next_node_id_ TF_GUARDED_BY(mu_) = 0;
+  int64_t next_node_id_ TF_GUARDED_BY(mu_) = 0;
 
   // Used to cancel running steps on Close().
   CancellationManager cancellation_manager_;
@@ -223,7 +223,7 @@ class MasterSession : public core::RefCounted {
   Status DeleteWorkerSessions();
 
   Status StartStep(const BuildGraphOptions& opts, bool is_partial,
-                   ReffedClientGraph** out_rcg, int64* out_count);
+                   ReffedClientGraph** out_rcg, int64_t* out_count);
   void ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
                       RCGMap* rcg_map) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void FillPerStepState(MasterSession::ReffedClientGraph* rcg,

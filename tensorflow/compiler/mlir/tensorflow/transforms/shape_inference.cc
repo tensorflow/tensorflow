@@ -73,7 +73,7 @@ limitations under the License.
 #define DCOMMENT_OP(OP, MSG) \
   LLVM_DEBUG(OP->print(llvm::dbgs() << MSG << " "); llvm::dbgs() << "\n")
 
-using ::tensorflow::int64;
+using ::int64_t;
 using tensorflow::shape_inference::DimensionHandle;
 using tensorflow::shape_inference::InferenceContext;
 using tensorflow::shape_inference::ShapeHandle;

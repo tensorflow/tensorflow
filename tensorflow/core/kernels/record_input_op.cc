@@ -63,7 +63,7 @@ class RecordInputOp : public OpKernel {
   }
 
  private:
-  int64 batch_size_;
+  int64_t batch_size_;
   std::unique_ptr<RecordYielder> yielder_;
 };
 

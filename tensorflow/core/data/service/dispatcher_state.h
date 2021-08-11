@@ -77,8 +77,8 @@ class DispatcherState {
     explicit Dataset(int64_t dataset_id, int64_t fingerprint)
         : dataset_id(dataset_id), fingerprint(fingerprint) {}
 
-    const int64 dataset_id;
-    const int64 fingerprint;
+    const int64_t dataset_id;
+    const int64_t fingerprint;
   };
 
   // A worker registered with the dispatcher.
@@ -107,7 +107,7 @@ class DispatcherState {
     }
 
     const std::string name;
-    const int64 index;
+    const int64_t index;
   };
 
   struct DistributedEpochState {
@@ -115,9 +115,9 @@ class DispatcherState {
         : repetitions(num_split_providers), indices(num_split_providers) {}
 
     // The current repetition for each split provider.
-    std::vector<int64> repetitions;
+    std::vector<int64_t> repetitions;
     // Number of splits produced so far by each split provider.
-    std::vector<int64> indices;
+    std::vector<int64_t> indices;
   };
 
   struct Task;
@@ -128,12 +128,12 @@ class DispatcherState {
 
     std::shared_ptr<Task> task;
     // The target round where we want to insert the task.
-    int64 target_round;
+    int64_t target_round;
     // Which consumers have responded that they have successfully blocked
     // before the target round.
-    absl::flat_hash_set<int64> ready_consumers;
+    absl::flat_hash_set<int64_t> ready_consumers;
     // How many times we have failed to add the task.
-    int64 failures = 0;
+    int64_t failures = 0;
   };
 
   // A job for processing a dataset.
@@ -142,7 +142,7 @@ class DispatcherState {
                  const ProcessingModeDef& processing_mode,
                  int64_t num_split_providers,
                  absl::optional<NamedJobKey> named_job_key,
-                 absl::optional<int64> num_consumers,
+                 absl::optional<int64_t> num_consumers,
                  TargetWorkers target_workers)
         : job_id(job_id),
           dataset_id(dataset_id),
@@ -165,16 +165,16 @@ class DispatcherState {
       return absl::StrCat(job_id);
     }
 
-    const int64 job_id;
-    const int64 dataset_id;
+    const int64_t job_id;
+    const int64_t dataset_id;
     const ProcessingModeDef processing_mode;
     const absl::optional<NamedJobKey> named_job_key;
     absl::optional<DistributedEpochState> distributed_epoch_state;
-    const absl::optional<int64> num_consumers;
+    const absl::optional<int64_t> num_consumers;
     const TargetWorkers target_workers;
     std::queue<PendingTask> pending_tasks;
-    int64 num_clients = 0;
-    int64 last_client_released_micros = -1;
+    int64_t num_clients = 0;
+    int64_t last_client_released_micros = -1;
     bool finished = false;
     // Indicates whether the job was garbage collected.
     bool garbage_collected = false;
@@ -189,19 +189,19 @@ class DispatcherState {
           worker_address(worker_address),
           transfer_address(transfer_address) {}
 
-    const int64 task_id;
+    const int64_t task_id;
     const std::shared_ptr<Job> job;
     const std::string worker_address;
     const std::string transfer_address;
-    int64 starting_round = 0;
+    int64_t starting_round = 0;
     bool finished = false;
     bool removed = false;
   };
 
-  using TasksById = absl::flat_hash_map<int64, std::shared_ptr<Task>>;
+  using TasksById = absl::flat_hash_map<int64_t, std::shared_ptr<Task>>;
 
   // Returns the next available dataset id.
-  int64 NextAvailableDatasetId() const;
+  int64_t NextAvailableDatasetId() const;
   // Gets the element_spec by searching for the dataset_id key.
   Status GetElementSpec(int64_t dataset_id, std::string& element_spec) const;
   // Gets a dataset by id. Returns NOT_FOUND if there is no such dataset.
@@ -219,7 +219,7 @@ class DispatcherState {
   std::vector<std::shared_ptr<const Worker>> ListWorkers() const;
 
   // Returns the next available job id.
-  int64 NextAvailableJobId() const;
+  int64_t NextAvailableJobId() const;
   // Returns a list of all jobs.
   std::vector<std::shared_ptr<const Job>> ListJobs();
   // Gets a job by id. Returns NOT_FOUND if there is no such job.
@@ -232,10 +232,10 @@ class DispatcherState {
   Status JobForJobClientId(int64_t job_client_id,
                            std::shared_ptr<const Job>& job);
   // Returns the next available job client id.
-  int64 NextAvailableJobClientId() const;
+  int64_t NextAvailableJobClientId() const;
 
   // Returns the next available task id.
-  int64 NextAvailableTaskId() const;
+  int64_t NextAvailableTaskId() const;
   // Gets a task by id. Returns NOT_FOUND if there is no such task.
   Status TaskFromId(int64_t id, std::shared_ptr<const Task>& task) const;
   // Stores a list of all tasks for the given job to `tasks`. Returns NOT_FOUND
@@ -254,7 +254,7 @@ class DispatcherState {
   // If the dispatcher config specifies worker addresses, `GetWorkerIndex`
   // returns the worker index according to the list. This is useful for
   // deterministically sharding a dataset among a fixed set of workers.
-  StatusOr<int64> GetWorkerIndex(absl::string_view worker_address) const;
+  StatusOr<int64_t> GetWorkerIndex(absl::string_view worker_address) const;
 
  private:
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);
@@ -271,14 +271,14 @@ class DispatcherState {
   void FinishTask(const FinishTaskUpdate& finish_task);
   void SetElementSpec(const SetElementSpecUpdate& set_element_spec);
 
-  int64 next_available_dataset_id_ = 1000;
+  int64_t next_available_dataset_id_ = 1000;
   // Registered datasets, keyed by dataset ids.
-  absl::flat_hash_map<int64, std::shared_ptr<Dataset>> datasets_by_id_;
+  absl::flat_hash_map<int64_t, std::shared_ptr<Dataset>> datasets_by_id_;
   // Registered datasets, keyed by dataset fingerprints.
   absl::flat_hash_map<uint64, std::shared_ptr<Dataset>>
       datasets_by_fingerprint_;
   // Saved element_spec, keyed by dataset ids.
-  absl::flat_hash_map<int64, std::string> id_element_spec_info_;
+  absl::flat_hash_map<int64_t, std::string> id_element_spec_info_;
 
   // Registered workers, keyed by address.
   absl::flat_hash_map<std::string, std::shared_ptr<Worker>> workers_;
@@ -287,22 +287,23 @@ class DispatcherState {
   // specified in the dispatcher config.
   WorkerIndexResolver worker_index_resolver_;
 
-  int64 next_available_job_id_ = 2000;
+  int64_t next_available_job_id_ = 2000;
   // Jobs, keyed by job ids.
-  absl::flat_hash_map<int64, std::shared_ptr<Job>> jobs_;
+  absl::flat_hash_map<int64_t, std::shared_ptr<Job>> jobs_;
   // Named jobs, keyed by their names and indices. Not all jobs have names, so
   // this is a subset of the jobs stored in `jobs_`.
   absl::flat_hash_map<NamedJobKey, std::shared_ptr<Job>> named_jobs_;
 
-  int64 next_available_job_client_id_ = 3000;
+  int64_t next_available_job_client_id_ = 3000;
   // Mapping from client ids to the jobs they are associated with.
-  absl::flat_hash_map<int64, std::shared_ptr<Job>> jobs_for_client_ids_;
+  absl::flat_hash_map<int64_t, std::shared_ptr<Job>> jobs_for_client_ids_;
 
-  int64 next_available_task_id_ = 4000;
+  int64_t next_available_task_id_ = 4000;
   // Tasks, keyed by task ids.
   TasksById tasks_;
   // List of tasks associated with each job.
-  absl::flat_hash_map<int64, std::vector<std::shared_ptr<Task>>> tasks_by_job_;
+  absl::flat_hash_map<int64_t, std::vector<std::shared_ptr<Task>>>
+      tasks_by_job_;
   // Tasks, keyed by worker addresses. The values are a map from task id to
   // task.
   absl::flat_hash_map<std::string, TasksById> tasks_by_worker_;

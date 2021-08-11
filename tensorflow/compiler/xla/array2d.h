@@ -38,10 +38,10 @@ namespace xla {
 template <typename T>
 class Array2D : public Array<T> {
  public:
-  Array2D() : Array<T>(std::vector<int64>{0, 0}) {}
+  Array2D() : Array<T>(std::vector<int64_t>{0, 0}) {}
 
   Array2D(const int64_t n1, const int64_t n2)
-      : Array<T>(std::vector<int64>{n1, n2}) {}
+      : Array<T>(std::vector<int64_t>{n1, n2}) {}
 
   Array2D(const int64_t n1, const int64_t n2, const T value)
       : Array<T>({n1, n2}, value) {}
@@ -65,11 +65,11 @@ class Array2D : public Array<T> {
 
   Array2D(const Array2D<T>& other) : Array<T>(other) {}
 
-  int64 n1() const { return this->dim(0); }
-  int64 n2() const { return this->dim(1); }
+  int64_t n1() const { return this->dim(0); }
+  int64_t n2() const { return this->dim(1); }
 
-  int64 height() const { return this->dim(0); }
-  int64 width() const { return this->dim(1); }
+  int64_t height() const { return this->dim(0); }
+  int64_t width() const { return this->dim(1); }
 
   // Fills the array with a pattern of values of the form:
   //

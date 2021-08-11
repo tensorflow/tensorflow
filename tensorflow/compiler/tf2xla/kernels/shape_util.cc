@@ -36,7 +36,7 @@ Status TensorShapeToConstant(const TensorShape& input_shape,
       vec(i) = static_cast<int32>(dim_size);
     }
   } else {
-    auto vec = shape_constant->vec<int64>();
+    auto vec = shape_constant->vec<int64_t>();
     for (int i = 0; i < dims; ++i) {
       int64_t dim_size = input_shape.dim_size(i);
       vec(i) = dim_size;

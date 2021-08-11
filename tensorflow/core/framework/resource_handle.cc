@@ -109,9 +109,9 @@ Status ResourceHandle::ValidateType(const TypeIndex& type_index) const {
   return Status::OK();
 }
 
-std::atomic<int64> ResourceHandle::current_id_;
+std::atomic<int64_t> ResourceHandle::current_id_;
 
-int64 ResourceHandle::GenerateUniqueId() { return current_id_.fetch_add(1); }
+int64_t ResourceHandle::GenerateUniqueId() { return current_id_.fetch_add(1); }
 
 string ProtoDebugString(const ResourceHandle& handle) {
   return handle.DebugString();

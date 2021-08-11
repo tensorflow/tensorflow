@@ -53,10 +53,10 @@ class CSRSparseMatrixAddFunctor {
                     CSRSparseMatrix* c) {
     TensorShape a_tensor_shape;
     TensorShape b_tensor_shape;
-    TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(a.dense_shape().vec<int64>(),
-                                                   &a_tensor_shape));
-    TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(b.dense_shape().vec<int64>(),
-                                                   &b_tensor_shape));
+    TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
+        a.dense_shape().vec<int64_t>(), &a_tensor_shape));
+    TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
+        b.dense_shape().vec<int64_t>(), &b_tensor_shape));
 
     if (a_tensor_shape.dims() == 3) {
       if ((a_tensor_shape.dims() != b_tensor_shape.dims()) ||
@@ -82,8 +82,8 @@ class CSRSparseMatrixAddFunctor {
 
     // TODO(ebrevdo): Add support for broadcasting at least in the
     // batch dimension.
-    auto a_dense_shape = a.dense_shape().vec<int64>();
-    auto b_dense_shape = b.dense_shape().vec<int64>();
+    auto a_dense_shape = a.dense_shape().vec<int64_t>();
+    auto b_dense_shape = b.dense_shape().vec<int64_t>();
     Tensor c_dense_shape_t = a.dense_shape();
 
     const int64_t rows = a_dense_shape((rank == 2) ? 0 : 1);
@@ -124,7 +124,7 @@ class CSRSparseMatrixAddFunctor {
 
     Tensor temp;
     TF_RETURN_IF_ERROR(ctx_->allocate_temp(
-        DT_INT8, TensorShape({static_cast<int64>(maxWorkspaceSize)}), &temp));
+        DT_INT8, TensorShape({static_cast<int64_t>(maxWorkspaceSize)}), &temp));
     void* workspace = temp.flat<int8>().data();
 
     for (int i = 0; i < batch_size; ++i) {
@@ -169,7 +169,8 @@ class CSRSparseMatrixAddFunctor {
       ConstCSRComponent<T> b_comp{b.row_pointers_vec(i), b.col_indices_vec(i),
                                   b.values_vec<T>(i), b_dense_shape};
       CSRComponent<T> c_comp{c->row_pointers_vec(i), c->col_indices_vec(i),
-                             c->values_vec<T>(i), c_dense_shape_t.vec<int64>()};
+                             c->values_vec<T>(i),
+                             c_dense_shape_t.vec<int64_t>()};
 
       TF_RETURN_IF_ERROR(csr_geam.Compute(a_comp, b_comp, &c_comp, workspace));
     }

@@ -302,7 +302,8 @@ inline void CollectValue(int64_t value, Point* const point) {
 }
 
 template <>
-inline void CollectValue(std::function<int64()> value_fn, Point* const point) {
+inline void CollectValue(std::function<int64_t()> value_fn,
+                         Point* const point) {
   point->value_type = ValueType::kInt64;
   point->int64_value = value_fn();
 }

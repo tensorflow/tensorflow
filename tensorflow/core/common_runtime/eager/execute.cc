@@ -949,7 +949,7 @@ Status GetOrCreateKernelAndDevice(
       // boundary.
       DVLOG(2) << "Running " << ndef.op() << " using multi-device function. "
                << "Full node_def=" << ndef.DebugString();
-      std::function<int64()> get_op_id = nullptr;
+      std::function<int64_t()> get_op_id = nullptr;
 #if !defined(IS_MOBILE_PLATFORM)
       get_op_id = [&ctx]() { return ctx.RemoteMgr()->NextOpId(); };
 #endif  // IS_MOBILE_PLATFORM

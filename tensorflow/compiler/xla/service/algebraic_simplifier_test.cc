@@ -603,11 +603,11 @@ TEST_F(AlgebraicSimplifierTest, TwoReducesToOne) {
   Shape r4f32 = ShapeUtil::MakeShape(F32, {4, 5, 6, 7});
   HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r4f32, "param"));
-  std::vector<int64> dims0({0});
+  std::vector<int64_t> dims0({0});
   Shape r3f32 = ShapeUtil::MakeShape(F32, {5, 6, 7});
   HloInstruction* reduce0 = builder.AddInstruction(
       HloInstruction::CreateReduce(r3f32, param, zero, dims0, add_computation));
-  std::vector<int64> dims1({1, 2});
+  std::vector<int64_t> dims1({1, 2});
   Shape r1f32 = ShapeUtil::MakeShape(F32, {5});
   builder.AddInstruction(HloInstruction::CreateReduce(r1f32, reduce0, zero,
                                                       dims1, add_computation));
@@ -616,7 +616,7 @@ TEST_F(AlgebraicSimplifierTest, TwoReducesToOne) {
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Reduce(m::Parameter(0), m::Op().Is(zero))));
-  EXPECT_EQ(root->dimensions(), std::vector<int64>({0, 2, 3}));
+  EXPECT_EQ(root->dimensions(), std::vector<int64_t>({0, 2, 3}));
 }
 
 // Test that Const + A is canonicalized to A + Const.
@@ -2815,7 +2815,7 @@ TEST_F(AlgebraicSimplifierTest, TransposesMerged) {
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Transpose(m::Parameter(0))));
-  EXPECT_EQ(std::vector<int64>({2, 1, 0}),
+  EXPECT_EQ(std::vector<int64_t>({2, 1, 0}),
             computation->root_instruction()->dimensions());
 }
 
@@ -3312,8 +3312,8 @@ TEST_F(AlgebraicSimplifierTest, NegativePadding) {
   HloInstruction* zero = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   PaddingConfig padding;
-  int64 low_padding[2] = {-1, -2};
-  int64 high_padding[2] = {2, -3};
+  int64_t low_padding[2] = {-1, -2};
+  int64_t high_padding[2] = {2, -3};
   for (int i = 0; i < 2; ++i) {
     auto dimension = padding.add_dimensions();
     dimension->set_edge_padding_low(low_padding[i]);
@@ -3360,8 +3360,8 @@ TEST_F(AlgebraicSimplifierTest, CanDisableNegativePadding) {
   HloInstruction* zero = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   PaddingConfig padding;
-  int64 low_padding[2] = {-1, -2};
-  int64 high_padding[2] = {2, -3};
+  int64_t low_padding[2] = {-1, -2};
+  int64_t high_padding[2] = {2, -3};
   for (int i = 0; i < 2; ++i) {
     auto dimension = padding.add_dimensions();
     dimension->set_edge_padding_low(low_padding[i]);
@@ -4117,7 +4117,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     f_dim_2->set_base_dilation(1);
 
     ConvolutionDimensionNumbers dnums;
-    std::vector<int64> in_dims;
+    std::vector<int64_t> in_dims;
     int in_channel_idx = -1;
     // filled in later
     dnums.add_input_spatial_dimensions(-1);
@@ -4146,7 +4146,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
       }
     }
 
-    std::vector<int64> f_dims;
+    std::vector<int64_t> f_dims;
     dnums.add_kernel_spatial_dimensions(-1);  // filled in later
     dnums.add_kernel_spatial_dimensions(-1);  // filled in later
     for (int i = 0; i < strlen(options.kernel_dim_order); ++i) {
@@ -4166,7 +4166,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
       }
     }
 
-    auto make_shape = [](absl::Span<const int64> dims,
+    auto make_shape = [](absl::Span<const int64_t> dims,
                          bool minor_to_major_layout) {
       if (minor_to_major_layout) {
         return ShapeUtil::MakeShapeWithLayout(F32, dims, {0, 1, 2, 3});
@@ -5064,9 +5064,9 @@ TEST_F(AlgebraicSimplifierTest, NotNot) {
 }
 
 struct PadReduceWindowEffectiveBroadcastCase {
-  std::vector<int64> input_spatials;
-  std::vector<int64> symmetric_pad_spatials;
-  std::vector<int64> reduce_window_spatials;
+  std::vector<int64_t> input_spatials;
+  std::vector<int64_t> symmetric_pad_spatials;
+  std::vector<int64_t> reduce_window_spatials;
   // Whether to use `B F S0 S1` form vs `B S0 S1 F` form.
   //
   // This doesn't test any different functionality but is useful for making sure
@@ -5097,9 +5097,9 @@ TEST_P(PadReduceWindowEffectiveBroadcastTest, DoIt) {
 
   // a and b are parallel bounds we can either turn into a B F S0 S1 or
   // `B S0 S1 F` kind of pattern.
-  auto decorate_spatials = [&param](absl::Span<const int64> spatials, int64_t a,
-                                    int64_t b) {
-    std::vector<int64> result;
+  auto decorate_spatials = [&param](absl::Span<const int64_t> spatials,
+                                    int64_t a, int64_t b) {
+    std::vector<int64_t> result;
     if (param.prepend_a) {
       result.push_back(a);
     }
@@ -5207,9 +5207,9 @@ TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
   int m, k, n;
   PrimitiveType element_type;
   std::tie(m, k, n, element_type) = GetParam();
-  std::vector<int64> lhs_dims = {2, 3, 5};
-  std::vector<int64> rhs_dims = lhs_dims;
-  std::vector<int64> output_dims = lhs_dims;
+  std::vector<int64_t> lhs_dims = {2, 3, 5};
+  std::vector<int64_t> rhs_dims = lhs_dims;
+  std::vector<int64_t> output_dims = lhs_dims;
   if (m > 0) {
     lhs_dims.push_back(m);
     output_dims.push_back(m);
@@ -5333,9 +5333,9 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(C128, C64, F64, F32, BF16)));
 
 struct DotOfConcatTestSpec {
-  int64 m;
-  int64 k;
-  int64 n;
+  int64_t m;
+  int64_t k;
+  int64_t n;
 };
 
 class DotOfConcatSimplificationTest
@@ -5657,12 +5657,12 @@ INSTANTIATE_TEST_SUITE_P(DotOfConcatSimplificationTestInstantiation,
                          ::testing::ValuesIn(kDotOfConcatTestSpecs));
 
 struct DotOfGatherTestSpec {
-  int64 m;
-  int64 k;
-  int64 n;
+  int64_t m;
+  int64_t k;
+  int64_t n;
   int s;      // start index for dynamic slice on the non-contracting dimension
-  int64 lcd;  // left contracting dimension
-  int64 rcd;  // right contracting dimension
+  int64_t lcd;  // left contracting dimension
+  int64_t rcd;  // right contracting dimension
   bool neg;   // is negative testcase
 };
 
@@ -5703,7 +5703,7 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
           LiteralUtil::CreateR0<int32>(start_col)))};
   int64_t slice_row_size = (spec.lcd == 0) ? spec.k : 1;
   int64_t slice_col_size = (spec.lcd == 0) ? 1 : spec.k;
-  std::vector<int64> slice_sizes = {slice_row_size, slice_col_size};
+  std::vector<int64_t> slice_sizes = {slice_row_size, slice_col_size};
   Shape ds_shape = ShapeUtil::MakeShape(F32, slice_sizes);
   auto* ds = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
       ds_shape, lhs, start_indices, slice_sizes));
@@ -5784,7 +5784,7 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
           LiteralUtil::CreateR0<int32>(start_col)))};
   int64_t slice_row_size = (spec.rcd == 0) ? spec.k : 1;
   int64_t slice_col_size = (spec.rcd == 0) ? 1 : spec.k;
-  std::vector<int64> slice_sizes = {slice_row_size, slice_col_size};
+  std::vector<int64_t> slice_sizes = {slice_row_size, slice_col_size};
   Shape ds_shape = ShapeUtil::MakeShape(F32, slice_sizes);
   auto* ds = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
       ds_shape, rhs, start_indices, slice_sizes));

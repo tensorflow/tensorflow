@@ -69,7 +69,7 @@ void SubtleMustCopyFlat(const Tensor& t, OutputType* output) {
   if (t.dtype() == DT_INT32) {
     SubtleMustCopyFlatHelper<int32, OutputType>(t, output);
   } else {
-    SubtleMustCopyFlatHelper<int64, OutputType>(t, output);
+    SubtleMustCopyFlatHelper<int64_t, OutputType>(t, output);
   }
 }
 
@@ -103,8 +103,8 @@ struct SpaceToBatchFunctor {
   Status operator()(
       const Device& d,
       typename TTypes<InputT, NUM_BLOCK_DIMS + 2>::Tensor space_tensor,
-      const int64 block_shape[NUM_BLOCK_DIMS],
-      const int64 paddings[NUM_BLOCK_DIMS * 2],
+      const int64_t block_shape[NUM_BLOCK_DIMS],
+      const int64_t paddings[NUM_BLOCK_DIMS * 2],
       typename TTypes<OutputT, NUM_BLOCK_DIMS + 2>::Tensor batch_tensor);
 };
 

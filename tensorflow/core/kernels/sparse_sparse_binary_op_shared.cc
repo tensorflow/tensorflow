@@ -180,8 +180,8 @@ class SparseSparseBinaryOpShared : public OpKernel {
                     "Operands do not have the same ranks; got shapes: ",
                     a_shape_t->SummarizeValue(10), " and ",
                     b_shape_t->SummarizeValue(10)));
-    const auto a_shape = a_shape_t->flat<int64>();
-    const auto b_shape = b_shape_t->flat<int64>();
+    const auto a_shape = a_shape_t->flat<int64_t>();
+    const auto b_shape = b_shape_t->flat<int64_t>();
     for (int i = 0; i < a_shape_t->NumElements(); ++i) {
       OP_REQUIRES(ctx, a_shape(i) == b_shape(i),
                   errors::InvalidArgument("Operands' shapes do not match: got ",
@@ -189,8 +189,8 @@ class SparseSparseBinaryOpShared : public OpKernel {
                                           " for dimension ", i));
     }
 
-    const auto a_indices_mat = a_indices_t->matrix<int64>();
-    const auto b_indices_mat = b_indices_t->matrix<int64>();
+    const auto a_indices_mat = a_indices_t->matrix<int64_t>();
+    const auto b_indices_mat = b_indices_t->matrix<int64_t>();
     std::vector<T> a_augmented_values, b_augmented_values;
     std::vector<std::pair<bool, int64>> entries_to_copy;  // from_a?, idx
     UnionSparseIndicesAndValues(a_indices_mat, a_values, a_nnz, b_indices_mat,
@@ -205,7 +205,7 @@ class SparseSparseBinaryOpShared : public OpKernel {
                                         &output_indices_t));
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(1, TensorShape({sum_nnz}), &output_values_t));
-    auto output_indices_mat = output_indices_t->matrix<int64>();
+    auto output_indices_mat = output_indices_t->matrix<int64_t>();
 
     for (int64_t i = 0; i < sum_nnz; ++i) {
       const bool from_a = entries_to_copy[i].first;

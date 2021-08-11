@@ -39,7 +39,7 @@ namespace {
 
 using ::testing::UnorderedElementsAre;
 
-int64 CountCopies(const HloComputation& computation) {
+int64_t CountCopies(const HloComputation& computation) {
   int64_t count = 0;
   for (const auto& instruction : computation.instructions()) {
     if (instruction->opcode() == HloOpcode::kCopy) {
@@ -49,7 +49,7 @@ int64 CountCopies(const HloComputation& computation) {
   return count;
 }
 
-int64 CountCopies(const HloModule& module) {
+int64_t CountCopies(const HloModule& module) {
   int64_t count = 0;
   for (const auto& computation : module.computations()) {
     count += CountCopies(*computation);
@@ -57,7 +57,7 @@ int64 CountCopies(const HloModule& module) {
   return count;
 }
 
-int64 CountControlEdges(const HloComputation& computation) {
+int64_t CountControlEdges(const HloComputation& computation) {
   int64_t count = 0;
   for (const auto& instruction : computation.instructions()) {
     count += instruction->control_successors().size();
@@ -65,7 +65,7 @@ int64 CountControlEdges(const HloComputation& computation) {
   return count;
 }
 
-int64 CountControlEdges(const HloModule& module) {
+int64_t CountControlEdges(const HloModule& module) {
   int64_t count = 0;
   for (const auto& computation : module.computations()) {
     count += CountControlEdges(*computation);

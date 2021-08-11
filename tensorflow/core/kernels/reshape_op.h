@@ -60,8 +60,8 @@ class ReshapeOp : public OpKernel {
         break;
       case DT_INT64:
         OP_REQUIRES_OK(context,
-                       ValidateSizes<int64>(sizes, &product, &unknown_index,
-                                            &shape, &sizes_has_zero_dim));
+                       ValidateSizes<int64_t>(sizes, &product, &unknown_index,
+                                              &shape, &sizes_has_zero_dim));
         break;
       default:
         context->CtxFailure(errors::InvalidArgument(
@@ -110,8 +110,9 @@ class ReshapeOp : public OpKernel {
 
  private:
   template <typename Tshape>
-  Status ValidateSizes(const Tensor& sizes, int64* product, int* unknown_index,
-                       TensorShape* shape, bool* has_zero_dim) {
+  Status ValidateSizes(const Tensor& sizes, int64_t* product,
+                       int* unknown_index, TensorShape* shape,
+                       bool* has_zero_dim) {
     *product = 1;
     *unknown_index = -1;
     *has_zero_dim = false;

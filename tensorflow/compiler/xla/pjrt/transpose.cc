@@ -665,9 +665,9 @@ int64_t TransposePlan::OutputNumElems() const {
 }
 
 // Parses and validates a tiling specification, and populates `tiling`.
-static Status ParseTilingSpecification(int ndim,
-                                       absl::Span<int64_t const> tiling_spec,
-                                       absl::InlinedVector<int64, 4>& tiling) {
+static Status ParseTilingSpecification(
+    int ndim, absl::Span<int64_t const> tiling_spec,
+    absl::InlinedVector<int64_t, 4>& tiling) {
   tiling.resize(ndim, 1);
   if (tiling_spec.size() > ndim) {
     return InvalidArgument(

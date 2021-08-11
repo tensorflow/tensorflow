@@ -76,7 +76,7 @@ TEST(TestUtilTest, RangeSquareDataset) {
 
   ASSERT_EQ(result.size(), 10);
   for (int i = 0; i < result.size(); ++i) {
-    test::ExpectEqual(result[i][0], Tensor(int64{i * i}));
+    test::ExpectEqual(result[i][0], Tensor(int64_t{i * i}));
   }
 }
 

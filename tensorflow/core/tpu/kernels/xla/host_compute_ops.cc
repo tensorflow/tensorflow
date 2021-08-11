@@ -392,8 +392,8 @@ class HostComputeOp : public XlaOpKernel {
   // If shape inference is performed at runtime, the graph needed to perform
   // shape inference is stored in this function.
   std::unique_ptr<FunctionBody> shape_inference_graph_function_;
-  int64 cost_estimate_;
-  int64 tpu_core_;
+  int64_t cost_estimate_;
+  int64_t tpu_core_;
   std::vector<string> token_input_nodes_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HostComputeOp);

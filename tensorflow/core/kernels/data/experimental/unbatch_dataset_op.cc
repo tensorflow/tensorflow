@@ -48,7 +48,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
           if (batch_size_ < 0 && shape.dim_size(0) >= 0) {
             batch_size_ = shape.dim_size(0);
           }
-          gtl::InlinedVector<int64, 4> partial_dim_sizes;
+          gtl::InlinedVector<int64_t, 4> partial_dim_sizes;
           for (int i = 1; i < shape.dims(); ++i) {
             partial_dim_sizes.push_back(shape.dim_size(i));
           }
@@ -77,7 +77,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "UnbatchDatasetOp::Dataset"; }
 
-    int64 Cardinality() const override {
+    int64_t Cardinality() const override {
       int64_t n = input_->Cardinality();
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
@@ -241,8 +241,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      int64 current_index_ TF_GUARDED_BY(mu_);
-      int64 current_batch_size_ TF_GUARDED_BY(mu_);
+      int64_t current_index_ TF_GUARDED_BY(mu_);
+      int64_t current_batch_size_ TF_GUARDED_BY(mu_);
       std::vector<Tensor> tensors_ TF_GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
       std::vector<TensorShape> shapes_ TF_GUARDED_BY(mu_);
@@ -251,7 +251,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
     const DatasetBase* const input_;
     std::vector<PartialTensorShape> shapes_;
     // batch_size_ may or may not be known, with -1 as unknown
-    int64 batch_size_;
+    int64_t batch_size_;
   };
 };
 

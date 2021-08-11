@@ -117,7 +117,7 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   template <typename IndexT, typename DataT>
   void RunR1(absl::Span<const int> input_values_int,
              const std::vector<IndexT> slice_starts,
-             const std::vector<int64>& slice_sizes,
+             const std::vector<int64_t>& slice_sizes,
              absl::Span<const int> expected_values_int) {
     // bfloat16 has explicit constructors, so it does not implicitly convert the
     // way built-in types do, which is why we can't take the parameter as an
@@ -148,7 +148,7 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   template <typename IndexT, typename DataT>
   void RunR2(const Array2D<int>& input_values_int,
              const std::vector<IndexT> slice_starts,
-             const std::vector<int64>& slice_sizes,
+             const std::vector<int64_t>& slice_sizes,
              const Array2D<int>& expected_values_int) {
     Literal input_values =
         std::move(LiteralUtil::CreateR2FromArray2D(input_values_int)
@@ -183,7 +183,7 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   template <typename IndexT, typename DataT>
   void RunR3(const Array3D<int>& input_values_int,
              const std::vector<IndexT> slice_starts,
-             const std::vector<int64>& slice_sizes,
+             const std::vector<int64_t>& slice_sizes,
              const Array3D<int>& expected_values_int) {
     Literal input_values =
         std::move(LiteralUtil::CreateR3FromArray3D(input_values_int)
@@ -218,7 +218,7 @@ class DynamicSliceTest : public ClientLibraryTestBase {
 XLA_TEST_F(DynamicSliceTest, Int32R1BF16) { TestR1<int32, bfloat16>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R1) { TestR1<int32, int32>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R1OOB) { TestR1OOB<int32, int32>(); }
-XLA_TEST_F(DynamicSliceTest, Int64R1) { TestR1<int64, float>(); }
+XLA_TEST_F(DynamicSliceTest, Int64R1) { TestR1<int64_t, float>(); }
 XLA_TEST_F(DynamicSliceTest, UInt64R1) { TestR1<uint64, float>(); }
 XLA_TEST_F(DynamicSliceTest, UInt32R1OOB) {
   RunR1<uint32, int32>({0, 1, 2, 3, 4}, {2147483648u}, {2}, {3, 4});
@@ -227,7 +227,7 @@ XLA_TEST_F(DynamicSliceTest, UInt32R1OOB) {
 XLA_TEST_F(DynamicSliceTest, Int32R2BF16) { TestR2<int32, bfloat16>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R2) { TestR2<int32, int32>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R2OOB) { TestR2OOB<int32, int32>(); }
-XLA_TEST_F(DynamicSliceTest, Int64R2) { TestR2<int64, float>(); }
+XLA_TEST_F(DynamicSliceTest, Int64R2) { TestR2<int64_t, float>(); }
 XLA_TEST_F(DynamicSliceTest, UInt64R2) { TestR2<uint64, int32>(); }
 XLA_TEST_F(DynamicSliceTest, UInt32R2OOB) {
   RunR2<uint32, int32>({{0, 1}, {2, 3}}, {2147483648u, 0}, {1, 1}, {{2}});
@@ -236,7 +236,7 @@ XLA_TEST_F(DynamicSliceTest, UInt32R2OOB) {
 XLA_TEST_F(DynamicSliceTest, Int32R3BF16) { TestR3<int32, bfloat16>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R3) { TestR3<int32, float>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R3OOB) { TestR3OOB<int32, float>(); }
-XLA_TEST_F(DynamicSliceTest, Int64R3) { TestR3<int64, float>(); }
+XLA_TEST_F(DynamicSliceTest, Int64R3) { TestR3<int64_t, float>(); }
 XLA_TEST_F(DynamicSliceTest, UInt64R3) { TestR3<uint64, float>(); }
 XLA_TEST_F(DynamicSliceTest, UInt32R3OOB) {
   RunR3<uint32, int32>({{{0, 1}, {2, 3}}, {{4, 5}, {6, 7}}},
@@ -568,12 +568,12 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
 
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R0BF16) { TestR0<int32, bfloat16>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R0) { TestR0<int32, float>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, Int64R0) { TestR0<int64, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int64R0) { TestR0<int64_t, float>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, UInt64R0) { TestR0<uint64, float>(); }
 
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R1BF16) { TestR1<int32, bfloat16>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R1) { TestR1<int32, float>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, Int64R1) { TestR1<int64, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int64R1) { TestR1<int64_t, float>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, UInt64R1) { TestR1<uint64, float>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, UInt32R1OOB) {
   RunR1<uint32, int32>({0, 1, 2, 3, 4}, {5, 6}, {2147483648u}, {0, 1, 2, 5, 6});
@@ -581,7 +581,7 @@ XLA_TEST_F(DynamicUpdateSliceTest, UInt32R1OOB) {
 
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R2BF16) { TestR2<int32, bfloat16>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R2) { TestR2<int32, float>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, Int64R2) { TestR2<int64, int64>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int64R2) { TestR2<int64_t, int64_t>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, UInt64R2) { TestR2<uint64, int32>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, UInt32R2OOB) {
   RunR2<uint32, int32>({{0, 1}, {2, 3}}, {{4}}, {2147483648u, 0},
@@ -590,8 +590,8 @@ XLA_TEST_F(DynamicUpdateSliceTest, UInt32R2OOB) {
 
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R3BF16) { TestR3<int32, bfloat16>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R3) { TestR3<int32, float>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, Int64R3) { TestR3<int64, int64>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, UInt64R3) { TestR3<uint64, uint64>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int64R3) { TestR3<int64_t, int64_t>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, UInt64R3) { TestR3<uint64, uint64_t>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, UInt32R3OOB) {
   RunR3<uint32, int32>({{{0, 1}, {2, 3}}, {{4, 5}, {6, 7}}}, {{{8}}},
                        {2147483648u, 0, 2147483648u},
@@ -600,8 +600,8 @@ XLA_TEST_F(DynamicUpdateSliceTest, UInt32R3OOB) {
 
 XLA_TEST_F(DynamicUpdateSliceTest, Int32OOBBF16) { TestOOB<int32, bfloat16>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int32OOB) { TestOOB<int32, float>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, Int64OOB) { TestOOB<int64, int64>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, UInt64OOB) { TestOOB<uint64, uint64>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int64OOB) { TestOOB<int64_t, int64_t>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, UInt64OOB) { TestOOB<uint64, uint64_t>(); }
 
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R1Pred) {
   // Slice at dimension start.

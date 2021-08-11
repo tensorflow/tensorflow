@@ -126,9 +126,10 @@ TEST(SliceToDynamicSliceRewriteTest, Basic) {
                        Inputs(m_input_shape, Const(zero_64), Const(one_64)))),
           Out(NodeWith(Op("Slice"), AssignedDevice(kHostName),
                        Inputs(m_begin_s64, Const(zero_64), Const(one_64)))))));
-  auto m_dynamic_slice_size = Out(NodeWith(
-      Op("ConcatV2"), AssignedDevice(kHostName),
-      Inputs(m_slice_size_0, Const(static_cast<int64>(500)), Const(zero_32))));
+  auto m_dynamic_slice_size =
+      Out(NodeWith(Op("ConcatV2"), AssignedDevice(kHostName),
+                   Inputs(m_slice_size_0, Const(static_cast<int64_t>(500)),
+                          Const(zero_32))));
 
   std::vector<string> compile_time_constant_inputs;
   compile_time_constant_inputs.push_back("size");
@@ -187,7 +188,7 @@ TEST(SliceToDynamicSliceRewriteTest, ControlDependencePreserved) {
                        CtrlDeps(NodeWith(Op("Placeholder"), Name("control")))));
 }
 
-int64 ToInt64(int v) { return static_cast<int64>(v); }
+int64_t ToInt64(int v) { return static_cast<int64_t>(v); }
 
 TEST(SliceToDynamicSliceRewriteTest, Int64Indices) {
   Scope root = Scope::NewRootScope()
@@ -281,7 +282,7 @@ TEST(SliceToDynamicSliceRewriteTest, ScalarSlice) {
 
   Output input = ops::Placeholder(root.WithOpName("input"), DT_FLOAT);
   Output begin = ops::Placeholder(root.WithOpName("begin"), DT_INT64);
-  Output size = ops::Const<int64>(root.WithOpName("size"), {});
+  Output size = ops::Const<int64_t>(root.WithOpName("size"), {});
   Output slice = ops::Slice(root.WithOpName("slice"), input, begin, size);
 
   std::unique_ptr<Graph> result;

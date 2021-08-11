@@ -574,7 +574,7 @@ Status InferenceContext::Merge(ShapeHandle s0, ShapeHandle s1,
 
 Status InferenceContext::Subshape(ShapeHandle s, int64_t start,
                                   ShapeHandle* out) {
-  return Subshape(s, start, std::numeric_limits<int64>::max() /* end */, out);
+  return Subshape(s, start, std::numeric_limits<int64_t>::max() /* end */, out);
 }
 
 Status InferenceContext::Subshape(ShapeHandle s, int64_t start, int64_t end,
@@ -590,7 +590,7 @@ Status InferenceContext::Subshape(ShapeHandle s, int64_t start, int64_t end,
   const int32_t rank = Rank(s);
   if (start == 0 && stride == 1 &&
       ((RankKnown(s) && end >= rank) ||
-       end == std::numeric_limits<int64>::max())) {
+       end == std::numeric_limits<int64_t>::max())) {
     *out = s;
     return Status::OK();
   }
@@ -805,7 +805,7 @@ Status InferenceContext::InternalMakeShapeFromTensor(
       }
       return ReturnUnknownShape(out);
     } else if (t->dtype() == DataType::DT_INT64) {
-      auto flat_t = t->scalar<int64>();
+      auto flat_t = t->scalar<int64_t>();
       if (flat_t() != -1) {
         *out = nullptr;
         return errors::InvalidArgument(
@@ -846,7 +846,7 @@ Status InferenceContext::InternalMakeShapeFromTensor(
       dims.push_back(MakeDim(val));
     }
   } else if (t->dtype() == DataType::DT_INT64) {
-    auto flat_t = t->flat<int64>();
+    auto flat_t = t->flat<int64_t>();
     for (int i = 0; i < flat_t.size(); ++i) {
       const int64_t val = flat_t(i);
       if (val < -1) {
@@ -896,7 +896,7 @@ Status InferenceContext::MakeShapeFromShapeProto(const TensorShapeProto& proto,
   return MakeShapeFromPartialTensorShape(partial_shape, out);
 }
 
-Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64* val) {
+Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64_t* val) {
   // Caller must ensure that <t> is not NULL.
   const int rank = t->dims();
   if (rank != 0) {
@@ -907,7 +907,7 @@ Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64* val) {
     *val = t->scalar<int32>()();
     return Status::OK();
   } else if (t->dtype() == DataType::DT_INT64) {
-    *val = t->scalar<int64>()();
+    *val = t->scalar<int64_t>()();
     return Status::OK();
   } else {
     return errors::InvalidArgument("Scalar input must be int32 or int64.");
@@ -915,7 +915,7 @@ Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64* val) {
 }
 
 Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64_t idx,
-                                             int64* val) {
+                                             int64_t* val) {
   // Caller must ensure that <t> is not NULL.
   const int rank = t->dims();
   if (rank != 1) {
@@ -931,7 +931,7 @@ Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64_t idx,
     *val = flat_t(idx);
     return Status::OK();
   } else if (t->dtype() == DataType::DT_INT64) {
-    auto flat_t = t->flat<int64>();
+    auto flat_t = t->flat<int64_t>();
     if (idx < 0 || idx >= flat_t.size()) {
       return errors::InvalidArgument("Invalid index ", idx,
                                      " for Tensor of size ", flat_t.size());

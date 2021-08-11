@@ -49,9 +49,9 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // `tasks_to_delete`.
   Status WorkerHeartbeat(const std::string& worker_address,
                          const std::string& transfer_address,
-                         const std::vector<int64>& current_tasks,
+                         const std::vector<int64_t>& current_tasks,
                          std::vector<TaskDef>& new_tasks,
-                         std::vector<int64>& tasks_to_delete);
+                         std::vector<int64_t>& tasks_to_delete);
 
   // Updates the dispatcher with information about the worker's state.
   Status WorkerUpdate(const std::string& worker_address,
@@ -71,7 +71,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // dataset id in `dataset_id`.
   Status RegisterDataset(const DatasetDef& dataset,
                          const absl::optional<std::string>& element_spec,
-                         int64& dataset_id);
+                         int64_t& dataset_id);
 
   // If `job_key` is set, looks up a job matching `job_key`. If `job_key` is
   // absent or no matching job is found, creates a new job. The resulting job
@@ -79,8 +79,8 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   Status GetOrCreateJob(int64_t dataset_id,
                         const ProcessingModeDef& processing_mode,
                         const absl::optional<JobKey>& job_key,
-                        absl::optional<int64> num_consumers,
-                        int64& job_client_id, TargetWorkers target_workers);
+                        absl::optional<int64_t> num_consumers,
+                        int64_t& job_client_id, TargetWorkers target_workers);
 
   // Releases a job client id, indicating that the id will no longer be used to
   // read from the job.

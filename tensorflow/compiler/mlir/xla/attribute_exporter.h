@@ -38,7 +38,7 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
 
 // Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
 // and source-target pairs are defined in HLO.
-StatusOr<std::vector<std::pair<int64, int64>>> ConvertNx2Attribute(
+StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
     llvm::Optional<mlir::DenseIntElementsAttr> optional_attr);
 
 StatusOr<FftType> ConvertFftType(llvm::StringRef type_string);

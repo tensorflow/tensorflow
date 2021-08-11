@@ -173,7 +173,7 @@ Status ProcessFunctionLibraryRuntime::GetRetTypes(
 }
 
 Status ProcessFunctionLibraryRuntime::GetDeviceIncarnation(
-    const string& device_name, int64* incarnation) const {
+    const string& device_name, int64_t* incarnation) const {
   FunctionLibraryRuntime* flr = GetFLR(device_name);
   if (flr == nullptr) {
     return errors::InvalidArgument("Device name: ", device_name, " not found.");

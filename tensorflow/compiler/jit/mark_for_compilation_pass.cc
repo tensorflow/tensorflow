@@ -102,7 +102,7 @@ class MarkForCompilationPassImpl {
     // effectively acts as a "cap" for how much we cluster and we can bisect
     // over this initial value to discover clustering decisions that cause a
     // miscompile or a performance regression.
-    std::atomic<int64>* fuel;
+    std::atomic<int64_t>* fuel;
 
     bool dump_graphs;
   };
@@ -437,7 +437,7 @@ class MarkForCompilationPassImpl {
   GraphCycles cycles_graph_;
   OrderedNodeSet compilation_candidates_;
   std::unique_ptr<DeadnessAnalysis> deadness_analysis_;
-  int64 iteration_count_ = 0;
+  int64_t iteration_count_ = 0;
   absl::flat_hash_set<std::pair<int, int>> unsafe_resource_deps_;
 };
 
@@ -839,9 +839,9 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   return Status::OK();
 }
 
-std::atomic<int64> cluster_sequence_num;
+std::atomic<int64_t> cluster_sequence_num;
 
-int64 GetNextClusterSequenceNumber() { return cluster_sequence_num++; }
+int64_t GetNextClusterSequenceNumber() { return cluster_sequence_num++; }
 
 Status MarkForCompilationPassImpl::CreateClusters() {
   TF_RET_CHECK(initialized_ && edges_contracted_ && !clusters_created_);
@@ -1145,7 +1145,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   }
   std::sort(sorted_nodes.begin(), sorted_nodes.end(), NodeComparatorID());
 
-  if (*debug_options_.fuel >= std::numeric_limits<int64>::max() / 2) {
+  if (*debug_options_.fuel >= std::numeric_limits<int64_t>::max() / 2) {
     // The assumption is that if fuel started out as INT64_MAX, it will forever
     // stay greater than INT64_MAX / 2.
     VLOG(2) << "Starting fuel: infinity";
@@ -1528,7 +1528,7 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
     }
   };
 
-  using EdgeInfoMap = std::map<absl::string_view, std::map<EdgeInfo, int64>>;
+  using EdgeInfoMap = std::map<absl::string_view, std::map<EdgeInfo, int64_t>>;
 
   EdgeInfoMap incoming_edge_infos;
   EdgeInfoMap outgoing_edge_infos;
@@ -1718,8 +1718,8 @@ Status MarkForCompilation(
       .Run();
 }
 
-std::atomic<int64>* GetPointerToFuel(int64_t initial_value) {
-  static std::atomic<int64>* fuel = [&]() {
+std::atomic<int64_t>* GetPointerToFuel(int64_t initial_value) {
+  static std::atomic<int64_t>* fuel = [&]() {
     std::atomic<int64>* fuel = new std::atomic<int64>;
     *fuel = initial_value;
     return fuel;

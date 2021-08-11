@@ -66,7 +66,7 @@ class GcsDnsCache {
   bool started_ TF_GUARDED_BY(mu_) = false;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
   std::unique_ptr<Thread> worker_ TF_GUARDED_BY(mu_);  // After mutable vars.
-  const int64 refresh_rate_secs_;
+  const int64_t refresh_rate_secs_;
 
   // Entries in this vector correspond to entries in kCachedDomainNames.
   std::vector<std::vector<string>> addresses_ TF_GUARDED_BY(mu_);

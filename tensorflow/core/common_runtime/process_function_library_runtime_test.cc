@@ -320,7 +320,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr_;
 
   // To ensure that we are cleaning up the rendezvous properly.
-  std::unordered_map<int64, int> rendezvous_ref_counts_;
+  std::unordered_map<int64_t, int> rendezvous_ref_counts_;
 };
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, GetFLRNull) {
@@ -1155,7 +1155,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataAbsent) {
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
-  const auto x = test::AsTensor<int64>({17});
+  const auto x = test::AsTensor<int64_t>({17});
   Tensor y;
   TF_CHECK_OK(
       Run("SessionMetadataReaderFn", opts, {}, instantiate_opts, {x}, {&y}));
@@ -1170,7 +1170,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataPresent) {
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
-  const auto x = test::AsTensor<int64>({17});
+  const auto x = test::AsTensor<int64_t>({17});
   Tensor y;
   TF_CHECK_OK(
       Run("SessionMetadataReaderFn", opts, {}, instantiate_opts, {x}, {&y}));
@@ -1217,7 +1217,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataPresentAfterCloning) {
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
-  const auto x = test::AsTensor<int64>({17});
+  const auto x = test::AsTensor<int64_t>({17});
   Tensor y;
   Status s = RunWithRuntime<std::vector<Tensor>, Tensor>(
       "SessionMetadataReaderFn", opts, {}, instantiate_opts, {x}, {&y},

@@ -86,7 +86,7 @@ inline bool ContainsLayoutConstrainedAllReduce(const HloModule& module) {
 
 // Returns the next available channel id that can be used in the given module
 // (for HloChannelInstructions).
-int64 NextChannelId(const HloModule& module);
+int64_t NextChannelId(const HloModule& module);
 
 // Returns whether the module contains host send/recv with X64 data type.
 // This function is called after X64Rewriter, so X64 host transfers are already

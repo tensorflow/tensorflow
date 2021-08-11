@@ -81,7 +81,7 @@ struct DupRecvKey {
 struct RecvInfo {
   NodeDef* recv;
   NodeDef* real_recv;
-  int64 start_time;
+  int64_t start_time;
 };
 
 typedef absl::flat_hash_map<DupRecvKey, RecvInfo> DupRecvTable;
@@ -185,7 +185,7 @@ void SetSendRecvAttrs(const PartitionOptions& opts, const Edge* edge,
                 strings::StrCat("edge_", edge->id(), "_", edge->src()->name()));
   builder->Attr("send_device", edge->src()->assigned_device_name());
   builder->Attr("send_device_incarnation",
-                static_cast<int64>(
+                static_cast<int64_t>(
                     opts.get_incarnation(edge->src()->assigned_device_name())));
   builder->Attr("recv_device", edge->dst()->assigned_device_name());
   builder->Attr("client_terminated", false);
@@ -786,7 +786,7 @@ struct PriorityTopoSortNode {
       : node(n), start_time(st) {}
 
   const NodeDef* node;
-  int64 start_time;
+  int64_t start_time;
 };
 
 struct PriorityTopoSortNodeGreater {
@@ -810,13 +810,14 @@ struct PriorityTopoSortNodeGreater {
 // Note that graph_partition_test.cc accesses this function for testing, even
 // though it's not declared in the header.
 Status TopologicalSortNodesWithTimePriority(
-    const GraphDef* gdef, std::vector<std::pair<const NodeDef*, int64>>* nodes,
-    std::unordered_map<const NodeDef*, int64>* node_to_start_time_out) {
+    const GraphDef* gdef,
+    std::vector<std::pair<const NodeDef*, int64_t>>* nodes,
+    std::unordered_map<const NodeDef*, int64_t>* node_to_start_time_out) {
   // Queue of nodes to process; lowest start time is returned first.
   std::priority_queue<PriorityTopoSortNode, std::vector<PriorityTopoSortNode>,
                       PriorityTopoSortNodeGreater>
       q;
-  std::unordered_map<const NodeDef*, int64> node_to_start_time;
+  std::unordered_map<const NodeDef*, int64_t> node_to_start_time;
   auto enqueue = [&q, &node_to_start_time](const NodeDef* node) {
     const int64_t start_time = node_to_start_time[node];
     q.emplace(node, start_time);
@@ -858,7 +859,7 @@ Status TopologicalSortNodesWithTimePriority(
   }
 
   // Traverse.
-  std::vector<std::pair<const NodeDef*, int64>> start_times;
+  std::vector<std::pair<const NodeDef*, int64_t>> start_times;
   start_times.reserve(gdef->node_size());
   while (!q.empty()) {
     PriorityTopoSortNode cur = q.top();
@@ -892,8 +893,8 @@ Status AddControlEdges(const PartitionOptions& opts,
 
   for (auto& part : *partitions) {
     GraphDef* gdef = &part.second;
-    std::vector<std::pair<const NodeDef*, int64>> start_times;
-    std::unordered_map<const NodeDef*, int64> node_to_start_time;
+    std::vector<std::pair<const NodeDef*, int64_t>> start_times;
+    std::unordered_map<const NodeDef*, int64_t> node_to_start_time;
     status = TopologicalSortNodesWithTimePriority(gdef, &start_times,
                                                   &node_to_start_time);
     if (!status.ok()) {

@@ -54,7 +54,7 @@ class StridedSliceOp : public XlaOpKernel {
   }
 
   void EmitDynamicSlice(XlaOpKernelContext* ctx,
-                        const absl::InlinedVector<int64, 4>& strides,
+                        const absl::InlinedVector<int64_t, 4>& strides,
                         TensorShape processing_shape, TensorShape final_shape,
                         PartialTensorShape partial_processing_shape,
                         PartialTensorShape partial_final_shape,
@@ -101,7 +101,7 @@ class StridedSliceOp : public XlaOpKernel {
                         ", output shape must be a compile-time constant"));
     // When inputs are not compile time constants, shape inference can only
     // inference size 1 slice.
-    std::vector<int64> slice_sizes(input_shape.dims(), 1);
+    std::vector<int64_t> slice_sizes(input_shape.dims(), 1);
     // If there is dynamic begin/end (and if the dimension is not shrunk), we
     // need to use dynamic shape infrastructure -- we slice the output with
     // full size, then call SetDimensionSize on the output. However, if we
@@ -201,9 +201,9 @@ class StridedSliceOp : public XlaOpKernel {
         ctx, begin_shape.dims() == 1,
         errors::InvalidArgument("'begin' input has to be a rank 1 vector"));
 
-    absl::InlinedVector<int64, 4> begin;
-    absl::InlinedVector<int64, 4> end;
-    absl::InlinedVector<int64, 4> strides;
+    absl::InlinedVector<int64_t, 4> begin;
+    absl::InlinedVector<int64_t, 4> end;
+    absl::InlinedVector<int64_t, 4> strides;
 
     xla::Literal begin_literal, end_literal, strides_literal;
     bool begin_is_constant = ctx->ConstantInput(1, &begin_literal).ok();
@@ -250,8 +250,8 @@ class StridedSliceOp : public XlaOpKernel {
                           "shape for strided slice: ",
                           partial_final_shape.DebugString(),
                           ", output shape must be a compile-time constant"));
-      absl::InlinedVector<int64, 4> dimensions_to_reverse;
-      absl::InlinedVector<int64, 4> slice_begin, slice_end, slice_strides;
+      absl::InlinedVector<int64_t, 4> dimensions_to_reverse;
+      absl::InlinedVector<int64_t, 4> slice_begin, slice_end, slice_strides;
       for (int i = 0; i < begin.size(); ++i) {
         if (strides[i] > 0) {
           slice_begin.push_back(begin[i]);
@@ -392,9 +392,9 @@ class StridedSliceGradOp : public XlaOpKernel {
     bool dummy = false;
     Tensor strides_tensor;
     PartialTensorShape processing_shape, final_shape;
-    absl::InlinedVector<int64, 4> begin;
-    absl::InlinedVector<int64, 4> end;
-    absl::InlinedVector<int64, 4> strides;
+    absl::InlinedVector<int64_t, 4> begin;
+    absl::InlinedVector<int64_t, 4> end;
+    absl::InlinedVector<int64_t, 4> strides;
     StridedSliceShapeSpec shape_spec;
     OP_REQUIRES_OK(ctx, LiteralToHostTensor(strides_literal, index_type_,
                                             &strides_tensor));
@@ -470,17 +470,17 @@ class StridedSliceGradOp : public XlaOpKernel {
     if (need_padding) {
       // We padded the input shape to avoid OOB when DUS. Now slice out the
       // padding in the final result.
-      std::vector<int64> strides(input_shape.dims(), 1);
-      std::vector<int64> start_indices(input_shape.dims(), 0);
+      std::vector<int64_t> strides(input_shape.dims(), 1);
+      std::vector<int64_t> start_indices(input_shape.dims(), 0);
       grad = xla::Slice(grad, start_indices, input_sizes, strides);
     }
     ctx->SetOutput(0, grad);
   }
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape processing_shape, final_shape;
-    absl::InlinedVector<int64, 4> begin;
-    absl::InlinedVector<int64, 4> end;
-    absl::InlinedVector<int64, 4> strides;
+    absl::InlinedVector<int64_t, 4> begin;
+    absl::InlinedVector<int64_t, 4> end;
+    absl::InlinedVector<int64_t, 4> strides;
 
     TensorShape input_shape;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &input_shape));
@@ -529,7 +529,7 @@ class StridedSliceGradOp : public XlaOpKernel {
     grad = xla::Reshape(grad, processing_shape.dim_sizes());
 
     // Pad the input gradients.
-    absl::InlinedVector<int64, 4> dimensions_to_reverse;
+    absl::InlinedVector<int64_t, 4> dimensions_to_reverse;
     xla::PaddingConfig padding_config;
 
     for (int i = 0; i < processing_shape.dims(); ++i) {
@@ -616,9 +616,9 @@ class StridedSliceAssignOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape final_shape;
-    absl::InlinedVector<int64, 4> begin;
-    absl::InlinedVector<int64, 4> end;
-    absl::InlinedVector<int64, 4> strides;
+    absl::InlinedVector<int64_t, 4> begin;
+    absl::InlinedVector<int64_t, 4> end;
+    absl::InlinedVector<int64_t, 4> strides;
 
     xla::Literal begin_literal, end_literal, strides_literal;
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &begin_literal));
@@ -670,22 +670,23 @@ class StridedSliceAssignOp : public XlaOpKernel {
 
     xla::XlaOp rhs = ctx->Input(4);
 
-    absl::InlinedVector<int64, 4> dimensions_to_reverse;
+    absl::InlinedVector<int64_t, 4> dimensions_to_reverse;
     absl::InlinedVector<xla::XlaOp, 4> slice_begin;
-    absl::InlinedVector<int64, 4> slice_dims;
+    absl::InlinedVector<int64_t, 4> slice_dims;
     for (int i = 0; i < begin.size(); ++i) {
       // TODO(b/121179231): implement strides != 1
       OP_REQUIRES(
           ctx, strides[i] == 1 || strides[i] == -1,
           errors::Unimplemented("Strides != 1 or -1 are not yet implemented"));
       if (strides[i] > 0) {
-        slice_begin.push_back(xla::ConstantR0<int64>(ctx->builder(), begin[i]));
+        slice_begin.push_back(
+            xla::ConstantR0<int64_t>(ctx->builder(), begin[i]));
         slice_dims.push_back(end[i] - begin[i]);
       } else {
         // Negative stride: swap begin and end, add 1 because the interval
         // is semi-open, and mark the dimension to be reversed.
         slice_begin.push_back(
-            xla::ConstantR0<int64>(ctx->builder(), end[i] + 1));
+            xla::ConstantR0<int64_t>(ctx->builder(), end[i] + 1));
         slice_dims.push_back(begin[i] - end[i]);
         dimensions_to_reverse.push_back(i);
       }

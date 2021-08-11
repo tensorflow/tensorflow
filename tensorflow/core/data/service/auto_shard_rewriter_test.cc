@@ -62,7 +62,7 @@ StatusOr<NodeDef> GetNode(const GraphDef& graph_def, absl::string_view name) {
                                            name, graph_def.ShortDebugString()));
 }
 
-StatusOr<int64> GetValue(const GraphDef& graph_def, absl::string_view name) {
+StatusOr<int64_t> GetValue(const GraphDef& graph_def, absl::string_view name) {
   for (const NodeDef& node : graph_def.node()) {
     if (node.name() == name) {
       return node.attr().at("value").tensor().int64_val()[0];
@@ -73,7 +73,7 @@ StatusOr<int64> GetValue(const GraphDef& graph_def, absl::string_view name) {
 }
 
 TaskDef GetTaskDef(const ProcessingModeDef::ShardingPolicy sharding_policy,
-                   const int64 num_workers, const int64 worker_index) {
+                   const int64_t num_workers, const int64_t worker_index) {
   TaskDef task_def;
   task_def.mutable_processing_mode_def()->set_sharding_policy(sharding_policy);
   task_def.set_num_workers(num_workers);

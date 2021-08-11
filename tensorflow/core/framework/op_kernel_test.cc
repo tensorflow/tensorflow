@@ -796,8 +796,8 @@ class GetAttrKernel : public ::tensorflow::OpKernel {
 
   string s;
   std::vector<string> s_list;
-  int64 i;
-  std::vector<int64> i_list;
+  int64_t i;
+  std::vector<int64_t> i_list;
   int32 i32;
   std::vector<int32> i32_list;
   float f;
@@ -857,7 +857,7 @@ TEST_F(GetAttrTest, Int) {
       {"attr_name|string|'b'", "a|int|35", "b|list(int)|[-1, 2, -4]"});
   get_attr_kernel = static_cast<GetAttrKernel*>(op_kernel.get());
   get_attr_kernel->ExpectOk({"i_list", "i32_list"});
-  EXPECT_EQ(std::vector<int64>({-1, 2, -4}), get_attr_kernel->i_list);
+  EXPECT_EQ(std::vector<int64_t>({-1, 2, -4}), get_attr_kernel->i_list);
   EXPECT_EQ(std::vector<int32>({-1, 2, -4}), get_attr_kernel->i32_list);
 
   // 8589934592 == 2^33, too big to fit in an int32
@@ -880,7 +880,7 @@ TEST_F(GetAttrTest, Int) {
                              "b|list(int)|[-8589934592]"});
   get_attr_kernel = static_cast<GetAttrKernel*>(op_kernel.get());
   get_attr_kernel->ExpectOk({"i_list"});  // no i32_list
-  EXPECT_EQ(std::vector<int64>({-8589934592ll}), get_attr_kernel->i_list);
+  EXPECT_EQ(std::vector<int64_t>({-8589934592ll}), get_attr_kernel->i_list);
   for (const auto& key_status : get_attr_kernel->status) {
     if (key_status.first == "i32_list") {
       EXPECT_EQ(error::INVALID_ARGUMENT, key_status.second.code());

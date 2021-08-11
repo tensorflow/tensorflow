@@ -47,7 +47,7 @@ Status GetTfrtExecutionContext(OpKernelContext* c,
   // ExecutionContext's address is passed in as an I64 input.
   const Tensor* tensor;
   TF_RETURN_IF_ERROR(c->input("tfrt_exec_ctx", &tensor));
-  int64_t exec_ctx_intptr = *reinterpret_cast<const int64*>(tensor->data());
+  int64_t exec_ctx_intptr = *reinterpret_cast<const int64_t*>(tensor->data());
   *exec_ctx = absl::bit_cast<const tfrt::ExecutionContext*>(exec_ctx_intptr);
   return Status::OK();
 }
@@ -300,7 +300,7 @@ StatusOr<RCReference<tfrt::RequestContext> > SetUpRequestContext(
   // Using the same logic as in the c'tor of FunctionLibraryRuntime::Options,
   // to avoid clash with any Session-generated step ID. DirectSession and
   // MasterSession generates non-negative step IDs.
-  int64_t step_id = -std::abs(static_cast<int64>(random::New64()));
+  int64_t step_id = -std::abs(static_cast<int64_t>(random::New64()));
 
   tfrt::RequestContextBuilder request_context_builder(
       host_ctx, resource_context, step_id);

@@ -84,7 +84,8 @@ class CholeskyGrad : public LinearAlgebraOp<Scalar> {
       Variables names representing the derivative matrix have a trailing '_bar'.
       */
 
-      const int64_t block_begin = std::max(int64{0}, block_end - kMaxBlockSize);
+      const int64_t block_begin =
+          std::max(int64_t{0}, block_end - kMaxBlockSize);
       const int64_t block_size = block_end - block_begin;
       const int64_t trailing_size = kMatrixSize - block_end;
 

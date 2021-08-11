@@ -77,7 +77,8 @@ void ConcatGPU(
     if (output->NumElements() < std::numeric_limits<int32>::max()) {
       ConcatGPUSlice<T, int32>(c->eigen_gpu_device(), inputs_flat, output_flat);
     } else {
-      ConcatGPUSlice<T, int64>(c->eigen_gpu_device(), inputs_flat, output_flat);
+      ConcatGPUSlice<T, int64_t>(c->eigen_gpu_device(), inputs_flat,
+                                 output_flat);
     }
   } else {
     // Switching indexing to int64 might cause performance issues.
@@ -86,7 +87,7 @@ void ConcatGPU(
     if (output->NumElements() < std::numeric_limits<int32>::max()) {
       ConcatGPUCall<T, int32>(c, inputs_flat, output_flat);
     } else {
-      ConcatGPUCall<T, int64>(c, inputs_flat, output_flat);
+      ConcatGPUCall<T, int64_t>(c, inputs_flat, output_flat);
     }
   }
 }

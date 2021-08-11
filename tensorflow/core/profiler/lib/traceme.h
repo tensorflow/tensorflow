@@ -210,7 +210,7 @@ class TraceMe {
   // Returns the activity ID, which is used to stop the activity.
   // Calls `name_generator` to get the name for activity.
   template <typename NameGeneratorT>
-  static int64 ActivityStart(NameGeneratorT name_generator, int level = 1) {
+  static int64_t ActivityStart(NameGeneratorT name_generator, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       int64_t activity_id = TraceMeRecorder::NewActivityId();
@@ -224,7 +224,7 @@ class TraceMe {
 
   // Record the start time of an activity.
   // Returns the activity ID, which is used to stop the activity.
-  static int64 ActivityStart(absl::string_view name, int level = 1) {
+  static int64_t ActivityStart(absl::string_view name, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       int64_t activity_id = TraceMeRecorder::NewActivityId();
@@ -237,12 +237,12 @@ class TraceMe {
   }
 
   // Same as ActivityStart above, an overload for "const std::string&"
-  static int64 ActivityStart(const std::string& name, int level = 1) {
+  static int64_t ActivityStart(const std::string& name, int level = 1) {
     return ActivityStart(absl::string_view(name), level);
   }
 
   // Same as ActivityStart above, an overload for "const char*"
-  static int64 ActivityStart(const char* name, int level = 1) {
+  static int64_t ActivityStart(const char* name, int level = 1) {
     return ActivityStart(absl::string_view(name), level);
   }
 
@@ -279,7 +279,7 @@ class TraceMe {
 #endif
   }
 
-  static int64 NewActivityId() {
+  static int64_t NewActivityId() {
 #if !defined(IS_MOBILE_PLATFORM)
     return TraceMeRecorder::NewActivityId();
 #else
@@ -301,7 +301,7 @@ class TraceMe {
     std::string name;
   } no_init_;
 
-  int64 start_time_ = kUntracedActivity;
+  int64_t start_time_ = kUntracedActivity;
 };
 
 // Whether OpKernel::TraceString will populate additional information for

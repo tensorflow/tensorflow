@@ -35,7 +35,7 @@ TensorSlice::TensorSlice(const TensorSliceProto& proto) {
 }
 
 TensorSlice::TensorSlice(
-    std::initializer_list<std::pair<int64, int64>> extents) {
+    std::initializer_list<std::pair<int64_t, int64_t>> extents) {
   starts_.reserve(extents.size());
   lengths_.reserve(extents.size());
   for (const auto& e : extents) {
@@ -231,7 +231,7 @@ bool TensorSlice::HasExtentLength(const TensorSliceProto::Extent& extent) {
 }
 
 // static
-int64 TensorSlice::GetExtentLength(const TensorSliceProto::Extent& extent) {
+int64_t TensorSlice::GetExtentLength(const TensorSliceProto::Extent& extent) {
   if (!HasExtentLength(extent)) return -1;
   return extent.length();
 }

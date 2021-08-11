@@ -72,7 +72,7 @@ class ZlibInputStream : public InputStreamInterface {
   Status ReadNBytes(int64_t bytes_to_read, absl::Cord* result) override;
 #endif
 
-  int64 Tell() const override;
+  int64_t Tell() const override;
 
   Status Reset() override;
 
@@ -130,7 +130,7 @@ class ZlibInputStream : public InputStreamInterface {
   size_t NumUnreadBytes() const;
 
   // Number of *uncompressed* bytes that have been read from this stream.
-  int64 bytes_read_;
+  int64_t bytes_read_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ZlibInputStream);
 };

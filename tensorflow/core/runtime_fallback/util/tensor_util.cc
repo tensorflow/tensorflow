@@ -53,9 +53,10 @@ tensorflow::Tensor CopyShtToTfTensor(const StringHostTensor& sht) {
   llvm::SmallVector<ssize_t, 4> dims;
   sht.shape().GetDimensions(&dims);
 
-  tensorflow::Tensor tensor(tensorflow::DT_STRING,
-                            tensorflow::TensorShape(llvm::SmallVector<int64, 4>(
-                                dims.begin(), dims.end())));
+  tensorflow::Tensor tensor(
+      tensorflow::DT_STRING,
+      tensorflow::TensorShape(
+          llvm::SmallVector<int64_t, 4>(dims.begin(), dims.end())));
 
   auto len = tensor.NumElements();
   auto from = sht.strings();

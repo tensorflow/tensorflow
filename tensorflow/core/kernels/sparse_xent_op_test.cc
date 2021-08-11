@@ -31,7 +31,7 @@ static Graph* SparseXent(int batch_size, int num_classes) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_int_distribution<> dist(0, num_classes - 1);
-  auto labels_t = labels.flat<int64>();
+  auto labels_t = labels.flat<int64_t>();
   for (int i = 0; i < batch_size; ++i) {
     labels_t(i) = dist(gen);
   }
@@ -41,15 +41,15 @@ static Graph* SparseXent(int batch_size, int num_classes) {
   return g;
 }
 
-#define BM_SparseXentDev(BATCH, CLASS, DEVICE)                               \
-  static void BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE(                  \
-      ::testing::benchmark::State& state) {                                  \
-    test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS),                       \
-                    /*old_benchmark_api*/ false)                             \
-        .Run(state);                                                         \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * BATCH * \
-                            CLASS);                                          \
-  }                                                                          \
+#define BM_SparseXentDev(BATCH, CLASS, DEVICE)                                 \
+  static void BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE(                    \
+      ::testing::benchmark::State& state) {                                    \
+    test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS),                         \
+                    /*old_benchmark_api*/ false)                               \
+        .Run(state);                                                           \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * BATCH * \
+                            CLASS);                                            \
+  }                                                                            \
   BENCHMARK(BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE);
 
 /// The representative tests for ptb_word on GPU

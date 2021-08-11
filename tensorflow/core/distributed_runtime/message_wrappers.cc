@@ -95,7 +95,7 @@ bool InMemoryRunStepRequest::store_errors_in_response_body() const {
   return store_errors_in_response_body_;
 }
 
-int64 InMemoryRunStepRequest::request_id() const {
+int64_t InMemoryRunStepRequest::request_id() const {
   return 0;  // no need to track request id for local version.
 }
 
@@ -212,7 +212,7 @@ void MutableProtoRunStepRequest::set_store_errors_in_response_body(
   request_.set_store_errors_in_response_body(store_errors);
 }
 
-int64 MutableProtoRunStepRequest::request_id() const {
+int64_t MutableProtoRunStepRequest::request_id() const {
   return request_.request_id();
 }
 
@@ -278,7 +278,9 @@ bool ProtoRunStepRequest::store_errors_in_response_body() const {
   return request_->store_errors_in_response_body();
 }
 
-int64 ProtoRunStepRequest::request_id() const { return request_->request_id(); }
+int64_t ProtoRunStepRequest::request_id() const {
+  return request_->request_id();
+}
 
 string ProtoRunStepRequest::DebugString() const {
   return request_->DebugString();
@@ -310,7 +312,7 @@ void InMemoryRunGraphRequest::set_graph_handle(const string& handle) {
   graph_handle_ = handle;
 }
 
-int64 InMemoryRunGraphRequest::step_id() const { return step_id_; }
+int64_t InMemoryRunGraphRequest::step_id() const { return step_id_; }
 
 void InMemoryRunGraphRequest::set_step_id(int64_t step_id) {
   step_id_ = step_id;
@@ -389,7 +391,7 @@ void InMemoryRunGraphRequest::set_store_errors_in_response_body(
   store_errors_in_response_body_ = store_errors;
 }
 
-int64 InMemoryRunGraphRequest::request_id() const { return request_id_; }
+int64_t InMemoryRunGraphRequest::request_id() const { return request_id_; }
 
 void InMemoryRunGraphRequest::set_request_id(int64_t request_id) {
   request_id_ = request_id;
@@ -446,7 +448,7 @@ void MutableProtoRunGraphRequest::set_graph_handle(const string& handle) {
   request_.set_graph_handle(handle);
 }
 
-int64 MutableProtoRunGraphRequest::step_id() const {
+int64_t MutableProtoRunGraphRequest::step_id() const {
   return request_.step_id();
 }
 
@@ -535,7 +537,7 @@ void MutableProtoRunGraphRequest::set_store_errors_in_response_body(
   request_.set_store_errors_in_response_body(store_errors);
 }
 
-int64 MutableProtoRunGraphRequest::request_id() const {
+int64_t MutableProtoRunGraphRequest::request_id() const {
   return request_.request_id();
 }
 
@@ -562,7 +564,7 @@ const string& ProtoRunGraphRequest::graph_handle() const {
   return request_->graph_handle();
 }
 
-int64 ProtoRunGraphRequest::step_id() const { return request_->step_id(); }
+int64_t ProtoRunGraphRequest::step_id() const { return request_->step_id(); }
 
 const ExecutorOpts& ProtoRunGraphRequest::exec_opts() const {
   return request_->exec_opts();
@@ -600,7 +602,7 @@ bool ProtoRunGraphRequest::store_errors_in_response_body() const {
   return request_->store_errors_in_response_body();
 }
 
-int64 ProtoRunGraphRequest::request_id() const {
+int64_t ProtoRunGraphRequest::request_id() const {
   return request_->request_id();
 }
 

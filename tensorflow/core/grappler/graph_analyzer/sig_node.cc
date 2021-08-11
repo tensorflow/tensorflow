@@ -395,7 +395,8 @@ void Signature::OrderLinks() {
     int first_idx = -1;
 
     int idx;
-    for (idx = 0; idx < static_cast<int64>(node->hashed_peers_.size()); ++idx) {
+    for (idx = 0; idx < static_cast<int64_t>(node->hashed_peers_.size());
+         ++idx) {
       auto& entry = node->hashed_peers_[idx];
       if (entry.link_hash == cur_link_hash) {
         continue;

@@ -43,15 +43,15 @@ namespace tensorflow {
 // We have to be able to detect and handle overflows in int32, so this function
 // uses doubles and int64's to make sure we have enough room.
 template <class T>
-inline int64 FloatToQuantizedUnclamped(float input, float range_min,
-                                       float range_max) {
+inline int64_t FloatToQuantizedUnclamped(float input, float range_min,
+                                         float range_max) {
   const int64_t lowest_quantized =
       static_cast<double>(Eigen::NumTraits<T>::lowest());
   if (range_min == range_max) {
     return lowest_quantized;
   }
   const int number_of_bits = sizeof(T) * 8;
-  const int64_t number_of_steps = static_cast<int64>(1) << number_of_bits;
+  const int64_t number_of_steps = static_cast<int64_t>(1) << number_of_bits;
   const double range_adjust = (number_of_steps / (number_of_steps - 1.0));
   const double range = ((range_max - range_min) * range_adjust);
   const double range_scale = (number_of_steps / range);
@@ -62,8 +62,8 @@ inline int64 FloatToQuantizedUnclamped(float input, float range_min,
 }
 
 template <>
-inline int64 FloatToQuantizedUnclamped<float>(float input, float range_min,
-                                              float range_max) {
+inline int64_t FloatToQuantizedUnclamped<float>(float input, float range_min,
+                                                float range_max) {
   return -1;
 }
 
@@ -79,9 +79,9 @@ T FloatToQuantized(float input, float range_min, float range_max) {
   }
   int64_t quantized = FloatToQuantizedUnclamped<T>(input, range_min, range_max);
   const int64_t lowest_quantized =
-      static_cast<int64>(Eigen::NumTraits<T>::lowest());
+      static_cast<int64_t>(Eigen::NumTraits<T>::lowest());
   const int64_t highest_quantized =
-      static_cast<int64>(Eigen::NumTraits<T>::highest());
+      static_cast<int64_t>(Eigen::NumTraits<T>::highest());
   quantized = std::max(quantized, lowest_quantized);
   quantized = std::min(quantized, highest_quantized);
   return static_cast<T>(static_cast<int32>(quantized));
@@ -99,12 +99,12 @@ float QuantizedToFloat(T input, float range_min, float range_max) {
     return range_min;
   }
   const int number_of_bits = sizeof(T) * 8;
-  const int64_t number_of_steps = static_cast<int64>(1) << number_of_bits;
+  const int64_t number_of_steps = static_cast<int64_t>(1) << number_of_bits;
   const double range_adjust = (number_of_steps / (number_of_steps - 1.0));
   const double range = ((range_max - range_min) * range_adjust);
   const double range_scale = (range / number_of_steps);
   const int64_t lowest_quantized =
-      static_cast<int64>(Eigen::NumTraits<T>::lowest());
+      static_cast<int64_t>(Eigen::NumTraits<T>::lowest());
   const double offset_input = static_cast<double>(input) - lowest_quantized;
   // For compatibility with DEQUANTIZE_WITH_EIGEN, we should convert
   // range_scale to a float, otherwise range_min_rounded might be slightly
@@ -118,8 +118,8 @@ float QuantizedToFloat(T input, float range_min, float range_max) {
 
 template <class T>
 float FloatForOneQuantizedLevel(float range_min, float range_max) {
-  const int64_t highest = static_cast<int64>(Eigen::NumTraits<T>::highest());
-  const int64_t lowest = static_cast<int64>(Eigen::NumTraits<T>::lowest());
+  const int64_t highest = static_cast<int64_t>(Eigen::NumTraits<T>::highest());
+  const int64_t lowest = static_cast<int64_t>(Eigen::NumTraits<T>::lowest());
   const float float_for_one_quantized_level =
       (range_max - range_min) / (highest - lowest);
   return float_for_one_quantized_level;
@@ -134,8 +134,9 @@ void QuantizationRangeForMultiplication(float min_a, float max_a, float min_b,
   const float b_float_for_one_quant_level =
       FloatForOneQuantizedLevel<T2>(min_b, max_b);
 
-  const int64_t c_highest = static_cast<int64>(Eigen::NumTraits<T3>::highest());
-  const int64_t c_lowest = static_cast<int64>(Eigen::NumTraits<T3>::lowest());
+  const int64_t c_highest =
+      static_cast<int64_t>(Eigen::NumTraits<T3>::highest());
+  const int64_t c_lowest = static_cast<int64_t>(Eigen::NumTraits<T3>::lowest());
   const float c_float_for_one_quant_level =
       a_float_for_one_quant_level * b_float_for_one_quant_level;
 
@@ -166,7 +167,7 @@ void QuantizationRangeForMultiplication(float min_a, float max_a, float min_b,
 template <typename T>
 struct QuantizedToFloatStruct {
   static constexpr int number_of_bits = sizeof(T) * 8;
-  static constexpr int64_t number_of_steps = static_cast<int64>(1)
+  static constexpr int64_t number_of_steps = static_cast<int64_t>(1)
                                              << number_of_bits;
 
   static float lowest_quantized() {
@@ -190,7 +191,7 @@ struct QuantizedToFloatStruct {
 template <typename T>
 struct FloatToQuantizedStruct {
   static constexpr int number_of_bits = sizeof(T) * 8;
-  static constexpr int64_t number_of_steps = static_cast<int64>(1)
+  static constexpr int64_t number_of_steps = static_cast<int64_t>(1)
                                              << number_of_bits;
   static constexpr double range_adjust =
       (number_of_steps / (number_of_steps - 1.0));
@@ -260,15 +261,15 @@ inline void RequantizeManyInNewRangeReference(const qint32* input,
   const float input_rezero = (min_input + max_input) / 2.0;
   const int64_t range_scale_fp =
       output_range == 0.0 ? 0.0
-                          : static_cast<int64>(255.0 * (1 << fp_shift) *
-                                               input_range / output_range);
+                          : static_cast<int64_t>(255.0 * (1 << fp_shift) *
+                                                 input_range / output_range);
   const int64_t input_offset_fp =
-      static_cast<int64>(input_rezero * recip_output_range * (1 << fp_shift));
+      static_cast<int64_t>(input_rezero * recip_output_range * (1 << fp_shift));
   const int64_t output_offset_fp =
       output_range == 0.0
           ? 0
-          : static_cast<int64>((1 << fp_shift) * (min_output * 255.0) /
-                               output_range);
+          : static_cast<int64_t>((1 << fp_shift) * (min_output * 255.0) /
+                                 output_range);
   const int64_t rounding_delta = 1 << (fp_shift - 1);
 
   // Inside this loop we just do minimal adds, multiplies, and shifts, in a way
@@ -276,14 +277,14 @@ inline void RequantizeManyInNewRangeReference(const qint32* input,
   // possible to perform all the calculations in 32-bit rather than 64, but
   // that's not been implemented yet.
   for (int64_t index = 0; index < count; ++index) {
-    const int64_t input_value = static_cast<int64>(input[index]);
+    const int64_t input_value = static_cast<int64_t>(input[index]);
     const int64_t fp_value =
         ((input_value * range_scale_fp) >> 32) + input_offset_fp;
     const int64_t offset_intermediate = fp_value - output_offset_fp;
     const int64_t round_intermediate = offset_intermediate + rounding_delta;
     int64_t quantized_int64 = round_intermediate >> fp_shift;
-    quantized_int64 = std::max(quantized_int64, int64{0});
-    quantized_int64 = std::min(quantized_int64, int64{255});
+    quantized_int64 = std::max(quantized_int64, int64_t{0});
+    quantized_int64 = std::min(quantized_int64, int64_t{255});
     output[index] = static_cast<quint8>(static_cast<int32>(quantized_int64));
   }
 }
@@ -302,11 +303,11 @@ inline void RequantizeManyInNewRange8To32BitReference(
       FloatToQuantizedUnclamped<qint32>(code_1_float, min_output, max_output);
   const int32_t mult_int32 = code_1_int64 - code_0_int64;
   const int64_t lowest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::lowest());
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::lowest());
   const int64_t highest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::highest());
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::highest());
   for (int64_t i = 0; i < count; ++i) {
-    const int64_t input_value = static_cast<int64>(input[i]);
+    const int64_t input_value = static_cast<int64_t>(input[i]);
     int64_t output_value = code_0_int64 + (input_value * mult_int32);
     output_value = std::max(output_value, lowest_quantized);
     output_value = std::min(output_value, highest_quantized);
@@ -668,7 +669,7 @@ template <int shift>
 struct int64_right_shift_op {
   EIGEN_EMPTY_STRUCT_CTOR(int64_right_shift_op)
   EIGEN_DEVICE_FUNC
-  EIGEN_STRONG_INLINE const int64 operator()(const int64_t a) const {
+  EIGEN_STRONG_INLINE const int64_t operator()(const int64_t a) const {
     return a >> shift;
   }
 };
@@ -706,27 +707,27 @@ inline void RequantizeManyInNewRangeUsingEigen<qint32, quint8>(
   const float input_rezero = (min_input + max_input) / 2.0;
   const int64_t range_scale_fp =
       output_range == 0.0 ? 0.0
-                          : static_cast<int64>(255.0 * (1 << fp_shift) *
-                                               input_range / output_range);
+                          : static_cast<int64_t>(255.0 * (1 << fp_shift) *
+                                                 input_range / output_range);
   const int64_t input_offset_fp =
-      static_cast<int64>(input_rezero * recip_output_range * (1 << fp_shift));
+      static_cast<int64_t>(input_rezero * recip_output_range * (1 << fp_shift));
   const int64_t output_offset_fp =
       output_range == 0.0
           ? 0
-          : static_cast<int64>((1 << fp_shift) * (min_output * 255.0) /
-                               output_range);
+          : static_cast<int64_t>((1 << fp_shift) * (min_output * 255.0) /
+                                 output_range);
   const int64_t rounding_delta = 1 << (fp_shift - 1);
 
   // Inside this eigen expression we just do minimal adds, multiplies, and
   // shifts. It should be possible to perform all the calculations in 32-bit
   // rather than 64, but that's not been implemented yet.
   auto input_array = input.flat<qint32>();
-  auto fp_value = ((input_array.template cast<int64>() * range_scale_fp)
+  auto fp_value = ((input_array.template cast<int64_t>() * range_scale_fp)
                        .unaryExpr(int64_right_shift_op<32>())) +
                   (input_offset_fp - output_offset_fp + rounding_delta);
   auto intermediate = fp_value.unaryExpr(int64_right_shift_op<fp_shift>());
-  auto input_requantized = intermediate.cwiseMax(int64{0})
-                               .cwiseMin(int64{255})
+  auto input_requantized = intermediate.cwiseMax(int64_t{0})
+                               .cwiseMin(int64_t{255})
                                .template cast<int32>()
                                .template cast<quint8>();
   output->flat<quint8>().device(device) = input_requantized;

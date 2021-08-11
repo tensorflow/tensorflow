@@ -159,8 +159,8 @@ struct CuptiTracerEvent {
   uint32 device_id = 0;
   uint32 correlation_id = kInvalidCorrelationId;
   uint32 thread_id = kInvalidThreadId;
-  int64 context_id = kInvalidContextId;
-  int64 stream_id = kInvalidStreamId;
+  int64_t context_id = kInvalidContextId;
+  int64_t stream_id = kInvalidStreamId;
   union {
     // For Memcpy API and activities. `type` must be Memcpy*.
     MemcpyDetails memcpy_info;

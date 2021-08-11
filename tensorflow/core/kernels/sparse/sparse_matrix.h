@@ -219,7 +219,7 @@ class CSRSparseMatrix {
   inline TTypes<int32>::UnalignedVec row_pointers_vec(int batch) {
     DCHECK(valid());
     DCHECK_LT(batch, batch_size());
-    const int64_t rows = dense_shape().vec<int64>()((dims() == 2) ? 0 : 1);
+    const int64_t rows = dense_shape().vec<int64_t>()((dims() == 2) ? 0 : 1);
     const int offset = batch * (rows + 1);
     return TTypes<int32>::UnalignedVec(row_pointers_vec_->data() + offset,
                                        rows + 1);
@@ -228,7 +228,7 @@ class CSRSparseMatrix {
   inline TTypes<int32>::UnalignedConstVec row_pointers_vec(int batch) const {
     DCHECK(valid());
     DCHECK_LT(batch, batch_size());
-    const int64_t rows = dense_shape().vec<int64>()((dims() == 2) ? 0 : 1);
+    const int64_t rows = dense_shape().vec<int64_t>()((dims() == 2) ? 0 : 1);
     const int offset = batch * (rows + 1);
     return TTypes<int32>::UnalignedConstVec(row_pointers_vec_->data() + offset,
                                             rows + 1);
@@ -454,7 +454,7 @@ class CSRSparseMatrix {
           "but saw: ",
           dense_shape.SummarizeValue(5));
     }
-    auto dense_shape_t = dense_shape.vec<int64>();
+    auto dense_shape_t = dense_shape.vec<int64_t>();
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape_t(0);
     const int64_t num_rows = (rank == 2) ? dense_shape_t(0) : dense_shape_t(1);
 
@@ -618,7 +618,7 @@ struct ConstCSRComponent {
   TTypes<int32>::UnalignedConstVec row_ptr;
   TTypes<int32>::UnalignedConstVec col_ind;
   typename TTypes<T>::UnalignedConstVec values;
-  TTypes<int64>::ConstVec dense_shape_host;
+  TTypes<int64_t>::ConstVec dense_shape_host;
 };
 
 template <typename T>
@@ -626,7 +626,7 @@ struct CSRComponent {
   TTypes<int32>::UnalignedVec row_ptr;
   TTypes<int32>::UnalignedVec col_ind;
   typename TTypes<T>::UnalignedVec values;
-  TTypes<int64>::Vec dense_shape_host;
+  TTypes<int64_t>::Vec dense_shape_host;
 };
 
 template <typename T>

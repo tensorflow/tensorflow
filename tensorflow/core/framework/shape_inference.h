@@ -45,7 +45,7 @@ class Dimension {
   Dimension(int64_t value);
   ~Dimension() {}
 
-  const int64 value_;
+  const int64_t value_;
 
   friend class InferenceContext;
   friend class ShapeManager;
@@ -125,7 +125,7 @@ struct DimensionOrConstant {
 
   // dim takes precedence. If dim != nullptr, val is ignored.
   DimensionHandle dim;
-  int64 val;
+  int64_t val;
 
  private:
   DimensionOrConstant();
@@ -357,7 +357,7 @@ class InferenceContext {
   static bool RankKnown(ShapeHandle s) {
     return (s.IsSet() && (Rank(s) != kUnknownRank));
   }
-  static inline int64 Value(DimensionOrConstant d) {
+  static inline int64_t Value(DimensionOrConstant d) {
     return d.dim.IsSet() ? d.dim->value_ : d.val;
   }
   static inline bool ValueKnown(DimensionOrConstant d) {
@@ -502,11 +502,11 @@ class InferenceContext {
   // Returns in <val> a scalar value from an input tensor <t>.  The input tensor
   // must be a 0-dimensional int32 or int64 tensor.  Caller must ensure that the
   // input tensor is not NULL.
-  Status GetScalarFromTensor(const Tensor* t, int64* val);
+  Status GetScalarFromTensor(const Tensor* t, int64_t* val);
 
   // Returns in <val> a scalar value from a 1D input tensor <t> with int32 or
   // int64 elements. Caller must ensure that the input tensor is not NULL.
-  Status GetScalarFromTensor(const Tensor* t, int64_t idx, int64* val);
+  Status GetScalarFromTensor(const Tensor* t, int64_t idx, int64_t* val);
 
   // Returns a new dimension whose value is given by a scalar input tensor.
   // The input tensor must be in host memory, since it is dereferenced to get

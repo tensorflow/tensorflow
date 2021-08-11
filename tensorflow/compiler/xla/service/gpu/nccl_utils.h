@@ -165,7 +165,7 @@ struct NcclCliqueParticipantData : public ParticipantData {
                             se::gpu::GpuContextHandle context)
       : ParticipantData(rendezvous_key), stream(nullptr), context(context) {}
 
-  int64 device_ordinal;
+  int64_t device_ordinal;
   se::Stream* stream;
   se::gpu::GpuContextHandle context;
 

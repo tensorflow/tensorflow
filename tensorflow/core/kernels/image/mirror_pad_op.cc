@@ -160,17 +160,17 @@ namespace functor {
       TTypes<Tpaddings>::ConstMatrix, int);                   \
   extern template struct MirrorPad<CpuDevice, T, Tpaddings, i>;
 
-#define DECLARE_CPU_SPECS(T)     \
-  DECLARE_CPU_SPEC(T, int32, 1); \
-  DECLARE_CPU_SPEC(T, int32, 2); \
-  DECLARE_CPU_SPEC(T, int32, 3); \
-  DECLARE_CPU_SPEC(T, int32, 4); \
-  DECLARE_CPU_SPEC(T, int32, 5); \
-  DECLARE_CPU_SPEC(T, int64, 1); \
-  DECLARE_CPU_SPEC(T, int64, 2); \
-  DECLARE_CPU_SPEC(T, int64, 3); \
-  DECLARE_CPU_SPEC(T, int64, 4); \
-  DECLARE_CPU_SPEC(T, int64, 5);
+#define DECLARE_CPU_SPECS(T)       \
+  DECLARE_CPU_SPEC(T, int32, 1);   \
+  DECLARE_CPU_SPEC(T, int32, 2);   \
+  DECLARE_CPU_SPEC(T, int32, 3);   \
+  DECLARE_CPU_SPEC(T, int32, 4);   \
+  DECLARE_CPU_SPEC(T, int32, 5);   \
+  DECLARE_CPU_SPEC(T, int64_t, 1); \
+  DECLARE_CPU_SPEC(T, int64_t, 2); \
+  DECLARE_CPU_SPEC(T, int64_t, 3); \
+  DECLARE_CPU_SPEC(T, int64_t, 4); \
+  DECLARE_CPU_SPEC(T, int64_t, 5);
 
 TF_CALL_POD_TYPES(DECLARE_CPU_SPECS);
 TF_CALL_QUANTIZED_TYPES(DECLARE_CPU_SPECS);
@@ -180,18 +180,18 @@ TF_CALL_tstring(DECLARE_CPU_SPECS);
 #undef DECLARE_CPU_SPECS
 }  // namespace functor
 
-#define REGISTER_KERNEL(type)                                     \
-  REGISTER_KERNEL_BUILDER(Name("MirrorPad")                       \
-                              .Device(DEVICE_CPU)                 \
-                              .TypeConstraint<type>("T")          \
-                              .TypeConstraint<int32>("Tpaddings") \
-                              .HostMemory("paddings"),            \
-                          MirrorPadOp<CpuDevice, type, int32>);   \
-  REGISTER_KERNEL_BUILDER(Name("MirrorPad")                       \
-                              .Device(DEVICE_CPU)                 \
-                              .TypeConstraint<type>("T")          \
-                              .TypeConstraint<int64>("Tpaddings") \
-                              .HostMemory("paddings"),            \
+#define REGISTER_KERNEL(type)                                       \
+  REGISTER_KERNEL_BUILDER(Name("MirrorPad")                         \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int32>("Tpaddings")   \
+                              .HostMemory("paddings"),              \
+                          MirrorPadOp<CpuDevice, type, int32>);     \
+  REGISTER_KERNEL_BUILDER(Name("MirrorPad")                         \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64_t>("Tpaddings") \
+                              .HostMemory("paddings"),              \
                           MirrorPadOp<CpuDevice, type, int64>);
 
 // Note that we do register for bool type, but not in the gradient op.
@@ -211,17 +211,17 @@ namespace functor {
       TTypes<Tpaddings>::ConstMatrix, int);                   \
   extern template struct MirrorPad<GpuDevice, T, Tpaddings, i>;
 
-#define DECLARE_GPU_SPECS(T)     \
-  DECLARE_GPU_SPEC(T, int32, 1); \
-  DECLARE_GPU_SPEC(T, int32, 2); \
-  DECLARE_GPU_SPEC(T, int32, 3); \
-  DECLARE_GPU_SPEC(T, int32, 4); \
-  DECLARE_GPU_SPEC(T, int32, 5); \
-  DECLARE_GPU_SPEC(T, int64, 1); \
-  DECLARE_GPU_SPEC(T, int64, 2); \
-  DECLARE_GPU_SPEC(T, int64, 3); \
-  DECLARE_GPU_SPEC(T, int64, 4); \
-  DECLARE_GPU_SPEC(T, int64, 5);
+#define DECLARE_GPU_SPECS(T)       \
+  DECLARE_GPU_SPEC(T, int32, 1);   \
+  DECLARE_GPU_SPEC(T, int32, 2);   \
+  DECLARE_GPU_SPEC(T, int32, 3);   \
+  DECLARE_GPU_SPEC(T, int32, 4);   \
+  DECLARE_GPU_SPEC(T, int32, 5);   \
+  DECLARE_GPU_SPEC(T, int64_t, 1); \
+  DECLARE_GPU_SPEC(T, int64_t, 2); \
+  DECLARE_GPU_SPEC(T, int64_t, 3); \
+  DECLARE_GPU_SPEC(T, int64_t, 4); \
+  DECLARE_GPU_SPEC(T, int64_t, 5);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 #undef DECLARE_GPU_SPECS
@@ -229,18 +229,18 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 }  // namespace functor
 
 // Registration of the GPU implementations.
-#define REGISTER_GPU_KERNEL(T)                                    \
-  REGISTER_KERNEL_BUILDER(Name("MirrorPad")                       \
-                              .Device(DEVICE_GPU)                 \
-                              .TypeConstraint<T>("T")             \
-                              .TypeConstraint<int32>("Tpaddings") \
-                              .HostMemory("paddings"),            \
-                          MirrorPadOp<GpuDevice, T, int32>);      \
-  REGISTER_KERNEL_BUILDER(Name("MirrorPad")                       \
-                              .Device(DEVICE_GPU)                 \
-                              .TypeConstraint<T>("T")             \
-                              .TypeConstraint<int64>("Tpaddings") \
-                              .HostMemory("paddings"),            \
+#define REGISTER_GPU_KERNEL(T)                                      \
+  REGISTER_KERNEL_BUILDER(Name("MirrorPad")                         \
+                              .Device(DEVICE_GPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .TypeConstraint<int32>("Tpaddings")   \
+                              .HostMemory("paddings"),              \
+                          MirrorPadOp<GpuDevice, T, int32>);        \
+  REGISTER_KERNEL_BUILDER(Name("MirrorPad")                         \
+                              .Device(DEVICE_GPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .TypeConstraint<int64_t>("Tpaddings") \
+                              .HostMemory("paddings"),              \
                           MirrorPadOp<GpuDevice, T, int64>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
@@ -372,17 +372,17 @@ namespace functor {
       typename TTypes<T, k, int32>::Tensor);                  \
   extern template struct MirrorPadGrad<CpuDevice, T, Tpaddings, k>;
 
-#define DECLARE_CPU_SPECS(T)     \
-  DECLARE_CPU_SPEC(T, int32, 1); \
-  DECLARE_CPU_SPEC(T, int32, 2); \
-  DECLARE_CPU_SPEC(T, int32, 3); \
-  DECLARE_CPU_SPEC(T, int32, 4); \
-  DECLARE_CPU_SPEC(T, int32, 5); \
-  DECLARE_CPU_SPEC(T, int64, 1); \
-  DECLARE_CPU_SPEC(T, int64, 2); \
-  DECLARE_CPU_SPEC(T, int64, 3); \
-  DECLARE_CPU_SPEC(T, int64, 4); \
-  DECLARE_CPU_SPEC(T, int64, 5);
+#define DECLARE_CPU_SPECS(T)       \
+  DECLARE_CPU_SPEC(T, int32, 1);   \
+  DECLARE_CPU_SPEC(T, int32, 2);   \
+  DECLARE_CPU_SPEC(T, int32, 3);   \
+  DECLARE_CPU_SPEC(T, int32, 4);   \
+  DECLARE_CPU_SPEC(T, int32, 5);   \
+  DECLARE_CPU_SPEC(T, int64_t, 1); \
+  DECLARE_CPU_SPEC(T, int64_t, 2); \
+  DECLARE_CPU_SPEC(T, int64_t, 3); \
+  DECLARE_CPU_SPEC(T, int64_t, 4); \
+  DECLARE_CPU_SPEC(T, int64_t, 5);
 
 TF_CALL_NUMBER_TYPES(DECLARE_CPU_SPECS);
 #undef DECLARE_CPU_SPECS
@@ -399,7 +399,7 @@ TF_CALL_NUMBER_TYPES(DECLARE_CPU_SPECS);
   REGISTER_KERNEL_BUILDER(Name("MirrorPadGrad")                     \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<type>("T")            \
-                              .TypeConstraint<int64>("Tpaddings")   \
+                              .TypeConstraint<int64_t>("Tpaddings") \
                               .HostMemory("paddings"),              \
                           MirrorPadGradOp<CpuDevice, type, int64>);
 
@@ -418,17 +418,17 @@ namespace functor {
       typename TTypes<T, k, int32>::Tensor);                  \
   extern template struct MirrorPadGrad<GpuDevice, T, Tpaddings, k>;
 
-#define DECLARE_GPU_SPECS(T)     \
-  DECLARE_GPU_SPEC(T, int32, 1); \
-  DECLARE_GPU_SPEC(T, int32, 2); \
-  DECLARE_GPU_SPEC(T, int32, 3); \
-  DECLARE_GPU_SPEC(T, int32, 4); \
-  DECLARE_GPU_SPEC(T, int32, 5); \
-  DECLARE_GPU_SPEC(T, int64, 1); \
-  DECLARE_GPU_SPEC(T, int64, 2); \
-  DECLARE_GPU_SPEC(T, int64, 3); \
-  DECLARE_GPU_SPEC(T, int64, 4); \
-  DECLARE_GPU_SPEC(T, int64, 5);
+#define DECLARE_GPU_SPECS(T)       \
+  DECLARE_GPU_SPEC(T, int32, 1);   \
+  DECLARE_GPU_SPEC(T, int32, 2);   \
+  DECLARE_GPU_SPEC(T, int32, 3);   \
+  DECLARE_GPU_SPEC(T, int32, 4);   \
+  DECLARE_GPU_SPEC(T, int32, 5);   \
+  DECLARE_GPU_SPEC(T, int64_t, 1); \
+  DECLARE_GPU_SPEC(T, int64_t, 2); \
+  DECLARE_GPU_SPEC(T, int64_t, 3); \
+  DECLARE_GPU_SPEC(T, int64_t, 4); \
+  DECLARE_GPU_SPEC(T, int64_t, 5);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 #undef DECLARE_GPU_SPECS
@@ -436,18 +436,18 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 }  // namespace functor
 
 // Registration of the GPU implementations.
-#define REGISTER_GPU_KERNEL(T)                                    \
-  REGISTER_KERNEL_BUILDER(Name("MirrorPadGrad")                   \
-                              .Device(DEVICE_GPU)                 \
-                              .TypeConstraint<T>("T")             \
-                              .TypeConstraint<int32>("Tpaddings") \
-                              .HostMemory("paddings"),            \
-                          MirrorPadGradOp<GpuDevice, T, int32>);  \
-  REGISTER_KERNEL_BUILDER(Name("MirrorPadGrad")                   \
-                              .Device(DEVICE_GPU)                 \
-                              .TypeConstraint<T>("T")             \
-                              .TypeConstraint<int64>("Tpaddings") \
-                              .HostMemory("paddings"),            \
+#define REGISTER_GPU_KERNEL(T)                                      \
+  REGISTER_KERNEL_BUILDER(Name("MirrorPadGrad")                     \
+                              .Device(DEVICE_GPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .TypeConstraint<int32>("Tpaddings")   \
+                              .HostMemory("paddings"),              \
+                          MirrorPadGradOp<GpuDevice, T, int32>);    \
+  REGISTER_KERNEL_BUILDER(Name("MirrorPadGrad")                     \
+                              .Device(DEVICE_GPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .TypeConstraint<int64_t>("Tpaddings") \
+                              .HostMemory("paddings"),              \
                           MirrorPadGradOp<GpuDevice, T, int64>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);

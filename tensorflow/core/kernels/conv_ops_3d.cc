@@ -161,20 +161,21 @@ class Conv3DOp : public BinaryOp<T> {
                                 "(i.e. all dimensions must be non-zero)"));
 
     // Dimension order for these arrays is: z, y, x.
-    std::array<int64, 3> input_size = {
+    std::array<int64_t, 3> input_size = {
         {GetTensorDim(input, data_format_, '0'),
          GetTensorDim(input, data_format_, '1'),
          GetTensorDim(input, data_format_, '2')}};
-    std::array<int64, 3> filter_size = {
+    std::array<int64_t, 3> filter_size = {
         {filter.dim_size(0), filter.dim_size(1), filter.dim_size(2)}};
-    std::array<int64, 3> dilations = {
+    std::array<int64_t, 3> dilations = {
         {GetTensorDim(dilation_, data_format_, '0'),
          GetTensorDim(dilation_, data_format_, '1'),
          GetTensorDim(dilation_, data_format_, '2')}};
-    std::array<int64, 3> strides = {{GetTensorDim(stride_, data_format_, '0'),
-                                     GetTensorDim(stride_, data_format_, '1'),
-                                     GetTensorDim(stride_, data_format_, '2')}};
-    std::array<int64, 3> out, padding;
+    std::array<int64_t, 3> strides = {
+        {GetTensorDim(stride_, data_format_, '0'),
+         GetTensorDim(stride_, data_format_, '1'),
+         GetTensorDim(stride_, data_format_, '2')}};
+    std::array<int64_t, 3> out, padding;
 
     OP_REQUIRES_OK(
         context, Get3dOutputSizeV2(input_size, filter_size, dilations, strides,
@@ -251,11 +252,11 @@ struct LaunchConvOp<GPUDevice, T> {
     int64_t out_cols = GetTensorDim(*output, data_format, '2');
 
     if (padding == Padding::SAME) {
-      pad_planes = std::max<int64>(
+      pad_planes = std::max<int64_t>(
           0, (out_planes - 1) * strides[0] + filter_planes - in_planes);
-      pad_rows = std::max<int64>(
+      pad_rows = std::max<int64_t>(
           0, (out_rows - 1) * strides[1] + filter_rows - in_rows);
-      pad_cols = std::max<int64>(
+      pad_cols = std::max<int64_t>(
           0, (out_cols - 1) * strides[2] + filter_cols - in_cols);
     }
 

@@ -40,7 +40,7 @@ constexpr float kBytesPerSecond = 100;
 constexpr float kFlopsPerSecond = 1000;
 constexpr float kTranscendentalsPerSecond = 10;
 
-int64 ShapeSize(const Shape& shape) {
+int64_t ShapeSize(const Shape& shape) {
   return ShapeUtil::ByteSizeOf(shape, kPointerSize);
 }
 
@@ -49,8 +49,8 @@ class MemorySpaceAssignmentTest : public HloTestBase,
  protected:
   // We use the following two memory space values to describe the default (slow
   // and large) and alternate (fast and small) memory spaces.
-  const int64 kDefaultMemorySpace = 0;
-  const int64 kAlternateMemorySpace = 1;
+  const int64_t kDefaultMemorySpace = 0;
+  const int64_t kAlternateMemorySpace = 1;
 
   std::unique_ptr<PresetAssignments> AssignMemorySpaceUsingCostAnalysis(
       HloModule* module,
@@ -210,9 +210,9 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   }
 
   struct OutstandingAsyncCopies {
-    int64 max_copies;
-    int64 max_prefetches;
-    int64 max_evictions;
+    int64_t max_copies;
+    int64_t max_prefetches;
+    int64_t max_evictions;
   };
 
   /*static*/ OutstandingAsyncCopies CountMaximumOutstandingAsyncCopies(
@@ -250,9 +250,9 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     return copies;
   }
 
-  int64 GetAlternateMemoryOffset(const PresetAssignments& preset_assignments,
-                                 const HloInstruction* instruction,
-                                 const ShapeIndex& index = {}) const {
+  int64_t GetAlternateMemoryOffset(const PresetAssignments& preset_assignments,
+                                   const HloInstruction* instruction,
+                                   const ShapeIndex& index = {}) const {
     // Returns the offset of the assignment, -1 if it's not in the alternate
     // memory.
     const HloModule* module = instruction->parent()->parent();
@@ -5071,7 +5071,7 @@ ENTRY entry {
 class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
  public:
   explicit FakeMemorySpaceAssignmentRepacker(
-      absl::flat_hash_map<std::pair<int64, int64>, int64>& repack_map,
+      absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t>& repack_map,
       std::function<void(absl::Span<AllocationBlock*>)> check_fun = nullptr,
       bool always_return_modified = false)
       : MemorySpaceAssignmentRepacker(/*max_size=*/128, /*alignment=*/8),
@@ -5082,7 +5082,7 @@ class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
   StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) override {
     bool modified = false;
     for (AllocationBlock* block : allocations) {
-      absl::flat_hash_set<int64> colocations;
+      absl::flat_hash_set<int64_t> colocations;
       std::string colocations_str;
       for (const AllocationBlock* colocation : block->colocations) {
         absl::StrAppend(&colocations_str, colocation->id, ", ");
@@ -5116,7 +5116,7 @@ class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
 
  private:
   // A map from (start_time, offset) to new_offset.
-  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map_;
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map_;
   std::function<void(absl::Span<AllocationBlock*>)> check_fun_;
   bool always_return_modified_;
 };
@@ -5219,7 +5219,7 @@ TEST_P(MemorySpaceAssignmentTest, Repack) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
-  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map;
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
   // Move "a" from offset 0 to 32.
   repack_map[{2, 0}] = 32;
   // Move "b" from offset 32 to 0.
@@ -5330,7 +5330,7 @@ TEST_P(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
-  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map;
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
 
   // Expect that of the four separate allocations for the "a" buffer, the first
   // and the next three are in separate colocations.
@@ -5387,7 +5387,7 @@ ENTRY entry {
     return 0;
   };
 
-  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map;
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
   bool repacker_ran = false;
 
   // Expect that the first two value to repack has a colocations size of 2,
@@ -5444,7 +5444,7 @@ TEST_P(MemorySpaceAssignmentTest,
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map;
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map, nullptr,
                                         /*always_return_modified=*/true);

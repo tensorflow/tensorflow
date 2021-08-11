@@ -283,7 +283,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   }
   module_spec.AddCudaPtxInMemory(text().c_str());
 
-  absl::flat_hash_map<int64, se::DeviceMemoryBase> globals;
+  absl::flat_hash_map<int64_t, se::DeviceMemoryBase> globals;
   if (executor->platform_kind() == se::PlatformKind::kCuda &&
       module_spec.cuda_ptx_in_memory() == nullptr) {
     // No custom PTX => no globals.
@@ -779,7 +779,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   return std::move(result);
 }
 
-int64 GpuExecutable::SizeOfGeneratedCodeInBytes() const {
+int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
   // Non-empty PTX but empty cubin: compilation must have failed, return
   // "unknown".
   if (binary().empty() && !text_.empty()) {

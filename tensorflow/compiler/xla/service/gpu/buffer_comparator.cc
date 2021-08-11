@@ -600,7 +600,7 @@ ret;
 template <typename ElementT>
 using ComparisonKernelT =
     se::TypedKernel<se::DeviceMemory<ElementT>, se::DeviceMemory<ElementT>,
-                    float, uint64, se::DeviceMemory<uint64>>;
+                    float, uint64, se::DeviceMemory<uint64_t>>;
 
 // Compares two buffers on the GPU.
 //
@@ -614,8 +614,8 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
                                     absl::string_view kernel_name) {
   se::StreamExecutor* executor = stream->parent();
 
-  se::ScopedDeviceMemory<uint64> out_param =
-      executor->AllocateOwnedScalar<uint64>();
+  se::ScopedDeviceMemory<uint64_t> out_param =
+      executor->AllocateOwnedScalar<uint64_t>();
 
   stream->ThenMemZero(out_param.ptr(), sizeof(uint64));
   if (lhs.size() != rhs.size()) {
@@ -650,7 +650,7 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
       std::unique_ptr<ComparisonKernelT<ElementT>> comparison_kernel,
       (executor->CreateTypedKernel<se::DeviceMemory<ElementT>,
                                    se::DeviceMemory<ElementT>, float, uint64,
-                                   se::DeviceMemory<uint64>>(
+                                   se::DeviceMemory<uint64_t>>(
           kernel_name, buffer_compare_ptx, compiled_ptx)));
 
   GpuDeviceInfo gpu_device_info;

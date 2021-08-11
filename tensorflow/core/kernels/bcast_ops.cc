@@ -125,7 +125,7 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                         BCastArgsOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int64>("T")
+                            .TypeConstraint<int64_t>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0"),
@@ -139,12 +139,11 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                         BCastArgsOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int64>("T")
+                            .TypeConstraint<int64_t>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0"),
                         BCastArgsOp<int64>);
-
 
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .Device(DEVICE_CPU)
@@ -156,7 +155,7 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                         BCastGradArgsOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int64>("T")
+                            .TypeConstraint<int64_t>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0")
@@ -172,7 +171,7 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                         BCastGradArgsOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int64>("T")
+                            .TypeConstraint<int64_t>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0")

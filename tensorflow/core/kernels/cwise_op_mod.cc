@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER2(BinaryOp, CPU, "Mod", functor::safe_mod, int32, int64);
+REGISTER2(BinaryOp, CPU, "Mod", functor::safe_mod, int32, int64_t);
 REGISTER2(BinaryOp, CPU, "Mod", functor::fmod, float, double);
-REGISTER2(BinaryOp, CPU, "TruncateMod", functor::safe_mod, int32, int64);
+REGISTER2(BinaryOp, CPU, "TruncateMod", functor::safe_mod, int32, int64_t);
 REGISTER2(BinaryOp, CPU, "TruncateMod", functor::fmod, float, double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

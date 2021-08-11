@@ -64,7 +64,7 @@ class BatchResourceBase : public ResourceBase {
   // specialized `slice`.
   struct BatchTask : public tensorflow::serving::BatchTask {
     // A unique ID to identify this invocation of Batch.
-    int64 guid;
+    int64_t guid;
 
     Context propagated_context;
 

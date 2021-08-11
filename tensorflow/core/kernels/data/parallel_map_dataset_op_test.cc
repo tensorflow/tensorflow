@@ -54,7 +54,7 @@ class ParallelMapDatasetParams : public DatasetParams {
   std::vector<Tensor> GetInputTensors() const override {
     auto input_tensors = other_arguments_;
     input_tensors.emplace_back(
-        CreateTensor<int64>(TensorShape({}), {num_parallel_calls_}));
+        CreateTensor<int64_t>(TensorShape({}), {num_parallel_calls_}));
     return input_tensors;
   }
 
@@ -271,28 +271,28 @@ ParallelMapDatasetParams ParallelMapDatasetParamsWithInvalidNumParallelCalls() {
 std::vector<GetNextTestCase<ParallelMapDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/ParallelMapDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {6}, {12}, {18}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams2(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {6}, {12}, {18}}),
            /*compare_order=*/false},
           {/*dataset_params=*/ParallelMapDatasetParams3(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {12}, {24}, {36}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams4(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {6}, {12}, {18}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams5(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {12}, {24}, {36}}),
            /*compare_order=*/false},
           {/*dataset_params=*/
            ParallelMapDatasetParams6(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {12}, {24}, {36}}),
            /*compare_order=*/true}};
 }
 
@@ -372,33 +372,33 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/ParallelMapDatasetParams1(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {6}, {12}, {18}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams2(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {6}, {12}, {18}}),
            /*compare_order=*/false},
           {/*dataset_params=*/ParallelMapDatasetParams3(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {12}, {24}, {36}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams4(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {6}, {12}, {18}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams5(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {12}, {24}, {36}}),
            /*compare_order=*/false},
           {/*dataset_params=*/
            ParallelMapDatasetParams6(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {12}, {24}, {36}}),
            /*compare_order=*/true}};
 }
 

@@ -666,7 +666,7 @@ GpuCompiler::RunHloPassesAndBufferAssignement(
                                             *stream_assignment, pointer_size_));
 
   auto buffer_size_bytes_function =
-      [this](const BufferValue& buffer_value) -> int64 {
+      [this](const BufferValue& buffer_value) -> int64_t {
     return GpuCompiler::GetSizeOfShape(buffer_value.shape(), pointer_size_);
   };
 
@@ -757,7 +757,7 @@ static Status CompileModuleToLlvmIrImpl(
       GpuHloSchedule::Build(hlo_module, *stream_assignment, pointer_size));
 
   auto buffer_size_bytes_function =
-      [pointer_size](const BufferValue& buffer_value) -> int64 {
+      [pointer_size](const BufferValue& buffer_value) -> int64_t {
     return GpuCompiler::GetSizeOfShape(buffer_value.shape(), pointer_size);
   };
 

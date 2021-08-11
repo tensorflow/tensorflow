@@ -73,11 +73,11 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
 struct MatrixDescriptor {
   se::DeviceMemoryBase data;
   se::blas::Transpose transpose;
-  int64 num_rows;
-  int64 num_cols;
-  int64 stride;
+  int64_t num_rows;
+  int64_t num_cols;
+  int64_t stride;
 
-  int64 reduced_dim() const {
+  int64_t reduced_dim() const {
     return transpose == se::blas::Transpose::kTranspose ? num_rows : num_cols;
   }
 
@@ -189,7 +189,7 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
                se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
                se::DeviceMemoryBase output_buffer, se::Stream *stream,
                bool implements_whole_instruction,
-               absl::optional<int64> profile_index,
+               absl::optional<int64_t> profile_index,
                se::blas::ProfileResult *profile_result,
                absl::optional<se::blas::AlgorithmType> algorithm) {
   VLOG(2) << "Executing a GemmThunk";
@@ -199,7 +199,7 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
   const Shape &rhs_shape = gemm_config.rhs_shape;
   const GemmBackendConfig &backend_config = gemm_config.backend_config;
   const DotDimensionNumbers &dim_nums = backend_config.dot_dimension_numbers();
-  absl::Span<const int64> output_batch_dims =
+  absl::Span<const int64_t> output_batch_dims =
       AsInt64Slice((dim_nums.lhs_batch_dimensions_size() >
                     dim_nums.rhs_batch_dimensions_size())
                        ? dim_nums.lhs_batch_dimensions()

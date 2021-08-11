@@ -239,7 +239,7 @@ Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read, absl::Cord* result) {
 }
 #endif
 
-int64 ZlibInputStream::Tell() const { return bytes_read_; }
+int64_t ZlibInputStream::Tell() const { return bytes_read_; }
 
 Status ZlibInputStream::Inflate() {
   int error = inflate(z_stream_def_->stream.get(), zlib_options_.flush_mode);

@@ -81,8 +81,8 @@ class FlatMapDatasetOpTest : public DatasetOpsTestBase {};
 // Test case 1: normal case.
 FlatMapDatasetParams FlatMapDatasetParams1() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{3, 3, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice");
   auto func = FunctionDefHelper::FunctionRef(
       /*name=*/"MakeTensorSliceDataset",
@@ -104,8 +104,8 @@ FlatMapDatasetParams FlatMapDatasetParams1() {
 // of dtype DT_VARIANT.
 FlatMapDatasetParams InvalidFlatMapDatasetParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{3, 3, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice");
   auto func = FunctionDefHelper::FunctionRef(/*name*/ "NonZero",
                                              /*attrs*/ {{"T", DT_INT64}});
@@ -123,8 +123,8 @@ std::vector<GetNextTestCase<FlatMapDatasetParams>> GetNextTestCases() {
   return {
       {/*dataset_params=*/FlatMapDatasetParams1(),
        /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape({1}),
-                            {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}})}};
+       CreateTensors<int64_t>(TensorShape({1}),
+                              {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}})}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(FlatMapDatasetOpTest, FlatMapDatasetParams,
@@ -134,11 +134,11 @@ std::vector<SkipTestCase<FlatMapDatasetParams>> SkipTestCases() {
   return {{/*dataset_params=*/FlatMapDatasetParams1(),
            /*num_to_skip*/ 2, /*expected_num_skipped*/ 2, /*get_next*/ true,
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({1}), {{2}})},
+           CreateTensors<int64_t>(TensorShape({1}), {{2}})},
           {/*dataset_params=*/FlatMapDatasetParams1(),
            /*num_to_skip*/ 4, /*expected_num_skipped*/ 4, /*get_next*/ true,
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({1}), {{4}})},
+           CreateTensors<int64_t>(TensorShape({1}), {{4}})},
           {/*dataset_params=*/FlatMapDatasetParams1(),
            /*num_to_skip*/ 9, /*expected_num_skipped*/ 9, /*get_next*/ false},
           {/*dataset_params=*/FlatMapDatasetParams1(),
@@ -204,8 +204,8 @@ IteratorSaveAndRestoreTestCases() {
       {/*dataset_params=*/FlatMapDatasetParams1(),
        /*breakpoints=*/{0, 4, 11},
        /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape({1}),
-                            {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}})}};
+       CreateTensors<int64_t>(TensorShape({1}),
+                              {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}})}};
 }
 
 ITERATOR_SAVE_AND_RESTORE_TEST_P(FlatMapDatasetOpTest, FlatMapDatasetParams,

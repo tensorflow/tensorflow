@@ -145,7 +145,7 @@ void RecordBatchDelayUsV2(int64_t batch_delay_us, const string& model_name,
 void RecordBatchParamBatchTimeoutMicros(int64_t batch_timeout_micros,
                                         const string& model_name,
                                         const string& op_name) {
-  static auto* cell = monitoring::Gauge<int64, 2>::New(
+  static auto* cell = monitoring::Gauge<int64_t, 2>::New(
       "/tensorflow/serving/batching/batch_timeout_micros",
       "Tracks how long a request can wait before being processed by a batch.",
       "model_name", "op_name");
@@ -155,7 +155,7 @@ void RecordBatchParamBatchTimeoutMicros(int64_t batch_timeout_micros,
 void RecordBatchParamMaxBatchSize(int64_t max_batch_size,
                                   const string& model_name,
                                   const string& op_name) {
-  static auto* cell = monitoring::Gauge<int64, 2>::New(
+  static auto* cell = monitoring::Gauge<int64_t, 2>::New(
       "/tensorflow/serving/batching/max_batch_size",
       "Tracks the maximum size of a batch.", "model_name", "op_name");
   cell->GetCell(model_name, op_name)->Set(max_batch_size);
@@ -164,7 +164,7 @@ void RecordBatchParamMaxBatchSize(int64_t max_batch_size,
 void RecordBatchParamMaxEnqueuedBatches(int64_t max_enqueued_batches,
                                         const string& model_name,
                                         const string& op_name) {
-  static auto* cell = monitoring::Gauge<int64, 2>::New(
+  static auto* cell = monitoring::Gauge<int64_t, 2>::New(
       "/tensorflow/serving/batching/max_enqueued_batches",
       "Tracks the maximum number of enqueued batches.", "model_name",
       "op_name");
@@ -488,7 +488,7 @@ Status BatchResourceBase::ConcatInputTensors(
       };
   IncrementalBarrier barrier(split_task_done_callback);
 
-  std::vector<int64> output_task_sizes;
+  std::vector<int64_t> output_task_sizes;
 
   if (open_batch_remaining_slot > 0) {
     output_task_sizes.push_back(open_batch_remaining_slot);
@@ -553,7 +553,7 @@ Status BatchResourceBase::SplitOutputTensors(
                             batch->num_tasks());
   }
 
-  std::vector<int64> task_sizes_plus_optional_padding;
+  std::vector<int64_t> task_sizes_plus_optional_padding;
   task_sizes_plus_optional_padding.reserve(batch->num_tasks());
   for (int i = 0; i < batch->num_tasks(); ++i) {
     task_sizes_plus_optional_padding.push_back(batch->task(i).size());
@@ -581,7 +581,7 @@ Status BatchResourceBase::SplitOutputTensors(
           "Batched output tensor has 0 dimensions");
     }
     if (output_tensor.shape().dim_size(0) !=
-        static_cast<int64>(batch->size() + padding_size)) {
+        static_cast<int64_t>(batch->size() + padding_size)) {
       return errors::FailedPrecondition(
           "Batched output tensor's 0th dimension does not equal the sum of "
           "the 0th dimension sizes of the input tensors");
@@ -783,7 +783,7 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
                          task.context->allocate_output(num_input_edges + 1,
                                                        TensorShape({}), &id),
                          task.done_callback);
-    id->scalar<int64>()() = task.guid;
+    id->scalar<int64_t>()() = task.guid;
   }
   OP_REQUIRES_OK_ASYNC(
       last_task_context,
@@ -804,7 +804,7 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
   Tensor* index = nullptr;
   TF_RETURN_IF_ERROR(
       context->allocate_output(output_index, index_shape, &index));
-  auto index_flat = index->shaped<int64, 2>({batch.num_tasks(), 3});
+  auto index_flat = index->shaped<int64_t, 2>({batch.num_tasks(), 3});
   size_t offset = 0;
   for (int task_idx = 0; task_idx < batch.num_tasks(); ++task_idx) {
     const BatchTask& task = batch.task(task_idx);

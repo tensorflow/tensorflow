@@ -162,14 +162,15 @@ VariantTensorDataReader::VariantTensorDataReader(
   }
 }
 
-Status VariantTensorDataReader::ReadScalar(StringPiece key, int64* val) const {
+Status VariantTensorDataReader::ReadScalar(StringPiece key,
+                                           int64_t* val) const {
   string name;
   TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
   return ReadScalar(name, key, val);
 }
 
 Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
-                                           int64* val) const {
+                                           int64_t* val) const {
   return ReadScalarInternal(name, key, val);
 }
 

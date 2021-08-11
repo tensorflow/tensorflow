@@ -43,7 +43,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       : DatasetBase(DatasetContext(ctx)), tensors_(std::move(tensors)) {
     for (const Tensor& t : tensors_) {
       dtypes_.push_back(t.dtype());
-      gtl::InlinedVector<int64, 4> element_dim_sizes;
+      gtl::InlinedVector<int64_t, 4> element_dim_sizes;
       // Handle scalar here. Check that everyone matches here? Or fail
       // at runtime?
       for (int i = 1; i < t.dims(); ++i) {
@@ -77,7 +77,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override { return tensors_[0].dim_size(0); }
+  int64_t Cardinality() const override { return tensors_[0].dim_size(0); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     return Status::OK();
@@ -134,7 +134,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       if (*end_of_sequence) {
         return Status::OK();
       }
-      int64_t index = split.scalar<int64>()();
+      int64_t index = split.scalar<int64_t>()();
       out_tensors->reserve(dataset()->tensors_.size());
       for (size_t i = 0; i < dataset()->tensors_.size(); ++i) {
         Tensor slice = dataset()->tensors_[i].SubSlice(index);

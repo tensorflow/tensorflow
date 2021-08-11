@@ -75,7 +75,7 @@ Status FeatureDenseCopy(const std::size_t out_index, const string& name,
             "values size: ",
             values.value_size(), " but output shape: ", shape.DebugString());
       }
-      auto out_p = out->flat<int64>().data() + offset;
+      auto out_p = out->flat<int64_t>().data() + offset;
       std::copy_n(values.value().data(), num_elements, out_p);
       return Status::OK();
     }
@@ -120,7 +120,7 @@ Tensor FeatureSparseCopy(const std::size_t batch, const string& key,
       const Int64List& values = feature.int64_list();
       const int64_t num_elements = values.value_size();
       Tensor out(dtype, TensorShape({num_elements}));
-      auto out_p = out.flat<int64>().data();
+      auto out_p = out.flat<int64_t>().data();
       std::copy_n(values.value().data(), num_elements, out_p);
       return out;
     }
@@ -147,17 +147,17 @@ Tensor FeatureSparseCopy(const std::size_t batch, const string& key,
   }
 }
 
-int64 CopyIntoSparseTensor(const Tensor& in, const int batch,
-                           const int64_t offset, Tensor* indices,
-                           Tensor* values) {
+int64_t CopyIntoSparseTensor(const Tensor& in, const int batch,
+                             const int64_t offset, Tensor* indices,
+                             Tensor* values) {
   const int64_t num_elements = in.shape().num_elements();
   const DataType& dtype = in.dtype();
   CHECK_EQ(dtype, values->dtype());
 
   // Update indices.
   if (num_elements > 0) {
-    auto ix_t = indices->matrix<int64>();
-    int64* ix_p = &ix_t(offset, 0);
+    auto ix_t = indices->matrix<int64_t>();
+    int64_t* ix_p = &ix_t(offset, 0);
     for (int64_t i = 0; i < num_elements; ++i, ix_p += 2) {
       *ix_p = batch;    // Column 0 stores the batch entry
       *(ix_p + 1) = i;  // Column 1 stores the index in the batch
@@ -167,8 +167,8 @@ int64 CopyIntoSparseTensor(const Tensor& in, const int batch,
   // Copy values over.
   switch (dtype) {
     case DT_INT64: {
-      std::copy_n(in.flat<int64>().data(), num_elements,
-                  values->flat<int64>().data() + offset);
+      std::copy_n(in.flat<int64_t>().data(), num_elements,
+                  values->flat<int64_t>().data() + offset);
       break;
     }
     case DT_FLOAT: {
@@ -195,8 +195,8 @@ void RowDenseCopy(const std::size_t& out_index, const DataType& dtype,
 
   switch (dtype) {
     case DT_INT64: {
-      std::copy_n(in.flat<int64>().data(), num_elements,
-                  out->flat<int64>().data() + offset);
+      std::copy_n(in.flat<int64_t>().data(), num_elements,
+                  out->flat<int64_t>().data() + offset);
       break;
     }
     case DT_FLOAT: {
@@ -388,7 +388,7 @@ Status BatchExampleProtoToTensors(
     (*output_sparse_shapes_tensor)[d] =
         Tensor(allocator, DT_INT64, TensorShape({2}));
 
-    auto shape_t = (*output_sparse_shapes_tensor)[d].vec<int64>();
+    auto shape_t = (*output_sparse_shapes_tensor)[d].vec<int64_t>();
     shape_t(0) = batch_size;
     shape_t(1) = sparse_tensor_batch_shapes.max_num_features;
 

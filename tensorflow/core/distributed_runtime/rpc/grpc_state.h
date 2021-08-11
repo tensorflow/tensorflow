@@ -221,7 +221,7 @@ class RPCState : public GrpcClientCQTag {
   ::grpc::ByteBuffer response_buf_;
   ::grpc::Status status_;
   StatusCallback done_;
-  int64 timeout_in_ms_;
+  int64_t timeout_in_ms_;
 
   size_t num_retries_ = 0;
   size_t max_retries_;

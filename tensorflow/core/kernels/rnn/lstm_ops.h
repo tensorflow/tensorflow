@@ -86,7 +86,7 @@ struct TensorAdd {
 template <typename Device, typename T>
 struct TensorZeroPadding {
   void operator()(const Device& d, const int64_t time_idx,
-                  typename TTypes<int64>::ConstVec seq_len,
+                  typename TTypes<int64_t>::ConstVec seq_len,
                   typename TTypes<T>::Vec mask, typename TTypes<T>::Matrix m) {
     // mask is shape [batch_size].
     mask.device(d) = seq_len.constant(time_idx) < seq_len;

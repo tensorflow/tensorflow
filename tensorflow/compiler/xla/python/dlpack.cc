@@ -49,8 +49,8 @@ struct DLPackTensor {
   // `external_reference` is always populated.
   std::unique_ptr<PjRtBuffer::ExternalReference> external_reference;
 
-  std::vector<int64> shape;
-  std::vector<int64> strides;
+  std::vector<int64_t> shape;
+  std::vector<int64_t> strides;
   DLManagedTensor tensor;
 };
 
@@ -165,8 +165,8 @@ StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
 }
 
 // Returns the strides for `shape`.
-std::vector<int64> StridesForShape(const Shape& shape) {
-  std::vector<int64> strides;
+std::vector<int64_t> StridesForShape(const Shape& shape) {
+  std::vector<int64_t> strides;
   CHECK(shape.IsArray());
   CHECK(shape.has_layout());
 
@@ -179,10 +179,10 @@ std::vector<int64> StridesForShape(const Shape& shape) {
   return strides;
 }
 
-StatusOr<std::vector<int64>> StridesToLayout(absl::Span<int64 const> dims,
-                                             absl::Span<int64 const> strides) {
+StatusOr<std::vector<int64_t>> StridesToLayout(
+    absl::Span<int64_t const> dims, absl::Span<int64_t const> strides) {
   CHECK_EQ(dims.size(), strides.size());
-  std::vector<int64> minor_to_major(dims.size());
+  std::vector<int64_t> minor_to_major(dims.size());
   std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
   absl::c_sort(minor_to_major, [&](int a, int b) {
     if (strides[a] < strides[b]) {
@@ -299,7 +299,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
                       PrimitiveTypeToDLDataType(
                           buffer->buffer()->on_device_shape().element_type()));
 
-  pack->shape = std::vector<int64>(
+  pack->shape = std::vector<int64_t>(
       buffer->buffer()->on_device_shape().dimensions().begin(),
       buffer->buffer()->on_device_shape().dimensions().end());
   pack->strides = StridesForShape(buffer->buffer()->on_device_shape());
@@ -353,16 +353,16 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
       DeviceForDLContext(cpu_client ? cpu_client->pjrt_client() : nullptr,
                          gpu_client ? gpu_client->pjrt_client() : nullptr,
                          dlmt->dl_tensor.ctx));
-  absl::Span<int64 const> dimensions(
-      reinterpret_cast<int64*>(dlmt->dl_tensor.shape), dlmt->dl_tensor.ndim);
+  absl::Span<int64_t const> dimensions(
+      reinterpret_cast<int64_t*>(dlmt->dl_tensor.shape), dlmt->dl_tensor.ndim);
   TF_ASSIGN_OR_RETURN(PrimitiveType element_type,
                       DLDataTypeToPrimitiveType(dlmt->dl_tensor.dtype));
 
-  std::vector<int64> minor_to_major;
+  std::vector<int64_t> minor_to_major;
   if (dlmt->dl_tensor.strides &&
       absl::c_find(dimensions, 0) == dimensions.end()) {
-    absl::Span<int64 const> strides(
-        reinterpret_cast<int64*>(dlmt->dl_tensor.strides),
+    absl::Span<int64_t const> strides(
+        reinterpret_cast<int64_t*>(dlmt->dl_tensor.strides),
         dlmt->dl_tensor.ndim);
     TF_ASSIGN_OR_RETURN(minor_to_major, StridesToLayout(dimensions, strides));
   } else {

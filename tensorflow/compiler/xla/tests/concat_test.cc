@@ -766,11 +766,11 @@ ENTRY jit_broken.874 {
 
 // Describes a binary rank-2 concatenation test.
 struct R2BinarySpec {
-  int64 lhs_dim0;
-  int64 lhs_dim1;
-  int64 rhs_dim0;
-  int64 rhs_dim1;
-  int64 concat_dimension;
+  int64_t lhs_dim0;
+  int64_t lhs_dim1;
+  int64_t rhs_dim0;
+  int64_t rhs_dim1;
+  int64_t concat_dimension;
 };
 
 // TEST_P harness for binary rank-2 concatenation.

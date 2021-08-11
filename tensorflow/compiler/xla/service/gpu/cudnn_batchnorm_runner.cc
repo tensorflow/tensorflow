@@ -69,7 +69,7 @@ struct DnnBatchDescriptors {
 
 DnnBatchDescriptors MakeBatchNormDescriptors(const Shape& shape,
                                              int64_t feature_index) {
-  std::vector<int64> logical_to_physical =
+  std::vector<int64_t> logical_to_physical =
       LayoutUtil::MakeLogicalToPhysical(shape.layout());
 
   auto physical_dim_size = [&](int64_t physical_dim) {

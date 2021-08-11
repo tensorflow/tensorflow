@@ -129,7 +129,7 @@ TF_CALL_COMPLEX_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
 //
 class TensorArray : public ResourceBase {
  public:
-  static std::atomic<int64> tensor_array_counter;
+  static std::atomic<int64_t> tensor_array_counter;
 
   // Construct a TensorArray for holding Tensors of type 'dtype' with
   // 'N' elements.  While the underlying storage is a std::vector and

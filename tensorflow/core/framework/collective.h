@@ -229,7 +229,7 @@ class StepSequenceInterface {
   // Returns the step_id that should be used for initiating a new execution
   // on the specified graph. May return the same step_id multiple times if
   // RetireStepId or RefreshStepIdReservation is not called.
-  virtual int64 NextStepId(int64_t graph_key) = 0;
+  virtual int64_t NextStepId(int64_t graph_key) = 0;
 
   // Reports that execution of the given step has completed successfully.
   // Should be called immediately after a step completes with OK status,
@@ -376,7 +376,7 @@ struct CollectiveContext {
   OpKernelContext::Params* op_params;            // Not owned
   const CollectiveParams* col_params;            // Not owned
   const string exec_key;
-  const int64 step_id;
+  const int64_t step_id;
   const Tensor* input;  // Not owned
   Tensor* output;       // Not owned
   Device* device;       // The device for which this instance labors

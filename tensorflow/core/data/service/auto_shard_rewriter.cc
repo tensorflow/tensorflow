@@ -186,7 +186,7 @@ void WorkerIndexResolver::AddWorker(absl::string_view worker_address) {
   }
 }
 
-StatusOr<int64> WorkerIndexResolver::GetWorkerIndex(
+StatusOr<int64_t> WorkerIndexResolver::GetWorkerIndex(
     absl::string_view worker_address) const {
   const auto it = absl::c_find(worker_addresses_, worker_address);
   if (it == worker_addresses_.cend()) {

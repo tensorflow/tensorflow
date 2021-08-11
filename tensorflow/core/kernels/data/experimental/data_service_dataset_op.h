@@ -41,14 +41,14 @@ class IterationCounter : public ResourceBase {
     return absl::StrCat(counter_);
   }
 
-  int64 GetAndIncrement() {
+  int64_t GetAndIncrement() {
     mutex_lock l(mu_);
     return ++counter_;
   }
 
  private:
   mutable mutex mu_;
-  int64 counter_ TF_GUARDED_BY(mu_) = 0;
+  int64_t counter_ TF_GUARDED_BY(mu_) = 0;
 };
 
 // Creates a dataset for reading from the tf.data service.
@@ -84,7 +84,7 @@ class DataServiceDatasetOp : public DatasetOpKernel {
   class Dataset;
 
   int op_version_;
-  int64 task_refresh_interval_hint_ms_;
+  int64_t task_refresh_interval_hint_ms_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   std::string data_transfer_protocol_;

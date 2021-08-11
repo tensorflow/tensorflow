@@ -109,11 +109,11 @@ DatasetDef RangeSquareDataset(const int64_t range) {
   DatasetDef dataset_def;
   *dataset_def.mutable_graph() = GDef(
       {NDef("start", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(0)}, {"dtype", DT_INT64}}),
+            {{"value", AsScalar<int64_t>(0)}, {"dtype", DT_INT64}}),
        NDef("stop", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(range)}, {"dtype", DT_INT64}}),
+            {{"value", AsScalar<int64_t>(range)}, {"dtype", DT_INT64}}),
        NDef("step", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(1)}, {"dtype", DT_INT64}}),
+            {{"value", AsScalar<int64_t>(1)}, {"dtype", DT_INT64}}),
        NDef("range", "RangeDataset", /*inputs=*/{"start", "stop", "step"},
             {{"output_shapes", gtl::ArraySlice<TensorShape>{TensorShape()}},
              {"output_types", gtl::ArraySlice<DataType>{DT_INT64}}}),

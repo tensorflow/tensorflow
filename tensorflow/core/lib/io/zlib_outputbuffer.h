@@ -90,7 +90,7 @@ class ZlibOutputBuffer : public WritableFile {
 
   // Returns the write position in the underlying file. The position does not
   // reflect buffered, un-flushed data.
-  Status Tell(int64* position) override;
+  Status Tell(int64_t* position) override;
 
  private:
   WritableFile* file_;  // Not owned

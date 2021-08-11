@@ -38,7 +38,7 @@ constexpr char kPrivateThreadpoolSize[] = "threadpool_size";
 constexpr double kRamBudgetShare = 0.5;
 
 // If value `x` matches `y`, returns default value `z`. Otherwise, return `x`.
-inline int64 value_or_default(int64_t x, int64_t y, int64_t z) {
+inline int64_t value_or_default(int64_t x, int64_t y, int64_t z) {
   return x == y ? z : x;
 }
 
@@ -173,8 +173,8 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   std::unique_ptr<CancellationManager> cancellation_manager_;
   mutex mu_;
   std::unique_ptr<Thread> model_thread_ TF_GUARDED_BY(mu_);
-  int64 max_intra_op_parallelism_;
-  int64 threadpool_size_;
+  int64_t max_intra_op_parallelism_;
+  int64_t threadpool_size_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
   // Must be ordered last as its execution may depend on other members.
@@ -236,7 +236,7 @@ string RootDataset::DebugString() const {
   return name_utils::DatasetDebugString(kDatasetType);
 }
 
-int64 RootDataset::Cardinality() const { return input_->Cardinality(); }
+int64_t RootDataset::Cardinality() const { return input_->Cardinality(); }
 
 Status RootDataset::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {

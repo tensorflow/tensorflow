@@ -45,7 +45,7 @@ const char kModulePrefix[] = R"(
       ROOT mul.1 = f32[] multiply(scalar_lhs.1, scalar_rhs.1)
     })";
 
-static int64 CountMultiOutputFusions(const HloModule* module) {
+static int64_t CountMultiOutputFusions(const HloModule* module) {
   int multi_output_fusion_count = 0;
   for (auto* computation : module->MakeNonfusionComputations()) {
     for (auto* instr : computation->instructions()) {

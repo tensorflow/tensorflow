@@ -63,7 +63,7 @@ class WorkerClientTest : public ::testing::Test {
   }
 
   // Creates a dataset and returns the dataset ID.
-  StatusOr<int64> RegisterDataset(const int64_t range) {
+  StatusOr<int64_t> RegisterDataset(const int64_t range) {
     const auto dataset_def = RangeSquareDataset(range);
     int64_t dataset_id = 0;
     absl::optional<std::string> element_spec;
@@ -73,7 +73,7 @@ class WorkerClientTest : public ::testing::Test {
   }
 
   // Creates a job and returns the job client ID.
-  StatusOr<int64> CreateJob(const int64_t dataset_id) {
+  StatusOr<int64_t> CreateJob(const int64_t dataset_id) {
     ProcessingModeDef processing_mode;
     processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
     int64_t job_client_id = 0;
@@ -84,7 +84,7 @@ class WorkerClientTest : public ::testing::Test {
   }
 
   // Gets the task for job `job_client_id`.
-  StatusOr<int64> GetTaskToRead(const int64_t job_client_id) {
+  StatusOr<int64_t> GetTaskToRead(const int64_t job_client_id) {
     ClientHeartbeatRequest request;
     ClientHeartbeatResponse response;
     request.set_job_client_id(job_client_id);
@@ -133,7 +133,7 @@ TEST_F(WorkerClientTest, LocalRead) {
   for (int64_t i = 0; i < range; ++i) {
     TF_ASSERT_OK_AND_ASSIGN(GetElementResult result,
                             GetElement(*client, task_id));
-    test::ExpectEqual(result.components[0], Tensor(int64{i * i}));
+    test::ExpectEqual(result.components[0], Tensor(int64_t{i * i}));
     EXPECT_FALSE(result.end_of_sequence);
   }
 
@@ -174,7 +174,7 @@ TEST_F(WorkerClientTest, GrpcRead) {
   for (int64_t i = 0; i < range; ++i) {
     TF_ASSERT_OK_AND_ASSIGN(GetElementResult result,
                             GetElement(*client, task_id));
-    test::ExpectEqual(result.components[0], Tensor(int64{i * i}));
+    test::ExpectEqual(result.components[0], Tensor(int64_t{i * i}));
     EXPECT_FALSE(result.end_of_sequence);
   }
 

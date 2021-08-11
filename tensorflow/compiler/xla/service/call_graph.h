@@ -165,7 +165,7 @@ class CallGraphNode {
 
   // The map from instruction to index in callsites_ for looking up the callsite
   // (if any) associated with a particular instruction in this computation.
-  absl::flat_hash_map<const HloInstruction*, int64> callsite_instructions_;
+  absl::flat_hash_map<const HloInstruction*, int64_t> callsite_instructions_;
 
   // The call sites in other computations which call this computation.
   std::vector<CallSite> caller_callsites_;
@@ -289,7 +289,7 @@ class CallGraph {
 
   // Map from HLO computation to the index of the corresponding call graph node
   // in nodes_.
-  absl::flat_hash_map<const HloComputation*, int64> node_indices_;
+  absl::flat_hash_map<const HloComputation*, int64_t> node_indices_;
 };
 
 }  // namespace xla

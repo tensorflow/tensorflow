@@ -472,7 +472,7 @@ string XlaCompiler::Argument::HumanString() const {
   }
 }
 
-std::vector<int64> XlaCompiler::Argument::DimensionSizes() const {
+std::vector<int64_t> XlaCompiler::Argument::DimensionSizes() const {
   if (absl::holds_alternative<TensorShape>(shape)) {
     return xla::InlinedVectorToVector(
         absl::get<TensorShape>(shape).dim_sizes());
@@ -481,13 +481,13 @@ std::vector<int64> XlaCompiler::Argument::DimensionSizes() const {
   }
 }
 
-absl::InlinedVector<int64, 4>
+absl::InlinedVector<int64_t, 4>
 XlaCompiler::Argument::DimensionSizesAsInlinedVector() const {
   if (absl::holds_alternative<TensorShape>(shape)) {
     return absl::get<TensorShape>(shape).dim_sizes();
   } else {
     auto v = absl::get<xla::Shape>(shape).dimensions();
-    return absl::InlinedVector<int64, 4>(v.begin(), v.end());
+    return absl::InlinedVector<int64_t, 4>(v.begin(), v.end());
   }
 }
 
@@ -531,7 +531,7 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
 
 XlaCompiler::~XlaCompiler() = default;
 
-int64 XlaCompiler::NextStepId() { return next_step_id_++; }
+int64_t XlaCompiler::NextStepId() { return next_step_id_++; }
 
 uint64 XlaCompiler::SignatureHash::operator()(
     const std::pair<string, std::vector<Argument>>& signature) const {

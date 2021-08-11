@@ -78,7 +78,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         // is passed with drop_remainder set to false. Avoid OOM in such case
         // by limiting `reserve()` size by 2**16.
         reserve_size_(drop_remainder ? batch_size
-                                     : std::min<int64>(batch_size, 1 << 16)),
+                                     : std::min<int64_t>(batch_size, 1 << 16)),
         num_parallel_calls_(num_parallel_calls),
         drop_remainder_(drop_remainder),
         parallel_copy_(parallel_copy),
@@ -128,7 +128,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64 Cardinality() const override {
+  int64_t Cardinality() const override {
     int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
@@ -329,12 +329,12 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
 
       mutex mu;
       bool end_of_input TF_GUARDED_BY(mu);
-      int64 num_elements TF_GUARDED_BY(mu);
+      int64_t num_elements TF_GUARDED_BY(mu);
       std::vector<Tensor> output TF_GUARDED_BY(mu);
       Status status TF_GUARDED_BY(mu);
       bool call_finished TF_GUARDED_BY(&Iterator::mu_);
       bool output_allocated TF_GUARDED_BY(mu);
-      const int64 uid = -1;
+      const int64_t uid = -1;
     };
 
     void CallCompleted(const std::shared_ptr<IteratorContext>& ctx,
@@ -591,7 +591,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     // `input_impl_` so that `input_impl_` is destroyed first.
     std::unique_ptr<CancellationManager> cancellation_manager_;
     // Counts the number of outstanding calls for this batch.
-    int64 num_calls_ TF_GUARDED_BY(*mu_) = 0;
+    int64_t num_calls_ TF_GUARDED_BY(*mu_) = 0;
     std::unique_ptr<IteratorBase> input_impl_;
     // Buffer for storing the (intermediate) batch results. Whenever a non-empty
     // batch result is added to or removed from `batch_results_`, call
@@ -609,9 +609,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     std::function<void()> deregister_fn_;
   };
 
-  const int64 batch_size_;
-  const int64 reserve_size_;
-  const int64 num_parallel_calls_;
+  const int64_t batch_size_;
+  const int64_t reserve_size_;
+  const int64_t num_parallel_calls_;
   const bool drop_remainder_;
   const bool parallel_copy_;
   const DatasetBase* const input_;
@@ -637,13 +637,14 @@ void ParallelBatchDatasetOp::MakeDataset(OpKernelContext* ctx,
                                          DatasetBase* input,
                                          DatasetBase** output) {
   int64_t batch_size = 0;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kBatchSize, &batch_size));
+  OP_REQUIRES_OK(ctx,
+                 ParseScalarArgument<int64_t>(ctx, kBatchSize, &batch_size));
   OP_REQUIRES(ctx, batch_size > 0,
               errors::InvalidArgument("Batch size must be greater than zero."));
 
   int64_t num_parallel_calls = 0;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kNumParallelCalls,
-                                                 &num_parallel_calls));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kNumParallelCalls,
+                                                   &num_parallel_calls));
 
   bool drop_remainder = false;
   OP_REQUIRES_OK(

@@ -122,7 +122,7 @@ Status RaggedGatherShapeFn(InferenceContext* c) {
   int num_splits;
   int64_t PARAMS_RAGGED_RANK;
   TF_RETURN_IF_ERROR(
-      c->GetAttr<int64>("PARAMS_RAGGED_RANK", &PARAMS_RAGGED_RANK));
+      c->GetAttr<int64_t>("PARAMS_RAGGED_RANK", &PARAMS_RAGGED_RANK));
   TF_RETURN_IF_ERROR(c->GetAttr<int>("OUTPUT_RAGGED_RANK", &num_splits));
 
   // Check rank of `indices`.

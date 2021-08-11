@@ -47,7 +47,7 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
   // signature, but it is ignored by the generated code and we pass in null for
   // it.
   if (hlo_profiling_enabled()) {
-    profile_counters_ = new int64[static_data.profile_counters_size_]();
+    profile_counters_ = new int64_t[static_data.profile_counters_size_]();
   }
 }
 

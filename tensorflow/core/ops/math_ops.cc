@@ -1096,7 +1096,7 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
   if (dim_t->dtype() == DT_INT32) {
     dimension_val = dim_t->scalar<int32>()();
   } else {
-    dimension_val = dim_t->scalar<int64>()();
+    dimension_val = dim_t->scalar<int64_t>()();
   }
 
   int64_t axis = dimension_val < 0 ? dimension_val + input_rank : dimension_val;
@@ -1481,7 +1481,7 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
                       Eigen::numext::abs(delta))
                    : (Eigen::numext::ceil(
                          Eigen::numext::abs((limit - start) / delta))));
-  c->set_output(0, c->Vector(static_cast<int64>(size)));
+  c->set_output(0, c->Vector(static_cast<int64_t>(size)));
   return Status::OK();
 }
 

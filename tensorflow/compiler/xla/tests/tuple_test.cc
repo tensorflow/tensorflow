@@ -498,7 +498,8 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
                                         {{1011, 2022}, {3031, 4042}},
                                         {{10011, 20022}, {30031, 40042}}});
   Literal prod(sum.shape());
-  ASSERT_TRUE(prod.Populate<complex64>([&sum](absl::Span<const int64> indexes) {
+  ASSERT_TRUE(prod.Populate<complex64>([&sum](
+                                           absl::Span<const int64_t> indexes) {
                     return sum.Get<complex64>(indexes) *
                            (indexes[indexes.size() - 1] == 0
                                 ? complex64(1, 2)

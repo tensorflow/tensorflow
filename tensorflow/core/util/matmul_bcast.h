@@ -66,9 +66,9 @@ class MatMulBCast {
   }
   bool IsBroadcastingRequired() const { return broadcasting_required_; }
 
-  const int64 output_batch_size() const { return output_batch_size_; }
-  const int64 x_batch_size() const { return x_batch_size_; }
-  const int64 y_batch_size() const { return y_batch_size_; }
+  const int64_t output_batch_size() const { return output_batch_size_; }
+  const int64_t x_batch_size() const { return x_batch_size_; }
+  const int64_t y_batch_size() const { return y_batch_size_; }
   const TensorShape& output_batch_shape() const { return output_batch_shape_; }
 
   // Returns the mapping from the flattened output batch indices to x's
@@ -77,22 +77,26 @@ class MatMulBCast {
   // operation should use the `x_batch_indices()[i]`th batch index of `x`.
   // Note: Returns an empty vector if broadcasting is not required. Callers
   // should only use this when IsBroadcastingRequired() returns true.
-  const std::vector<int64>& x_batch_indices() const { return x_batch_indices_; }
+  const std::vector<int64_t>& x_batch_indices() const {
+    return x_batch_indices_;
+  }
   // Returns the mapping from the flattened output batch indices to y's
   // flattened batch indices. Similar to x_batch_indices().
   // Note: Returns an empty vector if broadcasting is not required. Callers
   // should only use this when IsBroadcastingRequired() returns true.
-  const std::vector<int64>& y_batch_indices() const { return y_batch_indices_; }
+  const std::vector<int64_t>& y_batch_indices() const {
+    return y_batch_indices_;
+  }
 
  private:
   std::unique_ptr<BCast> batch_bcast_;
   bool broadcasting_required_ = false;
-  int64 x_batch_size_ = 1;
-  int64 y_batch_size_ = 1;
+  int64_t x_batch_size_ = 1;
+  int64_t y_batch_size_ = 1;
   TensorShape output_batch_shape_;
-  int64 output_batch_size_ = 1;
-  std::vector<int64> x_batch_indices_;
-  std::vector<int64> y_batch_indices_;
+  int64_t output_batch_size_ = 1;
+  std::vector<int64_t> x_batch_indices_;
+  std::vector<int64_t> y_batch_indices_;
 };
 
 }  // namespace tensorflow

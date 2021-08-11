@@ -97,10 +97,10 @@ static Status PadConv(HloCustomCallInstruction* conv,
   // Slice the new conv result if necessary, keeping in mind that new_conv
   // has tuple shape (new_result_shape, u8[0]).
   if (!ShapeUtil::Equal(result_shape, new_result_shape)) {
-    std::vector<int64> start_indices(result_shape.dimensions_size(), 0);
-    std::vector<int64> end_indices(result_shape.dimensions().begin(),
-                                   result_shape.dimensions().end());
-    std::vector<int64> strides(result_shape.dimensions_size(), 1);
+    std::vector<int64_t> start_indices(result_shape.dimensions_size(), 0);
+    std::vector<int64_t> end_indices(result_shape.dimensions().begin(),
+                                     result_shape.dimensions().end());
+    std::vector<int64_t> strides(result_shape.dimensions_size(), 1);
 
     auto* new_conv_result = add(
         HloInstruction::CreateGetTupleElement(new_result_shape, new_conv, 0));
@@ -224,7 +224,7 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
     new_filter_shape->set_dimensions(dnums.kernel_input_feature_dimension(), 4);
   } else {
     auto pad_dim = [](Shape* s, int64_t dim) {
-      s->set_dimensions(dim, RoundUpToNearest<int64>(s->dimensions(dim), 8));
+      s->set_dimensions(dim, RoundUpToNearest<int64_t>(s->dimensions(dim), 8));
     };
     pad_dim(new_input_shape, dnums.input_feature_dimension());
     pad_dim(new_filter_shape, dnums.kernel_input_feature_dimension());
@@ -311,9 +311,9 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
   // The input/kernel/output might already be vectorized (i.e. cudnn layout
   // NCHW_VECT_C).  If so, we pad the features dim so that
   // size(features_dim) * size(vect_dim) is a multiple of pad_to.
-  absl::optional<int64> input_vect_dim;
-  absl::optional<int64> kernel_vect_dim;
-  absl::optional<int64> result_vect_dim;
+  absl::optional<int64_t> input_vect_dim;
+  absl::optional<int64_t> kernel_vect_dim;
+  absl::optional<int64_t> result_vect_dim;
   std::tie(input_vect_dim, kernel_vect_dim, result_vect_dim) =
       FindVectorizedFeatureDims(dnums, input_shape, kernel_shape, result_shape);
 
@@ -338,8 +338,8 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
   {
     auto pad_dim = [&](Shape* s, int64_t dim, int64_t cur_vect_size) {
       CHECK_EQ(pad_to % cur_vect_size, 0);
-      s->set_dimensions(dim, RoundUpToNearest<int64>(s->dimensions(dim),
-                                                     pad_to / cur_vect_size));
+      s->set_dimensions(dim, RoundUpToNearest<int64_t>(s->dimensions(dim),
+                                                       pad_to / cur_vect_size));
     };
 
     switch (kind) {
@@ -403,7 +403,7 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
     // beyond the kMaxBytesTouchedIncrease factor.  This handles padding very
     // small vectors, like the bias vector of fused convs (which is just one
     // float per batch).
-    static constexpr int64 kAlwaysOkToPadBytes = 4096;
+    static constexpr int64_t kAlwaysOkToPadBytes = 4096;
 
     // Check that padding wouldn't increase the total bytes read/written by this
     // operation too much.

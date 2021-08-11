@@ -92,7 +92,7 @@ bool MatchAndExplainTensor(const Tensor& tensor, const Tensor& expected_tensor,
     case DT_INT32:
       return CompareTensor<int32>(tensor, expected_tensor, listener);
     case DT_INT64:
-      return CompareTensor<int64>(tensor, expected_tensor, listener);
+      return CompareTensor<int64_t>(tensor, expected_tensor, listener);
     case DT_UINT8:
       return CompareTensor<uint8>(tensor, expected_tensor, listener);
     case DT_UINT16:

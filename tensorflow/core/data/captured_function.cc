@@ -61,7 +61,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     return "";
   }
 
-  int64 processing_time() {
+  int64_t processing_time() {
     tf_shared_lock l(mu_);
     return processing_time_;
   }
@@ -99,13 +99,13 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     void SetScheduled(int64_t nanos) override {}
 
    private:
-    int64 start_time_ns_ = 0;
-    int64 end_time_ns_ = 0;
+    int64_t start_time_ns_ = 0;
+    int64_t end_time_ns_ = 0;
     SimpleStepStatsCollector* step_stats_collector_;  // Not owned.
   };
 
   mutex mu_;
-  int64 processing_time_ TF_GUARDED_BY(mu_) = 0;
+  int64_t processing_time_ TF_GUARDED_BY(mu_) = 0;
 };
 
 Status GetCapturedInput(const CapturedFunction* const func, int index,

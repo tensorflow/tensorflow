@@ -75,7 +75,7 @@ constexpr char kOutputAllocated[] = "output_allocated";
 constexpr char kStatus[] = "status";
 
 // Computes ceil(x / y).
-inline int64 CeilDiv(int64_t x, int64_t y) { return (x + y - 1) / y; }
+inline int64_t CeilDiv(int64_t x, int64_t y) { return (x + y - 1) / y; }
 
 }  // namespace
 
@@ -123,7 +123,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override {
+  int64_t Cardinality() const override {
     if (!preserve_cardinality_) {
       return kUnknownCardinality;
     }
@@ -368,13 +368,13 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
       mutex mu;
       bool end_of_input TF_GUARDED_BY(mu);
-      int64 num_elements TF_GUARDED_BY(mu);
+      int64_t num_elements TF_GUARDED_BY(mu);
       std::vector<Tensor> output;
       bool output_allocated TF_GUARDED_BY(mu);
       Status status TF_GUARDED_BY(mu);
-      int64 status_offset TF_GUARDED_BY(mu);
+      int64_t status_offset TF_GUARDED_BY(mu);
       // Counts the number of outstanding calls for this batch.
-      int64 num_calls TF_GUARDED_BY(&Iterator::mu_);
+      int64_t num_calls TF_GUARDED_BY(&Iterator::mu_);
       const uint64 uid = -1;
     };
 
@@ -530,7 +530,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
     void RunnerThread(const std::shared_ptr<IteratorContext>& ctx)
         TF_LOCKS_EXCLUDED(*mu_) {
-      std::vector<std::pair<std::shared_ptr<BatchResult>, int64>> new_calls;
+      std::vector<std::pair<std::shared_ptr<BatchResult>, int64_t>> new_calls;
       RecordStart(ctx.get());
       auto stop_cleanup =
           gtl::MakeCleanup([this, &ctx]() { RecordStop(ctx.get()); });
@@ -668,9 +668,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // `input_impl_` so that `input_impl_` is destroyed first.
     std::unique_ptr<CancellationManager> cancellation_manager_;
     // Counts the number of outstanding calls for this batch.
-    int64 num_calls_ TF_GUARDED_BY(*mu_) = 0;
+    int64_t num_calls_ TF_GUARDED_BY(*mu_) = 0;
     // Counts the total number of calls.
-    int64 call_counter_ TF_GUARDED_BY(*mu_) = 0;
+    int64_t call_counter_ TF_GUARDED_BY(*mu_) = 0;
     std::unique_ptr<IteratorBase> input_impl_;
     // Buffer for storing the (intermediate) batch results. Whenever an
     // output-allocated batch result is added to or removed from
@@ -682,9 +682,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // Determines whether the transformation has been cancelled.
     bool cancelled_ TF_GUARDED_BY(*mu_) = false;
     // Identifies the number of callers currently waiting for a batch result.
-    int64 waiting_ TF_GUARDED_BY(*mu_) = 0;
+    int64_t waiting_ TF_GUARDED_BY(*mu_) = 0;
     // Identifies the maximum number of batch results to store.
-    int64 max_batch_results_ TF_GUARDED_BY(*mu_);
+    int64_t max_batch_results_ TF_GUARDED_BY(*mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
 
     // Method for deregistering the cancellation callback.
@@ -692,8 +692,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
   };
 
   const DatasetBase* const input_;
-  const int64 batch_size_;
-  const int64 num_parallel_calls_;
+  const int64_t batch_size_;
+  const int64_t num_parallel_calls_;
   const bool drop_remainder_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;

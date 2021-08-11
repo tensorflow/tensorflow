@@ -632,9 +632,9 @@ void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
 TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx, TF_DataType dtype,
                                   const int64_t* dims, int num_dims,
                                   TF_Status* status) {
-  std::vector<tensorflow::int64> dimvec(num_dims);
+  std::vector<int64_t> dimvec(num_dims);
   for (int i = 0; i < num_dims; ++i) {
-    dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
+    dimvec[i] = static_cast<int64_t>(dims[i]);
   }
 
   if (ctx == nullptr) {

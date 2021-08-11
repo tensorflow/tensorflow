@@ -160,7 +160,7 @@ void BFSLaunchOrder(const HloComputation* computation,
   // The sorting algorithm repeatedly pops the top from the queue and deletes
   // that HLO from the graph, making more HLOs incoming-edge free.
   std::deque<HloInstruction*> queue;
-  std::unordered_map<const HloInstruction*, int64> incoming_edge_count;
+  std::unordered_map<const HloInstruction*, int64_t> incoming_edge_count;
   for (auto* hlo : computation->instructions()) {
     if (hlo->operand_count() == 0) {
       queue.push_back(hlo);

@@ -83,13 +83,13 @@ class CSRSparseMatrixToSparseTensorCPUOp : public OpKernel {
     const int batch_size = csr_sparse_matrix->batch_size();
     const int64_t total_nnz = csr_sparse_matrix->total_nnz();
     const int rank = csr_sparse_matrix->dense_shape().dim_size(0);
-    auto dense_shape_vec = dense_shape.vec<int64>();
+    auto dense_shape_vec = dense_shape.vec<int64_t>();
     const int64_t num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
 
     Tensor* indices;
     OP_REQUIRES_OK(
         c, c->allocate_output(0, TensorShape({total_nnz, rank}), &indices));
-    auto indices_flat = indices->template flat<int64>();
+    auto indices_flat = indices->template flat<int64_t>();
 
     auto csr_row_ptr = csr_sparse_matrix->row_pointers().vec<int32>();
     auto csr_col_ind = csr_sparse_matrix->col_indices().vec<int32>();
@@ -151,7 +151,7 @@ class CSRSparseMatrixToSparseTensorGPUOp : public OpKernel {
     const int batch_size = csr_sparse_matrix->batch_size();
     const int64_t total_nnz = csr_sparse_matrix->total_nnz();
 
-    auto dense_shape = dense_shape_t.vec<int64>();
+    auto dense_shape = dense_shape_t.vec<int64_t>();
     const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
 
     Tensor* indices_t;
@@ -163,7 +163,7 @@ class CSRSparseMatrixToSparseTensorGPUOp : public OpKernel {
                    c->allocate_output(1, TensorShape({total_nnz}), &values_t));
 
     functor::CSRSparseMatrixToCOOSparseMatrix<Device> csr_to_coo;
-    auto indices = indices_t->matrix<int64>();
+    auto indices = indices_t->matrix<int64_t>();
 
     auto csr_row_ptr = csr_sparse_matrix->row_pointers().vec<int32>();
     auto coo_col_ind = csr_sparse_matrix->col_indices().vec<int32>();
@@ -223,11 +223,11 @@ namespace functor {
 template <>
 struct COOSparseMatrixToSparseTensor<GPUDevice> {
   Status operator()(OpKernelContext* ctx,
-                    TTypes<int64>::ConstVec host_dense_shape,
+                    TTypes<int64_t>::ConstVec host_dense_shape,
                     TTypes<int>::ConstVec host_batch_ptrs,
                     TTypes<int>::Vec coo_row_ind,
                     TTypes<int>::ConstVec coo_col_ind,
-                    TTypes<int64>::Matrix indices);
+                    TTypes<int64_t>::Matrix indices);
 };
 extern template struct COOSparseMatrixToSparseTensor<GPUDevice>;
 

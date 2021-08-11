@@ -45,7 +45,7 @@ class Semaphore {
 
    private:
     Semaphore* semaphore_;
-    int64 amount_;
+    int64_t amount_;
   };
   // RAII version of Acquire. Releases the reservation when the
   // ScopedReservation is destroyed.
@@ -54,13 +54,13 @@ class Semaphore {
  private:
   struct CanAcquireArgs {
     Semaphore* semaphore;
-    int64 amount;
+    int64_t amount;
   };
   static bool CanAcquire(CanAcquireArgs* args)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(args->semaphore->mu_);
 
   absl::Mutex mu_;
-  int64 value_ ABSL_GUARDED_BY(mu_);
+  int64_t value_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace xla

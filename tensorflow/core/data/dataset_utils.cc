@@ -56,9 +56,9 @@ static mutex* get_dataset_experiment_registry_lock() {
   return &dataset_experiment_registry_lock;
 }
 
-static absl::flat_hash_map<string, int64>* get_dataset_experiments() {
-  static absl::flat_hash_map<string, int64>* experiments =
-      new absl::flat_hash_map<string, int64>;
+static absl::flat_hash_map<string, int64_t>* get_dataset_experiments() {
+  static absl::flat_hash_map<string, int64_t>* experiments =
+      new absl::flat_hash_map<string, int64_t>;
   return experiments;
 }
 
@@ -188,7 +188,8 @@ bool IsOpAllowlisted(const OpDef* op_def) {
 
 }  // namespace
 
-std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds) {
+std::pair<int64_t, int64_t> MaybeOverrideSeeds(
+    std::pair<int64_t, int64_t> seeds) {
   if (seeds.first == 0 && seeds.second == 0) {
     return {random::New64(), random::New64()};
   }
@@ -452,7 +453,7 @@ absl::flat_hash_set<string> GetExperiments(
   }
 
   // Identify opted out experiments.
-  absl::flat_hash_map<string, int64> live_experiments =
+  absl::flat_hash_map<string, int64_t> live_experiments =
       DatasetExperimentRegistry::Experiments();
   absl::flat_hash_set<string> opt_outs;
   if (opt_outs_raw == "all") {
@@ -666,7 +667,7 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
                    const Status& status, IteratorStateWriter* writer) {
   TF_RETURN_IF_ERROR(writer->WriteScalar(
       FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
-      static_cast<int64>(status.code())));
+      static_cast<int64_t>(status.code())));
   if (!status.ok()) {
     TF_RETURN_IF_ERROR(writer->WriteScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
@@ -873,7 +874,7 @@ void DatasetExperimentRegistry::Register(const string& experiment,
 }
 
 // static
-absl::flat_hash_map<string, int64> DatasetExperimentRegistry::Experiments() {
+absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
   mutex_lock l(*get_dataset_experiment_registry_lock());
   return *get_dataset_experiments();
 }

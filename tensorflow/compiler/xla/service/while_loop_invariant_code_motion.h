@@ -27,7 +27,7 @@ namespace xla {
 
 class WhileLoopInvariantCodeMotion : public HloModulePass {
  public:
-  using ShapeSizeFunction = std::function<int64(const Shape&)>;
+  using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
   // If `hoist_constants` is true then constants are always hoisted out of while
   // loop bodies.  Otherwise they are only hoisted out if they enable other
   // non-trivial computations to be hoisted out.

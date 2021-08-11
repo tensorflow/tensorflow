@@ -52,7 +52,7 @@ class XlaCompiledCpuFunction {
   using RawFunction = void (*)(void* result,
                                const xla::ExecutableRunOptions* run_options,
                                const void** args, void** temps,
-                               int64* profile_counters);
+                               int64_t* profile_counters);
 
   // StaticData represents the state necessary to run an XLA-compiled
   // function. For JIT this is backed by data in XlaJitCompiledCpuFunction; for
@@ -74,10 +74,10 @@ class XlaCompiledCpuFunction {
     const int32* arg_index_table_ = nullptr;
 
     // There are num_args entry parameters.
-    int64 num_args_ = 0;
+    int64_t num_args_ = 0;
 
     // There are num_variables variables.
-    int64 num_variables_ = 0;
+    int64_t num_variables_ = 0;
 
     // The 0-based index of the result tuple, in the temp buffers.
     size_t result_index_ = 0;
@@ -99,7 +99,7 @@ class XlaCompiledCpuFunction {
     // disabled.  This information is already present in
     // hlo_profile_printer_data but xla::HloProfilePrinterData is forward
     // declared so we don't have access to that information here.
-    int64 profile_counters_size_ = 0;
+    int64_t profile_counters_size_ = 0;
 
     // Only XlaCompiledCpuFunction is allowed to read and write the above
     // fields.
@@ -212,7 +212,7 @@ class XlaCompiledCpuFunction {
   // `hlo_profile_printer()`.
   //
   // When Hlo profiling is disabled, this accessor returns null.
-  const int64* profile_counters() const { return profile_counters_; }
+  const int64_t* profile_counters() const { return profile_counters_; }
 
   // Returns the buffer for the positional result at the given `index`.
   void* result_data(size_t index) { return results()[index]; }
@@ -370,7 +370,7 @@ class XlaCompiledCpuFunction {
   void* alloc_buffer_table_ = nullptr;
 
   // Backing memory for profiling counters.
-  int64* profile_counters_ = nullptr;
+  int64_t* profile_counters_ = nullptr;
 
   // Options and context passed to the compiled function.
   xla::ExecutableRunOptions run_options_;

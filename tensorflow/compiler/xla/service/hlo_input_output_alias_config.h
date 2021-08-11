@@ -48,7 +48,7 @@ class HloInputOutputAliasConfig {
           parameter_index(std::move(parameter_index)),
           kind(kind) {}
 
-    int64 parameter_number;
+    int64_t parameter_number;
     ShapeIndex parameter_index;
     AliasKind kind;
 
@@ -121,7 +121,7 @@ class HloInputOutputAliasConfig {
   // Specifically, the config's input and output should be in-bound and size of
   // the aliased buffers should match.
   Status Verify(const HloModule& module,
-                std::function<int64(const Shape&)> size_func_) const;
+                std::function<int64_t(const Shape&)> size_func_) const;
 
   Status ForEachAliasWithStatus(AliasFnWithStatus fn) const;
 

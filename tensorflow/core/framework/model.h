@@ -135,7 +135,7 @@ class Node {
  public:
   // Arguments for `Node` constructor.
   struct Args {
-    int64 id;
+    int64_t id;
     string name;
     std::shared_ptr<Node> output;
   };
@@ -207,22 +207,22 @@ class Node {
   }
 
   // Returns the number of bytes stored in this node's buffer.
-  int64 buffered_bytes() const TF_LOCKS_EXCLUDED(mu_) {
+  int64_t buffered_bytes() const TF_LOCKS_EXCLUDED(mu_) {
     return buffered_bytes_;
   }
 
   // Returns the number of elements stored in this node's buffer.
-  int64 buffered_elements() const TF_LOCKS_EXCLUDED(mu_) {
+  int64_t buffered_elements() const TF_LOCKS_EXCLUDED(mu_) {
     return buffered_elements_;
   }
 
   // Returns the number of bytes consumed by the node.
-  int64 bytes_consumed() const TF_LOCKS_EXCLUDED(mu_) {
+  int64_t bytes_consumed() const TF_LOCKS_EXCLUDED(mu_) {
     return bytes_consumed_;
   }
 
   // Returns the number of bytes produced by the node.
-  int64 bytes_produced() const TF_LOCKS_EXCLUDED(mu_) {
+  int64_t bytes_produced() const TF_LOCKS_EXCLUDED(mu_) {
     return bytes_produced_;
   }
 
@@ -236,7 +236,7 @@ class Node {
   }
 
   // Returns the unique node ID.
-  int64 id() const TF_LOCKS_EXCLUDED(mu_) { return id_; }
+  int64_t id() const TF_LOCKS_EXCLUDED(mu_) { return id_; }
 
   // Returns the node inputs.
   std::list<std::shared_ptr<Node>> inputs() const TF_LOCKS_EXCLUDED(mu_) {
@@ -251,9 +251,7 @@ class Node {
   const string& name() const { return name_; }
 
   // Returns the number of elements produced by the node.
-  int64 num_elements() const TF_LOCKS_EXCLUDED(mu_) {
-    return num_elements_;
-  }
+  int64_t num_elements() const TF_LOCKS_EXCLUDED(mu_) { return num_elements_; }
 
   // Returns the node output.
   Node* output() const { return output_; }
@@ -265,7 +263,7 @@ class Node {
   }
 
   // Returns the aggregate processing time.
-  int64 processing_time() const TF_LOCKS_EXCLUDED(mu_) {
+  int64_t processing_time() const TF_LOCKS_EXCLUDED(mu_) {
     return processing_time_;
   }
 
@@ -432,13 +430,13 @@ class Node {
     monitoring::CounterCell* const bytes_consumed_counter_;
     monitoring::CounterCell* const bytes_produced_counter_;
     monitoring::CounterCell* const num_elements_counter_;
-    std::atomic<int64> recorded_bytes_consumed_;
-    std::atomic<int64> recorded_bytes_produced_;
-    std::atomic<int64> recorded_num_elements_;
+    std::atomic<int64_t> recorded_bytes_consumed_;
+    std::atomic<int64_t> recorded_bytes_produced_;
+    std::atomic<int64_t> recorded_num_elements_;
   };
 
   // Returns the number of inputs.
-  int64 num_inputs() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+  int64_t num_inputs() const TF_SHARED_LOCKS_REQUIRED(mu_) {
     int64_t num_inputs = 0;
     for (auto& input : inputs_) {
       // Inputs for which autotuning is disabled are excluded.
@@ -562,19 +560,19 @@ class Node {
   static thread_local int64_t work_start_;  // Will be initialized to zero.
 
   mutable mutex mu_;
-  const int64 id_;
+  const int64_t id_;
   const string name_;
 
   // Indicates whether the subtree rooted in this node should be included in
   // autotuning. In particular, if this is `false`, then the subtree is excluded
   // from computation of output time and processing time.
   std::atomic<bool> autotune_;
-  std::atomic<int64> buffered_bytes_;
-  std::atomic<int64> buffered_elements_;
-  std::atomic<int64> bytes_consumed_;
-  std::atomic<int64> bytes_produced_;
-  std::atomic<int64> num_elements_;
-  std::atomic<int64> processing_time_;
+  std::atomic<int64_t> buffered_bytes_;
+  std::atomic<int64_t> buffered_elements_;
+  std::atomic<int64_t> bytes_consumed_;
+  std::atomic<int64_t> bytes_produced_;
+  std::atomic<int64_t> num_elements_;
+  std::atomic<int64_t> processing_time_;
   std::atomic<bool> record_metrics_;
   Metrics metrics_;
   absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters_
@@ -582,7 +580,7 @@ class Node {
 
   // Statistic of inputs processing time history.
   double input_processing_time_sum_ = 0.0L;
-  int64 input_processing_time_count_ = 0;
+  int64_t input_processing_time_count_ = 0;
 
   // Inputs of this node. These can represent an iterator created from the input
   // dataset but also other input iterators (e.g. created by the user-defined
@@ -771,7 +769,7 @@ class Model {
   mutex mu_;
   // Used for coordinating the optimization loop and model modifications.
   condition_variable optimize_cond_var_;
-  int64 id_counter_ TF_GUARDED_BY(mu_) = 1;
+  int64_t id_counter_ TF_GUARDED_BY(mu_) = 1;
   std::shared_ptr<Node> output_ TF_GUARDED_BY(mu_) = nullptr;
 
   // Indicates whether the modeling framework should collect resource usage
@@ -784,7 +782,7 @@ class Model {
 
   // Determines the time the optimization loop should wait between
   // running optimizations.
-  int64 optimization_period_ms_ TF_GUARDED_BY(mu_);
+  int64_t optimization_period_ms_ TF_GUARDED_BY(mu_);
 
   // Gauge cell that can be used to collect the state of the model.
   monitoring::GaugeCell<std::function<std::string()>>* model_gauge_cell_ =

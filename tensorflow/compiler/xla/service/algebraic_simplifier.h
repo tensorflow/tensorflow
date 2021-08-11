@@ -122,7 +122,7 @@ class AlgebraicSimplifierOptions {
     very_small_gather_size_ = size;
   }
 
-  int64 very_small_gather_size() const { return very_small_gather_size_; }
+  int64_t very_small_gather_size() const { return very_small_gather_size_; }
 
   void set_cudnn_batchnorm_forward_training_metadata(const string& c) {
     metadata_.cudnn_batchnorm_forward_training_metadata = c;
@@ -180,7 +180,7 @@ class AlgebraicSimplifierOptions {
   bool enable_reduce_of_reshape_{true};
   bool enable_negative_padding_replacement_{true};
   bool replace_transpose_with_bitcast_{true};
-  int64 very_small_gather_size_{4};
+  int64_t very_small_gather_size_{4};
   Metadata metadata_;
 };
 

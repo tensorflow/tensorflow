@@ -32,7 +32,7 @@ namespace tensorflow {
 namespace lookup {
 
 std::string UniqueNodeName(const std::string& base) {
-  static std::atomic<int64> counter(0);
+  static std::atomic<int64_t> counter(0);
   return strings::StrCat(base, "/", counter.fetch_add(1), "/", random::New64());
 }
 
@@ -143,7 +143,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
 
   TensorShape value_shape() const override { return TensorShape(); }
 
-  int64 MemoryUsed() const override {
+  int64_t MemoryUsed() const override {
     int64_t ret = 0;
     tf_shared_lock l(mu_);
     for (unsigned i = 0; i < table_.bucket_count(); ++i) {
@@ -331,7 +331,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
 
   TensorShape value_shape() const override { return value_shape_; }
 
-  int64 MemoryUsed() const override {
+  int64_t MemoryUsed() const override {
     int64_t ret = 0;
     tf_shared_lock l(mu_);
     for (unsigned i = 0; i < table_.bucket_count(); ++i) {
@@ -666,7 +666,7 @@ class MutableDenseHashTable final : public LookupInterface {
 
   TensorShape value_shape() const override { return value_shape_; }
 
-  int64 MemoryUsed() const override TF_LOCKS_EXCLUDED(mu_) {
+  int64_t MemoryUsed() const override TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return sizeof(MutableDenseHashTable) + key_buckets_.AllocatedBytes() +
            value_buckets_.AllocatedBytes() + empty_key_.AllocatedBytes();
@@ -868,8 +868,8 @@ class MutableDenseHashTable final : public LookupInterface {
   TensorShape value_shape_;
   float max_load_factor_;
   mutable mutex mu_;
-  int64 num_entries_ TF_GUARDED_BY(mu_);
-  int64 num_buckets_ TF_GUARDED_BY(mu_);
+  int64_t num_entries_ TF_GUARDED_BY(mu_);
+  int64_t num_buckets_ TF_GUARDED_BY(mu_);
   Tensor key_buckets_ TF_GUARDED_BY(mu_);
   Tensor value_buckets_ TF_GUARDED_BY(mu_);
   Tensor empty_key_;
@@ -1013,7 +1013,7 @@ class LookupTableSizeOp : public LookupTableOpKernel {
 
     Tensor* out;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("size", TensorShape({}), &out));
-    out->flat<int64>().setConstant(table->size());
+    out->flat<int64_t>().setConstant(table->size());
   }
 };
 
@@ -1097,16 +1097,16 @@ REGISTER_KERNEL(int32, double);
 REGISTER_KERNEL(int32, float);
 REGISTER_KERNEL(int32, int32);
 REGISTER_KERNEL(int32, tstring);
-REGISTER_KERNEL(int64, double);
-REGISTER_KERNEL(int64, float);
-REGISTER_KERNEL(int64, int32);
-REGISTER_KERNEL(int64, int64);
-REGISTER_KERNEL(int64, tstring);
+REGISTER_KERNEL(int64_t, double);
+REGISTER_KERNEL(int64_t, float);
+REGISTER_KERNEL(int64_t, int32);
+REGISTER_KERNEL(int64_t, int64_t);
+REGISTER_KERNEL(int64_t, tstring);
 REGISTER_KERNEL(tstring, bool);
 REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
 REGISTER_KERNEL(tstring, int32);
-REGISTER_KERNEL(tstring, int64);
+REGISTER_KERNEL(tstring, int64_t);
 REGISTER_KERNEL(tstring, tstring);
 
 #undef REGISTER_KERNEL
@@ -1131,17 +1131,17 @@ REGISTER_KERNEL(tstring, tstring);
 REGISTER_KERNEL(int32, double);
 REGISTER_KERNEL(int32, float);
 REGISTER_KERNEL(int32, int32);
-REGISTER_KERNEL(int64, double);
-REGISTER_KERNEL(int64, float);
-REGISTER_KERNEL(int64, int32);
-REGISTER_KERNEL(int64, int64);
-REGISTER_KERNEL(int64, tstring);
-REGISTER_KERNEL(int64, Variant);
+REGISTER_KERNEL(int64_t, double);
+REGISTER_KERNEL(int64_t, float);
+REGISTER_KERNEL(int64_t, int32);
+REGISTER_KERNEL(int64_t, int64_t);
+REGISTER_KERNEL(int64_t, tstring);
+REGISTER_KERNEL(int64_t, Variant);
 REGISTER_KERNEL(tstring, bool);
 REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
 REGISTER_KERNEL(tstring, int32);
-REGISTER_KERNEL(tstring, int64);
+REGISTER_KERNEL(tstring, int64_t);
 
 #undef REGISTER_KERNEL
 
@@ -1165,16 +1165,16 @@ REGISTER_KERNEL(tstring, int64);
 REGISTER_KERNEL(int32, double);
 REGISTER_KERNEL(int32, float);
 REGISTER_KERNEL(int32, int32);
-REGISTER_KERNEL(int64, double);
-REGISTER_KERNEL(int64, float);
-REGISTER_KERNEL(int64, int32);
-REGISTER_KERNEL(int64, int64);
-REGISTER_KERNEL(int64, tstring);
+REGISTER_KERNEL(int64_t, double);
+REGISTER_KERNEL(int64_t, float);
+REGISTER_KERNEL(int64_t, int32);
+REGISTER_KERNEL(int64_t, int64_t);
+REGISTER_KERNEL(int64_t, tstring);
 REGISTER_KERNEL(tstring, bool);
 REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
 REGISTER_KERNEL(tstring, int32);
-REGISTER_KERNEL(tstring, int64);
+REGISTER_KERNEL(tstring, int64_t);
 
 #undef REGISTER_KERNEL
 
@@ -1198,17 +1198,17 @@ REGISTER_KERNEL(tstring, int64);
 REGISTER_KERNEL(int32, double);
 REGISTER_KERNEL(int32, float);
 REGISTER_KERNEL(int32, int32);
-REGISTER_KERNEL(int64, bool);
-REGISTER_KERNEL(int64, double);
-REGISTER_KERNEL(int64, float);
-REGISTER_KERNEL(int64, int32);
-REGISTER_KERNEL(int64, int64);
-REGISTER_KERNEL(int64, Variant);
+REGISTER_KERNEL(int64_t, bool);
+REGISTER_KERNEL(int64_t, double);
+REGISTER_KERNEL(int64_t, float);
+REGISTER_KERNEL(int64_t, int32);
+REGISTER_KERNEL(int64_t, int64_t);
+REGISTER_KERNEL(int64_t, Variant);
 REGISTER_KERNEL(tstring, bool);
 REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
 REGISTER_KERNEL(tstring, int32);
-REGISTER_KERNEL(tstring, int64);
+REGISTER_KERNEL(tstring, int64_t);
 REGISTER_KERNEL(tstring, ResourceHandle);
 
 #undef REGISTER_KERNEL

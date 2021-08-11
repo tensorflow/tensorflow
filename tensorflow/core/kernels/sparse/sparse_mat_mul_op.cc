@@ -129,10 +129,10 @@ class CSRSparseMatMulCPUOp : public OpKernel {
     TensorShape b_shape;
     OP_REQUIRES_OK(ctx,
                    TensorShapeUtils::MakeShape(
-                       input_matrix_a->dense_shape().vec<int64>(), &a_shape));
+                       input_matrix_a->dense_shape().vec<int64_t>(), &a_shape));
     OP_REQUIRES_OK(ctx,
                    TensorShapeUtils::MakeShape(
-                       input_matrix_b->dense_shape().vec<int64>(), &b_shape));
+                       input_matrix_b->dense_shape().vec<int64_t>(), &b_shape));
 
     const int rank = a_shape.dims();
     const int row_dim = (rank == 2) ? 0 : 1;
@@ -152,7 +152,7 @@ class CSRSparseMatMulCPUOp : public OpKernel {
     // batch dimension.
     const int batch_size = input_matrix_a->batch_size();
     Tensor output_shape(cpu_allocator(), DT_INT64, TensorShape({rank}));
-    auto output_shape_vec = output_shape.vec<int64>();
+    auto output_shape_vec = output_shape.vec<int64_t>();
     if (rank == 3) output_shape_vec(0) = batch_size;
     output_shape_vec(row_dim) = a_shape.dim_size(row_dim);
     output_shape_vec(row_dim + 1) = b_shape.dim_size(row_dim + 1);
@@ -265,7 +265,7 @@ class CSRSparseMatMulCPUOp : public OpKernel {
   Eigen::Ref<const SparseMatrix> GetSparseMatrixRef(
       const CSRSparseMatrix& csr_matrix, const int rank, const int batch_index,
       const bool transpose, const bool adjoint) {
-    const auto dense_shape = csr_matrix.dense_shape().vec<int64>();
+    const auto dense_shape = csr_matrix.dense_shape().vec<int64_t>();
     const int64_t num_rows = dense_shape(rank == 2 ? 0 : 1);
     const int64_t num_cols = dense_shape(rank == 2 ? 1 : 2);
 
@@ -329,8 +329,8 @@ class CSRSparseMatMulGPUOp : public OpKernel {
 
     // TODO(ebrevdo): MatMul support for broadcasting at least in the
     // batch dimension.
-    auto a_dense_shape = a_matrix->dense_shape().vec<int64>();
-    auto b_dense_shape = b_matrix->dense_shape().vec<int64>();
+    auto a_dense_shape = a_matrix->dense_shape().vec<int64_t>();
+    auto b_dense_shape = b_matrix->dense_shape().vec<int64_t>();
 
     TensorShape a_tensor_shape;
     TensorShape b_tensor_shape;
@@ -357,7 +357,7 @@ class CSRSparseMatMulGPUOp : public OpKernel {
             b_tensor_shape.DebugString()));
 
     Tensor c_dense_shape_t(cpu_allocator(), DT_INT64, TensorShape({rank}));
-    auto c_dense_shape = c_dense_shape_t.vec<int64>();
+    auto c_dense_shape = c_dense_shape_t.vec<int64_t>();
 
     if (rank == 3) c_dense_shape(0) = batch_size;
     c_dense_shape(row_dim) =
@@ -400,7 +400,7 @@ class CSRSparseMatMulGPUOp : public OpKernel {
           ctx, transpose(ctx, conjugate_a_, *a_matrix, &a_matrix_transposed));
       a_input_matrix = &a_matrix_transposed;
     }
-    auto a_input_dense_shape = a_input_matrix->dense_shape().vec<int64>();
+    auto a_input_dense_shape = a_input_matrix->dense_shape().vec<int64_t>();
 
     // Possibly transpose b.
     const CSRSparseMatrix* b_input_matrix;
@@ -415,7 +415,7 @@ class CSRSparseMatMulGPUOp : public OpKernel {
           ctx, transpose(ctx, conjugate_b_, *b_matrix, &b_matrix_transposed));
       b_input_matrix = &b_matrix_transposed;
     }
-    auto b_input_dense_shape = b_input_matrix->dense_shape().vec<int64>();
+    auto b_input_dense_shape = b_input_matrix->dense_shape().vec<int64_t>();
 
 #if GOOGLE_CUDA && (CUDA_VERSION >= 10000)
     size_t maxWorkspaceSize = 0;
@@ -440,7 +440,7 @@ class CSRSparseMatMulGPUOp : public OpKernel {
     Tensor temp;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_temp(
-                 DT_INT8, TensorShape({static_cast<int64>(maxWorkspaceSize)}),
+                 DT_INT8, TensorShape({static_cast<int64_t>(maxWorkspaceSize)}),
                  &temp));
     void* workspace = temp.flat<int8>().data();
 #else

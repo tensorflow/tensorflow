@@ -245,7 +245,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<RandomAccessFile> file_
         TF_GUARDED_BY(mu_);  // must outlive input_buffer_
     std::unique_ptr<io::InputBuffer> input_buffer_ TF_GUARDED_BY(mu_);
-    int64 file_pos_limit_ TF_GUARDED_BY(mu_) = -1;
+    int64_t file_pos_limit_ TF_GUARDED_BY(mu_) = -1;
   };
 
   class CompressedIterator : public DatasetIterator<Dataset> {
@@ -441,15 +441,15 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
         file_stream_;  // must outlive buffered_input_stream_
     std::unique_ptr<io::InputStreamInterface> buffered_input_stream_
         TF_GUARDED_BY(mu_);
-    int64 file_pos_limit_ TF_GUARDED_BY(mu_) = -1;
+    int64_t file_pos_limit_ TF_GUARDED_BY(mu_) = -1;
     tstring lookahead_cache_ TF_GUARDED_BY(mu_);
   };
 
   const std::vector<string> filenames_;
-  const int64 header_bytes_;
-  const int64 record_bytes_;
-  const int64 footer_bytes_;
-  const int64 buffer_size_;
+  const int64_t header_bytes_;
+  const int64_t record_bytes_;
+  const int64_t footer_bytes_;
+  const int64_t buffer_size_;
   const tstring compression_type_;
   const int op_version_;
 };
@@ -475,26 +475,26 @@ void FixedLengthRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
   }
 
   int64_t header_bytes = -1;
-  OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kHeaderBytes, &header_bytes));
+  OP_REQUIRES_OK(
+      ctx, ParseScalarArgument<int64_t>(ctx, kHeaderBytes, &header_bytes));
   OP_REQUIRES(ctx, header_bytes >= 0,
               errors::InvalidArgument("`header_bytes` must be >= 0"));
 
   int64_t record_bytes = -1;
-  OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kRecordBytes, &record_bytes));
+  OP_REQUIRES_OK(
+      ctx, ParseScalarArgument<int64_t>(ctx, kRecordBytes, &record_bytes));
   OP_REQUIRES(ctx, record_bytes > 0,
               errors::InvalidArgument("`record_bytes` must be > 0"));
 
   int64_t footer_bytes = -1;
-  OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kFooterBytes, &footer_bytes));
+  OP_REQUIRES_OK(
+      ctx, ParseScalarArgument<int64_t>(ctx, kFooterBytes, &footer_bytes));
   OP_REQUIRES(ctx, footer_bytes >= 0,
               errors::InvalidArgument("`footer_bytes` must be >= 0"));
 
   int64_t buffer_size = -1;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
+                 ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(ctx, buffer_size >= 0,
               errors::InvalidArgument("`buffer_size` must be >= 0"));
   if (buffer_size == 0) {

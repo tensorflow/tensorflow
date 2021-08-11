@@ -696,7 +696,7 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
-  std::vector<int64> explicit_paddings;
+  std::vector<int64_t> explicit_paddings;
   if (supports_explicit_padding) {
     Status s = c->GetAttr("explicit_paddings", &explicit_paddings);
     // Use the default value, which is an empty list, if the attribute is not
@@ -1035,7 +1035,7 @@ Status DepthwiseConv2DNativeShapeImpl(shape_inference::InferenceContext* c,
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
-  std::vector<int64> explicit_paddings;
+  std::vector<int64_t> explicit_paddings;
   if (supports_explicit_padding) {
     Status status = c->GetAttr("explicit_paddings", &explicit_paddings);
     // Use the default value, which is an empty list, if the attribute is not
@@ -1585,7 +1585,7 @@ Status MaxPoolShapeImpl(shape_inference::InferenceContext* c,
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
-  std::vector<int64> explicit_paddings;
+  std::vector<int64_t> explicit_paddings;
   if (supports_explicit_padding) {
     Status status = c->GetAttr("explicit_paddings", &explicit_paddings);
     // Use the default value, which is an empty list, if the attribute is not
@@ -1895,13 +1895,13 @@ Status ReductionShape(InferenceContext* c) {
   }
 
   const int32_t input_rank = c->Rank(input);
-  std::set<int64> true_indices;
+  std::set<int64_t> true_indices;
   if (reduction_indices_t->dtype() == DataType::DT_INT32) {
     TF_RETURN_IF_ERROR(ReductionShapeHelper<int32>(reduction_indices_t,
                                                    input_rank, &true_indices));
   } else if (reduction_indices_t->dtype() == DataType::DT_INT64) {
-    TF_RETURN_IF_ERROR(ReductionShapeHelper<int64>(reduction_indices_t,
-                                                   input_rank, &true_indices));
+    TF_RETURN_IF_ERROR(ReductionShapeHelper<int64_t>(
+        reduction_indices_t, input_rank, &true_indices));
   } else {
     return errors::InvalidArgument(
         "reduction_indices can only be int32 or int64");
@@ -1963,9 +1963,9 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
   // shape.
   int64_t concat_dim;
   if (concat_dim_t->dtype() == DT_INT32) {
-    concat_dim = static_cast<int64>(concat_dim_t->flat<int32>()(0));
+    concat_dim = static_cast<int64_t>(concat_dim_t->flat<int32>()(0));
   } else {
-    concat_dim = concat_dim_t->flat<int64>()(0);
+    concat_dim = concat_dim_t->flat<int64_t>()(0);
   }
 
   // Minimum required number of dimensions.
@@ -2222,7 +2222,7 @@ Status SliceShape(InferenceContext* c) {
     // we can be precise about the shape of the output.
     if (sizes_value->dtype() == DT_INT64) {
       TF_RETURN_IF_ERROR(
-          SliceHelper<int64>(c, begin_value, sizes_value, &dims));
+          SliceHelper<int64_t>(c, begin_value, sizes_value, &dims));
     } else {
       TF_RETURN_IF_ERROR(
           SliceHelper<int32>(c, begin_value, sizes_value, &dims));
@@ -2459,11 +2459,11 @@ Status SparseReduceShapeFn(InferenceContext* c) {
   const Tensor* shape_tensor = c->input_tensor(2);
   const Tensor* axes_tensor = c->input_tensor(3);
   if (shape_tensor != nullptr && axes_tensor != nullptr) {
-    auto shape_vec = shape_tensor->flat<int64>();
+    auto shape_vec = shape_tensor->flat<int64_t>();
     auto axes_vec = axes_tensor->flat<int32>();
 
     int64_t ndims = shape_vec.size();
-    absl::flat_hash_set<int64> axes;
+    absl::flat_hash_set<int64_t> axes;
     if (ndims == 0)
       return errors::InvalidArgument(
           "Number of dims in shape tensor must not be 0");

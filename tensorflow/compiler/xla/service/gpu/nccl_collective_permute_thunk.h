@@ -35,11 +35,11 @@ struct NcclCollectivePermuteConfig : public NcclCollectiveConfig {
   // node. For each node, remember who it receives data from (source) and who
   // it send data to (target). Either are optional.
   struct SourceTargetMapEntry {
-    absl::optional<int64> source;
-    absl::optional<int64> target;
+    absl::optional<int64_t> source;
+    absl::optional<int64_t> target;
   };
 
-  absl::flat_hash_map<int64, SourceTargetMapEntry> id_to_source_target;
+  absl::flat_hash_map<int64_t, SourceTargetMapEntry> id_to_source_target;
 
   // Returns the source and target ID corresponding to the given ID (these IDs
   // are replica_ids for cross replica permute or partition_ids for cross

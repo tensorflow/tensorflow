@@ -32,7 +32,7 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
   output.set_input_feature_dimension(
       input.input_feature_dimension().getValue().getSExtValue());
 
-  for (auto v : input.input_spatial_dimensions().getValues<int64>()) {
+  for (auto v : input.input_spatial_dimensions().getValues<int64_t>()) {
     output.add_input_spatial_dimensions(v);
   }
 
@@ -41,7 +41,7 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
   output.set_kernel_output_feature_dimension(
       input.kernel_output_feature_dimension().getValue().getSExtValue());
 
-  for (auto v : input.kernel_spatial_dimensions().getValues<int64>()) {
+  for (auto v : input.kernel_spatial_dimensions().getValues<int64_t>()) {
     output.add_kernel_spatial_dimensions(v);
   }
 
@@ -50,7 +50,7 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
   output.set_output_feature_dimension(
       input.output_feature_dimension().getValue().getSExtValue());
 
-  for (auto v : input.output_spatial_dimensions().getValues<int64>()) {
+  for (auto v : input.output_spatial_dimensions().getValues<int64_t>()) {
     output.add_output_spatial_dimensions(v);
   }
 
@@ -114,15 +114,16 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
 
 // Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
 // and source-target pairs are defined in HLO.
-StatusOr<std::vector<std::pair<int64, int64>>> ConvertNx2Attribute(
+StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
     llvm::Optional<mlir::DenseIntElementsAttr> optional_attr) {
-  if (!optional_attr.hasValue()) return std::vector<std::pair<int64, int64>>{};
+  if (!optional_attr.hasValue())
+    return std::vector<std::pair<int64_t, int64_t>>{};
   mlir::DenseIntElementsAttr attr = *optional_attr;
   auto type = attr.getType().dyn_cast<mlir::RankedTensorType>();
   if (!type || type.getRank() != 2 || type.getShape()[1] != 2)
     return InternalError("expected Nx2 attribute to be a tensor of shape Nx2");
-  auto it = attr.getValues<int64>().begin();
-  std::vector<std::pair<int64, int64>> out(attr.getNumElements() / 2);
+  auto it = attr.getValues<int64_t>().begin();
+  std::vector<std::pair<int64_t, int64_t>> out(attr.getNumElements() / 2);
   for (auto& item : out) {
     int64_t first = *it;
     ++it;

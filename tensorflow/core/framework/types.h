@@ -412,7 +412,7 @@ struct IsValidDataType<long> {
 };
 template <>
 struct EnumToDataType<DT_INT64> {
-  typedef tensorflow::int64 Type;
+  typedef int64_t Type;
 };
 
 template <>
@@ -462,7 +462,7 @@ struct IsValidDataType {
 };
 
 // Extra validity checking; not part of public API.
-static_assert(IsValidDataType<int64>::value, "Incorrect impl for int64");
+static_assert(IsValidDataType<int64_t>::value, "Incorrect impl for int64");
 static_assert(IsValidDataType<int32>::value, "Incorrect impl for int32");
 
 // TODO(jeff): Maybe unify this with Tensor::CanUseDMA, or the underlying

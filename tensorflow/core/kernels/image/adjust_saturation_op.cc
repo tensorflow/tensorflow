@@ -46,7 +46,7 @@ class AdjustSaturationOpBase : public OpKernel {
     const Tensor* input;
     const Tensor* scale;
     Tensor* output;
-    int64 channel_count;
+    int64_t channel_count;
   };
 
   virtual void DoCompute(OpKernelContext* context,

@@ -94,12 +94,12 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, PjRtDevice* to_device,
     type = S32;
   } else {
     try {
-      data_int64 = py::cast<int64>(obj);
+      data_int64 = py::cast<int64_t>(obj);
     } catch (const std::exception& e) {
       return InvalidArgument(
           "Unable to convert Python scalar to %s. This most likely means the "
           "value (%s) overflows the range of the type.",
-          PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int64>()),
+          PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int64_t>()),
           py::repr(obj));
     }
     ptr = &data_int64;
@@ -164,8 +164,8 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, PjRtDevice* to_device,
     squashed_type = type;
   }
 
-  absl::InlinedVector<int64, 4> dims(array.ndim());
-  absl::InlinedVector<int64, 4> byte_strides(array.ndim());
+  absl::InlinedVector<int64_t, 4> dims(array.ndim());
+  absl::InlinedVector<int64_t, 4> byte_strides(array.ndim());
   for (int i = 0; i < array.ndim(); ++i) {
     dims[i] = array.shape(i);
     byte_strides[i] = array.strides(i);
@@ -423,7 +423,7 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
           TF_ASSIGN_OR_RETURN(auto dtype,
                               DtypeToPrimitiveType(aval.attr("dtype")));
           return PyArgSignature(
-              dtype, py::cast<std::vector<int64>>(aval.attr("shape")),
+              dtype, py::cast<std::vector<int64_t>>(aval.attr("shape")),
               py::cast<py::bool_>(aval.attr("weak_type")));
         };
         (*p)[PyBuffer::base_type()] = device_array_handler;

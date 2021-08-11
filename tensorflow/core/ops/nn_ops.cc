@@ -48,7 +48,8 @@ Status FractionalPoolShapeFn(InferenceContext* c) {
     if (c->ValueKnown(d)) {
       // This must match the same logic in the kernel function in
       // core/kernels/fractional_max_pool_op.cc.
-      auto val = static_cast<int64>(std::floor(c->Value(d) / pooling_ratio[i]));
+      auto val =
+          static_cast<int64_t>(std::floor(c->Value(d) / pooling_ratio[i]));
       if (val < 0) {
         return errors::InvalidArgument("Size computed for dim ", i,
                                        " is negative: ", val);
@@ -460,8 +461,8 @@ Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
     std::vector<DimensionHandle> output_dims;
     for (int i = 0; i < 4; ++i) {
       DimensionHandle dim = c->Dim(resized, i);
-      int64_t p0 = static_cast<int64>(paddings_t->matrix<int32>()(i, 0));
-      int64_t p1 = static_cast<int64>(paddings_t->matrix<int32>()(i, 1));
+      int64_t p0 = static_cast<int64_t>(paddings_t->matrix<int32>()(i, 0));
+      int64_t p1 = static_cast<int64_t>(paddings_t->matrix<int32>()(i, 1));
       if (p0 < 0 || p1 < 0) {
         return errors::InvalidArgument("Paddings must be non-negative");
       }

@@ -163,7 +163,7 @@ struct LaunchGrouped {
     const int64_t num_groups = in_depth / patch_depth;
 
     // Shuffle input/filter tensors to have group as a leading dimension.
-    std::array<int64, 5> shuffle({3, 0, 1, 2, 4});
+    std::array<int64_t, 5> shuffle({3, 0, 1, 2, 4});
 
     // Compute pre shuffle dimemnsions.
     auto pre_shuffle = [&](const Tensor& tensor) -> std::array<int64, 5> {
@@ -228,7 +228,7 @@ struct LaunchGrouped {
     }
 
     // Shuffle temporary output back into pre-shuffled shape.
-    std::array<int64, 5> rev_shuffle({1, 2, 3, 0, 4});
+    std::array<int64_t, 5> rev_shuffle({1, 2, 3, 0, 4});
     output->shaped<T, 5>(pre_shuffle(*output)).device(device) =
         output_shuffled.tensor<T, 5>().shuffle(rev_shuffle);
   }
@@ -313,7 +313,7 @@ struct LaunchConv2DOp<GPUDevice, int32> {
                   const Tensor& input, const Tensor& filter, int row_dilation,
                   int col_dilation, int row_stride, int col_stride,
                   const Padding& padding,
-                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     if (data_format != FORMAT_NHWC) {
       ctx->SetStatus(
@@ -754,8 +754,8 @@ template struct LaunchConv2DOp<CPUDevice, double>;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
-                           int64_t default_value_in_bytes) {
+int64_t GetDnnWorkspaceLimit(const string& envvar_in_mb,
+                             int64_t default_value_in_bytes) {
   const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
   if (workspace_limit_in_mb_str != nullptr &&
       strcmp(workspace_limit_in_mb_str, "") != 0) {
@@ -771,13 +771,12 @@ int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
   return default_value_in_bytes;
 }
 
-
 template <typename T>
 void LaunchConv2DOp<GPUDevice, T>::operator()(
     OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
     const Tensor& input_param, const Tensor& filter, int row_dilation,
     int col_dilation, int row_stride, int col_stride, const Padding& padding,
-    const std::vector<int64>& explicit_paddings, Tensor* output,
+    const std::vector<int64_t>& explicit_paddings, Tensor* output,
     TensorFormat data_format) {
   using se::dnn::AlgorithmConfig;
   using se::dnn::AlgorithmDesc;

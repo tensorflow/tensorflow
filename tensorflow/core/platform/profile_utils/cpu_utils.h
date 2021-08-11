@@ -131,7 +131,7 @@ class CpuUtils {
     (defined(__s390x__))
   static uint64 GetCycleCounterFrequency();
 #else
-  static int64 GetCycleCounterFrequency();
+  static int64_t GetCycleCounterFrequency();
 #endif
 
   // Return micro second per each clock
@@ -161,7 +161,7 @@ class CpuUtils {
     uint64 GetCurrentClockCycle() final { return DUMMY_CYCLE_CLOCK; }
     void EnableClockCycleProfiling() final {}
     void DisableClockCycleProfiling() final {}
-    int64 CalculateCpuFrequency() final { return INVALID_FREQUENCY; }
+    int64_t CalculateCpuFrequency() final { return INVALID_FREQUENCY; }
 
    private:
     TF_DISALLOW_COPY_AND_ASSIGN(DefaultCpuUtilsHelper);
@@ -171,7 +171,7 @@ class CpuUtils {
   // CAVEAT: as this method calls system call and parse the message,
   // this call may be slow. This is why this class caches the value by
   // StaticVariableInitializer.
-  static int64 GetCycleCounterFrequencyImpl();
+  static int64_t GetCycleCounterFrequencyImpl();
 
   // Return a singleton of ICpuUtilsHelper
   // ICpuUtilsHelper is declared as a function-local static variable

@@ -75,7 +75,7 @@ class AdjustContrastOp : public OpKernel {
 
     if (input.NumElements() > 0) {
       const int64_t batch = input.NumElements() / (height * width * channels);
-      const int64 shape[4] = {batch, height, width, channels};
+      const int64_t shape[4] = {batch, height, width, channels};
       functor::AdjustContrast<Device, T>()(
           context->eigen_device<Device>(), input.shaped<T, 4>(shape),
           factor.scalar<float>(), min_value.scalar<float>(),
@@ -147,10 +147,10 @@ class AdjustContrastOpV2Base : public OpKernel {
     const Tensor* input = nullptr;
     const Tensor* factor = nullptr;
     Tensor* output = nullptr;
-    int64 batch = 0;
-    int64 height = 0;
-    int64 width = 0;
-    int64 channels = 0;
+    int64_t batch = 0;
+    int64_t height = 0;
+    int64_t width = 0;
+    int64_t channels = 0;
   };
 
   void Compute(OpKernelContext* context) override {
@@ -411,8 +411,8 @@ class AdjustContrastOpv2<GPUDevice, T> : public AdjustContrastOpV2Base {
 
   void DoCompute(OpKernelContext* context,
                  const ComputeOptions& options) override {
-    const int64 shape[4] = {options.batch, options.height, options.width,
-                            options.channels};
+    const int64_t shape[4] = {options.batch, options.height, options.width,
+                              options.channels};
     functor::AdjustContrastv2<GPUDevice, T>()(
         context->eigen_device<GPUDevice>(), options.input->shaped<T, 4>(shape),
         options.factor->scalar<float>(), options.output->shaped<T, 4>(shape));

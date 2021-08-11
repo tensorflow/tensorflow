@@ -112,7 +112,7 @@ class ReaderReadUpToOp : public ReaderVerbAsyncOpKernel {
 
     const Tensor* num_records_tensor;
     OP_REQUIRES_OK(context, context->input("num_records", &num_records_tensor));
-    int64_t num_records = num_records_tensor->scalar<int64>()();
+    int64_t num_records = num_records_tensor->scalar<int64_t>()();
 
     OP_REQUIRES_OK(context,
                    GetResourceFromContext(context, "queue_handle", &queue));
@@ -165,7 +165,7 @@ class ReaderNumRecordsProducedOp : public ReaderVerbSyncOpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output("records_produced",
                                                      TensorShape({}), &output));
-    output->scalar<int64>()() = reader->NumRecordsProduced();
+    output->scalar<int64_t>()() = reader->NumRecordsProduced();
   }
 };
 
@@ -183,7 +183,7 @@ class ReaderNumWorkUnitsCompletedOp : public ReaderVerbSyncOpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output("units_completed",
                                                      TensorShape({}), &output));
-    output->scalar<int64>()() = reader->NumWorkUnitsCompleted();
+    output->scalar<int64_t>()() = reader->NumWorkUnitsCompleted();
   }
 };
 

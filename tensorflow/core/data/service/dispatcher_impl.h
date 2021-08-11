@@ -180,7 +180,7 @@ class DataServiceDispatcherImpl {
   // Registers a dataset with the given fingerprint, storing the new dataset's
   // id in `dataset_id`.
   Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,
-                         int64& dataset_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                         int64_t& dataset_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Sets the element spec of the dataset for the specified `dataset_id`.
   Status SetElementSpec(int64_t dataset_id, const std::string& element_spec)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -200,7 +200,7 @@ class DataServiceDispatcherImpl {
   // Finds tasks that should be deleted from a worker, updating the heartbeat
   // response.
   Status FindTasksToDelete(
-      const absl::flat_hash_set<int64>& current_tasks,
+      const absl::flat_hash_set<int64_t>& current_tasks,
       const std::vector<std::shared_ptr<const DispatcherState::Task>>
           assigned_tasks,
       WorkerHeartbeatResponse* response);
@@ -208,14 +208,14 @@ class DataServiceDispatcherImpl {
   // the heartbeat response.
   Status FindNewTasks(
       const std::string& worker_address,
-      const absl::flat_hash_set<int64>& current_tasks,
+      const absl::flat_hash_set<int64_t>& current_tasks,
       std::vector<std::shared_ptr<const DispatcherState::Task>>& assigned_tasks,
       WorkerHeartbeatResponse* response);
   // Acquires a job client id to read from the given job and sets
   // `job_client_id`.
   Status AcquireJobClientId(
       const std::shared_ptr<const DispatcherState::Job>& job,
-      int64& job_client_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      int64_t& job_client_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates one task for each worker, for the given job. The created tasks are
   // stored in `tasks`. This method only updates dispatcher metadata with the
   // new tasks, but doesn't assign the tasks to the workers.
@@ -297,14 +297,14 @@ class DataServiceDispatcherImpl {
   // Store of dataset definitions.
   std::unique_ptr<DatasetStore> dataset_store_ TF_GUARDED_BY(mu_);
   // Mapping from job id to the split providers for the job.
-  absl::flat_hash_map<int64, std::vector<std::unique_ptr<SplitProvider>>>
+  absl::flat_hash_map<int64_t, std::vector<std::unique_ptr<SplitProvider>>>
       split_providers_ TF_GUARDED_BY(mu_);
   // Mapping from round robin job id to the round the job is currently on. This
   // is based on the data provided by client heartbeats, and may be stale.
-  absl::flat_hash_map<int64, int64> round_robin_rounds_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<int64_t, int64_t> round_robin_rounds_ TF_GUARDED_BY(mu_);
   // Map from task id to a TaskRemover which determines when to remove the task.
-  absl::flat_hash_map<int64, std::shared_ptr<TaskRemover>> remove_task_requests_
-      TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<int64_t, std::shared_ptr<TaskRemover>>
+      remove_task_requests_ TF_GUARDED_BY(mu_);
 
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);

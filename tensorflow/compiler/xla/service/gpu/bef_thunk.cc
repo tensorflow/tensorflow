@@ -291,7 +291,7 @@ static Status CreateXcclContext(
     local_ids_to_rank[participant.device_ordinal] = participant.rank;
   }
 
-  std::vector<int64> gpu_global_device_ids;
+  std::vector<int64_t> gpu_global_device_ids;
   if (params.gpu_global_device_ids != nullptr) {
     for (const auto& global_device_id : *params.gpu_global_device_ids) {
       gpu_global_device_ids.push_back(global_device_id.value());

@@ -26,7 +26,7 @@ namespace {
 
 // Convert 1D group_assignment into 2D replica_groups.
 std::vector<xla::ReplicaGroup> Convert(
-    const std::vector<int64>& group_assignment,
+    const std::vector<int64_t>& group_assignment,
     const TensorShape& group_assignment_shape) {
   VLOG(1) << "group_assignment size: " << group_assignment.size();
   VLOG(1) << "group_assignment_shape: " << group_assignment_shape.DebugString();
@@ -53,7 +53,7 @@ class CrossReplicaSumOp : public XlaOpKernel {
   explicit CrossReplicaSumOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    std::vector<int64> flattened_group_assignment;
+    std::vector<int64_t> flattened_group_assignment;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputReshapedToIntVector(
                             1, &flattened_group_assignment));
     std::vector<xla::ReplicaGroup> replica_groups =
@@ -74,7 +74,7 @@ class AllToAllOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    std::vector<int64> flattened_group_assignment;
+    std::vector<int64_t> flattened_group_assignment;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputReshapedToIntVector(
                             1, &flattened_group_assignment));
 
@@ -86,9 +86,9 @@ class AllToAllOp : public XlaOpKernel {
   }
 
  private:
-  int64 split_dimension_;
-  int64 concat_dimension_;
-  int64 split_count_;
+  int64_t split_dimension_;
+  int64_t concat_dimension_;
+  int64_t split_count_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(AllToAllOp);
 };
@@ -111,10 +111,10 @@ class CollectivePermuteOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->ConstantInputAsInt64Literal(1, &source_target_literal));
     const int num_pairs = source_target_shape.dim_size(0);
-    std::vector<std::pair<int64, int64>> source_target_pairs(num_pairs);
+    std::vector<std::pair<int64_t, int64_t>> source_target_pairs(num_pairs);
     for (int i = 0; i < num_pairs; ++i) {
-      source_target_pairs[i] = {source_target_literal.Get<int64>({i, 0}),
-                                source_target_literal.Get<int64>({i, 1})};
+      source_target_pairs[i] = {source_target_literal.Get<int64_t>({i, 0}),
+                                source_target_literal.Get<int64_t>({i, 1})};
     }
     ctx->SetOutput(0,
                    xla::CollectivePermute(ctx->Input(0), source_target_pairs));

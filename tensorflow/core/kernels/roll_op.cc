@@ -84,7 +84,7 @@ class RollOp : public OpKernel {
     // dim_range is the number of indices over in the flattened tensor
     // you need to skip in order to make it over from one side of a dimension
     // to the other. Used to make the shifts wrap around after a threshold.
-    gtl::InlinedVector<int64, 4> dim_range(num_dims);
+    gtl::InlinedVector<int64_t, 4> dim_range(num_dims);
     int64_t dim_size_prod = 1;  // dimension size product
     // inner shift dimension (inner most shifted dimension)
     int64_t isd = 0;
@@ -93,7 +93,7 @@ class RollOp : public OpKernel {
       const int ds = std::max<int>(static_cast<int>(input.dim_size(i)), 1);
       dim_size[i] = ds;
       threshold[i] = (ds - shift_mod_sum[i]) % ds;
-      dim_size_prod *= static_cast<int64>(input.dim_size(i));
+      dim_size_prod *= static_cast<int64_t>(input.dim_size(i));
       dim_range[i] = dim_size_prod;
     }
 
@@ -121,7 +121,7 @@ template <typename T>
 void DoRoll(const OpKernelContext* context, const int64_t num_elements,
             const int num_dims, const gtl::ArraySlice<int32> dim_size,
             const T* input, T* output, const gtl::ArraySlice<int32> threshold,
-            const gtl::ArraySlice<int64> dim_range) {
+            const gtl::ArraySlice<int64_t> dim_range) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range](
                   int64_t start, int64_t end) {
     // array of indices for each dimension
@@ -185,7 +185,7 @@ void DoRollWithMemcpy(const OpKernelContext* context,
                       const int64_t num_elements, const int num_dims,
                       const gtl::ArraySlice<int32> dim_size, const T* input,
                       T* output, const gtl::ArraySlice<int32> threshold,
-                      const gtl::ArraySlice<int64> dim_range,
+                      const gtl::ArraySlice<int64_t> dim_range,
                       const int64_t isd) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range, isd](
                   int64_t start, int64_t end) {
@@ -308,7 +308,7 @@ struct Roll<CPUDevice, T> {
                   const int num_dims, const gtl::ArraySlice<int32> dim_size,
                   const T* input, T* output,
                   const gtl::ArraySlice<int32> threshold,
-                  const gtl::ArraySlice<int64> dim_range, const int64_t isd) {
+                  const gtl::ArraySlice<int64_t> dim_range, const int64_t isd) {
     if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
       // V2 copies memory in groups instead of element by element
       DoRollWithMemcpy<T>(context, num_elements, num_dims, dim_size, input,
@@ -335,7 +335,7 @@ struct Roll<CPUDevice, T> {
   REGISTER_KERNEL_BUILDER(Name("Roll")                           \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("Tshift")   \
+                              .TypeConstraint<int64_t>("Tshift") \
                               .TypeConstraint<int32>("Taxis")    \
                               .HostMemory("shift")               \
                               .HostMemory("axis"),               \
@@ -344,15 +344,15 @@ struct Roll<CPUDevice, T> {
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int32>("Tshift")   \
-                              .TypeConstraint<int64>("Taxis")    \
+                              .TypeConstraint<int64_t>("Taxis")  \
                               .HostMemory("shift")               \
                               .HostMemory("axis"),               \
                           RollOp<CPUDevice, type, int32, int64>) \
   REGISTER_KERNEL_BUILDER(Name("Roll")                           \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("Tshift")   \
-                              .TypeConstraint<int64>("Taxis")    \
+                              .TypeConstraint<int64_t>("Tshift") \
+                              .TypeConstraint<int64_t>("Taxis")  \
                               .HostMemory("shift")               \
                               .HostMemory("axis"),               \
                           RollOp<CPUDevice, type, int64, int64>)
@@ -373,7 +373,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU);
   REGISTER_KERNEL_BUILDER(Name("Roll")                           \
                               .Device(DEVICE_GPU)                \
                               .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("Tshift")   \
+                              .TypeConstraint<int64_t>("Tshift") \
                               .TypeConstraint<int32>("Taxis")    \
                               .HostMemory("shift")               \
                               .HostMemory("axis"),               \
@@ -382,15 +382,15 @@ TF_CALL_ALL_TYPES(REGISTER_CPU);
                               .Device(DEVICE_GPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int32>("Tshift")   \
-                              .TypeConstraint<int64>("Taxis")    \
+                              .TypeConstraint<int64_t>("Taxis")  \
                               .HostMemory("shift")               \
                               .HostMemory("axis"),               \
                           RollOp<GPUDevice, type, int32, int64>) \
   REGISTER_KERNEL_BUILDER(Name("Roll")                           \
                               .Device(DEVICE_GPU)                \
                               .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("Tshift")   \
-                              .TypeConstraint<int64>("Taxis")    \
+                              .TypeConstraint<int64_t>("Tshift") \
+                              .TypeConstraint<int64_t>("Taxis")  \
                               .HostMemory("shift")               \
                               .HostMemory("axis"),               \
                           RollOp<GPUDevice, type, int64, int64>)

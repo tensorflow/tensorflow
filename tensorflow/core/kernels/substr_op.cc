@@ -341,5 +341,5 @@ class SubstrOp : public OpKernel {
       Name("Substr").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       SubstrOp<type>);
 REGISTER_SUBSTR(int32);
-REGISTER_SUBSTR(int64);
+REGISTER_SUBSTR(int64_t);
 }  // namespace tensorflow

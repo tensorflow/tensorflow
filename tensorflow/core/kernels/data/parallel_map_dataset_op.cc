@@ -112,7 +112,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                                           params);
   }
 
-  int64 Cardinality() const override {
+  int64_t Cardinality() const override {
     if (preserve_cardinality_) {
       return input_->Cardinality();
     } else {
@@ -378,7 +378,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       Status status;
       std::vector<Tensor> return_values;
       bool end_of_input = false;
-      const int64 uid;
+      const int64_t uid;
     };
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
@@ -604,7 +604,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                              const std::string& key, const Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          key, kErrorCode, static_cast<int64>(status.code())));
+          key, kErrorCode, static_cast<int64_t>(status.code())));
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(key, kErrorMessage, status.error_message()));
@@ -643,7 +643,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     const bool preserve_cardinality_;
     const bool autotune_;
     // Counts the number of outstanding calls.
-    int64 num_calls_ TF_GUARDED_BY(*mu_) = 0;
+    int64_t num_calls_ TF_GUARDED_BY(*mu_) = 0;
     // Controls cancellation of `input_impl_`. Must be ordered before
     // `input_impl_` so that `input_impl_` is destroyed first.
     std::unique_ptr<CancellationManager> cancellation_manager_;
@@ -663,7 +663,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
   };
 
   const DatasetBase* const input_;
-  const int64 num_parallel_calls_;
+  const int64_t num_parallel_calls_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
   const DeterminismPolicy deterministic_;

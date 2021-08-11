@@ -169,7 +169,7 @@ TEST_F(HloMatchersTest, ShardingMatcher) {
       {ShapeUtil::MakeShape(F32, {7}), ShapeUtil::MakeShape(S32, {9}),
        ShapeUtil::MakeShape(F32, {11})});
   auto p2 = HloInstruction::CreateParameter(1, tuple_shape, "param.2");
-  Array<int64> assignment({2});
+  Array<int64_t> assignment({2});
   assignment.SetValues({0, 1});
   auto sharding = HloSharding::Tuple(
       tuple_shape, {HloSharding::Tile(assignment), HloSharding::AssignDevice(1),

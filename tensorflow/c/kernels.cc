@@ -464,10 +464,10 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
                              size_t len, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+  static_assert(sizeof(int64_t) == sizeof(int64_t),
                 "64-bit int types should match in size");
-  tensorflow::gtl::ArraySlice<tensorflow::int64> dimarray(
-      reinterpret_cast<tensorflow::int64*>(dims), num_dims);
+  tensorflow::gtl::ArraySlice<int64_t> dimarray(
+      reinterpret_cast<int64_t*>(dims), num_dims);
   tensorflow::Tensor* tensor;
   tensorflow::Status s = cc_ctx->allocate_output(
       index, tensorflow::TensorShape(dimarray), &tensor);
@@ -490,12 +490,12 @@ TF_Tensor* TF_ForwardInputOrAllocateOutput(
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
 
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+  static_assert(sizeof(int64_t) == sizeof(int64_t),
                 "64-bit int types should match in size");
   tensorflow::gtl::ArraySlice<int> input_indices_array(
       candidate_input_indices, num_candidate_input_indices);
-  tensorflow::gtl::ArraySlice<tensorflow::int64> output_dimarray(
-      reinterpret_cast<tensorflow::int64*>(output_dims), output_num_dims);
+  tensorflow::gtl::ArraySlice<int64_t> output_dimarray(
+      reinterpret_cast<int64_t*>(output_dims), output_num_dims);
   tensorflow::Tensor* output_tensor_pointer;
   tensorflow::Status s = cc_ctx->forward_input_or_allocate_output(
       input_indices_array, output_index,
@@ -519,10 +519,10 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
                            TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
   TF_SetStatus(status, TF_OK, "");
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+  static_assert(sizeof(int64_t) == sizeof(int64_t),
                 "64-bit int types should match in size");
-  tensorflow::gtl::ArraySlice<tensorflow::int64> dimarray(
-      reinterpret_cast<tensorflow::int64*>(dims), num_dims);
+  tensorflow::gtl::ArraySlice<int64_t> dimarray(
+      reinterpret_cast<int64_t*>(dims), num_dims);
   if (attributes && !attributes->struct_size) {
     TF_SetStatus(
         status, TF_INVALID_ARGUMENT,

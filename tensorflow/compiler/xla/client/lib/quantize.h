@@ -121,7 +121,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
       bit_mask |= 0x000000ff;
     }
 
-    std::vector<int64> shift_transpose_dimensions(shape.dimensions_size());
+    std::vector<int64_t> shift_transpose_dimensions(shape.dimensions_size());
     std::iota(shift_transpose_dimensions.begin(),
               shift_transpose_dimensions.end(), 0);
     shift_transpose_dimensions.insert(shift_transpose_dimensions.begin(), 1,
@@ -156,7 +156,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
           "Only MIN_COMBINED mode is supported in xla::Dequantize Op.");
     }
 
-    std::vector<int64> transpose_dimensions(shape.dimensions_size());
+    std::vector<int64_t> transpose_dimensions(shape.dimensions_size());
     std::iota(transpose_dimensions.begin(), transpose_dimensions.end(), 1);
     std::reverse(transpose_dimensions.begin(), transpose_dimensions.end());
     transpose_dimensions.insert(transpose_dimensions.begin() + 1, 1, 0);
@@ -173,7 +173,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
     }
 
     // Transpose the result to be [d0, d1, ..., dn-1, dn * unpack_size].
-    std::vector<int64> result_dimensions(shape.dimensions_size());
+    std::vector<int64_t> result_dimensions(shape.dimensions_size());
     std::iota(result_dimensions.begin(), result_dimensions.end(), 0);
     std::reverse(result_dimensions.begin(), result_dimensions.end());
 

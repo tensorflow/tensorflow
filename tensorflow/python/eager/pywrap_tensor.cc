@@ -981,7 +981,7 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
   return reinterpret_cast<PyObject*>(t);
 }
 
-tensorflow::int64 PyEagerTensor_ID(const PyObject* tensor) {
+int64_t PyEagerTensor_ID(const PyObject* tensor) {
   DCHECK(EagerTensor_CheckExact(tensor));
   return reinterpret_cast<const EagerTensor*>(tensor)->id;
 }
@@ -992,7 +992,7 @@ tensorflow::DataType PyEagerTensor_Dtype(const PyObject* tensor) {
       reinterpret_cast<const EagerTensor*>(tensor)->handle));
 }
 
-tensorflow::int64 PyEagerTensor_NumElements(PyObject* tensor) {
+int64_t PyEagerTensor_NumElements(PyObject* tensor) {
   DCHECK(EagerTensor_CheckExact(tensor));
   EagerTensor* as_c_eager_tensor = reinterpret_cast<EagerTensor*>(tensor);
   int64_t result = TFE_TensorHandleNumElements(as_c_eager_tensor->handle,

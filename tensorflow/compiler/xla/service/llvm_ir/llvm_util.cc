@@ -369,8 +369,8 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
                                               PRED, ModuleFromIRBuilder(b)));
 }
 
-// Internal helper that is called from emitted code to log an int64 value with a
-// tag.
+// Internal helper that is called from emitted code to log an int64_t value with
+// a tag.
 static void LogS64(const char* tag, int64_t value) {
   LOG(INFO) << tag << " (int64): " << value;
 }
@@ -379,9 +379,9 @@ void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b) {
   llvm::FunctionType* log_function_type = llvm::FunctionType::get(
       b->getVoidTy(), {b->getInt64Ty(), b->getInt64Ty()}, /*isVarArg=*/false);
   b->CreateCall(log_function_type,
-                b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64>(&LogS64)),
+                b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64_t>(&LogS64)),
                                   log_function_type->getPointerTo()),
-                {b->getInt64(absl::bit_cast<int64>(tag)), value});
+                {b->getInt64(absl::bit_cast<int64_t>(tag)), value});
 }
 
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment) {
@@ -498,7 +498,7 @@ llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
       builder->CreateLShr(rotand, mod(rotor)));
 }
 
-int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
+int64_t ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
   unsigned pointer_size = data_layout.getPointerSize();
   return ShapeUtil::ByteSizeOf(shape, pointer_size);
 }

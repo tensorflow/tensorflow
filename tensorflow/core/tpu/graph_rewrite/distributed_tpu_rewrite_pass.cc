@@ -470,7 +470,7 @@ class TensorDevicePlacer {
 
   // Retrieves the device at which the argument/return-value at index
   // should be assigned to.
-  int64 RetrieveAssignment(int64_t index) {
+  int64_t RetrieveAssignment(int64_t index) {
     DeviceNode* node = heap_.top();
     int64_t device = node - index_nodes_.data();
     node->size += sizes_.at(index);
@@ -489,11 +489,11 @@ class TensorDevicePlacer {
     };
 
     IntrusiveHeapLink heap;
-    int64 size = 0;
+    int64_t size = 0;
   };
 
-  static int64 GetInferredShapeSize(const InferredShape& ishape,
-                                    DataType dtype) {
+  static int64_t GetInferredShapeSize(const InferredShape& ishape,
+                                      DataType dtype) {
     return ishape.shape.IsFullyDefined()
                ? ishape.shape.num_elements() * DataTypeSize(dtype)
                : -1;
@@ -501,7 +501,7 @@ class TensorDevicePlacer {
 
   std::vector<DeviceNode> index_nodes_;
   IntrusiveHeap<DeviceNode, typename DeviceNode::Compare> heap_;
-  std::vector<int64> sizes_;
+  std::vector<int64_t> sizes_;
 };
 
 Status ValidateCoreNumber(int64_t core, int64_t num_cores_per_replica) {
@@ -787,13 +787,13 @@ xla::StatusOr<Node*> CreateSplitNode(const int num_splits, const int dim,
   return split_node;
 }
 
-int64 GetPadding(const int split_dim, const int num_splits,
-                 const PartialTensorShape& partial_tensor_shape) {
+int64_t GetPadding(const int split_dim, const int num_splits,
+                   const PartialTensorShape& partial_tensor_shape) {
   // If dim dimension is not defined, no uneven sharding support.
   if (partial_tensor_shape.dim_size(split_dim) <= 0) {
     return 0;
   }
-  int64_t per_split_size = tensorflow::MathUtil::CeilOfRatio<int64>(
+  int64_t per_split_size = tensorflow::MathUtil::CeilOfRatio<int64_t>(
       partial_tensor_shape.dim_size(split_dim), num_splits);
   int64_t total_padding =
       per_split_size * num_splits - partial_tensor_shape.dim_size(split_dim);
@@ -932,7 +932,7 @@ StatusOr<Node*> CreateXlaSplitOp(absl::string_view node_name,
   xla_split_def.set_device(input_assigned_device);
   AddNodeAttr("T", dtype, &xla_split_def);
   AddNodeAttr("N", num_shards, &xla_split_def);
-  const std::vector<int64> num_splits(
+  const std::vector<int64_t> num_splits(
       sharding.tile_assignment_dimensions().begin(),
       sharding.replicate_on_last_tile_dim()
           ? std::prev(sharding.tile_assignment_dimensions().end())
@@ -1301,8 +1301,8 @@ xla::StatusOr<Node*> CreateXlaConcatNode(
   xla_concat_def.set_op("XlaConcatND");
   xla_concat_def.set_device(std::string(device));
   AddNodeAttr("T", dtype, &xla_concat_def);
-  AddNodeAttr("N", static_cast<int64>(orig_inputs.size()), &xla_concat_def);
-  const std::vector<int64> num_concats(
+  AddNodeAttr("N", static_cast<int64_t>(orig_inputs.size()), &xla_concat_def);
+  const std::vector<int64_t> num_concats(
       sharding.tile_assignment_dimensions().begin(),
       sharding.replicate_on_last_tile_dim()
           ? std::prev(sharding.tile_assignment_dimensions().end())
@@ -1456,7 +1456,7 @@ struct NodeAndSharding {
 // Infer the core id from the OpSharding, if necessary.
 Status ParseAndValidateSharding(const NodeAndSharding& node_and_sharding,
                                 const int num_cores_per_replica,
-                                int64* inferred_core_id,
+                                int64_t* inferred_core_id,
                                 absl::optional<NodeAndSharding>* result) {
   if (node_and_sharding.sharding.type() == xla::OpSharding::MAXIMAL) {
     int64_t core_annotation =
@@ -1560,7 +1560,7 @@ ParseInputShardingFromAdjacentNode(const int num_cores_per_replica,
 //     of the connected ReadVariable op.
 Status ParseAndValidateShardingFromNeighbors(
     const int num_cores_per_replica, const std::string& arg_node_name,
-    const Node& neighbor_node, int64* inferred_core_id, bool* is_fast_mem,
+    const Node& neighbor_node, int64_t* inferred_core_id, bool* is_fast_mem,
     absl::optional<NodeAndSharding>* result) {
   if (neighbor_node.attrs().Find(TPU_FAST_MEM_ATTR) != nullptr) {
     *is_fast_mem = true;
@@ -2258,7 +2258,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       (params_info.NumReplicas() - 1) * params_info.NumPerReplicaArgs();
   for (int i = 0; i < args.size(); ++i) {
     const Node* n = args[i];
-    absl::optional<int64> assigned_core;
+    absl::optional<int64_t> assigned_core;
     absl::optional<NodeAndSharding> node_and_sharding;
     bool is_fast_mem;
     TF_RETURN_IF_ERROR(InferXlaShardingFromNeighbors(
@@ -2418,7 +2418,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
                 << parsed_sharding->DebugString();
       }
     }
-    absl::optional<int64> assigned_core;
+    absl::optional<int64_t> assigned_core;
     if (node_and_sharding.has_value()) {
       if (enable_automatic_model_parallelism_) {
         return tensorflow::errors::InvalidArgument(

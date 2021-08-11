@@ -80,7 +80,7 @@ bool ConsumeAttrType(StringPiece* sp, StringPiece* out) {
       .GetResult(sp, out);
 }
 
-bool ConsumeAttrNumber(StringPiece* sp, int64* out) {
+bool ConsumeAttrNumber(StringPiece* sp, int64_t* out) {
   Scanner scan(*sp);
   StringPiece match;
   StringPiece remaining;

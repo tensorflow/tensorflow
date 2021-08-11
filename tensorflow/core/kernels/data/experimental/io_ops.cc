@@ -127,7 +127,7 @@ Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
 
   mutex mu;
   Status status;
-  absl::flat_hash_map<int64, std::unique_ptr<snapshot_util::AsyncWriter>>
+  absl::flat_hash_map<int64_t, std::unique_ptr<snapshot_util::AsyncWriter>>
       writers;
   while (true) {
     if (ctx->cancellation_manager()->IsCancelled()) {
@@ -175,7 +175,7 @@ Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
 Status SaveDatasetOp::GetShardIndex(IteratorContext* ctx,
                                     InstantiatedCapturedFunction* function,
                                     const std::vector<Tensor>& element,
-                                    int64* shard_index) {
+                                    int64_t* shard_index) {
   if (!use_shard_func_) {
     *shard_index = (*shard_index + 1) % port::NumSchedulableCPUs();
     return Status::OK();
@@ -188,7 +188,7 @@ Status SaveDatasetOp::GetShardIndex(IteratorContext* ctx,
       output_tensors[0].NumElements() != 1) {
     return errors::InvalidArgument("`shard_func` must return a scalar int64.");
   }
-  *shard_index = output_tensors[0].flat<int64>()(0);
+  *shard_index = output_tensors[0].flat<int64_t>()(0);
   return Status::OK();
 }
 
@@ -243,7 +243,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64_t Cardinality() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -406,11 +406,11 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kRunId), static_cast<int64>(run_id_)));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kRunId),
+                                             static_cast<int64_t>(run_id_)));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kCurrentCheckpointId),
-                              static_cast<int64>(current_checkpoint_id_)));
+                              static_cast<int64_t>(current_checkpoint_id_)));
       SignalEOF(/*mark_closed=*/false);
       writers_.clear();
       current_checkpoint_id_++;
@@ -446,7 +446,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
     Status GetShardIndex(IteratorContext* ctx,
                          InstantiatedCapturedFunction* function,
                          const std::vector<Tensor>& element,
-                         bool use_shard_func, int64* shard_index)
+                         bool use_shard_func, int64_t* shard_index)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!use_shard_func) {
         *shard_index = (*shard_index + 1) % port::NumSchedulableCPUs();
@@ -461,7 +461,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
         return errors::InvalidArgument(
             "`shard_func` must return a scalar int64.");
       }
-      *shard_index = output_tensors[0].flat<int64>()(0);
+      *shard_index = output_tensors[0].flat<int64_t>()(0);
       return Status::OK();
     }
 
@@ -496,9 +496,9 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
     mutex mu_;
     mutex writer_status_mu_;
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
-    int64 num_elements_;
+    int64_t num_elements_;
 
-    absl::flat_hash_map<int64, std::unique_ptr<snapshot_util::AsyncWriter>>
+    absl::flat_hash_map<int64_t, std::unique_ptr<snapshot_util::AsyncWriter>>
         writers_ TF_GUARDED_BY(mu_);
     Status writer_status_ TF_GUARDED_BY(writer_status_mu_);
     bool writers_closed_ TF_GUARDED_BY(mu_);
@@ -580,7 +580,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override { return metadata_.num_elements(); }
+  int64_t Cardinality() const override { return metadata_.num_elements(); }
 
   Status CheckExternalState() const override {
     return captured_func_->CheckExternalState();

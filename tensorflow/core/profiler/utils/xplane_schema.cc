@@ -258,14 +258,14 @@ absl::string_view GetHostEventTypeStr(HostEventType event_type) {
   return GetHostEventTypeStrMap().at(event_type);
 }
 
-absl::optional<int64> FindHostEventType(absl::string_view event_name) {
+absl::optional<int64_t> FindHostEventType(absl::string_view event_name) {
   if (auto event_type = gtl::FindOrNull(GetHostEventTypeMap(), event_name)) {
     return *event_type;
   }
   return absl::nullopt;
 }
 
-absl::optional<int64> FindTfOpEventType(absl::string_view event_name) {
+absl::optional<int64_t> FindTfOpEventType(absl::string_view event_name) {
   // TF op names.
   Category category = ParseTfOpFullname(event_name).category;
   switch (category) {
@@ -282,14 +282,14 @@ absl::string_view GetStatTypeStr(StatType stat_type) {
   return GetStatTypeStrMap().at(stat_type);
 }
 
-absl::optional<int64> FindStatType(absl::string_view stat_name) {
+absl::optional<int64_t> FindStatType(absl::string_view stat_name) {
   if (auto stat_type = gtl::FindOrNull(GetStatTypeMap(), stat_name)) {
     return *stat_type;
   }
   return absl::nullopt;
 }
 
-bool IsInternalEvent(absl::optional<int64> event_type) {
+bool IsInternalEvent(absl::optional<int64_t> event_type) {
   // TODO(b/162102421): Introduce a prefix for internal event names.
   if (!event_type.has_value()) return false;
   switch (*event_type) {
@@ -312,7 +312,7 @@ bool IsInternalEvent(absl::optional<int64> event_type) {
   }
 }
 
-bool IsInternalStat(absl::optional<int64> stat_type) {
+bool IsInternalStat(absl::optional<int64_t> stat_type) {
   // TODO(b/162102421): Introduce a prefix for internal stat names.
   if (!stat_type.has_value()) return false;
   switch (*stat_type) {

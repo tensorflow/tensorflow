@@ -389,7 +389,7 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
   return Status::OK();
 }
 
-int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
+int64_t GetAllocatedBytes(const std::vector<Tensor>& element) {
   int64_t allocated_bytes = 0;
   DatasetBase* dataset;
   for (auto& tensor : element) {
@@ -403,7 +403,7 @@ int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
   return allocated_bytes;
 }
 
-int64 GetTotalBytes(const std::vector<Tensor>& element) {
+int64_t GetTotalBytes(const std::vector<Tensor>& element) {
   int64_t total_bytes = 0;
   DatasetBase* dataset;
   for (auto& tensor : element) {

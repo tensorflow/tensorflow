@@ -47,9 +47,9 @@ namespace xla {
 namespace {
 // CalculatePostOrderSchedule traverses a module and assign a ordinal to each
 // instruction based the postorder dependency.
-int64 CalculatePostOrderScheduleHelper(
+int64_t CalculatePostOrderScheduleHelper(
     const HloComputation* comp, int64_t start_ordinal,
-    absl::flat_hash_map<HloInstruction*, int64>* ordinal_map) {
+    absl::flat_hash_map<HloInstruction*, int64_t>* ordinal_map) {
   int64_t ordinal = start_ordinal;
   for (HloInstruction* instruction : comp->MakeInstructionPostOrder()) {
     if (instruction->opcode() == HloOpcode::kCall ||
@@ -75,9 +75,9 @@ int64 CalculatePostOrderScheduleHelper(
   return ordinal;
 }
 
-absl::flat_hash_map<HloInstruction*, int64> CalculatePostOrderSchedule(
+absl::flat_hash_map<HloInstruction*, int64_t> CalculatePostOrderSchedule(
     const HloModule& module) {
-  absl::flat_hash_map<HloInstruction*, int64> map;
+  absl::flat_hash_map<HloInstruction*, int64_t> map;
   CalculatePostOrderScheduleHelper(module.entry_computation(), 0, &map);
   return map;
 }
@@ -146,7 +146,7 @@ struct ConcatUsageInfo {
   // Pointer to a previously seen concat. nullptr if no previously seen concat.
   const HloInstruction* prev_concat;
   // The opnd id of the seen concat.
-  int64 concat_opnd_idx;
+  int64_t concat_opnd_idx;
   // The slice that recovers the opnd in the concat outputs.
   const HloInstruction* slice_to_recover_opnd;
 };
@@ -1115,7 +1115,7 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
 }
 
 void HloDataflowAnalysis::Propagate() {
-  using Work = std::pair<int64, HloInstruction*>;
+  using Work = std::pair<int64_t, HloInstruction*>;
   // Avoid duplicating work by preferring work items early in the post order
   // schedule. Intuitively, we start from entry parameters and propagate buffers
   // updates throughout the module only once.

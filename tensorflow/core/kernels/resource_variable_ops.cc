@@ -324,9 +324,10 @@ REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
 REGISTER_KERNEL_BUILDER(
     Name("VariableShape").Device(DEVICE_CPU).TypeConstraint<int32>("out_type"),
     VariableShapeOp<int32>);
-REGISTER_KERNEL_BUILDER(
-    Name("VariableShape").Device(DEVICE_CPU).TypeConstraint<int64>("out_type"),
-    VariableShapeOp<int64>);
+REGISTER_KERNEL_BUILDER(Name("VariableShape")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int64_t>("out_type"),
+                        VariableShapeOp<int64>);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -338,7 +339,7 @@ REGISTER_KERNEL_BUILDER(Name("VariableShape")
                         VariableShapeOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("VariableShape")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int64>("out_type")
+                            .TypeConstraint<int64_t>("out_type")
                             .HostMemory("output")
                             .HostMemory("input"),
                         VariableShapeOp<int64>);
@@ -779,7 +780,7 @@ class ResourceGatherOp : public OpKernel {
 
 #define REGISTER_GATHER_ALL_INDICES(dev, type) \
   REGISTER_GATHER_FULL(dev, type, int32);      \
-  REGISTER_GATHER_FULL(dev, type, int64)
+  REGISTER_GATHER_FULL(dev, type, int64_t)
 
 #define REGISTER_GATHER_CPU(type) REGISTER_GATHER_ALL_INDICES(CPU, type)
 
@@ -808,7 +809,7 @@ REGISTER_KERNEL_BUILDER(Name("ResourceGather")
                             .HostMemory("resource")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
-                            .TypeConstraint<int64>("Tindices"),
+                            .TypeConstraint<int64_t>("Tindices"),
                         ResourceGatherOp<GPUDevice, Variant, int64>)
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -853,7 +854,7 @@ class ResourceGatherNdOp : public OpKernel {
 
 #define REGISTER_GATHER_ND_ALL_INDICES(dev, type) \
   REGISTER_GATHER_ND_FULL(dev, type, int32);      \
-  REGISTER_GATHER_ND_FULL(dev, type, int64)
+  REGISTER_GATHER_ND_FULL(dev, type, int64_t)
 
 #define REGISTER_GATHER_ND_CPU(type) REGISTER_GATHER_ND_ALL_INDICES(CPU, type)
 
@@ -1022,7 +1023,7 @@ class ResourceScatterUpdateOp : public OpKernel {
 
 #define REGISTER_SCATTER_KERNEL(type, dev, name, op)         \
   REGISTER_SCATTER_KERNEL_INDEX(type, int32, dev, name, op); \
-  REGISTER_SCATTER_KERNEL_INDEX(type, int64, dev, name, op);
+  REGISTER_SCATTER_KERNEL_INDEX(type, int64_t, dev, name, op);
 
 #define REGISTER_SCATTER_ARITHMETIC(type, dev)                \
   REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterAdd",    \
@@ -1087,14 +1088,14 @@ REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .HostMemory("resource")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
-                            .TypeConstraint<int64>("Tindices"),
+                            .TypeConstraint<int64_t>("Tindices"),
                         ResourceScatterUpdateOp<GPUDevice, Variant, int64,
                                                 scatter_op::UpdateOp::ASSIGN>)
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .Device(DEVICE_GPU)
                             .HostMemory("resource")
-                            .TypeConstraint<int64>("dtype")
-                            .TypeConstraint<int64>("Tindices"),
+                            .TypeConstraint<int64_t>("dtype")
+                            .TypeConstraint<int64_t>("Tindices"),
                         ResourceScatterUpdateOp<GPUDevice, int64, int64,
                                                 scatter_op::UpdateOp::ASSIGN>)
 

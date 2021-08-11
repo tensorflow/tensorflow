@@ -581,7 +581,7 @@ struct Node {
 
   // Estimated number of math ops incurred by this node (the sum of the op
   // with this array as 1st output, plus all children nodes).
-  int64 math_ops;
+  int64_t math_ops;
 
   // A map of child nodes keyed by name.
   std::map<const std::string, std::unique_ptr<Node>> children;
@@ -667,7 +667,7 @@ void DumpNode(const Model& model, std::string* output_file,
   }
 }
 
-int64 GetArithmeticOpsCount(const Model& model, const std::string& array_id) {
+int64_t GetArithmeticOpsCount(const Model& model, const std::string& array_id) {
   for (const auto& op : model.operators) {
     if (!op->outputs.empty() && op->outputs[0] == array_id) {
       int64_t count;
@@ -682,7 +682,7 @@ int64 GetArithmeticOpsCount(const Model& model, const std::string& array_id) {
 }
 
 void InsertNode(const Model& model, const std::string& array_id, Node* node,
-                std::vector<std::string> prefixes, int64* math_ops) {
+                std::vector<std::string> prefixes, int64_t* math_ops) {
   if (prefixes.empty()) {
     // Base case: store array in this node.
     node->array_id = array_id;

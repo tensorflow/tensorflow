@@ -478,9 +478,9 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
                                     out_backprop_shape.num_elements();
 
     // Shape of the temporary workspace buffer.
-    TensorShape col_buffer_shape = {static_cast<int64>(shard_size),
-                                    static_cast<int64>(output_image_size),
-                                    static_cast<int64>(filter_total_size)};
+    TensorShape col_buffer_shape = {static_cast<int64_t>(shard_size),
+                                    static_cast<int64_t>(output_image_size),
+                                    static_cast<int64_t>(filter_total_size)};
     int64_t col_buffer_elements = col_buffer_shape.num_elements();
 
     // If the temporary allocation overhead is too large, fallback on Eigen
@@ -989,9 +989,9 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
                                     out_backprop_shape.num_elements();
 
     // Shape of the temporary workspace buffer.
-    TensorShape col_buffer_shape = {static_cast<int64>(shard_size),
-                                    static_cast<int64>(output_image_size),
-                                    static_cast<int64>(filter_total_size)};
+    TensorShape col_buffer_shape = {static_cast<int64_t>(shard_size),
+                                    static_cast<int64_t>(output_image_size),
+                                    static_cast<int64_t>(filter_total_size)};
     int64_t col_buffer_elements = col_buffer_shape.num_elements();
 
     // If the temporary allocation overhead is too large, fallback on Eigen

@@ -133,7 +133,7 @@ PyBuffer::~PyBuffer() {
   }
 }
 
-StatusOr<int64> PyBuffer::size() {
+StatusOr<int64_t> PyBuffer::size() {
   Shape max_buffer_shape = buffer()->on_device_shape();
   if (max_buffer_shape.is_dynamic()) {
     TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
@@ -387,11 +387,11 @@ int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     }
     if ((flags & PyBUF_ND) == PyBUF_ND) {
       view->ndim = shape->dimensions_size();
-      static_assert(sizeof(int64) == sizeof(Py_ssize_t),
+      static_assert(sizeof(int64_t) == sizeof(Py_ssize_t),
                     "Py_ssize_t must be 64 bits");
       if (view->ndim != 0) {
         view->shape = reinterpret_cast<Py_ssize_t*>(
-            const_cast<int64*>(shape->dimensions().data()));
+            const_cast<int64_t*>(shape->dimensions().data()));
         if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
           extra->strides = ByteStridesForShape(*shape);
           view->strides = extra->strides.data();

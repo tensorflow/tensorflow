@@ -498,7 +498,7 @@ class LiveRangeRegions {
     return computation_map_.begin();
   }
   ComputationMap::const_iterator end() const { return computation_map_.end(); }
-  int64 size() const {
+  int64_t size() const {
     CHECK_EQ(computation_vector_.size(), computation_map_.size());
     return computation_vector_.size();
   }
@@ -1789,7 +1789,7 @@ Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
         // When an operand is a tuple, we avoid copying the operand multiple
         // times by recording and checking the operand number of operands that
         // have been copied.
-        absl::flat_hash_set<int64> copied_operands;
+        absl::flat_hash_set<int64_t> copied_operands;
         for (const auto& operand_and_output_index :
              HloDataflowAnalysis::GetInPlaceInputOutputPairs(instruction)) {
           const HloUse& operand = operand_and_output_index.first;
@@ -1931,7 +1931,7 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
   return Status::OK();
 }
 
-static int64 GetNumExistingCopies(const HloModule* module) {
+static int64_t GetNumExistingCopies(const HloModule* module) {
   int64_t num_existing_copies = 0;
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {

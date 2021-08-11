@@ -90,7 +90,7 @@ Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
   }
   // Allocate temporary storage.
   TF_RETURN_IF_ERROR(context->allocate_temp(
-      DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+      DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
       &temp_storage));
   // Sort indices by keys.
   err = gpuprim::DeviceRadixSort::SortPairs(
@@ -127,7 +127,7 @@ Status GpuInclusivePrefixSum(OpKernelContext* context, int size,
   }
   Tensor temp_storage;
   TF_RETURN_IF_ERROR(context->allocate_temp(
-      DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+      DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
       &temp_storage));
   err = gpuprim::DeviceScan::InclusiveSum(temp_storage.flat<int8>().data(),
                                           temp_storage_bytes, input, output,
@@ -164,7 +164,7 @@ Status GpuSegmentedReduce(
   }
   Tensor temp_storage;
   TF_RETURN_IF_ERROR(context->allocate_temp(
-      DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+      DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
       &temp_storage));
   err = gpuprim::DeviceSegmentedReduce::Reduce(
       temp_storage.flat<int8>().data(), temp_storage_bytes, input, output,

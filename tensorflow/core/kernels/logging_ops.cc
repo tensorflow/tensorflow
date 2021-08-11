@@ -109,8 +109,8 @@ class PrintOp : public OpKernel {
 
  private:
   mutex mu_;
-  int64 call_counter_ TF_GUARDED_BY(mu_) = 0;
-  int64 first_n_ = 0;
+  int64_t call_counter_ TF_GUARDED_BY(mu_) = 0;
+  int64_t first_n_ = 0;
   int32 summarize_ = 0;
   string message_;
 };

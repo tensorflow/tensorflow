@@ -514,16 +514,16 @@ class Reader::Dataset : public DatasetBase {
     // Stores the id current checkpoint file that we are in the process of
     // reading (e.g. if the file is currently 00000001.snapshot, then this will
     // be 1).
-    int64 current_checkpoint_id_ = 0;
-    int64 start_index_;
+    int64_t current_checkpoint_id_ = 0;
+    int64_t start_index_;
   };
 
   const tstring shard_dir_;
   const std::string compression_;
-  const int64 version_;
+  const int64_t version_;
   const DataTypeVector dtypes_;
   const std::vector<PartialTensorShape> shapes_;
-  const int64 start_index_;
+  const int64_t start_index_;
 };
 
 Reader::DatasetOp::DatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {
@@ -552,7 +552,7 @@ class Reader::NestedDataset : public DatasetBase {
                          std::vector<DatasetBase*> datasets)
       : DatasetBase(std::move(ctx)), datasets_(datasets) {
     dtypes_.push_back(DT_VARIANT);
-    gtl::InlinedVector<int64, 1> element_dim_sizes;
+    gtl::InlinedVector<int64_t, 1> element_dim_sizes;
     element_dim_sizes.push_back(1);
     partial_shapes_.emplace_back(element_dim_sizes);
   }
@@ -640,7 +640,7 @@ class Reader::NestedDataset : public DatasetBase {
     }
 
    private:
-    int64 index_ = 0;
+    int64_t index_ = 0;
   };
 };
 
@@ -1015,7 +1015,7 @@ Status DetermineOpState(const std::string& mode_string, bool file_exists,
     return Status::OK();
   }
 
-  int64_t expiration_timer = static_cast<int64>(EnvTime::NowMicros()) -
+  int64_t expiration_timer = static_cast<int64_t>(EnvTime::NowMicros()) -
                              pending_snapshot_expiry_seconds * 1000000;
 
   if (metadata->creation_timestamp() >= expiration_timer) {

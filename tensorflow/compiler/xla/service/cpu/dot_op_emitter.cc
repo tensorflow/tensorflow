@@ -143,14 +143,14 @@ class DotOpEmitter {
   // Represents the dimensions of a matrix-matrix multiply operation.
   struct MatMultDims {
     // The number of rows in the LHS.
-    int64 m;
+    int64_t m;
 
     // The number of columns in the LHS, which is also must be equal to the
     // number of rows in the RHS.
-    int64 k;
+    int64_t k;
 
     // The number of columns on the RHS.
-    int64 n;
+    int64_t n;
 
     // True if the LHS matrix is column major.
     bool lhs_column_major;
@@ -185,19 +185,19 @@ class DotOpEmitter {
 
   // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
   // registers.
-  int64 GetGemvTilingFactor() const {
+  int64_t GetGemvTilingFactor() const {
     const int64_t kDefaultTilingFactor = 8;
     return options::LlvmIrGemvTilingFactor(hlo_module_config_)
         .value_or(kDefaultTilingFactor);
   }
 
-  std::tuple<int64, int64, int64> GetGemmTileSize() const {
+  std::tuple<int64_t, int64_t, int64_t> GetGemmTileSize() const {
     // Tuned for broadwell - Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz
     //
     // TODO(b/80093688): Tune for other architectures and centralize this
     // information in one place.
-    const std::tuple<int64, int64, int64> kDefaultTileSize =
-        std::tuple<int64, int64, int64>(11, 9, 1);
+    const std::tuple<int64_t, int64_t, int64_t> kDefaultTileSize =
+        std::tuple<int64_t, int64_t, int64_t>(11, 9, 1);
     return options::LlvmIrGemmTileSize(hlo_module_config_)
         .value_or(kDefaultTileSize);
   }
@@ -377,7 +377,7 @@ void DotOpEmitter::EmitTiledLlvmIrGemm() {
       /*m=*/m, /*k=*/k, /*n=*/n,
       /*max_vectorization_width=*/max_target_vector_width,
       /*max_vector_count=*/tile_size_n_in_vector_width,
-      /*min_vectorization_width=*/std::min<int64>(4, max_target_vector_width),
+      /*min_vectorization_width=*/std::min<int64_t>(4, max_target_vector_width),
       /*tile_size_m=*/tile_size_m, /*tile_size_k=*/tile_size_k, /*lhs=*/lhs,
       /*rhs=*/rhs, /*result=*/target, b_, hlo_module_config_);
 }
@@ -736,7 +736,7 @@ Status DotOpEmitter::EmitCallToRuntime() {
   // The signature of the Eigen runtime matmul function is:
   //
   //   (void)(void* run_options, float* out, float* lhs, float* rhs,
-  //          int64 m, int64 n, int64 k, int32 transpose_lhs,
+  //          int64_t m, int64_t n, int64_t k, int32 transpose_lhs,
   //          int32 transpose_rhs);
   // The two transpose_... parameters are actually booleans, but we use int32
   // to avoid target-dependent calling convention details.
@@ -884,7 +884,7 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
 
 // For vector-matrix dot products, it is always profitable to make the Rhs
 // column major.
-absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
+absl::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions_size() <= 1) {
     if (hlo.operand(0)->shape().rank() != 1 ||
@@ -1075,17 +1075,17 @@ Status EmitNonBatchDotOperation(
 }
 
 Shape DropFirstDim(const Shape& shape) {
-  absl::Span<int64 const> array_shape_dims(shape.dimensions());
+  absl::Span<int64_t const> array_shape_dims(shape.dimensions());
   array_shape_dims.remove_prefix(1);
   return ShapeUtil::MakeShapeWithDescendingLayout(shape.element_type(),
                                                   array_shape_dims);
 }
 
 Shape CollapseFirstNDims(const Shape& shape, int64_t n) {
-  absl::Span<int64 const> input_shape_dims(shape.dimensions());
+  absl::Span<int64_t const> input_shape_dims(shape.dimensions());
   int64_t prefix_dim =
       std::accumulate(input_shape_dims.begin(), input_shape_dims.begin() + n,
-                      1ll, std::multiplies<int64>());
+                      1ll, std::multiplies<int64_t>());
   DimensionVector result_dims;
   result_dims.push_back(prefix_dim);
   std::copy(input_shape_dims.begin() + n, input_shape_dims.end(),
@@ -1112,7 +1112,8 @@ Status ValidateDotDimensionNumbers(const DotDimensionNumbers& dim_numbers) {
   // Checks some invariants that do not hold in general, but DotDecomposer
   // should have established for us.  This is just a debugging aid.
   TF_RET_CHECK(dim_numbers.lhs_contracting_dimensions_size() == 1);
-  std::vector<int64> batch_dim_numbers(dim_numbers.lhs_batch_dimensions_size());
+  std::vector<int64_t> batch_dim_numbers(
+      dim_numbers.lhs_batch_dimensions_size());
   absl::c_iota(batch_dim_numbers, 0);
   TF_RET_CHECK(
       absl::c_equal(batch_dim_numbers, dim_numbers.lhs_batch_dimensions()));
