@@ -13,21 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_TEST_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_TEST_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_PIPELINE_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_PIPELINE_H_
 
-#include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 
 namespace tensorflow {
 
-// See `tf_cpurt_test_passes.td` for the passes documentation.
-std::unique_ptr<mlir::FunctionPass> CreateTestTfCpurtClusteringPass();
-std::unique_ptr<mlir::FunctionPass> CreateTestTfCpurtClusteringPolicyPass();
+// Creates a pipeline that lowers modules from the Tensorflow dialect to
+// the Linalg on buffers (compatible with the default CPURT compilation
+// pipeline).
+void CreateTfCpuRtPipeline(mlir::OpPassManager& pm);
 
 }  // namespace tensorflow
 
-#define GEN_PASS_REGISTRATION
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_test_passes.h.inc"
-
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_TEST_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_PIPELINE_H_

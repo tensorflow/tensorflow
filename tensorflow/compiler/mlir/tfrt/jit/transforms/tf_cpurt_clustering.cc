@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_clustering.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_clustering.h"
 
 #include <functional>
 #include <utility>

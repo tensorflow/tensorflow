@@ -70,8 +70,15 @@ def LinalgMatmulSpecialization
   }];
 }
 
-def Fission
-    : FunctionPass<"tf-cpurt-fission"> {
+def CodegenMatmul : FunctionPass<"tf-cpurt-codegen-matmul"> {
+  let summary = "Tile-promote-vectorize linalg.matmul on buffers";
+  let constructor = "tensorflow::CreateCodegenStrategyForMatMulPass()";
+  let dependentDialects = [
+    "mlir::linalg::LinalgDialect",
+  ];
+}
+
+def Fission : FunctionPass<"tf-cpurt-fission"> {
   let summary = "Split _Fused Tensorflow kernels into primitives";
   let constructor = "tensorflow::CreateFissionPass()";
   let dependentDialects = [
