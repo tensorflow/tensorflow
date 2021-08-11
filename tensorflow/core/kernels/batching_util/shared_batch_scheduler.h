@@ -231,6 +231,13 @@ class SharedBatchScheduler
   // no queues provide a batch to process, just sleeps briefly and exits.
   void ThreadLogic();
 
+  // Called by `AddQueue`.
+  Status AddQueueAfterRewritingOptions(
+      const QueueOptions& options,
+      std::function<void(std::unique_ptr<Batch<TaskType>>)>
+          process_batch_callback,
+      std::unique_ptr<BatchScheduler<TaskType>>* queue);
+
   const Options options_;
 
   mutex mu_;
@@ -533,6 +540,27 @@ SharedBatchScheduler<TaskType>::~SharedBatchScheduler() {
 
 template <typename TaskType>
 Status SharedBatchScheduler<TaskType>::AddQueue(
+    const QueueOptions& options,
+    std::function<void(std::unique_ptr<Batch<TaskType>>)>
+        process_batch_callback,
+    std::unique_ptr<BatchScheduler<TaskType>>* queue) {
+  QueueOptions rewrite_options = options;
+  if ((!rewrite_options.enable_large_batch_splitting) &&
+      rewrite_options.max_enqueued_batches == 0) {
+    // Many existing models (with very low QPS) rely on this option to be >0.
+    // Rewrite and set this to one and retain old behavior to allow such models
+    // to continue to work.
+    //
+    // Note, technically an invalid-argument error should be returned, but
+    // that may break such models.
+    rewrite_options.max_enqueued_batches = 1;
+  }
+  return AddQueueAfterRewritingOptions(rewrite_options, process_batch_callback,
+                                       queue);
+}
+
+template <typename TaskType>
+Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
     const QueueOptions& options,
     std::function<void(std::unique_ptr<Batch<TaskType>>)>
         process_batch_callback,

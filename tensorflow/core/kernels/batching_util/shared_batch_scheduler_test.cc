@@ -785,8 +785,11 @@ TEST_P(SharedBatchSchedulerTest, InvalidLazySplitOptions) {
                         "enable_large_batch_splitting is enabled."));
 }
 
-// Tests that queue must be configured with a positive capacity.
-TEST_P(SharedBatchSchedulerTest, InvalidZeroQueueCapacity) {
+// Tests that queue configured with zero `max_enqueued_batches` get one queue.
+// Note, technically an invalid-argument error should be returned.
+// Since existing models (with very low QPS) rely on the rewrite, retain the
+// old behavior so such models continue to work.
+TEST_P(SharedBatchSchedulerTest, ZeroQueueRewrittenToOneQueue) {
   auto callback = [](std::unique_ptr<Batch<FakeTask>> batch) {
     // do nothing.
   };
@@ -797,15 +800,25 @@ TEST_P(SharedBatchSchedulerTest, InvalidZeroQueueCapacity) {
   const size_t batch_timeout_micros = 100 * 1000;  // 100 milliseconds
   const size_t max_enqueued_batches = 0;
   std::unique_ptr<Queue> queue;
-  EXPECT_THAT(
-      scheduler->AddQueue(tensorflow::serving::CreateQueueOptions(
-                              input_batch_size_limit, input_batch_size_limit,
-                              batch_timeout_micros, max_enqueued_batches,
-                              false /* enable_large_batch_splitting */,
-                              true /* enable_lazy_split */, get_split_func()),
-                          callback, &queue),
-      testing::StatusIs(error::INVALID_ARGUMENT,
-                        "max_enqueued_batches must be positive; was 0"));
+  if (enable_input_batch_split()) {
+    EXPECT_THAT(
+        scheduler->AddQueue(tensorflow::serving::CreateQueueOptions(
+                                input_batch_size_limit, input_batch_size_limit,
+                                batch_timeout_micros, max_enqueued_batches,
+                                enable_input_batch_split(), enable_lazy_split(),
+                                get_split_func()),
+                            callback, &queue),
+        testing::StatusIs(error::INVALID_ARGUMENT,
+                          "max_enqueued_batches must be positive; was 0"));
+  } else {
+    TF_ASSERT_OK(scheduler->AddQueue(
+        tensorflow::serving::CreateQueueOptions(
+            input_batch_size_limit, input_batch_size_limit,
+            batch_timeout_micros, max_enqueued_batches,
+            enable_input_batch_split(), enable_lazy_split(), get_split_func()),
+        callback, &queue));
+    EXPECT_EQ(queue->SchedulingCapacity(), input_batch_size_limit);
+  }
 }
 
 // TODO(b/161857471):
