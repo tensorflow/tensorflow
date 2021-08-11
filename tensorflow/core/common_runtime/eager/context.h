@@ -672,7 +672,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   const bool log_memory_;
 
   // Whether to use same rendezvous instance across function/eager executions.
-  bool reuse_rendezvous_for_functions_ = false;
+  std::atomic<bool> reuse_rendezvous_for_functions_{false};
   mutable mutex global_rendezvous_mu_;
   core::RefCountPtr<Rendezvous> global_rendezvous_for_functions_
       TF_GUARDED_BY(global_rendezvous_mu_);
