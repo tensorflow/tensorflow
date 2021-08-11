@@ -1370,7 +1370,6 @@ StatusOr<FuncOp> ConvertSubgraph(
 // have them, so we generate a name for subgraphs that are missing one here.
 // Note: in TFLite, the first subgraph is the entry point, and in MLIR that
 // represents TFLite, this entry point must be called "main"
-// TODO(b/131175224,b/132239787) Support multiple entry points
 std::string SubgraphName(unsigned index, const tflite::SubGraphT& subgraph) {
   if (index == 0) {
     return "main";
