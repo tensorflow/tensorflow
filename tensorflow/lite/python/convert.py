@@ -283,8 +283,7 @@ def toco_convert_protos(model_flags_str,
       `toco/model_flags.proto`.
     toco_flags_str: Serialized proto describing conversion properties, see
       `toco/toco_flags.proto`.
-    input_data_str: Input data in serialized form (e.g. a graphdef is common, or
-      it can be hlo text or proto)
+    input_data_str: Input data in serialized form (e.g. a graphdef is common)
     debug_info_str: Serialized `GraphDebugInfo` proto describing logging
       information. (default None)
     enable_mlir_converter: Enables MLIR-based conversion instead of the default
@@ -842,27 +841,6 @@ def convert_saved_model(saved_model_dir=None,
   return data
 
 
-@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
-               SubComponent.CONVERT_JAX_HLO)
-def convert_jax_hlo(input_content, is_proto_format, **kwargs):
-  """Converts a Jax hlo-based model using TF Lite converter."""
-  model_flags = _model_flags_pb2.ModelFlags()
-  model_flags.use_hlo_import = True
-  if is_proto_format:
-    model_flags.hlo_file_type = _model_flags_pb2.ModelFlags.HLO_PROTO
-  else:
-    model_flags.hlo_file_type = _model_flags_pb2.ModelFlags.HLO_TEXT
-
-  toco_flags = build_toco_flags(**kwargs)
-  data = toco_convert_protos(
-      model_flags.SerializeToString(),
-      toco_flags.SerializeToString(),
-      input_content,
-      None,  # debug_info_str, unused
-      enable_mlir_converter=True)
-  return data
-
-
 @_tf_export(v1=["lite.toco_convert"])
 @deprecation.deprecated(None, "Use `lite.TFLiteConverter` instead.")
 def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
@@ -874,7 +852,7 @@ def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
   been deprecated. Please use `tf.lite.TFLiteConverter` instead.
 
   Args:
-    input_data: Input data (i.e. often `sess.graph_def`).
+    input_data: Input data (i.e. often `sess.graph_def`),
     input_tensors: List of input tensors. Type and shape are computed using
       `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
