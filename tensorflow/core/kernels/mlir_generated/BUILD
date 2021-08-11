@@ -1389,11 +1389,6 @@ cpu_kernel_library(
         "i16",
         "i32",
         "i64",
-        # TODO(b/172804967): Enable once fixed.
-        # "ui8",
-        # "ui16",
-        # "ui32",
-        # "ui64",
     ],
     unroll_factors = "4",
 )
