@@ -484,6 +484,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # some cases.
     if isinstance(cluster_resolver, TFConfigClusterResolver):
       num_gpus = 0
+      context.context().ensure_initialized()
       devices = context.context().devices()
       for d in devices:
         device_spec = pydev.DeviceSpec.from_string(d)
