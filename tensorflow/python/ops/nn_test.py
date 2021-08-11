@@ -1478,6 +1478,7 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [[7, 4], [8, 2], [9, 3], [4, 5], [5, 1]])
 
+  @test_util.disable_xla("unsupported data format")
   def testNDHWCToDHWNC2D(self):
     x_val = [[7, 4], [9, 3], [4, 5], [5, 1], [8, 2]]
     x = constant_op.constant(x_val)
@@ -1487,6 +1488,7 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [[9, 3], [4, 5], [5, 1], [7, 4], [8, 2]])
 
+  @test_util.disable_xla("unsupported data format")
   def testDHWNCToNDHWC2D(self):
     x_val = [[7, 4], [9, 3], [4, 5], [5, 1], [8, 2]]
     x = constant_op.constant(x_val)
