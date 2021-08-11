@@ -103,9 +103,9 @@ class _SavedModelBuilder(object):
     if file_io.file_exists(export_dir):
       if file_io.list_directory(export_dir):
         raise AssertionError(
-            "Export directory already exists, and isn't empty. Please choose "
-            "a different export directory, or delete all the contents of the "
-            "specified directory: %s" % export_dir)
+            f"Export directory {export_dir} already exists, and isn't empty. "
+            "Please choose a different export directory, or delete all the "
+            "contents of the specified directory.")
     else:
       file_io.recursive_create_dir(self._export_dir)
 
@@ -177,16 +177,16 @@ class _SavedModelBuilder(object):
     if tensor_info.WhichOneof("encoding") is None:
       # TODO(soergel) validate each of the fields of coo_sparse
       raise AssertionError(
-          "All TensorInfo protos used in the SignatureDefs must have one of "
-          "the 'encoding' fields (e.g., name or coo_sparse) set: %s"
-          % tensor_info)
+          f"Invalid `tensor_info`: {tensor_info}. All TensorInfo protos used "
+          "in the SignatureDefs must have one of the 'encoding' fields (e.g., "
+          "name or coo_sparse) set.")
     if tensor_info.WhichOneof("encoding") == "composite_tensor":
       for component in tensor_info.composite_tensor.components:
         self._validate_tensor_info(component)
     elif tensor_info.dtype == types_pb2.DT_INVALID:
       raise AssertionError(
-          "All TensorInfo protos used in the SignatureDefs must have the dtype "
-          "field set: %s" % tensor_info)
+          f"Invalid `tensor_info`: {tensor_info}. All TensorInfo protos used in"
+          " the SignatureDefs must have the dtype field set.")
 
   def _validate_signature_def_map(self, signature_def_map):
     """Validates the `SignatureDef` entries in the signature def map.
@@ -213,12 +213,12 @@ class _SavedModelBuilder(object):
         self._validate_tensor_info(outputs[outputs_key])
     if constants.INIT_OP_SIGNATURE_KEY in signature_def_map:
       raise KeyError(
-          "SignatureDef map key \"{}\" is reserved for initialization. Please "
-          "use a different key.".format(constants.INIT_OP_SIGNATURE_KEY))
+          f"SignatureDef map key \"{constants.INIT_OP_SIGNATURE_KEY}\" is "
+          "reserved for initialization. Please use a different key.")
     if constants.TRAIN_OP_SIGNATURE_KEY in signature_def_map:
       raise KeyError(
-          "SignatureDef map key \"{}\" is reserved for the train op. Please "
-          "use a different key.".format(constants.TRAIN_OP_SIGNATURE_KEY))
+          f"SignatureDef map key \"{constants.TRAIN_OP_SIGNATURE_KEY}\" is "
+          f"reserved for the train op. Please use a different key.")
 
   def _maybe_create_saver(self, saver=None):
     """Creates a sharded saver if one does not already exist."""
@@ -485,7 +485,8 @@ class SavedModelBuilder(_SavedModelBuilder):
       return
 
     if not isinstance(main_op, ops.Operation):
-      raise TypeError("main_op needs to be an Operation: %r" % main_op)
+      raise TypeError(f"Expected {main_op} to be an Operation but got type "
+                      f"{type(main_op)} instead.")
 
     # Validate that no other init ops have been added to this graph already.
     # We check main_op and legacy_init_op for thoroughness and explicitness.
@@ -493,7 +494,7 @@ class SavedModelBuilder(_SavedModelBuilder):
       if ops.get_collection(init_op_key):
         raise ValueError(
             "Graph already contains one or more main ops under the "
-            "collection {}.".format(init_op_key))
+            f"collection {init_op_key}.")
 
     ops.add_to_collection(constants.MAIN_OP_KEY, main_op)
 
@@ -513,7 +514,7 @@ class SavedModelBuilder(_SavedModelBuilder):
     if train_op is not None:
       if (not isinstance(train_op, ops.Tensor) and
           not isinstance(train_op, ops.Operation)):
-        raise TypeError("train_op needs to be a Tensor or Op: %r" % train_op)
+        raise TypeError(f"`train_op` {train_op} needs to be a Tensor or Op.")
       ops.add_to_collection(constants.TRAIN_OP_KEY, train_op)
 
   @deprecated_args(None,
@@ -652,7 +653,7 @@ def _maybe_save_assets(write_fn, assets_to_add=None):
   for asset_tensor in assets_to_add:
     asset_source_filepath = _asset_path_from_tensor(asset_tensor)
     if not asset_source_filepath:
-      raise ValueError("Invalid asset filepath tensor %s" % asset_tensor)
+      raise ValueError(f"Asset filepath tensor {asset_tensor} in is invalid.")
 
     asset_filename = get_asset_filename_to_add(
         asset_source_filepath, asset_filename_map)
@@ -735,14 +736,16 @@ def _asset_path_from_tensor(path_tensor):
     TypeError if tensor does not match expected op type, dtype or value.
   """
   if not isinstance(path_tensor, ops.Tensor):
-    raise TypeError("Asset path tensor must be a Tensor.")
+    raise TypeError(f"Asset path tensor {path_tensor} must be a Tensor.")
   if path_tensor.op.type != "Const":
-    raise TypeError("Asset path tensor must be of type constant.")
+    raise TypeError(f"Asset path tensor {path_tensor} must be of type constant."
+                    f"Has type {path_tensor.op.type} instead.")
   if path_tensor.dtype != dtypes.string:
-    raise TypeError("Asset path tensor must be of dtype string.")
+    raise TypeError(f"Asset path tensor {path_tensor}` must be of dtype string."
+                    f"Has type {path_tensor.dtype} instead.")
   str_values = path_tensor.op.get_attr("value").string_val
   if len(str_values) != 1:
-    raise TypeError("Asset path tensor must be a scalar.")
+    raise TypeError(f"Asset path tensor {path_tensor} must be a scalar.")
   return str_values[0]
 
 

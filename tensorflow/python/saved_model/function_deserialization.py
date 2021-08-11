@@ -131,7 +131,7 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
   if function_spec_proto.is_method:
     if not typeless_fullargspec.args:
       raise NotImplementedError(
-          "Missing support to deserialize a method function without a named "
+          "Cannot deserialize a method function without a named "
           "'self' argument.")
     args = typeless_fullargspec.args[1:]
   else:
@@ -287,12 +287,11 @@ def recreate_function(saved_function, concrete_functions):
           "Option {}:\n  {}\n  Keyword arguments: {}"
           .format(index + 1, _pretty_format_positional(positional), keyword))
     raise ValueError(
-        "Could not find matching function to call loaded from the SavedModel. "
-        "Got:\n  {}\n  Keyword arguments: {}\n\nExpected "
-        "these arguments to match one of the following {} option(s):\n\n{}"
-        .format(_pretty_format_positional(args), kwargs,
-                len(saved_function.concrete_functions),
-                "\n\n".join(signature_descriptions)))
+        "Could not find matching concrete function to call loaded from the "
+        f"SavedModel. Got:\n  {_pretty_format_positional(args)}\n  Keyword "
+        f"arguments: {kwargs}\n\n Expected these arguments to match one of the "
+        f"following {len(saved_function.concrete_functions)} option(s):\n\n"
+        f"{(chr(10)+chr(10)).join(signature_descriptions)}")
 
   concrete_function_objects = []
   for concrete_function_name in saved_function.concrete_functions:
@@ -488,8 +487,8 @@ def _sort_function_defs(library, function_deps):
 
   if len(output) != len(library.function):
     failed_to_resolve = sorted(set(in_count.keys()) - set(output))
-    raise ValueError("There is a cyclic-dependency between functions. ",
-                     "Could not resolve %r." % (failed_to_resolve,))
+    raise ValueError("There is a cyclic dependency between functions. ",
+                     f"Could not resolve {failed_to_resolve}.")
 
   reverse = {fdef.signature.name: fdef for fdef in library.function}
   return [reverse[x] for x in output]
