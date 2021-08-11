@@ -448,6 +448,7 @@ def build_toco_flags(inference_type=dtypes.float32,
                      accumulation_type=None,
                      allow_bfloat16=False,
                      unfold_large_splat_constant=False,
+                     supported_backends=None,
                      **_):
   """Build the TOCO flags object from params."""
   toco = _toco_flags_pb2.TocoFlags()
@@ -489,6 +490,8 @@ def build_toco_flags(inference_type=dtypes.float32,
     toco.accumulation_type = convert_tensor_tf_type_to_tflite_type(
         accumulation_type, usage="accumulation_type flag")
   toco.allow_bfloat16 = allow_bfloat16
+  if supported_backends:
+    toco.supported_backends.extend(supported_backends)
 
   return toco
 
@@ -524,7 +527,8 @@ def build_toco_convert_protos(input_tensors,
                               lower_tensor_list_ops=True,
                               accumulation_type=None,
                               allow_bfloat16=False,
-                              unfold_large_splat_constant=False):
+                              unfold_large_splat_constant=False,
+                              supported_backends=None):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -614,6 +618,8 @@ def build_toco_convert_protos(input_tensors,
       inference with the bfloat16 type.
     unfold_large_splat_constant: Whether to unfold large splat constant tensors
       in the flatbuffer model to reduce size.
+    supported_backends: List of TFLite backends which needs to check
+      compatibility.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -647,7 +653,8 @@ def build_toco_convert_protos(input_tensors,
       lower_tensor_list_ops=lower_tensor_list_ops,
       accumulation_type=accumulation_type,
       allow_bfloat16=allow_bfloat16,
-      unfold_large_splat_constant=unfold_large_splat_constant)
+      unfold_large_splat_constant=unfold_large_splat_constant,
+      supported_backends=supported_backends)
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):

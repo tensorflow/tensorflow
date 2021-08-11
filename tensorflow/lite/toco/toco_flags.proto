@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 41.
+// Next ID to use: 42.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -261,4 +261,8 @@ message TocoFlags {
   // Whether to unfold large splat constant tensors in the flatbuffer to reduce
   // model size.
   optional bool unfold_large_splat_constant = 40 [default = false];
+
+  // Name of TFLite backends which are needed to check compatibility.
+  // WARNING: Experimental interface, subject to change.
+  repeated string supported_backends = 41;
 }

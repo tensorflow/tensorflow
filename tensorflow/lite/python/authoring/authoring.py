@@ -122,6 +122,10 @@ class _Compatible:
       # Set provided converter parameters
       if self._converter_target_spec is not None:
         converter.target_spec = self._converter_target_spec
+        # TODO(b/195611245): Remove the following logic once API is updated.
+        if hasattr(self._converter_target_spec,
+                   "experimental_supported_backends"):
+          converter._experimental_supported_backends = self._converter_target_spec.experimental_supported_backends
       if self._converter_allow_custom_ops is not None:
         converter.allow_custom_ops = self._converter_allow_custom_ops
       try:
@@ -137,21 +141,26 @@ class _Compatible:
     """Returns a concrete function of the decorated function."""
     return self._get_func().get_concrete_function(*args, **kwargs)
 
+  def _get_location_string(self, location):
+    """Dump location of ConveterError.errors.location."""
+    callstack = []
+    for single_call in location.call:
+      if (location.type ==
+          converter_error_data_pb2.ConverterErrorData.CALLSITELOC):
+        # Stop showing CallSite after func_graph.py which isn't meaningful.
+        if _FUNC_GRAPH_SRC_PATH in single_call.source.filename:
+          break
+        callstack.append(
+            f"  - {single_call.source.filename}:{single_call.source.line}")
+      else:
+        callstack.append(str(single_call))
+    callstack_dump = "\n".join(callstack)
+    return callstack_dump
+
   def _dump_error_details(self, ops, locations):
     """Dump the list of ops and locations."""
     for i in range(0, len(ops)):
-      callstack = []
-      for single_call in locations[i].call:
-        if (locations[i].type ==
-            converter_error_data_pb2.ConverterErrorData.CALLSITELOC):
-          # Stop showing CallSite after func_graph.py which isn't meaningful.
-          if _FUNC_GRAPH_SRC_PATH in single_call.source.filename:
-            break
-          callstack.append(
-              f"  - {single_call.source.filename}:{single_call.source.line}")
-        else:
-          callstack.append(str(single_call))
-      callstack_dump = "\n".join(callstack)
+      callstack_dump = self._get_location_string(locations[i])
       err_string = f"Op: {ops[i]}\n{callstack_dump}\n"
       self._log(err_string)
 
@@ -181,6 +190,7 @@ class _Compatible:
     custom_ops_location = []
     tf_ops = []
     tf_ops_location = []
+    gpu_not_compatible_ops = []
     for err in err.errors:
       # Check custom op usage error.
       if err.error_code == converter_error_data_pb2.ConverterErrorData.ERROR_NEEDS_CUSTOM_OPS:
@@ -190,6 +200,13 @@ class _Compatible:
       elif err.error_code == converter_error_data_pb2.ConverterErrorData.ERROR_NEEDS_FLEX_OPS:
         tf_ops.append(err.operator.name)
         tf_ops_location.append(err.location)
+      # Check GPU delegate compatibility error.
+      elif err.error_code == converter_error_data_pb2.ConverterErrorData.ERROR_GPU_NOT_COMPATIBLE:
+        gpu_not_compatible_ops.append(err.operator.name)
+        # Log the first line of ConveterError.errors.error_message only
+        # since the seond line is "Error code: xxxx"
+        self._log(err.error_message.splitlines()[0])
+        self._log(self._get_location_string(err.location) + "\n")
 
     if custom_ops:
       custom_ops_str = ", ".join(sorted(custom_ops))
@@ -208,6 +225,14 @@ class _Compatible:
           "https://www.tensorflow.org/lite/guide/ops_select")
       self._log(err_string)
       self._dump_error_details(tf_ops, tf_ops_location)
+
+    if gpu_not_compatible_ops:
+      not_compatible_ops_str = ", ".join(sorted(gpu_not_compatible_ops))
+      err_string = (
+          f"{_AUTHORING_WARNING_HDR}: op '{not_compatible_ops_str}' aren't "
+          "compatible with TensorFlow Lite GPU delegate. "
+          "https://www.tensorflow.org/lite/performance/gpu")
+      self._log(err_string)
 
   def _decode_error(self, err):
     """Parses the given ConverterError and generates compatibility warnings."""
