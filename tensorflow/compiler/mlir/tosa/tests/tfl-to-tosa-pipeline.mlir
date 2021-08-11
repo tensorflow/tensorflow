@@ -709,8 +709,7 @@ func @test_stack(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: 
 // -----
 
 // CHECK-LABEL: test_unstack
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [1, 32, 32, 8], start = [0, 0, 0, 0]}
-// CHECK: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [32, 32, 8]}
+// CHECK: %[[VAR1:.*]] = "tosa.reshape"(%arg0) {new_shape = [32, 32, 8]}
 func @test_unstack(%arg0: tensor<1x32x32x8xf32>) -> tensor<32x32x8xf32> {
   %0 = "tfl.unpack"(%arg0)  {axis = 0 : i32, num = 1 : i32}  : (tensor<1x32x32x8xf32>) -> tensor<32x32x8xf32>
   return %0 : tensor<32x32x8xf32>
@@ -883,7 +882,7 @@ func @test_space_to_batch(%arg0: tensor<13x21x3xf32>) -> tensor<26x11x3xf32> {
 // CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [2, 2, 2, 32, 32, 1]}
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.transpose"(%[[VAR3]], %[[VAR1]])
 // CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%[[VAR4]]) {new_shape = [2, 64, 64, 1]}
-// CHECK: %[[VAR6:.*]] = "tosa.slice"(%[[VAR5]]) {size = [2, 64, 64, 1], start = [0, 0, 0, 0]}
+// CHECK: return %[[VAR5:.*]]
 func @test_batch_to_space(%arg0: tensor<1x32x32x8xf32>) -> tensor<2x64x64x1xf32> {
   %cst = constant dense<2> : tensor<2xi32>
   %cst_0 = constant dense<0> : tensor<2x2xi32>

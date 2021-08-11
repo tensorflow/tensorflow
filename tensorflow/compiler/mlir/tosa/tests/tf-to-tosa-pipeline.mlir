@@ -557,8 +557,7 @@ func @test_stack(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: 
 // -----
 
 // CHECK-LABEL: test_unstack
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [1, 32, 32, 8], start = [0, 0, 0, 0]}
-// CHECK: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [32, 32, 8]}
+// CHECK: %[[VAR1:.*]] = "tosa.reshape"(%arg0) {new_shape = [32, 32, 8]}
 func @test_unstack(%arg0: tensor<1x32x32x8xf32>) -> tensor<32x32x8xf32> {
   %2 = "tf.Unpack"(%arg0)  {axis = 0 : i64}  : (tensor<1x32x32x8xf32>) -> tensor<32x32x8xf32>
   %3 = "tf.Identity"(%2)   : (tensor<32x32x8xf32>) -> tensor<32x32x8xf32>
@@ -761,7 +760,7 @@ func @test_space_to_batch(%arg0: tensor<13x21x3xf32>) -> tensor<26x11x3xf32> {
 // CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [2, 2, 2, 32, 32, 1]}
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.transpose"(%[[VAR3]], %[[VAR1]])
 // CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%[[VAR4]]) {new_shape = [2, 64, 64, 1]}
-// CHECK: %[[VAR6:.*]] = "tosa.slice"(%[[VAR5]]) {size = [2, 64, 64, 1], start = [0, 0, 0, 0]}
+// CHECK: return %[[VAR5]]
 func @test_batch_to_space(%arg0: tensor<1x32x32x8xf32>) -> tensor<2x64x64x1xf32> {
   %2 = "tf.Const"()  {value = dense<2> : tensor<2xi32>}  : () -> tensor<2xi32>
   %3 = "tf.Const"()  {value = dense<0> : tensor<2x2xi32>}  : () -> tensor<2x2xi32>
@@ -863,14 +862,11 @@ func @test_fakequant_with_min_max_args(%arg0: tensor<13x21x3xf32>) -> tensor<13x
 // -----
 // CHECK-LABEL: test_gather
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<7x7xi32>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<[0, 1, 2]> : tensor<3xi32>}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() {value = dense<[0, 1, 2, 3]> : tensor<4xi32>}
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.transpose"(%arg0, %[[VAR1]])
-// CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%[[VAR3]]) {new_shape = [1, 13, 63]}
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 13, 63]}
 // CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 49]}
 // CHECK-DAG: %[[VAR6:.*]] = "tosa.gather"(%[[VAR4]], %[[VAR5]])
 // CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [7, 7, 21, 3]}
-// CHECK: %[[VAR8:.*]] = "tosa.transpose"(%[[VAR7]], %[[VAR2]])
+// CHECK: return %[[VAR7]]
 func @test_gather(%arg0: tensor<13x21x3xf32>) -> tensor<7x7x21x3xf32> {
   %0 = "tf.Const"() {device = "", value = dense<0> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Const"() {device = "", value = dense<[[9, 8, 11, 10, 11, 0, 12], [7, 0, 1, 5, 2, 9, 6], [7, 9, 10, 8, 0, 3, 0], [8, 9, 10, 4, 9, 12, 6], [0, 2, 4, 3, 6, 11, 8], [5, 8, 7, 2, 4, 10, 5], [4, 12, 8, 3, 12, 9, 1]]> : tensor<7x7xi32>} : () -> tensor<7x7xi32>
