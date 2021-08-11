@@ -698,85 +698,97 @@ TEST_F(ConverterTest, TransposeTensor) {
               LayerNamesAreArray({"TRTEngineOp_0_0/dummy_op-sub3:SHUFFLE"}));
 }
 
-void TestPrepareTensorForShape(
-    const std::vector<int>& input_dims, const std::vector<int>& reshape_dims,
-    const std::vector<int>& expected_tensor_dims, bool input_is_tensor,
-    Converter* converter, TrtWeightStore* weight_store,
-    error::Code expected_code = error::OK,
-    const char* expected_error_msg_substr = nullptr) {
+//--------------------------------------------------------------------------
+// PrepareTensorForShape parameterized test
+struct PrepareTensorForShapeTestParams {
+  std::vector<int> input_dims;
+  std::vector<int> reshape_dims;
+  std::vector<int> expected_tensor_dims;
+  bool input_is_tensor;
+  error::Code expected_code{error::OK};
+  string expected_error_msg_substr{""};
+};
+
+class PrepareTensorForShapeTest
+    : public ConverterTest,
+      public ::testing::WithParamInterface<PrepareTensorForShapeTestParams> {};
+
+TEST_P(PrepareTensorForShapeTest, TestSuccess) {
+  const auto& params = GetParam();
   TRT_TensorOrWeights input;
-  if (input_is_tensor) {
-    input = TRT_TensorOrWeights(converter->network()->addInput(
+  if (params.input_is_tensor) {
+    input = TRT_TensorOrWeights(converter_->network()->addInput(
         "", nvinfer1::DataType::kFLOAT,
-        nvinfer_factory::dims::Create(input_dims)));
+        nvinfer_factory::dims::Create(params.input_dims)));
   } else {
-    input = TRT_TensorOrWeights(weight_store->GetTempWeights(
-        nvinfer1::DataType::kFLOAT, nvinfer_factory::dims::Create(input_dims)));
+    input = TRT_TensorOrWeights(weight_store_->GetTempWeights(
+        nvinfer1::DataType::kFLOAT,
+        nvinfer_factory::dims::Create(params.input_dims)));
   }
   ITensorProxyPtr output_tensor = nullptr;
-
   NodeDef dummy_node_def = MakeNodeDef("dummy_op", "DummyOp", {});
   for (bool validation_only : {false, true}) {
     const Status status = PrepareTensorForShape(
-        converter, input, nvinfer_factory::dims::Create(reshape_dims),
-        validation_only, &output_tensor, dummy_node_def);
-    if (expected_code == error::OK) {
-      TF_EXPECT_OK(status);
+        converter_.get(), input,
+        nvinfer_factory::dims::Create(params.reshape_dims), validation_only,
+        &output_tensor, dummy_node_def);
+    if (params.expected_code == error::OK) {
+      EXPECT_THAT(status, StatusIs(params.expected_code));
       if (validation_only) {
         EXPECT_EQ(nullptr, *output_tensor);
       } else {
         EXPECT_THAT(output_tensor->getDimensions(),
-                    DimsAreArray(expected_tensor_dims));
+                    DimsAreArray(params.expected_tensor_dims));
+        EXPECT_THAT(converter_->network(), LayerNamesNonEmpty());
       }
     } else {
-      EXPECT_THAT(status, StatusIs(expected_code,
-                                   HasSubstr(expected_error_msg_substr)));
+      EXPECT_THAT(status,
+                  StatusIs(params.expected_code,
+                           HasSubstr(params.expected_error_msg_substr)));
     }
   }
 }
 
-TEST_F(ConverterTest, PrepareTensorForShape) {
+std::vector<PrepareTensorForShapeTestParams>
+GetPrepareTensorForShapeTestParams() {
+  std::vector<PrepareTensorForShapeTestParams> params;
   for (bool input_is_tensor : {true, false}) {
-    // Shape size doesn't match.
-    Reset();
-    TestPrepareTensorForShape({2, 3, 5}, {2, 3, 6}, {}, input_is_tensor,
-                              converter_.get(), weight_store_,
-                              error::INVALID_ARGUMENT, "Incompatible shapes");
-
-    // Regular shape.
-    Reset();
-    TestPrepareTensorForShape({2, 3, 5}, {10, 3}, {10, 3}, input_is_tensor,
-                              converter_.get(), weight_store_);
-
-    // Reshape to zero rank.
-    Reset();
-    TestPrepareTensorForShape({1, 1}, {}, {}, input_is_tensor, converter_.get(),
-                              weight_store_);
+    params.push_back({{2, 3, 5},
+                      {2, 3, 6},
+                      {},
+                      input_is_tensor,
+                      error::INVALID_ARGUMENT,
+                      "Incompatible shapes"});
+    params.push_back({{2, 3, 5}, {10, 3}, {10, 3}, input_is_tensor});
+    params.push_back({{1, 1}, {}, {}, input_is_tensor});
   }
-
-  // Tensor input with zero rank.
-  Reset();
-  TestPrepareTensorForShape({}, {1, 1}, {1, 1}, /*input_is_tensor=*/true,
-                            converter_.get(), weight_store_);
+  params.push_back({{}, {1, 1}, {1, 1}, /*input_is_tensor=*/true});
 
   // TODO(aaroey): we should check the case where uninferred dimensions are
   // not an exact divisor of input dim ensions, e.g. for dims {-1, 7}.
-
   // Infer tensor shape, ok.
-  Reset();
-  TestPrepareTensorForShape({2, 3, 5}, {-1, 2}, {15, 2},
-                            /*input_is_tensor=*/true, converter_.get(),
-                            weight_store_);
+  params.push_back({{2, 3, 5},
+                    {-1, 2},
+                    {15, 2},
+                    /*input_is_tensor=*/true});
 
   // Infer weight shape, should fail.
-  Reset();
-  TestPrepareTensorForShape({2, 3, 5}, {-1, 2}, {15, 2},
-                            /*input_is_tensor=*/false, converter_.get(),
-                            weight_store_, error::INVALID_ARGUMENT,
-                            "Shape is not fully defined");
+  params.push_back({{2, 3, 5},
+                    {-1, 2},
+                    {15, 2},
+                    /*input_is_tensor=*/false,
+                    error::INVALID_ARGUMENT,
+                    "Shape is not fully defined"});
 
-  EXPECT_THAT(converter_->network(), LayerNamesNonEmpty());
+  return params;
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    PrepareTensorForShapeTest, PrepareTensorForShapeTest,
+    ::testing::ValuesIn(GetPrepareTensorForShapeTestParams()));
+
+//--------------------------------------------------------------------------
+// Converter batch_size handeling tests.
 
 TEST_F(ConverterTest, MaybeUpdateBatchSize) {
   EXPECT_EQ(-1, batch_size());
@@ -819,27 +831,34 @@ TEST_F(ConverterTest, AddAndGetTensorOrWeights) {
                        HasSubstr("tensor/weights my_tensor already exist")));
 }
 
+//--------------------------------------------------------------------------
+// Converter GetWeightRange typed test
+
 template <typename T>
-void TestGetWeightRange(ConverterTest* test, TrtWeightStore* weight_store) {
+class TestGetWeightRange : public ConverterTest {
+ public:
+  TestGetWeightRange() = default;
+};
+using TestGetWeightRangeTypes = ::testing::Types<float, Eigen::half, int32>;
+TYPED_TEST_SUITE(TestGetWeightRange, TestGetWeightRangeTypes);
+TYPED_TEST(TestGetWeightRange, TestGetWeightRange) {
+  using T = TypeParam;
   nvinfer1::DataType trt_type;
   TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &trt_type));
-  TRT_ShapedWeights weights = weight_store->GetTempWeights(
+  TRT_ShapedWeights weights = this->weight_store_->GetTempWeights(
       trt_type, nvinfer_factory::dims::Create({2, 3}));
   const std::vector<T> values = {T(3), T(1), T(2), T(6), T(5), T(4)};
-  memcpy(weights.GetValues(), values.data(), weights.size_bytes());
-
+  std::copy_n(values.begin(), values.size(),
+              reinterpret_cast<T*>(weights.GetValues()));
   float out_min = 0.0f;
   float out_max = 0.0f;
-  TF_EXPECT_OK(test->GetWeightRange(weights, &out_min, &out_max));
+  TF_EXPECT_OK(this->GetWeightRange(weights, &out_min, &out_max));
   EXPECT_EQ(1.0f, out_min);
   EXPECT_EQ(6.0f, out_max);
 }
 
-TEST_F(ConverterTest, GetWeightRange) {
-  TestGetWeightRange<float>(this, weight_store_);
-  TestGetWeightRange<Eigen::half>(this, weight_store_);
-  TestGetWeightRange<int32>(this, weight_store_);
-}
+//--------------------------------------------------------------------------
+// Converter quantization helper tests.
 
 TEST_F(ConverterTest, ProvideQuantizationRange) {
   ITensorProxyPtr simple_tensor;
