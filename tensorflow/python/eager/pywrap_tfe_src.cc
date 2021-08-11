@@ -3967,6 +3967,8 @@ const char kNone[] = "n";
 const char kCompositeTensor[] = "C";
 const char kAttrs[] = "A";
 const char kAttrsEnd[] = "a";
+const char kName[] = "'";
+const char kNameEnd[] = "'";
 
 struct EncodeResult {
   string str;
@@ -3994,89 +3996,85 @@ struct EncodeResult {
   }
 };
 
-tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
-                                       bool include_tensor_ranks_only,
-                                       EncodeResult* result) {
-  if (EagerTensor_CheckExact(arg)) {
-    tensorflow::ImmediateExecutionTensorHandle* handle =
-        tensorflow::unwrap(EagerTensor_Handle(arg));
+tensorflow::Status TFE_Py_EncodeTensorOrTensorSpec(
+    PyObject* arg, bool is_tensor_spec, bool include_tensor_ranks_only,
+    EncodeResult* result) {
+  absl::StrAppend(&result->str, kTensor);
 
-    absl::StrAppend(&result->str, kDType,
-                    static_cast<tensorflow::DataType>(handle->DataType()));
-    absl::StrAppend(&result->str, kShape);
-
-    int num_dims;
-    tensorflow::Status status = handle->NumDims(&num_dims);
-    if (!status.ok()) return status;
-
-    if (include_tensor_ranks_only) {
-      absl::StrAppend(&result->str, num_dims);
-    } else {
-      for (int i = 0; i < num_dims; ++i) {
-        int64_t dim_size;
-        status = handle->Dim(i, &dim_size);
-        if (!status.ok()) return status;
-        absl::StrAppend(&result->str, dim_size, kShapeDelim);
-      }
+  if (is_tensor_spec) {
+    tensorflow::Safe_PyObjectPtr name(PyObject_GetAttrString(arg, "name"));
+    if (name != nullptr && name.get() != Py_None) {
+      absl::StrAppend(&result->str, kName, TFE_GetPythonString(name.get()),
+                      kNameEnd);
     }
-    return tensorflow::Status::OK();
   }
 
   tensorflow::Safe_PyObjectPtr dtype_object(
       PyObject_GetAttrString(arg, "dtype"));
-
   if (dtype_object == nullptr) {
     return tensorflow::errors::InvalidArgument(
-        "ops.Tensor object doesn't have dtype() attr.");
+        "tf.TensorSpec object doesn't have dtype() attr.");
   }
 
   tensorflow::Safe_PyObjectPtr dtype_enum(
       PyObject_GetAttrString(dtype_object.get(), "_type_enum"));
-
   if (dtype_enum == nullptr) {
     return tensorflow::errors::InvalidArgument(
-        "ops.Tensor's dtype object doesn't have _type_enum() attr.");
+        "tf.TensorSpec's dtype object doesn't have _type_enum() "
+        "attr.");
   }
 
   tensorflow::DataType dtype =
       static_cast<tensorflow::DataType>(MakeInt(dtype_enum.get()));
-
   absl::StrAppend(&result->str, kDType, dtype);
 
-  static char _shape_tuple[] = "_shape_tuple";
   tensorflow::Safe_PyObjectPtr shape_tuple(
-      PyObject_CallMethod(arg, _shape_tuple, nullptr));
-
+      PyObject_GetAttrString(arg, "shape"));
   if (shape_tuple == nullptr) {
     return tensorflow::errors::InvalidArgument(
-        "ops.Tensor object doesn't have _shape_tuple() method.");
+        "tf.TensorSpec object doesn't have shape() attr.");
   }
 
-  if (shape_tuple.get() == Py_None) {
+  tensorflow::Safe_PyObjectPtr rank(
+      PyObject_GetAttr(shape_tuple.get(), PyUnicode_FromString("rank")));
+  if (rank == nullptr || rank.get() == Py_None) {
     // Unknown shape, encode that directly.
     absl::StrAppend(&result->str, kNone);
     return tensorflow::Status::OK();
   }
 
   absl::StrAppend(&result->str, kShape);
+
   tensorflow::Safe_PyObjectPtr shape_seq(PySequence_Fast(
       shape_tuple.get(), "shape_tuple didn't return a sequence"));
 
-  int len = PySequence_Fast_GET_SIZE(shape_seq.get());
+  int len = MakeInt(rank.get());
   PyObject** shape_seq_array = PySequence_Fast_ITEMS(shape_seq.get());
 
   if (include_tensor_ranks_only) {
     absl::StrAppend(&result->str, len);
   } else {
     for (int i = 0; i < len; ++i) {
-      PyObject* item = shape_seq_array[i];
-      if (item == Py_None) {
+      // Can be None, int or a Dimension object.
+      PyObject* dimension = shape_seq_array[i];
+
+      // If it is a Dimension object, then we must extract value from it first.
+      bool is_dimension_class = PyObject_HasAttrString(dimension, "value");
+      tensorflow::Safe_PyObjectPtr dimension_holder;
+      if (is_dimension_class) {
+        dimension_holder =
+            tensorflow::make_safe(PyObject_GetAttrString(dimension, "value"));
+        dimension = dimension_holder.get();
+      }
+
+      if (dimension == Py_None) {
         absl::StrAppend(&result->str, kNone);
       } else {
-        absl::StrAppend(&result->str, MakeInt(item));
+        absl::StrAppend(&result->str, MakeInt(dimension), kShapeDelim);
       }
     }
   }
+
   return tensorflow::Status::OK();
 }
 
@@ -4127,10 +4125,12 @@ tensorflow::Status TFE_Py_EncodeArgHelperInternal(
     PyObject* arg, bool include_tensor_ranks_only, std::vector<int>& res_vec,
     absl::flat_hash_map<int, int>& res_map, int& cur_res,
     EncodeResult* result) {
-  if (tensorflow::swig::IsTensor(arg)) {
-    absl::StrAppend(&result->str, kTensor);
-    TF_RETURN_IF_ERROR(
-        TFE_Py_EncodeTensor(arg, include_tensor_ranks_only, result));
+  if (tensorflow::swig::IsTensorSpec(arg)) {
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeTensorOrTensorSpec(
+        arg, true, include_tensor_ranks_only, result));
+  } else if (tensorflow::swig::IsTensor(arg)) {
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeTensorOrTensorSpec(
+        arg, false, include_tensor_ranks_only, result));
   } else if (tensorflow::swig::IsOwnedIterator(arg)) {
     // TODO(jiaweix): distinguish other resource types
     // Similar to IsCompositeTensor below, plus resource id

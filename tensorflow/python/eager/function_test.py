@@ -3003,9 +3003,27 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined(array_ops.zeros([12, 1]))
     self.assertLen(total_function_cache(defined), 1)
-
     defined(array_ops.zeros([1, 21]))
     self.assertLen(total_function_cache(defined), 2)
+
+    @function.defun
+    def defined_again(t):
+      return defined(t)
+
+    defined_again.get_concrete_function(array_ops.zeros([12, 1]))
+    self.assertLen(total_function_cache(defined_again), 1)
+    defined_again.get_concrete_function(array_ops.zeros([1, 21]))
+    self.assertLen(total_function_cache(defined_again), 2)
+
+  def testCacheTensorSpecIdenticalToTensor(self):
+    @function.defun
+    def defined(t):
+      return t
+
+    z = array_ops.zeros([2, 2])
+    z_spec = tensor_spec.TensorSpec.from_tensor(z)
+    self.assertIs(
+        defined.get_concrete_function(z_spec), defined.get_concrete_function(z))
 
   def testCacheKeyNestedLists(self):
     @function.defun
