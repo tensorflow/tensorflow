@@ -480,8 +480,9 @@ def _graph_mode_decorator(f, args, kwargs):
         "since function uses variables: {}".format(variables))
   if variables_in_signature and not variables:
     # User seems to intend to use variables but none were captured.
-    logging.warn("@custom_gradient grad_fn has 'variables' in signature, but "
-                 "no ResourceVariables were used on the forward pass.")
+    logging.warning(
+        "@custom_gradient grad_fn has 'variables' in signature, but "
+        "no ResourceVariables were used on the forward pass.")
 
   all_tensors = flat_result + args + variables
 
