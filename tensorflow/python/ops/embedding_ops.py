@@ -128,7 +128,8 @@ def _embedding_lookup_and_transform(params,
   if params is None:
     raise ValueError("params must be specified")
   if isinstance(params, (list, tuple)) and not params:
-    raise ValueError("Need at least one param")
+    raise ValueError("Length of params is currently 0. "
+                     "Need at least one param.")
   if isinstance(params, variables.PartitionedVariable):
     params = list(params)  # Iterate to get the underlying Variables.
   if not isinstance(params, list):
@@ -199,8 +200,9 @@ def _embedding_lookup_and_transform(params,
                                   flat_ids % (ids_per_partition + 1),
                                   (flat_ids - extras) % ids_per_partition)
       else:
-        raise ValueError("Unrecognized partition strategy: " +
-                         partition_strategy)
+        raise ValueError(
+            f"Unrecognized partition strategy: {partition_strategy}."
+            "Must be one of either `mod` or `div`.")
 
       # Cast partition assignments to int32 for use in dynamic_partition.
       # There really should not be more than 2^32 partitions.
@@ -492,17 +494,19 @@ def embedding_lookup_sparse(params,
   if combiner is None:
     combiner = "mean"
   if combiner not in ("mean", "sqrtn", "sum"):
-    raise ValueError("combiner must be one of 'mean', 'sqrtn' or 'sum'")
+    raise ValueError(
+        f"combiner must be one of 'mean', 'sqrtn' or 'sum', got {combiner}")
   if isinstance(params, variables.PartitionedVariable):
     params = list(params)  # Iterate to get the underlying Variables.
   if not isinstance(params, list):
     params = [params]
   if not isinstance(sp_ids, sparse_tensor.SparseTensor):
-    raise TypeError("sp_ids must be SparseTensor")
+    raise TypeError(f"sp_ids must be SparseTensor, got {type(sp_ids)}")
   ignore_weights = sp_weights is None
   if not ignore_weights:
     if not isinstance(sp_weights, sparse_tensor.SparseTensor):
-      raise TypeError("sp_weights must be either None or SparseTensor")
+      raise TypeError(f"sp_weights must be either None or SparseTensor,"
+                      f"got {type(sp_weights)}")
     sp_ids.values.get_shape().assert_is_compatible_with(
         sp_weights.values.get_shape())
     sp_ids.indices.get_shape().assert_is_compatible_with(
@@ -870,13 +874,13 @@ def safe_embedding_lookup_sparse(embedding_weights,
     ValueError: if `embedding_weights` is empty.
   """
   if embedding_weights is None:
-    raise ValueError("Missing embedding_weights %s." % embedding_weights)
+    raise ValueError(f"Missing embedding_weights {embedding_weights}.")
   if isinstance(embedding_weights, variables.PartitionedVariable):
     embedding_weights = list(embedding_weights)  # get underlying Variables.
   if not isinstance(embedding_weights, list):
     embedding_weights = [embedding_weights]
   if len(embedding_weights) < 1:
-    raise ValueError("Missing embedding_weights %s." % embedding_weights)
+    raise ValueError(f"Missing embedding_weights {embedding_weights}.")
 
   dtype = sparse_weights.dtype if sparse_weights is not None else None
   embedding_weights = [
@@ -982,8 +986,8 @@ def embedding_lookup_ragged(embedding_weights,
   if isinstance(embedding_weights, (list, tuple)) and not embedding_weights:
     raise ValueError("The embedding weights should not be empty.")
   if ragged_ids.dtype != dtypes.int32 and ragged_ids.dtype != dtypes.int64:
-    raise ValueError("The values contained by the inputs have type " +
-                     str(ragged_ids.dtype) +
+    raise ValueError("The values contained by the inputs have type "
+                     f"{str(ragged_ids.dtype)}"
                      " and cannot be processed. All values"
                      " should be indices, either of type `in32` or `int64`.")
 
