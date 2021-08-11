@@ -42,6 +42,7 @@ cc_library_with_tflite(
     srcs = [
         "jni_utils.cc",
         "nativeinterpreterwrapper_jni.cc",
+        "nativesignaturerunner_jni.cc",
         "tensor_jni.cc",
         "tensorflow_lite_jni.cc",
     ],

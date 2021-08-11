@@ -786,7 +786,7 @@ public final class InterpreterTest {
         inputTensor = interpreter.getInputTensorFromSignature("xx", "mul_add");
         fail();
       } catch (IllegalArgumentException e) {
-        assertThat(e).hasMessageThat().contains("Invalid input tensor");
+        assertThat(e).hasMessageThat().contains("Input error: input xx not found.");
       }
 
       // Test null output name.
@@ -801,7 +801,7 @@ public final class InterpreterTest {
         outputTensor = interpreter.getOutputTensorFromSignature("yy", "mul_add");
         fail();
       } catch (IllegalArgumentException e) {
-        assertThat(e).hasMessageThat().contains("Invalid output tensor");
+        assertThat(e).hasMessageThat().contains("Input error: output yy not found.");
       }
 
       FloatBuffer output = FloatBuffer.allocate(1);
