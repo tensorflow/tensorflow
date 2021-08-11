@@ -53,6 +53,7 @@ from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import pywrap_saved_model
+from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
@@ -998,6 +999,11 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
               producer=1, min_consumer=1, bad_consumers=[]))
       # pylint:enable=protected-access
     proto.user_object.CopyFrom(registered_type_proto)
+
+  registered_name = registration.get_registered_name(obj)
+  if registered_name:
+    proto.registered_name = registered_name
+    proto.serialized_user_proto.Pack(obj._serialize_to_proto())  # pylint: disable=protected-access
 
 
 def _export_debug_info(exported_graph, export_dir):

@@ -45,6 +45,7 @@ from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import nested_structure_coder
+from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
@@ -522,6 +523,25 @@ class Loader(object):
     return self._nodes[node_id]
 
   def _recreate(self, proto, node_id):
+    """Creates a Python object from a SavedObject protocol buffer.
+
+    Args:
+      proto: a SavedObject proto
+      node_id: int, the index of this object in the SavedObjectGraph node list.
+
+    Returns:
+      The recreated object, and the set-attribute function for reconnecting
+      the trackable children.
+    """
+    registered_class = registration.get_registered_class(proto.registered_name)
+    if registered_class:
+      obj = registered_class._deserialize_from_proto(  # pylint: disable=protected-access
+          proto=proto.serialized_user_proto)
+      return obj, type(obj)._add_trackable_child  # pylint: disable=protected-access
+    else:
+      return self._recreate_default(proto, node_id)
+
+  def _recreate_default(self, proto, node_id):
     """Creates a Python object from a SavedObject protocol buffer."""
     factory = {
         "user_object": (

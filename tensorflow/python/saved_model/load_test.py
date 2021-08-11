@@ -31,6 +31,8 @@ import weakref
 from absl.testing import parameterized
 import numpy as np
 
+from google.protobuf import wrappers_pb2
+
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
@@ -64,6 +66,7 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import load_options
+from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import tag_constants
@@ -2080,6 +2083,36 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       grads = tape.gradient(y, params)
 
     self.assertAllClose(grads, expected_grads)
+
+  def test_load_registered(self, cycles):
+
+    @registration.register_serializable()
+    class Module(tracking.AutoTrackable):
+
+      def __init__(self, name="module"):
+        self.v = variables.Variable(1.)
+        self.name = name
+
+      def _serialize_to_proto(self, **unused_kwargs):
+        return wrappers_pb2.StringValue(value=self.name)
+
+      @classmethod
+      def _deserialize_from_proto(cls, proto, **unused_kwargs):
+        if proto.Is(wrappers_pb2.StringValue.DESCRIPTOR):
+          unpacked = wrappers_pb2.StringValue()
+          proto.Unpack(unpacked)
+          return cls(name=unpacked.value)
+        raise AssertionError(
+            "Did not receive proto of correct type during deserialization. "
+            f"Expected type {wrappers_pb2.StringValue.DESCRIPTOR.full_name}, "
+            f"got {proto.TypeName()}")
+
+    m = Module("a")
+    m.v.assign(5)
+    loaded = cycle(m, cycles)
+    self.assertIsInstance(loaded, Module)
+    self.assertEqual(5, loaded.v.numpy())
+    self.assertEqual("a", loaded.name)
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
