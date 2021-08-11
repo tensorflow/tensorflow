@@ -268,13 +268,13 @@ func @jit_execute(%ctx: !tf_framework.op_kernel_context,
   // ...
   // CHECK: %[[RESULT_DESCR_SIZE:.*]] = llvm.add %33, %37
   // CHECK: %[[FALSE:.*]] = llvm.mlir.constant(false)
-  // CHECK: %[[HEAP_RESUKT_DESCR:.*]] = llvm.call @malloc(%[[RESULT_DESCR_SIZE]])
+  // CHECK: %[[HEAP_RESULT_DESCR:.*]] = llvm.call @malloc(%[[RESULT_DESCR_SIZE]])
   // CHECK: %[[STACK_RESULT_DESCR:.*]] = llvm.extractvalue %[[RESULT]][1]
-  // CHECK: "llvm.intr.memcpy"(%[[HEAP_RESUKT_DESCR]], %[[STACK_RESULT_DESCR]], %[[RESULT_DESCR_SIZE]], %[[FALSE]])
+  // CHECK: "llvm.intr.memcpy"(%[[HEAP_RESULT_DESCR]], %[[STACK_RESULT_DESCR]], %[[RESULT_DESCR_SIZE]], %[[FALSE]])
   // CHECK: %[[T0:.*]] = llvm.mlir.undef
   // CHECK: %[[RANK:.*]] = llvm.extractvalue %[[RESULT]][0]
   // CHECK: %[[T1:.*]] = llvm.insertvalue %[[RANK]], %[[T0]][0]
-  // CHECK: %[[RESULT:.*]] = llvm.insertvalue %[[HEAP_RESUKT_DESCR]], %[[T1]][1]
+  // CHECK: %[[RESULT:.*]] = llvm.insertvalue %[[HEAP_RESULT_DESCR]], %[[T1]][1]
   // CHECK: llvm.return %[[RESULT]]
   %0 = tf_framework.jit_execute ctx(%ctx) %callable(%arg)
       : memref<*xf32> -> memref<*xf32>
