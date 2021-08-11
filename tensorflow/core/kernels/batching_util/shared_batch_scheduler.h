@@ -827,7 +827,7 @@ Status Queue<TaskType>::ScheduleWithoutOrEagerSplit(
     }
 
     const int64_t open_batch_remaining_slot =
-        options_.max_execution_batch_size - batches_.back()->size();
+        max_execution_batch_size() - batches_.back()->size();
 
     const int64_t input_task_size = (*task)->size();
 
@@ -843,7 +843,7 @@ Status Queue<TaskType>::ScheduleWithoutOrEagerSplit(
 
     for (int i = 0; i < output_tasks.size(); ++i) {
       if (batches_.back()->size() + output_tasks[i]->size() >
-          options_.max_execution_batch_size) {
+          max_execution_batch_size()) {
         StartNewBatch();
       }
       if (batches_.back()->empty()) {
