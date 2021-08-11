@@ -391,6 +391,18 @@ bool CanInferTensorListElementType(Value tensorlist,
   }
   return true;
 }
+
+// Returns the tensor type created from the `shape_attr` and `type_attr`
+// attributes.
+Type GetType(Attribute shape_attr, Attribute type_attr) {
+  auto shape = shape_attr.cast<tf_type::ShapeAttr>();
+  auto type = type_attr.cast<TypeAttr>();
+  if (shape.hasRank())
+    return RankedTensorType::get(shape.getShape(), type.getValue());
+  else
+    return UnrankedTensorType::get(type.getValue());
+}
+
 }  // namespace
 
 // Returns whether type can be further refined.
@@ -592,7 +604,7 @@ class ShapeInference {
   // A tf.Cast() is inserted for any uses that isn't in the TensorFlow dialect.
   // `graph_version` indicates the current GraphDef compatibility versions
   // (the versions field in graph.proto).
-  bool InferShapeForSingleOperation(Operation* op);
+  bool InferShapeForSingleOperation(Operation* op, int64_t max_iterations);
 
   // Infers shape on the provided region, including nested ones, iterate until
   // fix point with a limit of max_iteration.
@@ -734,7 +746,11 @@ class ShapeInference {
 
   // Infers the shape for MapDatasetOp and its associated function. Returns
   // whether either op or function type was changed.
-  bool InferShapeForMapDataset(MapDatasetOp op);
+  bool InferShapeForMapDataset(MapDatasetOp op, int64_t max_iterations);
+
+  // Infers the shape for ReduceDatasetOp and its associated reduce function.
+  // Returns whether either op or function type was changed.
+  bool InferShapeForReduceDataset(ReduceDatasetOp op, int64_t max_iterations);
 
   // Infers the shape of ops that create TensorList. Specifically,
   // TensorListReserveOp, EmptyTensorListOp and TensorListFromTensor ops. It
@@ -934,9 +950,10 @@ bool ShapeInference::InferShapeForXlaHostComputeMlir(
   return changed;
 }
 
-bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op) {
+bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
+                                             int64_t max_iterations) {
   // MapDatasetOp's relationship with its associated function is as
-  // follows: first M function params are dictated by the the set
+  // follows: first M function params are dictated by the set
   // output shapes and types, the next N are the last Ninputs from MapDataset
   // op. The MapDataset op always has N+1 inputs.
   // TODO(jpienaar): Avoid this lookup.
@@ -957,13 +974,7 @@ bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op) {
   auto it = input_types.begin();
   // First set first M argument shapes & types.
   for (int i = 0; i < M; ++i) {
-    auto shape = op.output_shapes()[i].cast<tf_type::ShapeAttr>();
-    auto type = op.output_types()[i].cast<TypeAttr>();
-    Type t;
-    if (shape.hasRank())
-      t = RankedTensorType::get(shape.getShape(), type.getValue());
-    else
-      t = UnrankedTensorType::get(type.getValue());
+    Type t = GetType(op.output_shapes()[i], op.output_types()[i]);
     t = TypeMeet(*it, t);
     changed = changed || (t != *it);
     ++it;
@@ -972,16 +983,125 @@ bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op) {
   for (auto t : llvm::drop_begin(op.getOperandTypes())) {
     auto meet = TypeMeet(*it, t);
     changed = changed || (meet != *it);
-    *it = meet;
-    ++it;
+    *it++ = meet;
   }
   if (!changed) return false;
 
-  // TODO(jpienaar): Pipe the max_iteration value through.
   FailureOr<bool> res =
-      PropagateShapeToFunctions(module, input_types, {f}, /*max_iteration=*/10);
+      PropagateShapeToFunctions(module, input_types, {f}, max_iterations);
   if (failed(res)) {
-    LOG(ERROR) << "Propagating shapes for MapDataset failed";
+    op->emitOpError("Propagating shapes for MapDataset failed");
+    return false;
+  }
+  return *res;
+}
+
+bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
+                                                int64_t max_iterations) {
+  // ReduceDatasetOp's relationship with its associated reduce function is
+  // described as follows: The reduce function will in general have (X + Y + Z)
+  // arguments, where X is the number of tensor components that represent the
+  // state, Y is the number of tensor components that represent the input
+  // elements, and Z is the number of tensor components that represent any
+  // captured arguments. Y is determined by the output_shapes of an op that
+  // defines the first operand of `op`.
+
+  // TODO(haoliang): add a parent op for DatasetOp to avoid the following
+  // enumeration.
+  if (op.getOperand(0).getDefiningOp() == nullptr ||
+      !isa<RepeatDatasetOp, MapDatasetOp, BatchDatasetV2Op, TakeDatasetOp>(
+          op.getOperand(0).getDefiningOp())) {
+    return false;
+  }
+
+  // TODO(jpienaar): Avoid this lookup.
+  auto module = op->getParentOfType<ModuleOp>();
+  auto f = module.lookupSymbol<FuncOp>(op.f());
+
+  // Skip if function is not found or it has more than one caller.
+  if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
+
+  auto input_elements_op = op.getOperand(0).getDefiningOp();
+  ArrayAttr input_elements_shapes;
+  ArrayAttr input_elements_types;
+  // TODO(haoliang): add a parent op for DatasetOp to avoid the following
+  // enumeration.
+  if (isa<RepeatDatasetOp>(input_elements_op)) {
+    input_elements_shapes =
+        cast<RepeatDatasetOp>(input_elements_op).output_shapes();
+    input_elements_types =
+        cast<RepeatDatasetOp>(input_elements_op).output_types();
+  } else if (isa<MapDatasetOp>(input_elements_op)) {
+    input_elements_shapes =
+        cast<MapDatasetOp>(input_elements_op).output_shapes();
+    input_elements_types = cast<MapDatasetOp>(input_elements_op).output_types();
+  } else if (isa<BatchDatasetV2Op>(input_elements_op)) {
+    input_elements_shapes =
+        cast<BatchDatasetV2Op>(input_elements_op).output_shapes();
+    input_elements_types =
+        cast<BatchDatasetV2Op>(input_elements_op).output_types();
+  } else if (isa<TakeDatasetOp>(input_elements_op)) {
+    input_elements_shapes =
+        cast<TakeDatasetOp>(input_elements_op).output_shapes();
+    input_elements_types =
+        cast<TakeDatasetOp>(input_elements_op).output_types();
+  } else {
+    op->emitOpError("Unexpected DatasetOp");
+    return false;
+  }
+
+  const int num_states = op.output_shapes().size();
+  const int num_input_elements = input_elements_shapes.size();
+  const int num_captured_arguments = op.getNumOperands() - 1 - num_states;
+  DCOMMENT_OP(op,
+              "Inferring shape for ReduceDataset with #states = "
+                  << num_states << " , #input_elements = " << num_input_elements
+                  << " , and #captured_arguments = " << num_captured_arguments);
+  if (num_states + num_input_elements + num_captured_arguments !=
+      f.getNumArguments()) {
+    op->emitOpError(
+        "Propagating shapes for ReduceDataset failed due to inconsistent "
+        "number of arguments");
+    return false;
+  }
+
+  // Initialize with function input types.
+  SmallVector<Type> input_types(f.getArgumentTypes());
+
+  // Track if changed to skip enqueueing.
+  bool changed = false;
+  auto it = input_types.begin();
+
+  // Set the first num_states arguments shapes & types from the state.
+  for (int i = 0; i < num_states; ++i) {
+    Type t = GetType(op.output_shapes()[i], op.output_types()[i]);
+    t = TypeMeet(*it, t);
+    changed = changed || (t != *it);
+    *it++ = t;
+  }
+
+  // Second set the following num_input_elements arguments from
+  // repeat_dataset_op.
+  for (int i = 0; i < num_input_elements; ++i) {
+    Type t = GetType(input_elements_shapes[i], input_elements_types[i]);
+    t = TypeMeet(*it, t);
+    changed = changed || (t != *it);
+    *it++ = t;
+  }
+
+  // Last set the remaining num_captured_arguments from op.
+  for (auto t : llvm::drop_begin(op.getOperandTypes(), 1 + num_states)) {
+    auto meet = TypeMeet(*it, t);
+    changed = changed || (meet != *it);
+    *it++ = meet;
+  }
+
+  if (!changed) return false;
+
+  FailureOr<bool> res =
+      PropagateShapeToFunctions(module, input_types, {f}, max_iterations);
+  if (failed(res)) {
+    op->emitOpError("Propagating shapes for ReduceDataset failed");
     return false;
   }
   return *res;
@@ -1239,7 +1359,8 @@ bool ShapeInference::InferShapeForWhile(WhileOpTy op,
   return changed;
 }
 
-bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
+bool ShapeInference::InferShapeForSingleOperation(Operation* op,
+                                                  int64_t max_iterations) {
   LLVM_DEBUG(op->print(llvm::dbgs() << "InferShapeForSingleOperation for ");
              llvm::dbgs() << "\n");
   assert(tf_dialect_ == op->getDialect());
@@ -1295,7 +1416,11 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   }
 
   if (auto map_dataset_op = dyn_cast<MapDatasetOp>(op))
-    return InferShapeForMapDataset(map_dataset_op);
+    return InferShapeForMapDataset(map_dataset_op, max_iterations);
+
+  if (auto reduce_dataset_op = dyn_cast<ReduceDatasetOp>(op)) {
+    return InferShapeForReduceDataset(reduce_dataset_op, max_iterations);
+  }
 
   // Handle TensorList init operations by inferring shape from TensorList write
   // operations. If we are unable to refine element shape here, proceed to use
@@ -1791,7 +1916,7 @@ FailureOr<bool> ShapeInference::InferShapeUntilFixPoint(Region* region,
         return WalkResult::interrupt();
       }
 
-      changed |= InferShapeForSingleOperation(op);
+      changed |= InferShapeForSingleOperation(op, max_iteration);
       return WalkResult::advance();
     });
     if (res.wasInterrupted()) return failure();
