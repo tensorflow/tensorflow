@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.util import type_annotations
 
 # These names may not be used as the name for a ExtensionType field (to prevent
 # name clashes).  All names beginning with `'_tf_extension_type'` are also
@@ -65,6 +66,9 @@ class Sentinel(object):
 
   def __repr__(self):
     return self._name
+
+
+_NoneType = type(None)
 
 
 # ==============================================================================
@@ -128,7 +132,7 @@ def validate_field_value_type(value_type,
   Raises:
     TypeError: If `value_type` contains an unsupported type annotation.
   """
-  if isinstance(value_type, str) or is_forward_ref(value_type):
+  if isinstance(value_type, str) or type_annotations.is_forward_ref(value_type):
     if allow_forward_references:
       return
     else:
@@ -143,17 +147,18 @@ def validate_field_value_type(value_type,
          issubclass(value_type, composite_tensor.CompositeTensor))):
     if in_mapping_key:
       raise TypeError('Key must be hashable.')
-  elif is_generic_tuple(value_type) or is_generic_union(value_type):
-    type_args = get_generic_type_args(value_type)
+  elif (type_annotations.is_generic_tuple(value_type) or
+        type_annotations.is_generic_union(value_type)):
+    type_args = type_annotations.get_generic_type_args(value_type)
     if (len(type_args) == 2 and type_args[1] is Ellipsis and
-        is_generic_tuple(value_type)):  # `Tuple[X, ...]`
+        type_annotations.is_generic_tuple(value_type)):  # `Tuple[X, ...]`
       validate_field_value_type(type_args[0], in_mapping_key,
                                 allow_forward_references)
     else:
-      for arg in get_generic_type_args(value_type):
+      for arg in type_annotations.get_generic_type_args(value_type):
         validate_field_value_type(arg, in_mapping_key, allow_forward_references)
-  elif is_generic_mapping(value_type):
-    key_type, value_type = get_generic_type_args(value_type)
+  elif type_annotations.is_generic_mapping(value_type):
+    key_type, value_type = type_annotations.get_generic_type_args(value_type)
     validate_field_value_type(key_type, True, allow_forward_references)
     validate_field_value_type(value_type, in_mapping_key,
                               allow_forward_references)
@@ -275,11 +280,11 @@ def _convert_value(value, expected_type, path, for_spec=False):
       raise TypeError(f'{"".join(path)}: expected '
                       f'{expected_type.__name__}, got {value!r}')
     return value
-  elif is_generic_tuple(expected_type):
+  elif type_annotations.is_generic_tuple(expected_type):
     return _convert_tuple(value, expected_type, path, for_spec)
-  elif is_generic_mapping(expected_type):
+  elif type_annotations.is_generic_mapping(expected_type):
     return _convert_mapping(value, expected_type, path, for_spec)
-  elif is_generic_union(expected_type):
+  elif type_annotations.is_generic_union(expected_type):
     return _convert_union(value, expected_type, path, for_spec)
   else:
     raise TypeError(f'{"".join(path)}: Unsupported type annotation '
@@ -358,7 +363,7 @@ def _convert_tuple(value, expected_type, path, for_spec):
   """Converts `value` to a tuple with type `expected_type`."""
   if not isinstance(value, typing.Sequence):
     raise TypeError(f'{"".join(path)}: expected tuple, got {value!r}')
-  element_types = get_generic_type_args(expected_type)
+  element_types = type_annotations.get_generic_type_args(expected_type)
   if len(element_types) == 2 and element_types[1] is Ellipsis:
     return tuple([
         _convert_value(v, element_types[0], path + (f'[{i}]',), for_spec)
@@ -378,7 +383,7 @@ def _convert_mapping(value, expected_type, path, for_spec):
   """Converts `value` to a mapping with type `expected_type`."""
   if not isinstance(value, typing.Mapping):
     raise TypeError(f'{"".join(path)}: expected mapping, got {value!r}')
-  key_type, value_type = get_generic_type_args(expected_type)
+  key_type, value_type = type_annotations.get_generic_type_args(expected_type)
   return immutable_dict.ImmutableDict([
       (_convert_value(k, key_type, path + ('[<key>]',), for_spec),
        _convert_value(v, value_type, path + (f'[{k!r}]',), for_spec))
@@ -388,7 +393,7 @@ def _convert_mapping(value, expected_type, path, for_spec):
 
 def _convert_union(value, expected_type, path, for_spec):
   """Converts `value` to a value with any of the types in `expected_type`."""
-  for type_option in get_generic_type_args(expected_type):
+  for type_option in type_annotations.get_generic_type_args(expected_type):
     try:
       return _convert_value(value, type_option, path, for_spec)
     except TypeError:
@@ -406,43 +411,3 @@ def _report_field_mismatches(fields, field_values):
   missing = expected - actual
   if missing:
     raise ValueError(f'Missing required fields: {missing}')
-
-
-# ==============================================================================
-# Utilities for accessing Python generic type annotations (typing.*)
-# ==============================================================================
-def is_generic_union(tp):
-  """Returns true if `tp` is a parameterized typing.Union value."""
-  return (tp is not typing.Union and
-          getattr(tp, '__origin__', None) is typing.Union)
-
-
-def is_generic_tuple(tp):
-  """Returns true if `tp` is a parameterized typing.Tuple value."""
-  return (tp not in (tuple, typing.Tuple) and
-          getattr(tp, '__origin__', None) in (tuple, typing.Tuple))
-
-
-def is_generic_mapping(tp):
-  """Returns true if `tp` is a parameterized typing.Mapping value."""
-  return (tp not in (collections.abc.Mapping, typing.Mapping) and getattr(
-      tp, '__origin__', None) in (collections.abc.Mapping, typing.Mapping))
-
-
-def is_forward_ref(tp):
-  """Returns true if `tp` is a typing forward reference."""
-  if hasattr(typing, 'ForwardRef'):
-    return isinstance(tp, typing.ForwardRef)
-  elif hasattr(typing, '_ForwardRef'):
-    return isinstance(tp, typing._ForwardRef)  # pylint: disable=protected-access
-  else:
-    return False
-
-
-# Note: typing.get_args was added in Python 3.8.
-if hasattr(typing, 'get_args'):
-  get_generic_type_args = typing.get_args
-else:
-  get_generic_type_args = lambda tp: tp.__args__
-
-_NoneType = type(None)
