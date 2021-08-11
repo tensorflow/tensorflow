@@ -667,7 +667,7 @@ class Converter {
   int next_constant_layer_id_ = 0;
 
   // The name of the TRTEngineOp node.
-  absl::string_view engine_name_;
+  string engine_name_;
 
   friend class ConverterTest;
   friend class OpConverterTest;
