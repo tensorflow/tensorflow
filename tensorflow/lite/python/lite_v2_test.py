@@ -2144,11 +2144,15 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
         expected = expected.c
       self.assertAllClose(expected, actual)
 
-  @parameterized.named_parameters(('LSTM', tf.keras.layers.LSTM),
-                                  ('SimpleRNN', tf.keras.layers.SimpleRNN),
-                                  ('GRU', tf.keras.layers.GRU))
+  @parameterized.named_parameters(
+      ('LSTMBatchSizeOne', tf.keras.layers.LSTM, True),
+      ('LSTM', tf.keras.layers.LSTM, False),
+      ('SimpleRNNBatchSizeOne', tf.keras.layers.SimpleRNN, True),
+      ('SimpleRNN', tf.keras.layers.SimpleRNN, False),
+      ('GRUBatchSizeOne', tf.keras.layers.GRU, True),
+      ('GRU', tf.keras.layers.GRU, False))
   @test_util.run_v2_only
-  def testKerasRNN(self, rnn_layer):
+  def testKerasRNN(self, rnn_layer, default_to_single_batch):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     rnn_obj = rnn_layer(units=10, input_shape=(10, 10))
@@ -2159,6 +2163,11 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter._experimental_default_to_single_batch_in_tensor_list_ops = default_to_single_batch
+    if not default_to_single_batch:
+      converter.target_spec.supported_ops = [
+          tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+      ]
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
@@ -2187,8 +2196,10 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
+  @parameterized.named_parameters(('ForceToUseBatchSizeOne', True),
+                                  ('DontForceToUseBatchSizeOne', False))
   @test_util.run_v2_only
-  def testKerasBidirectionalRNNReturnSequence(self):
+  def testKerasBidirectionalRNNReturnSequence(self, default_to_single_batch):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
@@ -2203,6 +2214,11 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter._experimental_default_to_single_batch_in_tensor_list_ops = default_to_single_batch
+    if not default_to_single_batch:
+      converter.target_spec.supported_ops = [
+          tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+      ]
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
@@ -2210,8 +2226,10 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
+  @parameterized.named_parameters(('ForceToUseBatchSizeOne', True),
+                                  ('DontForceToUseBatchSizeOne', False))
   @test_util.run_v2_only
-  def testKerasBidirectionalRNN(self):
+  def testKerasBidirectionalRNN(self, default_to_single_batch):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
@@ -2222,6 +2240,11 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter._experimental_default_to_single_batch_in_tensor_list_ops = default_to_single_batch
+    if not default_to_single_batch:
+      converter.target_spec.supported_ops = [
+          tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+      ]
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 

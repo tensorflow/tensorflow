@@ -175,7 +175,9 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
     // TODO(haoliang): Add this pass by default.
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass(
         /*allow_tensorlist_pass_through=*/toco_flags.force_select_tf_ops() ||
-        toco_flags.enable_select_tf_ops()));
+            toco_flags.enable_select_tf_ops(),
+        /*default_to_single_batch=*/toco_flags
+            .default_to_single_batch_in_tensor_list_ops()));
   }
 
   // This pass does resource analysis of saved model global tensors and marks
@@ -344,7 +346,8 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
 
   // This is needed for control flow support with TF TensorList.
   pm.addPass(mlir::TFL::CreateLowerStaticTensorListPass(
-      /*allow_tensorlist_pass_through=*/false));
+      /*allow_tensorlist_pass_through=*/false,
+      /*default_to_single_batch=*/true));
 
   // Saved model pass to mark global tensors immutable.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
