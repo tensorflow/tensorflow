@@ -215,7 +215,6 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
       resources_(resources),
       resource_ids_(resource_ids),
       initialization_status_map_(initialization_status_map) {
-  // TODO(b/161272052): Consider a better TfLiteContext initialization pattern:
   context_.impl_ = static_cast<void*>(this);
   context_.ResizeTensor = ResizeTensor;
   context_.ReportError = ReportErrorC;
@@ -597,7 +596,6 @@ TfLiteStatus Subgraph::SetVariables(std::vector<int> variables) {
 TfLiteStatus Subgraph::SetMetadata(
     const std::map<std::string, std::string>* metadata) {
   metadata_ = metadata;
-  // TODO(b/188185962): Set context_.allow_fp32_relax_to_fp16 based on metadata.
   return kTfLiteOk;
 }
 
@@ -1323,8 +1321,6 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
                       GetLegacyQuantization(quantization),
                       const_cast<char*>(buffer), bytes, kTfLiteMmapRo,
                       allocation, false, &tensor);
-    // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
-    // if there are other required callers.
     tensor.quantization = *scoped_quantization.release();
     tensor.sparsity = scoped_sparsity.release();
   }
@@ -1377,8 +1373,6 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
                     GetLegacyQuantization(quantization),
                     /*buffer=*/nullptr, required_bytes, allocation_type,
                     nullptr, is_variable, &tensor);
-  // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
-  // if there are other required callers.
   tensor.quantization = *scoped_quantization.release();
   tensor.dims_signature =
       ConvertArrayToTfLiteIntArray(rank_dims_signature, dims_signature);
@@ -1648,8 +1642,6 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   if (delegates_applied_.empty()) {
     // This is the first delegate being applied, so remember original execution
     // plan.
-    // TODO(b/119623453): Restore execution plan to this state if delegate
-    // application fails.
     pre_delegation_execution_plan_ = execution_plan_;
   }
 
