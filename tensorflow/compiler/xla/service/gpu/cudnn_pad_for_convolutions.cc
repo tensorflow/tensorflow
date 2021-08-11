@@ -240,7 +240,7 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
     // that there's additional room for speedups.  Achieving those speedups
     // without also slowing other things down will likely require a more
     // sophisticated heuristic, possibly some form of auto-tuning.
-    static constexpr double kMaxBytesTouchedIncrease = 1.35;
+    static constexpr double kMaxBytesTouchedBound = 1.35;
 
     // Check that padding wouldn't increase the total bytes read/written by this
     // operation too much.
@@ -248,7 +248,7 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
                                    const Shape& new_shape) {
       int64_t old_bytes = ShapeUtil::ByteSizeOf(old_shape);
       int64_t new_bytes = ShapeUtil::ByteSizeOf(new_shape);
-      if (new_bytes <= old_bytes * kMaxBytesTouchedIncrease) {
+      if (new_bytes <= old_bytes * kMaxBytesTouchedBound) {
         return true;
       }
       VLOG(3)
@@ -257,7 +257,7 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
           << ShapeUtil::HumanString(old_shape) << " to "
           << ShapeUtil::HumanString(new_shape) << ", a size increase of "
           << new_bytes / static_cast<double>(old_bytes) << "x > "
-          << kMaxBytesTouchedIncrease << "x: " << conv->ToString();
+          << kMaxBytesTouchedBound << "x: " << conv->ToString();
       return false;
     };
 
@@ -372,8 +372,8 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
         pad_dim(&new_input_shapes[1], dnums.kernel_output_feature_dimension(),
                 /*cur_vect_size=*/1);
 
-        // Bias.  This ia 1D vector of length batch-size, and it's unclear if we
-        // *have* to pad it.  But hey, we might as well.  cur_vect_size 1
+        // Bias.  This ia 1D vector of length output-depth, and it's unclear if
+        // we *have* to pad it.  But hey, we might as well.  cur_vect_size 1
         // because NCHW_VECT_C doesn't apply here (there is no channels
         // dimension!).
         pad_dim(&new_input_shapes[2], /*dim=*/0, /*cur_vect_size=*/1);
@@ -393,17 +393,15 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
     }
 
     // We won't pad a conv if doing so increases the total number of bytes in
-    // the lhs, rhs, or result by more than this amount.
+    // the lhs, rhs, or result by a factor of this much or more.
+    //
+    // Note: It's important that this bound is exclusive.  It's a performance
+    // regression to pad and increase input/output size by 2x, so we only pad
+    // strictly less than 2x.
     //
     // TODO(jlebar): This number was tuned experimentally, but without much
     // experimental evidence.
-    static constexpr double kMaxBytesTouchedIncrease = 2.5;
-
-    // It's always OK to pad up to this many bytes, even if it increases us
-    // beyond the kMaxBytesTouchedIncrease factor.  This handles padding very
-    // small vectors, like the bias vector of fused convs (which is just one
-    // float per batch).
-    static constexpr int64_t kAlwaysOkToPadBytes = 4096;
+    static constexpr double kMaxBytesTouchedBound = 2;
 
     // Check that padding wouldn't increase the total bytes read/written by this
     // operation too much.
@@ -411,8 +409,7 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
                                    const Shape& new_shape) {
       int64_t old_bytes = ShapeUtil::ByteSizeOf(old_shape);
       int64_t new_bytes = ShapeUtil::ByteSizeOf(new_shape);
-      if (new_bytes <= old_bytes * kMaxBytesTouchedIncrease ||
-          new_bytes <= kAlwaysOkToPadBytes) {
+      if (new_bytes < old_bytes * kMaxBytesTouchedBound) {
         return true;
       }
       VLOG(3)
@@ -420,18 +417,17 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
              "shape from "
           << ShapeUtil::HumanString(old_shape) << " to "
           << ShapeUtil::HumanString(new_shape) << ", a size increase of "
-          << new_bytes / static_cast<double>(old_bytes) << "x > "
-          << kMaxBytesTouchedIncrease << "x: " << conv->ToString();
+          << new_bytes / static_cast<double>(old_bytes)
+          << "x >= " << kMaxBytesTouchedBound << "x: " << conv->ToString();
       return false;
     };
 
-    for (int64_t i = 0; i < conv->operand_count(); ++i) {
-      if (!check_size_increase(conv->operand(i)->shape(),
-                               new_input_shapes[i])) {
-        return false;
-      }
-    }
-    if (!check_size_increase(result_shape, new_result_shape)) {
+    // Check size increase only on the input and output.  No need to check the
+    // filter, since that's determined by the input/output.  The bias (if
+    // present) is tiny (1D array of length output-depth), so padding doesn't
+    // matter.  And the side-input, if present, is the same shape as the input.
+    if (!check_size_increase(conv->operand(0)->shape(), new_input_shapes[0]) ||
+        !check_size_increase(result_shape, new_result_shape)) {
       return false;
     }
   }

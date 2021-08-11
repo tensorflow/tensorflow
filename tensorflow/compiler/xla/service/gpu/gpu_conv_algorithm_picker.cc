@@ -449,10 +449,12 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
                    &scratch_allocator, stream, options);
 
     if (!launch_status.ok()) {
+      VLOG(4) << "Launch failed: " << launch_status;
       continue;
     }
 
     if (!profile_result.is_valid()) {
+      VLOG(4) << "Launch succeeded but profile result is invalid.";
       continue;
     }
 
