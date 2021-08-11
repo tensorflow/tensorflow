@@ -50,9 +50,9 @@ version. Here is the list of supported containers.
 
 Container   | Supported Python version
 ----------- | ------------------------
-PI          | Python 3.5
 PI-PYTHON37 | Python 3.7
 PI-PYTHON38 | Python 3.8
+PI-PYTHON39 | Python 3.9
 
 ### Available target names
 
