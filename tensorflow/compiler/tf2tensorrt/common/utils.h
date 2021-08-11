@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2TENSORRT_COMMON_UTILS_H_
 #define TENSORFLOW_COMPILER_TF2TENSORRT_COMMON_UTILS_H_
 
+#include <numeric>
 #include <tuple>
+#include "absl/strings/str_join.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -53,6 +55,64 @@ void MaybeInitializeTrtPlugins(nvinfer1::ILogger* trt_logger);
 
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+namespace nvinfer1 {
+
+// Alias a useful type computation for nvinfer1::Dims types. Types like
+// nvinfer1::Dims2 inherit from nvinfer1::Dims.
+template <typename T>
+using enable_if_nvinfer_dims =
+    std::enable_if<std::is_base_of<nvinfer1::Dims, T>::value, T>;
+
+// Prints nvinfer1::Dims or any drived type to the given ostream. Per GTest
+// printing requirements, this must be in the nvinfer1 namespace.
+template <typename T, typename enable_if_nvinfer_dims<T>::type* = nullptr>
+std::ostream& operator<<(std::ostream& os, const T& v) {
+  os << "nvinfer1::Dims[";
+  os << absl::StrJoin(std::vector<int>(v.d, v.d + v.nbDims), ",");
+  os << "]";
+  return os;
+}  // namespace nvinfer1
+
+// Returns true if any two derived nvinfer1::Dims type structs are equivalent.
+template <typename T, typename V,
+          typename enable_if_nvinfer_dims<T>::type* = nullptr,
+          typename enable_if_nvinfer_dims<V>::type* = nullptr>
+bool operator==(const T& lhs, const V& rhs) {
+  if (rhs.nbDims != lhs.nbDims) {
+    return false;
+  }
+  for (int i = 0; i < lhs.nbDims; i++) {
+    if (rhs.d[i] != lhs.d[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Returns false if any 2 subclasses of nvinfer1::Dims are equivalent.
+template <typename T, typename V,
+          typename enable_if_nvinfer_dims<T>::type* = nullptr,
+          typename enable_if_nvinfer_dims<V>::type* = nullptr>
+bool operator!=(const T& lhs, const V& rhs) {
+  return !(rhs == lhs);
+}
+
+// Prints nvinfer1::INetworkDefinition* information to the given ostream.
+inline std::ostream& operator<<(std::ostream& os,
+                                nvinfer1::INetworkDefinition* n) {
+  os << "nvinfer1::INetworkDefinition{\n";
+  std::vector<int> layer_idxs(n->getNbLayers());
+  std::iota(layer_idxs.begin(), layer_idxs.end(), 0);
+  os << absl::StrJoin(layer_idxs, "\n ",
+                      [n](std::string* out, const int layer_idx) {
+                        out->append(n->getLayer(layer_idx)->getName());
+                      });
+  os << "}";
+  return os;
+}
+
+}  // namespace nvinfer1
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 

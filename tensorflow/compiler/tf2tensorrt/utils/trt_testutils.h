@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <map>
 #include <numeric>
 #include <string>
@@ -44,58 +45,16 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "third_party/tensorrt/NvInfer.h"
 
-namespace nvinfer1 {
-// Stream printing functions for GTest.
-// These must be in nvinfer1 namespace.
-
-// Alias a useful type computation for nvinfer1::Dims types;
-// legacy dims like nvinfer1::Dims2 inherit from nvinfer1::Dims.
-template <typename T>
-using enable_if_nvinfer_dims =
-    std::enable_if<std::is_base_of<nvinfer1::Dims, T>::value, T>;
-
-// Prints nvinfer1::Dims (and any sub-struct, for legacy Dim types)
-// to ostream.
-template <typename T, typename enable_if_nvinfer_dims<T>::type* = nullptr>
-std::ostream& operator<<(std::ostream& os, const T& v) {
-  os << "nvinfer1::Dims[";
-  for (int i = 0; i < v.nbDims; i++) {
-    os << (i > 0 ? ", " : "") << v.d[i] << "";
-  }
-  os << "]";
-  return os;
-}
-
-// Print nvinfer1::INetworkDefinition* information to ostream
-inline std::ostream& operator<<(std::ostream& os,
-                                nvinfer1::INetworkDefinition* n) {
-  auto print_layers = [](std::ostream& os, nvinfer1::INetworkDefinition* n) {
-    for (int i = 0; i < n->getNbLayers(); i++) {
-      os << " " << n->getLayer(i)->getName() << "\n";
-    }
-  };
-  os << "nvinfer1::INetworkDefinition{\n";
-  print_layers(os, n);
-  os << "}";
-  return os;
-}
-
-}  // namespace nvinfer1
-
-// Matchers used in graph/node conversion testing we put under
-// tensorrt::convert.
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
-
-// Node creation utilities
-
-// helper to create node with given op, inputs, and attributes
+// Creates a node with the given op, inputs, and attributes.
 NodeDef MakeNodeDef(const std::string& name, const std::string& op,
                     const std::vector<std::string>& inputs,
                     const std::map<std::string, AttrValue> attrs = {});
 
-// create a constant node with given vector and shape as tensor
+// Creates a constant node with the given name and values arranged in the given
+// shape.
 template <typename T>
 NodeDef MakeConstNodeDef(const std::string& name, const std::vector<T>& vals,
                          const TensorShape& shape) {
@@ -105,7 +64,7 @@ NodeDef MakeConstNodeDef(const std::string& name, const std::vector<T>& vals,
   return const_op.node()->def();
 }
 
-// constant node with 1d shape
+// Creates a constant node with the given name and values, assuming a 1-D shape.
 template <typename T>
 NodeDef MakeConstNodeDef(const std::string& name, const std::vector<T>& vals) {
   TensorShape shape;
@@ -114,25 +73,22 @@ NodeDef MakeConstNodeDef(const std::string& name, const std::vector<T>& vals) {
   return MakeConstNodeDef(name, vals, shape);
 }
 
-// nvinfer1:: type helpers
-
-// Checks equality of two sets of dims
+// Returns true if the given two nvinfer1::Dims are equal.
 bool TrtDimsEquals(const nvinfer1::Dims& lhs, const nvinfer1::Dims& rhs);
 
 // Creates an nvinfer1::Dims struct from the given vector.
 nvinfer1::Dims CreateDims(const std::vector<int>& d);
 
-// general GMock matchers
 // A gmock matcher that check that elements of a float vector match to a given
 // tolerance.
 ::testing::Matcher<std::vector<float>> ArrayFloatNear(
     const std::vector<float>& values, float max_abs_error = 1e-5,
     bool nan_sensitive = false);
 
-// nvinfer1::Dims GMock matchers
+// nvinfer1::Dims gMock matchers
 
 // matches nvinfer1::Dims to initializer list or vector of ints
-// "EXPECT_THAT(my_dims, DimsAreArray({1, 2, 3}))"
+// Example: EXPECT_THAT(my_dims, DimsAreArray({1, 2, 3}))
 MATCHER_P(DimsAreArrayHelper, array_value,
           absl::StrFormat("%s [%s]", negation ? "are" : "are not",
                           ::testing::PrintToString(array_value))) {
@@ -146,9 +102,10 @@ MATCHER_P(DimsAreArrayHelper, array_value,
 }
 using DimsAreArray = DimsAreArrayHelperMatcherP<std::vector<int>>;
 
-// nvinfer1::INetworkDefinition GMock matchers
+// nvinfer1::INetworkDefinition gMock matchers
 
-// Check layer names are equal to initializer list or vector of strings
+// Checks that layer names are equal to initializer list or vector of strings.
+// Example: EXPECT_THAT(my_network, LayerNamesAreArray({"conv1", "conv2"}))
 MATCHER_P(LayerNamesAreArrayHelper, array_value,
           absl::StrFormat("layer names %s [%s]", negation ? "are" : "are not",
                           ::testing::PrintToString(array_value))) {
@@ -163,7 +120,7 @@ MATCHER_P(LayerNamesAreArrayHelper, array_value,
 using LayerNamesAreArray =
     LayerNamesAreArrayHelperMatcherP<std::vector<std::string>>;
 
-// Check layer names in INetworkDefinition are all non-empty.
+// Checks layer names are all non-empty.
 MATCHER(LayerNamesNonEmpty, "") {
   for (int i = 0; i < arg->getNbLayers(); ++i) {
     if (arg->getLayer(i)->getName() == nullptr) {
@@ -173,23 +130,41 @@ MATCHER(LayerNamesNonEmpty, "") {
   return true;
 }
 
-// GMock matchers for TRT_ShapedWeights
-MATCHER_P2(ShapedWeightsHasDimsAndValues, dims, expected_values, "") {
-  if (arg->shape_ != dims) {
+// TRT_ShapedWeights gMock matchers.
+
+// Checks that the weight dimensions are values are equal to the given values.
+// Example: EXPECT_THAT(my_weights,
+//                      ShapedWeightsHasDimsAndValues({1, 2},{1.0f, 2.0f}))
+MATCHER_P2(ShapedWeightsHasDimsAndValuesHelper, dims_vec, expected_values, "") {
+  nvinfer1::Dims dims;
+  dims.nbDims =
+      std::min(static_cast<int>(dims_vec.size()), nvinfer1::Dims::MAX_DIMS);
+  std::copy_n(dims_vec.begin(), dims.nbDims, dims.d);
+  if (arg.shape_ != dims) {
     return false;
   }
-  if (arg->count() != expected_values.size()) {
+  if (arg.count() != expected_values.size()) {
     return false;
   }
   using T = typename decltype(expected_values)::value_type;
-  auto actual_values = reinterpret_cast<T*>(arg->GetValues());
+  auto actual_values = reinterpret_cast<T*>(arg.GetValues());
   for (int i = 0; i < expected_values.size(); ++i) {
     if (expected_values[i] != actual_values[i]) {
       return false;
     }
   }
+  return true;
 }
 
+template <typename T>
+using ShapedWeightsHasDimsAndValues =
+    ShapedWeightsHasDimsAndValuesHelperMatcherP2<std::vector<int>,
+                                                 std::vector<T>>;
+
+// std::vector convenience utilities.
+
+// Creates a new vector by casting all values of the given InCType vector to
+// OutCType.
 template <typename InCType, typename OutCType>
 std::vector<OutCType> CastVector(
     const gtl::ArraySlice<InCType>& vals) {  // non-absl ok
@@ -201,6 +176,8 @@ std::vector<OutCType> CastVector(
   return res;
 }
 
+// Creates a new vector of the given size and fills it with an increasing
+// sequence starting from the given start_value using std::iota.
 template <typename CType>
 std::vector<CType> CreateVectorIota(int size, CType start_value = CType(0)) {
   std::vector<CType> res(size);

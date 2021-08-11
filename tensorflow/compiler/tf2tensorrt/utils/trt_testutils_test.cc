@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,17 +27,31 @@ namespace convert {
 
 using ::testing::AllOf;
 using ::testing::AnyOf;
+using ::testing::Eq;
 using ::testing::Not;
 
-TEST(TrtDimsMatcher, CorrectlyMatches) {
+TEST(TrtDimsMatcher, ParameterizedMatchers) {
   EXPECT_THAT(nvinfer1::Dims4(1, 2, 3, 4), DimsAreArray({1, 2, 3, 4}));
-  // empty
+  // Check empty dims.
   EXPECT_THAT(nvinfer1::Dims{}, Not(DimsAreArray({1, 2})));
   EXPECT_THAT(nvinfer1::Dims{}, DimsAreArray({}));
-  // Check incorrect value
+  // Check mismatching values.
   EXPECT_THAT(nvinfer1::Dims4(1, 2, 3, 4), Not(DimsAreArray({1, 2, 3, 5})));
-  // Check wrong number args
+  // Check mismatching number of arguments.
   EXPECT_THAT(nvinfer1::Dims4(1, 2, 3, 4), Not(DimsAreArray({1, 2, 5})));
+}
+
+TEST(TrtDimsMatcher, EqualityMatcher) {
+  EXPECT_THAT(nvinfer1::Dims4(1, 2, 3, 4), Eq(nvinfer1::Dims4(1, 2, 3, 4)));
+  // Check empty dims.
+  EXPECT_THAT(nvinfer1::Dims{}, Eq(nvinfer1::Dims()));
+  // Check empty Dims is not equal to DimsHW, since their sizes differ.
+  EXPECT_THAT(nvinfer1::Dims{}, Not(Eq(nvinfer1::DimsHW())));
+  // Check mismatching values.
+  EXPECT_THAT(nvinfer1::Dims4(1, 2, 3, 4),
+              Not(Eq(nvinfer1::Dims4(1, 2, 3, 3))));
+  // Check mismatching number of arguments.
+  EXPECT_THAT(nvinfer1::Dims4(1, 2, 3, 4), Not(Eq(nvinfer1::Dims2(1, 2))));
 }
 
 TEST(INetworkDefinitionMatchers, CorrectlyMatch) {
@@ -51,7 +65,7 @@ TEST(INetworkDefinitionMatchers, CorrectlyMatch) {
   EXPECT_THAT(network.get(), AllOf(Not(LayerNamesAreArray({"some layer"})),
                                    LayerNamesNonEmpty()));
 
-  // Add the input and FC layer.
+  // Add the input and FC layers.
   nvinfer1::Weights weights;
   weights.type = nvinfer1::DataType::kFLOAT;
   std::array<float, 1> vals;
@@ -66,11 +80,11 @@ TEST(INetworkDefinitionMatchers, CorrectlyMatch) {
   ASSERT_NE(layer, nullptr);
   layer->setName(fc_layer_name);
 
-  // Check layer name matchers
+  // Check layer names.
   EXPECT_THAT(network.get(),
               AllOf(LayerNamesNonEmpty(), LayerNamesAreArray({fc_layer_name})));
 
-  // add layer without setting name (default name assigned) and check.
+  // Add layer with default name and check layer name.
   layer = network->addFullyConnected(*input, 1, weights, weights);
   EXPECT_THAT(network.get(), AllOf(LayerNamesNonEmpty(),
                                    Not(LayerNamesAreArray({fc_layer_name}))));

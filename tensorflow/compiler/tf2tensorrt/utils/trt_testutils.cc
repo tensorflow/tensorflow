@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -73,7 +73,6 @@ bool TrtDimsEquals(const nvinfer1::Dims& lhs, const nvinfer1::Dims& rhs) {
   if (lhs.nbDims != rhs.nbDims) return false;
   for (int i = 0; i < lhs.nbDims; ++i) {
     if (lhs.d[i] != rhs.d[i]) return false;
-    // We don't check the types in the tests.
   }
   return true;
 }

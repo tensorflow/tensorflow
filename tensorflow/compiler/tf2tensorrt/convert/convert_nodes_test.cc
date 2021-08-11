@@ -139,8 +139,6 @@ void ValidateWeights(const TRT_ShapedWeights& weights,
   }
 }
 
-
-
 TEST(TRT_ShapedWeights_Test, Basic) {
   // Test constructor with no arguments.
   {
@@ -1073,8 +1071,7 @@ std::vector<float> GetDataAsFloat(InputOutputData& data) {
     return std::vector<float>(span.begin(), span.end());
   }
   if (data.tensor.dtype() == DT_HALF) {
-    return CastVector<Eigen::half, float>(
-        GetSpanForData<Eigen::half>(data));
+    return CastVector<Eigen::half, float>(GetSpanForData<Eigen::half>(data));
   }
   if (data.tensor.dtype() == DT_INT32) {
     return CastVector<int32, float>(GetSpanForData<int32>(data));
@@ -1813,7 +1810,8 @@ void TestConvertConst(OpConverterTest* test) {
     test->RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(test->GetTensorOrWeights("my_const", &output));
-    ValidateWeights(output.weights(), expected_dims, expected_value);
+    EXPECT_THAT(output.weights(), ShapedWeightsHasDimsAndValues<OutputCType>(
+                                      expected_dims, expected_value));
   };
 
   auto& attr = *node_def.mutable_attr();
@@ -5045,7 +5043,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     Reset();
     NodeDef node_def = GetConv3DNodeDef();
     AddTestTensor("input", {1, 1, 2, 3}, tf_type_, CreateVectorIota<float>(6));
-    AddTestTensor("weights", {1, 3, 3, 1}, tf_type_, CreateVectorIota<float>(9));
+    AddTestTensor("weights", {1, 3, 3, 1}, tf_type_,
+                  CreateVectorIota<float>(9));
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "The input \"filter\" for Conv3D must be a constant, at my_conv3d");
@@ -6520,7 +6519,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
   };
 
   const std::vector<std::vector<float>> common_input{
-      CreateVectorIota<float>(6), CreateVectorIota<float>(6, /*start_value=*/6)};
+      CreateVectorIota<float>(6),
+      CreateVectorIota<float>(6, /*start_value=*/6)};
   std::vector<TestParams> params = {
       // Second input is weight, should fail in implicit batch mode
       {/*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
