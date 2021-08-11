@@ -695,8 +695,8 @@ class Context(object):
 
   def enable_coordination_service(self, service_type):
     if self._context_handle:
-      logging.warn("Configuring coordination service type may not be effective "
-                   "because the context is already initialized.")
+      logging.warning("Configuring coordination service type may not be "
+                      "effective because the context is already initialized.")
     self._coordination_service = service_type
 
   @property
