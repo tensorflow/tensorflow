@@ -838,10 +838,30 @@ size_t TRT_ShapedWeights::size_bytes() const {
 }
 
 string TRT_ShapedWeights::DebugString() const {
+  std::string values_str;
+  switch (type_) {
+    case nvinfer1::DataType::kFLOAT:
+      values_str = absl::StrJoin(GetSpan<float>(), ",");
+      break;
+    case nvinfer1::DataType::kINT32:
+      values_str = absl::StrJoin(GetSpan<int32>(), ",");
+      break;
+    case nvinfer1::DataType::kHALF:
+      values_str = absl::StrJoin(GetSpan<Eigen::half>(), ",");
+      break;
+    case nvinfer1::DataType::kINT8:
+      values_str = absl::StrJoin(GetSpan<int8>(), ",");
+      break;
+    case nvinfer1::DataType::kBOOL:
+      values_str = absl::StrJoin(GetSpan<int8>(), ",");
+      break;
+    default:
+      values_str = "unknown dtype";
+  }
   return StrCat(
       "TRT_ShapedWeights(shape=", tensorflow::tensorrt::DebugString(shape_),
       ", type=", tensorflow::tensorrt::DebugString(type_),
-      ", values=", reinterpret_cast<uintptr_t>(GetValues()), ")");
+      ", values=", values_str, ")");
 }
 
 TRT_TensorOrWeights::TRT_TensorOrWeights(ITensorProxyPtr tensor)

@@ -241,6 +241,13 @@ class TRT_ShapedWeights {
   friend class TrtWeightStore;
 };
 
+// Prints given weights information to ostream. This is required for GTest to
+// print useful information.
+inline std::ostream& operator<<(std::ostream& os,
+                                const TRT_ShapedWeights& weights) {
+  return os << weights.DebugString();
+}
+
 // Container for TRT_ShapedWeights. We need this container because, TRT doesn't
 // manage the lifetime of the weights buffer, it only keeps a pointer to it and
 // requires that the data referenced by the pointer be available until the
