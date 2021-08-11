@@ -721,6 +721,20 @@ mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
     (void)inserted;
   }
 
+  // TODO(b/196192286): This is a temporary workaround to disable excessive
+  // recompilation for dynamic shapes in one particular model. Remove this once
+  // specialization will be done based on shape constraints.
+  for (Operation* op : ops) {
+    for (Value value : op->getOperands()) {
+      Operation* defining_op = value.getDefiningOp();
+      if (!defining_op) continue;
+
+      if (!ops.contains(defining_op) &&
+          mlir::getElementTypeOrSelf(value.getType()).isInteger(1))
+        return failure();
+    }
+  }
+
   for (auto& pair : cluster.constraints) {
     Value value = pair.getFirst();
     ValueConstraint constraint = pair.getSecond();
