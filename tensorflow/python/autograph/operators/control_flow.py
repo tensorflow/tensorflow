@@ -76,11 +76,13 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.types import distribute
@@ -971,14 +973,39 @@ LEGAL_LOOP_TYPES = 'Tensor, int, float, bool or a list, tuple or dict thereof'
 
 
 def _placeholder_value(like, original=None):
+  """Constructs a (dummy) placeholder value for a loop-initialized variable."""
   if isinstance(like, (variables.Undefined, variables.UndefinedReturnValue)):
     return original
-  if isinstance(like, (int, float, bool)):
+
+  elif isinstance(like, (int, float, bool)):
     return type(like)(0)
-  if tensor_util.is_tf_type(like):
-    return array_ops.zeros(like.shape, like.dtype)
+
+  elif tensor_util.is_tf_type(like):
+
+    # To avoid while_loop complaining about shape invariants, the placeholder's
+    # shape must be identical to the corresponding loop var's shape. This means
+    # dynamic dimensions where the like value had dynamic dimensions. We
+    # simulate that by passing a tensor that is deterministically 0, but is
+    # obtained by means which most constant folders can't see through.
+    # TODO(mdan): Just use 0 once while_loop is smarter about shape invariants.
+    dynamic_zero = random_ops.random_uniform(minval=0, maxval=1, shape=())
+    placeholder_shape = []
+    for s in like.shape:
+      if s is None:
+        placeholder_shape.append(dynamic_zero)
+      elif isinstance(s, tensor_shape.Dimension):
+        if s.value is None:
+          placeholder_shape.append(dynamic_zero)
+        else:
+          placeholder_shape.append(s.value)
+      else:
+        placeholder_shape.append(s)
+
+    return array_ops.zeros(placeholder_shape, like.dtype)
+
   elif isinstance(like, (list, tuple, dict)):
     return nest.map_structure(_placeholder_value, like)
+
   return original
 
 
