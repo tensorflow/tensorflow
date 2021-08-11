@@ -2985,13 +2985,23 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   }
 
   if (should_use_nccl_thunk) {
-    auto nccl_thunk =
-        absl::make_unique<NcclThunkType>(GetThunkInfo(op), op,
-                                         /*buffers=*/std::move(buffers));
+    std::unique_ptr<Thunk> thunk;
+    if (IsBefThunkEnabled() && mlir::isa<mlir::lmhlo::AllReduceOp>(op)) {
+      std::vector<BufferAllocation::Slice> inputs, outputs;
+      for (const auto& buffer : buffers) {
+        inputs.push_back(buffer.source_buffer);
+        outputs.push_back(buffer.destination_buffer);
+      }
+      TF_ASSIGN_OR_RETURN(
+          thunk, CreateBefThunk(GetThunkInfo(op), op, inputs, outputs));
+    } else {
+      thunk = absl::make_unique<NcclThunkType>(GetThunkInfo(op), op,
+                                               /*buffers=*/std::move(buffers));
+    }
     // Record thunks for all-reduce-start ops as the done ops need them.
     TF_RETURN_IF_ERROR(MaybeAddAllReduceStartThunkToMap(
-        all_reduce_start_thunks_, op, nccl_thunk.get()));
-    AddThunkToThunkSequence(std::move(nccl_thunk));
+        all_reduce_start_thunks_, op, thunk.get()));
+    AddThunkToThunkSequence(std::move(thunk));
     return Status::OK();
   }
 
