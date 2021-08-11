@@ -1597,6 +1597,12 @@ Model::Model()
   model_gauge_cell_->Set([&]() { return DebugString(); });
 }
 
+Model::~Model() {
+  // Before the model is destroyed, we record its final state in the gauge.
+  auto result = DebugString();
+  model_gauge_cell_->Set([result]() { return result; });
+}
+
 void Model::AddNode(Node::Factory factory, const string& name,
                     std::shared_ptr<Node> parent,
                     std::shared_ptr<Node>* out_node) {

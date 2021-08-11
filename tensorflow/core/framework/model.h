@@ -202,7 +202,9 @@ class Node {
   }
 
   // Returns an indication whether autotuning is enabled for this node.
-  bool autotune() const TF_LOCKS_EXCLUDED(mu_) { return autotune_; }
+  bool autotune() const TF_LOCKS_EXCLUDED(mu_) {
+    return autotune_;
+  }
 
   // Returns the number of bytes stored in this node's buffer.
   int64_t buffered_bytes() const TF_LOCKS_EXCLUDED(mu_) {
@@ -282,7 +284,9 @@ class Node {
   }
 
   // Records that the node produced an element.
-  void record_element() TF_LOCKS_EXCLUDED(mu_) { num_elements_++; }
+  void record_element() TF_LOCKS_EXCLUDED(mu_) {
+    num_elements_++;
+  }
 
   // Records that a node thread has started executing.
   void record_start(int64_t time_nanos) TF_LOCKS_EXCLUDED(mu_) {
@@ -642,7 +646,7 @@ class Model {
   using ParameterGradients = Node::ParameterGradients;
 
   Model();
-  ~Model() {}
+  ~Model();
 
   // Indicates whether to collect resource usage.
   bool collect_resource_usage() const { return collect_resource_usage_; }
