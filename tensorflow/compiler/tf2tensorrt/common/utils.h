@@ -99,6 +99,27 @@ bool operator!=(const T& lhs, const V& rhs) {
   return !(rhs == lhs);
 }
 
+// Prints nvinfer1::DataType type name to given ostream.
+template <typename T, typename std::enable_if<std::is_same<
+                          T, nvinfer1::DataType>::value>::type* = nullptr>
+std::ostream& operator<<(std::ostream& os, const T& v) {
+  os << "nvinfer1::DataType::";
+  switch (v) {
+    case DataType::kFLOAT:
+      return os << "kFlOAT";
+    case DataType::kHALF:
+      return os << "kHALF";
+    case DataType::kBOOL:
+      return os << "kBOOL";
+    case DataType::kINT32:
+      return os << "kINT32";
+    case DataType::kINT8:
+      return os << "kINT8";
+    default:
+      return os << "unknown";
+  }
+}
+
 // Prints nvinfer1::INetworkDefinition* information to the given ostream.
 inline std::ostream& operator<<(std::ostream& os,
                                 nvinfer1::INetworkDefinition* n) {
