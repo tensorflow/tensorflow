@@ -150,7 +150,8 @@ class ExtensionType(
 
   def __init__(self, *args, **kwargs):
     if type(self) is ExtensionType:  # pylint: disable=unidiomatic-typecheck
-      raise AssertionError('ExtensionType is an abstract base class.')
+      raise AssertionError('Cannot create an instance of ExtensionType '
+                           'because ExtensionType is an abstract base class.')
 
   # This class variable is used to cache the return value for
   # _tf_extension_type_fields.
@@ -217,14 +218,16 @@ class ExtensionType(
                _IN_CONSTRUCTOR) and self._tf_extension_type_has_field(name):
       self.__dict__[name] = value
     else:
-      raise AttributeError('cannot assign to field %r' % name)
+      raise AttributeError(f'Cannot mutate attribute `{name}` '
+                           f'outside the custom constructor of ExtensionType.')
 
   def __delattr__(self, name):
     if hasattr(self,
                _IN_CONSTRUCTOR) and self._tf_extension_type_has_field(name):
       del self.__dict__[name]
     else:
-      raise AttributeError('cannot delete field %r' % name)
+      raise AttributeError(f'Cannot mutate attribute `{name}` '
+                           f'outside the custom constructor of ExtensionType.')
 
   def __getattr__(self, name):
     if '_tf_extension_type_packed_variant' in self.__dict__:
@@ -342,7 +345,8 @@ def unpack(value):
 def is_packed(value):
   """Returns true if `value`'s fields are packed in a single Variant."""
   if not isinstance(value, ExtensionType):
-    raise ValueError(f'Expected ExtensionType, got {value}')
+    raise ValueError(f'Expected `value` to be an object of type ExtensionType,'
+                     f'got an instance of {type(value)}.')
   return '_tf_extension_type_packed_variant' in value.__dict__
 
 
@@ -400,7 +404,10 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
         for x in nest.flatten(spec_tuple)
     ]
     if list(components_iter):
-      raise ValueError('Components do not match spec.')
+      raise ValueError(
+          'Cannot build an ExtensionType instance from components '
+          'because more components are provided than the number expected '
+          'by the type spec.')
     value_tuple = nest.pack_sequence_as(spec_tuple, flat)
     fields = dict(zip(self.__dict__.keys(), value_tuple))
 
@@ -438,14 +445,18 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
         self._tf_extension_type_has_field(name)):
       self.__dict__[name] = value
     else:
-      raise AttributeError('cannot assign to field %r' % name)
+      raise AttributeError(
+          f'Cannot mutate attribute `{name}` '
+          f'outside the custom constructor of ExtensionTypeSpec.')
 
   def __delattr__(self, name):
     if (hasattr(self, _IN_CONSTRUCTOR) and
         self._tf_extension_type_has_field(name)):
       del self.__dict__[name]
     else:
-      raise AttributeError('cannot delete field %r' % name)
+      raise AttributeError(
+          f'Cannot mutate attribute `{name}` '
+          f'outside the custom constructor of ExtensionTypeSpec.')
 
   def __validate__(self):
     """Perform post-construction validation."""
@@ -512,7 +523,8 @@ def _check_field_annotations(cls):
   # Check that no fields use reserved names.
   for name in cls.__dict__:
     if extension_type_field.ExtensionTypeField.is_reserved_name(name):
-      raise ValueError(f"The field name '{name}' is reserved.")
+      raise ValueError(f'The field annotations for {cls.__name__} are invalid. '
+                       f"Field '{name}' is reserved.")
 
   # Check that all fields have type annotaitons.
   annotations = getattr(cls, '__annotations__', {})
@@ -521,7 +533,8 @@ def _check_field_annotations(cls):
             key == '_tf_extension_type_fields' or
             key.startswith('__') and key.endswith('__') or
             isinstance(value, (property, classmethod, staticmethod))):
-      raise ValueError('Field %s must have a type annotation' % key)
+      raise ValueError(f'The field annotations for {cls.__name__} are invalid. '
+                       f'Field {key} is missing a type annotation.')
 
 
 def _add_extension_type_constructor(cls):
@@ -672,7 +685,9 @@ class AnonymousExtensionType(ExtensionType):
     for name in fields:
       if (extension_type_field.ExtensionTypeField.is_reserved_name(name) or
           (name.startswith('__') and name.endswith('__'))):
-        raise ValueError(f'The field name {name!r} is reserved.')
+        raise ValueError(
+            f'Reserved field name {name} was encountered '
+            f'when trying to instantiate an AnonymousExtensionType.')
     fields = [(k, _convert_anonymous_fields(v)) for (k, v) in fields.items()]
     self.__dict__.update(fields)
     self._tf_extension_type_convert_fields()
@@ -687,10 +702,12 @@ class AnonymousExtensionType(ExtensionType):
     ]
 
   def __setattr__(self, name, value):
-    raise AttributeError('cannot assign to field %r' % name)
+    raise AttributeError(f'Cannot set attribute `{name}`. '
+                         f'AnonymousExtensionType instances are immutable.')
 
   def __delattr__(self, name):
-    raise AttributeError('cannot delete field %r' % name)
+    raise AttributeError(f'Cannot delete attribute `{name}`. '
+                         f'AnonymousExtensionType instances are immutable.')
 
   def _tf_extension_type_convert_fields(self):
     fields = [(k, _convert_anonymous_fields(v))
@@ -725,7 +742,9 @@ class AnonymousExtensionTypeSpec(ExtensionTypeSpec):
     for name in fields:
       if (extension_type_field.ExtensionTypeField.is_reserved_name(name) or
           (name.startswith('__') and name.endswith('__'))):
-        raise ValueError(f'The field name {name!r} is reserved.')
+        raise ValueError(
+            f'Reserved field name {name} was encountered '
+            f'when trying to instantiate an AnonymousExtensionTypeSpec.')
     fields = [(k, _convert_anonymous_fields(v, for_spec=True))
               for (k, v) in fields.items()]
     self.__dict__.update(fields)
@@ -740,10 +759,12 @@ class AnonymousExtensionTypeSpec(ExtensionTypeSpec):
         if not extension_type_field.ExtensionTypeField.is_reserved_name(name))
 
   def __setattr__(self, name, value):
-    raise AttributeError('cannot assign to field %r' % name)
+    raise AttributeError(f'Cannot set attribute `{name}`. '
+                         f'AnonymousExtensionTypeSpec instances are immutable.')
 
   def __delattr__(self, name):
-    raise AttributeError('cannot delete field %r' % name)
+    raise AttributeError(f'Cannot delete attribute `{name}`. '
+                         f'AnonymousExtensionTypeSpec instances are immutable.')
 
 
 def _convert_anonymous_fields(value, for_spec=False):
@@ -768,7 +789,8 @@ def _convert_anonymous_fields(value, for_spec=False):
   if isinstance(value, type_spec.TypeSpec) and for_spec:
     return value
 
-  raise ValueError(f'Unsupported field value: {value!r}')
+  raise ValueError(f'Cannot convert anonymous fields from '
+                   f'an unsupported `value` argument: {value!r}.')
 
 
 # ==============================================================================
@@ -792,10 +814,12 @@ def reinterpret(value, new_type):
   """
   if not isinstance(value, ExtensionType):
     raise ValueError(
-        f'Expected `value` to be a tf.ExtensionType; got {value!r}')
+        f'reinterpret expects `value` to be a tf.ExtensionType instance; '
+        f'got {value!r}')
   if not (isinstance(new_type, type) and issubclass(new_type, ExtensionType)):
-    raise ValueError('Expected `new_type` to be a subclass of tf.ExtensionType;'
-                     f' got {new_type!r}')
+    raise ValueError(
+        f'reinterpret expects `new_type` to be a subclass of tf.ExtensionType; '
+        f'got {new_type!r}')
 
   fields = [
       item for item in value.__dict__.items()
