@@ -1538,8 +1538,8 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
   OpInputList arguments;
   TF_RETURN_IF_ERROR(ctx->input_list("args", &arguments));
 
-  auto* rendez = new PrivateIntraProcessRendezvous(device_mgr_);
-  opts.rendezvous = rendez;
+  PrivateIntraProcessRendezvous rendez(device_mgr_);
+  opts.rendezvous = &rendez;
 
   BlockingCounter bcount(functions.size());
   for (const DeviceAndFHandle& entry : functions) {
