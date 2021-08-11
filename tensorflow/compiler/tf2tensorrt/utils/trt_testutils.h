@@ -38,7 +38,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
-#include "tensorflow/core/framework/tensor.pb.h"    // NOLINT
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -154,7 +155,7 @@ using ShapedWeightsHasDimsAndValues =
     ShapedWeightsHasDimsAndValuesHelperMatcherP2<std::vector<int>,
                                                  std::vector<T>>;
 
-// std::vector convenience utilities.
+// Convenience utilities for manipulating std::vector.
 
 // Creates a new vector by casting all values of the given InCType vector to
 // OutCType.
@@ -178,6 +179,42 @@ std::vector<CType> CreateVectorIota(int size, CType start_value = CType(0)) {
   return res;
 }
 
+// Convenience utilities for manipulating InputOutputData.
+
+// Returns a vector of shapes from a vector of input tensors. This can be used
+// to create optimization profiles.
+inline Status GetShapeFromDataVec(DataVec input_data,
+                                  std::vector<TensorShape>* shape_vec) {
+  shape_vec->reserve(input_data.size());
+  std::transform(input_data.begin(), input_data.end(),
+                 std::back_inserter(*shape_vec),
+                 [](InputOutputData x) { return x.tensor.shape(); });
+  return Status::OK();
+}
+
+// Returns a flat view of the given 'data's Tensor using type T.
+template <typename T>
+absl::Span<const T> GetSpanForData(const InputOutputData& data) {
+  const auto& tensor_map = data.tensor.flat<T>();
+  return absl::Span<const T>(tensor_map.data(), tensor_map.size());
+}
+
+// Returns a copy of the given 'data's Tensor casted to float.
+inline std::vector<float> GetDataAsFloat(InputOutputData& data) {
+  if (data.tensor.dtype() == DT_FLOAT) {
+    auto span = GetSpanForData<float>(data);
+    return std::vector<float>(span.begin(), span.end());
+  }
+  if (data.tensor.dtype() == DT_HALF) {
+    return CastVector<Eigen::half, float>(GetSpanForData<Eigen::half>(data));
+  }
+  if (data.tensor.dtype() == DT_INT32) {
+    return CastVector<int32, float>(GetSpanForData<int32>(data));
+  }
+  LOG(FATAL) << "DataType not supported for testing "
+             << DataTypeString(data.tensor.dtype());
+  return {};
+}
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

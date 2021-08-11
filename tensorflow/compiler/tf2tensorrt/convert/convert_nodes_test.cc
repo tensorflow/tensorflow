@@ -1074,39 +1074,6 @@ TEST_F(ConvertGraphDefToEngineTest, IdentityGraph) {
   TF_EXPECT_OK(RunConvertGraphDefToEngine(&s));
 }
 
-// Returns a vector of shapes from a vector of input tensors. This can be used
-// to create optimization profiles.
-Status GetShapeFromDataVec(DataVec input_data,
-                           std::vector<TensorShape>* shape_vec) {
-  shape_vec->reserve(input_data.size());
-  std::transform(input_data.begin(), input_data.end(),
-                 std::back_inserter(*shape_vec),
-                 [](InputOutputData x) { return x.tensor.shape(); });
-  return Status::OK();
-}
-
-template <typename T>
-inline absl::Span<const T> GetSpanForData(const InputOutputData& data) {
-  const auto& tensor_map = data.tensor.flat<T>();
-  return absl::Span<const T>(tensor_map.data(), tensor_map.size());
-}
-
-std::vector<float> GetDataAsFloat(InputOutputData& data) {
-  if (data.tensor.dtype() == DT_FLOAT) {
-    auto span = GetSpanForData<float>(data);
-    return std::vector<float>(span.begin(), span.end());
-  }
-  if (data.tensor.dtype() == DT_HALF) {
-    return CastVector<Eigen::half, float>(GetSpanForData<Eigen::half>(data));
-  }
-  if (data.tensor.dtype() == DT_INT32) {
-    return CastVector<int32, float>(GetSpanForData<int32>(data));
-  }
-  LOG(FATAL) << "DataType not supported for testing "
-             << DataTypeString(data.tensor.dtype());
-
-  return {};
-}
 // Class to test various op converters, using both a TrtNodeValidator and
 // Converter.
 class OpConverterTest : public ::testing::Test {
@@ -1509,9 +1476,10 @@ struct TestParamBase {
   // Concrete input dimensions for the test (including the batch dim)
   std::vector<int> input_dims;
 
-  // Dimensions to define an input with PartialTensorShape. This can be used to
-  // define networks with dynamic input shape. It can be left empty, in that
-  // case AddTestTensor sets partial shapes that are appropriate to TrtTestMode.
+  // Dimensions to define an input with PartialTensorShape. This can be used
+  // to define networks with dynamic input shape. It can be left empty, in
+  // that case AddTestTensor sets partial shapes that are appropriate to
+  // TrtTestMode.
   std::vector<int> partial_input_dims;
 
   // Concrete (static) output dimensions, including batch size as first dim
@@ -1784,9 +1752,9 @@ void CopyTensorElements(const Tensor& tensor, protobuf::RepeatedField<T>* out) {
   out->Clear();
   if (tensor.NumElements() == 0) return;
 
-  // TensorProto does not need to have all the elements present and can truncate
-  // trailing elements with the same value for compressed representation. Such
-  // elements are derived based on the tensor shape.
+  // TensorProto does not need to have all the elements present and can
+  // truncate trailing elements with the same value for compressed
+  // representation. Such elements are derived based on the tensor shape.
   const auto flat = tensor.flat<T>();
   int64 last_index = 0;
   for (int64 i = 0; i < tensor.NumElements(); ++i) {
@@ -1952,7 +1920,8 @@ TEST_P(OpConverter_FP32_Test, ConvertFusedBatchNorm) {
 
   struct TestParam {
     std::string data_format;
-    int tensor_input_idx;  // Index of an input that will be provided as tensor.
+    int tensor_input_idx;  // Index of an input that will be provided as
+                           // tensor.
     bool is_training;
     float epsilon;
     Status conversion_status;
@@ -2010,21 +1979,21 @@ TEST_P(OpConverter_FP32_Test, ConvertFusedBatchNorm) {
           get_node_def(tf_type_, p.data_format, p.is_training, p.epsilon);
       for (int i = 0; i < node_input.size(); i++) {
         if (i == 0 || i == p.tensor_input_idx) {
-          // The first input (x) is always added as a tensor, and it hase shape
-          // NCHW. The other inputs are per channel values (1D, size C).
+          // The first input (x) is always added as a tensor, and it hase
+          // shape NCHW. The other inputs are per channel values (1D, size C).
           //
           // In implicit batch mode, it is not possible to add any of the 1D
-          // inputs as a tensor: the first dim is always treated as batch dim in
-          // implicit batch mode, and that has to agree for all tensors. We have
-          // two input tensors with shapes NCHW and C and in general N != C.
-          // The converter already picked up N from the fist input, and reports
-          // an error when we try to add any other tensors with not matching
-          // first dim.
+          // inputs as a tensor: the first dim is always treated as batch dim
+          // in implicit batch mode, and that has to agree for all tensors. We
+          // have two input tensors with shapes NCHW and C and in general N !=
+          // C. The converter already picked up N from the fist input, and
+          // reports an error when we try to add any other tensors with not
+          // matching first dim.
           //
-          // This restriction does not apply in explicit batch mode: the tensors
-          // can have different first dim. The converter still expects that only
-          // the first arg is a tensor. TODO(tfeher) Check if one can relax this
-          // restriction.
+          // This restriction does not apply in explicit batch mode: the
+          // tensors can have different first dim. The converter still expects
+          // that only the first arg is a tensor. TODO(tfeher) Check if one
+          // can relax this restriction.
           Status expected_status =
               (i != 0 && trt_mode_ == TrtTestMode::kImplicitBatch)
                   ? errors::InvalidArgument(
@@ -2128,13 +2097,13 @@ TEST_P(OpConverter_FP32_Test, ConvertReshape) {
     Reset();
     AddTestTensor("input", {3, 2, 1});
     AddTestTensor("weights", {3});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "The input \"shape\" for Reshape must be a constant in implicit batch "
-        "mode, at my_reshape");
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "The input \"shape\" for Reshape must be a "
+                               "constant in implicit batch "
+                               "mode, at my_reshape");
   } else if (!IS_TRT_VERSION_GE(7, 1, 3, 0)) {
-    // Shape is a tensor, should fail before TRT 7.1.3 even in explicit batch /
-    // dynamic shape mode.
+    // Shape is a tensor, should fail before TRT 7.1.3 even in explicit batch
+    // / dynamic shape mode.
     Reset();
     AddTestTensor("input", {3, 2, 1});
     AddTestTensor("weights", {3});
@@ -2206,9 +2175,9 @@ TEST_P(OpConverter_FP32_Test, ConvertReshape) {
       TestParams{{2}, {2, 1}},
   };
   if (trt_mode_ == TrtTestMode::kImplicitBatch) {
-    // Reshape tensor with zero rank using an empty shape tensor, should fail in
-    // implicit batch mode. In explicit batch mode this is an identity operation
-    // and does not add a reshape layer therefore we do not test it.
+    // Reshape tensor with zero rank using an empty shape tensor, should fail
+    // in implicit batch mode. In explicit batch mode this is an identity
+    // operation and does not add a reshape layer therefore we do not test it.
     params.push_back(TestParams{{},
                                 {},
                                 {},
@@ -2295,11 +2264,11 @@ TEST_P(OpConverter_FP32_Test, ConvertShape) {
     SCOPED_TRACE(p);
     Reset();
     // The number of elements of the input tensor. We leave it 0 in case we do
-    // not need to add an input tensor. This happens in explicit batch mode: the
-    // shape is known at conversion time and therefore the shape is added to the
-    // network as a constant layer. In this case the single node network that
-    // we use for the unit test have no actual input tensor when it is converted
-    // to a TensorRT network.
+    // not need to add an input tensor. This happens in explicit batch mode:
+    // the shape is known at conversion time and therefore the shape is added
+    // to the network as a constant layer. In this case the single node
+    // network that we use for the unit test have no actual input tensor when
+    // it is converted to a TensorRT network.
     int n_elements = 0;
     if (input_is_weight(p) || trt_mode_ != TrtTestMode::kExplicitBatch) {
       // Calculate the number of elements for adding input data.
@@ -2382,7 +2351,8 @@ void TestMatMulHelper(
 
           if (a_is_tensor) {
             if (a_partial_shape) {
-              // Prepare a partial shape for A where only the last dim is known.
+              // Prepare a partial shape for A where only the last dim is
+              // known.
               std::vector<int> partial_shape(p.shape_a.size(), -1);
               int k = p.shape_a.size() - 1;
               partial_shape.at(k) = p.shape_a.at(k);
@@ -4645,9 +4615,9 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
         get_conv2d_nodedef({1, 1, 1, 1}, "SAME", "NCHW", {1, 1, 1});
     AddTestTensor("input", {1, 1, 2, 3});
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Convolution dilations field must specify 4 dimensions, at my_conv2d");
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Convolution dilations field must specify 4 "
+                               "dimensions, at my_conv2d");
   }
   {
     // Dilation value is not 1 for channel, should fail.
@@ -4935,11 +4905,11 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
       std::vector<int> partial_input_shape;
       if (trt_mode_ == TrtTestMode::kDynamicShape && !p.unknown_channel) {
         // In dynamic shape mode, AddTestTensor will replace the input tensor
-        // dims with -1, unless we give a non-empty partial_input_shape_tensor.
-        // Having -1 channel dimension is invalid for TRT. We have a single
-        // test to check the converter in that case (p.unknown_channel==true).
-        // For all the other tests, we define here an input with known channel
-        // dimension.
+        // dims with -1, unless we give a non-empty
+        // partial_input_shape_tensor. Having -1 channel dimension is invalid
+        // for TRT. We have a single test to check the converter in that case
+        // (p.unknown_channel==true). For all the other tests, we define here
+        // an input with known channel dimension.
         partial_input_shape.resize(p.input_dims.size(), -1);
         int channel_id = (p.data_format == "NCHW") ? 1 : 3;
         partial_input_shape[channel_id] = p.input_dims[channel_id];
@@ -5095,9 +5065,9 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     AddTestWeights<float>(
         "weights", {3, 3, 1, 1, 1},
         {1, 2, 3, 4, 5, 6, 7, 8, 9});  // Dimensions, then values
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Convolution dilations field must specify 5 dimensions, at my_conv3d");
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Convolution dilations field must specify 5 "
+                               "dimensions, at my_conv3d");
   }
   {
     // Dilation value is not 1 for channel, should fail.
@@ -5419,14 +5389,14 @@ TEST_P(OpConverter_FP32_Test, ConvertPool) {
     string padding;
     string data_format;
     std::vector<int> expected_output_dims;
-    // The expected outputs for the following operations: MaxPool2D, AvgPool2D,
-    // MaxPool3D, AvgPool3D
+    // The expected outputs for the following operations: MaxPool2D,
+    // AvgPool2D, MaxPool3D, AvgPool3D
     std::vector<std::vector<float>> expected_outputs;
   };
 
-  // We use common_input as the input to test both 2D and 3D pooling operations,
-  // to simplify TestParams. For 2D operations, only the first 1/3 of the values
-  // are used.
+  // We use common_input as the input to test both 2D and 3D pooling
+  // operations, to simplify TestParams. For 2D operations, only the first 1/3
+  // of the values are used.
   const std::vector<float> common_input{-4, 2,  15, 3, 6,   -3, 22, 1,   88,
                                         56, 36, 1,  1, 105, 1,  16, -28, 1,
                                         42, 9,  3,  1, 7,   1,  11, 61,  5};
@@ -5627,7 +5597,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                               "Indices must have a batch size of 1 when params"
                               " is a tensor."}
                      : Status::OK()},
-      // Axis is not zero when params is a weight, should fail in implicit batch
+      // Axis is not zero when params is a weight, should fail in implicit
+      // batch
       // mode.
       TestParams{/*params_shape=*/{2, 1, 3},
                  /*indices_shape=*/{2},
@@ -5680,7 +5651,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output=*/{4, 5, 6},
           /*params_is_tensor=*/true,
       },
-      // Indices with rank>1, and output rank is rank(params) + rank(indices) -
+      // Indices with rank>1, and output rank is rank(params) + rank(indices)
+      // -
       // 1
       TestParams{
           /*params_shape=*/{1, 1, 2, 3},
