@@ -660,6 +660,11 @@ class ResourceGatherOp : public OpKernel {
     OP_REQUIRES(
         c, TensorShapeUtils::IsVectorOrHigher(params.shape()),
         errors::InvalidArgument("params must be at least 1 dimensional"));
+    OP_REQUIRES(
+        c, params.shape().dims() >= batch_dims_,
+        errors::InvalidArgument("params must have at least ", batch_dims_,
+                                " (batch_dims) dimensions but it has shape ",
+                                params.shape().DebugString()));
 
     // Check that we have enough index space
     const int64 N = indices.NumElements();
@@ -705,7 +710,8 @@ class ResourceGatherOp : public OpKernel {
         copy_functor(c->eigen_device<Device>(), tmp_indices.flat<Index>(),
                      indices.flat<Index>());
 
-        AddBatchOffsets(&tmp_indices, params);
+        AddBatchOffsets(c, &tmp_indices, params);
+        if (!c->status().ok()) return;
         op_indices = &tmp_indices;
       }
 
@@ -737,11 +743,17 @@ class ResourceGatherOp : public OpKernel {
   // Example: batch_dims = 1, indices = [[0, 1, 2], [0, 1, 2]]
   // If indexing into a params dimension of size 4, then the indices will become
   // [0, 1, 2, 4, 5, 6]
-  void AddBatchOffsets(Tensor* indices, const Tensor& params) {
+  void AddBatchOffsets(OpKernelContext* ctx, Tensor* indices,
+                       const Tensor& params) {
     int64 batch_size = 1;  // The size of all batch dimensions.
     for (int idx = 0; idx < batch_dims_; ++idx) {
       batch_size *= params.dim_size(idx);
     }
+    OP_REQUIRES(
+        ctx, batch_size != 0,
+        errors::InvalidArgument(
+            "Inner size of indices would result in batch_size of 0 and a ",
+            "division by 0 in the implementation. This is illegal"));
 
     auto indices_flat = indices->flat<Index>();
     int64 const index_inner_size = indices->NumElements() / batch_size;
@@ -861,6 +873,35 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_ND_GPU);
 #undef REGISTER_GATHER_ND_ALL_INDICES
 #undef REGISTER_GATHER_ND_FULL
 
+namespace {
+
+template <typename Device>
+bool isCPUDevice() {
+  return false;
+}
+
+template <>
+bool isCPUDevice<CPUDevice>() {
+  return true;
+}
+
+template <typename T>
+bool ValidateInput(const Tensor& updates) {
+  const auto updates_flat = updates.flat<T>();
+  const T zero(0);
+  for (int i = 0; i < updates.NumElements(); i++) {
+    if (updates_flat(i) == zero) return false;
+  }
+  return true;
+}
+
+template <>
+bool ValidateInput<Variant>(const Tensor& updates) {
+  return true;
+}
+
+}  // namespace
+
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
 class ResourceScatterUpdateOp : public OpKernel {
  public:
@@ -927,6 +968,12 @@ class ResourceScatterUpdateOp : public OpKernel {
                                 " indexing: ", params->dim_size(0), " > ",
                                 std::numeric_limits<Index>::max()));
 
+    // Prevent division by 0
+    if (isCPUDevice<Device>() && op == tensorflow::scatter_op::UpdateOp::DIV) {
+      OP_REQUIRES(c, ValidateInput<T>(updates),
+                  errors::InvalidArgument("updates must not contain 0"));
+    }
+
     if (N > 0) {
       auto indices_flat = indices.flat<Index>();
       auto params_flat = params->flat_outer_dims<T>();
@@ -943,11 +990,12 @@ class ResourceScatterUpdateOp : public OpKernel {
                         params->dim_size(0), ")"));
       } else {
         int64 num_updates = updates.NumElements();
-        OP_REQUIRES(c, num_updates % N == 0,
-                    errors::InvalidArgument(
-                        "shape of indices (", indices.shape().DebugString(),
-                        ") is not compatible with the shape of updates (",
-                        updates.shape().DebugString(), ")"));
+        OP_REQUIRES(
+            c, TensorShapeUtils::StartsWith(updates.shape(), indices.shape()),
+            errors::InvalidArgument(
+                "The shape of indices (", indices.shape().DebugString(),
+                ") must be a prefix of the shape of updates (",
+                updates.shape().DebugString(), ")"));
         auto updates_flat = updates.shaped<T, 2>({N, num_updates / N});
 
         functor::ScatterFunctor<Device, T, Index, op> functor;

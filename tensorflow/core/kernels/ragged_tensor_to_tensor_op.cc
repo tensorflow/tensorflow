@@ -348,6 +348,9 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
   Status GetFirstDimensionSize(OpKernelContext* context, INDEX_TYPE* result) {
     const Tensor first_partition_tensor =
         context->input(kFirstPartitionInputIndex);
+    if (row_partition_types_.empty()) {
+      return errors::InvalidArgument("No row_partition_types given.");
+    }
     const RowPartitionType first_partition_type = row_partition_types_[0];
     switch (first_partition_type) {
       case RowPartitionType::FIRST_DIM_SIZE:

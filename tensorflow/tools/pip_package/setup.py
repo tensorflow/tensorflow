@@ -50,7 +50,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.6.0-rc1'
+_VERSION = '2.6.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -101,9 +101,9 @@ REQUIRED_PACKAGES = [
     # These need to be in sync with the existing TF version
     # They are updated during the release process
     # When updating these, please also update the nightly versions below
-    'tensorboard ~= 2.5',
-    'tensorflow-estimator >= 2.6.0rc0 , < 2.7.0',
-    'keras >= 2.6.0rc1 , < 2.7.0',
+    'tensorboard ~= 2.6',
+    'tensorflow_estimator ~= 2.6',
+    'keras ~= 2.6',
 ]
 
 
@@ -115,11 +115,11 @@ REQUIRED_PACKAGES = [
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.6.0.a'
+      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.7.0.a'
     elif 'tensorflow_estimator' in pkg:
-      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.6.0.dev'
+      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.7.0.dev'
     elif 'keras' in pkg and 'keras_preprocessing' not in pkg:
-      REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.6.0.dev'
+      REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.7.0.dev'
 
 
 # grpcio does not build correctly on big-endian machines due to lack of

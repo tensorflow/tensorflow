@@ -120,9 +120,26 @@ Status ShapeRefiner::InferShapesForFunctionSubNode(
     TF_RETURN_IF_ERROR(outer_context->MakeShapeFromShapeProto(proto, &handle));
     outer_context->set_output(index, handle);
 
-    auto* resource = node_context->input_handle_shapes_and_types(0);
+    const std::vector<ShapeAndType>* resource =
+        node_context->input_handle_shapes_and_types(0);
     if (resource) {
-      outer_context->set_output_handle_shapes_and_types(index, *resource);
+      // `ShapesAndType`s contain `ShapeHandle`s.  These `ShapeHandle`s point
+      // to `Shape`s that are owned by a different inference context too.  We
+      // need to copy them to the outer context to prevent them from being
+      // destroyed before they are used.
+      std::vector<ShapeAndType> copied_shapes_and_types;
+      for (auto& shape_and_type : *resource) {
+        ShapeHandle handle;
+        TensorShapeProto proto;
+        node_context->ShapeHandleToProto(shape_and_type.shape, &proto);
+        TF_RETURN_IF_ERROR(
+            outer_context->MakeShapeFromShapeProto(proto, &handle));
+        copied_shapes_and_types.push_back(
+            ShapeAndType(handle, shape_and_type.dtype, shape_and_type.type));
+      }
+
+      outer_context->set_output_handle_shapes_and_types(
+          index, copied_shapes_and_types);
     }
   }
 

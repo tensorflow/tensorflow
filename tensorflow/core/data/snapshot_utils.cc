@@ -658,6 +658,7 @@ void Reader::NestedDatasetOp::MakeDataset(OpKernelContext* ctx,
     inputs.push_back(input);
   }
   *output = new Reader::NestedDataset(DatasetContext(ctx), inputs);
+  (*output)->Initialize();
 }
 
 Status Reader::MakeNestedDataset(Env* env,
@@ -684,6 +685,7 @@ Status Reader::MakeNestedDataset(Env* env,
                          strings::StrCat("SnapshotDatasetReader/_", i)})),
                     shard_dirs.at(i), compression_type, version, dtypes, shapes,
                     dataset_start_index));
+    datasets.back()->Initialize();
   }
 
   // Rotate the vector such that the first dataset contains the next element
@@ -699,6 +701,7 @@ Status Reader::MakeNestedDataset(Env* env,
       DatasetContext(DatasetContext::Params(
           {"SnapshotNestedDatasetReader", "SnapshotNestedDatasetReader"})),
       datasets);
+  (*output)->Initialize();
   return Status::OK();
 }
 
