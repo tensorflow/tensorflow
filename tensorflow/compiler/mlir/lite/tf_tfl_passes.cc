@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -66,11 +67,39 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
 }
 
+void AddConvertHloToTfPass(std::string entry_function_name,
+                           mlir::OpPassManager* pass_manager) {
+  // Canonicalize, CSE etc.
+  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+  // DCE for private symbols.
+  pass_manager->addPass(mlir::createSymbolDCEPass());
+
+  // Add inline pass.
+  pass_manager->addPass(mlir::createInlinerPass());
+
+  // Expands mhlo.tuple ops.
+  pass_manager->addPass(
+      mlir::mhlo::CreateExpandHloTuplesPass(entry_function_name));
+
+  // TF dialect passes
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TF::CreateLegalizeHloToTfPass());
+
+  // Canonicalization after TF legalization.
+  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+}
+
 void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
                                 const toco::TocoFlags& toco_flags,
                                 const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager,
                                 llvm::Optional<tensorflow::Session*> session) {
+  if (pass_config.enable_hlo_to_tf_conversion) {
+    // TODO(b/194747383): We need to valid that indeed the "main" func is
+    // presented.
+    AddConvertHloToTfPass("main", pass_manager);
+  }
   // This pass wraps all the tf.FakeQuant ops in a custom op so they are not
   // folded before being converted to tfl.quantize and tfl.dequantize ops.
   auto wrapped_ops = mlir::TFL::AllTfFakeQuantOps();

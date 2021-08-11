@@ -37,7 +37,6 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
@@ -126,29 +125,6 @@ static int PrintFunctionResultMapping(const std::string &result,
     }
   }
   return kTrSuccess;
-}
-
-void AddConvertHloToTfPass(std::string entry_function_name,
-                           mlir::OpPassManager *pass_manager) {
-  // Canonicalize, CSE etc.
-  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
-  // DCE for private symbols.
-  pass_manager->addPass(mlir::createSymbolDCEPass());
-
-  // Add inline pass.
-  pass_manager->addPass(mlir::createInlinerPass());
-
-  // Expands mhlo.tuple ops.
-  pass_manager->addPass(
-      mlir::mhlo::CreateExpandHloTuplesPass(entry_function_name));
-
-  // TF dialect passes
-  pass_manager->addNestedPass<mlir::FuncOp>(
-      mlir::TF::CreateLegalizeHloToTfPass());
-
-  // Canonicalization after TF legalization.
-  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
 }
 
 int main(int argc, char **argv) {
@@ -301,7 +277,7 @@ int main(int argc, char **argv) {
   pass_config.guarantee_all_funcs_one_use = guarantee_all_funcs_one_use;
 
   if (enable_hlo_to_tf_conversion) {
-    AddConvertHloToTfPass("main", &pm);
+    pass_config.enable_hlo_to_tf_conversion = true;
   }
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
