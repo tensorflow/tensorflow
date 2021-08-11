@@ -2,8 +2,6 @@
 # Java Native Interface (JNI) library intended for implementing the
 # TensorFlow Lite Java API using the TensorFlow Lite CC library.
 
-# LINT.IfChange
-
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite")
 
@@ -119,5 +117,3 @@ exports_files(
         "version_script.lds",
     ],
 )
-
-# LINT.ThenChange(//tensorflow/lite/java/src/main/native/BUILD.oss)
