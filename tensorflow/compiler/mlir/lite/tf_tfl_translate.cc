@@ -31,10 +31,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
@@ -43,8 +46,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
+#include "tensorflow/compiler/mlir/xla/xla_mlir_translate.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/model.h"
@@ -123,6 +128,29 @@ static int PrintFunctionResultMapping(const std::string &result,
   return kTrSuccess;
 }
 
+void AddConvertHloToTfPass(std::string entry_function_name,
+                           mlir::OpPassManager *pass_manager) {
+  // Canonicalize, CSE etc.
+  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+  // DCE for private symbols.
+  pass_manager->addPass(mlir::createSymbolDCEPass());
+
+  // Add inline pass.
+  pass_manager->addPass(mlir::createInlinerPass());
+
+  // Expands mhlo.tuple ops.
+  pass_manager->addPass(
+      mlir::mhlo::CreateExpandHloTuplesPass(entry_function_name));
+
+  // TF dialect passes
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TF::CreateLegalizeHloToTfPass());
+
+  // Canonicalization after TF legalization.
+  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+}
+
 int main(int argc, char **argv) {
   // TODO(jpienaar): Revise the command line option parsing here.
   tensorflow::InitMlir y(&argc, &argv);
@@ -163,7 +191,14 @@ int main(int argc, char **argv) {
 
   // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
   // inside mlir is done.
+  if ((import_saved_model_object_graph || import_saved_model_signature_defs) &&
+      import_hlo) {
+    llvm::errs() << "Import saved model and import hlo cannot be both set.";
+    return kTrFailure;
+  }
+
   if (import_saved_model_object_graph || import_saved_model_signature_defs) {
+    // Saved model import path.
     int saved_model_version;
     if (import_saved_model_object_graph) {
       saved_model_version = 2;
@@ -189,7 +224,28 @@ int main(int argc, char **argv) {
         input_file_name, saved_model_version, tags, extra_opdefs,
         exported_names, specs, /*enable_variable_lifting=*/true, &context,
         &bundle);
+  } else if (import_hlo) {
+    // HLO import path.
+    std::string error;
+    std::unique_ptr<llvm::MemoryBuffer> buffer =
+        mlir::openInputFile(input_file_name, &error);
+    if (buffer == nullptr) {
+      llvm::errs() << "Cannot open input file: " << input_file_name << " "
+                   << error;
+      return kTrFailure;
+    }
+
+    auto content = buffer->getBuffer();
+    if (hlo_import_type == HloImportType::hlotxt) {
+      module = xla::HloTextToMlirHloTranslateFunction(content, &context, false);
+    } else if (hlo_import_type == HloImportType::proto) {
+      module = xla::HloToMlirHloTranslateFunction(content, &context, false);
+    } else {
+      module =
+          mlir::OwningModuleRef(mlir::parseSourceString(content, &context));
+    }
   } else {
+    // Graphdef import path.
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
         specs, debug_info_file, input_arrays, input_dtypes, input_shapes,
@@ -243,6 +299,10 @@ int main(int argc, char **argv) {
   pass_config.unfold_batch_matmul = unfold_batchmatmul;
   pass_config.unfold_large_splat_constant = unfold_large_splat_constant;
   pass_config.guarantee_all_funcs_one_use = guarantee_all_funcs_one_use;
+
+  if (enable_hlo_to_tf_conversion) {
+    AddConvertHloToTfPass("main", &pm);
+  }
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm,
