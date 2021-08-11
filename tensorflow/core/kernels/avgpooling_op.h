@@ -30,17 +30,14 @@ struct SpatialAvgPooling {
                   typename TTypes<T, 4>::ConstTensor input, int window_rows,
                   int window_cols, int row_stride, int col_stride,
                   const Eigen::PaddingType& padding) {
-    if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
-      // Use 32bit indexing to speed up the computations
-      To32Bit(output).swap_layout().device(d) = Eigen::SpatialAvgPooling(
-          To32Bit(input).swap_layout(), window_cols, window_rows, col_stride,
-          row_stride, padding);
-    } else {
-      // Because we swap the layout, we swap the row/cols as well
-      output.swap_layout().device(d) = Eigen::SpatialAvgPooling(
-          input.swap_layout(), window_cols, window_rows, col_stride, row_stride,
-          padding);
-    }
+    MaybeWith32BitIndexing<Device>(
+        [&](auto output32, auto input32) {
+          // Because we swap the layout, we swap the row/cols as well.
+          output32.swap_layout().device(d) = Eigen::SpatialAvgPooling(
+              input32.swap_layout(), window_cols, window_rows, col_stride,
+              row_stride, padding);
+        },
+        output, input);
   }
 };
 
