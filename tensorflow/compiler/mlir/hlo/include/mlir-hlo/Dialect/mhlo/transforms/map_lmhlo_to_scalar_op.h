@@ -462,6 +462,13 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::BitcastConvertOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Type>,
+    ArrayRef<Value> args, OpBuilder* b) {
+  return b->create<mlir::BitcastOp>(loc, result_types, args);
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::DotOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Type> arg_types,
