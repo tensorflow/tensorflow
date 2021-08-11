@@ -241,13 +241,8 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
           solver->GetDeviceLapackInfo(batch_size, "getrfBatched"));
       OP_REQUIRES_OK_ASYNC(
           context,
-#if GOOGLE_CUDA
           solver->GetrfBatched(n, input_copy_ptrs_base, n, pivots_mat.data(),
                                &dev_info.back(), batch_size),
-#else //TENSORFLOW_USE_ROCM
-          solver->GetrfBatched<Scalar>(n, n, input_copy_ptrs_base, n, pivots_mat.data(),
-                                       n, &dev_info.back(), batch_size),
-#endif
           done);
     } else {
       // For small batch sizes or large matrices, we use the non-batched
@@ -283,6 +278,12 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
                     rhs.flat<Scalar>().data(),
                     rhs.NumElements() * sizeof(Scalar));
     }
+#if GOOGLE_CUDA
+    auto op_t = adjoint_ ? CUBLAS_OP_C : CUBLAS_OP_T;
+#else //TENSORFLOW_USE_ROCM
+    auto op_t = adjoint_ ? rocblas_operation_conjugate_transpose :
+                           rocblas_operation_transpose;
+#endif
 
     // 3. Solve op(A) X = B (in column major form).
     // We use a trick here: If adjoint_ is true, we converted A to column major
@@ -321,45 +322,28 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
       int host_info = 0;
       OP_REQUIRES_OK_ASYNC(
           context,
-#if GOOGLE_CUDA
-          solver->GetrsBatched(adjoint_ ? CUBLAS_OP_C : CUBLAS_OP_T, n, nrhs,
+          solver->GetrsBatched(op_t, n, nrhs,
                                input_copy_ptrs_base, n, pivots_mat.data(),
                                transposed_rhs_ptrs_base, n, &host_info,
                                batch_size),
-#else // TENSORFLOW_USE_ROCM
-          solver->GetrsBatched<Scalar>(adjoint_ ? rocblas_operation_conjugate_transpose
-                                         : rocblas_operation_transpose,
-                                        n, nrhs, input_copy_ptrs_base, n, pivots_mat.data(),
-                                        n, transposed_rhs_ptrs_base, n, batch_size),
-#endif
           done);
 
-#if GOOGLE_CUDA
       OP_REQUIRES_ASYNC(
           context, host_info == 0,
           errors::InvalidArgument("The ", -host_info,
                                   "'th argument to cublas*getrsBatched had "
                                   "an illegal value."),
           done);
-#endif 
     } else {
       dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "getrs"));
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(
             context,
-#if GOOGLE_CUDA
-            solver->Getrs(adjoint_ ? CUBLAS_OP_C : CUBLAS_OP_T, n, nrhs,
+            solver->Getrs(op_t, n, nrhs,
                           &input_copy_reshaped(batch, 0, 0), n,
                           &pivots_mat(batch, 0),
                           &transposed_rhs_reshaped(batch, 0, 0), n,
                           &dev_info.back()(batch)),
-#else //TENSORFLOW_USE_ROCM
-            solver->Getrs(adjoint_ ? rocblas_operation_conjugate_transpose
-                                         : rocblas_operation_transpose,
-                          n, nrhs, &input_copy_reshaped(batch, 0, 0), n,
-                          &pivots_mat(batch, 0),
-                          &transposed_rhs_reshaped(batch, 0, 0), n),
-#endif
             done);
       }
     }
