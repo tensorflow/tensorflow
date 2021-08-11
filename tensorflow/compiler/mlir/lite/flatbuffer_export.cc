@@ -479,19 +479,14 @@ class Translator {
   // the serialized output. Returns llvm::None on unsupported, invalid inputs or
   // internal error.
   static Optional<std::string> Translate(
-      ModuleOp module, bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
-      bool emit_custom_ops, bool allow_all_select_tf_ops,
-      const std::unordered_set<std::string>& select_user_tf_ops,
+      ModuleOp module, const toco::TocoFlags& toco_flags,
       const std::unordered_set<std::string>& tags,
       OpOrArgNameMapper* op_or_arg_name_mapper,
       const std::map<std::string, std::string>& metadata);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
-  explicit Translator(ModuleOp module, bool emit_builtin_tflite_ops,
-                      bool emit_select_tf_ops, bool emit_custom_ops,
-                      bool allow_all_select_tf_ops,
-                      const std::unordered_set<std::string>& select_user_tf_ops,
+  explicit Translator(ModuleOp module, const toco::TocoFlags& toco_flags,
                       const std::unordered_set<std::string>& saved_model_tags,
                       OpOrArgNameMapper* op_or_arg_name_mapper,
                       const std::map<std::string, std::string>& metadata)
@@ -499,19 +494,20 @@ class Translator {
         name_mapper_(*op_or_arg_name_mapper),
         builder_(kInitialBufferSize),
         saved_model_tags_(saved_model_tags),
-        allow_all_select_tf_ops_(allow_all_select_tf_ops),
-        select_user_tf_ops_(select_user_tf_ops),
+        allow_all_select_tf_ops_(toco_flags.allow_all_select_tf_ops()),
+        select_user_tf_ops_(toco_flags.select_user_tf_ops().begin(),
+                            toco_flags.select_user_tf_ops().end()),
         metadata_(metadata) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
-    if (emit_builtin_tflite_ops) {
+    if (!toco_flags.force_select_tf_ops()) {
       enabled_op_types_.emplace(OpType::kTfliteBuiltin);
     }
-    if (emit_select_tf_ops) {
+    if (toco_flags.enable_select_tf_ops()) {
       enabled_op_types_.emplace(OpType::kSelectTf);
     }
-    if (emit_custom_ops) {
+    if (toco_flags.allow_custom_ops()) {
       enabled_op_types_.emplace(OpType::kCustomOp);
     }
     tf_dialect_ =
@@ -1747,9 +1743,7 @@ bool UpdateEntryFunction(ModuleOp module) {
 }
 
 Optional<std::string> Translator::Translate(
-    ModuleOp module, bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
-    bool emit_custom_ops, bool allow_all_select_tf_ops,
-    const std::unordered_set<std::string>& select_user_tf_ops,
+    ModuleOp module, const toco::TocoFlags& toco_flags,
     const std::unordered_set<std::string>& tags,
     OpOrArgNameMapper* op_or_arg_name_mapper,
     const std::map<std::string, std::string>& metadata) {
@@ -1758,9 +1752,7 @@ Optional<std::string> Translator::Translate(
     op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
   if (!UpdateEntryFunction(module)) return llvm::None;
   if (!IsValidTFLiteMlirModule(module)) return llvm::None;
-  Translator translator(module, emit_builtin_tflite_ops, emit_select_tf_ops,
-                        emit_custom_ops, allow_all_select_tf_ops,
-                        select_user_tf_ops, tags, op_or_arg_name_mapper,
+  Translator translator(module, toco_flags, tags, op_or_arg_name_mapper,
                         metadata);
   return translator.TranslateInternal();
 }
@@ -2079,9 +2071,7 @@ bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        const FlatbufferExportOptions& options,
                                        std::string* serialized_flatbuffer) {
   auto maybe_translated = Translator::Translate(
-      module, options.emit_builtin_tflite_ops, options.emit_select_tf_ops,
-      options.emit_custom_ops, options.allow_all_select_tf_ops,
-      options.select_user_tf_ops, options.saved_model_tags,
+      module, options.toco_flags, options.saved_model_tags,
       options.op_or_arg_name_mapper, options.metadata);
   if (!maybe_translated) return false;
   *serialized_flatbuffer = std::move(*maybe_translated);

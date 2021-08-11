@@ -140,9 +140,8 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
-    mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
-    bool emit_select_tf_ops, bool emit_custom_ops, bool allow_all_select_tf_ops,
-    const std::unordered_set<std::string>& select_user_tf_ops,
+    mlir::ModuleOp module, bool export_to_mlir,
+    const toco::TocoFlags& toco_flags,
     const mlir::TFL::QuantizationSpecs& quant_specs,
     const std::unordered_set<std::string>& saved_model_tags,
     std::string* result, mlir::PassManager* pass_manager) {
@@ -196,11 +195,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   if (!quant_specs.RunWeightQuantization()) {
     tflite::FlatbufferExportOptions options;
-    options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
-    options.emit_select_tf_ops = emit_select_tf_ops;
-    options.select_user_tf_ops = select_user_tf_ops;
-    options.allow_all_select_tf_ops = allow_all_select_tf_ops;
-    options.emit_custom_ops = emit_custom_ops;
+    options.toco_flags = toco_flags;
     options.saved_model_tags = saved_model_tags;
     options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
     if (quant_specs.support_mask !=
@@ -216,11 +211,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     // we can remove this else statement.
     std::string pre_quantized_result;
     tflite::FlatbufferExportOptions options;
-    options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
-    options.emit_select_tf_ops = emit_select_tf_ops;
-    options.select_user_tf_ops = select_user_tf_ops;
-    options.allow_all_select_tf_ops = allow_all_select_tf_ops;
-    options.emit_custom_ops = emit_custom_ops;
+    options.toco_flags = toco_flags;
     options.saved_model_tags = saved_model_tags;
     options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
     if (quant_specs.support_mask !=

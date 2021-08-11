@@ -254,21 +254,24 @@ int main(int argc, char **argv) {
   }
   pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
 
+  toco::TocoFlags toco_flags;
+  toco_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
+  toco_flags.set_enable_select_tf_ops(emit_select_tf_ops);
+  toco_flags.set_allow_custom_ops(emit_custom_ops);
+  toco_flags.set_allow_all_select_tf_ops(allow_all_select_tf_ops);
   // Read list of user select ops.
-  std::unordered_set<std::string> select_user_ops_set;
   llvm::SmallVector<llvm::StringRef, 2> user_ops;
   (llvm::StringRef(select_user_tf_ops))
       .split(user_ops, ',', /*MaxSplit=*/-1,
              /*KeepEmpty=*/false);
-  llvm::for_each(user_ops, [&select_user_ops_set](llvm::StringRef op_name) {
-    select_user_ops_set.insert(op_name.str());
+  llvm::for_each(user_ops, [&toco_flags](llvm::StringRef op_name) {
+    *(toco_flags.add_select_user_tf_ops()) = op_name.str();
   });
 
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
-      module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, allow_all_select_tf_ops,
-      select_user_ops_set, quant_specs, tags, &result, &pm);
+      module.ValueOrDie().get(), output_mlir, toco_flags, quant_specs, tags,
+      &result, &pm);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;
