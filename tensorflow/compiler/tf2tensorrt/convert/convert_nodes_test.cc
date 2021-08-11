@@ -38,7 +38,10 @@ limitations under the License.
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/common/datavec.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/fixtures/op_converter_fixture.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/fixtures/op_converter_param_fixture.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/tensor_testutils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_testutils.h"
@@ -66,45 +69,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
-
-// TensorRT modes for testing. We define the following three modes:
-// 1. Implicit batch mode: The tensors have static (known) input shape and the
-//    the batch dimension (first dim) is removed from the TRT tensor shape. In
-//    a loose notation: trt_shape = tf_shape[1:].
-// 2. Explicit batch mode: static (known) input shape, but the batch dimension
-//    is part of the trt tensor shape. (trt_shape = tf_shape)
-// 3. Dynamic shape mode allows unknown input shapes, and requires explicit
-//    batch size definition (trt_shape = tf_shape).
-//
-// Note that the Converter only distinguishes between two modes:
-// - use_implicit_batch == true, this corresponds to kImplicitBatch,
-// - use_implicit_batch == false which includes both kExplicitBatch and
-//   kDynamicShape.
-//
-// For the converter, the distinction between explicit batch or dynamic shape
-// mode follows from the input tensors of the network: dynamic shape input
-// implies dynamic shape mode, while static shape input tensors imply explicit
-// batch mode. We want to test all these modes, therefore we define the
-// TrtTestMode with the following three options.
-enum class TrtTestMode {
-  kImplicitBatch = 0,
-  kExplicitBatch = 1,
-  kDynamicShape = 2
-};
-
-string DebugString(const TrtTestMode mode) {
-  switch (mode) {
-    case TrtTestMode::kImplicitBatch:
-      return "kImplicitBatch";
-    case TrtTestMode::kExplicitBatch:
-      return "kExplicitBatch";
-    case TrtTestMode::kDynamicShape:
-      return "kDynamicShape";
-    default:
-      return "Invalid TrtTestMode";
-  }
-}
-
 namespace convert {
 
 using absl::StrCat;
@@ -1074,403 +1038,6 @@ TEST_F(ConvertGraphDefToEngineTest, IdentityGraph) {
   TF_EXPECT_OK(RunConvertGraphDefToEngine(&s));
 }
 
-// Class to test various op converters, using both a TrtNodeValidator and
-// Converter.
-class OpConverterTest : public ::testing::Test {
- public:
-  OpConverterTest()
-      : tensor_buffer_allocator_(new GpuManagedAllocator()),
-        scope_(Scope::NewRootScope()) {
-    QCHECK_EQ(0, cudaStreamCreate(&stream_));
-    Reset();
-  }
-
-  ~OpConverterTest() noexcept override {
-    QCHECK_EQ(0, cudaStreamDestroy(stream_));
-  }
-
-  Status GetTensorOrWeights(const string& name, TRT_TensorOrWeights* output) {
-    return converter_->GetTensorOrWeights(name, output);
-  }
-
-  void Reset(TrtPrecisionMode precision_mode_to_test = TrtPrecisionMode::FP32,
-             TrtTestMode trt_mode = TrtTestMode::kImplicitBatch) {
-    // Destroy existing TRT objects in a proper order.
-    converter_.reset(nullptr);
-    engine_.reset(nullptr);
-
-    // Re-create them in proper order.
-    converter_ =
-        std::move(Converter::Create(precision_mode_to_test,
-                                    /*use_calibration=*/false, &logger_,
-                                    /*use_implicit_batch=*/trt_mode ==
-                                        TrtTestMode::kImplicitBatch,
-                                    /*engine_name=*/"")
-                      .ValueOrDie());
-
-    // Reset other related artifacts.
-    scope_ = Scope::NewRootScope();
-  }
-
-  // Constructs a flat tensor with 'vals' in Unified Memory.
-  template <typename T>
-  Tensor AsTensor(gtl::ArraySlice<T> vals) {  // non-absl ok
-    Tensor ret(tensor_buffer_allocator_.get(), DataTypeToEnum<T>::value,
-               {static_cast<int64>(vals.size())});
-    std::copy_n(vals.data(), vals.size(), ret.flat<T>().data());
-    return ret;
-  }
-
-  // Constructs a tensor of "shape" with values "vals" in Unified Memory.
-  template <typename T>
-  Tensor AsTensor(gtl::ArraySlice<T> vals,  // non-absl ok
-                  const TensorShape& shape) {
-    Tensor ret(tensor_buffer_allocator_.get(), DataTypeToEnum<T>::value,
-               {static_cast<int64>(vals.size())});
-    CHECK(ret.CopyFrom(AsTensor(vals), shape));
-    return ret;
-  }
-
-  // Constructs a tensor with given values (vals). The tensor type is defined by
-  // the tf_type argument, its shape is given by input_dims. The tensor is
-  // constructed using the allocator of OpConverterTest in Unified Memory.
-  template <typename T>
-  Tensor AsTensor(std::vector<T> vals, const std::vector<int> input_dims,
-                  DataType tf_type) {
-    Tensor ret(tensor_buffer_allocator_.get(), tf_type,
-               {static_cast<int64>(vals.size())});
-    if (tf_type == DT_FLOAT) {
-      auto conv_vals = CastVector<T, float>(vals);
-      std::copy_n(conv_vals.data(), conv_vals.size(), ret.flat<float>().data());
-    } else if (tf_type == DT_HALF) {
-      auto conv_vals = CastVector<T, Eigen::half>(vals);
-      std::copy_n(conv_vals.data(), conv_vals.size(),
-                  ret.flat<Eigen::half>().data());
-    } else if (tf_type == DT_INT32) {
-      auto conv_vals = CastVector<T, int32>(vals);
-      std::copy_n(conv_vals.data(), conv_vals.size(), ret.flat<int32>().data());
-    } else {
-      LOG(FATAL) << "Cannot create tensor with type "
-                 << DataTypeString(tf_type);
-    }
-    TensorShape shape;
-    TF_EXPECT_OK(TensorShapeUtils::MakeShape(input_dims, &shape));
-    CHECK(ret.CopyFrom(ret, shape));
-    return ret;
-  }
-
-  // Constructs a flat tensor in Unified Memory.
-  template <typename T>
-  Tensor ConstructTensor(int data_size, const T& value = T()) {
-    std::vector<T> values(data_size, value);
-    return AsTensor<T>(values);
-  }
-
-  // Constructs a flat tensor in Unified Memory.
-  template <typename T>
-  Tensor ConstructTensor(int data_size, const T& value, DataType tf_type) {
-    std::vector<T> values(data_size, value);
-    return AsTensor<T>(values, {data_size}, tf_type);
-  }
-
-  void CheckDataTypeMatches(const DataVec& datas) {
-    if (VLOG_IS_ON(2)) {
-      int nbBindings = engine_->getNbBindings();
-      VLOG(2) << "Number of engine bindings: " << nbBindings;
-      for (int i = 0; i < nbBindings; i++) {
-        VLOG(2) << "Binding " << i << " name: " << engine_->getBindingName(i);
-      }
-    }
-    for (const auto& data : datas) {
-      VLOG(2) << "Checking if data type matches for tensor " << data.name;
-      const int input_index = engine_->getBindingIndex(data.name.c_str());
-      ASSERT_NE(-1, input_index);
-      const nvinfer1::DataType trt_dtype =
-          engine_->getBindingDataType(input_index);
-      DataType tf_type;
-      TF_ASSERT_OK(TrtTypeToTfType(trt_dtype, &tf_type));
-      ASSERT_EQ(data.tensor.dtype(), tf_type)
-          << DataTypeString(data.tensor.dtype()) << " vs. "
-          << DataTypeString(tf_type);
-    }
-  }
-
-  Status BuildAndRun(const DataVec& input_data, DataVec* output_data,
-                     const int batch_size = 1) {
-    // Mark the output tensor as TRT engine output.
-    std::vector<Converter::EngineOutputInfo> output_info;
-    for (const auto& data : *output_data) {
-      nvinfer1::DataType trt_type;
-      TF_RETURN_IF_ERROR(TfTypeToTrtType(data.tensor.dtype(), &trt_type));
-      output_info.push_back({data.name, data.name, trt_type});
-    }
-    TF_RETURN_IF_ERROR(converter_->RenameAndMarkOutputTensors(output_info));
-
-    // Build the TRT engine.
-    if (engine_.get() != nullptr) {
-      return errors::Internal("Engine already exists");
-    }
-    TrtShapeOptimizationProfile profiles;
-    if (!converter_->use_implicit_batch()) {
-      profiles.SetShapeTensorMask(converter_->network());
-      TF_RETURN_IF_ERROR(profiles.CollectShapeValues(input_data));
-      // Create a single optimization profile for explicit batch mode
-      std::vector<TensorShape> input_shapes;
-      TF_RETURN_IF_ERROR(GetShapeFromDataVec(input_data, &input_shapes));
-      profiles.AddShape(input_shapes);
-      std::vector<PartialTensorShape> input_partial_shapes;
-      TF_RETURN_IF_ERROR(
-          GetNetworkInputShapes(converter_->network(), &input_partial_shapes));
-      profiles.InitProfiles(input_partial_shapes,
-                            ProfileStrategy::kImplicitBatchModeCompatible);
-    }
-    TF_RETURN_IF_ERROR(
-        converter_->BuildCudaEngine(&engine_,
-                                    /*max_batch_size=*/batch_size,
-                                    /*max_workspace_size_bytes=*/1 << 26,
-                                    /*allocator=*/nullptr,
-                                    /*calibrator=*/nullptr,
-                                    /*profiles=*/&profiles));
-    CHECK_NOTNULL(engine_.get());
-    CheckDataTypeMatches(input_data);
-    CheckDataTypeMatches(*output_data);
-
-    const int num_bindings = input_data.size() + output_data->size();
-    std::vector<void*> buffers(num_bindings);
-
-    if (engine_->getNbBindings() != num_bindings) {
-      return errors::Internal("Number of bindings do not match");
-    }
-    // Since we have only 1 optimization profile (which is enabled by default)
-    // it is fine to create execution context directly, instead of calling
-    // profiles.CreateExecutionContexts()
-    TrtUniquePtrType<nvinfer1::IExecutionContext> execution_context(
-        engine_->createExecutionContext());
-
-    // Prepare input bindings.
-    TF_RETURN_IF_ERROR(
-        SetTrtEngineInputs(engine_.get(), execution_context.get(), 0, buffers,
-                           converter_->use_implicit_batch(), batch_size,
-                           profiles, nullptr, &input_data));
-    // Prepare output bindings.
-    TF_RETURN_IF_ERROR(SetTrtEngineOutputs(
-        engine_.get(), execution_context.get(), 0, buffers,
-        converter_->use_implicit_batch(), batch_size, nullptr, output_data));
-    // Execute the TRT engine.
-    TF_RETURN_IF_ERROR(TrtEnqueue(execution_context.get(), buffers, stream_,
-                                  converter_->use_implicit_batch(),
-                                  batch_size));
-    cudaStreamSynchronize(stream_);
-    return Status::OK();
-  }
-
-  // Adds ITensor for both validation and conversion, assuming explicit batch
-  // dimension is included in dims (ie for an NCHW tensor dims = {N, C, H, W}).
-  void AddTestTensorWithTFDims(
-      const string& name, const std::vector<int32>& dims,
-      nvinfer1::DataType trt_type = nvinfer1::DataType::kFLOAT,
-      Status add_input_status = Status::OK()) {
-    DataType tf_type;
-    TF_ASSERT_OK(TrtTypeToTfType(trt_type, &tf_type));
-    ops::Placeholder::Attrs attrs;
-    TF_EXPECT_OK(TensorShapeUtils::MakeShape(dims, &attrs.shape_));
-
-    auto input = ops::Placeholder(scope_.WithOpName(name), tf_type, attrs);
-    node_inputs_[name] = input.output;
-
-    // Add a real ITensor for conversion conditionally.
-    nvinfer1::Dims trt_dims;
-    Status status = TensorShapeToTrtDims(
-        attrs.shape_, converter_->use_implicit_batch(), &trt_dims);
-    if (converter_->use_implicit_batch() && !status.ok()) {
-      ASSERT_EQ(add_input_status, status);
-      return;
-    } else {
-      TF_EXPECT_OK(status);
-    }
-    if (!converter_->use_implicit_batch() || HasStaticShape(trt_dims)) {
-      int batch_size = dims.size() > 0 ? dims[0] : 0;
-      Status status =
-          converter_->AddInputTensor(name, trt_type, trt_dims, batch_size);
-      ASSERT_EQ(add_input_status, status);
-    }
-  }
-
-  // Adds ITensor for both validation and conversion. The difference compared to
-  // AddTestTensorWithTFDims is in the meaning of the dims parameter. To define
-  // a tensor with NCHW shape, here we set dims = {C,H,W} and batch_size = N.
-  // TODO(tfeher) remove this function once all test are updated to use the
-  // other version of AddTestTensor (defined by
-  // ParameterizedOpConverterTestBase).
-  void AddTestTensor(
-      const string& name, const std::vector<int32>& dims, int batch_size = 1,
-      nvinfer1::DataType trt_dtype = nvinfer1::DataType::kFLOAT) {
-    std::vector<int32> dims_with_batch(dims.size() + 1);
-    dims_with_batch[0] = batch_size;
-    std::copy(dims.begin(), dims.end(), dims_with_batch.begin() + 1);
-    AddTestTensorWithTFDims(name, dims_with_batch, trt_dtype);
-    if (HasStaticShape(dims)) {
-      ASSERT_EQ(batch_size, converter_->batch_size_);
-    }
-  }
-
-  // Add weights for both validation and conversion.
-  template <typename T>
-  void AddTestWeights(const string& name, const std::vector<int>& dims,
-                      const std::vector<T>& values) {
-    // Add weights for validation.
-    TensorShape shape;
-    TF_EXPECT_OK(TensorShapeUtils::MakeShape(dims, &shape));
-    Tensor t = AsTensor<T>(values, shape);
-    node_inputs_[name] = ops::Const(scope_.WithOpName(name), t);
-
-    // Add weights for conversion.
-    nvinfer1::DataType dtype;
-    TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &dtype));
-    const nvinfer1::Dims trt_dims = nvinfer_factory::dims::Create(dims);
-    const int64_t num_elements = TRT_ShapedWeights::count(trt_dims);
-    QCHECK_EQ(num_elements, values.size())
-        << num_elements << " vs " << values.size();
-    TRT_ShapedWeights weights(dtype);
-    if (num_elements) {
-      weights = converter_->weight_store_.GetTempWeights(dtype, trt_dims);
-      QCHECK_EQ(weights.size_bytes(), sizeof(T) * values.size())
-          << weights.size_bytes() << " vs " << sizeof(T) * values.size();
-      memcpy(weights.GetValues(), values.data(), weights.size_bytes());
-    }
-    TF_EXPECT_OK(
-        converter_->AddTensorOrWeights(name, TRT_TensorOrWeights{weights}));
-  }
-
-  template <typename T = int32>
-  void AddTestWeights(const string& name, const std::vector<int>& dims,
-                      const std::vector<T>& values, DataType tf_type) {
-    if (tf_type == DT_FLOAT) {
-      AddTestWeights(name, dims, CastVector<T, float>(values));
-    } else if (tf_type == DT_HALF) {
-      AddTestWeights(name, dims, CastVector<T, Eigen::half>(values));
-    } else if (tf_type == DT_INT32) {
-      AddTestWeights(name, dims, CastVector<T, int32>(values));
-    } else {
-      FAIL() << "Cannot create test weights with type "
-             << DataTypeString(tf_type);
-    }
-  }
-
-  // Test validation in validation-only mode.
-  Status RunValidation(const Node* node) {
-    grappler::GrapplerItem item;
-    TF_EXPECT_OK(scope_.ToGraphDef(&item.graph));
-    grappler::GraphProperties graph_properties(item);
-    TF_EXPECT_OK(graph_properties.InferStatically(true));
-
-    TrtNodeValidator validator(graph_properties, converter_->precision_mode(),
-                               /*use_calibration=*/false,
-                               converter_->use_implicit_batch());
-    return validator.IsTensorRTCandidate(node);
-  }
-
-  void RunConversion(const Node* node, error::Code expected_code = error::OK,
-                     const std::string& expected_msg_substr = "") {
-    EXPECT_THAT(converter_->ConvertNode(node->def()),
-                StatusIs(expected_code, HasSubstr(expected_msg_substr)));
-    if (expected_code == error::OK) {
-      EXPECT_THAT(converter_->network(), LayerNamesNonEmpty());
-    }
-  }
-
-  // Helper method to run both validation and conversion, when the expected
-  // output are same.
-  void RunValidationAndConversion(const NodeDef& node_def,
-                                  error::Code expected_code = error::OK,
-                                  const std::string& expected_msg_substr = "",
-                                  bool should_run_conversion = true) {
-    // Add the node to the graph.
-    // TODO(laigd): we should accept a function that adds the node using
-    // `scope_`, so individual test case can reuse the scope object and we don't
-    // need to add the edges here by ourselves.
-    Graph* graph = scope_.graph();
-    Status status;
-    Node* node = graph->AddNode(std::move(node_def), &status);
-    TF_EXPECT_OK(status);
-    for (int i = 0; i < node_def.input().size(); ++i) {
-      const string& input_name = node_def.input(i);
-      const auto& itr = node_inputs_.find(input_name);
-      QCHECK(itr != node_inputs_.end());
-      const Output& input = itr->second;
-      graph->AddEdge(input.node(), input.index(), node, i);
-    }
-
-    status = RunValidation(node);
-    if (should_run_conversion && status.ok()) {
-      RunConversion(node, expected_code, expected_msg_substr);
-    } else {
-      EXPECT_THAT(status,
-                  StatusIs(expected_code, HasSubstr(expected_msg_substr)));
-    }
-  }
-
-  // Helper method to run both validation and conversion, and check the output
-  // shapes.
-  void RunValidationAndConversion(
-      const NodeDef& node_def, const Status& status,
-      const std::string& output_name,
-      const std::vector<std::vector<int>>& exp_out_dims) {
-    RunValidationAndConversion(node_def, status.code(), status.error_message(),
-                               true);
-
-    if (status.ok()) {
-      // TODO(tfeher): Enable this check in explicit_batch_mode.
-      // In dynamic shape mode the output dims cannot be tested here. In that
-      // case we need to wait for the concrate input shapes to be defined (by
-      // setBindingDimensions before enqueue) before we can check the output
-      // dims.
-      if (converter_->use_implicit_batch()) {
-        for (int i = 0; i < exp_out_dims.size(); i++) {
-          TRT_TensorOrWeights output;
-          string name = i == 0 ? output_name : StrCat(output_name, ":", i);
-          TF_EXPECT_OK(GetTensorOrWeights(name.c_str(), &output));
-          ASSERT_TRUE(output.is_tensor());
-          if (!exp_out_dims[i].empty()) {
-            // Removing batch dim.
-            auto out_dims = std::vector<int>(exp_out_dims[i].begin() + 1,
-                                             exp_out_dims[i].end());
-            VLOG(2) << "Testing output shape for tensor " << name;
-            EXPECT_THAT(output.tensor()->getDimensions(),
-                        DimsAreArray(out_dims));
-          }
-        }
-      }
-    }
-  }
-
-  // Expose quantization_ranges_ for tests
-  std::unordered_map<ITensorProxyPtr*, float>& quantization_ranges_proxy() {
-    return converter_->quantization_ranges_proxy_;
-  }
-
-  // Expose quantization_ranges_ for tests
-  std::unordered_map<nvinfer1::ITensor*, float>& quantization_ranges() {
-    return converter_->quantization_ranges_;
-  }
-
-  std::unique_ptr<Converter> converter_;
-
- private:
-  Logger& logger_ = *Logger::GetLogger();
-  TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
-  cudaStream_t stream_;
-  std::unique_ptr<Allocator> tensor_buffer_allocator_;
-  // The scope that contains the graph being converted. Because
-  // tensor_buffer_allocator_ provides the storage for tensor contents that are
-  // represented as attributes for graph nodes within scope_,
-  // tensor_buffer_allocator_ needs to be available when destructing scope_.
-  // Therefore, scope_ comes after tensor_buffer_allocator_ in the class member
-  // field list.
-  Scope scope_;
-  std::unordered_map<string, Output> node_inputs_;
-};
-
 // General test parameters to be used with ops that take a single input tensor.
 struct TestParamBase {
   // Concrete input dimensions for the test (including the batch dim)
@@ -1509,205 +1076,6 @@ std::ostream& operator<<(std::ostream& os, const TestParamBase& p) {
   os << ", " << p.status;
   return os;
 }
-
-// Parameterized version of OpConverterTest. We have the following parameters:
-// 1. TrtTestMode: implicit batch, explicit batch, dynamic shape modes
-// 2. DataType of the input TF tensors: DT_FLOAT, DT_HALF, DT_INT32
-// 3. TrtPrecisionMode argument for the Converter: FP32, FP16, INT8
-// We will introduce subclasses that will be instantiated using different
-// combinations of the DataType and TrtPrecisionMode parameters.
-class ParameterizedOpConverterTestBase
-    : public OpConverterTest,
-      public ::testing::WithParamInterface<
-          std::tuple<TrtTestMode, DataType, TrtPrecisionMode>> {
- public:
-  ParameterizedOpConverterTestBase()
-      : trt_mode_(std::get<0>(GetParam())),
-        tf_type_(std::get<1>(GetParam())),
-        converter_precision_(std::get<2>(GetParam())) {
-    LOG(INFO) << "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%";
-    LOG(INFO) << "tf_type_: " << DebugString(tf_type_);
-    LOG(INFO) << "trt_mode_: " << DebugString(trt_mode_);
-    LOG(INFO) << "converter_precision_: " << DebugString(converter_precision_);
-    LOG(INFO) << "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%";
-  }
-
-  void Reset() {
-    OpConverterTest::Reset(converter_precision_, trt_mode_);
-    input_data_.clear();
-  }
-
-  void Reset(TrtPrecisionMode precision) {
-    OpConverterTest::Reset(precision, trt_mode_);
-    input_data_.clear();
-  }
-
-  // Getters of protected attributes
-  DataType get_tf_type() { return tf_type_; }
-  TrtTestMode get_trt_mode() { return trt_mode_; }
-  TrtPrecisionMode get_converter_precision() { return converter_precision_; }
-
-  // Adds an input ITensor for TRT network. Also creates the corresponding TF
-  // tensor, and stores it in the list of inputs (input_data_).
-  //
-  // The TF tensor is always created with concrete static input shape given by
-  // dims. The ITensor can have static or dynamic shape based on the trt_mode
-  // attribute. The ITensor shape is set automatically according to the trt_mode
-  // parameter, unless the user overrides it with an explicit
-  // partial_input_shape_dims argument.
-  //
-  // Parameters:
-  // - name of the input node
-  // - dims actual dimensions of the tensor that we will use during the test
-  //   (including explicit batch dim)
-  // - values initial values for the TF tensor
-  // - dtype data type of the tensor
-  // - partial_input_shape dimensions which can include unknown shapes. This can
-  //   be empty, in that case the partial_input_shape will be set automatically
-  //   depending on the trt_mode argument. (This argument also includes explicit
-  //   batch dim).
-  // - add_input_status adding ITensor to the network can fail in implicit batch
-  //   mode if the batch size is inconsistent. Using the add_input_status arg we
-  //   can test such errors.
-  //
-  template <typename T = int>
-  void AddTestTensor(const string& name, const std::vector<int32>& dims,
-                     DataType tf_type, const std::vector<T>& values,
-                     const std::vector<int32>& partial_input_shape_dims = {},
-                     Status add_input_status = Status::OK()) {
-    if (!dims.empty()) {
-      const auto num_elements = std::accumulate(
-          std::begin(dims), std::end(dims), 1, std::multiplies<double>());
-      if (!values.empty() && num_elements != values.size()) {
-        // Note: for conversion only tests, it is valid to have empty values,
-        // otherwise the number of elements should match.
-        LOG(WARNING) << "Expected Test Tensor Shape: " << DebugString(dims)
-                     << ", Received Input Tensor: " << DebugString(values);
-      }
-    }
-
-    std::vector<int32> partial_shape;
-    if (!partial_input_shape_dims.empty()) {
-      partial_shape = partial_input_shape_dims;
-    } else {
-      if (trt_mode_ == TrtTestMode::kDynamicShape) {
-        // In dynamic shape mode we make all dims unknown.
-        partial_shape = std::vector<int32>(dims.size(), -1);
-      } else {
-        // Use static (known) input shapes.
-        partial_shape = dims;
-      }
-    }
-    nvinfer1::DataType trt_type;
-    TF_ASSERT_OK(TfTypeToTrtType(tf_type, &trt_type));
-    AddTestTensorWithTFDims(name, partial_shape, trt_type, add_input_status);
-    if (!values.empty()) {
-      VLOG(2) << "Adding test tensor: " << name << " "
-              << DataTypeString(tf_type);
-      InputOutputData data{name, AsTensor(values, dims, tf_type)};
-      VLOG(2) << "Added tensor: " << data.name << " with dtype "
-              << DataTypeString(data.tensor.dtype());
-      input_data_.push_back(data);
-    }
-  }
-
-  // Adds test tensor (same as above) but with the default tf_type defined by
-  // the test params.
-  template <typename T = int>
-  void AddTestTensor(const string& name, const std::vector<int32>& dims,
-                     const std::vector<T>& values = {},
-                     const std::vector<int32>& partial_input_shape_dims = {}) {
-    AddTestTensor<T>(name, dims, tf_type_, values, partial_input_shape_dims);
-  }
-
-  // Builds and runs the converted network. Checks output tensor shape. Tests
-  // output values using a matcher. The network can have multiple input and
-  // output tensors. The inputs are defined by the input_data_ member variable.
-  void BuildAndRun(const string& name,
-                   const std::vector<std::vector<int>>& expected_output_dims,
-                   const Status& expected_runtime_status,
-                   const std::vector<Matcher<std::vector<float>>>& matcher,
-                   const std::vector<DataType>& out_tf_types = {}) {
-    TensorShape shape;
-    const int n_output = expected_output_dims.size();
-    ASSERT_EQ(n_output, matcher.size());
-    DataVec output_data;
-    for (int i = 0; i < n_output; i++) {
-      TF_EXPECT_OK(
-          TensorShapeUtils::MakeShape(expected_output_dims[i], &shape));
-      string out_name = (i == 0) ? name : StrCat(name, ":", i);
-      DataType out_tf_type =
-          out_tf_types.size() > i ? out_tf_types[i] : tf_type_;
-      InputOutputData data{
-          out_name, ConstructTensor(shape.num_elements(), 0, out_tf_type)};
-      output_data.push_back(data);
-    }
-    const int batch_size =
-        input_data_.empty() ||
-                TensorShapeUtils::IsScalar(input_data_[0].tensor.shape())
-            ? 1
-            : input_data_[0].tensor.shape().dim_size(0);
-    Status stat =
-        OpConverterTest::BuildAndRun(input_data_, &output_data, batch_size);
-    ASSERT_EQ(expected_runtime_status.ok(), stat.ok())
-        << "expected status: " << expected_runtime_status
-        << ", actual status: " << stat;
-    if (expected_runtime_status.ok() && stat.ok()) {
-      for (int i = 0; i < n_output; i++) {
-        // Check the shape of the actual output tensors
-        TF_EXPECT_OK(
-            TensorShapeUtils::MakeShape(expected_output_dims[i], &shape));
-        EXPECT_TRUE(output_data[i].tensor.shape() == shape)
-            << "Expected shape: " << shape.DebugString() << ", actual shape: "
-            << output_data[i].tensor.shape().DebugString();
-        EXPECT_THAT(GetDataAsFloat(output_data[i]), matcher[i]);
-      }
-    }
-  }
-
-  // Runs validation and conversion. If conversion is successfull then builds
-  // the TRT network, executes it and checks the output. Handles multiple output
-  // tensors.
-  void TestOpConverterMultiOut(
-      const string& name, const NodeDef node_def,
-      const std::vector<std::vector<int>>& expected_output_dims,
-      const Status& expected_conversion_status,
-      const Status& expected_runtime_status,
-      const std::vector<Matcher<std::vector<float>>>& matcher,
-      const std::vector<DataType>& out_tf_type = {}) {
-    RunValidationAndConversion(node_def, expected_conversion_status, name,
-                               expected_output_dims);
-    if (expected_conversion_status.ok()) {
-      BuildAndRun(name, expected_output_dims, expected_runtime_status, matcher,
-                  out_tf_type);
-    }
-  }
-
-  // Runs validation and conversion. If conversion is successfull then builds
-  // the TRT network, executes it and checks the output.
-  void TestOpConverter(const string& name, const NodeDef node_def,
-                       const std::vector<int>& expected_output_dims,
-                       const Status& expected_conversion_status,
-                       const Status& expected_runtime_status,
-                       const Matcher<std::vector<float>>& matcher,
-                       const std::vector<DataType>& out_tf_types = {}) {
-    RunValidationAndConversion(
-        node_def, expected_conversion_status, name,
-        std::vector<std::vector<int>>({expected_output_dims}));
-    if (expected_conversion_status.ok()) {
-      BuildAndRun(name, std::vector<std::vector<int>>({expected_output_dims}),
-                  expected_runtime_status,
-                  std::vector<Matcher<std::vector<float>>>({matcher}),
-                  out_tf_types);
-    }
-  }
-
- protected:
-  const TrtTestMode trt_mode_;
-  const DataType tf_type_;
-  const TrtPrecisionMode converter_precision_;
-  DataVec input_data_;
-};
 
 // Op converter test in FP32 mode. While for debugging purposes it might make
 // sense to run over all possible combinations, normally a subset of them
@@ -1825,29 +1193,29 @@ void TestConvertConst(OpConverterTest* test) {
     reset_and_test(t, true, expected_dims, {12});
   }
   {
-    Tensor t = test->AsTensor<InputCType>({1, 2});
+    Tensor t = test->GetTensorFactory().AsTensor<InputCType>({1, 2});
     reset_and_test(t, false, {2}, {1, 2});
     reset_and_test(t, true, {2}, {1, 2});
   }
   {
-    Tensor t =
-        test->AsTensor<InputCType>({1, 2, 3, 4, 5, 6}, TensorShape({2, 3}));
+    Tensor t = test->GetTensorFactory().AsTensor<InputCType>(
+        {1, 2, 3, 4, 5, 6}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {1, 2, 3, 4, 5, 6});
     reset_and_test(t, true, {2, 3}, {1, 2, 3, 4, 5, 6});
   }
   {
     // Set all tensor elements to the same value. Such tensors are encoded
     // using a single element list in tensor proto.
-    Tensor t =
-        test->AsTensor<InputCType>({1, 1, 1, 1, 1, 1}, TensorShape({2, 3}));
+    Tensor t = test->GetTensorFactory().AsTensor<InputCType>(
+        {1, 1, 1, 1, 1, 1}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {1, 1, 1, 1, 1, 1});
     reset_and_test(t, true, {2, 3}, {1, 1, 1, 1, 1, 1});
   }
   {
     // Set trailing tensor elements to the same value. Such tensors are
     // encoded by truncating all equal elements except the first one.
-    Tensor t =
-        test->AsTensor<InputCType>({2, 2, 1, 1, 1, 1}, TensorShape({2, 3}));
+    Tensor t = test->GetTensorFactory().AsTensor<InputCType>(
+        {2, 2, 1, 1, 1, 1}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {2, 2, 1, 1, 1, 1});
     reset_and_test(t, true, {2, 3}, {2, 2, 1, 1, 1, 1});
   }
@@ -1862,9 +1230,10 @@ TEST_F(OpConverterTest, ConvertConst) {
   }
   {
     Reset();
-    Tensor tensor = AsTensor<int64>({1, std::numeric_limits<int64>::max(), 1, 1,
-                                     1, std::numeric_limits<int64>::lowest()},
-                                    TensorShape({2, 3}));
+    Tensor tensor = tensor_factory_.AsTensor<int64>(
+        {1, std::numeric_limits<int64>::max(), 1, 1, 1,
+         std::numeric_limits<int64>::lowest()},
+        TensorShape({2, 3}));
     NodeDef node_def;
     node_def.set_name("my_const");
     node_def.set_op("Const");
@@ -6222,13 +5591,13 @@ void TestConvertSplit(OpConverterTest* test) {
                   DimsAreArray(ok_params[i].expected_output_dims));
       // Create buffer to store output.
       output_data.push_back(
-          {name, test->ConstructTensor<CType>(
+          {name, test->GetTensorFactory().ConstructTensor<CType>(
                      ok_params[i].expected_outputs[j].size())});
     }
 
     // Verify output values are correct.
-    const DataVec input_data{
-        {"value", test->AsTensor<CType>(ok_params[i].value)}};
+    const DataVec input_data{{"value", test->GetTensorFactory().AsTensor<CType>(
+                                           ok_params[i].value)}};
     TF_EXPECT_OK(test->BuildAndRun(input_data, &output_data));
     for (int j = 0; j < outputs.size(); ++j) {
       EXPECT_THAT(GetSpanForData<CType>(output_data[j]),

@@ -103,7 +103,8 @@ cc_library(
     name = "testutils",
     srcs = ["utils/trt_testutils.cc"],
     hdrs = [
-        "utils/trt_testutils.h"
+        "utils/trt_testutils.h",
+        "utils/tensor_testutils.h"
     ],
     copts = tf_copts(),
     testonly = 1,
@@ -524,7 +525,13 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "convert_nodes_test",
     size = "medium",
-    srcs = ["convert/convert_nodes_test.cc"],
+    srcs = [
+        "convert/convert_nodes_test.cc",
+        "convert/fixtures/op_converter_fixture.cc",
+        "convert/fixtures/op_converter_fixture.h",
+        "convert/fixtures/op_converter_param_fixture.h",
+        "convert/fixtures/op_converter_param_fixture.cc"
+    ],
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
