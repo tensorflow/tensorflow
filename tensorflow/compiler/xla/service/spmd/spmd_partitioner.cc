@@ -59,6 +59,10 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
+namespace {
+using hlo_sharding_util::GroupedSharding;
+}  // namespace
+
 string SpmdLogger::MakeReport() {
   string report;
   absl::StrAppend(&report,
@@ -462,7 +466,8 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target) {
     std::vector<int64_t> group_dims(target.tile_assignment().num_dimensions() -
                                     1);
     std::iota(group_dims.begin(), group_dims.end(), 0);
-    auto target_grouped = GroupShardingOnDims(target, group_dims);
+    auto target_grouped =
+        hlo_sharding_util::GroupShardingOnDims(target, group_dims);
     auto partially_sharded = PerGroupSliceFromReplicated(
         hlo_, state_.partition_id, target_grouped.device_groups, group_dims,
         target_grouped.group_dim_sizes, state_.b);
@@ -906,7 +911,8 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
       }
     }
     HloSharding original_sharding = sharding();
-    auto grouped = GroupShardingOnDims(original_sharding, other_dims);
+    auto grouped =
+        hlo_sharding_util::GroupShardingOnDims(original_sharding, other_dims);
     std::vector<int64_t> dev_indices(
         grouped.sharding.tile_assignment().num_dimensions(), 0);
     hlo_->set_sharding(HloSharding::AssignDevice(
@@ -1004,8 +1010,8 @@ PartitionedHlo::ReshardToPartialReplicateWithAllGather(
   }
   auto halo_exchange_hlo = halo_exchange.value();
   // Grouped on replicate dimensions.
-  auto sharding_grouped =
-      GroupShardingOnDims(temp_sharding, replicate_dims, replicate_factors);
+  auto sharding_grouped = hlo_sharding_util::GroupShardingOnDims(
+      temp_sharding, replicate_dims, replicate_factors);
   auto per_group_partitioner_state = CreatePerGroupPartitioningState(
       partitioned_hlo.state(), sharding_grouped.device_groups,
       partitioned_hlo.state().b);
@@ -1519,7 +1525,7 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       }
     } else if (hlo->sharding().IsManualSubgroup()) {
       GroupedSharding group_sharding =
-          GetManualSubgroupSharding(hlo->sharding());
+          hlo_sharding_util::GetManualSubgroupSharding(hlo->sharding());
       // Update sharding.
       visiting_hlo_sharding_ = hlo->sharding();
       hlo->set_sharding(group_sharding.sharding);
@@ -1534,7 +1540,7 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       for (auto operand : hlo->operands()) {
         visiting_hlo_operand_shardings_.push_back(operand->sharding());
         GroupedSharding group_sharding =
-            GetManualSubgroupSharding(operand->sharding());
+            hlo_sharding_util::GetManualSubgroupSharding(operand->sharding());
         operand->set_sharding(group_sharding.sharding);
         GetPartitionedHlo(operand).hlo()->set_sharding(operand->sharding());
         auto old_state = GetPartitionedHlo(operand).state();
@@ -1671,7 +1677,8 @@ Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
       non_concat_dims.push_back(i);
     }
   }
-  auto grouped = GroupShardingOnDims(sharding, non_concat_dims);
+  auto grouped =
+      hlo_sharding_util::GroupShardingOnDims(sharding, non_concat_dims);
   auto per_group_partitioner_state =
       CreatePerGroupPartitioningState(state, grouped.device_groups, &b_);
   auto all_reduce = per_group_partitioner_state.collective_ops_creator
@@ -2760,8 +2767,8 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
             &b_, local_reduce, inputs[0].sharding(), next_channel_id_,
             hlo->dimensions(), collective_ops_creator_, hlo->to_apply());
       } else {
-        auto grouped =
-            GroupShardingOnDims(inputs[0].sharding(), preserved_dims);
+        auto grouped = hlo_sharding_util::GroupShardingOnDims(
+            inputs[0].sharding(), preserved_dims);
         auto grouped_state = CreatePerGroupPartitioningState(
             inputs[0].state(), grouped.device_groups, &b_);
         std::vector<HloInstruction*> all_gathered_partial_results(input_count);
@@ -3092,7 +3099,8 @@ Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
     std::vector<int64_t> group_dims(
         hlo->sharding().tile_assignment().num_dimensions() - 1);
     std::iota(group_dims.begin(), group_dims.end(), 0);
-    auto sharding_grouped = GroupShardingOnDims(hlo->sharding(), group_dims);
+    auto sharding_grouped =
+        hlo_sharding_util::GroupShardingOnDims(hlo->sharding(), group_dims);
     auto per_group_state = CreatePerGroupPartitioningState(
         MakePartitioningState(), sharding_grouped.device_groups, &b_);
     auto rng = b_.AddInstruction(HloInstruction::CreateRng(

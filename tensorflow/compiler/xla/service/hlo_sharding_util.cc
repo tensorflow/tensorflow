@@ -1490,5 +1490,223 @@ absl::InlinedVector<int64_t, 1> GatherOutputAlignedOperandParallelDims(
   return operand_parallel_dim_to_output;
 }
 
+GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
+                                    absl::Span<const int64_t> group_dims,
+                                    bool subgroup_manual) {
+  std::vector<int64_t> group_dim_shards(group_dims.size(), 1);
+  return GroupShardingOnDims(sharding, group_dims, group_dim_shards,
+                             subgroup_manual);
+}
+
+GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
+                                    absl::Span<const int64_t> group_dims,
+                                    absl::Span<const int64_t> group_dim_shards,
+                                    bool subgroup_manual) {
+  CHECK(!sharding.IsTileMaximal());
+  std::vector<int64_t> grouped_tiling_dims =
+      sharding.tile_assignment().dimensions();
+  std::vector<int64_t> group_dim_sizes(group_dims.size());
+  for (int64_t i = 0; i < group_dims.size(); ++i) {
+    CHECK_EQ(grouped_tiling_dims[group_dims[i]] % group_dim_shards[i], 0);
+    group_dim_sizes[i] =
+        grouped_tiling_dims[group_dims[i]] / group_dim_shards[i];
+    grouped_tiling_dims[group_dims[i]] = group_dim_shards[i];
+  }
+
+  std::vector<std::vector<int64_t>> device_groups(Product(group_dim_sizes));
+  sharding.tile_assignment().Each([&](absl::Span<const int64_t> indices,
+                                      int64_t device) {
+    int64_t group_id = 0;
+    for (int64_t i = 0; i < group_dims.size(); ++i) {
+      group_id *=
+          sharding.tile_assignment().dim(group_dims[i]) / group_dim_shards[i];
+      group_id += indices[group_dims[i]] / group_dim_shards[i];
+    }
+    device_groups[group_id].push_back(device);
+  });
+  auto grouped = GroupedSharding(
+      std::move(device_groups),
+      std::vector<int64_t>(group_dims.begin(), group_dims.end()),
+      std::move(group_dim_sizes), sharding.tile_assignment().num_dimensions(),
+      HloSharding::Replicate(), subgroup_manual);
+  if (sharding.ReplicateOnLastTileDim()) {
+    grouped.data_rank--;
+  }
+  if (sharding.IsManualSubgroup()) {
+    grouped.data_rank -= sharding.sharding_types().size();
+  }
+  if (Product(grouped_tiling_dims) == 1 ||
+      (sharding.ReplicateOnLastTileDim() &&
+       Product(grouped_tiling_dims) == grouped_tiling_dims.back())) {
+    return grouped;
+  }
+  if (sharding.IsManualSubgroup()) {
+    int64_t tile_dimensions = sharding.tile_assignment().num_dimensions();
+    int64_t subgroup_size = sharding.sharding_types().size();
+    int64_t rank = tile_dimensions - subgroup_size;
+    int num_dims_erase = 0;
+    for (int i = 0; i < subgroup_size; i++) {
+      if (sharding.sharding_types()[i] == OpSharding::MANUAL) {
+        grouped_tiling_dims.erase(grouped_tiling_dims.begin() + i + rank -
+                                  num_dims_erase);
+        num_dims_erase++;
+      }
+    }
+  }
+  if (sharding.ReplicateOnLastTileDim() && grouped_tiling_dims.back() == 1) {
+    grouped_tiling_dims.pop_back();
+  }
+  Array<int64_t> grouped_tiling(grouped_tiling_dims);
+  grouped_tiling.FillIota(0);
+  grouped.sharding =
+      sharding.ReplicateOnLastTileDim() &&
+              grouped_tiling_dims.size() ==
+                  sharding.tile_assignment().num_dimensions()
+          ? HloSharding::PartialTile(grouped_tiling, sharding.metadata())
+          : HloSharding::Tile(grouped_tiling, sharding.metadata());
+  return grouped;
+}
+
+GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding) {
+  CHECK(sharding.IsManualSubgroup());
+  int64_t tile_dimensions = sharding.tile_assignment().num_dimensions();
+  int64_t subgroup_size = sharding.sharding_types().size();
+  int64_t rank = tile_dimensions - subgroup_size;
+  std::vector<int64_t> group_dims;
+  bool last_tile_dim_replicate = false;
+
+  for (int64_t i = 0; i < subgroup_size; i++) {
+    if (sharding.sharding_types()[i] == OpSharding::MANUAL) {
+      group_dims.push_back(rank + i);
+    } else if (sharding.sharding_types()[i] == OpSharding::REPLICATED) {
+      last_tile_dim_replicate = true;
+    }
+  }
+
+  GroupedSharding group_sharding =
+      GroupShardingOnDims(sharding, group_dims, /*subgroup_manual=*/true);
+
+  if (last_tile_dim_replicate ||
+      group_sharding.sharding.tile_assignment().num_dimensions() > rank) {
+    group_sharding.sharding = HloSharding::PartialTile(
+        group_sharding.sharding.tile_assignment(), sharding.metadata());
+  }
+  return group_sharding;
+}
+
+HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
+  std::vector<int64_t> tiling_dims;
+  bool partial_sharding = false;
+  std::vector<OpSharding::Type> sharding_types;
+  Array<int64_t> grouped_tiling = grouped_sharding.sharding.tile_assignment();
+  if (grouped_sharding.sharding.IsTileMaximal()) {
+    tiling_dims = std::vector<int64_t>(grouped_sharding.data_rank, 1);
+    if (grouped_sharding.device_groups[0].size() != 1) {
+      // This is partial sharding.
+      tiling_dims.push_back(grouped_sharding.device_groups[0].size());
+      partial_sharding = true;
+    }
+    grouped_tiling = Array<int64_t>(tiling_dims);
+    grouped_tiling.FillIota(0);
+  }
+
+  // Handles subgroup manual first.
+  if (grouped_sharding.subgroup_manual) {
+    partial_sharding = grouped_sharding.sharding.ReplicateOnLastTileDim() ||
+                       grouped_sharding.sharding.IsReplicated();
+    int64_t subgroup_dim_size = grouped_sharding.group_dims.size();
+    if (partial_sharding) {
+      subgroup_dim_size++;
+    }
+    sharding_types = std::vector<OpSharding::Type>(subgroup_dim_size,
+                                                   OpSharding::REPLICATED);
+    if (!grouped_sharding.sharding.IsTileMaximal()) {
+      tiling_dims = grouped_sharding.sharding.tile_assignment().dimensions();
+    }
+    for (int i = 0; i < grouped_sharding.group_dims.size(); i++) {
+      sharding_types[grouped_sharding.group_dims[i] -
+                     grouped_sharding.data_rank] = OpSharding::MANUAL;
+      tiling_dims.insert(tiling_dims.begin() + grouped_sharding.group_dims[i],
+                         1);
+    }
+    grouped_tiling.Reshape(tiling_dims);
+  } else if (!grouped_sharding.sharding.IsTileMaximal()) {
+    // Handles tile replicated.
+    partial_sharding = grouped_sharding.sharding.ReplicateOnLastTileDim();
+    tiling_dims = grouped_sharding.sharding.tile_assignment().dimensions();
+    if (absl::c_linear_search(grouped_sharding.group_dims,
+                              tiling_dims.size())) {
+      tiling_dims.push_back(1);
+      grouped_tiling.Reshape(tiling_dims);
+      partial_sharding = true;
+    }
+  }
+
+  // Update group dim sizes.
+  for (int64_t i = 0; i < grouped_sharding.group_dims.size(); ++i) {
+    int64_t dim = grouped_sharding.group_dims[i];
+    tiling_dims[dim] *= grouped_sharding.group_dim_sizes[i];
+  }
+  Array<int64_t> tiling(tiling_dims);
+  grouped_tiling.Each([&](absl::Span<const int64_t> indices, int64_t device) {
+    std::vector<int64_t> ungrouped_inds(indices.begin(), indices.end());
+    for (int64_t g = 0; g < grouped_sharding.device_groups.size(); ++g) {
+      int64_t remaining_group_index = g;
+      for (int64_t i = grouped_sharding.group_dims.size() - 1; i >= 0; --i) {
+        int64_t dim = grouped_sharding.group_dims[i];
+        int64_t groups_in_this_dim = grouped_sharding.group_dim_sizes[i];
+        ungrouped_inds[dim] = (remaining_group_index % groups_in_this_dim) *
+                                  grouped_tiling.dim(dim) +
+                              indices[dim];
+        remaining_group_index /= groups_in_this_dim;
+      }
+      tiling(ungrouped_inds) = grouped_sharding.device_groups[g][device];
+    }
+  });
+
+  if (grouped_sharding.subgroup_manual) {
+    return HloSharding::Subgroup(tiling, sharding_types,
+                                 grouped_sharding.sharding.metadata());
+  }
+  return partial_sharding ? HloSharding::PartialTile(tiling)
+                          : HloSharding::Tile(tiling);
+}
+
+bool DeviceGroupsAreMatch(GroupedSharding& lhs, GroupedSharding& rhs,
+                          bool ignore_group_order) {
+  if (lhs.device_groups.size() != rhs.device_groups.size()) {
+    return false;
+  }
+
+  bool matching_groups = true;
+  absl::flat_hash_map<int64_t, int64_t> device_to_ref_group;
+  for (int64_t g = 0; g < lhs.device_groups.size(); ++g) {
+    for (int64_t device : lhs.device_groups[g]) {
+      device_to_ref_group[device] = g;
+    }
+  }
+  auto unique_ref_dev_group =
+      [&](absl::Span<const int64_t> devices) -> int64_t {
+    int64_t ref_g = -1;
+    for (int64_t device : devices) {
+      if (ref_g == -1) {
+        ref_g = device_to_ref_group[device];
+      } else if (ref_g != device_to_ref_group[device]) {
+        return -1;
+      }
+    }
+    return ref_g;
+  };
+  for (int64_t g = 0; g < rhs.device_groups.size(); ++g) {
+    int64_t ref_g = unique_ref_dev_group(rhs.device_groups[g]);
+    if (ref_g < 0 || (!ignore_group_order && g != ref_g)) {
+      matching_groups = false;
+      break;
+    }
+  }
+
+  return matching_groups;
+}
+
 }  // namespace hlo_sharding_util
 }  // namespace xla

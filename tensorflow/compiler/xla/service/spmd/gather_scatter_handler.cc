@@ -29,6 +29,8 @@ namespace spmd {
 
 namespace {
 
+using hlo_sharding_util::GroupedSharding;
+
 // Returns whether partitioning in the operand only happens in dimensions with
 // gather/scatter slice size 1.
 bool GatherScatterOperandPartitionedOnlyOnTrivialSliceDims(
@@ -338,10 +340,10 @@ StatusOr<HloInstruction*> PartitionIndexParallelDimensions(
           hlo_sharding_util::GatherParallelOutputDims(*gather, *parallel_dims);
       HloSharding indices_sharding = gather_sharding->indices_sharding;
       HloSharding operand_sharding = gather_sharding->operand_sharding;
-      GroupedSharding grouped_indices =
-          GroupShardingOnDims(indices_sharding, indices_parallel_dims);
-      GroupedSharding grouped_operand =
-          GroupShardingOnDims(operand_sharding, operand_parallel_dims);
+      GroupedSharding grouped_indices = hlo_sharding_util::GroupShardingOnDims(
+          indices_sharding, indices_parallel_dims);
+      GroupedSharding grouped_operand = hlo_sharding_util::GroupShardingOnDims(
+          operand_sharding, operand_parallel_dims);
       int index_dim = dnums.index_vector_dim();
       // Construct the required sharding for the new gather we are gonna form.
       absl::InlinedVector<int64_t, 4> output_tiling(
@@ -454,8 +456,8 @@ StatusOr<HloInstruction*> PartitionIndexParallelDimensions(
             adjusted_indices,
             GetPerGroupBaseShape(grouped_indices, indices.base_shape()),
             per_group_partitioner_state);
-        GroupedSharding grouped_output =
-            GroupShardingOnDims(gather_output_sharding, output_parallel_dims);
+        GroupedSharding grouped_output = hlo_sharding_util::GroupShardingOnDims(
+            gather_output_sharding, output_parallel_dims);
         TF_ASSIGN_OR_RETURN(
             pgather,
             PartitionGather(gather, per_group_operand, per_group_indices,
@@ -598,7 +600,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       // Update partition_id for partial replicate.
       auto partition_id = MakePartitioningState().partition_id;
       if (indices.sharding().ReplicateOnLastTileDim()) {
-        auto sharding_grouped = GroupShardingOnDims(
+        auto sharding_grouped = hlo_sharding_util::GroupShardingOnDims(
             indices.sharding(),
             {indices.sharding().tile_assignment().num_dimensions() - 1});
         auto per_group_partitioner_state = CreatePerGroupPartitioningState(

@@ -292,43 +292,12 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
 bool CanReshardWithCollectivePermute(const HloSharding& source,
                                      const HloSharding& target);
 
-// Represents grouping devices in a tiled sharding along certain dimensions.
-// Elements in group dimensions define different device groups, and the sharding
-// represents the in-group sharding.
-struct GroupedSharding {
-  GroupedSharding(std::vector<std::vector<int64_t>> device_groups,
-                  std::vector<int64_t> group_dims,
-                  std::vector<int64_t> group_dim_sizes, int64_t data_rank,
-                  HloSharding grouped_sharding)
-      : device_groups(std::move(device_groups)),
-        group_dims(std::move(group_dims)),
-        group_dim_sizes(std::move(group_dim_sizes)),
-        data_rank(data_rank),
-        sharding(std::move(grouped_sharding)) {}
-  std::vector<std::vector<int64_t>> device_groups;
-  std::vector<int64_t> group_dims;
-  std::vector<int64_t> group_dim_sizes;
-  int64_t data_rank;
-  HloSharding sharding;
-};
-
-// Creates a GroupedSharding for a tiled sharding with group dim shard sizes.
-GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
-                                    absl::Span<const int64_t> group_dims,
-                                    absl::Span<const int64_t> group_dim_shards);
-
-// Creates a GroupedSharding for a tiled sharding.
-GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
-                                    absl::Span<const int64_t> group_dims);
-
-// Reconstructs the ungrouped sharding from a GroupedSharding.
-HloSharding UngroupSharding(const GroupedSharding& grouped_sharding);
-
 // Returns a new GroupedSharding that has the same group definition of
 // `reference`.
-GroupedSharding AlignGroupsWith(GroupedSharding grouped_sharding,
-                                const GroupedSharding& reference,
-                                bool ignore_group_order = false);
+hlo_sharding_util::GroupedSharding AlignGroupsWith(
+    hlo_sharding_util::GroupedSharding grouped_sharding,
+    const hlo_sharding_util::GroupedSharding& reference,
+    bool ignore_group_order = false);
 
 // Align device groups between the two ahrdings. Equivalent in calling
 // GroupShardingOnDims on the two sharding AlignGroupsWith and then
@@ -340,8 +309,9 @@ HloSharding AlignShardingOnDims(const HloSharding& sharding,
 
 // Returns the per-group base shape, i.e., before applying the in-group
 // sharding.
-Shape GetPerGroupBaseShape(const GroupedSharding& grouped_sharding,
-                           const Shape& original_base_shape);
+Shape GetPerGroupBaseShape(
+    const hlo_sharding_util::GroupedSharding& grouped_sharding,
+    const Shape& original_base_shape);
 
 // Creates the nested partitioner state for in-group patitioning.
 PartitionedHlo::PartitioningState CreatePerGroupPartitioningState(
@@ -442,9 +412,6 @@ struct PadWithWrapPattern {
 absl::optional<PadWithWrapPattern> FindPadWithWrapPattern(
     const HloInstruction* concat, const HloInstruction* lhs,
     const HloInstruction* mid, const HloInstruction* rhs);
-
-// Get group sharding for each manual subgroup.
-GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding);
 
 }  // namespace spmd
 }  // namespace xla

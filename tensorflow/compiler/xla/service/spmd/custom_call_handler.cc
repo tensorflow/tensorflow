@@ -106,7 +106,8 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
   auto replicated_sharding = HloSharding::Replicate();
   // If batch dimension is partitioned, partial replicated on sort dimension.
   if (batch_dim_partition > 1) {
-    auto sharding_grouped = GroupShardingOnDims(sharding, {batch_dim});
+    auto sharding_grouped =
+        hlo_sharding_util::GroupShardingOnDims(sharding, {batch_dim});
     partition_state = CreatePerGroupPartitioningState(
         partitioned_input.state(), sharding_grouped.device_groups,
         partitioned_input.state().b);

@@ -39,6 +39,10 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
+namespace {
+using hlo_sharding_util::GroupedSharding;
+}  // namespace
+
 Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
   DotConvDimsMapping mapping;
   const auto& dnums = hlo->dot_dimension_numbers();
@@ -1789,16 +1793,20 @@ StatusOr<HloInstruction*> PartitionDotGroupOnBatch(
   }
   if (require_matching_devices_to_group && lhs_rhs_dims_matching) {
     lhs_rhs_dims_matching =
-        rhs.sharding() == UngroupSharding(AlignGroupsWith(
-                              GroupShardingOnDims(rhs.sharding(), rhs_dims),
-                              GroupShardingOnDims(lhs.sharding(), lhs_dims)));
+        rhs.sharding() ==
+        UngroupSharding(AlignGroupsWith(
+            hlo_sharding_util::GroupShardingOnDims(rhs.sharding(), rhs_dims),
+            hlo_sharding_util::GroupShardingOnDims(lhs.sharding(), lhs_dims)));
   }
-  auto output_grouped = GroupShardingOnDims(output_sharding, output_dims);
+  auto output_grouped =
+      hlo_sharding_util::GroupShardingOnDims(output_sharding, output_dims);
   PartitionedHlo per_group_lhs = lhs;
   PartitionedHlo per_group_rhs = rhs;
   if (lhs_rhs_dims_matching) {
-    auto lhs_grouped = GroupShardingOnDims(lhs.sharding(), lhs_dims);
-    auto rhs_grouped = GroupShardingOnDims(rhs.sharding(), rhs_dims);
+    auto lhs_grouped =
+        hlo_sharding_util::GroupShardingOnDims(lhs.sharding(), lhs_dims);
+    auto rhs_grouped =
+        hlo_sharding_util::GroupShardingOnDims(rhs.sharding(), rhs_dims);
     if (ShapeUtil::ByteSizeOf(lhs.hlo()->shape()) >
         ShapeUtil::ByteSizeOf(rhs.hlo()->shape())) {
       rhs_grouped = AlignGroupsWith(std::move(rhs_grouped), lhs_grouped);
@@ -1810,7 +1818,7 @@ StatusOr<HloInstruction*> PartitionDotGroupOnBatch(
     auto reshaped_output_tiling = output_sharding.tile_assignment();
     reshaped_output_tiling.Reshape(output_sharding_dims_adjusted_to_lhs);
     output_grouped = AlignGroupsWith(
-        GroupShardingOnDims(
+        hlo_sharding_util::GroupShardingOnDims(
             output_sharding.ReplicateOnLastTileDim()
                 ? HloSharding::PartialTile(reshaped_output_tiling)
                 : HloSharding::Tile(reshaped_output_tiling),
@@ -1895,13 +1903,14 @@ StatusOr<HloInstruction*> PartitionDotGroupOnBatch(
         return absl::nullopt;
       }
       reshaped_tiling.Reshape(*sharding_dims_adjusted_to_output);
-      auto grouped = AlignGroupsWith(
-          GroupShardingOnDims(operand.base_shape().rank() <
+      auto grouped =
+          AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
+                              operand.base_shape().rank() <
                                       sharding_dims_adjusted_to_output->size()
                                   ? HloSharding::PartialTile(reshaped_tiling)
                                   : HloSharding::Tile(reshaped_tiling),
                               batch_dims),
-          output_grouped);
+                          output_grouped);
       if (require_matching_devices_to_group &&
           operand.sharding() != UngroupSharding(grouped)) {
         return absl::nullopt;
@@ -1987,11 +1996,11 @@ GroupedSharding GetNonContractingPartitionGroupedShardingForMatchedOperand(
     output_dims.push_back(dim.output);
   }
   GroupedSharding output_grouped =
-      GroupShardingOnDims(output_sharding, output_dims);
+      hlo_sharding_util::GroupShardingOnDims(output_sharding, output_dims);
   Array<int64_t> reshaped_matching_tiling = matching_sharding.tile_assignment();
   reshaped_matching_tiling.Reshape(matching_sharding_dims);
   return AlignGroupsWith(
-      GroupShardingOnDims(
+      hlo_sharding_util::GroupShardingOnDims(
           matching_sharding.ReplicateOnLastTileDim()
               ? HloSharding::PartialTile(reshaped_matching_tiling)
               : HloSharding::Tile(reshaped_matching_tiling),
@@ -2018,7 +2027,7 @@ GetNonContractingPartitionGroupedShardingForOtherOperand(
     group_count *= output_sharding.tile_assignment().dim(dim.output);
   }
   GroupedSharding output_grouped =
-      GroupShardingOnDims(output_sharding, output_dims);
+      hlo_sharding_util::GroupShardingOnDims(output_sharding, output_dims);
   std::vector<int64_t> other_group_dims;
   if (other_sharding.ReplicateOnLastTileDim() &&
       other_sharding.tile_assignment().dimensions().back() % group_count == 0) {
@@ -2054,17 +2063,18 @@ GetNonContractingPartitionGroupedShardingForOtherOperand(
   if (other_group_dims.size() == 1 &&
       other_group_dims[0] ==
           other_sharding.tile_assignment().num_dimensions() - 1) {
+    std::vector<int64_t> group_dim_shards = {
+        other_sharding.tile_assignment().dimensions().back() / group_count};
     return AlignGroupsWith(
-        GroupShardingOnDims(
-            other_sharding, {other_group_dims[0]},
-            {other_sharding.tile_assignment().dimensions().back() /
-             group_count}),
+        hlo_sharding_util::GroupShardingOnDims(
+            other_sharding, {other_group_dims[0]}, group_dim_shards),
         output_grouped, /*ignore_group_order=*/true);
 
   } else if (!other_sharding.IsReplicated()) {
-    return AlignGroupsWith(
-        GroupShardingOnDims(other_sharding, other_group_dims), output_grouped,
-        /*ignore_group_order=*/true);
+    return AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
+                               other_sharding, other_group_dims),
+                           output_grouped,
+                           /*ignore_group_order=*/true);
   }
   return absl::nullopt;
 }
@@ -2100,7 +2110,7 @@ StatusOr<HloInstruction*> PartitionDotGroupOnNonContracting(
     output_dims.push_back(dim.output);
   }
   GroupedSharding output_grouped =
-      GroupShardingOnDims(output_sharding, output_dims);
+      hlo_sharding_util::GroupShardingOnDims(output_sharding, output_dims);
   GroupedSharding matching_grouped =
       GetNonContractingPartitionGroupedShardingForMatchedOperand(
           lhs_matching, matching.sharding(), output_sharding,
@@ -2180,12 +2190,13 @@ GetDotGroupPartitionContractingOutputShardings(
   if (output_sharding.ReplicateOnLastTileDim() &&
       output_sharding.tile_assignment().dimensions().back() % group_count ==
           0) {
+    std::vector<int64_t> group_dim_shards = {
+        output_sharding.tile_assignment().dimensions().back() / group_count};
     auto grouped = AlignGroupsWith(
-        GroupShardingOnDims(
+        hlo_sharding_util::GroupShardingOnDims(
             output_sharding,
             {output_sharding.tile_assignment().num_dimensions() - 1},
-            {output_sharding.tile_assignment().dimensions().back() /
-             group_count}),
+            group_dim_shards),
         lhs_grouped,
         /*ignore_group_order=*/true);
     outer_output_tmp_sharding = UngroupSharding(grouped);
@@ -2212,8 +2223,9 @@ GetDotGroupPartitionContractingOutputShardings(
       }
     }
     if (!output_slice_dims.empty()) {
-      auto grouped = AlignGroupsWith(
-          GroupShardingOnDims(output_sharding, output_slice_dims), lhs_grouped);
+      auto grouped = AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
+                                         output_sharding, output_slice_dims),
+                                     lhs_grouped);
       inner_output_sharding = grouped.sharding;
       outer_output_tmp_sharding = UngroupSharding(grouped);
     }
@@ -2295,8 +2307,10 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
   std::tie(lhs_sharding, rhs_sharding) =
       GetDotGroupPartitionContractingLhsRhsShardings(
           lhs, rhs, partitioned_contracting_dims);
-  auto lhs_grouped = GroupShardingOnDims(lhs_sharding, lhs_dims);
-  auto rhs_grouped = GroupShardingOnDims(rhs_sharding, rhs_dims);
+  auto lhs_grouped =
+      hlo_sharding_util::GroupShardingOnDims(lhs_sharding, lhs_dims);
+  auto rhs_grouped =
+      hlo_sharding_util::GroupShardingOnDims(rhs_sharding, rhs_dims);
   if (ShapeUtil::ByteSizeOf(lhs.hlo()->shape()) >
       ShapeUtil::ByteSizeOf(rhs.hlo()->shape())) {
     rhs_grouped = AlignGroupsWith(rhs_grouped, lhs_grouped);
@@ -2555,7 +2569,7 @@ EstimateWindowedEinsumIterationsForNonContractingPartitioning(
       output_dims.push_back(dim.output);
     }
     GroupedSharding output_grouped =
-        GroupShardingOnDims(output_sharding, output_dims);
+        hlo_sharding_util::GroupShardingOnDims(output_sharding, output_dims);
     GroupedSharding matching_grouped =
         GetNonContractingPartitionGroupedShardingForMatchedOperand(
             assume_lhs_match, matching_sharding, output_sharding,
@@ -2680,8 +2694,10 @@ bool PrioritizeContractingDimensionsPartitioning(
   std::tie(lhs_sharding, rhs_sharding) =
       GetDotGroupPartitionContractingLhsRhsShardings(
           lhs, rhs, dims_mapping.contracting_dims);
-  auto lhs_grouped = GroupShardingOnDims(lhs_sharding, lhs_dims);
-  auto rhs_grouped = GroupShardingOnDims(rhs_sharding, rhs_dims);
+  auto lhs_grouped =
+      hlo_sharding_util::GroupShardingOnDims(lhs_sharding, lhs_dims);
+  auto rhs_grouped =
+      hlo_sharding_util::GroupShardingOnDims(rhs_sharding, rhs_dims);
   rhs_grouped = AlignGroupsWith(rhs_grouped, lhs_grouped);
   rhs_sharding = UngroupSharding(rhs_grouped);
 
@@ -3134,8 +3150,8 @@ StatusOr<HloInstruction*> PartitionDot(
   // recursive call with partial replication removed.
   if (lhs.sharding().IsReplicated() && rhs.sharding().IsReplicated() &&
       output_sharding.ReplicateOnLastTileDim()) {
-    auto grouped_output =
-        GroupShardingOnDims(output_sharding, {output_base_shape.rank()});
+    auto grouped_output = hlo_sharding_util::GroupShardingOnDims(
+        output_sharding, {output_base_shape.rank()});
     auto inner_state = CreatePerGroupPartitioningState(
         lhs.state(), grouped_output.device_groups, b);
     TF_ASSIGN_OR_RETURN(

@@ -4983,5 +4983,169 @@ ENTRY %module {
   EXPECT_THAT(operand, op::Sharding("{replicated}"));
 }
 
+TEST_P(ParameterizedMetadataTest, ManualSubgroupForward) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[6,3]{1,0} parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dims={manual} metadata={op_name="a"}}
+  %copy = f32[6,3]{1,0} copy(%param0)
+  %param1 = f32[6,3]{1,0} parameter(1),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dims={manual} metadata={op_name="a"}}
+  %copy.1 = f32[6,3]{1,0} copy(%param1)
+  %add = f32[6,3]{1,0} add(%copy, %copy.1)
+  ROOT %copy.2 = f32[6,3]{1,0} copy(%add)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "add");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction,
+              op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dims={manual}}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(instruction->sharding(),
+                ShardingMetadata({CreateMetadata("a")}));
+  } else {
+    EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+}
+
+TEST_P(ParameterizedMetadataTest, ManualSubgroup_SingleOperandHasSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[6,3]{1,0} parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dims={manual} metadata={op_name="a"}}
+  %copy = f32[6,3]{1,0} copy(%param0)
+  %param1 = f32[6,3]{1,0} parameter(1)
+  %copy.1 = f32[6,3]{1,0} copy(%param1)
+  %add = f32[6,3]{1,0} add(%copy, %copy.1)
+  ROOT %copy.2 = f32[6,3]{1,0} copy(%add)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "add");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction,
+              op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dims={manual}}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(instruction->sharding(),
+                ShardingMetadata({CreateMetadata("a")}));
+  } else {
+    EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+
+  // Check other operand's sharding
+  auto* operand = FindInstruction(module.get(), "copy");
+  ASSERT_NE(operand, nullptr);
+  EXPECT_THAT(operand,
+              op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dims={manual}}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(operand->sharding(), ShardingMetadata({CreateMetadata("a")}));
+  } else {
+    EXPECT_THAT(operand->sharding(), ShardingMetadata({}));
+  }
+}
+
+TEST_P(ParameterizedMetadataTest, ManualSubgroup_OneOperandReplicate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[6,3]{1,0} parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dims={manual} metadata={op_name="a"}}
+  %copy = f32[6,3]{1,0} copy(%param0)
+  %param1 = f32[6,3]{1,0} parameter(1),
+    sharding={devices=[1,1,2,2]0,1,2,3 last_tile_dims={replicated, manual} metadata={op_name="a"}}
+  %copy.1 = f32[6,3]{1,0} copy(%param1)
+  %add = f32[6,3]{1,0} add(%copy, %copy.1)
+  ROOT %copy.2 = f32[6,3]{1,0} copy(%add)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "add");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction,
+              op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dims={manual}}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(instruction->sharding(),
+                ShardingMetadata({CreateMetadata("a")}));
+  } else {
+    EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+
+  // Check other operand's sharding
+  auto* operand = FindInstruction(module.get(), "copy");
+  ASSERT_NE(operand, nullptr);
+  EXPECT_THAT(operand,
+              op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dims={manual}}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(operand->sharding(), ShardingMetadata({CreateMetadata("a")}));
+  } else {
+    EXPECT_THAT(operand->sharding(), ShardingMetadata({}));
+  }
+}
+
+TEST_P(ParameterizedMetadataTest, ManualSubgroupBackward) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[6,3]{1,0} parameter(0)
+  %copy = f32[6,3]{1,0} copy(%param0)
+  %param1 = f32[6,3]{1,0} parameter(1)
+  %copy.1 = f32[6,3]{1,0} copy(%param1)
+  %add = f32[6,3]{1,0} add(%copy, %copy.1),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dims={manual} metadata={op_name="a"}}
+  ROOT %copy.2 = f32[6,3]{1,0} copy(%add)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "copy");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction,
+              op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dims={manual}}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(instruction->sharding(),
+                ShardingMetadata({CreateMetadata("a")}));
+  } else {
+    EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+}
+
 }  // namespace
 }  // namespace xla

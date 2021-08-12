@@ -231,6 +231,49 @@ absl::InlinedVector<int64_t, 1> GatherParallelOutputDims(
 absl::InlinedVector<int64_t, 1> GatherOutputAlignedOperandParallelDims(
     const HloInstruction& gather, const GatherParallelDims& parallel_dims);
 
+// Represents grouping devices in a tiled sharding along certain dimensions.
+// Elements in group dimensions define different device groups, and the sharding
+// represents the in-group sharding.
+struct GroupedSharding {
+  GroupedSharding(std::vector<std::vector<int64_t>> device_groups,
+                  std::vector<int64_t> group_dims,
+                  std::vector<int64_t> group_dim_sizes, int64_t data_rank,
+                  HloSharding grouped_sharding, bool subgroup_manual = false)
+      : device_groups(std::move(device_groups)),
+        group_dims(std::move(group_dims)),
+        group_dim_sizes(std::move(group_dim_sizes)),
+        data_rank(data_rank),
+        sharding(std::move(grouped_sharding)),
+        subgroup_manual(subgroup_manual) {}
+  std::vector<std::vector<int64_t>> device_groups;
+  std::vector<int64_t> group_dims;
+  std::vector<int64_t> group_dim_sizes;
+  int64_t data_rank;
+  HloSharding sharding;
+  bool subgroup_manual;
+};
+
+// Creates a GroupedSharding for a tiled sharding with group dim shard sizes.
+GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
+                                    absl::Span<const int64_t> group_dims,
+                                    absl::Span<const int64_t> group_dim_shards,
+                                    bool subgroup_manual = false);
+
+// Creates a GroupedSharding for a tiled sharding.
+GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
+                                    absl::Span<const int64_t> group_dims,
+                                    bool subgroup_manual = false);
+
+// Get group sharding for each manual subgroup.
+GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding);
+
+// Reconstructs the ungrouped sharding from a GroupedSharding.
+HloSharding UngroupSharding(const GroupedSharding& grouped_sharding);
+
+// Check if the device groups are match for the LHS or RHS group shardings.
+bool DeviceGroupsAreMatch(GroupedSharding& lhs, GroupedSharding& rhs,
+                          bool ignore_group_order = true);
+
 }  // namespace hlo_sharding_util
 }  // namespace xla
 
