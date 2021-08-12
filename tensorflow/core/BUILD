@@ -1074,7 +1074,10 @@ cc_library(
 #         "//tensorflow:chromiumos": ["IS_MOBILE_PLATFORM"],
 #         "//tensorflow:fuchsia": ["IS_MOBILE_PLATFORM"],
 #         "//conditions:default": [],
-#     }) + tf_defines_nortti_if_lite_protos(),
+#     }) + tf_defines_nortti_if_lite_protos() + select({
+#         "//tensorflow:android": ["TF_USE_SNAPPY"],
+#         "//conditions:default": [],
+#     }),
 #     features = ["-layering_check"],
 #     tags = [
 #         "manual",
