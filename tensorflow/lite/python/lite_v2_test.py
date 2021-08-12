@@ -1549,10 +1549,13 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     def representative_dataset_gen():
       for _ in range(2):
-        yield [
-            np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32),
-            np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32)
-        ]
+        yield {
+            'x':
+                np.random.uniform(low=0, high=1,
+                                  size=(1, 1)).astype(np.float32),
+            'y':
+                np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32)
+        }
 
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
     converter.representative_dataset = representative_dataset_gen
