@@ -1103,16 +1103,28 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
         if (root_shape.IsTuple()) {
           // Variadic reduce.
           HloComputation::Builder b("reduce_or");
-          std::vector<HloInstruction*> results;
-          results.reserve(root_shape.tuple_shapes_size());
+          // Assuming all operands interact with each other. This could be
+          // overly conservative.  If needed, a dataflow analysis could be
+          // performed in the future.
+          //
+          // The value starts with `false` (static) and will be `or`ed with all
+          // operands's dynamism.
+          auto accum = b.AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<bool>(false)));
+
           for (int64_t i = 0; i < root_shape.tuple_shapes_size(); ++i) {
             auto lhs = b.AddInstruction(
                 HloInstruction::CreateParameter(i, scalar_shape, "lhs"));
             auto rhs = b.AddInstruction(HloInstruction::CreateParameter(
                 i + root_shape.tuple_shapes_size(), scalar_shape, "rhs"));
-            results.push_back(b.AddInstruction(HloInstruction::CreateBinary(
-                scalar_shape, HloOpcode::kOr, lhs, rhs)));
+            accum = b.AddInstruction(HloInstruction::CreateBinary(
+                scalar_shape, HloOpcode::kOr, accum, lhs));
+            accum = b.AddInstruction(HloInstruction::CreateBinary(
+                scalar_shape, HloOpcode::kOr, accum, rhs));
           }
+          // `Broadcast` the result to all positions in the result.
+          std::vector<HloInstruction*> results(root_shape.tuple_shapes_size(),
+                                               accum);
           b.AddInstruction(HloInstruction::CreateTuple(results));
           reduce_or = b.Build();
         } else {
