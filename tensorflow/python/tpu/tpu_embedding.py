@@ -320,6 +320,9 @@ AdagradSlotVariableNames = collections.namedtuple('AdagradSlotVariableNames',
 MomentumSlotVariableNames = collections.namedtuple('MomentumSlotVariableNames',
                                                    ['momenta'])
 
+AdagradMomentumSlotVariableNames = collections.namedtuple(
+    'AdagradMomentumSlotVariableNames', ['accumulator', 'momenta'])
+
 RMSPropSlotVariableNames = collections.namedtuple('RMSPropSlotVariableNames',
                                                   ['ms', 'mom'])
 
@@ -339,6 +342,9 @@ AdamSlotVariables = collections.namedtuple('AdamSlotVariables', ['m', 'v'])
 
 MomentumSlotVariables = collections.namedtuple('MomentumSlotVariables',
                                                ['momenta'])
+
+AdagradMomentumSlotVariables = collections.namedtuple(
+    'AdagradMomentumSlotVariables', ['accumulator', 'momenta'])
 
 RMSPropSlotVariables = collections.namedtuple('RMSPropSlotVariables',
                                               ['ms', 'mom'])
@@ -458,6 +464,83 @@ class AdagradParameters(_OptimizationParameters):
     )
     if initial_accumulator <= 0:
       raise ValueError('Adagrad initial_accumulator must be positive')
+    self.initial_accumulator = initial_accumulator
+
+
+class AdagradMomentumParameters(_OptimizationParameters):
+  """Optimization parameters for Adagrad + Momentum with TPU embeddings.
+
+  Pass this to `tf.estimator.tpu.experimental.EmbeddingConfigSpec` via the
+  `optimization_parameters` argument to set the optimizer and its parameters.
+  See the documentation for `tf.estimator.tpu.experimental.EmbeddingConfigSpec`
+  for more details.
+
+  ```
+  estimator = tf.estimator.tpu.TPUEstimator(
+      ...
+      embedding_spec=tf.estimator.tpu.experimental.EmbeddingConfigSpec(
+          ...
+          optimization_parameters=tf.tpu.experimental.AdagradMomentumParameters(0.1),
+          ...))
+  ```
+
+  """
+
+  def __init__(
+      self,
+      learning_rate: float,
+      momentum: float,
+      use_nesterov: bool = False,
+      exponent: float = 2,
+      initial_accumulator: float = 0.1,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+      clip_gradient_min: Optional[float] = None,
+      clip_gradient_max: Optional[float] = None,
+  ):
+    """Optimization parameters for Adagrad.
+
+    Args:
+      learning_rate: used for updating embedding table.
+      momentum: a floating point value.  The momentum.
+      use_nesterov: If `True` use Nesterov Momentum. See Sutskever et al., 2013.
+      exponent: Exponent for the preconditioner.
+      initial_accumulator: initial accumulator for Adagrad accumulator.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster. Please see
+        `optimization_parameters.proto` for details.
+      clip_weight_min: the minimum value to clip by; None means -infinity.
+      clip_weight_max: the maximum value to clip by; None means +infinity.
+      weight_decay_factor: amount of weight decay to apply; None means that the
+        weights are not decayed.
+      multiply_weight_decay_factor_by_learning_rate: if true,
+        `weight_decay_factor` is multiplied by the current learning rate.
+      clip_gradient_min: the minimum value to clip by; None means -infinity.
+        Gradient accumulation must be set to true if this is set.
+      clip_gradient_max: the maximum value to clip by; None means +infinity.
+        Gradient accumulation must be set to true if this is set.
+    """
+    super(AdagradMomentumParameters, self).__init__(
+        learning_rate=learning_rate,
+        use_gradient_accumulation=use_gradient_accumulation,
+        clip_weight_min=clip_weight_min,
+        clip_weight_max=clip_weight_max,
+        weight_decay_factor=weight_decay_factor,
+        multiply_weight_decay_factor_by_learning_rate=(
+            multiply_weight_decay_factor_by_learning_rate),
+        clip_gradient_min=clip_gradient_min,
+        clip_gradient_max=clip_gradient_max,
+    )
+    if initial_accumulator <= 0:
+      raise ValueError('Adagrad initial_accumulator must be positive')
+    if exponent <= 0:
+      raise ValueError('Precondition exponent must be positive')
+    self.momentum = momentum
+    self.use_nesterov = use_nesterov
+    self.exponent = exponent
     self.initial_accumulator = initial_accumulator
 
 
@@ -868,7 +951,7 @@ class MomentumParameters(_OptimizationParameters):
 
     Args:
       learning_rate: a floating point value. The learning rate.
-      momentum: A `Tensor` or a floating point value.  The momentum.
+      momentum: a floating point value.  The momentum.
       use_nesterov: If `True` use Nesterov Momentum. See (Sutskever et al.,
         2013). This implementation always computes gradients at the value of the
         variable(s) passed to the optimizer. Using Nesterov Momentum makes the
@@ -1788,12 +1871,12 @@ class TPUEmbedding(object):
         enqueue_data = enqueue_datas[feature]
 
         kwargs['sample_splits'].append(
-            enqueue_data.sample_splits
-            if enqueue_data.sample_splits is not None else int_zeros)
+            enqueue_data.sample_splits if enqueue_data
+            .sample_splits is not None else int_zeros)
 
         kwargs['aggregation_weights'].append(
-            enqueue_data.aggregation_weights
-            if enqueue_data.aggregation_weights is not None else float_zeros)
+            enqueue_data.aggregation_weights if enqueue_data
+            .aggregation_weights is not None else float_zeros)
 
         kwargs['embedding_indices'].append(enqueue_data.embedding_indices)
 
@@ -1827,12 +1910,12 @@ class TPUEmbedding(object):
         enqueue_data = enqueue_datas[feature]
 
         kwargs['sample_indices'].append(
-            enqueue_data.sample_indices
-            if enqueue_data.sample_indices is not None else int_zeros)
+            enqueue_data.sample_indices if enqueue_data
+            .sample_indices is not None else int_zeros)
 
         kwargs['aggregation_weights'].append(
-            enqueue_data.aggregation_weights
-            if enqueue_data.aggregation_weights is not None else float_zeros)
+            enqueue_data.aggregation_weights if enqueue_data
+            .aggregation_weights is not None else float_zeros)
 
         kwargs['embedding_indices'].append(enqueue_data.embedding_indices)
 
@@ -2083,6 +2166,105 @@ class _AdagradHandler(_OptimizerHandler):
           retrieve_parameters_op = control_flow_ops.group(
               state_ops.assign(table_variable, retrieved_table),
               state_ops.assign(accumulator_variable, retrieved_accumulator))
+        config = None
+        retrieve_op_list.append(retrieve_parameters_op)
+      return retrieve_op_list
+
+    return slot_variables, load_ops_fn, retrieve_ops_fn
+
+
+class _AdagradMomentumHandler(_OptimizerHandler):
+  """Handles Adagrad with Momentum specific logic.
+
+  Creates slot variables and defines their initializers. Defines load/retrieve
+  operations to be used for loading variables into TPU memory (from host memory)
+  and retrieving variables from TPU memory (into host memory).
+  """
+
+  def set_optimization_parameters(self, table_descriptor):
+    table_descriptor.optimization_parameters.adagrad_momentum.SetInParent()
+    table_descriptor.optimization_parameters.adagrad_momentum.momentum = (
+        self._optimization_parameters.momentum)
+    table_descriptor.optimization_parameters.adagrad_momentum.use_nesterov = (
+        self._optimization_parameters.use_nesterov)
+    table_descriptor.optimization_parameters.adagrad_momentum.exponent = (
+        self._optimization_parameters.exponent)
+
+  def get_default_slot_variable_names(self, table):
+    return AdagradMomentumSlotVariableNames(
+        '{}/{}/Accumulator'.format(table, 'AdagradMomentum'),
+        '{}/{}/Momentum'.format(table, 'AdagradMomentum'))
+
+  def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
+                               table_config, table_variables, config_proto):
+    accumulator_initializer = init_ops.constant_initializer(
+        self._optimization_parameters.initial_accumulator)
+    accumulator_variables = _create_partitioned_variables(
+        name=slot_variable_names.accumulator,
+        num_hosts=num_hosts,
+        vocabulary_size=table_config.vocabulary_size,
+        embedding_dimension=table_config.dimension,
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+        initializer=accumulator_initializer)
+    momenta_initializer = init_ops.zeros_initializer()
+    momenta_variables = _create_partitioned_variables(
+        name=slot_variable_names.momenta,
+        num_hosts=num_hosts,
+        vocabulary_size=table_config.vocabulary_size,
+        embedding_dimension=table_config.dimension,
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+        initializer=momenta_initializer)
+    slot_variables = AdagradMomentumSlotVariables(accumulator_variables,
+                                                  momenta_variables)
+
+    def load_ops_fn():
+      """Returns the load ops for AdaGrad with momentum embedding tables.
+
+      Returns:
+        A list of ops to load embedding and slot variables from CPU to TPU.
+      """
+      config = config_proto
+      load_op_list = []
+      for host_id, table_variable, accumulator_variable, momenta_variable in zip(
+          range(num_hosts), table_variables, accumulator_variables,
+          momenta_variables):
+        with ops.colocate_with(table_variable):
+          load_parameters_op = (
+              tpu_ops.load_tpu_embedding_adagrad_momentum_parameters(
+                  parameters=table_variable,
+                  accumulators=accumulator_variable,
+                  momenta=momenta_variable,
+                  table_name=table,
+                  num_shards=num_hosts,
+                  shard_id=host_id,
+                  config=config))
+        config = None
+        load_op_list.append(load_parameters_op)
+      return load_op_list
+
+    def retrieve_ops_fn():
+      """Returns the retrieve ops for AdaGrad with momentum embedding tables.
+
+      Returns:
+        A list of ops to retrieve embedding and slot variables from TPU to CPU.
+      """
+      config = config_proto
+      retrieve_op_list = []
+      for host_id, table_variable, accumulator_variable, momenta_variable in (
+          zip(
+              range(num_hosts), table_variables, accumulator_variables,
+              momenta_variables)):
+        with ops.colocate_with(table_variable):
+          retrieved_table, retrieved_accumulator, retrieved_momenta = (
+              tpu_ops.retrieve_tpu_embedding_adagrad_momentum_parameters(
+                  table_name=table,
+                  num_shards=num_hosts,
+                  shard_id=host_id,
+                  config=config))
+          retrieve_parameters_op = control_flow_ops.group(
+              state_ops.assign(table_variable, retrieved_table),
+              state_ops.assign(accumulator_variable, retrieved_accumulator),
+              state_ops.assign(momenta_variable, retrieved_momenta))
         config = None
         retrieve_op_list.append(retrieve_parameters_op)
       return retrieve_op_list
@@ -2771,6 +2953,8 @@ def _get_optimization_handler(optimization_parameters):
   """Gets the optimization handler given the parameter type."""
   if isinstance(optimization_parameters, AdagradParameters):
     return _AdagradHandler(optimization_parameters)
+  elif isinstance(optimization_parameters, AdagradMomentumParameters):
+    return _AdagradMomentumHandler(optimization_parameters)
   elif isinstance(optimization_parameters, ProximalAdagradParameters):
     return _ProximalAdagradHandler(optimization_parameters)
   elif isinstance(optimization_parameters, AdamParameters):
