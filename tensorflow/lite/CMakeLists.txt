@@ -66,6 +66,7 @@ cmake_dependent_option(TFLITE_ENABLE_NNAPI_VERBOSE_VALIDATION "Enable NNAPI verb
                        "TFLITE_ENABLE_NNAPI" ON)
 option(TFLITE_ENABLE_MMAP "Enable MMAP (unsupported on Windows)" ON)
 option(TFLITE_ENABLE_GPU "Enable GPU" OFF)
+option(TFLITE_ENABLE_METAL "Enable Metal delegate (iOs only)" OFF)
 option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" ON)
 
 option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
@@ -488,3 +489,8 @@ target_compile_options(_pywrap_tensorflow_interpreter_wrapper
   PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
   PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
 )
+
+IF(TFLITE_ENABLE_METAL AND CMAKE_SYSTEM_NAME STREQUAL Darwin)
+    enable_language(OBJCXX)
+    add_subdirectory(delegates/gpu)
+ENDIF()
