@@ -189,7 +189,7 @@ INSTANTIATE_TEST_CASE_P(
                       Convolve1DTestParam{128, 1, 1, 1, 1},
                       Convolve1DTestParam{139, 1, 1, 128, 1},
                       Convolve1DTestParam{640, 3, 3, 128, 1},
-                      Convolve1DTestParam{900, 1, 1, 10, 1},
+                      // Convolve1DTestParam{900, 1, 1, 10, 1}, b/195348220
                       Convolve1DTestParam{1, 10, 10, 1, 10},
                       Convolve1DTestParam{1, 10, 130, 1, 1},
                       Convolve1DTestParam{1, 10, 130, 1, 2},
