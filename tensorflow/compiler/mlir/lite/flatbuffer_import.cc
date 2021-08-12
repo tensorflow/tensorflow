@@ -1370,8 +1370,9 @@ StatusOr<FuncOp> ConvertSubgraph(
 // have them, so we generate a name for subgraphs that are missing one here.
 // Note: in TFLite, the first subgraph is the entry point, and in MLIR that
 // represents TFLite, this entry point must be called "main"
-std::string SubgraphName(unsigned index, const tflite::SubGraphT& subgraph) {
-  if (index == 0) {
+std::string SubgraphName(bool set_implicit_main_func, unsigned index,
+                         const tflite::SubGraphT& subgraph) {
+  if (index == 0 && set_implicit_main_func) {
     return "main";
   }
   if (subgraph.name.empty()) {
@@ -1445,24 +1446,33 @@ OwningModuleRef tflite::FlatBufferToMlir(
                     builder.getStringAttr(model->description));
   }
 
-  // TODO(b/184697652): Update to handle multiple entry points.
-  tflite::SignatureDefT* signature_def = nullptr;
-  if (!model->signature_defs.empty()) {
-    signature_def = model->signature_defs[0].get();
+  absl::flat_hash_map<uint32_t, tflite::SignatureDefT*>
+      subgraph_to_signature_map;
+  for (int i = 0; i < model->signature_defs.size(); i++) {
+    auto* signature_def = model->signature_defs[i].get();
+    const uint32_t subgraph_index = signature_def->subgraph_index;
+    subgraph_to_signature_map[subgraph_index] = signature_def;
   }
 
+  const bool set_implicit_main_func = subgraph_to_signature_map.size() <= 1;
   for (auto e : llvm::enumerate(model->subgraphs)) {
     auto& subgraph = e.value();
-    std::string name = SubgraphName(e.index(), *subgraph);
+    std::string name =
+        SubgraphName(set_implicit_main_func, e.index(), *subgraph);
+    uint32_t subgraph_index = static_cast<uint32_t>(e.index());
     auto func_or_error = ConvertSubgraph(
         *subgraph, name, model->operator_codes, func_names, model->buffers,
         base_loc, builder,
-        // TODO(b/131175224,b/132239787) Support multiple entry points
-        /*is_entry_point=*/e.index() == 0,
+        /*is_entry_point=*/
+        set_implicit_main_func
+            ? e.index() == 0
+            : subgraph_to_signature_map.contains(subgraph_index),
         /*use_external_constant=*/use_external_constant, ordered_input_arrays,
         ordered_output_arrays,
         experimental_prune_unreachable_nodes_unconditionally,
-        e.index() == 0 ? signature_def : nullptr);
+        subgraph_to_signature_map.contains(subgraph_index)
+            ? subgraph_to_signature_map.at(subgraph_index)
+            : nullptr);
     if (!func_or_error.ok()) {
       return emitError(base_loc, "could not translate function ")
                  << subgraph->name << ": "
