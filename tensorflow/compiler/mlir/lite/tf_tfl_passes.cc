@@ -347,7 +347,7 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
   // This is needed for control flow support with TF TensorList.
   pm.addPass(mlir::TFL::CreateLowerStaticTensorListPass(
       /*allow_tensorlist_pass_through=*/false,
-      /*default_to_single_batch=*/true));
+      /*default_to_single_batch=*/false));
 
   // Saved model pass to mark global tensors immutable.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());

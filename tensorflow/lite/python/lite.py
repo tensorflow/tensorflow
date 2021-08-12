@@ -463,7 +463,7 @@ class TFLiteConverterBase(object):
     self._collected_converter_params = {}
     self._experimental_disable_batchmatmul_unfold = False
     self._experimental_lower_tensor_list_ops = True
-    self._experimental_default_to_single_batch_in_tensor_list_ops = True
+    self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
     # TODO(b/195611245): Use tf.lite.TargetSpec.supported_backends instead.
     self._experimental_supported_backends = []

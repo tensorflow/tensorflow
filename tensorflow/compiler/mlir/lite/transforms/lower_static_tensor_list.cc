@@ -117,7 +117,7 @@ struct LowerStaticTensorListPass
           "When specified to true, if the tensorlist ops has unspecified batch "
           "size, this pass will assume that the batch size is one to proceed "
           "tensorlist op lowering (default true)"),
-      llvm::cl::init(true)};
+      llvm::cl::init(false)};
 };
 
 Value CreateI32SplatConst(Location loc, PatternRewriter *rewriter,
