@@ -2169,6 +2169,10 @@ tf_module {
     argspec: "args=[\'parameters\', \'accumulators\', \'updates\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
+    name: "LoadTPUEmbeddingAdagradMomentumParameters"
+    argspec: "args=[\'parameters\', \'accumulators\', \'momenta\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
     name: "LoadTPUEmbeddingAdagradParameters"
     argspec: "args=[\'parameters\', \'accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
@@ -3734,6 +3738,10 @@ tf_module {
   }
   member_method {
     name: "RetrieveTPUEmbeddingAdadeltaParameters"
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingAdagradMomentumParameters"
     argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
