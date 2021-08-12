@@ -188,7 +188,7 @@ class BenchmarkModel {
       : params_(std::move(params)) {}
   virtual ~BenchmarkModel() {}
   virtual TfLiteStatus Init() = 0;
-  TfLiteStatus Run(int argc, char** argv);
+  virtual TfLiteStatus Run(int argc, char** argv);
   virtual TfLiteStatus Run();
   void AddListener(BenchmarkListener* listener) {
     listeners_.AddListener(listener);
