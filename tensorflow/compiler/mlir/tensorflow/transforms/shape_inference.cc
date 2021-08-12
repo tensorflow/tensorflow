@@ -977,7 +977,7 @@ bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
     Type t = GetType(op.output_shapes()[i], op.output_types()[i]);
     t = TypeMeet(*it, t);
     changed = changed || (t != *it);
-    ++it;
+    *it++ = t;
   }
   // Now the remaining N from operand types.
   for (auto t : llvm::drop_begin(op.getOperandTypes())) {
