@@ -31,6 +31,7 @@ cc_library(
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:types_proto_cc",
+        "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
