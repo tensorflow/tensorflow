@@ -2088,6 +2088,30 @@ func @convert_floor_div_cst(%arg0: tensor<10x10xbf16>) -> tensor<10x10xbf16> {
   return %14 : tensor<10x10xbf16>
 }
 
+// CHECK-LABEL: func @convert_floor_div_cst2
+// CHECK: %[[CST2:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<10x10xbf16>} : () -> tensor<10x10xbf16>
+// CHECK: %[[RESULT:.*]] = "tf.FloorDiv"(%arg0, %[[CST2]]) : (tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xbf16>
+// CHECK: return %[[RESULT]]
+// CHECK: }
+func @convert_floor_div_cst2(%arg0: tensor<10x10xbf16>) -> tensor<10x10xbf16> {
+  %0 = mhlo.constant dense<1.000000e+00> : tensor<10x10xbf16>
+  %1 = mhlo.constant dense<2.000000e+00> : tensor<10x10xbf16>
+  %2 = mhlo.constant dense<0.000000e+00> : tensor<10x10xbf16>
+  %3 = mhlo.constant dense<-1.000000e+00> : tensor<10x10xbf16>
+  %4 = mhlo.remainder %arg0, %1 : tensor<10x10xbf16>
+  %5 = "mhlo.compare"(%4, %2) {comparison_direction = "NE"} : (tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xi1>
+  %6 = "mhlo.sign"(%4) : (tensor<10x10xbf16>) -> tensor<10x10xbf16>
+  %7 = "mhlo.compare"(%0, %6) {comparison_direction = "NE"} : (tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xi1>
+  %8 = mhlo.and %5, %7 : tensor<10x10xi1>
+  %9 = mhlo.subtract %arg0, %4 : tensor<10x10xbf16>
+  %10 = mhlo.divide %9, %1 : tensor<10x10xbf16>
+  %11 = mhlo.add %10, %3 : tensor<10x10xbf16>
+  %12 = "mhlo.select"(%8, %11, %10) : (tensor<10x10xi1>, tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xbf16>
+  %13 = "mhlo.round_nearest_afz"(%12) : (tensor<10x10xbf16>) -> tensor<10x10xbf16>
+  %14 = "mhlo.tuple"(%13) : (tensor<10x10xbf16>) -> tuple<tensor<10x10xbf16>>
+  return %13 : tensor<10x10xbf16>
+}
+
 // CHECK-LABEL: func @convert_floor_div_broadcast_cst
 // CHECK: %[[BCST:.*]] = "tf.BroadcastTo"{{.*}} : (tensor<8xf32>, tensor<2xi64>) -> tensor<10x8xf32>
 // CHECK: %[[RESULT:.*]] = "tf.FloorDiv"(%arg0, %[[BCST]]) : (tensor<10x8xf32>, tensor<10x8xf32>) -> tensor<10x8xf32>
