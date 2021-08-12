@@ -754,12 +754,10 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(trace_count[0], 1)
     self.assertEqual(self.evaluate(v1), 2.0)
     double_variable(v2)
-    # No retracing because v2's data type and shape are the same as v1
-    self.assertEqual(trace_count[0], 1)
+    self.assertEqual(trace_count[0], 2)
     self.assertEqual(self.evaluate(v2), 4.0)
     double_variable(v3)
-    # Retracing because of data type change
-    self.assertEqual(trace_count[0], 2)
+    self.assertEqual(trace_count[0], 3)
     self.assertEqual(self.evaluate(v3), 8)
 
   def testShapeCache(self):

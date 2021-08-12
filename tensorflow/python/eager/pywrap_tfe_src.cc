@@ -3959,7 +3959,6 @@ const char kTupleEnd[] = "u";
 const char kDIter[] = "I";
 const char kDict[] = "D";
 const char kRaw[] = "R";
-const char kResourceVariable[] = "r";
 const char kShape[] = "s";
 const char kShapeDelim[] = "-";
 const char kDType[] = "d";
@@ -4226,25 +4225,6 @@ tensorflow::Status TFE_Py_EncodeArgHelperInternal(
           result));
     }
     absl::StrAppend(&result->str, kAttrsEnd);
-  } else if (tensorflow::swig::IsResourceVariable(arg)) {
-    absl::StrAppend(&result->str, kResourceVariable);
-    // Get resource id, similar to OwnedIterator
-    tensorflow::Safe_PyObjectPtr p_res_id(
-        PyObject_CallMethod(arg, "__tf_resource_id__", nullptr));
-    if (p_res_id == nullptr) {
-      return tensorflow::errors::InvalidArgument(
-          "Error while calling __tf_resource_id__().");
-    }
-    int res_id = PyLong_AsSize_t(p_res_id.get());
-    if (res_id < 0) {
-      return tensorflow::errors::InvalidArgument("PyLong_AsSize_t failure");
-    }
-    UpdateResourceCount(res_id, res_vec, res_map, cur_res);
-
-    // Get dtype and shape, similar to Tensor.
-    tensorflow::Safe_PyObjectPtr type_spec(
-        PyObject_CallMethod(arg, "__tf_function_cache_spec__", nullptr));
-    absl::StrAppend(&result->str, PyUnicode_AsUTF8(type_spec.get()));
   } else {
     PyObject* object = PyWeakref_NewRef(arg, nullptr);
 
