@@ -270,37 +270,6 @@ static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
       std::move(*buffer));
 }
 
-static StatusOr<LockedNcclClique> CreateXcclContext(
-    const Thunk::ExecuteParams& params,
-    const NcclCollectiveConfig& xccl_config) {
-  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
-                      params.GetGlobalDeviceId());
-  TF_ASSIGN_OR_RETURN(std::vector<GlobalDeviceId> participants,
-                      GetParticipatingDevices(
-                          global_device_id, *params.device_assn,
-                          xccl_config.replica_groups, xccl_config.group_mode));
-  if (IsGlobalNcclConfig() &&
-      (participants.size() != params.device_assn->replica_count())) {
-    return InvalidArgument(
-        "Partial replica groups are not allowed when using NCCL_COMM_ID "
-        "environment configuration.");
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      std::vector<LocalParticipant> local_participants,
-      GetLocalParticipants(participants, params.gpu_global_device_ids));
-  const RendezvousKey rendezvous_key(
-      params.run_id, std::move(participants), local_participants.size(),
-      xccl_config.collective_op_kind, xccl_config.op_id);
-  int device_ordinal = params.stream->parent()->device_ordinal();
-  NcclCliqueParticipantData participant(rendezvous_key, device_ordinal,
-                                        params.stream);
-  TF_ASSIGN_OR_RETURN(LockedNcclClique locked_clique,
-                      AcquireNcclClique(participant, local_participants,
-                                        params.nccl_unique_id_callback));
-  return std::move(locked_clique);
-}
-
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
     std::function<Status(tfrt::RequestContextBuilder&)> build_request_context) {
   TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
@@ -333,14 +302,39 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
 CreateXcclExecutionContext(const Thunk::ExecuteParams& params,
                            const NcclCollectiveConfig& xccl_config,
                            StatusOr<LockedNcclClique>* locked_clique_or) {
-  *locked_clique_or = CreateXcclContext(params, xccl_config);
+  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                      params.GetGlobalDeviceId());
+  TF_ASSIGN_OR_RETURN(std::vector<GlobalDeviceId> participants,
+                      GetParticipatingDevices(
+                          global_device_id, *params.device_assn,
+                          xccl_config.replica_groups, xccl_config.group_mode));
+  if (IsGlobalNcclConfig() &&
+      (participants.size() != params.device_assn->replica_count())) {
+    return InvalidArgument(
+        "Partial replica groups are not allowed when using NCCL_COMM_ID "
+        "environment configuration.");
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<LocalParticipant> local_participants,
+      GetLocalParticipants(participants, params.gpu_global_device_ids));
+  const RendezvousKey rendezvous_key(
+      params.run_id, std::move(participants), local_participants.size(),
+      xccl_config.collective_op_kind, xccl_config.op_id);
+  int device_ordinal = params.stream->parent()->device_ordinal();
+  NcclCliqueParticipantData participant(rendezvous_key, device_ordinal,
+                                        params.stream);
+  *locked_clique_or = AcquireNcclClique(participant, local_participants,
+                                        params.nccl_unique_id_callback);
+
   if (!locked_clique_or->ok()) {
     return locked_clique_or->status();
   }
   return CreateExecutionContext(
       [&](tfrt::RequestContextBuilder& request_context_builder) {
         request_context_builder.context_data().emplace<XcclContext>(
-            locked_clique_or->ValueOrDie().clique);
+            locked_clique_or->ValueOrDie().clique,
+            rendezvous_key.global_devices.size());
         return Status::OK();
       });
 }

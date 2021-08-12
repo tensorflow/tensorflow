@@ -191,9 +191,11 @@ struct NcclCliqueParticipantData : public ParticipantData {
 // This struct contains stateful resource(s) needed to execute collective
 // BefThunks.
 struct XcclContext {
-  XcclContext(const NcclClique& clique) : clique(clique) {}
+  XcclContext(const NcclClique& clique, int num_ranks)
+      : clique(clique), num_ranks(num_ranks) {}
 
   const NcclClique& clique;
+  const int num_ranks;
   tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> ccl_handle;
 };
 #endif  // BEF_THUNKS
