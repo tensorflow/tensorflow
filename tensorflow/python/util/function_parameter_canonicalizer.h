@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
 namespace tensorflow {
