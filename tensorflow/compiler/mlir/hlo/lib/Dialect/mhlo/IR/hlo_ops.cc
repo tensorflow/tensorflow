@@ -3564,7 +3564,7 @@ void SortOp::build(OpBuilder& builder, OperationState& state,
                    ValueRange operands, int64_t dimension, bool is_stable) {
   state.addOperands(operands);
   state.addAttribute("dimension", builder.getI64IntegerAttr(dimension));
-  state.addAttribute("is_stable", builder.getBoolAttr(dimension));
+  state.addAttribute("is_stable", builder.getBoolAttr(is_stable));
 
   for (Value operand : operands) state.addTypes(operand.getType());
 
