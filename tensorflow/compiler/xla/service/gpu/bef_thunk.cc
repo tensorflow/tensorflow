@@ -301,6 +301,50 @@ static StatusOr<LockedNcclClique> CreateXcclContext(
   return std::move(locked_clique);
 }
 
+static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
+    std::function<Status(tfrt::RequestContextBuilder&)> build_request_context) {
+  TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
+  tfrt::RequestContextBuilder request_context_builder(
+      runtime_and_queue.core_runtime->GetHostContext(),
+      /*resource_context=*/nullptr);
+  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
+  TF_RETURN_IF_ERROR(runtime_and_queue.work_queue->InitializeRequest(
+      &request_context_builder, &intra_op_threadpool));
+
+  TF_RETURN_IF_ERROR(build_request_context(request_context_builder));
+
+  auto expected_req_ctx = std::move(request_context_builder).build();
+  if (!expected_req_ctx) {
+    auto error = expected_req_ctx.takeError();
+    return tensorflow::errors::Internal(llvm::toString(std::move(error)));
+  }
+  return std::make_unique<tfrt::ExecutionContext>(std::move(*expected_req_ctx));
+}
+
+static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
+CreateDefaultExecutionContext() {
+  return CreateExecutionContext(
+      [](tfrt::RequestContextBuilder& request_context_builder) {
+        return Status::OK();
+      });
+}
+
+static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
+CreateXcclExecutionContext(const Thunk::ExecuteParams& params,
+                           const NcclCollectiveConfig& xccl_config,
+                           StatusOr<LockedNcclClique>* locked_clique_or) {
+  *locked_clique_or = CreateXcclContext(params, xccl_config);
+  if (!locked_clique_or->ok()) {
+    return locked_clique_or->status();
+  }
+  return CreateExecutionContext(
+      [&](tfrt::RequestContextBuilder& request_context_builder) {
+        request_context_builder.context_data().emplace<XcclContext>(
+            locked_clique_or->ValueOrDie().clique);
+        return Status::OK();
+      });
+}
+
 Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(2) << "Executing BEF thunk.";
 
@@ -312,33 +356,21 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   // Create execution context.
-  TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
-  tfrt::RequestContextBuilder request_context_builder(
-      runtime_and_queue.core_runtime->GetHostContext(),
-      /*resource_context=*/nullptr);
-  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-  TF_RETURN_IF_ERROR(runtime_and_queue.work_queue->InitializeRequest(
-      &request_context_builder, &intra_op_threadpool));
+  std::unique_ptr<tfrt::ExecutionContext> exec_ctx;
   StatusOr<LockedNcclClique> locked_clique_or;  // Destruction = freeing lock.
   if (xccl_config_.has_value()) {
-    locked_clique_or = CreateXcclContext(params, *xccl_config_);
-    if (!locked_clique_or.ok()) {
-      return locked_clique_or.status();
-    }
-    request_context_builder.context_data().emplace<XcclContext>(
-        locked_clique_or.ValueOrDie().clique);
+    TF_ASSIGN_OR_RETURN(
+        exec_ctx,
+        CreateXcclExecutionContext(params, *xccl_config_, &locked_clique_or));
+  } else {
+    TF_ASSIGN_OR_RETURN(exec_ctx, CreateDefaultExecutionContext());
   }
-  auto expected_req_ctx = std::move(request_context_builder).build();
-  if (!expected_req_ctx) {
-    auto error = expected_req_ctx.takeError();
-    return tensorflow::errors::Internal(llvm::toString(std::move(error)));
-  }
-  tfrt::ExecutionContext exec_ctx(std::move(*expected_req_ctx));
 
   // Create owning handles for arguments and add pointer to them to 'args'.
   tfrt::SmallVector<tfrt::AsyncValue*, 8> args;
   args.reserve(function->num_arguments());
-  tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain(exec_ctx.host());
+  tfrt::AsyncValueRef<tfrt::Chain> chain =
+      tfrt::GetReadyChain(exec_ctx->host());
   args.push_back(chain.GetAsyncValue());
   tfrt::gpu::BorrowedGpuStream stream = CreateGpuStream(params);
   args.push_back(static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(stream)
@@ -359,13 +391,13 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
     return tensorflow::errors::Internal("Unexpected result count.");
 
   // Execute the function.
-  function->Execute(exec_ctx, args, {result});
+  function->Execute(*exec_ctx, args, {result});
 
   // Wait for async execution to complete.
-  tfrt::Await(exec_ctx, llvm::makeArrayRef(result));
+  tfrt::Await(*exec_ctx, llvm::makeArrayRef(result));
 
   if (xccl_config_.has_value()) {
-    auto& xccl_ctx = exec_ctx.request_ctx()->GetData<XcclContext>();
+    auto& xccl_ctx = exec_ctx->request_ctx()->GetData<XcclContext>();
     // Release the ownership of comms lent to tfrt::gpu::GpuCclHandle.
     xccl_ctx.ccl_handle->release();
     xccl_ctx.ccl_handle.reset();
