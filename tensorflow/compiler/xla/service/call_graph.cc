@@ -39,9 +39,9 @@ string CallContextToString(CallContext context) {
     case CallContext::kNone:
       return "kNone";
     case CallContext::kControlFlow:
-      return "kSequential";
+      return "kControlFlow";
     case CallContext::kEmbedded:
-      return "kParallel";
+      return "kEmbedded";
     case CallContext::kBoth:
       return "kBoth";
   }
