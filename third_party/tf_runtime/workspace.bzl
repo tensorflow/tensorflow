@@ -17,4 +17,7 @@ def repo():
             "http://mirror.tensorflow.org/github.com/tensorflow/runtime/archive/{commit}.tar.gz".format(commit = TFRT_COMMIT),
             "https://github.com/tensorflow/runtime/archive/{commit}.tar.gz".format(commit = TFRT_COMMIT),
         ],
+        # A patch file can be provided for atomic commits to both TF and TFRT.
+        # The job that bumps the TFRT_COMMIT also resets patch_file to 'None'.
+        patch_file = None,
     )
