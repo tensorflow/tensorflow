@@ -1319,7 +1319,7 @@ Status BufferAssigner::AssignBuffersForComputations(
     }
   }
 
-  absl::c_sort(
+  absl::c_stable_sort(
       sorted_buffers, [&post_order_position, &alias_analysis, assignment](
                           const HloBuffer* a, const HloBuffer* b) {
         // Primary sort is by decreasing buffer size.
