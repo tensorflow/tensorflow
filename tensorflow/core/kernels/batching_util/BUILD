@@ -307,3 +307,15 @@ cc_library(
         "@com_google_absl//absl/types:optional",
     ],
 )
+
+tf_cc_test(
+    name = "batch_resource_base_test",
+    srcs = ["batch_resource_base_test.cc"],
+    deps = [
+        ":batch_resource_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:no_op_cost_measurement",
+        "@com_google_absl//absl/time",
+    ],
+)
