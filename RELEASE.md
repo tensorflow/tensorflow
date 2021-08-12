@@ -53,6 +53,10 @@
         2.6): Use `tf.raw_ops.SparseSegmentSumGrad` instead. Directly calling
         this op is typically not necessary, as it is automatically used when
         computing the gradient of `tf.sparse.segment_sum`.
+    *   Renaming of tensorflow::int64 to int_64_t in numerous places (the former
+        is an alias for the latter) which could result in needing to regenerate
+        selective op registration headers else execution would fail with
+        unregistered kernels error.
 
 ## Known Caveats
 
