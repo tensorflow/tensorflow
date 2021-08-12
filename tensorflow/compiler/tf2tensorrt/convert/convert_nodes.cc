@@ -5783,7 +5783,7 @@ Status ParseEquation(OpConverterParams* params,
   OperandLabelCounts input_label_counts;
   LabelCounts output_label_counts;
   absl::InlinedVector<bool, 2> input_has_ellipsis;
-  bool output_has_ellipsis;
+  bool output_has_ellipsis{false};
   TF_RETURN_IF_ERROR(EinsumHelper::ParseEquation(
       equation, &input_labels, &output_labels, &label_types,
       &input_label_counts, &output_label_counts, &input_has_ellipsis,
