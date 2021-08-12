@@ -34,6 +34,7 @@ limitations under the License.
 #include "tfrt/cpu/jit/async_runtime.h"  // from @tf_runtime
 #include "tfrt/cpu/jit/async_runtime_api.h"  // from @tf_runtime
 #include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
+#include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
@@ -62,6 +63,7 @@ using ::tfrt::AsyncValuePtr;
 using ::tfrt::AsyncValueRef;
 using ::tfrt::Chain;
 using ::tfrt::CompilationUnitAttribute;
+using ::tfrt::DType;
 using ::tfrt::EnqueueWork;
 using ::tfrt::ExecutionContext;
 using ::tfrt::IndirectAsyncValue;
@@ -84,6 +86,7 @@ using ::tfrt::cpu::jit::Executable;
 using ::tfrt::cpu::jit::JitExecutable;
 using ::tfrt::cpu::jit::JitExecutableCache;
 using ::tfrt::cpu::jit::MemrefDesc;
+using ::tfrt::cpu::jit::OperandConstraint;
 using ::tfrt::cpu::jit::ReturnAsyncStridedMemref;
 using ::tfrt::cpu::jit::ReturnStridedMemref;
 using ::tfrt::cpu::jit::ReturnValueConverter;
@@ -126,6 +129,53 @@ static std::string AsTensorType(const MemrefDesc& desc) {
   for (ssize_t size : desc.sizes) os << size << "x";
   os << desc.dtype;
   os << ">";
+
+  return str;
+}
+
+// Print memref descriptor content to trace value specializations.
+static std::string AsTensorContent(const MemrefDesc& desc) {
+  std::string str;
+  llvm::raw_string_ostream os(str);
+
+  auto print_0d = [&](auto type_tag) {
+    os << desc.dtype << ": " << *static_cast<decltype(type_tag)*>(desc.data);
+  };
+
+  auto print_1d = [&](auto type_tag) {
+    os << desc.dtype << ": [";
+    for (size_t i = 0; i < desc.sizes[0]; ++i) {
+      if (i != 0) os << ",";
+      os << static_cast<decltype(type_tag)*>(desc.data)[i];
+    }
+    os << "]";
+  };
+
+  auto type_dispatch = [&](auto functor) {
+    switch (desc.dtype) {
+      case DType::I32:
+        functor(int32_t{});
+        break;
+      case DType::I64:
+        functor(int64_t{});
+        break;
+      default:
+        os << "<unsupported dtype " << desc.dtype << ">";
+    }
+  };
+
+  size_t rank = desc.sizes.size();
+
+  switch (rank) {
+    case 0:
+      type_dispatch(print_0d);
+      break;
+    case 1:
+      type_dispatch(print_1d);
+      break;
+    default:
+      os << "<unsupported rank " << desc.sizes.size() << ">";
+  }
 
   return str;
 }
@@ -174,20 +224,34 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
   // Compilation (specialized executable compilation) events should be rare, so
   // we can afford to do detailed tracing for every compilation. If compilation
-  // events happen too often, it is a much larger problem then the excessive
+  // events happen too often, it is a much larger problem than the excessive
   // tracing.
 
   // Custom runner for compiling specializations that enqueues compilation task
   // into the host context work queue and adds tracing.
-  auto runner = [kernel, request_id](ArrayRef<MemrefDesc> operands,
+  auto runner = [kernel, request_id](size_t num_specializations,
+                                     ArrayRef<OperandConstraint> constraints,
+                                     ArrayRef<MemrefDesc> operands,
                                      TaskFunction compile,
                                      const ExecutionContext& exec_ctx) {
+    assert(operands.size() == constraints.size());
+
     // Prepare arguments for the compilation tracing in the caller thread,
     // because operands lifetime is shorter than the compilation task.
     using SpecializationArg = std::pair<std::string, std::string>;
-    llvm::SmallVector<SpecializationArg> args(operands.size());
-    for (unsigned i = 0; i < operands.size(); ++i)
-      args[i] = {StrCat("%arg", i), AsTensorType(operands[i])};
+    llvm::SmallVector<SpecializationArg> args;
+    args.reserve(operands.size());
+
+    // Trace types of all operands of the specialization.
+    for (size_t i = 0; i < operands.size(); ++i)
+      args.emplace_back(StrCat("%arg", i, " type"), AsTensorType(operands[i]));
+
+    // Trace content of all operands that require value specializations.
+    for (size_t i = 0; i < constraints.size(); ++i) {
+      if (constraints[i] != OperandConstraint::kValue) continue;
+      args.emplace_back(StrCat("%arg", i, " value"),
+                        AsTensorContent(operands[i]));
+    }
 
     // TODO(ezhulenev): BEF file that owns the CompilationUnitAttribute in
     // theory can be unloaded before the completion of the compilation task.
@@ -196,14 +260,16 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // attributes that require the kernel attribute should be constructed in the
     // caller thread.
 
-    // Run the actual compilation asynchronous without blocking the caller.
-    EnqueueWork(exec_ctx, [request_id, kernel, compile = std::move(compile),
+    // Run the actual compilation asynchronously without blocking the caller.
+    EnqueueWork(exec_ctx, [request_id, kernel, num_specializations,
+                           compile = std::move(compile),
                            args = std::move(args)]() mutable {
       TraceMe trace_me([&] {
         return TraceMeEncode("tf_cpurt.CompileSpecialization",
                              {{"id", request_id},
                               {"kernel_id", kernel.id()},
-                              {"executable", kernel.root_symbol()}});
+                              {"executable", kernel.root_symbol()},
+                              {"num_specializations", num_specializations}});
       });
 
       for (SpecializationArg& arg : args) {
