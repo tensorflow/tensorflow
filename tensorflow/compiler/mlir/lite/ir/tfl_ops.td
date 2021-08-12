@@ -1130,6 +1130,8 @@ def TFL_GatherOp : TFL_Op<"gather", [
   );
 
   let hasOptions = 1;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TFL_GatherNdOp : TFL_Op<"gather_nd", [
