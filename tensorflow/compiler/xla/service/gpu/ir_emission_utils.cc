@@ -395,33 +395,6 @@ bool IsReductionFromOrToContiguousDimensions(
   mlir::Value input = reduce->getOperand(0);
   const Shape operand_shape = layout_analysis.GetShape(input);
 
-  // Enable this code to check mismatch between the inferred layout and what was
-  // there before. Based on actual runs, some mismatches are expected.
-#if 0
-  Shape operand_shape_ir = GetShape(input);
-  if (auto tensor_type = input.getType().dyn_cast<mlir::TensorType>()) {
-    if (auto attr = mlir::GetLayoutFromMlirHlo(input.getDefiningOp())) {
-      std::vector<int64_t> minor_to_major;
-      absl::c_transform(
-          attr, std::back_inserter(minor_to_major),
-          std::function<int64_t(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
-      *operand_shape_ir.mutable_layout() =
-          LayoutUtil::MakeLayout(minor_to_major);
-    }
-  }
-  bool match = ShapeUtil::Equal(operand_shape, operand_shape_ir);
-  llvm::errs() << "inferred shape = " << operand_shape.ToString(true) << "\n";
-  llvm::errs() << "Actual shape in IR = " << operand_shape_ir.ToString(true)
-               << "\n";
-  if (!match) {
-    llvm::errs() << "Unable to infer layout for reduce op operand(0)\n";
-    llvm::errs() << "\nreduce = \n";
-    reduce->dump();
-    llvm::errs() << "\nparent = \n";
-    reduce->getParentOp()->dump();
-    CHECK(0);
-  }
-#endif
 
   std::vector<int64_t> dimensions;
   {
