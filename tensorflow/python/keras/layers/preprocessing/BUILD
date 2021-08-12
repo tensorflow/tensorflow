@@ -382,8 +382,8 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
-        "no_rocm", #TODO fails multiGPU
         "no_oss",  # b/189866692
+        "no_rocm",
         "noguitar",  # b/190034522
     ],
     tpu_tags = [
@@ -462,7 +462,7 @@ tf_py_test(
     srcs = ["discretization_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tags = ["no_rocm"], # fails as CPU-only
+    tags = ["no_rocm"],
     deps = [
         ":discretization",
         ":preprocessing_test_utils",
@@ -536,7 +536,7 @@ tf_py_test(
     name = "index_lookup_test",
     srcs = ["index_lookup_test.py"],
     python_version = "PY3",
-    tags = ["noasan"], # TODO(b/183961255)
+    tags = ["noasan"],  # TODO(b/183961255)
     deps = [
         ":index_lookup",
         ":preprocessing_test_utils",
