@@ -203,7 +203,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       max_batch_results_ = std::min(
           kMaxBatchResults,
           CeilDiv(params.dataset->num_parallel_calls_ == model::kAutotune
-                      ? port::NumSchedulableCPUs()  // maximum parallelism
+                      ? GetCpuBudget()  // maximum parallelism
                       : params.dataset->num_parallel_calls_,
                   params.dataset->batch_size_));
     }

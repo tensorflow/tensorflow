@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/data/captured_function.h"
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
@@ -177,7 +178,7 @@ Status SaveDatasetOp::GetShardIndex(IteratorContext* ctx,
                                     const std::vector<Tensor>& element,
                                     int64_t* shard_index) {
   if (!use_shard_func_) {
-    *shard_index = (*shard_index + 1) % port::NumSchedulableCPUs();
+    *shard_index = (*shard_index + 1) % GetCpuBudget();
     return Status::OK();
   }
   std::vector<Tensor> output_tensors;
@@ -449,7 +450,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
                          bool use_shard_func, int64_t* shard_index)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!use_shard_func) {
-        *shard_index = (*shard_index + 1) % port::NumSchedulableCPUs();
+        *shard_index = (*shard_index + 1) % GetCpuBudget();
         return Status::OK();
       }
       std::vector<Tensor> output_tensors;

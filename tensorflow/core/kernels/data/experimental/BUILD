@@ -315,6 +315,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:captured_function",
+        "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:hash_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:root_dataset",

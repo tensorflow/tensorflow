@@ -60,7 +60,7 @@ Status RootDataset::FromOptions(DatasetBase* input, DatasetBase** output) {
   if (params.autotune) {
     params.autotune_algorithm = model::AutotuneAlgorithm::HILL_CLIMB;
     params.autotune_cpu_budget = value_or_default(
-        options.autotune_options().cpu_budget(), 0, port::NumSchedulableCPUs());
+        options.autotune_options().cpu_budget(), 0, GetCpuBudget());
     params.autotune_ram_budget =
         value_or_default(options.autotune_options().ram_budget(), 0,
                          kRamBudgetShare * port::AvailableRam());

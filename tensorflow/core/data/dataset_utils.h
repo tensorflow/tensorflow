@@ -293,6 +293,12 @@ bool ShouldApplyOptimizations(
     const absl::flat_hash_set<tstring>& optimizations_enabled,
     const absl::flat_hash_set<tstring>& optimizations_default);
 
+// Returns the default CPU budget.
+inline int GetCpuBudget() {
+  static bool in_experiment = GetExperiments().contains("tune_cpu_budget");
+  return (in_experiment ? 1.2 : 1.0) * port::NumSchedulableCPUs();
+}
+
 // Registry of tf.data experiments.
 class DatasetExperimentRegistry {
  public:

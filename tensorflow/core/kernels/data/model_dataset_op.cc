@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/model_dataset_op.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 
 // On mobile we do not provide model dataset op because not all of its
@@ -128,7 +129,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
-          cpu_budget_(dataset()->cpu_budget_ == 0 ? port::NumSchedulableCPUs()
+          cpu_budget_(dataset()->cpu_budget_ == 0 ? GetCpuBudget()
                                                   : dataset()->cpu_budget_),
           ram_budget_(dataset()->ram_budget_ == 0
                           ? kRamBudgetShare * port::AvailableRam()
