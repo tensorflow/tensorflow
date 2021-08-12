@@ -116,31 +116,38 @@ class TableConfig(
         `None`.
     """
     if not isinstance(vocabulary_size, int) or vocabulary_size < 1:
-      raise ValueError('Invalid vocabulary_size {}.'.format(vocabulary_size))
+      raise ValueError(
+          f'vocabulary_size must >= 1. '
+          f'Received: {vocabulary_size}.')
 
     if not isinstance(dimension, int) or dimension < 1:
-      raise ValueError('Invalid dimension {}.'.format(dimension))
+      raise ValueError(
+          f'dimension must be a positive int. Received: {dimension}.')
 
     if (initializer is not None) and (not callable(initializer)):
-      raise ValueError('initializer must be callable if specified.')
+      raise ValueError(
+          f'initializer must be callable if specified. '
+          f'Received: {initializer}.')
     if initializer is None:
       initializer = init_ops.truncated_normal_initializer(
           mean=0.0, stddev=1 / math.sqrt(dimension))
 
     if combiner not in ('mean', 'sum', 'sqrtn', None):
-      raise ValueError('Invalid combiner {}'.format(combiner))
+      raise ValueError(
+          f'combiner must be "mean", "sum", "sqrtn" or None. '
+          f'Received: {combiner}.')
 
     if learning_rate is not None and learning_rate_fn is not None:
       raise ValueError('At most one of learning_rate and learning_rate_fn '
-                       'can be None; got {} and {}'.format(
+                       'can be None. Received: {} and {}'.format(
                            learning_rate, learning_rate_fn))
 
     if optimization_parameters is not None:
       if not isinstance(optimization_parameters, _OptimizationParameters):
-        raise ValueError('`optimization_parameters` must inherit from '
-                         '`_OptimizationParameters`. '
-                         '`type(optimization_parameters)`={}'.format(
-                             type(optimization_parameters)))
+        raise ValueError(f'`optimization_parameters` must inherit from '
+                         f'`_OptimizationParameters`. '
+                         f'Received: `type(optimization_parameters)`='
+                         f'{type(optimization_parameters)}.')
 
     return super(TableConfig,
                  cls).__new__(cls, vocabulary_size, dimension, initializer,
@@ -173,7 +180,8 @@ class FeatureConfig(
     """
     if not isinstance(max_sequence_length, int) or max_sequence_length < 0:
       raise ValueError(
-          'Invalid max_sequence_length {}.'.format(max_sequence_length))
+          f'max_sequence_length must be zero or a positive int, '
+          f'got {max_sequence_length}.')
 
     return super(FeatureConfig, cls).__new__(cls, table_id, max_sequence_length,
                                              weight_key)
@@ -396,8 +404,8 @@ class _OptimizationParameters(object):
 
     if not use_gradient_accumulation and (clip_gradient_min is not None or
                                           clip_gradient_max is not None):
-      ValueError('When using gradient clipping limits, gradient accumulation '
-                 'must be enabled.')
+      raise ValueError('When using gradient clipping limits, gradient  '
+                       'accumulation must be enabled.')
 
 
 @tf_export(v1=['tpu.experimental.AdagradParameters'])
@@ -463,7 +471,9 @@ class AdagradParameters(_OptimizationParameters):
         clip_gradient_max=clip_gradient_max,
     )
     if initial_accumulator <= 0:
-      raise ValueError('Adagrad initial_accumulator must be positive')
+      raise ValueError(
+          f'Adagrad initial_accumulator must be greater than zero. '
+          f'Received: {initial_accumulator}.')
     self.initial_accumulator = initial_accumulator
 
 
@@ -602,7 +612,9 @@ class ProximalAdagradParameters(_OptimizationParameters):
         clip_gradient_max=clip_gradient_max,
     )
     if initial_accumulator <= 0:
-      raise ValueError('Adagrad initial_accumulator must be positive')
+      raise ValueError(
+          f'Adagrad initial_accumulator must be positive. '
+          f'Received: {initial_accumulator}.')
     if l1_regularization_strength < 0.:
       raise ValueError('l1_regularization_strength must be greater than or '
                        'equal to 0. got {}.'.format(l1_regularization_strength))
@@ -1364,7 +1376,8 @@ class TPUEmbedding(object):
     """
     if partition_strategy not in ('div', 'mod'):
       raise ValueError(
-          'Invalid partition_strategy {}'.format(partition_strategy))
+          f'partition_strategy must be "div" or "mod". '
+          f'Received: {partition_strategy}.')
     self._partition_strategy = partition_strategy
 
     self._profile_data_directory = profile_data_directory
@@ -1432,8 +1445,9 @@ class TPUEmbedding(object):
       self._optimization_parameters = optimization_parameters
     elif mode == INFERENCE:
       if optimization_parameters is not None:
-        raise ValueError('`optimization_parameters` should be `None` '
-                         'for inference mode.')
+        raise ValueError(f'`optimization_parameters` should be `None` '
+                         f'for inference mode. '
+                         f'Received: {optimization_parameters}.')
       self._optimization_parameters = (StochasticGradientDescentParameters(1.))
     else:
       raise ValueError('`mode` only supports {} and {}; got {}.'.format(
