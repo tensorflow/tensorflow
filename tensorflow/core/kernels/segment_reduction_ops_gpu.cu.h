@@ -713,8 +713,9 @@ void SegmentReductionFunctor<
   const Index num_segments = output.size() / input_inner_dim_size;
 
   // TODO(benbarsdell): If there are no performance concerns with the new
-  // non-atomic kernels, remove this runtime check and only compile the old
-  // atomic kernels on Windows (as a workaround for the build failure issue).
+  // deterministic kernels, remove this runtime check and only compile the old
+  // non-deterministic kernels on Windows (as a workaround for the build failure
+  // issue).
   if (UseNonDeterministicSegmentReductions()) {
     // Set 'output' to initial value.
     GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
@@ -775,10 +776,9 @@ void SegmentReductionFunctor<
 #else
     // Note: Shouldn't reach here because UseNonDeterministicSegmentReductions()
     // always returns true on Windows.
-    OP_REQUIRES(
-        ctx, false,
-        errors::Unimplemented(
-            "Non-atomic segment reductions are not implemented on Windows."));
+    OP_REQUIRES(ctx, false,
+                errors::Unimplemented("Deterministic segment reductions are "
+                                      "not implemented on Windows."));
 #endif
   }
 }
@@ -816,8 +816,9 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     const Index num_segments = output.size() / input_inner_dim_size;
 
     // TODO(benbarsdell): If there are no performance concerns with the new
-    // non-atomic kernels, remove this runtime check and only compile the old
-    // atomic kernels on Windows (as a workaround for the build failure issue).
+    // deterministic kernels, remove this runtime check and only compile the old
+    // non-deterministic kernels on Windows (as a workaround for the build
+    // failure issue).
     if (UseNonDeterministicSegmentReductions()) {
       // Set 'output' to initial value.
       GPUDevice d = ctx->template eigen_device<GPUDevice>();
@@ -879,8 +880,8 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
       // UseNonDeterministicSegmentReductions() always returns true on Windows.
       OP_REQUIRES(
           ctx, false,
-          errors::Unimplemented("Non-atomic unsorted segment reductions "
-                                "are not implemented on Windows."));
+          errors::Unimplemented("Deterministic unsorted segment reductions are "
+                                "not implemented on Windows."));
 #endif
     }
   }
