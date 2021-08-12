@@ -96,7 +96,7 @@ class Calibrator(object):
         input_array = sample
       else:
         raise ValueError("You need to provide either a dictionary with input "
-                         "names and values and an array with input values in "
+                         "names or values and an array with input values in "
                          "the order of input tensors of the graph in the "
                          "representative_dataset function. Unsupported value "
                          "from dataset: {}.".format(sample))
