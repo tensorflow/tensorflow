@@ -2484,3 +2484,38 @@ func @while_with_reduce(%arg0: tensor<1x256xf32>, %arg1: tensor<1xf32>) -> (tens
   }) : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>)
   return %0#0, %0#1, %0#2, %0#4: tensor<i32>, tensor<i32>, tensor<i32>, tensor<1xf32>
 }
+
+// CHECK-LABEL:   func @convert_dynamic_update_slice(
+// CHECK-SAME:                                       %[[VAL_0:[a-z0-9]*]]: tensor<28x1x100xf32>,
+// CHECK-SAME:                                       %[[VAL_1:[a-z0-9]*]]: tensor<1x1x100xf32>,
+// CHECK-SAME:                                       %[[VAL_2:[a-z0-9]*]]: tensor<i32>,
+// CHECK-SAME:                                       %[[VAL_3:[a-z0-9]*]]: tensor<i32>,
+// CHECK-SAME:                                       %[[VAL_4:[a-z0-9]*]]: tensor<i32>) -> tensor<28x1x100xf32> {
+// CHECK:           %[[CST_0:[_a-z0-9]*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %[[CST_1:[_a-z0-9]*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %[[START_IND:[_a-z0-9]*]] = "tf.Pack"(%[[VAL_2]], %[[VAL_3]], %[[VAL_4]]) {axis = 0 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
+// CHECK:           %[[OP_SHAPE:[_a-z0-9]*]] = "tf.Const"() {value = dense<[28, 1, 100]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK:           %[[UP_SHAPE:[_a-z0-9]*]] = "tf.Const"() {value = dense<[1, 1, 100]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK:           %[[MAX_START:[_a-z0-9]*]] = "tf.Sub"(%[[OP_SHAPE]], %[[UP_SHAPE]]) : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi32>
+// CHECK:           %[[START_1:[_a-z0-9]*]] = "tf.Minimum"(%[[START_IND]], %[[MAX_START]]) : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi32>
+// CHECK:           %[[CLAMP_START:[_a-z0-9]*]] = "tf.Maximum"(%[[START_1]], %[[CST_0]]) : (tensor<3xi32>, tensor<i32>) -> tensor<3xi32>
+// CHECK:           %[[N_OP:[_a-z0-9]*]] = "tf.Const"() {value = dense<2800> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %[[FLAT_RANGE:[_a-z0-9]*]] = "tf.Range"(%[[CST_0]], %[[N_OP]], %[[CST_1]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<2800xi32>
+// CHECK:           %[[OP_SHAPE_1:[_a-z0-9]*]] = "tf.Const"() {value = dense<[28, 1, 100]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK:           %[[RANGE:[_a-z0-9]*]] = "tf.Reshape"(%[[FLAT_RANGE]], %[[OP_SHAPE_1]]) : (tensor<2800xi32>, tensor<3xi32>) -> tensor<28x1x100xi32>
+// CHECK:           %[[UP_SHAPE_1:[_a-z0-9]*]] = "tf.Const"() {value = dense<[1, 1, 100]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK:           %[[UPDATE_IDX:[_a-z0-9]*]] = "tf.Slice"(%[[RANGE]], %[[CLAMP_START]], %[[UP_SHAPE_1]]) : (tensor<28x1x100xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x100xi32>
+// CHECK:           %[[FLAT_UP_SHAPE:[_a-z0-9]*]] = "tf.Const"() {value = dense<[100, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK:           %[[FLAT_UP_IDX:[_a-z0-9]*]] = "tf.Reshape"(%[[UPDATE_IDX]], %[[FLAT_UP_SHAPE]]) : (tensor<1x1x100xi32>, tensor<2xi32>) -> tensor<100x1xi32>
+// CHECK:           %[[FLAT_OP_SHAPE:[_a-z0-9]*]] = "tf.Const"() {value = dense<2800> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           %[[FLAT_OP:[_a-z0-9]*]] = "tf.Reshape"(%[[VAL_0]], %[[FLAT_OP_SHAPE]]) : (tensor<28x1x100xf32>, tensor<1xi32>) -> tensor<2800xf32>
+// CHECK:           %[[FLAT_UP_SHAPE_1:[_a-z0-9]*]] = "tf.Const"() {value = dense<100> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           %[[FLAT_UP:[_a-z0-9]*]] = "tf.Reshape"(%[[VAL_1]], %[[FLAT_UP_SHAPE_1]]) : (tensor<1x1x100xf32>, tensor<1xi32>) -> tensor<100xf32>
+// CHECK:           %[[FLAT_RESULT:[_a-z0-9]*]] = "tf.TensorScatterUpdate"(%[[FLAT_OP]], %[[FLAT_UP_IDX]], %[[FLAT_UP]]) : (tensor<2800xf32>, tensor<100x1xi32>, tensor<100xf32>) -> tensor<2800xf32>
+// CHECK:           %[[RESULT:[_a-z0-9]*]] = "tf.Reshape"(%[[FLAT_RESULT]], %[[OP_SHAPE]]) : (tensor<2800xf32>, tensor<3xi32>) -> tensor<28x1x100xf32>
+// CHECK:           return %[[RESULT]] : tensor<28x1x100xf32>
+// CHECK:         }
+func @convert_dynamic_update_slice(%arg0: tensor<28x1x100xf32>, %arg1: tensor<1x1x100xf32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>) -> tensor<28x1x100xf32> {
+  %0 = "mhlo.dynamic-update-slice"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<28x1x100xf32>, tensor<1x1x100xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<28x1x100xf32>
+  return %0 : tensor<28x1x100xf32>
+}
