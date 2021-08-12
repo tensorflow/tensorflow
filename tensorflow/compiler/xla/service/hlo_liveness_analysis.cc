@@ -242,6 +242,30 @@ void PropagateLivenessThroughControlFlow(
         // conditional, we mark the predicate operand live as well.
         MarkLiveAtIndex(caller->operand(0), {}, live_index_map, worklist,
                         workset);
+        // Mark the caller instruction live.
+        MarkLiveAtIndex(caller, {}, live_index_map, worklist, workset);
+        // Propagate liveness to the caller computation.
+        const HloComputation* callee_comp = instruction->parent();
+        // Initialize 'operand_index' to skip predictate operand.
+        int64_t operand_index = 1;
+        for (auto* caller_comp : caller->called_computations()) {
+          if (callee_comp == caller_comp) {
+            MarkLiveAtIndex(caller->operand(operand_index), {}, live_index_map,
+                            worklist, workset);
+            if (instruction->opcode() == HloOpcode::kParameter) {
+              // If 'instruction' is a parameter, propagate live shape indices
+              // to the associated callsite's argument shape indices.
+              const ShapeTree<bool>& index_tree =
+                  FindOrDie(*live_index_map, instruction);
+              ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
+                MarkLiveAtIndex(caller->operand(operand_index), shape_index,
+                                live_index_map, worklist, workset);
+              });
+            }
+            break;
+          }
+          ++operand_index;
+        }
       }
     }
   }
