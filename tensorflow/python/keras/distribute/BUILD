@@ -227,6 +227,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_rocm", # broken in 4.1
     ],
     deps = [
         ":optimizer_combinations",
@@ -249,6 +250,7 @@ distribute_py_test(
     main = "custom_training_loop_metrics_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm", # flaky/timeout with ROCm 4.1
     ],
     deps = [
         ":strategy_combinations",
@@ -271,6 +273,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
         "notsan",  # TODO(b/170954243)
+        "no_rocm", # flaky/timeout with ROCm 4.1
     ],
     tpu_tags = [
         "no_oss",  # b/153615544.
@@ -300,7 +303,6 @@ distribute_py_test(
     main = "custom_training_loop_optimizer_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     deps = [
         ":strategy_combinations",
@@ -489,7 +491,7 @@ distribute_py_test(
     shard_count = 16,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",  # times out on ROCm
+        "no_rocm", # times out on ROCm
         "no_windows_gpu",
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null
         "notsan",
@@ -507,7 +509,6 @@ distribute_py_test(
     main = "keras_metrics_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     deps = [
         "//tensorflow/python:framework_ops",
@@ -540,7 +541,7 @@ distribute_py_test(
 
 distribute_py_test(
     name = "keras_rnn_model_correctness_test",
-    size = "medium",
+    size = "large",
     srcs = ["keras_rnn_model_correctness_test.py"],
     full_precision = True,
     main = "keras_rnn_model_correctness_test.py",
@@ -850,7 +851,7 @@ distribute_py_test(
     shard_count = 7,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
+        "no_rocm", # broken in 4.1
     ],
     xla_tags = [
         "no_cuda_asan",  # times out
@@ -896,6 +897,7 @@ distribute_py_test(
         "no_oss",  # TODO(b/186248973)
         "no_tfrt",
         "notpu",
+        "no_rocm", # times out
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -926,6 +928,7 @@ distribute_py_test(
     shard_count = 50,
     tags = [
         "multi_gpu",
+        "no_rocm",
         "no_oss",  # TODO(b/183640564): Reenable
         "no_rocm",
         "notsan",  # TODO(b/184542721)
