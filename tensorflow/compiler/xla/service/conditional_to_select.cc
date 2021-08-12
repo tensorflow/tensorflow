@@ -69,7 +69,7 @@ StatusOr<bool> ConditionalToSelect::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(
       call_graph->VisitNodes([&](const CallGraphNode& node) -> Status {
         std::vector<HloInstruction*> ToInline;
-        if (node.context() != CallContext::kParallel) {
+        if (node.context() != CallContext::kEmbedded) {
           return Status::OK();
         }
         for (const CallSite& callsite : node.callsites()) {

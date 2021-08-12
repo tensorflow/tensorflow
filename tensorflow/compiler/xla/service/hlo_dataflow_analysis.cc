@@ -781,11 +781,11 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
 
   // Subcomputations called in a parallel context (eg, map) do not have dataflow
   // from the caller operands.
-  if (call_graph_node.context() == CallContext::kParallel ||
+  if (call_graph_node.context() == CallContext::kEmbedded ||
       call_graph_node.caller_callsites().empty()) {
     return false;
   }
-  CHECK_EQ(call_graph_node.context(), CallContext::kSequential);
+  CHECK_EQ(call_graph_node.context(), CallContext::kControlFlow);
 
   std::vector<const InstructionValueSet*> inputs;
   bool need_phi = false;
@@ -1187,7 +1187,7 @@ void HloDataflowAnalysis::Propagate() {
         for (HloComputation* called_computation : user->called_computations()) {
           const CallGraphNode& call_graph_node =
               call_graph_->GetNode(called_computation);
-          if (call_graph_node.context() == CallContext::kSequential) {
+          if (call_graph_node.context() == CallContext::kControlFlow) {
             for (int64_t operand_number : user->OperandIndices(instruction)) {
               add_to_worklist(
                   called_computation->parameter_instruction(operand_number));
@@ -1285,7 +1285,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
                 computation->name());
           }
           if (call_graph_node.caller_callsites().empty() ||
-              call_graph_node.context() == CallContext::kParallel) {
+              call_graph_node.context() == CallContext::kEmbedded) {
             // Parameters of computations called in a parallel context (eg, map
             // and reduce) as well as parameters of dead computations define all
             // values in their output. Otherwise the values of the parameter

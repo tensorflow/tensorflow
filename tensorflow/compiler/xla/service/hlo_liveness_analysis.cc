@@ -198,7 +198,7 @@ void PropagateLivenessToParameterCallers(
   CHECK_EQ(instruction->opcode(), HloOpcode::kParameter);
   const CallGraphNode& call_graph_node =
       call_graph->GetNode(instruction->parent());
-  if (call_graph_node.context() == CallContext::kSequential) {
+  if (call_graph_node.context() == CallContext::kControlFlow) {
     for (const CallSite& callsite : call_graph_node.caller_callsites()) {
       if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
         auto* xla_while = callsite.instruction();
@@ -228,7 +228,7 @@ void PropagateLivenessThroughControlFlow(
     Workset* workset, CallGraph* call_graph) {
   const CallGraphNode& call_graph_node =
       call_graph->GetNode(instruction->parent());
-  if (call_graph_node.context() == CallContext::kSequential) {
+  if (call_graph_node.context() == CallContext::kControlFlow) {
     for (const CallSite& callsite : call_graph_node.caller_callsites()) {
       HloInstruction* caller = callsite.instruction();
       if (caller->opcode() == HloOpcode::kWhile) {

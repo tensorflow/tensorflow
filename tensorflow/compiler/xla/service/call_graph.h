@@ -30,17 +30,14 @@ namespace xla {
 
 // The context in which a computation is called by another computation.
 enum class CallContext {
-  // In a parallel context the computation is applied to each element of the
-  // array argument(s). kMap and kReduce instructions call computations in
-  // parallel context.
-  kParallel,
+  // In an embedded call context, the body of the function cannot allocate
+  // buffers.
+  kEmbedded,
 
-  // In a sequential context the computation is applied to the entire argument
-  // shape(s). kCall and kWhile (body and condition) call computations in
-  // sequential context.
-  kSequential,
+  // A control flow call context can allocate buffers.
+  kControlFlow,
 
-  // A computation is called from both a parallel and sequential context.
+  // A computation is called from both an embedded and control flow context.
   kBoth,
 
   // During call graph construction kNone is used to indicate that the context

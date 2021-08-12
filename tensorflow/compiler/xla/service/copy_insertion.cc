@@ -1866,10 +1866,10 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
   // Identify copies which must be added at root instructions
   for (HloComputation* computation : module->computations()) {
     const CallGraphNode& node = call_graph.GetNode(computation);
-    if (node.context() == CallContext::kParallel) {
+    if (node.context() == CallContext::kEmbedded) {
       continue;
     }
-    TF_RET_CHECK(node.context() == CallContext::kSequential);
+    TF_RET_CHECK(node.context() == CallContext::kControlFlow);
 
     SpecialCaseCopyPolicy policy =
         GetSpecialCaseCopyPolicy(node, module, computation);

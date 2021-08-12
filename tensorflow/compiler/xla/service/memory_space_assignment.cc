@@ -1428,10 +1428,10 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
       bool allow_no_copy_alternate_mem_allocation = true;
       absl::optional<int64_t> earliest_prefetch_time = absl::nullopt;
 
-      // Sequential calls include kWhile, kCall, and kConditional opcodes.
+      // Control flow  calls include kWhile, kCall, and kConditional opcodes.
       bool is_sequential_call =
           (GetInstructionCallContext(hlo_use.instruction->opcode()) ==
-           CallContext::kSequential);
+           CallContext::kControlFlow);
       if (is_sequential_call) {
         for (const HloComputation* called_computation :
              hlo_use.instruction->called_computations()) {

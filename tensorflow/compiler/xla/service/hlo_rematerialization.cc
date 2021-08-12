@@ -1830,7 +1830,7 @@ StatusOr<int64_t> HloRematerialization::CalledComputationsMemoryUsage(
     const HloInstruction* instruction) const {
   const CallSite* callsite =
       call_graph_->GetNode(instruction->parent()).GetCallSite(instruction);
-  if (callsite == nullptr || callsite->context() == CallContext::kParallel) {
+  if (callsite == nullptr || callsite->context() == CallContext::kEmbedded) {
     return 0;
   }
   int64_t callee_usage = 0;
@@ -1960,7 +1960,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
     }
     const CallSite* callsite = call_graph_node.GetCallSite(instruction);
     if (callsite != nullptr &&
-        callsite->context() == CallContext::kSequential &&
+        callsite->context() == CallContext::kControlFlow &&
         memory_tracker.memory_usage() + callee_usage > memory_limit_bytes) {
       // Memory usage exceeds the limit. Try to rematerialize any
       // subcomputation(s) that this instruction calls.
@@ -2068,7 +2068,7 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
   call_graph_ = CallGraph::Build(module);
   TF_RETURN_IF_ERROR(call_graph_->VisitNodes(
       [this, module](const CallGraphNode& node) -> Status {
-        if (node.context() == CallContext::kSequential) {
+        if (node.context() == CallContext::kControlFlow) {
           TF_ASSIGN_OR_RETURN(
               computation_peak_memory_[node.computation()],
               ComputePeakMemory(node.computation(), module->schedule().sequence(
