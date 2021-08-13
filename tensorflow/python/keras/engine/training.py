@@ -87,11 +87,6 @@ try:
   import h5py
 except ImportError:
   h5py = None
-
-try:
-  import yaml
-except ImportError:
-  yaml = None
 # pylint: enable=g-import-not-at-top
 
 
@@ -2416,6 +2411,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def to_yaml(self, **kwargs):
     """Returns a yaml string containing the network configuration.
 
+    Note: Since TF 2.6, this method is no longer supported and will raise a
+    RuntimeError.
+
     To load a network from a yaml save file, use
     `keras.models.model_from_yaml(yaml_string, custom_objects={})`.
 
@@ -2431,12 +2429,12 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         A YAML string.
 
     Raises:
-        ImportError: if yaml module is not found.
+        RuntimeError: announces that the method poses a security risk
     """
-    if yaml is None:
-      raise ImportError(
-          'Requires yaml module installed (`pip install pyyaml`).')
-    return yaml.dump(self._updated_config(), **kwargs)
+    raise RuntimeError(
+        'Method `model.to_yaml()` has been removed due to security risk of '
+        'arbitrary code execution. Please use `model.to_json()` instead.'
+    )
 
   def reset_states(self):
     for layer in self.layers:

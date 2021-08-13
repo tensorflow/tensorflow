@@ -83,6 +83,7 @@ foreach fromToBinPair = [[TF_AddV2Op, HLOClient_BroadcastAddOp],
                          [TF_MaximumOp, HLOClient_BroadcastMaxOp],
                          [TF_MinimumOp, HLOClient_BroadcastMinOp],
                          [TF_MulOp, HLOClient_BroadcastMulOp],
+                         [TF_NextAfterOp, HLOClient_BroadcastNextAfterOp],
                          [TF_PolygammaOp, HLOClient_BroadcastPolygammaOp],
                          [TF_PowOp, HLOClient_BroadcastPowOp],
                          [TF_RealDivOp, HLOClient_BroadcastDivOp],
@@ -345,7 +346,7 @@ def : Pat<(TF_PadV2Op $input, (ConstantLikeMatcher ElementsAttr:$padding), $c),
 // Identity op patterns.
 //===----------------------------------------------------------------------===//
 
-foreach src = [TF_IdentityOp, TF_StopGradientOp] in
+foreach src = [TF_IdentityOp, TF_StopGradientOp, TF__EagerConstOp] in
   def : Pat<(src $op), (replaceWithValue $op)>;
 
 // TODO(b/32223192): Support CheckNumerics in HLO.

@@ -68,6 +68,7 @@ Status CompileTFMLIRToBEF(const TfrtFunctionCompileOptions& options,
   pass_options.enable_optimizer = options.enable_optimizer;
   pass_options.target_tpu = true;
   pass_options.tpu_use_core_selector = options.tpu_use_core_selector;
+  pass_options.tpu_use_bundled_transfer = options.tpu_use_bundled_transfer;
   pass_options.tpu_lower_to_fallback = options.tpu_lower_to_fallback;
   pass_options.tpu_transfer_result_to_host =
       options.tpu_transfer_result_to_host;

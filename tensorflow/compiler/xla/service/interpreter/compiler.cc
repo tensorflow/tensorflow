@@ -89,8 +89,7 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
   pipeline.AddPass<LayoutAssignment>(
-      hlo_module->mutable_entry_computation_layout(),
-      LayoutAssignment::InstructionCanChangeLayout);
+      hlo_module->mutable_entry_computation_layout());
 
   return pipeline.Run(hlo_module).status();
 }

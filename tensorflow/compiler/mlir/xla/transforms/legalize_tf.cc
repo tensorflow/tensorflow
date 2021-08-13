@@ -235,15 +235,15 @@ int64_t GetDimSize(Type ty, int64_t index) {
 
 template <typename T, int num_dims>
 tensorflow::TensorShape ToTensorShape(llvm::ArrayRef<T> sizes) {
-  return tensorflow::TensorShape(llvm::SmallVector<tensorflow::int64, num_dims>(
-      sizes.begin(), sizes.end()));
+  return tensorflow::TensorShape(
+      llvm::SmallVector<int64_t, num_dims>(sizes.begin(), sizes.end()));
 }
 
 template <typename T, int num_dims>
 tensorflow::TensorShape ToTensorShape(
     llvm::iterator_range<DenseElementsAttr::ElementIterator<T>> sizes) {
-  return tensorflow::TensorShape(llvm::SmallVector<tensorflow::int64, num_dims>(
-      sizes.begin(), sizes.end()));
+  return tensorflow::TensorShape(
+      llvm::SmallVector<int64_t, num_dims>(sizes.begin(), sizes.end()));
 }
 
 // Returns int, float, or complex scalar DenseElementsAttr attribute with the
@@ -1121,7 +1121,11 @@ class ConvertBiasAddOp : public OpRewritePattern<TF::BiasAddOp> {
         data_format, op.value().getType().cast<RankedTensorType>());
     auto bias_broadcast = Broadcast1DToFeatureDim(loc, op.value(), op.bias(),
                                                   feature_dim, rewriter);
-    rewriter.replaceOpWithNewOp<AddOp>(op, op.value(), bias_broadcast);
+    Value add = rewriter.create<AddOp>(loc, op.value(), bias_broadcast);
+    if (add.getType() != op.getType()) {
+      add = rewriter.create<tensor::CastOp>(loc, op.getType(), add);
+    }
+    rewriter.replaceOp(op, {add});
     return success();
   }
 };
@@ -2323,17 +2327,6 @@ class ConvertIdentityNOp : public OpRewritePattern<TF::IdentityNOp> {
   }
 };
 
-// Bypass _EagerConst
-class ConvertEagerConstOp : public OpRewritePattern<TF::_EagerConstOp> {
- public:
-  using OpRewritePattern<TF::_EagerConstOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(TF::_EagerConstOp op,
-                                PatternRewriter &rewriter) const override {
-    rewriter.replaceOp(op, op.getOperand());
-    return success();
-  }
-};
-
 template <typename OpTy>
 class ConvertFFTOp : public OpRewritePattern<OpTy> {
  public:
@@ -2747,8 +2740,7 @@ using ConvertFusedBatchNormV2Op =
 using ConvertFusedBatchNormV3Op =
     ConvertFusedBatchNormBase<TF::FusedBatchNormV3Op>;
 
-using PaddingArray =
-    std::vector<std::pair<tensorflow::int64, tensorflow::int64>>;
+using PaddingArray = std::vector<std::pair<int64_t, int64_t>>;
 
 // Returns padding values for ReduceWindow op as a vector of pairs.
 //
@@ -2762,8 +2754,7 @@ static PaddingArray GetReduceWindowPaddingAsArray(
     return PaddingArray(num_dims, std::make_pair(0, 0));
   }
   assert(padding == "SAME");
-  llvm::SmallVector<tensorflow::int64, num_dims> input_shape, window_shape,
-      strides;
+  llvm::SmallVector<int64_t, num_dims> input_shape, window_shape, strides;
   input_shape.reserve(input_dims.size());
   window_shape.reserve(window_shape.size());
   strides.reserve(window_strides.size());
@@ -5045,7 +5036,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
         strides_attr.template getValues<int64_t>().begin(),
         strides_attr.template getValues<int64_t>().end()};
 
-    std::vector<tensorflow::int64> explicit_paddings;
+    std::vector<int64_t> explicit_paddings;
     if (padding == tensorflow::Padding::EXPLICIT) {
       // EXPLICIT padding mode and the associated attribute is limited to
       // Conv2DBackpropInput. So, fetch attribute by identifier instead of the
@@ -5228,7 +5219,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
         strides_attr.template getValues<int64_t>().begin(),
         strides_attr.template getValues<int64_t>().end()};
 
-    std::vector<tensorflow::int64> explicit_paddings;
+    std::vector<int64_t> explicit_paddings;
     if (padding == tensorflow::Padding::EXPLICIT) {
       // EXPLICIT padding mode and the associated attribute is limited to
       // Conv2DBackpropFilter. So, fetch attribute by identifier instead of the
@@ -7347,6 +7338,9 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     // within MLIR.
     TypeID::get<TF::ConstOp>(),
 
+    // AssertOp with string types are not supported by the fallback.
+    TypeID::get<TF::AssertOp>(),
+
     // TF2XLA fallback pattern doesn't support these op as MLIR hlo builder
     // doesn't override the necessary builder methods. These ops have simple
     // lowering pattern so this should be safe.
@@ -7486,7 +7480,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertFusedBatchNormV3Op,
     ConvertInfeedDequeueTupleOp,
     ConvertIdentityNOp,
-    ConvertEagerConstOp,
     ConvertInplaceUpdateOp,
     ConvertLinSpaceOp,
     ConvertMaxOp,

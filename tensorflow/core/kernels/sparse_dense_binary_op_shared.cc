@@ -84,8 +84,8 @@ class SparseDenseBinaryOpShared : public OpKernel {
             "The first dimension of values and indices should match. (",
             values_t->dim_size(0), " vs. ", indices_t->dim_size(0), ")"));
 
-    const auto indices_mat = indices_t->matrix<int64>();
-    const auto shape_vec = shape_t->vec<int64>();
+    const auto indices_mat = indices_t->matrix<int64_t>();
+    const auto shape_vec = shape_t->vec<int64_t>();
     const auto lhs_dims = BCast::FromShape(TensorShape(shape_vec));
     const auto rhs_dims = BCast::FromShape(dense_t->shape());
     BCast b(lhs_dims, rhs_dims, false);  // false for keeping the same num dims.

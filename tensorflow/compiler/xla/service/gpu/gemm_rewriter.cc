@@ -56,7 +56,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       const Shape &output_shape = instr->shape();
       int64_t batch_size = std::accumulate(output_shape.dimensions().begin(),
                                            output_shape.dimensions().end() - 2,
-                                           1, std::multiplies<int64>());
+                                           1, std::multiplies<int64_t>());
       std::unique_ptr<HloInstruction> gemm_call =
           HloInstruction::CreateCustomCall(output_shape, {lhs, rhs},
                                            kGemmCallTarget);
@@ -68,12 +68,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           instr->dot_dimension_numbers();
       gemm_config.set_batch_size(batch_size);
 
-      int64 lhs_batch_dims_size =
+      int64_t lhs_batch_dims_size =
           instr->dot_dimension_numbers().lhs_batch_dimensions_size();
-      int64 lhs_stride = lhs->shape().dimensions(lhs_batch_dims_size) *
-                         lhs->shape().dimensions(lhs_batch_dims_size + 1);
-      int64 rhs_stride = rhs->shape().dimensions(lhs_batch_dims_size) *
-                         rhs->shape().dimensions(lhs_batch_dims_size + 1);
+      int64_t lhs_stride = lhs->shape().dimensions(lhs_batch_dims_size) *
+                           lhs->shape().dimensions(lhs_batch_dims_size + 1);
+      int64_t rhs_stride = rhs->shape().dimensions(lhs_batch_dims_size) *
+                           rhs->shape().dimensions(lhs_batch_dims_size + 1);
 
       gemm_config.set_lhs_stride(lhs_stride);
       gemm_config.set_rhs_stride(rhs_stride);

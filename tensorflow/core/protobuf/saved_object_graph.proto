@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "google/protobuf/any.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/framework/variable.proto";
@@ -64,6 +65,18 @@ message SavedObject {
   }
 
   map<string, SaveableObject> saveable_objects = 11;
+
+  // The fields below are filled when the user serializes a registered Trackable
+  // class. Registered classes may save additional metadata and supersede the
+  // default loading process where nodes are recreated from the proto.
+  //
+  // The name of the registered class of the form "{package}.{class_name}".
+  // This field is used to search for the registered class at loading time.
+  string registered_name = 13;
+  // The user-generated proto storing metadata for this object, to be passed to
+  // the registered classes's _deserialize_from_proto method when this object is
+  // loaded from the SavedModel.
+  google.protobuf.Any serialized_user_proto = 14;
 }
 
 // A SavedUserObject is an object (in the object-oriented language of the
@@ -166,7 +179,6 @@ message SavedVariable {
   // This is only supported by experimental loaders at the moment.
   repeated SavedVariable experimental_distributed_variable_components = 8;
 }
-
 
 // Represents `FunctionSpec` used in `Function`. This represents a
 // function that has been wrapped as a TensorFlow `Function`.

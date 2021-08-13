@@ -101,7 +101,7 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
 
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &output));
-  auto output_dataset_id = output->tensor<int64, 0>();
+  auto output_dataset_id = output->tensor<int64_t, 0>();
   output_dataset_id() = dataset_id;
 }
 

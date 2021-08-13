@@ -74,12 +74,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-// These are currently aliases and the alias will be removed, verified
-// equivalent until then.
-// TODO(b/178519687): Remove once addressed.
-static_assert(std::is_same<tensorflow::int64, std::int64_t>::value,
-              "tensorflow::int64 is expected to match std::int64_t");
-
 namespace mlir {
 namespace TF {
 
@@ -332,6 +326,22 @@ TensorFlowDialect::~TensorFlowDialect() {
   delete fallback_effect_op_interface_;
 }
 
+Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
+  StringRef spec = parser.getFullSymbolSpec();
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  parser.emitError(
+      loc, "tf dialect has no types, potentially meant !tf_type." + spec);
+  return nullptr;
+}
+
+Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
+                                            Type type) const {
+  StringRef spec = parser.getFullSymbolSpec();
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  parser.emitError(
+      loc, "tf dialect has no attributes, potentially meant #tf_type." + spec);
+  return nullptr;
+}
 
 Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,
                                                   Attribute value, Type type,

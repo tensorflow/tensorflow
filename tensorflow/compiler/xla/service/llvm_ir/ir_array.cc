@@ -154,7 +154,7 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
 }
 
 IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
-                      absl::Span<int64 const> dimensions,
+                      absl::Span<int64_t const> dimensions,
                       llvm::Type* index_type)
     : Index(multidim, ShapeUtil::MakeShape(/*arbitrary*/ PRED, dimensions),
             index_type) {}
@@ -251,7 +251,7 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     // We compute the source indices in each common factor from only the target
     // indices in the same common factor.
     for (ssize_t k = common_factors.size() - 2; k >= 0; --k) {
-      absl::Span<int64 const> dimensions =
+      absl::Span<int64_t const> dimensions =
           AsInt64Slice(output_shape.dimensions())
               .subspan(common_factors[k].second,
                        common_factors[k + 1].second - common_factors[k].second);
@@ -291,8 +291,8 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfSlice(
-    const Shape& operand_shape, absl::Span<const int64> starts,
-    absl::Span<const int64> strides, llvm::IRBuilder<>* builder) const {
+    const Shape& operand_shape, absl::Span<const int64_t> starts,
+    absl::Span<const int64_t> strides, llvm::IRBuilder<>* builder) const {
   std::vector<llvm::Value*> source_multi_index(multidim_.size());
   for (int i = 0; i < multidim_.size(); ++i) {
     int64_t stride = strides[i];
@@ -310,7 +310,7 @@ IrArray::Index IrArray::Index::SourceIndexOfSlice(
 
 IrArray::Index IrArray::Index::SourceIndexOfTranspose(
     const Shape& shape, const Shape& operand_shape,
-    absl::Span<const int64> dimension_mapping) const {
+    absl::Span<const int64_t> dimension_mapping) const {
   std::vector<llvm::Value*> operand_multidim_index =
       PermuteInverse(multidim(), dimension_mapping);
 
@@ -362,7 +362,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
 
 IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
     const Shape& shape, const Shape& operand_shape,
-    absl::Span<const int64> dimension_mapping,
+    absl::Span<const int64_t> dimension_mapping,
     llvm::IRBuilder<>* builder) const {
   int64_t rank = operand_shape.rank();
   std::vector<llvm::Value*> source_index(rank);
@@ -376,7 +376,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
   // High-level idea: we can reuse the linear index if the broadcasted
   // dimensions are contiguous, and this part of the operation is a bitcast.
   // The other dimensions can be masked out with a div and a mod operation.
-  std::vector<int64> logical_to_physical =
+  std::vector<int64_t> logical_to_physical =
       LayoutUtil::MakeLogicalToPhysical(shape.layout());
   int64_t output_rank = shape.rank();
   // The minimum physical dimension that is broadcasted.
@@ -396,7 +396,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
     return Index(source_index, operand_shape, index_type_);
   }
   // Check if the mapped dimensions are a bitcast.
-  std::vector<int64> operand_logical_to_physical =
+  std::vector<int64_t> operand_logical_to_physical =
       LayoutUtil::MakeLogicalToPhysical(operand_shape.layout());
   for (int64_t i = 0; i < rank; ++i) {
     if (operand_logical_to_physical[i] !=
@@ -423,7 +423,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
   return Index(source_index, linear, operand_shape, index_type_);
 }
 
-llvm::Value* IrArray::Index::Linearize(absl::Span<const int64> dimensions,
+llvm::Value* IrArray::Index::Linearize(absl::Span<const int64_t> dimensions,
                                        llvm::IRBuilder<>* builder) const {
   // Each dimension is multiplied by the product of the sizes of all
   // earlier dimensions and added to the accumulator logical_linear_index.
@@ -562,7 +562,7 @@ bool IrArray::Index::ShapeIsCompatible(const Shape& a, const Shape& b) {
   const auto get_strides = [](const Shape& shape) {
     int rank = shape.dimensions().size();
     int64_t stride = 1;
-    std::vector<int64> strides;
+    std::vector<int64_t> strides;
     for (int i = 0; i < rank; i++) {
       auto dim = shape.dimensions(shape.layout().minor_to_major(i));
       if (dim != 1) {

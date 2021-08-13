@@ -144,7 +144,7 @@ Flag::Flag(const char* name, tensorflow::int32* dst, const string& usage_text,
       int32_default_for_display_(*dst),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, tensorflow::int64* dst, const string& usage_text,
+Flag::Flag(const char* name, int64_t* dst, const string& usage_text,
            bool* dst_updated)
     : name_(name),
       type_(TYPE_INT64),

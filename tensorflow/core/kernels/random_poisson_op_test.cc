@@ -26,7 +26,7 @@ namespace {
 Tensor VecShape(int64_t v) {
   if (v >= std::numeric_limits<int32>::max()) {
     Tensor shape(DT_INT64, TensorShape({1}));
-    shape.vec<int64>()(0) = v;
+    shape.vec<int64_t>()(0) = v;
     return shape;
   } else {
     Tensor shape(DT_INT32, TensorShape({1}));
@@ -57,21 +57,21 @@ Tensor VecLam64(int64_t n, int magnitude) {
   return lams;
 }
 
-#define BM_Poisson(DEVICE, BITS, MAGNITUDE)                                  \
-  static void BM_##DEVICE##_RandomPoisson_lam_##MAGNITUDE##_##BITS(          \
-      ::testing::benchmark::State& state) {                                  \
-    const int nsamp = state.range(0);                                        \
-    const int nlam = state.range(1);                                         \
-                                                                             \
-    Graph* g = new Graph(OpRegistry::Global());                              \
-    test::graph::RandomPoisson(                                              \
-        g, test::graph::Constant(g, VecShape(nsamp)),                        \
-        test::graph::Constant(g, VecLam##BITS(nlam, MAGNITUDE)));            \
-    test::Benchmark(#DEVICE, g, /*old_benchmark_api*/ false).Run(state);     \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * nsamp * \
-                            nlam);                                           \
-  }                                                                          \
-  BENCHMARK(BM_##DEVICE##_RandomPoisson_lam_##MAGNITUDE##_##BITS)            \
+#define BM_Poisson(DEVICE, BITS, MAGNITUDE)                                    \
+  static void BM_##DEVICE##_RandomPoisson_lam_##MAGNITUDE##_##BITS(            \
+      ::testing::benchmark::State& state) {                                    \
+    const int nsamp = state.range(0);                                          \
+    const int nlam = state.range(1);                                           \
+                                                                               \
+    Graph* g = new Graph(OpRegistry::Global());                                \
+    test::graph::RandomPoisson(                                                \
+        g, test::graph::Constant(g, VecShape(nsamp)),                          \
+        test::graph::Constant(g, VecLam##BITS(nlam, MAGNITUDE)));              \
+    test::Benchmark(#DEVICE, g, /*old_benchmark_api*/ false).Run(state);       \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * nsamp * \
+                            nlam);                                             \
+  }                                                                            \
+  BENCHMARK(BM_##DEVICE##_RandomPoisson_lam_##MAGNITUDE##_##BITS)              \
       ->RangePair(1, 64, 2, 50);
 
 BM_Poisson(cpu, 32, 1);

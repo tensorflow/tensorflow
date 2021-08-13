@@ -39,7 +39,7 @@ namespace {
 
 using ::testing::UnorderedElementsAre;
 
-int64 CountCopies(const HloComputation& computation) {
+int64_t CountCopies(const HloComputation& computation) {
   int64_t count = 0;
   for (const auto& instruction : computation.instructions()) {
     if (instruction->opcode() == HloOpcode::kCopy) {
@@ -49,7 +49,7 @@ int64 CountCopies(const HloComputation& computation) {
   return count;
 }
 
-int64 CountCopies(const HloModule& module) {
+int64_t CountCopies(const HloModule& module) {
   int64_t count = 0;
   for (const auto& computation : module.computations()) {
     count += CountCopies(*computation);
@@ -57,7 +57,7 @@ int64 CountCopies(const HloModule& module) {
   return count;
 }
 
-int64 CountControlEdges(const HloComputation& computation) {
+int64_t CountControlEdges(const HloComputation& computation) {
   int64_t count = 0;
   for (const auto& instruction : computation.instructions()) {
     count += instruction->control_successors().size();
@@ -65,7 +65,7 @@ int64 CountControlEdges(const HloComputation& computation) {
   return count;
 }
 
-int64 CountControlEdges(const HloModule& module) {
+int64_t CountControlEdges(const HloModule& module) {
   int64_t count = 0;
   for (const auto& computation : module.computations()) {
     count += CountControlEdges(*computation);
@@ -3257,6 +3257,32 @@ ENTRY hlo_runner_test_0.1 {
                           ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
   EXPECT_EQ(CountCopies(*module), 4);
+}
+
+TEST_F(CopyInsertionTest, KeepCopyOfBroadcast) {
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+ENTRY main {
+  param = f32[128,1,128] parameter(0)
+  negate = f32[128,1,128] negate(param)
+  constant.1 = f32[] constant(0)
+  broadcast.6 = f32[128,1,128] broadcast(constant.1), dimensions={}
+  broadcast.7 = f32[128,1,128] broadcast(constant.1), dimensions={}
+  constant.3 = s32[] constant(0)
+  dynamic-update-slice.5 = f32[128,1,128] dynamic-update-slice(broadcast.6, broadcast.7, constant.3, constant.3, constant.3)
+  add1 = f32[128,1,128] add(dynamic-update-slice.5, dynamic-update-slice.5)
+  dynamic-update-slice.4 = f32[128,1,128] dynamic-update-slice(broadcast.6, broadcast.7, constant.3, constant.3, constant.3)
+  add2 = f32[128,1,128] add(dynamic-update-slice.4, dynamic-update-slice.4)
+  tuple = (f32[128,1,128], f32[128,1,128]) tuple(add1, add2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  EXPECT_EQ(CountCopies(*module), 2);
 }
 
 }  // namespace

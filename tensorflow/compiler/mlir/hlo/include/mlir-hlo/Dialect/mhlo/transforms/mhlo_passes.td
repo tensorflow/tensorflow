@@ -147,6 +147,12 @@ def ExpandHloTuplesPass : Pass<"expand-hlo-tuples", "ModuleOp"> {
   let dependentDialects = ["mhlo::MhloDialect"];
 }
 
+def FlattenTuplePass : FunctionPass<"mhlo-flatten-tuple"> {
+  let summary = "Flatten tuples in operands and results of operators that "
+    "support both tuple and variadic type.";
+  let constructor = "createFlattenTuplePass()";
+}
+
 /// Rank specialization passes.
 
 def RankSpecializationClusterPass

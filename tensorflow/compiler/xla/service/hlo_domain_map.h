@@ -67,17 +67,18 @@ class HloDomainMap {
 
   // Retrieves the domain identifier of the instruction, or -1 in case
   // instruction is not found within any domain.
-  int64 GetDomainId(const HloInstruction* instruction) const;
+  int64_t GetDomainId(const HloInstruction* instruction) const;
 
   // Returns the unique id of the domain metadata for the domain the given
   // instruction belongs to. The given instruction must not be a kDomain
   // instruction since each domain instruction is associated with 2 domains.
-  int64 GetDomainMetadataId(const HloInstruction* instruction) const;
+  int64_t GetDomainMetadataId(const HloInstruction* instruction) const;
 
  private:
   // Map used for representing instruction ordering, i.e.
   // order_map[a] < order_map[b] means a must be ordered before b.
-  using InstructionOrderMap = absl::flat_hash_map<const HloInstruction*, int64>;
+  using InstructionOrderMap =
+      absl::flat_hash_map<const HloInstruction*, int64_t>;
 
   HloDomainMap(string domain_kind) : domain_kind_(std::move(domain_kind)) {}
 
@@ -119,8 +120,8 @@ class HloDomainMap {
 
   string domain_kind_;
   std::vector<std::unique_ptr<DomainMetadata::Domain>> instruction_domains_;
-  absl::flat_hash_map<const HloInstruction*, int64> instruction_to_domain_;
-  absl::flat_hash_map<const HloInstruction*, int64> domain_metadata_id_;
+  absl::flat_hash_map<const HloInstruction*, int64_t> instruction_to_domain_;
+  absl::flat_hash_map<const HloInstruction*, int64_t> domain_metadata_id_;
 };
 
 }  // namespace xla

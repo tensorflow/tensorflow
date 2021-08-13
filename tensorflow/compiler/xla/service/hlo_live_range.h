@@ -49,7 +49,7 @@ class HloLiveRange {
   // LogicalTime represents the time in a virtual clock. Each instruction has
   // one monotonically increasing logical time assigned according to the
   // schedule.
-  using LogicalTime = int64;
+  using LogicalTime = int64_t;
 
   struct TimeBound {
     LogicalTime start;
@@ -116,7 +116,8 @@ class HloLiveRange {
   // schedule and store it in the `instruction_schedule` and
   // 'flattened_instruction_sequence`. The end of each computation is tracked in
   // `computation_end_time`.
-  int64 FlattenSchedule(const HloComputation& computation, int64_t start_time);
+  int64_t FlattenSchedule(const HloComputation& computation,
+                          int64_t start_time);
 
   // Based on the flattened schedule, calculate the start and end of each
   // buffer.
@@ -201,7 +202,7 @@ class HloLiveRange {
   // Note there is no overlap of live ranges after normalization.
   void NormalizeAliasedBuffers();
 
-  int64 ComputePeakMemoryMoment() const;
+  int64_t ComputePeakMemoryMoment() const;
 
   const HloSchedule& schedule_;
   const HloAliasAnalysis& alias_analysis_;
@@ -209,7 +210,7 @@ class HloLiveRange {
   bool total_order_scheduled_ = true;
 
   HloInstructionSequence flattened_instruction_sequence_;
-  absl::flat_hash_map<const HloInstruction*, int64> instruction_schedule_;
+  absl::flat_hash_map<const HloInstruction*, int64_t> instruction_schedule_;
   absl::flat_hash_map<const HloComputation*, TimeBound> computation_span_times_;
   absl::flat_hash_map<const HloValue*, TimeBound> buffer_live_ranges_;
   LogicalTime schedule_end_time_;

@@ -42,7 +42,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
   if (t.shape() == TensorShape({})) {
     if ((t.dtype() == DT_INT32 && t.scalar<int32>()() == -1) ||
-        (t.dtype() == DT_INT64 && t.scalar<int64>()() == -1)) {
+        (t.dtype() == DT_INT64 && t.scalar<int64_t>()() == -1)) {
       *out = PartialTensorShape();
       return Status::OK();
     }
@@ -54,7 +54,7 @@ Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
     return PartialTensorShape::MakePartialShape(t.vec<int32>().data(),
                                                 t.NumElements(), out);
   } else if (t.dtype() == DT_INT64) {
-    return PartialTensorShape::MakePartialShape(t.vec<int64>().data(),
+    return PartialTensorShape::MakePartialShape(t.vec<int64_t>().data(),
                                                 t.NumElements(), out);
   }
   return errors::InvalidArgument(
@@ -264,7 +264,7 @@ class TensorListElementShape : public OpKernel {
       if (result->dtype() == DT_INT32) {
         result->scalar<int32>()() = -1;
       } else {
-        result->scalar<int64>()() = -1;
+        result->scalar<int64_t>()() = -1;
       }
     } else {
       OP_REQUIRES_OK(c, c->allocate_output(
@@ -273,7 +273,7 @@ class TensorListElementShape : public OpKernel {
         if (result->dtype() == DT_INT32) {
           result->flat<int32>()(i) = l->element_shape.dim_size(i);
         } else {
-          result->flat<int64>()(i) = l->element_shape.dim_size(i);
+          result->flat<int64_t>()(i) = l->element_shape.dim_size(i);
         }
       }
     }

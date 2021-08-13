@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
@@ -358,7 +359,19 @@ TensorHandleInterface::TensorHandleInterface(Value&& v, CoreRuntime* corert)
       corert_(*corert),
       value_(std::move(v)) {}
 
+TensorHandleInterface::TensorHandleInterface(tensorflow::DataType dtype,
+                                             Value&& v, CoreRuntime* corert)
+    : ImmediateExecutionTensorHandle(kTfrt),
+      dtype_(dtype),
+      corert_(*corert),
+      value_(std::move(v)) {}
+
 tensorflow::DataType TensorHandleInterface::DataType() const {
+  // If dtype_ field is set, use it instead of waiting for the underlying
+  // TensorHandle's metadata to be available.
+  if (dtype_) {
+    return dtype_.getValue();
+  }
   auto metadata = Metadata();
   if (!metadata.hasValue()) {
     LOG(ERROR)
@@ -1257,6 +1270,11 @@ tensorflow::Status OperationInterface::Reset(const char* op,
 
 tensorflow::Status OperationInterface::Execute(
     absl::Span<tensorflow::AbstractTensorHandle*> retvals, int* num_retvals) {
+  tensorflow::profiler::TraceMe trace(
+      [&] {
+        return absl::StrCat("TFRT_Execute:", Name(), " device:", DeviceName());
+      },
+      tensorflow::profiler::TraceMeLevel::kInfo);
   if (custom_device_tensor_handle_count_ > 0) {
     return tensorflow::errors::InvalidArgument(
         "Cannot execute ops that conntains unsupported arg in TFRT.");
@@ -1361,8 +1379,14 @@ tensorflow::Status OperationInterface::Execute(
                          th_ref.GetAsyncTensor()->IsError() && s.ok()))
       s = CreateTfErrorStatus(th_ref.GetAsyncTensor()->GetError());
 
-    retvals[i] =
-        new TensorHandleInterface(Value(std::move(result_ths[i])), corert);
+    if (function_state_) {
+      retvals[i] =
+          new TensorHandleInterface(function_state_->GetRetTypes()[i],
+                                    Value(std::move(result_ths[i])), corert);
+    } else {
+      retvals[i] =
+          new TensorHandleInterface(Value(std::move(result_ths[i])), corert);
+    }
   }
 
   return s;
@@ -1466,6 +1490,10 @@ tensorflow::Status OperationInterface::Initialize() {
   tfrt::SmallVector<const tfrt::Device*, 4> input_devices;
   input_devices.reserve(args_.size());
   for (auto& arg : args_) {
+    auto arg_th = down_cast<TensorHandleInterface*>(arg.get())->Handle();
+    if (!arg_th.IsDeviceAvailable()) {
+      corert->GetHostContext()->Await(arg_th.GetAsyncDevice().CopyRCRef());
+    }
     input_devices.push_back(down_cast<TensorHandleInterface*>(arg.get())
                                 ->Handle()
                                 .GetAvailableDevice()

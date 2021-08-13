@@ -115,7 +115,7 @@ class BoostedTreesCreateQuantileStreamResourceOp : public OpKernel {
 
     const Tensor* num_streams_t;
     OP_REQUIRES_OK(context, context->input(kNumStreamsName, &num_streams_t));
-    int64_t num_streams = num_streams_t->scalar<int64>()();
+    int64_t num_streams = num_streams_t->scalar<int64_t>()();
     OP_REQUIRES(context, num_streams >= 0,
                 errors::InvalidArgument(
                     "Num_streams input cannot be a negative integer"));
@@ -131,7 +131,7 @@ class BoostedTreesCreateQuantileStreamResourceOp : public OpKernel {
  private:
   // An upper bound on the number of entries that the summaries might have
   // for a feature.
-  int64 max_elements_;
+  int64_t max_elements_;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -211,7 +211,7 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
   }
 
  private:
-  int64 num_features_;
+  int64_t num_features_;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -272,7 +272,7 @@ class BoostedTreesFlushQuantileSummariesOp : public OpKernel {
   }
 
  private:
-  int64 num_features_;
+  int64_t num_features_;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -385,7 +385,7 @@ class BoostedTreesQuantileStreamResourceDeserializeOp : public OpKernel {
   }
 
  private:
-  int64 num_features_;
+  int64_t num_features_;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -413,7 +413,7 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
 
     const Tensor* num_buckets_t;
     OP_REQUIRES_OK(context, context->input(kNumBucketsName, &num_buckets_t));
-    const int64_t num_buckets = num_buckets_t->scalar<int64>()();
+    const int64_t num_buckets = num_buckets_t->scalar<int64_t>()();
     const int64_t num_streams = stream_resource->num_streams();
 
     auto do_quantile_flush = [&](const int64_t begin, const int64_t end) {
@@ -496,7 +496,7 @@ class BoostedTreesQuantileStreamResourceGetBucketBoundariesOp
   }
 
  private:
-  int64 num_features_;
+  int64_t num_features_;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -574,7 +574,7 @@ class BoostedTreesBucketizeOp : public OpKernel {
   }
 
  private:
-  int64 num_features_;
+  int64_t num_features_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BoostedTreesBucketize").Device(DEVICE_CPU),

@@ -22,7 +22,9 @@ cc_library(
         "iostream.cc",
     ],
     deps = [
+        ":none",
         ":string",
+        ":tensor_spec",
     ],
 )
 
@@ -32,8 +34,10 @@ tf_cc_test(
     srcs = ["iostream_test.cc"],
     deps = [
         ":iostream",
+        ":none",
         ":scalars",
         ":string",
+        ":tensor_spec",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -75,5 +79,51 @@ tf_cc_test(
         ":string",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "none",
+    srcs = [
+        "none.cc",
+    ],
+    hdrs = [
+        "none.h",
+    ],
+)
+
+tf_cc_test(
+    name = "none_test",
+    size = "small",
+    srcs = ["none_test.cc"],
+    deps = [
+        ":none",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+cc_library(
+    name = "tensor_spec",
+    hdrs = [
+        "tensor_spec.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "tensor_spec_test",
+    size = "small",
+    srcs = ["tensor_spec_test.cc"],
+    deps = [
+        ":iostream",  # Necessary for absl::VerifyTypeImplementsAbslHashCorrectly.
+        ":tensor_spec",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/hash:hash_testing",
     ],
 )

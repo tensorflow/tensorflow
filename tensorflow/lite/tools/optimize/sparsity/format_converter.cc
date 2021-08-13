@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 namespace tflite {
@@ -213,32 +214,68 @@ TfLiteStatus FormatConverter<T>::DenseToSparse(const T* src_data) {
 }
 
 template <typename T>
+FormatConverter<T>::FormatConverter(
+    const std::vector<int>& shape, const std::vector<int>& traversal_order,
+    const std::vector<TfLiteDimensionType>& format,
+    const std::vector<int>& dense_size,
+    const std::vector<std::vector<int>>& segments,
+    const std::vector<std::vector<int>>& indices,
+    const std::vector<int>& block_map) {
+  InitSparseToDenseConverter(shape, traversal_order, format, dense_size,
+                             segments, indices, block_map);
+}
+
+template <typename T>
 FormatConverter<T>::FormatConverter(const std::vector<int>& shape,
-                                    const TfLiteSparsity& sparsity)
-    : dense_shape_(shape) {
-  dense_size_ = 1;
-  for (int i = 0; i < shape.size(); i++) {
-    dense_size_ *= shape[i];
+                                    const TfLiteSparsity& sparsity) {
+  auto traversal_order = TfLiteIntArrayToVector(sparsity.traversal_order);
+  auto block_map = TfLiteIntArrayToVector(sparsity.block_map);
+
+  std::vector<TfLiteDimensionType> format(sparsity.dim_metadata_size);
+  std::vector<int> dense_size(sparsity.dim_metadata_size);
+  std::vector<std::vector<int>> segments(sparsity.dim_metadata_size);
+  std::vector<std::vector<int>> indices(sparsity.dim_metadata_size);
+  for (int i = 0; i < sparsity.dim_metadata_size; i++) {
+    format[i] = sparsity.dim_metadata[i].format;
+    dense_size[i] = sparsity.dim_metadata[i].dense_size;
+    segments[i] =
+        TfLiteIntArrayToVector(sparsity.dim_metadata[i].array_segments);
+    indices[i] = TfLiteIntArrayToVector(sparsity.dim_metadata[i].array_indices);
   }
 
-  traversal_order_ = TfLiteIntArrayToVector(sparsity.traversal_order);
-  block_map_ = TfLiteIntArrayToVector(sparsity.block_map);
+  InitSparseToDenseConverter(shape, std::move(traversal_order),
+                             std::move(format), std::move(dense_size),
+                             std::move(segments), std::move(indices),
+                             std::move(block_map));
+}
 
-  format_.resize(sparsity.dim_metadata_size);
-  dim_metadata_.resize(2 * sparsity.dim_metadata_size);
-  for (int i = 0; i < sparsity.dim_metadata_size; i++) {
-    format_[i] = sparsity.dim_metadata[i].format;
+template <typename T>
+void FormatConverter<T>::InitSparseToDenseConverter(
+    std::vector<int> shape, std::vector<int> traversal_order,
+    std::vector<TfLiteDimensionType> format, std::vector<int> dense_size,
+    std::vector<std::vector<int>> segments,
+    std::vector<std::vector<int>> indices, std::vector<int> block_map) {
+  dense_shape_ = std::move(shape);
+  traversal_order_ = std::move(traversal_order);
+  block_map_ = std::move(block_map);
+  format_ = std::move(format);
+
+  dense_size_ = 1;
+  for (int i = 0; i < dense_shape_.size(); i++) {
+    dense_size_ *= dense_shape_[i];
+  }
+
+  dim_metadata_.resize(2 * format_.size());
+  for (int i = 0; i < format_.size(); i++) {
     if (format_[i] == kTfLiteDimDense) {
-      dim_metadata_[2 * i] = {sparsity.dim_metadata[i].dense_size};
+      dim_metadata_[2 * i] = {dense_size[i]};
     } else {
-      dim_metadata_[2 * i] =
-          TfLiteIntArrayToVector(sparsity.dim_metadata[i].array_segments);
-      dim_metadata_[2 * i + 1] =
-          TfLiteIntArrayToVector(sparsity.dim_metadata[i].array_indices);
+      dim_metadata_[2 * i] = std::move(segments[i]);
+      dim_metadata_[2 * i + 1] = std::move(indices[i]);
     }
   }
 
-  int original_rank = shape.size();
+  int original_rank = dense_shape_.size();
   int block_dim = 0;
 
   blocked_shape_.resize(original_rank);
@@ -246,11 +283,11 @@ FormatConverter<T>::FormatConverter(const std::vector<int>& shape,
   for (int i = 0; i < original_rank; i++) {
     if (block_dim < block_map_.size() && block_map_[block_dim] == i) {
       int orig_dim = traversal_order_[original_rank + block_dim];
-      block_size_[block_dim] = sparsity.dim_metadata[orig_dim].dense_size;
-      blocked_shape_[i] = shape[i] / sparsity.dim_metadata[orig_dim].dense_size;
+      block_size_[block_dim] = dense_size[orig_dim];
+      blocked_shape_[i] = dense_shape_[i] / dense_size[orig_dim];
       block_dim++;
     } else {
-      blocked_shape_[i] = shape[i];
+      blocked_shape_[i] = dense_shape_[i];
     }
   }
 }

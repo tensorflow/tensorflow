@@ -59,6 +59,7 @@ class DynamismInferenceTest : public ValueInferenceTest {
 
   StatusOr<Literal> ComputeDynamismLiteral(XlaOp operand, XlaBuilder* builder,
                                            Layout* output_layout = nullptr) {
+    TF_RETURN_IF_ERROR(builder->first_error());
     ValueInference value_inference(builder);
     TF_ASSIGN_OR_RETURN(auto literal_slice,
                         value_inference.AnalyzeIsDynamic(operand));
@@ -136,6 +137,34 @@ TEST_F(DynamismInferenceTest, ReduceUsedTwice) {
   auto pred = Eq(c, reduce);
   auto result = Select(pred, reduce, c);
   EXPECT_EQ(ComputeDynamismScalar(result, &b, {}).ValueOrDie(), true);
+}
+
+TEST_F(DynamismInferenceTest, VariadicReduce) {
+  XlaBuilder b(TestName());
+  auto c = ConstantR2<int32>(&b, {{0, 0}});
+  auto p = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {1, 2}), "p0");
+  // half_dynamic[0] is static, half_dynamic[0] is dynamic.
+  auto half_dynamic = ConcatInDim(&b, {c, p}, 0);
+  XlaBuilder reduce_add("reduce_add");
+  auto p0 = Parameter(&reduce_add, 0, ShapeUtil::MakeScalarShape(S32), "p");
+  auto p1 = Parameter(&reduce_add, 1, ShapeUtil::MakeScalarShape(S32), "p");
+  auto p2 = Parameter(&reduce_add, 2, ShapeUtil::MakeScalarShape(S32), "p");
+  auto p3 = Parameter(&reduce_add, 3, ShapeUtil::MakeScalarShape(S32), "p");
+  auto reduce_result = p0;
+  reduce_result = Add(reduce_result, p1);
+  reduce_result = Add(reduce_result, p2);
+  reduce_result = Add(reduce_result, p3);
+  Tuple(&reduce_add, {reduce_result, reduce_result});
+  auto init = ConstantR0<int32>(&b, 0);
+  auto variadic_reduce = Reduce(&b, {half_dynamic, half_dynamic}, {init, init},
+                                reduce_add.Build().ConsumeValueOrDie(), {1});
+  auto result = GetTupleElement(variadic_reduce, 0);
+
+  // result[0] should be static; result[1] should be dynamic.
+  EXPECT_FALSE(
+      ComputeDynamismLiteral(result, &b).ValueOrDie().Get<bool>({0}));
+  EXPECT_TRUE(
+      ComputeDynamismLiteral(result, &b).ValueOrDie().Get<bool>({1}));
 }
 
 TEST_F(DynamismInferenceTest, DynamicSelectorWithMixedValues) {

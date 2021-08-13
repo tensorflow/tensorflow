@@ -47,8 +47,8 @@ TfLiteStatus QuantizeModel(
     flatbuffers::FlatBufferBuilder* builder,
     tflite::ErrorReporter* error_reporter, bool verify_numeric = false,
     bool whole_model_verify = false, bool legacy_float_scale = true,
-    const StringSet& blocklisted_ops = {},
-    const StringSet& blocklisted_nodes = {});
+    const StringSet& denylisted_ops = {},
+    const StringSet& denylisted_nodes = {});
 }  // namespace lite
 }  // namespace mlir
 

@@ -110,7 +110,7 @@ class XRTCompilationCache : public ResourceBase {
   // if and only if compilation succeeds. The executable will be discarded on
   // non-OK status.
   Status CompileIfKeyAbsent(
-      const string& key, int64* uid,
+      const string& key, int64_t* uid,
       const std::function<Status(std::unique_ptr<xla::LocalExecutable>*)>&
           compile_function);
 
@@ -143,11 +143,11 @@ class XRTCompilationCache : public ResourceBase {
     // entry.
     Status initialization_status;
     // Counter to keep track of LRU entries for the eviction policy.
-    int64 last_use = -1;
+    int64_t last_use = -1;
     // The unique key describing this entry.
     string key;
     // The uid describing this entry.
-    int64 uid;
+    int64_t uid;
     // The compiled payload corresponding to the key.
     std::unique_ptr<xla::LocalExecutable> program;
   };
@@ -220,19 +220,19 @@ class XRTCompilationCache : public ResourceBase {
   int marked_for_eviction_entries_ TF_GUARDED_BY(mu_) = 0;
   // The value to assign to the last_use field of the next entry that is looked
   // up.
-  int64 use_counter_ TF_GUARDED_BY(mu_) = 0;
+  int64_t use_counter_ TF_GUARDED_BY(mu_) = 0;
   // All the executables that can be looked up in the cache index by key. An
   // entry is marked for eviction iff it is present in cache_ and not in
   // entries_by_last_use_.
   std::unordered_map<string, CompiledSubgraph*> cache_ TF_GUARDED_BY(mu_);
   // All the executable entries that can be looked up in the cache indexed by
   // uid.
-  std::unordered_map<int64, CompiledSubgraph*> entries_by_uid_
+  std::unordered_map<int64_t, CompiledSubgraph*> entries_by_uid_
       TF_GUARDED_BY(mu_);
   // Map from last_use to entry, used to mark entries for eviction in LRU
   // order. If an entry's last_use counter is not present as a key in
   // entries_by_last_use_ then the entry has been marked for eviction.
-  std::map<int64, CompiledSubgraph*> entries_by_last_use_ TF_GUARDED_BY(mu_);
+  std::map<int64_t, CompiledSubgraph*> entries_by_last_use_ TF_GUARDED_BY(mu_);
 };
 
 // Looks up or create an XRTCompilationCache object within the given resource

@@ -177,7 +177,7 @@ Status HloInputOutputAliasConfig::ForEachAliasWithStatus(
 
 Status HloInputOutputAliasConfig::Verify(
     const HloModule& module,
-    std::function<int64(const Shape&)> size_func) const {
+    std::function<int64_t(const Shape&)> size_func) const {
   std::vector<ShapeTree<bool>> param_has_seen;
   const HloComputation* entry = module.entry_computation();
   for (int64_t i = 0; i < entry->num_parameters(); ++i) {

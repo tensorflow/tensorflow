@@ -39,7 +39,7 @@ using xla::llvm_ir::AsStringRef;
 static void AddEmbeddedProtocolBufferToLlvmModule(
     llvm::Module* module, const ::tensorflow::protobuf::MessageLite& proto,
     absl::string_view unique_identifier, string* protobuf_array_symbol_name,
-    int64* protobuf_array_size) {
+    int64_t* protobuf_array_size) {
   string protobuf_array_contents = proto.SerializeAsString();
   *protobuf_array_symbol_name =
       absl::StrCat(unique_identifier, "_protobuf_array_contents");

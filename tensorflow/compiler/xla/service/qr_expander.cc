@@ -38,9 +38,9 @@ namespace xla {
 
 namespace {
 
-std::vector<int64> ConcatVectors(absl::Span<const int64> xs,
-                                 absl::Span<const int64> ys) {
-  std::vector<int64> output;
+std::vector<int64_t> ConcatVectors(absl::Span<const int64_t> xs,
+                                   absl::Span<const int64_t> ys) {
+  std::vector<int64_t> output;
   output.reserve(xs.size() + ys.size());
   std::copy(xs.begin(), xs.end(), std::back_inserter(output));
   std::copy(ys.begin(), ys.end(), std::back_inserter(output));
@@ -106,13 +106,13 @@ XlaOp Norm(std::vector<XlaOp> xs) {
 //   return (v, tau, beta)
 // TODO(phawkins): LAPACK's xLARFG implementation has code for handling
 // overflows in the norm/beta calculations. Perhaps do the same here.
-Status House(XlaOp x, XlaOp k, absl::Span<const int64> batch_dims,
+Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
              const int64_t m, XlaOp* v, XlaOp* tau, XlaOp* beta) {
   XlaBuilder* const builder = x.builder();
   TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
   const PrimitiveType type = x_shape.element_type();
 
-  std::vector<int64> batch_dim_ids(batch_dims.size());
+  std::vector<int64_t> batch_dim_ids(batch_dims.size());
   std::iota(batch_dim_ids.begin(), batch_dim_ids.end(), 0);
   const int64_t minor_dim = batch_dims.size();
 
@@ -164,7 +164,7 @@ Status House(XlaOp x, XlaOp k, absl::Span<const int64> batch_dims,
              alpha - ConvertElementType(*beta, type));
 
   auto e_k = Broadcast(ConvertElementType(Eq(iota, k), type),
-                       std::vector<int64>(batch_dims.size(), 1));
+                       std::vector<int64_t>(batch_dims.size(), 1));
 
   // Form v as [0, 0, ..., 1] ++ x[k+1:] / divisor
   // If sigma is zero, x[k+1:] is zero, so use any non-zero divisor.
@@ -211,12 +211,12 @@ StatusOr<QrDecomposition> QrExpander::QrBlock(
   const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
 
   const int64_t num_batch_dims = num_dims - 2;
-  std::vector<int64> batch_dims(num_batch_dims);
+  std::vector<int64_t> batch_dims(num_batch_dims);
   for (int i = 0; i < num_batch_dims; ++i) {
     batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
   }
 
-  std::vector<int64> batch_dim_indices(num_batch_dims);
+  std::vector<int64_t> batch_dim_indices(num_batch_dims);
   std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
 
   auto qr_body_fn = [&](XlaOp j, absl::Span<const XlaOp> values,
@@ -235,7 +235,7 @@ StatusOr<QrDecomposition> QrExpander::QrBlock(
         builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {m, n})),
         minor_dim + 1);
 
-    std::vector<int64> shape = batch_dims;
+    std::vector<int64_t> shape = batch_dims;
     shape.push_back(1);
     shape.push_back(m);
     auto v_broadcast = Reshape(v, shape);
@@ -254,7 +254,7 @@ StatusOr<QrDecomposition> QrExpander::QrBlock(
     auto iota = Reshape(Iota(a.builder(), S32, m), {m, 1});
     auto predecessor_mask = ConvertElementType(Lt(iota, j), type);
     auto mask = Broadcast(ConvertElementType(Eq(iota, j), type),
-                          std::vector<int64>(batch_dims.size(), 1));
+                          std::vector<int64_t>(batch_dims.size(), 1));
     auto successor_mask = Gt(Iota(a.builder(), S32, m), j);
     auto new_x = Mul(x, predecessor_mask,
                      /*broadcast_dimensions=*/{num_dims - 2, num_dims - 1}) +
@@ -264,14 +264,14 @@ StatusOr<QrDecomposition> QrExpander::QrBlock(
         new_x, Select(Broadcast(successor_mask, batch_dims), v, ZerosLike(v)),
         /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {minor_dim}));
     // Update a[:,j]
-    std::vector<int64> dim_ids(num_dims);
+    std::vector<int64_t> dim_ids(num_dims);
     std::iota(dim_ids.begin(), dim_ids.end(), 0);
     new_x = BroadcastInDim(new_x, ConcatVectors(batch_dims, {m, n}),
                            /*broadcast_dimensions=*/dim_ids);
     a = Select(Eq(iota_mn, j), new_x, a);
 
     // taus[j] = tau
-    std::vector<int64> tau_broadcast_dims(batch_dims.size());
+    std::vector<int64_t> tau_broadcast_dims(batch_dims.size());
     std::iota(tau_broadcast_dims.begin(), tau_broadcast_dims.end(), 0);
 
     auto iota_n =
@@ -316,11 +316,11 @@ StatusOr<QrDecomposition> QrExpander::QrBlock(
 //     t[:, i] = scipy.linalg.blas.strmm(t, vtv[:, i])
 //   return t
 StatusOr<XlaOp> QrExpander::CompactWYRepresentation(
-    PrimitiveType type, absl::Span<const int64> batch_dims, XlaOp vs,
+    PrimitiveType type, absl::Span<const int64_t> batch_dims, XlaOp vs,
     XlaOp taus, int64_t m, int64_t n, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = vs.builder();
 
-  std::vector<int64> batch_dim_indices(batch_dims.size());
+  std::vector<int64_t> batch_dim_indices(batch_dims.size());
   std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
   int64_t n_index = batch_dims.size() + 1;
 
@@ -391,12 +391,12 @@ StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
   }
 
   const int64_t num_batch_dims = num_dims - 2;
-  std::vector<int64> batch_dims(num_batch_dims);
+  std::vector<int64_t> batch_dims(num_batch_dims);
   for (int i = 0; i < num_batch_dims; ++i) {
     batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
   }
 
-  std::vector<int64> taus_dims = batch_dims;
+  std::vector<int64_t> taus_dims = batch_dims;
   taus_dims.push_back(p);
   auto taus = Zeros(builder, ShapeUtil::MakeShape(type, taus_dims));
   for (int64_t i = 0; i < p; i += block_size) {
@@ -462,7 +462,7 @@ StatusOr<XlaOp> QrExpander::ProductOfElementaryHouseholderReflectors(
   }
 
   const int64_t num_batch_dims = num_dims - 2;
-  std::vector<int64> batch_dims(num_batch_dims);
+  std::vector<int64_t> batch_dims(num_batch_dims);
   for (int i = 0; i < num_batch_dims; ++i) {
     batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
   }

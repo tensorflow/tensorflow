@@ -51,7 +51,7 @@ namespace {
 StatusOr<std::vector<std::vector<xla::XlaOp>>> GetTensorListDynamicDims(
     XlaOpKernelContext* ctx, const xla::Shape& element_shape,
     const xla::Shape& list_shape, int64_t num_elements) {
-  std::vector<int64> dynamic_sizes;
+  std::vector<int64_t> dynamic_sizes;
   // The multiplier can be a dynamic value.
   TF_RETURN_IF_ERROR(ctx->ConstantInputAsIntVector(0, &dynamic_sizes));
   std::vector<bool> dims_are_dynamic;
@@ -310,7 +310,7 @@ class TensorListElementShapeOp : public XlaOpKernel {
 
     switch (shape_type_) {
       case DT_INT64:
-        ctx->SetOutput(0, xla::ConstantR1<int64>(b, list_shape.dimensions()));
+        ctx->SetOutput(0, xla::ConstantR1<int64_t>(b, list_shape.dimensions()));
         break;
       case DT_INT32: {
         std::vector<int32> size;
@@ -484,7 +484,7 @@ class TensorListConcatOp : public XlaOpKernel {
     auto shape_or = b->GetShape(buffer);
     OP_REQUIRES_OK(ctx, shape_or.status());
     xla::Shape element_shape = shape_or.ConsumeValueOrDie();
-    std::vector<int64> element_dims =
+    std::vector<int64_t> element_dims =
         xla::SpanToVector(element_shape.dimensions());
     OP_REQUIRES(
         ctx, element_dims.size() > 1,
@@ -492,7 +492,7 @@ class TensorListConcatOp : public XlaOpKernel {
     int64_t num_elements = element_dims[0];
     int64_t tensor_lengths = element_dims[1];
 
-    std::vector<int64> new_dims = {num_elements * tensor_lengths};
+    std::vector<int64_t> new_dims = {num_elements * tensor_lengths};
 
     for (int i = 2; i < element_dims.size(); i++) {
       new_dims.push_back(element_dims[i]);
@@ -530,13 +530,13 @@ class TensorListSplitOp : public XlaOpKernel {
     auto shape_or = b->GetShape(input_tensor);
     OP_REQUIRES_OK(ctx, shape_or.status());
     xla::Shape element_shape = shape_or.ConsumeValueOrDie();
-    std::vector<int64> element_dims =
+    std::vector<int64_t> element_dims =
         xla::SpanToVector(element_shape.dimensions());
     OP_REQUIRES(
         ctx, !element_dims.empty(),
         errors::Unimplemented("Element dimensions have to be non-empty"));
 
-    std::vector<int64> lengths;
+    std::vector<int64_t> lengths;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, &lengths));
     OP_REQUIRES(ctx, !lengths.empty(),
                 errors::Unimplemented("Length has to be non-empty"));
@@ -548,7 +548,7 @@ class TensorListSplitOp : public XlaOpKernel {
     OP_REQUIRES(
         ctx, element_dims[0] % length == 0,
         errors::Unimplemented("Buffer size has to be a multiple of length"));
-    std::vector<int64> new_dims = {element_dims[0] / length, length};
+    std::vector<int64_t> new_dims = {element_dims[0] / length, length};
     for (int i = 1; i < element_dims.size(); i++) {
       new_dims.push_back(element_dims[i]);
     }

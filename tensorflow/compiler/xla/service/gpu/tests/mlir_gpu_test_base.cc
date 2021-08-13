@@ -82,7 +82,7 @@ StatusOr<ExecutionOutput> MlirGpuTestBase::RunMlirModule(
 
   for (auto arg : arguments) {
     Shape shape =
-        ShapeUtil::MakeShape(xla::U8, {static_cast<int64>(arg.size())});
+        ShapeUtil::MakeShape(xla::U8, {static_cast<int64_t>(arg.size())});
     execution_inputs.emplace_back(shape);
     execution_inputs.back().SetBuffer({}, MaybeOwningDeviceMemory(arg));
   }

@@ -137,7 +137,7 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
 
 // Convenience methods for emitting a GEP instruction that indexes into a buffer
 // (1-dimensional array), equivalent to array[index]. The type is automatically
-// determined from the element type of the array.  The int64 index overload
+// determined from the element type of the array.  The int64_t index overload
 // wraps the index in a i64 llvm::Value.
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
                                    llvm::IRBuilder<>* b);
@@ -243,7 +243,7 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
 // This can be very useful for debugging generated programs in short order when
 // developing new generated routines.
 //
-// Precondition: value must be an int64.
+// Precondition: value must be an int64_t.
 // Precondition: tag must be a stable pointer for the lifetime of the generated
 // program (the constant pointer is burned in to the program).
 void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b);
@@ -271,7 +271,7 @@ llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
                        llvm::IRBuilder<>* builder);
 
 // Returns the number of bytes within the shape.
-int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout);
+int64_t ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout);
 
 // Gets an llvm::FastMathFlags that reflects the settings in the given
 // module config.

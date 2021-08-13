@@ -148,8 +148,8 @@ Status GetOutputShapes(const std::vector<InputLayerInfo>& inputs,
 
 Status CalculateFlops(const GraphDef& graph,
                       const std::vector<InputLayerInfo>& inputs,
-                      Session* session, int64* total_flops,
-                      std::unordered_map<string, int64>* flops_by_op) {
+                      Session* session, int64_t* total_flops,
+                      std::unordered_map<string, int64_t>* flops_by_op) {
   std::unordered_set<string> floppable_ops = {
       "Conv2D", "MatMul", "QuantizedConv2D", "QuantizedMatMul",
       "DepthwiseConv2dNative"};
@@ -284,7 +284,7 @@ Status InitializeSession(int num_threads, const string& graph,
 Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
                     const std::vector<string>& outputs,
                     const std::vector<string>& targets, Session* session,
-                    StatSummarizer* stats, int64* inference_time_us) {
+                    StatSummarizer* stats, int64_t* inference_time_us) {
   std::vector<std::pair<string, tensorflow::Tensor> > input_tensors;
   CreateTensorsFromInputInfo(inputs, &input_tensors);
 
@@ -322,8 +322,8 @@ Status TimeMultipleRuns(double sleep_seconds, int num_runs, double max_time_s,
                         const std::vector<InputLayerInfo>& inputs,
                         const std::vector<string>& outputs,
                         const std::vector<string>& targets, Session* session,
-                        StatSummarizer* stats, int64* total_time_us,
-                        int64* actual_num_runs) {
+                        StatSummarizer* stats, int64_t* total_time_us,
+                        int64_t* actual_num_runs) {
   *total_time_us = 0;
 
   LOG(INFO) << "Running benchmark for max " << num_runs << " iterations, max "
@@ -332,7 +332,7 @@ Status TimeMultipleRuns(double sleep_seconds, int num_runs, double max_time_s,
             << " detailed stat logging, with " << sleep_seconds
             << "s sleep between inferences";
 
-  Stat<int64> stat;
+  Stat<int64_t> stat;
   const bool until_max_time = num_runs <= 0;
   for (int i = 0; until_max_time || i < num_runs; ++i) {
     int64_t time;
@@ -623,7 +623,7 @@ int Main(int argc, char** argv) {
 
   if (show_flops) {
     int64_t total_flops;
-    std::unordered_map<string, int64> flops_by_op;
+    std::unordered_map<string, int64_t> flops_by_op;
     Status flop_status = CalculateFlops(*graph_def, inputs, session.get(),
                                         &total_flops, &flops_by_op);
     if (!flop_status.ok()) {
@@ -648,7 +648,7 @@ int Main(int argc, char** argv) {
     const double mean_run_time = no_stat_wall_time / no_stat_num_runs;
     LOG(INFO) << "FLOPs/second: "
               << strings::HumanReadableNum(
-                     static_cast<int64>(total_flops / mean_run_time));
+                     static_cast<int64_t>(total_flops / mean_run_time));
   }
 
   if (!benchmark_name.empty() && !output_prefix.empty()) {

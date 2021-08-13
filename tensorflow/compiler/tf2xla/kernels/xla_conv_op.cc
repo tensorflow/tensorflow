@@ -46,9 +46,9 @@ class XlaConvOp : public XlaOpKernel {
     const TensorShape lhs_shape = context->InputShape(0);
     const TensorShape rhs_shape = context->InputShape(1);
     const TensorShape padding_shape = context->InputShape("padding");
-    std::vector<int64> window_strides;
-    std::vector<int64> lhs_dilation;
-    std::vector<int64> rhs_dilation;
+    std::vector<int64_t> window_strides;
+    std::vector<int64_t> lhs_dilation;
+    std::vector<int64_t> rhs_dilation;
     int64_t feature_group_count;
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("window_strides",
                                                               &window_strides));
@@ -68,10 +68,10 @@ class XlaConvOp : public XlaOpKernel {
     xla::Literal padding_literal;
     OP_REQUIRES_OK(context, context->ConstantInputAsInt64Literal(
                                 "padding", &padding_literal));
-    std::vector<std::pair<int64, int64>> padding(padding_shape.dim_size(0));
+    std::vector<std::pair<int64_t, int64_t>> padding(padding_shape.dim_size(0));
     for (int i = 0; i < padding.size(); ++i) {
-      padding[i] = {padding_literal.Get<int64>({i, 0}),
-                    padding_literal.Get<int64>({i, 1})};
+      padding[i] = {padding_literal.Get<int64_t>({i, 0}),
+                    padding_literal.Get<int64_t>({i, 1})};
     }
 
     // We do only minimal checking, relying on XLA to check the shape

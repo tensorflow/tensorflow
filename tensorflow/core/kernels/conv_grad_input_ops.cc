@@ -39,13 +39,13 @@ template struct LaunchConv2DBackpropInputOp<CPUDevice, double>;
 // The slow version (but compiles for GPU)
 
 // A dummy type to group forward backward data autotune results together.
-struct ConvBackwardDataAutoTuneGroup {
+struct ConvBackwardDataAutotuneGroup {
   static string name() { return "ConvBwdData"; }
 };
 
-typedef AutoTuneSingleton<ConvBackwardDataAutoTuneGroup, ConvParameters,
+typedef AutotuneSingleton<ConvBackwardDataAutotuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
-    AutoTuneConvBwdData;
+    AutotuneConvBwdData;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Computes backprop input using Eigen::SpatialConvolutionBackwardInput on GPU
@@ -56,7 +56,7 @@ struct LaunchConv2DBackpropInputOp<GPUDevice, int32> {
                   const Tensor& out_backprop, const Tensor& filter,
                   int row_dilation, int col_dilation, int row_stride,
                   int col_stride, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings,
+                  const std::vector<int64_t>& explicit_paddings,
                   Tensor* in_backprop, TensorFormat data_format) {
     LaunchConv2DBackpropInputOpImpl<GPUDevice, int32> launcher;
     launcher(ctx, use_cudnn, cudnn_use_autotune, out_backprop, filter,
@@ -71,7 +71,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
     const Tensor& out_backprop, const Tensor& filter, int row_dilation,
     int col_dilation, int row_stride, int col_stride, const Padding& padding,
-    const std::vector<int64>& explicit_paddings, Tensor* in_backprop,
+    const std::vector<int64_t>& explicit_paddings, Tensor* in_backprop,
     TensorFormat data_format) {
   using se::dnn::AlgorithmConfig;
   using se::dnn::AlgorithmDesc;
@@ -384,7 +384,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
 #endif
   AlgorithmConfig algorithm_config;
 
-  if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(
+  if (cudnn_use_autotune && !AutotuneConvBwdData::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
     profiler::ScopedAnnotation trace("cudnn_autotuning");
 
@@ -553,7 +553,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       OP_REQUIRES_OK(
           ctx, BestCudnnConvAlgorithm(results, nullptr, &algorithm_config));
     }
-    AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,
+    AutotuneConvBwdData::GetInstance()->Insert(conv_parameters,
                                                algorithm_config);
   }
 
@@ -563,7 +563,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       VLOG(4) << "Conv2DBackpropInput Execution Plan: "
               << algorithm_config.algorithm()->exec_plan_id();
     } else {
-      VLOG(4) << "Convolution AutoTune has been turned off";
+      VLOG(4) << "Convolution Autotune has been turned off";
     }
     cudnn_launch_status = stream->ConvolveBackwardDataWithExecutionPlan(
         filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,

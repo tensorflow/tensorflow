@@ -84,7 +84,7 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
 
 // Create a vector from a 32-bit value tensor.  Returns vector size on success
 // or -1 on error.
-int getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec);
+LogicalResult getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec);
 
 // Calculates the TOSA padding values based on TF operators padded with
 // SAME/VALID.

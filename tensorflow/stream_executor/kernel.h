@@ -125,7 +125,7 @@ class KernelMetadata {
 
   // Holds the value returned by shared_memory_bytes above.
   bool has_shared_memory_bytes_;
-  int64 shared_memory_bytes_;
+  int64_t shared_memory_bytes_;
 };
 
 // A data-parallel kernel (code entity) for launching via the StreamExecutor,
@@ -358,7 +358,7 @@ class KernelArgsArrayBase {
   virtual size_t number_of_arguments() const = 0;
 
   // Gets the total number of shared memory bytes added so far.
-  virtual uint64 number_of_shared_bytes() const = 0;
+  virtual uint64_t number_of_shared_bytes() const = 0;
 
   // Gets the list of argument addresses.
   virtual port::ArraySlice<const void *> argument_addresses() const = 0;
@@ -442,7 +442,7 @@ class KernelArgsArray : public KernelArgsArrayBase {
   }
 
   // Gets the total number of shared memory bytes added so far.
-  uint64 number_of_shared_bytes() const override {
+  uint64_t number_of_shared_bytes() const override {
     return total_shared_memory_bytes_;
   }
 

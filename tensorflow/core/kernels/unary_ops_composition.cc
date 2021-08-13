@@ -140,7 +140,7 @@ class UnaryOpsComposition : public OpKernel {
   static constexpr int kPacketSize =
       Eigen::internal::unpacket_traits<Packet>::size;
 
-  static inline int64 AlignBlockSize(int64_t block_size) {
+  static inline int64_t AlignBlockSize(int64_t block_size) {
     // Align block size to packet size and account for unrolling in run above.
     if (block_size >= 16 * kPacketSize) {
       return (block_size + 4 * kPacketSize - 1) & ~(4 * kPacketSize - 1);

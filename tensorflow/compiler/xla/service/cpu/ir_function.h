@@ -102,7 +102,7 @@ class IrFunction {
   llvm::Module* llvm_module_;
   llvm::IRBuilder<>::InsertPointGuard caller_insert_point_guard_;
 
-  int64 num_dynamic_loop_bounds_ = 0;
+  int64_t num_dynamic_loop_bounds_ = 0;
   // Encapsulated llvm::Function.
   llvm::Function* function_;
   // Function argument IR values.
@@ -131,8 +131,9 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
 // calls to 'parallel_function' (and joins threads before returning).
 Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
-    const std::vector<int64>& dimension_partition_counts, llvm::IRBuilder<>* b,
-    llvm::Function* parallel_function, const string& name);
+    const std::vector<int64_t>& dimension_partition_counts,
+    llvm::IRBuilder<>* b, llvm::Function* parallel_function,
+    const string& name);
 
 }  // namespace cpu
 }  // namespace xla

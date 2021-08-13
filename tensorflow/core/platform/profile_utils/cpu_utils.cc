@@ -46,7 +46,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
   return cpu_frequency;
 }
 #else
-/* static */ int64 CpuUtils::GetCycleCounterFrequency() {
+/* static */ int64_t CpuUtils::GetCycleCounterFrequency() {
   static const int64_t cpu_frequency = GetCycleCounterFrequencyImpl();
   return cpu_frequency;
 }
@@ -76,7 +76,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
                                        GetCycleCounterFrequency());
 }
 
-/* static */ int64 CpuUtils::GetCycleCounterFrequencyImpl() {
+/* static */ int64_t CpuUtils::GetCycleCounterFrequencyImpl() {
 // TODO(satok): do not switch by macro here
 #if defined(__ANDROID__)
   return GetCpuUtilsHelperSingletonInstance().CalculateCpuFrequency();
@@ -110,7 +110,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
         return INVALID_FREQUENCY;
       }
       const int64_t freq_n =
-          static_cast<int64>(freq_ghz * 1000.0 * 1000.0 * 1000.0);
+          static_cast<int64_t>(freq_ghz * 1000.0 * 1000.0 * 1000.0);
       VLOG(1) << "CPU Frequency: " << freq_n << " Hz";
       return freq_n;
     }

@@ -148,7 +148,7 @@ class XlaResource {
   // We need to store this since sometimes TensorArrays must be initialized
   // lazily since we do not know the element shape at construction time.
   // Used by both TensorArrays and Stacks.
-  int64 max_array_size() const { return max_array_size_; }
+  int64_t max_array_size() const { return max_array_size_; }
   void set_max_array_size(int64_t size) { max_array_size_ = size; }
 
   bool tensor_array_multiple_writes_aggregate() const {
@@ -180,7 +180,7 @@ class XlaResource {
   // device.
   absl::optional<xla::Shape> representation_shape_;
 
-  int64 max_array_size_ = -1;
+  int64_t max_array_size_ = -1;
   bool tensor_array_multiple_writes_aggregate_ = false;
 
   std::map<string, std::unique_ptr<XlaResource>> tensor_array_gradients_;

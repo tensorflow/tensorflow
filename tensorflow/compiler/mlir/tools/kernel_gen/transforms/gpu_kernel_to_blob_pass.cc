@@ -24,11 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
@@ -44,8 +44,6 @@ namespace {
 
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
-
-using xla::InternalError;
 
 class GpuKernelToBlobPass
     : public GpuKernelToBlobPassBase<GpuKernelToBlobPass> {
@@ -77,17 +75,19 @@ class GpuKernelToBlobPass
     return signalPassFailure();
   }
 
-  xla::StatusOr<std::vector<uint8_t>> GetGpuBinaryBlob(
+  tensorflow::StatusOr<std::vector<uint8_t>> GetGpuBinaryBlob(
       mlir::gpu::GPUModuleOp gpu_module) {
     if (architectures_.empty()) {
-      return InternalError("Expected at least one GPU architecture.");
+      return tensorflow::errors::Internal(
+          "Expected at least one GPU architecture.");
     }
 
     llvm::LLVMContext llvmContext;
     auto llvmModule = mlir::translateModuleToLLVMIR(gpu_module, llvmContext);
 
     if (!llvmModule) {
-      return InternalError("Could not translate MLIR module to LLVM IR");
+      return tensorflow::errors::Internal(
+          "Could not translate MLIR module to LLVM IR");
     }
 
     llvmModule->setModuleIdentifier(gpu_module.getName());
@@ -105,7 +105,7 @@ class GpuKernelToBlobPass
       // Parse ROCm architecture.
       absl::string_view consumable_arch(arch_str);
       if (!absl::ConsumePrefix(&consumable_arch, "gfx")) {
-        return InternalError(
+        return tensorflow::errors::Internal(
             "Could not parse ROCm architecture prefix (expected gfx)");
       }
       std::string libdevice_dir = tensorflow::RocdlRoot();
@@ -114,7 +114,7 @@ class GpuKernelToBlobPass
       auto hsaco_or = xla::gpu::amdgpu::CompileToHsaco(
           llvm_module_copy.get(), gpu_version, config, libdevice_dir);
       if (!hsaco_or.ok()) {
-        return InternalError("Failure when generating HSACO");
+        return tensorflow::errors::Internal("Failure when generating HSACO");
       }
       auto hsaco = hsaco_or.ValueOrDie();
       images.push_back({arch_str, std::move(hsaco)});
@@ -157,13 +157,14 @@ class GpuKernelToBlobPass
       } else if (absl::ConsumePrefix(&consumable_arch, "sm_")) {
         is_compute_profile = false;
       } else {
-        return InternalError(
+        return tensorflow::errors::Internal(
             "Could not parse cuda architecture prefix (expected sm_ or "
             "compute_)");
       }
       uint32_t arch;
       if (!absl::SimpleAtoi(consumable_arch, &arch)) {
-        return InternalError("Could not parse cuda architecture number");
+        return tensorflow::errors::Internal(
+            "Could not parse cuda architecture number");
       }
 
       int cc_major = arch / 10;
@@ -203,13 +204,13 @@ class GpuKernelToBlobPass
     return tensorflow::se::BundleGpuAsm(images, gpu_asm_opts);
 #endif
 
-    return InternalError(
+    return tensorflow::errors::Internal(
         "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
         " Did you specify either --config=rocm or --config=cuda ?");
   }
 
  private:
-  xla::StatusOr<std::string> GetLibdeviceDir(
+  tensorflow::StatusOr<std::string> GetLibdeviceDir(
       const xla::HloModuleConfig& hlo_module_config) {
     for (const std::string& cuda_root : tensorflow::CandidateCudaRoots(
              hlo_module_config.debug_options().xla_gpu_cuda_data_dir())) {
@@ -221,7 +222,7 @@ class GpuKernelToBlobPass
         return libdevice_dir;
       }
     }
-    return InternalError(
+    return tensorflow::errors::Internal(
         "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice");
   }
   bool enable_ftz_;

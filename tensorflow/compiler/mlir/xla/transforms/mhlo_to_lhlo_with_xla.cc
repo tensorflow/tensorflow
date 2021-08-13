@@ -221,13 +221,12 @@ class XlaHloToLhloPass
 // instruction. If `num_operands` is valid, then only the first `num_operands`
 // operands of the HLO instruction will be considered.
 Status LhloDialectEmitter::CreateOperands(
-    const HloInstruction* instr, absl::optional<xla::int64> num_operands,
+    const HloInstruction* instr, absl::optional<int64_t> num_operands,
     TokenLoweringMode token_mode, llvm::SmallVectorImpl<Value>& operands,
     size_t& num_arguments, size_t& num_results) {
   if (num_operands.value_or(0) > instr->operand_count())
     return xla::InvalidArgument("num_operands must be <= operand count");
-  for (xla::int64 i = 0; i < num_operands.value_or(instr->operand_count());
-       ++i) {
+  for (int64_t i = 0; i < num_operands.value_or(instr->operand_count()); ++i) {
     TF_RETURN_IF_ERROR(GetOrCreateView(instr->operand(i), &operands,
                                        /*result_subset=*/{}, token_mode));
   }
@@ -249,7 +248,7 @@ OpType LhloDialectEmitter::CreateOpWithoutAttrs(const HloInstruction* instr,
 template <typename OpType>
 StatusOr<OpType> LhloDialectEmitter::CreateOpWithoutAttrs(
     const HloInstruction* instr, size_t& num_arguments, size_t& num_results,
-    absl::optional<xla::int64> num_operands) {
+    absl::optional<int64_t> num_operands) {
   llvm::SmallVector<Value, 4> operands;
   TF_RETURN_IF_ERROR(CreateOperands(instr, num_operands,
                                     TokenLoweringMode::kFailToLower, operands,
@@ -599,7 +598,7 @@ LhloDialectEmitter::GetScatterDimensionNumbers(const HloInstruction* instr,
 
   mlir::Builder builder(context);
   auto get_i64_array_attr =
-      [builder](absl::Span<const xla::int64> container) mutable {
+      [builder](absl::Span<const int64_t> container) mutable {
         return builder.getI64TensorAttr(
             {container.data(), static_cast<size_t>(container.size())});
       };
@@ -847,7 +846,7 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
   auto get_layout_attribute = [&](const xla::Layout& layout) {
     std::vector<int64_t> minor_to_major(layout.minor_to_major_size());
     absl::c_transform(layout.minor_to_major(), minor_to_major.begin(),
-                      [](xla::int64 x) { return static_cast<int64_t>(x); });
+                      [](int64_t x) { return static_cast<int64_t>(x); });
     return builder_.getI64ArrayAttr(minor_to_major);
   };
 
@@ -958,7 +957,7 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
 
 StatusOr<Operation*> LhloDialectEmitter::EmitDnnBatchNorm(
     const HloCustomCallInstruction* custom_call) {
-  const xla::int64 num_operands = custom_call->operand_count();
+  const int64_t num_operands = custom_call->operand_count();
   auto set_batchnorm_attributes = [&](auto op) -> StatusOr<Operation*> {
     // The last 2 operands of a custom call for batch norm are the epsilon and
     // feature_index.
@@ -969,8 +968,7 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnBatchNorm(
     const HloInstruction* feature_index =
         custom_call->operand(num_operands - 1);
     TF_RET_CHECK(feature_index->IsConstant());
-    xla::int64 feature_index_value =
-        feature_index->literal().Get<xla::int64>({});
+    int64_t feature_index_value = feature_index->literal().Get<int64_t>({});
 
     op.epsilonAttr(builder_.getF32FloatAttr(epsilon_value));
     op.feature_indexAttr(builder_.getI64IntegerAttr(feature_index_value));

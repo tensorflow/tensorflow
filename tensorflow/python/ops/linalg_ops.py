@@ -709,19 +709,21 @@ def norm(tensor,
     if (not isinstance(axis[0], int) or not isinstance(axis[1], int) or
         axis[0] == axis[1]):
       raise ValueError(
-          "'axis' must be None, an integer, or a tuple of 2 unique integers")
+          "'axis' must be None, an integer, or a tuple of 2 "
+          f"unique integers, got {axis}")
     supported_matrix_norms = ['euclidean', 'fro', 1, 2, np.inf]
     if ord not in supported_matrix_norms:
-      raise ValueError("'ord' must be a supported matrix norm in %s, got %s" %
-                       (supported_matrix_norms, ord))
+      raise ValueError(f"'ord' must be a supported matrix norm in "
+                       f"{supported_matrix_norms}, got {ord}")
   else:
     if not (isinstance(axis, int) or axis is None):
       raise ValueError(
-          "'axis' must be None, an integer, or a tuple of 2 unique integers")
+          "'axis' must be None, an integer, or a "
+          f"tuple of 2 unique integers, got {axis}")
 
     supported_vector_norms = ['euclidean', 1, 2, np.inf]
     if (not np.isreal(ord) or ord <= 0) and ord not in supported_vector_norms:
-      raise ValueError("'ord' must be a supported vector norm, got %s" % ord)
+      raise ValueError(f"'ord' must be a supported vector norm, got {ord}")
     if axis is not None:
       axis = (axis,)
 
@@ -732,8 +734,8 @@ def norm(tensor,
       if is_matrix_norm and ord in [2, 2.0]:
         rank = array_ops.rank(tensor)
         positive_axis = map_fn.map_fn(
-            lambda i: control_flow_ops.cond(i >= 0, lambda: i, lambda: i + rank),
-            ops.convert_to_tensor(axis))
+            lambda i: control_flow_ops.cond(i >= 0, lambda: i, lambda: i + rank
+                                           ), ops.convert_to_tensor(axis))
         axes = math_ops.range(rank)
         perm_before = array_ops.concat([
             gen_array_ops.list_diff(axes, positive_axis, dtypes.int32)[0],

@@ -31,8 +31,8 @@ namespace tensorflow {
 
 namespace {
 
-const gtl::InlinedVector<int64, 8> GetStrides(const TensorShape& shape) {
-  gtl::InlinedVector<int64, 8> result(shape.dims());
+const gtl::InlinedVector<int64_t, 8> GetStrides(const TensorShape& shape) {
+  gtl::InlinedVector<int64_t, 8> result(shape.dims());
   int64_t product = 1;
   for (int32_t i = shape.dims() - 1; i >= 0; --i) {
     result[i] = product;
@@ -46,10 +46,10 @@ const gtl::InlinedVector<int64, 8> GetStrides(const TensorShape& shape) {
 // dimensions in the subset, outputs the linear index to the full shape with
 // nonspecified dimensions set to 0.  Dimensions must be ordered from outer-most
 // to inner-most with respect to the subset linear index.
-inline int64 LinearSubIndexToFullIndex(
+inline int64_t LinearSubIndexToFullIndex(
     int64_t output_index, const gtl::InlinedVector<int32, 8>& dim_list,
     const TensorShape& input_shape,
-    const gtl::InlinedVector<int64, 8>& strides) {
+    const gtl::InlinedVector<int64_t, 8>& strides) {
   int64_t result = 0;
   int64_t quotient = output_index;
   for (int32_t i = dim_list.size() - 1; i >= 0; --i) {
@@ -62,8 +62,9 @@ inline int64 LinearSubIndexToFullIndex(
 }
 
 // Computes the number of input elements reduced per output element.
-int64 GetReductionIterSize(const gtl::InlinedVector<int32, 8>& reduced_indices,
-                           const TensorShape& input_shape) {
+int64_t GetReductionIterSize(
+    const gtl::InlinedVector<int32, 8>& reduced_indices,
+    const TensorShape& input_shape) {
   int64_t result = 1;
   for (int32_t reduce_dim : reduced_indices) {
     result *= input_shape.dim_size(reduce_dim);

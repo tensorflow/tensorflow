@@ -43,7 +43,7 @@ class TableBuilder : public TensorSliceWriter::Builder {
   void Add(StringPiece key, StringPiece val) override {
     builder_->Add(key, val);
   }
-  Status Finish(int64* file_size) override {
+  Status Finish(int64_t* file_size) override {
     *file_size = -1;
     Status s = builder_->Finish();
     if (s.ok()) {

@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace xla {
 string PrintHloProfile(const HloProfilePrinterData& hlo_profile_printer_data,
-                       const int64* counters, double clock_rate_ghz) {
+                       const int64_t* counters, double clock_rate_ghz) {
   using HloComputationInfo = HloProfilePrinterData::HloComputationInfo;
   using HloInstructionInfo = HloProfilePrinterData::HloInstructionInfo;
 

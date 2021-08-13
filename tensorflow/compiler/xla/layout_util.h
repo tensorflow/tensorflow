@@ -36,14 +36,14 @@ class LayoutUtil {
  public:
   // Creates a layout with the given minor-to-major dimension order. (This is a
   // convenience function for protobuf construction.)
-  static Layout MakeLayout(absl::Span<const int64> minor_to_major,
+  static Layout MakeLayout(absl::Span<const int64_t> minor_to_major,
                            absl::Span<const Tile> tiles = {},
                            int64_t element_size_in_bits = 0,
                            int64_t memory_space = 0);
 
   // Similar to MakeLayout, but take indices in reverse order.
   static Layout MakeLayoutFromMajorToMinor(
-      absl::Span<const int64> major_to_minor);
+      absl::Span<const int64_t> major_to_minor);
 
   // Returns a layout with descending ((i.e. {n-1, n-2, ... 0}) minor-to-major
   // dimensions.
@@ -121,8 +121,8 @@ class LayoutUtil {
 
   // Returns the minor_to_major array for the given Shape.  Requires that the
   // shape is an array and has a dense layout.
-  static absl::Span<const int64> MinorToMajor(const Shape& shape);
-  static absl::Span<const int64> MinorToMajor(const Layout& layout);
+  static absl::Span<const int64_t> MinorToMajor(const Shape& shape);
+  static absl::Span<const int64_t> MinorToMajor(const Layout& layout);
 
   // Major(0) is the most major logical dimension number, Major(1) is the
   // second-most-major logical dimension number and so on.
@@ -138,11 +138,11 @@ class LayoutUtil {
   // the most major. Then Major(0) is the most major logical dimension, so Major
   // maps the physical dimension number 0 to the most major logical dimension
   // number Major(0).
-  static int64 Major(const Layout& layout, int64_t physical_dimension_number);
+  static int64_t Major(const Layout& layout, int64_t physical_dimension_number);
 
   // Minor(0) is the most minor logical dimension number, minor(1) is the
   // second-most-minor logical dimension number and so on.
-  static int64 Minor(const Layout& layout, int64_t physical_dimension_number);
+  static int64_t Minor(const Layout& layout, int64_t physical_dimension_number);
 
   // Returns the inverse mapping of the Major() function. More precisely, return
   // a vector v such that if l == Major(p), then v[l] == p.
@@ -157,7 +157,7 @@ class LayoutUtil {
   // dimension. The element whose contents are 0 represents the most major
   // physical dimension, and the element with contents (rank - 1) represents
   // the most minor physical dimension.
-  static std::vector<int64> MakeLogicalToPhysical(const Layout& layout);
+  static std::vector<int64_t> MakeLogicalToPhysical(const Layout& layout);
 
   // Returns a human-readable string that represents the given layout.
   static string HumanString(const Layout& layout);
@@ -179,7 +179,7 @@ class LayoutUtil {
   // Returns whether the given dimensions are consecutive in the given layout,
   // not necessarily in the order given.
   static bool AreDimensionsConsecutive(const Layout& layout,
-                                       absl::Span<const int64> dims);
+                                       absl::Span<const int64_t> dims);
 
   // Constructs a new layout by making the given dimension `dim` in the given
   // layout `layout` as the most major dimension.

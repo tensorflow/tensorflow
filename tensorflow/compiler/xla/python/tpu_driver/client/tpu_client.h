@@ -322,7 +322,7 @@ class PyTpuExecutable {
   int num_replicas() const { return device_assignment_.replica_count(); }
   int num_partitions() const { return device_assignment_.computation_count(); }
 
-  int64 SizeOfGeneratedCodeInBytes() const {
+  int64_t SizeOfGeneratedCodeInBytes() const {
     CHECK_GE(executables_.size(), 1);
     return executables_.begin()->second->size_in_bytes();
   }

@@ -295,11 +295,11 @@ TEST(ArrayGradTest, SplitGrad) {
   // SplitVGrad
   {
     Tensor size_splits(DT_INT64, {2});
-    size_splits.flat<int64>().setConstant(2);
-    auto expected_d_size_splits = test::AsTensor<int64>({0, 0}, {2});
+    size_splits.flat<int64_t>().setConstant(2);
+    auto expected_d_size_splits = test::AsTensor<int64_t>({0, 0}, {2});
     auto dx = SplitVGrad(x, size_splits, 1, dy0, dy1);
     test::ExpectClose(dx[0], expected_dx);
-    test::ExpectTensorEqual<int64>(dx[1], expected_d_size_splits);
+    test::ExpectTensorEqual<int64_t>(dx[1], expected_d_size_splits);
     test::ExpectTensorEqual<int32>(dx[2], expected_d_dim);
   }
 }

@@ -15,6 +15,7 @@ package(
         "//learning/serving:__subpackages__",
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
+        "//waymo/ml/deploy/sync_test/tools:__subpackages__",
     ],
     licenses = ["notice"],
 )

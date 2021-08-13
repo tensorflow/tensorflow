@@ -219,7 +219,21 @@ cc_library(
     hdrs = ["simple_memory_arena.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        ":macros",
+        "//tensorflow/lite/c:common",
+    ],
+)
+
+cc_library(
+    name = "simple_memory_arena_debug_dump",
+    srcs = ["simple_memory_arena_debug_dump.cc"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings(),
+    deps = [
+        ":simple_memory_arena",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(

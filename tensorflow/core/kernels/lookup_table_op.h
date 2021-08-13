@@ -297,7 +297,7 @@ class HashTable : public InitializableLookupTable {
     return Status::OK();
   }
 
-  int64 MemoryUsed() const override {
+  int64_t MemoryUsed() const override {
     if (!is_initialized()) {
       return 0;
     }

@@ -380,7 +380,7 @@ class HDFSWritableFile : public WritableFile {
     return Status::OK();
   }
 
-  Status Tell(int64* position) override {
+  Status Tell(int64_t* position) override {
     *position = libhdfs()->hdfsTell(fs_, file_);
     if (*position == -1) {
       return IOError(filename_, errno);
@@ -577,8 +577,8 @@ Status HadoopFileSystem::Stat(const string& fname, TransactionToken* token,
   if (info == nullptr) {
     return IOError(fname, errno);
   }
-  stats->length = static_cast<int64>(info->mSize);
-  stats->mtime_nsec = static_cast<int64>(info->mLastMod) * 1e9;
+  stats->length = static_cast<int64_t>(info->mSize);
+  stats->mtime_nsec = static_cast<int64_t>(info->mLastMod) * 1e9;
   stats->is_directory = info->mKind == kObjectKindDirectory;
   libhdfs()->hdfsFreeFileInfo(info, 1);
   return Status::OK();

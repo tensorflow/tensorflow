@@ -54,9 +54,8 @@ class CpuLayoutAssignmentTest : public HloTestBase {
         [](int64_t shape_size) {
           return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
         });
-    cpu::CpuLayoutAssignment layout_assignment(
-        entry_computation_layout, LayoutAssignment::InstructionCanChangeLayout,
-        &target_machine_features);
+    cpu::CpuLayoutAssignment layout_assignment(entry_computation_layout,
+                                               &target_machine_features);
     EXPECT_IS_OK(layout_assignment.Run(module).status());
   }
 };
@@ -329,9 +328,8 @@ static StatusOr<DotOutputFusionLayoutAssignmentResult> RunDotOutputFusion(
       [](int64_t shape_size) {
         return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
       });
-  cpu::CpuLayoutAssignment layout_assignment(
-      &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
-      &target_machine_features);
+  cpu::CpuLayoutAssignment layout_assignment(&computation_layout,
+                                             &target_machine_features);
   TF_ASSIGN_OR_RETURN(result.layout_assignment_changed_something,
                       layout_assignment.Run(module));
 

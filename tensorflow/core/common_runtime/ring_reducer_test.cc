@@ -284,8 +284,8 @@ TEST_F(RingReducerInitParamsTest, AutomaticSubdivs) {
     int num_chunks = kNumDevs * num_subdivs;
     size_t chunk_size = 3 * 1048576;  // 3 MB
     size_t tensor_size = chunk_size * num_chunks;
-    cp->instance.shape =
-        TensorShape({static_cast<int64>(tensor_size / DataTypeSize(DT_FLOAT))});
+    cp->instance.shape = TensorShape(
+        {static_cast<int64_t>(tensor_size / DataTypeSize(DT_FLOAT))});
   }
   cp->instance.impl_details.subdiv_offsets.clear();
   RunSubdivPermsTest(cp.get(),
@@ -394,7 +394,7 @@ TEST_F(RingReducerInitParamsTest, AutomaticSubdivDisabled) {
         RunTest<int32>(dtype, DEVICE_##T, W, D, S, L, A);                     \
       } break;                                                                \
       case DT_INT64: {                                                        \
-        RunTest<int64>(dtype, DEVICE_##T, W, D, S, L, A);                     \
+        RunTest<int64_t>(dtype, DEVICE_##T, W, D, S, L, A);                   \
       } break;                                                                \
       default:                                                                \
         LOG(FATAL) << "Unimplemented";                                        \

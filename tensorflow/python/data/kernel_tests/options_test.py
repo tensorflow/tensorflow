@@ -56,7 +56,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsTwiceSame(self):
     options = options_lib.Options()
-    options.experimental_optimization.autotune = True
+    options.autotune.enabled = True
     ds = dataset_ops.Dataset.range(0).with_options(options).with_options(
         options)
     self.assertEqual(options, self._get_options(ds))
@@ -64,14 +64,14 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsTwiceDifferentOptions(self):
     options1 = options_lib.Options()
-    options1.experimental_optimization.autotune = True
+    options1.autotune.enabled = True
     options2 = options_lib.Options()
     options2.deterministic = False
     ds = dataset_ops.Dataset.range(0)
     ds = ds.with_options(options1)
     ds = ds.with_options(options2)
     options = self._get_options(ds)
-    self.assertTrue(options.experimental_optimization.autotune)
+    self.assertTrue(options.autotune.enabled)
     # Explicitly check that flag is False since assertFalse allows None
     self.assertIs(options.deterministic, False)
 
@@ -81,25 +81,25 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
       # TODO(b/165013260): Fix this
       self.skipTest("Test is currently broken on Windows with Python 3.8")
     options1 = options_lib.Options()
-    options1.experimental_optimization.autotune = False
+    options1.autotune.enabled = False
     options2 = options_lib.Options()
-    options2.experimental_optimization.autotune = True
+    options2.autotune.enabled = True
     ds = dataset_ops.Dataset.range(0)
     ds = ds.with_options(options1)
     ds = ds.with_options(options2)
-    self.assertTrue(self._get_options(ds).experimental_optimization.autotune)
+    self.assertTrue(self._get_options(ds).autotune.enabled)
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsMergeOptionsFromMultipleInputs(self):
     options1 = options_lib.Options()
-    options1.experimental_optimization.autotune = True
+    options1.autotune.enabled = True
     options2 = options_lib.Options()
     options2.deterministic = True
     ds1 = dataset_ops.Dataset.range(0).with_options(options1)
     ds2 = dataset_ops.Dataset.range(0).with_options(options2)
     ds = dataset_ops.Dataset.zip((ds1, ds2))
     options = self._get_options(ds)
-    self.assertTrue(options.experimental_optimization.autotune)
+    self.assertTrue(options.autotune.enabled)
     self.assertTrue(options.deterministic)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -119,7 +119,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options1 = options_lib.Options()
     options1.experimental_slack = True
     options2 = options_lib.Options()
-    options2.experimental_optimization.autotune = True
+    options2.autotune.enabled = True
     ds = ds.with_options(options1)
     ds = ds.map(lambda x: 2 * x)
     ds = ds.with_options(options2)
@@ -139,6 +139,9 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsProtoRoundTrip(self):
     options = options_lib.Options()
+    options.autotune.enabled = True
+    options.autotune.cpu_budget = 10
+    options.autotune.ram_budget = 20
     options.deterministic = True
     options.experimental_external_state_policy = (
         options_lib.ExternalStatePolicy.FAIL)
@@ -146,10 +149,6 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
         options_lib.AutoShardPolicy.DATA)
     options.experimental_distribute.num_devices = 1000
     options.experimental_optimization.apply_default_optimizations = True
-    options.experimental_optimization.autotune = True
-    options.experimental_optimization.autotune_buffers = True
-    options.experimental_optimization.autotune_cpu_budget = 10
-    options.experimental_optimization.autotune_ram_budget = 20
     options.experimental_optimization.filter_fusion = True
     options.experimental_optimization.map_and_batch_fusion = True
     options.experimental_optimization.map_and_filter_fusion = True
@@ -181,6 +180,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options._from_proto(pb)
     result = options._to_proto()
     expected_pb = dataset_options_pb2.Options()
+    expected_pb.autotune_options.CopyFrom(dataset_options_pb2.AutotuneOptions())
     expected_pb.distribute_options.CopyFrom(
         dataset_options_pb2.DistributeOptions())
     expected_pb.optimization_options.CopyFrom(

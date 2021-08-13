@@ -461,7 +461,7 @@ class Conv2DBackpropInputOp : public OpKernel {
   std::vector<int32> strides_;
   TensorFormat data_format_;
   Padding padding_;
-  std::vector<int64> explicit_paddings_;
+  std::vector<int64_t> explicit_paddings_;
 
   bool use_cudnn_ = false;
   bool cudnn_use_autotune_ = false;
@@ -663,9 +663,9 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_temp(
                        DataTypeToEnum<T>::value,
-                       TensorShape({static_cast<int64>(shard_size),
-                                    static_cast<int64>(output_image_size),
-                                    static_cast<int64>(filter_total_size)}),
+                       TensorShape({static_cast<int64_t>(shard_size),
+                                    static_cast<int64_t>(output_image_size),
+                                    static_cast<int64_t>(filter_total_size)}),
                        &col_buffer));
 
     // The input offset corresponding to a single input image.
@@ -759,7 +759,7 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
   std::vector<int32> dilations_;
   std::vector<int32> strides_;
   Padding padding_;
-  std::vector<int64> explicit_paddings_;
+  std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DCustomBackpropInputOp);

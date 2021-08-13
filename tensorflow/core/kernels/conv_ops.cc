@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -162,7 +163,7 @@ struct LaunchGrouped {
     const int64_t num_groups = in_depth / patch_depth;
 
     // Shuffle input/filter tensors to have group as a leading dimension.
-    std::array<int64, 5> shuffle({3, 0, 1, 2, 4});
+    std::array<int64_t, 5> shuffle({3, 0, 1, 2, 4});
 
     // Compute pre shuffle dimemnsions.
     auto pre_shuffle = [&](const Tensor& tensor) -> std::array<int64, 5> {
@@ -227,7 +228,7 @@ struct LaunchGrouped {
     }
 
     // Shuffle temporary output back into pre-shuffled shape.
-    std::array<int64, 5> rev_shuffle({1, 2, 3, 0, 4});
+    std::array<int64_t, 5> rev_shuffle({1, 2, 3, 0, 4});
     output->shaped<T, 5>(pre_shuffle(*output)).device(device) =
         output_shuffled.tensor<T, 5>().shuffle(rev_shuffle);
   }
@@ -273,6 +274,12 @@ struct LaunchConv2DOp<CPUDevice, T> {
           " vs ", patch_depth));
       return;
     }
+    if (filter.NumElements() <= 0) {
+      ctx->SetStatus(
+          errors::InvalidArgument("filter must not have zero elements "
+                                  "(i.e. all dimensions must be non-zero)"));
+      return;
+    }
 
     const int64_t num_groups = in_depth / patch_depth;
     if (num_groups <= 0) {
@@ -306,7 +313,7 @@ struct LaunchConv2DOp<GPUDevice, int32> {
                   const Tensor& input, const Tensor& filter, int row_dilation,
                   int col_dilation, int row_stride, int col_stride,
                   const Padding& padding,
-                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     if (data_format != FORMAT_NHWC) {
       ctx->SetStatus(
@@ -324,6 +331,10 @@ struct LaunchConv2DOp<GPUDevice, int32> {
                     "attempted to be run because the input depth of ",
                     in_depth, " does not match the filter input depth of ",
                     filter.dim_size(2)));
+    OP_REQUIRES(
+        ctx, filter.NumElements() > 0,
+        errors::InvalidArgument("filter must not have zero elements "
+                                "(i.e. all dimensions must be non-zero)"));
 
     for (int64_t explicit_padding : explicit_paddings) {
       if (!FastBoundsCheck(explicit_padding, std::numeric_limits<int>::max())) {
@@ -743,8 +754,8 @@ template struct LaunchConv2DOp<CPUDevice, double>;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
-                           int64_t default_value_in_bytes) {
+int64_t GetDnnWorkspaceLimit(const string& envvar_in_mb,
+                             int64_t default_value_in_bytes) {
   const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
   if (workspace_limit_in_mb_str != nullptr &&
       strcmp(workspace_limit_in_mb_str, "") != 0) {
@@ -760,21 +771,12 @@ int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
   return default_value_in_bytes;
 }
 
-// A dummy type to group forward convolution autotune results together.
-struct ConvAutoTuneGroup {
-  static string name() { return "Conv"; }
-};
-
-typedef AutoTuneSingleton<ConvAutoTuneGroup, ConvParameters,
-                          se::dnn::AlgorithmConfig>
-    AutoTuneConv;
-
 template <typename T>
 void LaunchConv2DOp<GPUDevice, T>::operator()(
     OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
     const Tensor& input_param, const Tensor& filter, int row_dilation,
     int col_dilation, int row_stride, int col_stride, const Padding& padding,
-    const std::vector<int64>& explicit_paddings, Tensor* output,
+    const std::vector<int64_t>& explicit_paddings, Tensor* output,
     TensorFormat data_format) {
   using se::dnn::AlgorithmConfig;
   using se::dnn::AlgorithmDesc;
@@ -797,6 +799,11 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   const int64_t patch_rows = filter.dim_size(0);
   const int64_t patch_cols = filter.dim_size(1);
   const int64_t patch_depths = filter.dim_size(2);
+
+  OP_REQUIRES(
+      ctx, filter.NumElements() > 0,
+      errors::InvalidArgument("filter must not have zero elements "
+                              "(i.e. all dimensions must be non-zero)"));
 
   // If the filter in-depth (patch_depths) is 1 and smaller than the input
   // depth, it's a depthwise convolution. More generally, if the filter in-depth
@@ -1105,7 +1112,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 #endif
 
   if (cudnn_use_autotune &&
-      !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
+      !AutotuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
     profiler::ScopedAnnotation annotation("cudnn_autotuning");
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
@@ -1274,7 +1281,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
           ctx, BestCudnnConvAlgorithm(results, nullptr, &algorithm_config));
     }
 
-    AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
+    AutotuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }
 
   Status cudnn_launch_status;
@@ -1284,7 +1291,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       VLOG(4) << "Conv2D Execution Plan: "
               << algorithm_config.algorithm()->exec_plan_id();
     } else {
-      VLOG(4) << "Convolution AutoTune has been turned off";
+      VLOG(4) << "Convolution Autotune has been turned off";
     }
     cudnn_launch_status = stream->ConvolveWithExecutionPlan(
         input_desc, input_ptr, filter_desc, filter_ptr, conv_desc, output_desc,

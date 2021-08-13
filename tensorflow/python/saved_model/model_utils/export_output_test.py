@@ -60,7 +60,8 @@ class ExportOutputTest(test.TestCase):
 
   def test_classify_requires_classes_or_scores(self):
     with self.assertRaisesRegex(
-        ValueError, 'At least one of scores and classes must be set.'):
+        ValueError,
+        'Cannot create a ClassificationOutput with empty arguments'):
       export_output_lib.ClassificationOutput()
 
   def test_build_standardized_signature_def_regression(self):

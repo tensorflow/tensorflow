@@ -89,7 +89,7 @@ class UniqueOp : public OpKernel {
                     std::numeric_limits<int32>::max(), " elements"));
 
     int64_t axis = 0;
-    std::vector<int64> new_sizes{1, input.NumElements(), 1};
+    std::vector<int64_t> new_sizes{1, input.NumElements(), 1};
     if (context->num_inputs() == 1) {
       OP_REQUIRES(context, TensorShapeUtils::IsVector(input.shape()),
                   errors::InvalidArgument("unique expects a 1D vector."));
@@ -117,7 +117,7 @@ class UniqueOp : public OpKernel {
         if (axis_tensor.dtype() == DT_INT32) {
           axis = internal::SubtleMustCopy(axis_tensor.scalar<int32>()());
         } else {
-          axis = internal::SubtleMustCopy(axis_tensor.scalar<int64>()());
+          axis = internal::SubtleMustCopy(axis_tensor.scalar<int64_t>()());
         }
         axis = axis < 0 ? axis + input.dims() : axis;
         OP_REQUIRES(context, 0 <= axis && axis < input.dims(),
@@ -148,7 +148,7 @@ class UniqueOp : public OpKernel {
       // elements. Here we put T directly into the map rather than ints pointing
       // to them as in the general case.
       auto Tin = input.flat<T>();
-      const int64_t N = static_cast<int64>(Tin.size());
+      const int64_t N = static_cast<int64_t>(Tin.size());
 
       typename UniqueOpHashMap<T, TIndex>::map_type uniq;
       uniq.reserve(2 * N);
@@ -160,7 +160,7 @@ class UniqueOp : public OpKernel {
         }
       }
 
-      uniq_size = static_cast<int64>(uniq.size());
+      uniq_size = static_cast<int64_t>(uniq.size());
       TensorShape output_shape(input.shape());
       output_shape.set_dim(axis, uniq_size);
       Tensor* output = nullptr;
@@ -197,7 +197,7 @@ class UniqueOp : public OpKernel {
         return true;
       };
 
-      absl::flat_hash_map<int64, int64, decltype(hash_fn),
+      absl::flat_hash_map<int64_t, int64_t, decltype(hash_fn),
                           decltype(equal_to_fn)>
           uniq(0, hash_fn, equal_to_fn);
 
@@ -211,7 +211,7 @@ class UniqueOp : public OpKernel {
         }
       }
 
-      uniq_size = static_cast<int64>(uniq.size());
+      uniq_size = static_cast<int64_t>(uniq.size());
       new_sizes[1] = uniq_size;
       TensorShape output_shape(input.shape());
       output_shape.set_dim(axis, uniq_size);
@@ -239,46 +239,46 @@ class UniqueOp : public OpKernel {
   }
 };
 
-#define REGISTER_UNIQUE(type)                                    \
-  REGISTER_KERNEL_BUILDER(Name("Unique")                         \
-                              .Device(DEVICE_CPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int32>("out_idx"), \
-                          UniqueOp<type, int32>);                \
-  REGISTER_KERNEL_BUILDER(Name("Unique")                         \
-                              .Device(DEVICE_CPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("out_idx"), \
-                          UniqueOp<type, int64>);                \
-  REGISTER_KERNEL_BUILDER(Name("UniqueV2")                       \
-                              .Device(DEVICE_CPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int32>("out_idx"), \
-                          UniqueOp<type, int32>);                \
-  REGISTER_KERNEL_BUILDER(Name("UniqueV2")                       \
-                              .Device(DEVICE_CPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("out_idx"), \
-                          UniqueOp<type, int64>);                \
-  REGISTER_KERNEL_BUILDER(Name("UniqueWithCounts")               \
-                              .Device(DEVICE_CPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int32>("out_idx"), \
-                          UniqueOp<type, int32>)                 \
-  REGISTER_KERNEL_BUILDER(Name("UniqueWithCounts")               \
-                              .Device(DEVICE_CPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("out_idx"), \
-                          UniqueOp<type, int64>);                \
-  REGISTER_KERNEL_BUILDER(Name("UniqueWithCountsV2")             \
-                              .Device(DEVICE_CPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int32>("out_idx"), \
-                          UniqueOp<type, int32>)                 \
-  REGISTER_KERNEL_BUILDER(Name("UniqueWithCountsV2")             \
-                              .Device(DEVICE_CPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("out_idx"), \
+#define REGISTER_UNIQUE(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("Unique")                           \
+                              .Device(DEVICE_CPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<int32>("out_idx"),   \
+                          UniqueOp<type, int32>);                  \
+  REGISTER_KERNEL_BUILDER(Name("Unique")                           \
+                              .Device(DEVICE_CPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<int64_t>("out_idx"), \
+                          UniqueOp<type, int64>);                  \
+  REGISTER_KERNEL_BUILDER(Name("UniqueV2")                         \
+                              .Device(DEVICE_CPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<int32>("out_idx"),   \
+                          UniqueOp<type, int32>);                  \
+  REGISTER_KERNEL_BUILDER(Name("UniqueV2")                         \
+                              .Device(DEVICE_CPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<int64_t>("out_idx"), \
+                          UniqueOp<type, int64>);                  \
+  REGISTER_KERNEL_BUILDER(Name("UniqueWithCounts")                 \
+                              .Device(DEVICE_CPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<int32>("out_idx"),   \
+                          UniqueOp<type, int32>)                   \
+  REGISTER_KERNEL_BUILDER(Name("UniqueWithCounts")                 \
+                              .Device(DEVICE_CPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<int64_t>("out_idx"), \
+                          UniqueOp<type, int64>);                  \
+  REGISTER_KERNEL_BUILDER(Name("UniqueWithCountsV2")               \
+                              .Device(DEVICE_CPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<int32>("out_idx"),   \
+                          UniqueOp<type, int32>)                   \
+  REGISTER_KERNEL_BUILDER(Name("UniqueWithCountsV2")               \
+                              .Device(DEVICE_CPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<int64_t>("out_idx"), \
                           UniqueOp<type, int64>)
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE);
 REGISTER_UNIQUE(tstring)

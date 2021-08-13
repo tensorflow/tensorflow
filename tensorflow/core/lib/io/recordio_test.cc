@@ -68,7 +68,7 @@ class StringDest : public WritableFile {
     return Status::OK();
   }
 #endif
-  Status Tell(int64* pos) override {
+  Status Tell(int64_t* pos) override {
     *pos = contents_->size();
     return Status::OK();
   }

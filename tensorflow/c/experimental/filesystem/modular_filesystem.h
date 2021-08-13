@@ -81,8 +81,8 @@ class ModularFileSystem final : public FileSystem {
                           std::vector<std::string>* results) override;
   Status DeleteFile(const std::string& fname, TransactionToken* token) override;
   Status DeleteRecursively(const std::string& dirname, TransactionToken* token,
-                           int64* undeleted_files,
-                           int64* undeleted_dirs) override;
+                           int64_t* undeleted_files,
+                           int64_t* undeleted_dirs) override;
   Status DeleteDir(const std::string& dirname,
                    TransactionToken* token) override;
   Status RecursivelyCreateDir(const std::string& dirname,
@@ -104,7 +104,7 @@ class ModularFileSystem final : public FileSystem {
   Status SetOption(const std::string& name,
                    const std::vector<string>& values) override;
   Status SetOption(const std::string& name,
-                   const std::vector<int64>& values) override;
+                   const std::vector<int64_t>& values) override;
   Status SetOption(const std::string& name,
                    const std::vector<double>& values) override;
 
@@ -154,7 +154,7 @@ class ModularWritableFile final : public WritableFile {
   Status Flush() override;
   Status Sync() override;
   Status Name(StringPiece* result) const override;
-  Status Tell(int64* position) override;
+  Status Tell(int64_t* position) override;
 
  private:
   std::string filename_;

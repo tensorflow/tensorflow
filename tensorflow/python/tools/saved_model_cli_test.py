@@ -627,6 +627,17 @@ Defined Functions:
     with self.assertRaises(ValueError):
       saved_model_cli.run(args)
 
+  def testRunCommandInvalidSignature(self):
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    args = self.parser.parse_args([
+        'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
+        'INVALID_SIGNATURE', '--input_exprs', 'x2=np.ones((3,1))'
+    ])
+    with self.assertRaisesRegex(ValueError,
+                                'Could not find signature "INVALID_SIGNATURE"'):
+      saved_model_cli.run(args)
+
   def testRunCommandInputExamplesNotListError(self):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)

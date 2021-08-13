@@ -114,7 +114,7 @@ StepDatabaseResult ConvertStepEventsToStepDb(
     const StepEvents& nonoverlapped_step_events) {
   StepDatabaseResult step_db;
   // Gets sorted step numbers.
-  std::vector<int64> step_numbers;
+  std::vector<int64_t> step_numbers;
   step_numbers.reserve(nonoverlapped_step_events.size());
   for (const auto& step_events : nonoverlapped_step_events) {
     step_numbers.push_back(step_events.first);

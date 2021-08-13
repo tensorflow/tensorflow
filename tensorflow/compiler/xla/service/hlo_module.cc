@@ -367,8 +367,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
       << ShapeUtil::HumanStringWithLayout(expected_program_shape.result())
       << ", actual: " << ShapeUtil::HumanStringWithLayout(result_shape);
 
-  absl::flat_hash_map<int64, HloComputation*> computation_map;
-  absl::flat_hash_map<HloComputation*, int64> to_proto_id;
+  absl::flat_hash_map<int64_t, HloComputation*> computation_map;
+  absl::flat_hash_map<HloComputation*, int64_t> to_proto_id;
   std::vector<std::unique_ptr<HloComputation>> computations;
   HloComputation* entry = nullptr;
   for (const HloComputationProto& computation_proto : proto.computations()) {
@@ -596,7 +596,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   return call;
 }
 
-int64 HloModule::instruction_count() const {
+int64_t HloModule::instruction_count() const {
   int64_t n = 0;
   for (const auto& computation : computations_) {
     n += computation->instruction_count();

@@ -148,9 +148,9 @@ TEST_F(HloCseTest, ConstantsSameValueDifferentType) {
   constants.push_back(builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(42))));
   constants.push_back(builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint64>(42.0))));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint64_t>(42.0))));
   constants.push_back(builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64>(42.0))));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64_t>(42.0))));
   constants.push_back(builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<double>(42.0))));
   constants.push_back(builder.AddInstruction(

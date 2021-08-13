@@ -88,13 +88,13 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_SUM_GPU_SPECS);
 
 #define DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR(T)                \
   template struct SparseSegmentReductionFunctor<T, int32, int32>; \
-  template struct SparseSegmentReductionFunctor<T, int32, int64>;
+  template struct SparseSegmentReductionFunctor<T, int32, int64_t>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR);
 #undef DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR
 
 #define DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR(T)                           \
   template struct SparseSegmentGradFunctor<GPUDevice, T, int32, int32>; \
-  template struct SparseSegmentGradFunctor<GPUDevice, T, int32, int64>;
+  template struct SparseSegmentGradFunctor<GPUDevice, T, int32, int64_t>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR);
 #undef DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR
 

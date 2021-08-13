@@ -141,9 +141,6 @@ struct OutputInputTensorPairHasher {
 // everything to use it.
 static const char* const kArgOp = "_Arg";
 static const char* const kRetValOp = "_Retval";
-static const char* const kHostComputeOp = "XlaHostCompute";
-static const char* const kSendFromHostOp = "_XlaSendFromHost";
-static const char* const kRecvAtHostOp = "_XlaRecvAtHost";
 
 class Encapsulator {
  public:
@@ -1301,18 +1298,30 @@ Status EncapsulateSubgraphsPass::Run(
         return Status::OK();
       };
 
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      EncapsulateSubgraphsInFunctions(
-          kXlaClusterAttr, **options.graph, rewrite_subgraph,
-          /*reuse_existing_functions=*/false, &graph_out, library),
-      "EncapsulateSubgraphsPass failed");
-
-  if (VLOG_IS_ON(1)) {
-    DumpGraphToFile("encapsulate_subgraphs_after", *graph_out,
-                    options.flib_def);
+  // Don't EncapsulateSubgraphs if graph doesn't contain nodes with
+  // kXlaClusterAttr.
+  bool has_xla_cluster_attribute = false;
+  for (Node* node : (*options.graph)->nodes()) {
+    if (HasNodeAttr(node->def(), kXlaClusterAttr)) {
+      has_xla_cluster_attribute = true;
+      break;
+    }
   }
 
-  *options.graph = std::move(graph_out);
+  if (has_xla_cluster_attribute) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        EncapsulateSubgraphsInFunctions(
+            kXlaClusterAttr, **options.graph, rewrite_subgraph,
+            /*reuse_existing_functions=*/false, &graph_out, library),
+        "EncapsulateSubgraphsPass failed");
+    if (VLOG_IS_ON(1)) {
+      DumpGraphToFile("encapsulate_subgraphs_after", *graph_out,
+                      options.flib_def);
+    }
+
+    *options.graph = std::move(graph_out);
+  }
+
   TF_ASSIGN_OR_RETURN(absl::flat_hash_set<Node*> ref_related_nodes,
                       GetNodesRelatedToRefVariables(**options.graph, flr));
   for (Node* node : (*options.graph)->nodes()) {

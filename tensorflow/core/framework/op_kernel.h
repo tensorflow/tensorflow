@@ -553,10 +553,10 @@ class OpKernelContext {
     ~Params() { delete eigen_gpu_device; }
 
     // The step being executed.
-    int64 step_id = 0;
+    int64_t step_id = 0;
 
     // Timestamp for the start of graph execution. Used for latency metrics.
-    int64 start_time_usecs = 0;
+    int64_t start_time_usecs = 0;
 
     // The op kernel being computed.
     OpKernel* op_kernel = nullptr;
@@ -679,9 +679,9 @@ class OpKernelContext {
 
   Env* env() const { return params_->device->env(); }
 
-  int64 step_id() const { return params_->step_id; }
+  int64_t step_id() const { return params_->step_id; }
 
-  int64 start_time_usecs() const { return params_->start_time_usecs; }
+  int64_t start_time_usecs() const { return params_->start_time_usecs; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
 
@@ -1171,7 +1171,7 @@ class OpKernelContext {
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size of temporary memory;
-  int64 temp_memory_allocated() const
+  int64_t temp_memory_allocated() const
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Records persistent memory allocation, size can be negative indicating
@@ -1180,10 +1180,10 @@ class OpKernelContext {
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size and ids of persistent memory.
-  int64 persistent_memory_allocated() const
+  int64_t persistent_memory_allocated() const
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
-  std::vector<int64> persistent_alloc_ids() const
+  std::vector<int64_t> persistent_alloc_ids() const
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Resets counters for temp and persistent memory and recorded ids.
@@ -1266,12 +1266,12 @@ class OpKernelContext {
         TF_GUARDED_BY(mu);
 
     mutable mutex stats_mu;
-    int64 temp_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
+    int64_t temp_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
 
-    int64 persistent_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
-    gtl::InlinedVector<std::pair<const void*, int64>, 2>
+    int64_t persistent_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
+    gtl::InlinedVector<std::pair<const void*, int64_t>, 2>
         temp_tensor_buffer_and_size TF_GUARDED_BY(stats_mu);
-    gtl::InlinedVector<int64, 2> persistent_alloc_ids TF_GUARDED_BY(stats_mu);
+    gtl::InlinedVector<int64_t, 2> persistent_alloc_ids TF_GUARDED_BY(stats_mu);
   };
   std::unique_ptr<TrackingState> tracking_state_;
 

@@ -52,7 +52,7 @@ class CudnnSupport : public dnn::DnnSupport {
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
       dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-      float dropout, uint64 seed, ScratchAllocator* state_allocator,
+      float dropout, uint64_t seed, ScratchAllocator* state_allocator,
       bool use_padded_io) override;
 
   port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
@@ -421,7 +421,7 @@ class CudnnSupport : public dnn::DnnSupport {
   bool DoActivate(Stream* stream, dnn::ActivationMode activation_mode,
                   const dnn::BatchDescriptor& dimensions,
                   const DeviceMemory<float>& input_data,
-                  DeviceMemory<float>* output_data, uint64 options) override;
+                  DeviceMemory<float>* output_data, uint64_t options) override;
 
   bool DoPoolForward(Stream* stream,
                      const dnn::PoolingDescriptor& pooling_dimensions,
@@ -591,39 +591,6 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
       DeviceMemory<U>* offset_backprop, DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator);
-
-  port::Status DoFusedConvolveImpl(
-      Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
-      dnn::DataType bias_type, dnn::DataType output_type,
-      const dnn::BatchDescriptor& conv_input_descriptor,
-      DeviceMemoryBase conv_input_data, double conv_input_scale,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      DeviceMemoryBase side_input_data, double side_input_scale,
-      const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
-      dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data, dnn::DataType accumulator_type,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::ProfileResult* output_profile_result);
-
-  port::Status DoFusedConvolveWithExecutionPlanImpl(
-      Stream* stream, dnn::DataType element_type,
-      const dnn::BatchDescriptor& conv_input_descriptor,
-      DeviceMemoryBase conv_input_data, double conv_input_scale,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      DeviceMemoryBase side_input_data, double side_input_scale,
-      const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
-      dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data, dnn::DataType accumulator_type,
-      ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& plan_config,
-      dnn::ProfileResult* output_profile_result);
 
   template <class T>
   port::Status DoRnnForwardImpl(

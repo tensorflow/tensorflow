@@ -117,6 +117,7 @@ cc_library(
     name = "shared_batch_scheduler_hdrs",
     hdrs = ["shared_batch_scheduler.h"],
     deps = [
+        ":batch_input_task",
         ":batch_scheduler_hdrs",
         ":periodic_function_dynamic",
         "//tensorflow/core:framework_headers_lib",
@@ -129,6 +130,7 @@ cc_library(
     name = "shared_batch_scheduler",
     hdrs = ["shared_batch_scheduler.h"],
     deps = [
+        ":batch_input_task",
         ":batch_scheduler",
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
@@ -142,6 +144,7 @@ cc_library(
 
 tf_cc_test(
     name = "shared_batch_scheduler_test",
+    size = "small",
     srcs = ["shared_batch_scheduler_test.cc"],
     deps = [
         ":fake_clock_env",
@@ -150,6 +153,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/time",
@@ -291,12 +295,27 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/common_runtime:cost_measurement_registry",
+        "//tensorflow/core/common_runtime:request_cost",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/util:incremental_barrier",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_resource_base_test",
+    srcs = ["batch_resource_base_test.cc"],
+    deps = [
+        ":batch_resource_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:no_op_cost_measurement",
+        "@com_google_absl//absl/time",
     ],
 )

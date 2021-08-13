@@ -26,9 +26,9 @@ limitations under the License.
 
 namespace xla {
 
-// Multiply two nonnegative int64's, returning negative for overflow
-inline int64 MultiplyWithoutOverflow(const int64_t x, const int64_t y) {
-  // Multiply in uint64 rather than int64 since signed overflow is undefined.
+// Multiply two nonnegative int64_t's, returning negative for overflow
+inline int64_t MultiplyWithoutOverflow(const int64_t x, const int64_t y) {
+  // Multiply in uint64 rather than int64_t since signed overflow is undefined.
   // Negative values will wrap around to large unsigned values in the casts
   // (see section 4.7 [conv.integral] of the C++14 standard).
   const uint64 ux = x;
@@ -46,7 +46,7 @@ inline int64 MultiplyWithoutOverflow(const int64_t x, const int64_t y) {
   }
 
   // Cast back to signed.  Any negative value will signal an error.
-  return static_cast<int64>(uxy);
+  return static_cast<int64_t>(uxy);
 }
 
 // Computes x + y and returns nullopt if it overflows.

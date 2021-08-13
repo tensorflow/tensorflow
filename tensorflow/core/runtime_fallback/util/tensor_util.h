@@ -48,7 +48,7 @@ tensorflow::Tensor CopyShtToTfTensor(const tfrt::StringHostTensor& sht);
 inline tensorflow::TensorShape GetTfShape(const tfrt::TensorShape& shape) {
   llvm::SmallVector<ssize_t, 4> dimensions;
   shape.GetDimensions(&dimensions);
-  llvm::SmallVector<int64, 4> dims(dimensions.begin(), dimensions.end());
+  llvm::SmallVector<int64_t, 4> dims(dimensions.begin(), dimensions.end());
   return tensorflow::TensorShape(dims);
 }
 

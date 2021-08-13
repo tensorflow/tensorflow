@@ -56,10 +56,10 @@ bool IsRank2(const Shape& shape, int64_t batch_dimensions_size) {
 // the dimensions more major then the given dimensions, minor is the size of
 // dimensions more minor then the given dimensions, and middle is the size of
 // the given dimensions.
-std::array<int64, 3> PartitionShapeByMiddleDimensions(
-    const Shape& shape, absl::Span<const int64> dims_middle) {
+std::array<int64_t, 3> PartitionShapeByMiddleDimensions(
+    const Shape& shape, absl::Span<const int64_t> dims_middle) {
   CHECK(LayoutUtil::AreDimensionsConsecutive(shape.layout(), dims_middle));
-  std::array<int64, 3> values = {1, 1, 1};
+  std::array<int64_t, 3> values = {1, 1, 1};
   enum Segment { kMajor = 0, kMiddle = 1, kMinor = 2 };
   Segment cur_segment = kMinor;
 
@@ -91,10 +91,10 @@ Shape GetShapeFromTensorType(mlir::Value value) {
   Shape shape = TypeToShape(value.getType());
   if (auto attr = op->getAttrOfType<mlir::DenseIntElementsAttr>(
           kDefaultLayoutAttrName)) {
-    std::vector<int64> minor_to_major;
+    std::vector<int64_t> minor_to_major;
     absl::c_transform(
         attr, std::back_inserter(minor_to_major),
-        std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
+        std::function<int64_t(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
     *shape.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
   } else {
     *shape.mutable_layout() = LayoutUtil::MakeDescendingLayout(
@@ -146,28 +146,14 @@ bool IsCublasGemm(const HloInstruction& hlo) {
          hlo.custom_call_target() == kGemmCallTarget;
 }
 
-std::array<int64, 3> GetReductionTiling(
+std::array<int64_t, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     int smallest_input_dtype_bits,
     se::CudaComputeCapability cuda_compute_capability) {
   if (reduction_dimensions.is_row_reduction) {
-    int64_t tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
-    if (reduction_dimensions.dimensions[1] == 1) {
-      CHECK_EQ(reduction_dimensions.dimensions[0], 1);
-      return {tile_z, 1, 16};
-    }
-    if (reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
-        0) {
-      return {tile_z, 1, 64};
-    }
-    int unroll_x = 8;
-    if (cuda_compute_capability.major >= 6 && smallest_input_dtype_bits == 16) {
-      unroll_x = 16;
-    } else if (cuda_compute_capability.major >= 6 &&
-               smallest_input_dtype_bits == 8) {
-      unroll_x = 64;
-    }
-    return {tile_z, 1, unroll_x};
+    int64_t tile_z = std::min(reduction_dimensions.dimensions[0],
+                              kBatchedReductionRaceFreeBound);
+    return {tile_z, 1, 64};
   }
 
   // Column reduction.
@@ -227,7 +213,7 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
 }
 
 static ReductionDimensions GetReductionKindAndContiguousComponentsImpl(
-    const Shape& input_shape, absl::Span<const int64> dims_to_reduce) {
+    const Shape& input_shape, absl::Span<const int64_t> dims_to_reduce) {
   DimensionVector dims_to_keep;
   for (int64_t dim = 0; dim < input_shape.rank(); ++dim) {
     if (!absl::c_linear_search(dims_to_reduce, dim)) {
@@ -242,7 +228,7 @@ static ReductionDimensions GetReductionKindAndContiguousComponentsImpl(
 
   if (LayoutUtil::AreDimensionsConsecutive(input_shape.layout(),
                                            dims_to_keep)) {
-    std::array<int64, 3> shape_partition =
+    std::array<int64_t, 3> shape_partition =
         PartitionShapeByMiddleDimensions(input_shape, dims_to_keep);
     if (shape_partition[1] == 1) {
       return {/*is_row_reduction=*/true,
@@ -255,7 +241,7 @@ static ReductionDimensions GetReductionKindAndContiguousComponentsImpl(
     return {/*is_row_reduction=*/true, shape_partition};
   }
 
-  std::array<int64, 3> shape_partition =
+  std::array<int64_t, 3> shape_partition =
       PartitionShapeByMiddleDimensions(input_shape, dims_to_reduce);
 
   if (shape_partition[2] == 1) {
@@ -263,6 +249,21 @@ static ReductionDimensions GetReductionKindAndContiguousComponentsImpl(
             {1, shape_partition[0], shape_partition[1]}};
   }
   return {/*is_row_reduction=*/false, shape_partition};
+}
+
+static bool IsUnnestedReductionFasterThanElemental(
+    const ReductionDimensions& reduction_dimensions) {
+  if (reduction_dimensions.is_row_reduction) {
+    // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
+    // along tile_size_x which needs to be large enough to make the tiling
+    // implementation efficient.
+    return reduction_dimensions.dimensions[2] >= kWarpSize;
+  }
+
+  // For column reduction, the tile block is tile_size_y x tile_size_x, and we
+  // are reducing along tile_size_y. Only tile_size_y needs to be
+  // large enough to make the tiling implementation efficient.
+  return reduction_dimensions.dimensions[1] >= kWarpSize;
 }
 
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
@@ -276,7 +277,7 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
   }
 
   const HloInstruction* input = reduce.operand(0);
-  std::vector<int64> dims_to_keep;
+  std::vector<int64_t> dims_to_keep;
   for (int64_t dim = 0; dim < input->shape().dimensions().size(); ++dim) {
     if (!absl::c_linear_search(reduce.dimensions(), dim)) {
       dims_to_keep.push_back(dim);
@@ -294,20 +295,8 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
     return false;
   }
 
-  ReductionDimensions reduction_dimensions =
-      GetReductionKindAndContiguousComponents(reduce);
-
-  if (reduction_dimensions.is_row_reduction) {
-    // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
-    // along tile_size_x which needs to be large enough to make the tiling
-    // implementation efficient.
-    return reduction_dimensions.dimensions[2] >= kWarpSize;
-  }
-
-  // For column reduction, the tile block is tile_size_y x tile_size_x, and we
-  // are reducing along tile_size_y. Only tile_size_y needs to be
-  // large enough to make the tiling implementation efficient.
-  return reduction_dimensions.dimensions[1] >= kWarpSize;
+  return IsUnnestedReductionFasterThanElemental(
+      GetReductionKindAndContiguousComponents(reduce));
 }
 
 // Constructs the fusion layout analysis object by using a heuristic to infer
@@ -339,18 +328,18 @@ FusionLayoutAnalysis::FusionLayoutAnalysis(mlir::lmhlo::FusionOp fusion_op) {
     } else if (auto bitcast = mlir::dyn_cast<mlir::mhlo::BitcastOp>(op)) {
       auto attr =
           bitcast->getAttrOfType<mlir::DenseIntElementsAttr>("result_layout");
-      std::vector<int64> minor_to_major;
-      absl::c_transform(
-          attr, std::back_inserter(minor_to_major),
-          std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
+      std::vector<int64_t> minor_to_major;
+      absl::c_transform(attr, std::back_inserter(minor_to_major),
+                        std::function<int64_t(const llvm::APInt&)>(
+                            &llvm::APInt::getZExtValue));
       add_layout(bitcast, LayoutUtil::MakeLayout(minor_to_major));
 
       attr =
           bitcast->getAttrOfType<mlir::DenseIntElementsAttr>("source_layout");
       minor_to_major.clear();
-      absl::c_transform(
-          attr, std::back_inserter(minor_to_major),
-          std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
+      absl::c_transform(attr, std::back_inserter(minor_to_major),
+                        std::function<int64_t(const llvm::APInt&)>(
+                            &llvm::APInt::getZExtValue));
       add_layout(bitcast.operand(), LayoutUtil::MakeLayout(minor_to_major));
     } else {
       HloOpcode opcode = *xla::MhloToHloOpcode(&op);
@@ -406,44 +395,17 @@ bool IsReductionFromOrToContiguousDimensions(
   mlir::Value input = reduce->getOperand(0);
   const Shape operand_shape = layout_analysis.GetShape(input);
 
-  // Enable this code to check mismatch between the inferred layout and what was
-  // there before. Based on actual runs, some mismatches are expected.
-#if 0
-  Shape operand_shape_ir = GetShape(input);
-  if (auto tensor_type = input.getType().dyn_cast<mlir::TensorType>()) {
-    if (auto attr = mlir::GetLayoutFromMlirHlo(input.getDefiningOp())) {
-      std::vector<int64> minor_to_major;
-      absl::c_transform(
-          attr, std::back_inserter(minor_to_major),
-          std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
-      *operand_shape_ir.mutable_layout() =
-          LayoutUtil::MakeLayout(minor_to_major);
-    }
-  }
-  bool match = ShapeUtil::Equal(operand_shape, operand_shape_ir);
-  llvm::errs() << "inferred shape = " << operand_shape.ToString(true) << "\n";
-  llvm::errs() << "Actual shape in IR = " << operand_shape_ir.ToString(true)
-               << "\n";
-  if (!match) {
-    llvm::errs() << "Unable to infer layout for reduce op operand(0)\n";
-    llvm::errs() << "\nreduce = \n";
-    reduce->dump();
-    llvm::errs() << "\nparent = \n";
-    reduce->getParentOp()->dump();
-    CHECK(0);
-  }
-#endif
 
-  std::vector<int64> dimensions;
+  std::vector<int64_t> dimensions;
   {
     auto attr = reduce->getAttrOfType<mlir::DenseIntElementsAttr>("dimensions");
     CHECK(attr);
     absl::c_transform(
         attr, std::back_inserter(dimensions),
-        std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
+        std::function<int64_t(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
   }
 
-  std::vector<int64> dims_to_keep;
+  std::vector<int64_t> dims_to_keep;
   for (int64_t dim = 0; dim < operand_shape.dimensions().size(); ++dim) {
     if (!absl::c_linear_search(dimensions, dim)) {
       dims_to_keep.push_back(dim);
@@ -461,20 +423,8 @@ bool IsReductionFromOrToContiguousDimensions(
     return false;
   }
 
-  ReductionDimensions reduction_dimensions =
-      GetReductionKindAndContiguousComponentsImpl(operand_shape, dimensions);
-
-  if (reduction_dimensions.is_row_reduction) {
-    // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
-    // along tile_size_x which needs to be large enough to make the tiling
-    // implementation efficient.
-    return reduction_dimensions.dimensions[2] >= kWarpSize;
-  }
-
-  // For column reduction, the tile block is tile_size_y x tile_size_x, and we
-  // are reducing along tile_size_y. Only tile_size_y needs to be
-  // large enough to make the tiling implementation efficient.
-  return reduction_dimensions.dimensions[1] >= kWarpSize;
+  return IsUnnestedReductionFasterThanElemental(
+      GetReductionKindAndContiguousComponentsImpl(operand_shape, dimensions));
 }
 
 bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
@@ -512,13 +462,13 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
     mlir::Operation* reduce) {
   mlir::Value input = reduce->getOperand(0);
   Shape operand_shape = GetShape(input);
-  std::vector<int64> dimensions;
+  std::vector<int64_t> dimensions;
   {
     auto attr = reduce->getAttrOfType<mlir::DenseIntElementsAttr>("dimensions");
     CHECK(attr);
     absl::c_transform(
         attr, std::back_inserter(dimensions),
-        std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
+        std::function<int64_t(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
   }
   return GetReductionKindAndContiguousComponentsImpl(operand_shape, dimensions);
 }
@@ -941,6 +891,18 @@ Shape GetShape(mlir::Value value) {
   }
   LOG(FATAL) << "Unexpected value type to get shape for";
   return {};
+}
+
+bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
+                         const std::array<int64_t, 3>& reduction_tiling) {
+  return (reduction_dimensions.is_row_reduction &&
+          reduction_dimensions.dimensions[2] <=
+              kMinThreadsXRowReduction * reduction_tiling[2] &&
+          reduction_dimensions.dimensions[0] <=
+              kBatchedReductionRaceFreeBound) ||
+         (!reduction_dimensions.is_row_reduction &&
+          reduction_dimensions.dimensions[1] <=
+              kWarpSize * reduction_tiling[1]);
 }
 
 }  // namespace gpu

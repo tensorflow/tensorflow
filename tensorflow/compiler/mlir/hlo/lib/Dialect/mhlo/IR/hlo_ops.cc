@@ -2675,11 +2675,11 @@ static LogicalResult Verify(PadOp op) {
   }
 
   for (int i = 0, e = input_shape.size(); i < e; i++) {
-    int padding_low_val = padding_low.getValue<IntegerAttr>(i).getInt();
-    int padding_high_val = padding_high.getValue<IntegerAttr>(i).getInt();
-    int padding_interior_val =
+    int64_t padding_low_val = padding_low.getValue<IntegerAttr>(i).getInt();
+    int64_t padding_high_val = padding_high.getValue<IntegerAttr>(i).getInt();
+    int64_t padding_interior_val =
         padding_interior.getValue<IntegerAttr>(i).getInt();
-    int expected_output =
+    int64_t expected_output =
         input_shape[i] + padding_low_val + padding_high_val +
         std::max<int64_t>(input_shape[i] - 1, 0LL) * padding_interior_val;
     if (expected_output != output_shape[i]) {
@@ -3564,7 +3564,7 @@ void SortOp::build(OpBuilder& builder, OperationState& state,
                    ValueRange operands, int64_t dimension, bool is_stable) {
   state.addOperands(operands);
   state.addAttribute("dimension", builder.getI64IntegerAttr(dimension));
-  state.addAttribute("is_stable", builder.getBoolAttr(dimension));
+  state.addAttribute("is_stable", builder.getBoolAttr(is_stable));
 
   for (Value operand : operands) state.addTypes(operand.getType());
 

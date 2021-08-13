@@ -24,9 +24,9 @@ limitations under the License.
 
 namespace {
 
+using ::int64_t;
 using tensorflow::DataType;
 using tensorflow::int32;
-using tensorflow::int64;
 using tensorflow::Tensor;
 using tensorflow::TTypes;
 using tensorflow::uint16;
@@ -61,12 +61,12 @@ TEST(SparseUtilsTest, GetStartIndicesOfEachDenseRow) {
     EXPECT_TRUE(contains_empty_rows);
   }
   {
-    int64 data[] = {3, 0};
-    TTypes<int64>::ConstMatrix indices_mat(data, 1, 2);
+    int64_t data[] = {3, 0};
+    TTypes<int64_t>::ConstMatrix indices_mat(data, 1, 2);
     bool contains_empty_rows;
-    EXPECT_TRUE(GetStartIndicesOfEachDenseRow<int64>(indices_mat,
-                                                     &contains_empty_rows) ==
-                std::vector<int64>({0, 0, 0, 0, 1}));
+    EXPECT_TRUE(GetStartIndicesOfEachDenseRow<int64_t>(indices_mat,
+                                                       &contains_empty_rows) ==
+                std::vector<int64_t>({0, 0, 0, 0, 1}));
     EXPECT_TRUE(contains_empty_rows);
   }
   {
@@ -114,10 +114,10 @@ TEST(SparseUtilsTest, ParseRowStartIndices) {
     Tensor t(DataType::DT_INT64, {1});
     int indx = 0;
     for (const int64_t v : {0}) {
-      t.flat<int64>()(indx++) = v;
+      t.flat<int64_t>()(indx++) = v;
     }
-    EXPECT_TRUE(ParseRowStartIndices<int64>(t, 2) ==
-                std::vector<int64>({0, 2}));
+    EXPECT_TRUE(ParseRowStartIndices<int64_t>(t, 2) ==
+                std::vector<int64_t>({0, 2}));
   }
   {
     Tensor t(DataType::DT_UINT64, {2});
@@ -150,11 +150,11 @@ TEST(SparseUtilsTest, ContainsEmptyRows) {
     EXPECT_TRUE(ContainsEmptyRows(segment_indices));
   }
   {
-    int64 data[] = {0, 0, 1, 0, 4, 0, 6, 0, 7, 0, 8, 0, 10, 0, 12, 0};
-    TTypes<int64>::ConstMatrix indices_mat(data, 8, 2);
+    int64_t data[] = {0, 0, 1, 0, 4, 0, 6, 0, 7, 0, 8, 0, 10, 0, 12, 0};
+    TTypes<int64_t>::ConstMatrix indices_mat(data, 8, 2);
     bool contains_empty_rows;
-    const auto segment_indices =
-        GetStartIndicesOfEachDenseRow<int64>(indices_mat, &contains_empty_rows);
+    const auto segment_indices = GetStartIndicesOfEachDenseRow<int64_t>(
+        indices_mat, &contains_empty_rows);
     // indices_list = {0, 1, 4, 6, 7, 8, 10, 12};
     EXPECT_TRUE(ContainsEmptyRows(segment_indices));
   }
@@ -186,11 +186,11 @@ TEST(SparseUtilsTest, ContainsEmptyRows) {
     EXPECT_FALSE(ContainsEmptyRows(segment_indices));
   }
   {
-    int64 data[] = {0, 0, 1, 0, 1, 1, 2, 0, 2, 1, 2, 2, 3, 4};
-    TTypes<int64>::ConstMatrix indices_mat(data, 7, 2);
+    int64_t data[] = {0, 0, 1, 0, 1, 1, 2, 0, 2, 1, 2, 2, 3, 4};
+    TTypes<int64_t>::ConstMatrix indices_mat(data, 7, 2);
     bool contains_empty_rows;
-    const auto segment_indices =
-        GetStartIndicesOfEachDenseRow<int64>(indices_mat, &contains_empty_rows);
+    const auto segment_indices = GetStartIndicesOfEachDenseRow<int64_t>(
+        indices_mat, &contains_empty_rows);
     // indices_list = {0, 1, 1, 2, 2, 2, 3};
     EXPECT_FALSE(ContainsEmptyRows(segment_indices));
   }
@@ -204,11 +204,11 @@ TEST(SparseUtilsTest, ContainsEmptyRows) {
     EXPECT_TRUE(ContainsEmptyRows(segment_indices));
   }
   {
-    int64 data[] = {0, 0, 0, 1, 0, 2, 2, 0, 2, 1, 2, 2, 3, 4};
-    TTypes<int64>::ConstMatrix indices_mat(data, 7, 2);
+    int64_t data[] = {0, 0, 0, 1, 0, 2, 2, 0, 2, 1, 2, 2, 3, 4};
+    TTypes<int64_t>::ConstMatrix indices_mat(data, 7, 2);
     bool contains_empty_rows;
-    const auto segment_indices =
-        GetStartIndicesOfEachDenseRow<int64>(indices_mat, &contains_empty_rows);
+    const auto segment_indices = GetStartIndicesOfEachDenseRow<int64_t>(
+        indices_mat, &contains_empty_rows);
     // indices_list = {0, 0, 0, 2, 2, 2, 3};
     EXPECT_TRUE(ContainsEmptyRows(segment_indices));
   }
@@ -241,22 +241,22 @@ TEST(SparseUtilsTest, FindNextDenseRowStartIndex) {
     }
   }
   {
-    int64 data[] = {0, 0, 1, 0, 1, 0, 4, 0, 4, 0, 4, 0,  6, 0,  7,
-                    0, 7, 0, 7, 0, 7, 0, 8, 0, 8, 0, 10, 0, 12, 0};
-    TTypes<int64>::ConstMatrix indices_mat(data, 15, 2);
+    int64_t data[] = {0, 0, 1, 0, 1, 0, 4, 0, 4, 0, 4, 0,  6, 0,  7,
+                      0, 7, 0, 7, 0, 7, 0, 8, 0, 8, 0, 10, 0, 12, 0};
+    TTypes<int64_t>::ConstMatrix indices_mat(data, 15, 2);
     // indices_list = {0, 1, 1, 4, 4, 4,  6, 7, 7, 7, 7, 8, 8, 10, 12};
-    EXPECT_EQ(3, FindNextDenseRowStartIndex<int64>(static_cast<int64>(1),
-                                                   indices_mat));
-    EXPECT_EQ(3, FindNextDenseRowStartIndex<int64>(static_cast<int64>(2),
-                                                   indices_mat));
-    EXPECT_EQ(6, FindNextDenseRowStartIndex<int64>(static_cast<int64>(3),
-                                                   indices_mat));
-    EXPECT_EQ(6, FindNextDenseRowStartIndex<int64>(static_cast<int64>(4),
-                                                   indices_mat));
-    EXPECT_EQ(14, FindNextDenseRowStartIndex<int64>(static_cast<int64>(13),
-                                                    indices_mat));
-    EXPECT_EQ(15, FindNextDenseRowStartIndex<int64>(static_cast<int64>(14),
-                                                    indices_mat));
+    EXPECT_EQ(3, FindNextDenseRowStartIndex<int64_t>(static_cast<int64_t>(1),
+                                                     indices_mat));
+    EXPECT_EQ(3, FindNextDenseRowStartIndex<int64_t>(static_cast<int64_t>(2),
+                                                     indices_mat));
+    EXPECT_EQ(6, FindNextDenseRowStartIndex<int64_t>(static_cast<int64_t>(3),
+                                                     indices_mat));
+    EXPECT_EQ(6, FindNextDenseRowStartIndex<int64_t>(static_cast<int64_t>(4),
+                                                     indices_mat));
+    EXPECT_EQ(14, FindNextDenseRowStartIndex<int64_t>(static_cast<int64_t>(13),
+                                                      indices_mat));
+    EXPECT_EQ(15, FindNextDenseRowStartIndex<int64_t>(static_cast<int64_t>(14),
+                                                      indices_mat));
   }
 }
 

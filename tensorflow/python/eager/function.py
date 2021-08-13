@@ -98,6 +98,7 @@ _graph_building_time_counter = monitoring.Counter(
     "Time for tf.function to build a graph (us).")
 
 
+# TODO(b/195985838): cleanup this function.
 def _make_input_signature_hashable(elem):
   """Rewrite input signature to be hashable.
 
@@ -143,9 +144,9 @@ def _make_input_signature_hashable(elem):
         v = _as_ndarray(v)
       return tensor_spec.TensorSpec(v.shape, v.dtype)
 
-    raise ValueError("Arguments to a tf.function must be Tensors, Variables, "
-                     "or hashable Python objects (or nested structures of "
-                     "these types).\nGot type: %s" % type(v).__name__)
+    raise ValueError("Arguments to a tf.function must be a nested structure of "
+                     "Tensors, Variables, NumPy arrays, or hashable Python "
+                     f"objects, got {type(v)}.")
 
   return elem
 
@@ -195,13 +196,13 @@ def common_shape(x, y):
   if x is None != y is None:
     raise RuntimeError(
         "Cannot find a common shape when LHS shape is None but RHS shape "
-        "is not (or vice versa): %s vs. %s" % (x, y))
+        f"is not (or vice versa): {x} vs. {y}.")
   if x is None:
     return None  # The associated input was not a Tensor, no shape generated.
   if not isinstance(x, tensor_shape.TensorShape):
-    raise TypeError("Expected x to be a TensorShape but saw %s" % (x,))
+    raise TypeError(f"`x` must be a TensorShape, got type {type(x)}.")
   if not isinstance(y, tensor_shape.TensorShape):
-    raise TypeError("Expected y to be a TensorShape but saw %s" % (y,))
+    raise TypeError(f"`y` must be a TensorShape, got type {type(y)}.")
   if x.rank != y.rank or x.rank is None:
     return tensor_shape.TensorShape(None)
   dims = []
@@ -261,8 +262,8 @@ def _parse_func_attrs(attributes):
     elif isinstance(value, (str, bytes, six.text_type)):
       attrs[key] = attr_value_pb2.AttrValue(s=compat.as_bytes(value))
     else:
-      raise ValueError("Unsupported attribute type for %s with type %s" %
-                       (key, type(value)))
+      raise ValueError(f"Attribute {key} must be bool, int, float, string, or "
+                       f"AttrValue. Got {type(value)}.")
   return attrs
 
 
@@ -565,9 +566,8 @@ class _EagerDefinedFunction(object):
     """
     if len(args) != len(self.signature.input_arg):
       raise ValueError(
-          "Arguments and signature arguments do not match. "
-          "got: %s, expected: %s " %
-          (len(args), len(list(self.signature.input_arg))))
+          f"Signature specifies {len(list(self.signature.input_arg))} "
+          f"arguments, got: {len(args)}.")
 
     # If the `ScopedTFFunction` (accessed via `_c_func`) has already been
     # cleaned up as a part of garbage collection, this `_EagerDefinedFunction`
@@ -834,9 +834,8 @@ class _DelayedRewriteGradientFunctions(object):
     if input_tangents:
       # This class does not support special-cased forwardprop. The arguments are
       # here for compatibility with _TapeGradientFunctions.
-      raise AssertionError(
-          "Internal error: unexpectedly got forwardprop information in a class "
-          "that does not support forwardprop.")
+      raise errors.InternalError("unexpectedly got forwardprop information in "
+                                 "a class that does not support forwardprop.")
     return self._inference_function
 
   def _backward(self, outputs):
@@ -1000,12 +999,11 @@ class _TapeGradientFunctions(object):
          self._attrs, forward_wrapper.graph, wrapped_backwards_graph)
     if (len(inference_args) + len(input_tangents)
         != len(forward_wrapper.graph.inputs)):
-      raise AssertionError(
-          ("Internal error: the forward graph had {} inputs, but we expected"
-           " {} ({} inference inputs and {} input tangents)")
-          .format(len(len(forward_wrapper.graph.inputs)),
-                  len(inference_args) + len(input_tangents),
-                  len(inference_args), len(input_tangents)))
+      raise errors.InternalError(
+          f"The forward graph had {len(forward_wrapper.graph.inputs)} inputs, "
+          f"but we expected {len(inference_args) + len(input_tangents)} "
+          f"({len(inference_args)} inference inputs and "
+          f"{len(input_tangents)} input tangents).")
     return (wrapped_forward_function, forward_wrapper.graph,
             wrapped_backward_function, forward_wrapper.output_indices,
             len(forward_wrapper.output_tangents))
@@ -1053,10 +1051,9 @@ class _TapeGradientFunctions(object):
           for input_index, jvp_index in tape_indices:
             input_placeholder = forward_wrapper_graph.inputs[input_index]
             if len(forward_wrapper_graph.inputs) != jvp_index:
-              raise AssertionError(
-                  ("Internal error: expected {} forward graph inputs, but "
-                   "found {}.")
-                  .format(jvp_index, len(forward_wrapper_graph.inputs)))
+              raise errors.InternalError(
+                  f"Expected {jvp_index} forward graph inputs, "
+                  f"got {len(forward_wrapper_graph.inputs)}.")
             gradient_shape, gradient_dtype = default_gradient.shape_and_dtype(
                 input_placeholder)
             jvp_placeholder = graph_placeholder(gradient_dtype, gradient_shape)
@@ -1238,12 +1235,12 @@ class _TapeGradientFunctions(object):
     ]
     if any(t.graph is forward_graph for t in remapped_captures
            if not isinstance(t, ops.EagerTensor)):
-      raise AssertionError(
-          "Internal error: failed to map all backward graph captures to the "
-          "forward graph. Incorrectly mapped: {}".format(
-              [t for t in remapped_captures
-               if (not isinstance(t, ops.EagerTensor)
-                   and t.graph is not forward_graph)]))
+      incorrect_mapping = [t for t in remapped_captures
+                           if (not isinstance(t, ops.EagerTensor) and
+                               t.graph is not forward_graph)]
+      raise errors.InternalError("Failed to map all backward graph captures to "
+                                 "the forward graph. Incorrectly mapped: "
+                                 f"{incorrect_mapping}.")
     # We may need to use zeros_like to get a zero for variant Tensors with
     # unconnected gradients. We do that in advance so we don't have to hold on
     # to the outputs themselves, which may not be needed otherwise.
@@ -1458,10 +1455,10 @@ class _HigherOrderTapeGradientFunctions(_TapeGradientFunctions):
     if (len(self._func_graph.outputs) > len(outputs)
         and any(backprop_util.IsTrainable(output)
                 for output in self._func_graph.outputs[len(outputs):])):
-      raise AssertionError(
-          ("Unexpectedly added new outputs to the forward function when "
-           "building the backward function: {}").format(
-               self._func_graph.outputs[len(outputs):]))
+      raise errors.InternalError(
+          "Unexpectedly added new outputs to the forward function when "
+          "building the backward function: "
+          f"{self._func_graph.outputs[len(outputs):]}.")
     return (forward_function, forward_graph, backward_function, output_indices,
             num_output_tangents)
 
@@ -1743,9 +1740,8 @@ class ConcreteFunction(core.ConcreteFunction):
     """
     if len(args) > self._num_positional_args:
       raise TypeError(
-          "{} takes {} positional arguments but {} were given".format(
-              self._flat_signature_summary(), self._num_positional_args,
-              len(args)))
+          f"{self._flat_signature_summary()} takes {self._num_positional_args} "
+          f"positional arguments, got {len(args)}.")
     args = list(args)
     kwargs = dict(kwargs)
     for keyword in self._arg_keywords[len(args):]:
@@ -1754,24 +1750,25 @@ class ConcreteFunction(core.ConcreteFunction):
       except KeyError:
         specified_keywords = (
             list(self._arg_keywords[:len(args)]) + list(kwargs.keys()))
-        raise TypeError("{} missing required arguments: {}".format(
-            self._flat_signature_summary(), ", ".join(
-                sorted(set(self._arg_keywords) - set(specified_keywords)))))
+        missing_required_args = sorted(
+            set(self._arg_keywords) - set(specified_keywords))
+        raise TypeError(f"{self._flat_signature_summary()} missing required "
+                        f"arguments: {', '.join(missing_required_args)}.")
     if kwargs:
       positional_arg_keywords = set(self._arg_keywords[:len(args)])
       for unused_key in kwargs:
         if unused_key in positional_arg_keywords:
-          raise TypeError("{} got two values for argument '{}'".format(
-              self._flat_signature_summary(), unused_key))
-      raise TypeError("{} got unexpected keyword arguments: {}.".format(
-          self._flat_signature_summary(), ", ".join(sorted(kwargs))))
+          raise TypeError(f"{self._flat_signature_summary()} got two values "
+                          f"for '{unused_key}'.")
+      raise TypeError(f"{self._flat_signature_summary()} got unexpected "
+                      f"keyword arguments: {', '.join(sorted(kwargs))}.")
 
     for i, arg in enumerate(args):
       if not isinstance(
           arg, (ops.Tensor, resource_variable_ops.BaseResourceVariable)):
-        raise TypeError("{}: expected argument #{}(zero-based) to be a Tensor; "
-                        "got {} ({})".format(self._flat_signature_summary(), i,
-                                             type(arg).__name__, str(arg)))
+        raise TypeError(f"{self._flat_signature_summary()}: expected argument "
+                        f"#{i}(zero-based) to be a Tensor; "
+                        f"got {type(arg).__name__} ({arg}).")
     return self._call_flat(args, self.captured_inputs, cancellation_manager)
 
   def _call_with_structured_signature(self, args, kwargs, cancellation_manager):
@@ -1811,22 +1808,22 @@ class ConcreteFunction(core.ConcreteFunction):
       if arg is _BOUND_VALUE and _contains_type_spec(kwarg_specs[name]):
         missing_arguments.append(name)
     if missing_arguments:
-      raise TypeError("{} missing required arguments: {}".format(
-          self._structured_signature_summary(),
-          ", ".join(sorted(missing_arguments))))
+      raise TypeError(f"{self._structured_signature_summary()} missing "
+                      "required arguments: "
+                      f"{', '.join(sorted(missing_arguments))}.")
 
   def _structured_signature_check_unexpected_args(self, args, kwargs):
     """Raises a TypeError if there are any extra args."""
     arg_specs, kwarg_specs = self.structured_input_signature
     if len(args) > len(arg_specs):
       raise TypeError(
-          "{} takes {} positional arguments but {} were given".format(
-              self._structured_signature_summary(),
-              len(self._function_spec.arg_names), len(args)))
+          f"{self._structured_signature_summary()} takes "
+          f"{len(self._function_spec.arg_names)} positional arguments but got "
+          f"{len(args)}.")
     if len(kwargs) > len(kwarg_specs):
       extra_args = set(kwargs) - set(kwarg_specs)
-      raise TypeError("{} got unexpected keyword arguments: {}".format(
-          self._structured_signature_summary(), ", ".join(extra_args)))
+      raise TypeError(f"{self._structured_signature_summary()} got unexpected "
+                      f"keyword arguments: {', '.join(extra_args)}.")
 
   def _structured_signature_check_arg_types(self, args, kwargs):
     """Raises a TypeError if any args have the wrong type."""
@@ -1852,10 +1849,10 @@ class ConcreteFunction(core.ConcreteFunction):
         expected, got = spec, arg
       except (ValueError, TypeError):
         expected, got = _structure_summary(spec), _structure_summary(arg)
-      raise TypeError("{}: argument {} had incorrect type\n"
-                      "  expected: {}\n       got: {}".format(
-                          self._structured_signature_summary(), name, expected,
-                          got))
+      raise TypeError(f"{self._structured_signature_summary()}: argument "
+                      f"{name} had incorrect type\n"
+                      f"  expected: {expected}\n"
+                      f"       got: {got}")
 
     # Check the type for each leaf in the nested structure.
     arg_pieces = nest.flatten(arg, expand_composites=True)
@@ -1870,10 +1867,9 @@ class ConcreteFunction(core.ConcreteFunction):
         # flatten calls above to use shallow variants.
         tensor_types = (ops.Tensor, resource_variable_ops.BaseResourceVariable)
         if not isinstance(arg_piece, tensor_types):
-          raise TypeError(
-              "{} expected a Tensor in {}, but got {} value {}".format(
-                  self._structured_signature_summary(), name,
-                  type(arg_piece).__name__, arg_piece))
+          raise TypeError(f"{self._structured_signature_summary()} expected a "
+                          f"Tensor in {name}, but got "
+                          f"{type(arg_piece).__name__} value {arg_piece}.")
       elif arg_piece is not _BOUND_VALUE:
         try:
           arg_matches_spec = bool(arg_piece == spec_piece)
@@ -1881,11 +1877,11 @@ class ConcreteFunction(core.ConcreteFunction):
           logging.vlog(1, "Error matching value with spec", exc_info=True)
           arg_matches_spec = False
         if not arg_matches_spec:
-          raise TypeError("ConcreteFunction {} was constructed with {} value "
-                          "{} in {}, but was called with {} value {}".format(
-                              self._structured_signature_summary(),
-                              type(spec_piece).__name__, spec_piece, name,
-                              type(arg_piece).__name__, arg_piece))
+          raise TypeError(
+              f"ConcreteFunction {self._structured_signature_summary()} was "
+              f"constructed with {type(spec_piece).__name__} value "
+              f"{spec_piece} in {name}, but was called with "
+              f"{type(arg_piece).__name__} value {arg_piece}.")
 
   def _call_flat(self, args, captured_inputs, cancellation_manager=None):
     """Executes the wrapped function.
@@ -1944,18 +1940,15 @@ class ConcreteFunction(core.ConcreteFunction):
             else:
               arg_name = "with index {}".format(i)
             raise ValueError(
-                ("The argument {} (value {}) is not compatible with the shape "
-                 "this function was traced with. Expected shape {}, but got "
-                 "shape {}.\n\nIf you called get_concrete_function, you may "
-                 "need to pass a tf.TensorSpec(..., shape=...) with a less "
-                 "specific shape, having None on axes which can vary.").format(
-                     arg_name, arg,
-                     self._func_graph.inputs[i].shape,
-                     arg.shape))
+                f"The argument {arg_name} (value {arg}) is not compatible with "
+                "the shape this function was traced with. Expected shape "
+                f"{self._func_graph.inputs[i].shape}, but got shape "
+                f"{arg.shape}.\n\nIf you called get_concrete_function, you may "
+                "need to pass a tf.TensorSpec(..., shape=...) with a less "
+                "specific shape, having None on axes which can vary.")
       else:
-        raise ValueError("All inputs to `ConcreteFunction`s must be Tensors; "
-                         "on invocation of %s, the %d-th input (%s) was not a "
-                         "Tensor." % (self._func_graph.name, i, str(arg)))
+        raise ValueError(f"{i:d}-th input {arg} must be a Tensor, got "
+                         f"{type(arg)} when calling {self._func_graph.name}.")
     args = tensor_inputs + captured_inputs
     possible_gradient_type = gradients_util.PossibleTapeGradientTypes(args)
     if (possible_gradient_type == gradients_util.POSSIBLE_GRADIENT_TYPES_NONE
@@ -2255,7 +2248,7 @@ class ConcreteFunction(core.ConcreteFunction):
         arg_names.append(name)
         if default_values and not _contains_type_spec(spec):
           arg_names[-1] += "={}".format(spec)
-    signature = "{}({})".format(self._func_graph.name, ", ".join(arg_names))
+    signature = f"{self._func_graph.name}({', '.join(arg_names)})"
 
     return signature
 
@@ -2268,7 +2261,7 @@ class ConcreteFunction(core.ConcreteFunction):
       arg_names.extend(
           "<arg{}>".format(i + 1)
           for i in range(len(arg_names), self._num_positional_args))
-    return "{}({})".format(self._func_graph.name, ", ".join(arg_names))
+    return f"{self._func_graph.name}({', '.join(arg_names)})"
 
   def pretty_printed_signature(self, verbose=True):
     """Returns a string summarizing the signature of this concrete function."""
@@ -2523,8 +2516,8 @@ class FunctionSpec(object):
                          "input_signature is provided.")
 
       if not isinstance(input_signature, (tuple, list)):
-        raise TypeError("input_signature must be either a tuple or a "
-                        "list, received " + str(type(input_signature)))
+        raise TypeError(f"input_signature must be either a tuple or a "
+                        f"list, got {type(input_signature)}.")
 
       self._input_signature = tuple(input_signature)
       self._flat_input_signature = tuple(nest.flatten(input_signature,
@@ -2593,7 +2586,7 @@ class FunctionSpec(object):
         args.append(arg_name)
         if default_values and arg_name in self._fullargspec.kwonlydefaults:
           args[-1] += "={}".format(self._fullargspec.kwonlydefaults[arg_name])
-    return "{}({})".format(self._name, ", ".join(args))
+    return f"{self._name}({', '.join(args)})"
 
   def _to_tensor_or_tensor_spec(self, x):
     return (x if isinstance(x, (ops.Tensor, tensor_spec.TensorSpec))
@@ -2682,19 +2675,18 @@ class FunctionSpec(object):
     arglen = len(args)
     if self._input_signature is not None:
       if arglen > len(self._input_signature):
-        raise TypeError("{} takes {} positional arguments (as specified by the "
-                        "input_signature) but {} were given".format(
-                            self.signature_summary(),
-                            len(self._input_signature), arglen))
+        raise TypeError(f"{self.signature_summary()} specifies "
+                        f"{len(self._input_signature)} positional arguments, "
+                        f"but got {arglen}.")
       for arg in six.iterkeys(kwargs):
         index = self._args_to_indices.get(arg, None)
         if index is None:
-          raise TypeError("{} got unexpected keyword argument `{}`".format(
-              self.signature_summary(), arg))
+          raise TypeError(f"{self.signature_summary()} got unexpected keyword "
+                          f"argument `{arg}`.")
         if index >= len(self._input_signature):
           raise TypeError(
-              "{} got keyword argument `{}` that was not included in "
-              "input_signature".format(self.signature_summary(), arg))
+              f"{self.signature_summary()} got keyword argument `{arg}` that "
+              "was not included in input_signature.")
 
     if not kwargs:
       inputs = args
@@ -2708,8 +2700,8 @@ class FunctionSpec(object):
               for i in range(arglen, len(self._arg_names))
               if i not in self._arg_indices_to_default_values
           ]
-          raise TypeError("{} missing required arguments: {}".format(
-              self.signature_summary(), ", ".join(missing_args)))
+          raise TypeError(f"{self.signature_summary()} missing required "
+                          f"arguments: {', '.join(missing_args)}.")
 
       if self._fullargspec.kwonlydefaults:
         kwargs.update(self._fullargspec.kwonlydefaults)
@@ -2728,8 +2720,8 @@ class FunctionSpec(object):
         index = self._args_to_indices.get(arg, None)
         if index is not None:
           if index < arglen:
-            raise TypeError("{} got two values for argument '{}'".format(
-                self.signature_summary(), arg))
+            raise TypeError(f"{self.signature_summary()} got two values for "
+                            f"{arg!r}.")
           arg_indices_to_values[index] = value
           # These arguments in 'kwargs' might also belong to
           # positional arguments
@@ -2744,18 +2736,16 @@ class FunctionSpec(object):
       if missing_arg_indices:
         missing_args = [self._arg_names[i] for i in sorted(missing_arg_indices)]
         if len(missing_args) == 1:
-          raise TypeError("{} missing 1 required argument: {}".format(
-              self.signature_summary(), missing_args[0]))
+          raise TypeError(f"{self.signature_summary()} missing 1 required "
+                          f"argument: {missing_args[0]}.")
         else:
-          raise TypeError("{} missing required arguments: {}".format(
-              self.signature_summary(), ", ".join(missing_args)))
+          raise TypeError(f"{self.signature_summary()} missing required "
+                          f"arguments: {', '.join(missing_args)}.")
 
       if kwargs and self._input_signature is not None:
-        raise TypeError(
-            "{} got unexpected keyword arguments: {}\n(Cannot define a "
-            "TensorFlow function from a Python function with keyword arguments "
-            "when input_signature is provided.)".format(
-                self.signature_summary(), ", ".join(kwargs)))
+        raise TypeError("Keyword arguments are not supported when "
+                        "input_signature is provided. Signature: "
+                        f"{self.signature_summary()}.")
 
       if self._fullargspec.kwonlydefaults:
         for (kwarg, default) in self._fullargspec.kwonlydefaults.items():
@@ -2823,8 +2813,8 @@ def _convert_numpy_inputs(inputs):
       # This case is equivalent to _is_ndarray(value) == True
       a = _as_ndarray(value)
       if not isinstance(a, np.ndarray):
-        raise TypeError("The output of __array__ must be an np.ndarray "
-                        "(got {} from {}).".format(type(a), type(value)))
+        raise TypeError(f"The output of __array__ must be an np.ndarray, "
+                        f"got {type(a)} from {value}.")
       flat_inputs[index] = constant_op.constant(a)
       filtered_flat_inputs.append(flat_inputs[index])
       need_packing = True
@@ -2852,8 +2842,8 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
         check_types=False)  # lists are convert to tuples for `tf.data`.
   except ValueError:
     raise ValueError("Structure of Python function inputs does not match "
-                     "input_signature:\n%s" %
-                     format_error_message(inputs, input_signature))
+                     "input_signature:\n"
+                     f"{format_error_message(inputs, input_signature)}.")
 
   need_packing = False
   for index, (value, spec) in enumerate(zip(flatten_inputs,
@@ -2867,14 +2857,14 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
       except ValueError:
         raise ValueError("When input_signature is provided, all inputs to "
                          "the Python function must be convertible to "
-                         "tensors:\n%s" %
-                         format_error_message(inputs, input_signature))
+                         "tensors:\n"
+                         f"{format_error_message(inputs, input_signature)}.")
 
   if any(not spec.is_compatible_with(other) for spec, other in zip(
       flat_input_signature,
       flatten_inputs)):
-    raise ValueError("Python inputs incompatible with input_signature:\n%s" %
-                     format_error_message(inputs, input_signature))
+    raise ValueError("Python inputs incompatible with input_signature:\n"
+                     f"{format_error_message(inputs, input_signature)}.")
 
   if need_packing:
     inputs = nest.pack_sequence_as(
@@ -3078,12 +3068,15 @@ class Function(object):
       if kwargs:
         raise ValueError("Cannot define a TensorFlow function from a Python "
                          "function with keyword arguments when "
-                         "input_signature is provided.")
+                         "input_signature is provided, got keyword arguments "
+                         f"({kwargs}) with input_signature "
+                         f"({self.input_signature}).")
       if args:
         # If args are provided, they must match the input signature.
         if not is_same_structure(self.input_signature, args):
           raise ValueError("Structure of Python function inputs does not match "
-                           "input_signature.")
+                           f"input_signature: inputs ({args}), "
+                           f"input_signature ({self.input_signature}).")
         flat_inputs = nest.flatten(args, expand_composites=True)
         if any(not isinstance(arg, (ops.Tensor, tensor_spec.DenseSpec,
                                     resource_variable_ops.BaseResourceVariable))
@@ -3094,8 +3087,8 @@ class Function(object):
         if any(not spec.is_compatible_with(other)
                for spec, other in zip(self.flat_input_signature, flat_inputs)):
           raise ValueError("Python inputs incompatible with input_signature: "
-                           "inputs (%s), input_signature (%s)" %
-                           (str(args), str(self.input_signature)))
+                           f"inputs ({args}), input_signature "
+                           f"({self.input_signature}).")
       args, kwargs = None, None
     with self._lock:
       graph_function, _ = self._maybe_define_function(args, kwargs)
@@ -3340,9 +3333,9 @@ class Function(object):
       relaxed_arg_specs = arg_specs
     else:
       if len(arg_specs) != len(relaxed_arg_specs):
-        raise RuntimeError("Expected arg_specs len to match "
-                           "relaxed_arg_specs len: %d vs. %d"
-                           % (len(arg_specs), len(relaxed_arg_specs)))
+        raise RuntimeError("Expected arg_specs len to match relaxed_arg_specs "
+                           f"len: {len(arg_specs):d} vs. "
+                           f"{len(relaxed_arg_specs):d}.")
       relaxed_arg_specs = [
           x if x is None else x.most_specific_compatible_type(y)
           for (x, y) in zip(arg_specs, relaxed_arg_specs)]
@@ -3409,8 +3402,8 @@ class Function(object):
       hash(cache_key)
     except TypeError as e:
       raise TypeError(
-          "Arguments supplied to `defun`-generated functions must be"
-          " hashable.  Original error: %s" % e)
+          "Arguments supplied to `defun`-generated functions must be "
+          f"hashable.  Original error: {e}.")
 
     graph_function = self._function_cache.primary.get(cache_key, None)
     if graph_function is not None:
@@ -3471,7 +3464,7 @@ def register(func, *args, **kwargs):
   """
   if not isinstance(func, Function):
     raise ValueError("Only defun function is allowed to be registered. "
-                     "Got type: %s" % type(func))
+                     f"Got {func} with type {type(func)}.")
   concrete_func = func.get_concrete_function(*args, **kwargs)
   concrete_func.add_to_graph()
   concrete_func.add_gradient_functions_to_graph()
@@ -3481,9 +3474,11 @@ def register(func, *args, **kwargs):
 def validate_signature(signature):
   if any(not isinstance(arg, tensor_spec.DenseSpec)
          for arg in nest.flatten(signature, expand_composites=True)):
-    raise TypeError("Invalid input_signature {}; input_signature must be "
-                    "a possibly nested sequence of TensorSpec objects."
-                    .format(signature))
+    bad_args = [arg for arg in nest.flatten(signature, expand_composites=True)
+                if not isinstance(arg, tensor_spec.DenseSpec)]
+    raise TypeError("input_signature must be a possibly nested sequence of "
+                    f"TensorSpec objects, got invalid args {bad_args} with "
+                    f"types {list(map(type, bad_args))}.")
 
 
 def validate_python_function(python_function):

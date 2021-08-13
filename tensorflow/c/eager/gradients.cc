@@ -29,8 +29,8 @@ namespace {
 // TODO(b/172558015): Using the pointer address as the identifier for the tensor
 // may lead to collisions. Introduce another way to get a unique id for this
 // tensor.
-int64 ToId(const AbstractTensorHandle* t) {
-  return static_cast<int64>(reinterpret_cast<uintptr_t>(t));
+int64_t ToId(const AbstractTensorHandle* t) {
+  return static_cast<int64_t>(reinterpret_cast<uintptr_t>(t));
 }
 
 Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* t,
@@ -82,7 +82,7 @@ TapeTensor::TapeTensor(const TapeTensor& other) {
 }
 TapeTensor::~TapeTensor() { handle_->Unref(); }
 
-tensorflow::int64 TapeTensor::GetID() const { return ToId(handle_); }
+int64_t TapeTensor::GetID() const { return ToId(handle_); }
 
 tensorflow::DataType TapeTensor::GetDType() const {
   return handle_->DataType();
@@ -98,7 +98,7 @@ class TapeVSpace
   ~TapeVSpace() override {}
 
   // Returns the number of elements in the gradient tensor.
-  int64 NumElements(AbstractTensorHandle* tensor) const override;
+  int64_t NumElements(AbstractTensorHandle* tensor) const override;
 
   // Consumes references to the tensors in the gradient_tensors list and returns
   // a tensor with the result.
@@ -109,7 +109,7 @@ class TapeVSpace
   // op_type is the op's name provided in RecordOperation.
   Status CallBackwardFunction(
       const string& op_type, GradientFunction* gradient_function,
-      const std::vector<int64>& unneeded_gradients,
+      const std::vector<int64_t>& unneeded_gradients,
       gtl::ArraySlice<AbstractTensorHandle*> output_gradients,
       absl::Span<AbstractTensorHandle*> result) const override;
 
@@ -118,7 +118,7 @@ class TapeVSpace
                        AbstractTensorHandle** result) const override;
 
   // Looks up the ID of a Gradient.
-  int64 TensorId(AbstractTensorHandle* tensor) const override;
+  int64_t TensorId(AbstractTensorHandle* tensor) const override;
 
   // Converts a Gradient to a TapeTensor.
   TapeTensor TapeTensorFromGradient(AbstractTensorHandle* g) const override;
@@ -133,7 +133,7 @@ class TapeVSpace
 };
 
 // Returns the number of elements in the gradient tensor.
-int64 TapeVSpace::NumElements(AbstractTensorHandle* tensor) const {
+int64_t TapeVSpace::NumElements(AbstractTensorHandle* tensor) const {
   // TODO(srbs): It seems like this is used only for performance optimization
   // and not for correctness. The only downside of keeping this 1 seems to be
   // that the gradient accumulation is unbounded and we will never
@@ -173,7 +173,7 @@ AbstractTensorHandle* TapeVSpace::AggregateGradients(
 // op_type is the op's name provided in RecordOperation.
 Status TapeVSpace::CallBackwardFunction(
     const string& op_type, GradientFunction* gradient_function,
-    const std::vector<int64>& unneeded_gradients,
+    const std::vector<int64_t>& unneeded_gradients,
     gtl::ArraySlice<AbstractTensorHandle*> output_gradients,
     absl::Span<AbstractTensorHandle*> result) const {
   if (gradient_function == nullptr) {
@@ -204,7 +204,7 @@ Status TapeVSpace::BuildOnesLike(const TapeTensor& t,
 }
 
 // Looks up the ID of a Gradient.
-int64 TapeVSpace::TensorId(AbstractTensorHandle* tensor) const {
+int64_t TapeVSpace::TensorId(AbstractTensorHandle* tensor) const {
   return ToId(tensor);
 }
 
@@ -226,7 +226,7 @@ void Tape::RecordOperation(absl::Span<AbstractTensorHandle* const> inputs,
                            absl::Span<AbstractTensorHandle* const> outputs,
                            GradientFunction* gradient_function,
                            const string& op_name) {
-  std::vector<int64> input_ids(inputs.size());
+  std::vector<int64_t> input_ids(inputs.size());
   std::vector<tensorflow::DataType> input_dtypes(inputs.size());
   for (int i = 0; i < inputs.size(); i++) {
     input_ids[i] = ToId(inputs[i]);
@@ -247,7 +247,7 @@ void Tape::RecordOperation(absl::Span<AbstractTensorHandle* const> inputs,
 }
 bool Tape::ShouldRecord(
     absl::Span<const AbstractTensorHandle* const> tensors) const {
-  std::vector<int64> tensor_ids(tensors.size());
+  std::vector<int64_t> tensor_ids(tensors.size());
   std::vector<tensorflow::DataType> tensor_dtypes(tensors.size());
   for (int i = 0; i < tensors.size(); i++) {
     tensor_ids[i] = ToId(tensors[i]);
@@ -259,9 +259,9 @@ void Tape::DeleteTrace(const AbstractTensorHandle* t) {
   GradientTape::DeleteTrace(ToId(t));
 }
 
-std::vector<int64> MakeTensorIDList(
+std::vector<int64_t> MakeTensorIDList(
     absl::Span<AbstractTensorHandle* const> tensors) {
-  std::vector<int64> ids(tensors.size());
+  std::vector<int64_t> ids(tensors.size());
   for (int i = 0; i < tensors.size(); i++) {
     ids[i] = ToId(tensors[i]);
   }
@@ -274,11 +274,11 @@ Status Tape::ComputeGradient(
     absl::Span<AbstractTensorHandle* const> output_gradients,
     absl::Span<AbstractTensorHandle*> result) {
   TapeVSpace vspace(ctx);
-  std::vector<int64> target_tensor_ids = MakeTensorIDList(targets);
-  std::vector<int64> source_tensor_ids = MakeTensorIDList(sources);
-  tensorflow::gtl::FlatSet<tensorflow::int64> sources_set(
-      source_tensor_ids.begin(), source_tensor_ids.end());
-  std::unordered_map<int64, TapeTensor> sources_that_are_targets;
+  std::vector<int64_t> target_tensor_ids = MakeTensorIDList(targets);
+  std::vector<int64_t> source_tensor_ids = MakeTensorIDList(sources);
+  tensorflow::gtl::FlatSet<int64_t> sources_set(source_tensor_ids.begin(),
+                                                source_tensor_ids.end());
+  std::unordered_map<int64_t, TapeTensor> sources_that_are_targets;
   for (int i = 0; i < target_tensor_ids.size(); ++i) {
     int64_t target_id = target_tensor_ids[i];
     if (sources_set.find(target_id) != sources_set.end()) {
@@ -328,7 +328,7 @@ Status SetAttrString(AbstractOperation* op_, const char* attr_name,
 }
 Status SetAttrInt(AbstractOperation* op_, const char* attr_name, int64_t value,
                   ForwardOperation* forward_op_) {
-  forward_op_->attrs.Set(attr_name, static_cast<int64>(value));
+  forward_op_->attrs.Set(attr_name, static_cast<int64_t>(value));
   return op_->SetAttrInt(attr_name, value);
 }
 Status SetAttrFloat(AbstractOperation* op_, const char* attr_name, float value,
@@ -407,8 +407,8 @@ Status SetAttrIntList(AbstractOperation* op_, const char* attr_name,
                       const int64_t* values, int num_values,
                       ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(
-      attr_name, gtl::ArraySlice<const int64>(
-                     reinterpret_cast<const int64*>(values), num_values));
+      attr_name, gtl::ArraySlice<const int64_t>(
+                     reinterpret_cast<const int64_t*>(values), num_values));
   return op_->SetAttrIntList(attr_name, values, num_values);
 }
 Status SetAttrTypeList(AbstractOperation* op_, const char* attr_name,

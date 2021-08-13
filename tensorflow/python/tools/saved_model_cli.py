@@ -109,7 +109,14 @@ def _get_inputs_tensor_info_from_meta_graph_def(meta_graph_def,
 
   Returns:
     A dictionary that maps input tensor keys to TensorInfos.
+
+  Raises:
+    ValueError if `signature_def_key` is not found in the MetaGraphDef.
   """
+  if signature_def_key not in meta_graph_def.signature_def:
+    raise ValueError(
+        f'Could not find signature "{signature_def_key}". Please choose from: '
+        f'{", ".join(meta_graph_def.signature_def.keys())}')
   return meta_graph_def.signature_def[signature_def_key].inputs
 
 

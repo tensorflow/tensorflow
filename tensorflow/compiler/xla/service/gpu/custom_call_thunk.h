@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUSTOM_CALL_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUSTOM_CALL_THUNK_H_
 
+#include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 
@@ -47,8 +48,8 @@ class CustomCallThunk : public Thunk {
   using Stream = void*;
 #endif  //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-  using CustomCallTarget =
-      std::function<void(Stream, void**, const char*, size_t)>;
+  using CustomCallTarget = std::function<void(Stream, void**, const char*,
+                                              size_t, XlaCustomCallStatus*)>;
   CustomCallThunk(ThunkInfo thunk_info, CustomCallTarget call_target,
                   std::vector<OptionalSlice> operands,
                   std::vector<OptionalSlice> results,

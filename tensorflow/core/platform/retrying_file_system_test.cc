@@ -86,7 +86,7 @@ class MockWritableFile : public WritableFile {
     return calls_.ConsumeNextCall("Name");
   }
   Status Sync() override { return calls_.ConsumeNextCall("Sync"); }
-  Status Tell(int64* position) override {
+  Status Tell(int64_t* position) override {
     return calls_.ConsumeNextCall("Tell");
   }
 
@@ -172,8 +172,8 @@ class MockFileSystem : public FileSystem {
   }
 
   Status DeleteRecursively(const string& dirname, TransactionToken* token,
-                           int64* undeleted_files,
-                           int64* undeleted_dirs) override {
+                           int64_t* undeleted_files,
+                           int64_t* undeleted_dirs) override {
     return calls_.ConsumeNextCall("DeleteRecursively");
   }
 

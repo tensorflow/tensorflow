@@ -35,8 +35,8 @@ KernelDefBuilder& KernelDefBuilder::Device(const char* device_type) {
 }
 
 template <>
-KernelDefBuilder& KernelDefBuilder::AttrConstraint<int64>(
-    const char* attr_name, gtl::ArraySlice<int64> allowed) {
+KernelDefBuilder& KernelDefBuilder::AttrConstraint<int64_t>(
+    const char* attr_name, gtl::ArraySlice<int64_t> allowed) {
   auto* constraint = kernel_def_->add_constraint();
   constraint->set_name(attr_name);
   auto* allowed_values = constraint->mutable_allowed_values()->mutable_list();
@@ -47,11 +47,11 @@ KernelDefBuilder& KernelDefBuilder::AttrConstraint<int64>(
 }
 
 template <>
-KernelDefBuilder& KernelDefBuilder::AttrConstraint<int64>(const char* attr_name,
-                                                          int64_t allowed) {
+KernelDefBuilder& KernelDefBuilder::AttrConstraint<int64_t>(
+    const char* attr_name, int64_t allowed) {
   return AttrConstraint(
       attr_name,
-      gtl::ArraySlice<int64>(std::initializer_list<int64>({allowed})));
+      gtl::ArraySlice<int64_t>(std::initializer_list<int64_t>({allowed})));
 }
 
 template <>

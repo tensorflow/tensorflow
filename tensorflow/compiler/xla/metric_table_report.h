@@ -161,8 +161,9 @@ class MetricTableReport {
   bool show_entry_table_ = false;
 
   // These members control how many categories and entries to show in tables.
-  int64 max_entries_to_show_ = kDefaultMaxEntriesToShow;
-  int64 max_entries_per_category_to_show_ = kDefaultMaxEntriesPerCategoryToShow;
+  int64_t max_entries_to_show_ = kDefaultMaxEntriesToShow;
+  int64_t max_entries_per_category_to_show_ =
+      kDefaultMaxEntriesPerCategoryToShow;
   double max_metric_proportion_to_show_ = kDefaultMaxMetricProportionToShow;
 
   // The report that is being created.

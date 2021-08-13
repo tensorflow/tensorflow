@@ -162,8 +162,8 @@ Status XlaOpKernelContext::ConstantInput(absl::string_view name,
 }
 
 Status XlaOpKernelContext::ConstantInputReshaped(
-    int index, absl::Span<const int64> new_dims, xla::Literal* constant_literal,
-    xla::ValueInferenceMode mode) {
+    int index, absl::Span<const int64_t> new_dims,
+    xla::Literal* constant_literal, xla::ValueInferenceMode mode) {
   XlaExpression e = InputExpression(index);
   auto* client = compiler() ? compiler()->client() : nullptr;
   StatusOr<absl::optional<Tensor>> constant_or_status =
@@ -204,14 +204,14 @@ Status XlaOpKernelContext::ConstantInputReshaped(
 
 // Converts an int32 or int64 scalar literal to an int64.
 static Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
-                                   int64* out) {
+                                   int64_t* out) {
   if (literal.shape().rank() != 0) {
     return errors::InvalidArgument("value is not a scalar");
   }
   if (literal.shape().element_type() == xla::S32) {
     *out = literal.Get<int32>({});
   } else if (literal.shape().element_type() == xla::S64) {
-    *out = literal.Get<int64>({});
+    *out = literal.Get<int64_t>({});
   } else {
     return errors::InvalidArgument("value must be either int32 or int64");
   }
@@ -235,14 +235,14 @@ static Status LiteralToFloat64Scalar(const xla::LiteralSlice& literal,
 }
 
 Status XlaOpKernelContext::ConstantInputAsIntScalar(
-    int index, int64* out, xla::ValueInferenceMode mode) {
+    int index, int64_t* out, xla::ValueInferenceMode mode) {
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal, mode));
   return LiteralToInt64Scalar(literal, out);
 }
 
 Status XlaOpKernelContext::ConstantInputAsIntScalar(
-    absl::string_view name, int64* out, xla::ValueInferenceMode mode) {
+    absl::string_view name, int64_t* out, xla::ValueInferenceMode mode) {
   TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
   return ConstantInputAsIntScalar(index, out, mode);
 }
@@ -332,7 +332,7 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
 
 // Converts an int32 or int64 1D literal to an int64 vector.
 static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
-                                   std::vector<int64>* out) {
+                                   std::vector<int64_t>* out) {
   if (literal.shape().rank() != 1) {
     return errors::InvalidArgument("value is not 1D, rank: ",
                                    literal.shape().rank());
@@ -344,7 +344,7 @@ static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
     }
   } else if (literal.shape().element_type() == xla::S64) {
     for (int64_t i = 0; i < size; ++i) {
-      out->push_back(literal.Get<int64>({i}));
+      out->push_back(literal.Get<int64_t>({i}));
     }
   } else {
     return errors::InvalidArgument("value must be either int32 or int64");
@@ -353,21 +353,21 @@ static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
 }
 
 Status XlaOpKernelContext::ConstantInputAsIntVector(
-    int index, std::vector<int64>* out, xla::ValueInferenceMode mode) {
+    int index, std::vector<int64_t>* out, xla::ValueInferenceMode mode) {
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal, mode));
   return LiteralToInt64Vector(literal, out);
 }
 
 Status XlaOpKernelContext::ConstantInputAsIntVector(
-    absl::string_view name, std::vector<int64>* out,
+    absl::string_view name, std::vector<int64_t>* out,
     xla::ValueInferenceMode mode) {
   TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
   return ConstantInputAsIntVector(index, out);
 }
 
 Status XlaOpKernelContext::ConstantInputReshapedToIntVector(
-    int index, std::vector<int64>* out, xla::ValueInferenceMode mode) {
+    int index, std::vector<int64_t>* out, xla::ValueInferenceMode mode) {
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInputReshaped(
       index, {InputShape(index).num_elements()}, &literal, mode));
@@ -375,7 +375,7 @@ Status XlaOpKernelContext::ConstantInputReshapedToIntVector(
 }
 
 Status XlaOpKernelContext::ConstantInputReshapedToIntVector(
-    absl::string_view name, std::vector<int64>* out,
+    absl::string_view name, std::vector<int64_t>* out,
     xla::ValueInferenceMode mode) {
   TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
   xla::Literal literal;
@@ -394,7 +394,7 @@ Status XlaOpKernelContext::ConstantInputAsInt64Literal(
           xla::ShapeUtil::ChangeElementType(literal.shape(), xla::S64));
       auto src_data = literal.data<int32>();
       for (int64_t i = 0; i < src_data.size(); ++i) {
-        out->data<int64>()[i] = src_data[i];
+        out->data<int64_t>()[i] = src_data[i];
       }
       return Status::OK();
     }
@@ -421,7 +421,7 @@ Status XlaOpKernelContext::ConstantInputAsShape(int index, TensorShape* shape,
                                                 xla::ValueInferenceMode mode) {
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal, mode));
-  std::vector<int64> dims;
+  std::vector<int64_t> dims;
   TF_RETURN_IF_ERROR(LiteralToInt64Vector(literal, &dims));
   *shape = TensorShape(dims);
   return Status::OK();
@@ -442,7 +442,7 @@ Status XlaOpKernelContext::ConstantInputAsPartialShape(
     *shape = PartialTensorShape();  // Shape with unknown rank.
     return Status::OK();
   }
-  std::vector<int64> dims;
+  std::vector<int64_t> dims;
   TF_RETURN_IF_ERROR(LiteralToInt64Vector(literal, &dims));
   *shape = PartialTensorShape(dims);
   return Status::OK();

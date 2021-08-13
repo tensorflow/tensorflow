@@ -762,7 +762,10 @@ cc_library(
     name = "tensor_types",
     hdrs = ["tensor_types.h"],
     visibility = ["//visibility:private"],
-    deps = ["//third_party/eigen3"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -1555,6 +1558,11 @@ tf_proto_library(
         ":tensor_proto",
         ":tensor_shape_proto",
         ":types_proto",
+    ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/security/fuzzing:__subpackages__",
     ],
 )
 

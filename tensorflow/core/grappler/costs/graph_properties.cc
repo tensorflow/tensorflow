@@ -80,9 +80,9 @@ struct HandleToObject<ShapeHandle> {
 
 template <>
 struct HandleToObject<DimensionHandle> {
-  typedef int64 Object;
+  typedef int64_t Object;
 
-  static int64 Unknown() { return -1; }
+  static int64_t Unknown() { return -1; }
 };
 
 template <typename Handle>
@@ -112,7 +112,7 @@ template <>
 struct Processor<DimensionHandle> {
   // Assign a negative id to unknown dimensions, starting at -2 (the -1 id
   // reserved by TensorFlow).
-  void ExtractValue(DimensionHandle d, int64* result) {
+  void ExtractValue(DimensionHandle d, int64_t* result) {
     if (!InferenceContext::ValueKnown(d)) {
       *result = -counter;
       counter++;
@@ -132,7 +132,7 @@ struct Processor<DimensionHandle> {
   // Merge the dimensions d1 and d2. Return the known shape if there is one,
   // otherwise look for a symbolic shape. If there is no symbolic shape and no
   // known shape, the shape if fully unknown so return -1.
-  Status Merge(DimensionHandle d1, DimensionHandle d2, int64* result) {
+  Status Merge(DimensionHandle d1, DimensionHandle d2, int64_t* result) {
     const int64_t dim1 = InferenceContext::Value(d1);
     const int64_t dim2 = InferenceContext::Value(d2);
 
@@ -156,7 +156,7 @@ struct Processor<DimensionHandle> {
   }
 
  private:
-  Status RefineDim(int64_t dim, int64* result) {
+  Status RefineDim(int64_t dim, int64_t* result) {
     if (*result >= 0) {
       if (!(*result == dim || dim < 0)) {
         return errors::InvalidArgument("Inconsistent dimensions detected");
@@ -169,7 +169,7 @@ struct Processor<DimensionHandle> {
     return Status::OK();
   }
 
-  int64 counter = 2;
+  int64_t counter = 2;
 };
 
 // Traditional Disjoint-Set datastructure with path compression.
@@ -1554,7 +1554,7 @@ class SymbolicShapeRefiner {
             flat(j) = dim;
           }
         } else {
-          auto flat = tensor->flat<int64>();
+          auto flat = tensor->flat<int64_t>();
           for (int j = 0; j < rank; j++) {
             int64_t dim = ic->Value(ic->Dim(shape_handle, j));
             flat(j) = dim;
@@ -1775,7 +1775,7 @@ class SymbolicShapeRefiner {
               break;
             }
             int64_t size = t->dtype() == DT_INT32 ? t->scalar<int32>()()
-                                                  : t->scalar<int64>()();
+                                                  : t->scalar<int64_t>()();
             dims.push_back(size < 0 ? ic->MakeDim(kUnknownDimFromConst)
                                     : ic->MakeDim(size));
           } else {
@@ -1815,10 +1815,10 @@ class SymbolicShapeRefiner {
         if (valid) {
           int64_t start = slice_offset->dtype() == DT_INT32
                               ? slice_offset->flat<int32>()(0)
-                              : slice_offset->flat<int64>()(0);
-          int64_t size =
-              (slice_size->dtype() == DT_INT32 ? slice_size->flat<int32>()(0)
-                                               : slice_size->flat<int64>()(0));
+                              : slice_offset->flat<int64_t>()(0);
+          int64_t size = (slice_size->dtype() == DT_INT32
+                              ? slice_size->flat<int32>()(0)
+                              : slice_size->flat<int64_t>()(0));
           ShapeHandle result;
           if (size == -1) {
             TF_RETURN_IF_ERROR(ic->Subshape(input, start, &result));
@@ -1867,17 +1867,17 @@ class SymbolicShapeRefiner {
           if (begin_mask == 0) {
             begin = slice_begin->dtype() == DT_INT32
                         ? slice_begin->flat<int32>()(0)
-                        : slice_begin->flat<int64>()(0);
+                        : slice_begin->flat<int64_t>()(0);
           }
-          int64_t end = std::numeric_limits<int64>::max();
+          int64_t end = std::numeric_limits<int64_t>::max();
           if (end_mask == 0) {
-            end =
-                (slice_end->dtype() == DT_INT32 ? slice_end->flat<int32>()(0)
-                                                : slice_end->flat<int64>()(0));
+            end = (slice_end->dtype() == DT_INT32
+                       ? slice_end->flat<int32>()(0)
+                       : slice_end->flat<int64_t>()(0));
           }
           int64_t stride = slice_stride->dtype() == DT_INT32
                                ? slice_stride->flat<int32>()(0)
-                               : slice_stride->flat<int64>()(0);
+                               : slice_stride->flat<int64_t>()(0);
           ShapeHandle result;
           TF_RETURN_IF_ERROR(ic->Subshape(input, begin, end, stride, &result));
           c->output_tensors_as_shapes.resize(1);
@@ -1998,7 +1998,7 @@ class SymbolicShapeRefiner {
       std::vector<DimensionHandle> dims;
       for (int i = 0; i < tensor.NumElements(); i++) {
         int64_t value = tensor.dtype() == DT_INT32 ? tensor.flat<int32>()(i)
-                                                   : tensor.flat<int64>()(i);
+                                                   : tensor.flat<int64_t>()(i);
         has_values_smaller_than_minus_1 |= (value < -1);
         // Mark this as UnknownDim from Const.
         dims.push_back(value < 0 ? ic->MakeDim(kUnknownDimFromConst)
@@ -2012,7 +2012,7 @@ class SymbolicShapeRefiner {
     } else if (IsIntegerScalar(tensor)) {
       // Scalar constant.
       int64_t value = tensor.dtype() == DT_INT32 ? tensor.flat<int32>()(0)
-                                                 : tensor.flat<int64>()(0);
+                                                 : tensor.flat<int64_t>()(0);
       if (value == -1) {
         // Scalar value -1 represents an unknown shape. If we would try to
         // MakeShape(MakeDim) with it, we would get vector of unknown size.
@@ -2369,7 +2369,7 @@ Status GraphProperties::PropagateShapes(
   const int64_t max_loop_length = item_.graph.node_size();
   const int64_t max_rank = 4;
   const int64_t max_loop_iterations =
-      max_rank * max_loop_length * std::max<int64>(1, num_loops * num_loops);
+      max_rank * max_loop_length * std::max<int64_t>(1, num_loops * num_loops);
   const int64_t num_queues = resource_handles.size();
   const int64_t max_resource_iterations = num_queues * num_queues * max_rank;
 

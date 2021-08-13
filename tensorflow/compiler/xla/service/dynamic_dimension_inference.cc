@@ -479,7 +479,7 @@ Status DynamicDimensionInferenceVisitor::HandleDot(HloInstruction* hlo) {
         const DotDimensionNumbers& dimension_numbers =
             dot->dot_dimension_numbers();
         // A map from the operand dimensions to result dimension.
-        absl::flat_hash_map<int64, int64> result_dim_mapping;
+        absl::flat_hash_map<int64_t, int64_t> result_dim_mapping;
         int64_t current_result_dims = 0;
 
         bool lhs = operand_index == 0;
@@ -997,7 +997,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
           }
 
           if (output_dynamic_dimension == -1) {
-            std::vector<int64> output_non_degenerated;
+            std::vector<int64_t> output_non_degenerated;
             for (int64_t i = output_dim_start; i < output_dim_end; ++i) {
               if (reshape->shape().dimensions(i) != 1) {
                 output_non_degenerated.push_back(i);
@@ -1293,19 +1293,18 @@ Status DynamicDimensionInferenceVisitor::HandleConditional(
   // If the output of the conditional contains dynamic dimension. We send
   // dynamic dimension size out by adding additional root element. A mapping
   // from the root instruction's dynamic dimension index (represented by a shape
-  // index as output index and a int64 dimension number) to output index
-  // (represented by an int64) is tracked for the conditional intsruction (all
+  // index as output index and a int64_t dimension number) to output index
+  // (represented by an int64_t) is tracked for the conditional intsruction (all
   // branches should have the same mapping).
-  ShapeTree<absl::flat_hash_map<int64, int64>> dynamic_output_mapping(
+  ShapeTree<absl::flat_hash_map<int64_t, int64_t>> dynamic_output_mapping(
       hlo->shape());
 
   bool need_rewrite = false;
-
   for (int64_t branch_index = 0; branch_index < hlo->branch_count();
        ++branch_index) {
     std::vector<HloInstruction*> operands_to_add;
 
-    absl::flat_hash_map<HloInstruction*, int64>
+    absl::flat_hash_map<HloInstruction*, int64_t>
         dynamic_size_to_operand_id_index_map;
     // Only look at branch_index + 1, the correct operand index for a
     // given branch.
@@ -1374,35 +1373,77 @@ Status DynamicDimensionInferenceVisitor::HandleConditional(
             << dynamic_parameter_binding;
     TF_RETURN_IF_ERROR(DynamicDimensionInferenceVisitor::Run(
         new_computation, dynamic_parameter_binding, parent_));
+
+    new_branch_computations.push_back(new_computation);
+    new_operands.push_back(new_operand);
+  }
+  int64_t tuple_count = hlo->shape().tuple_shapes_size();
+  // The dynamism of the output of branches can be different.
+  // E.g.,
+  //   true_branch  (s32[<=4])
+  //   false_branch (s32[4])
+  //
+  // The following loop populates dynamic_output_mapping and account for
+  // dynamism across all branches.
+  ShapeUtil::ForEachSubshape(
+      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (!subshape.IsArray()) {
+          return;
+        }
+        for (int64_t i = 0; i < subshape.rank(); ++i) {
+          for (int64_t j = 0; j < new_branch_computations.size(); ++j) {
+            HloInstruction* dynamic_size = parent_->GetDynamicSize(
+                new_branch_computations[j]->root_instruction(), index, i);
+            if (dynamic_size) {
+              if (dynamic_output_mapping.element(index).contains(i)) {
+                continue;
+              }
+              dynamic_output_mapping.mutable_element(index)->emplace(
+                  i, tuple_count++);
+            }
+          }
+        }
+      });
+  for (int64_t branch_index = 0; branch_index < hlo->branch_count();
+       ++branch_index) {
     std::vector<HloInstruction*> hlos_to_add_in_root;
-    int64_t original_tuple_count = hlo->shape().tuple_shapes_size();
     // There may be some dynamic dimensions coming out of the computation, wire
     // that into the root instruction as additional tuple elements.
-    TF_RETURN_IF_ERROR(ForEachDynamicDimension(
-        new_computation->root_instruction(),
-        [&](ShapeIndex index, int64_t dim,
-            HloInstruction* dynamic_size) -> Status {
-          TF_RET_CHECK(hlo->shape().IsTuple())
-              << "Only tuple typed conditionals can have dynamic dimension. "
-                 "Please file a bug against XLA team.";
-          dynamic_output_mapping.mutable_element(index)->emplace(
-              dim, original_tuple_count++);
-          hlos_to_add_in_root.push_back(dynamic_size);
-          return Status::OK();
-        }));
+    ShapeUtil::ForEachSubshape(hlo->shape(), [&](const Shape& subshape,
+                                                 const ShapeIndex& index) {
+      if (!subshape.IsArray()) {
+        return;
+      }
+      for (int64_t i = 0; i < subshape.rank(); ++i) {
+        if (dynamic_output_mapping.element(index).contains(i)) {
+          HloInstruction* dynamic_size = parent_->GetDynamicSize(
+              new_branch_computations[branch_index]->root_instruction(), index,
+              i);
+          if (dynamic_size) {
+            hlos_to_add_in_root.push_back(dynamic_size);
+          } else {
+            HloInstruction* constant_size =
+                new_branch_computations[branch_index]->AddInstruction(
+                    HloInstruction::CreateConstant(
+                        LiteralUtil::CreateR0<int32>(subshape.dimensions(i))));
+            hlos_to_add_in_root.push_back(constant_size);
+          }
+        }
+      }
+    });
 
     VLOG(2) << "hlos_to_add_in_root:" << hlos_to_add_in_root.size();
     if (!hlos_to_add_in_root.empty()) {
       need_rewrite = true;
       HloInstruction* new_branch_root = TupleUtil::AppendSuffix(
-          new_computation->root_instruction(), hlos_to_add_in_root);
-      new_computation->set_root_instruction(new_branch_root,
-                                            /*accept_different_shape=*/true);
+          new_branch_computations[branch_index]->root_instruction(),
+          hlos_to_add_in_root);
+      new_branch_computations[branch_index]->set_root_instruction(
+          new_branch_root,
+          /*accept_different_shape=*/true);
     }
-
-    new_branch_computations.push_back(new_computation);
-    new_operands.push_back(new_operand);
   }
+
   if (!need_rewrite) {
     return Status::OK();
   }
@@ -1417,7 +1458,7 @@ Status DynamicDimensionInferenceVisitor::HandleConditional(
   // Now set the dynamic dimensions of the newly created conditional.
   dynamic_output_mapping.ForEachElement(
       [&](const ShapeIndex& index,
-          const absl::flat_hash_map<int64, int64>& dim_to_output) {
+          const absl::flat_hash_map<int64_t, int64_t>& dim_to_output) {
         for (auto iter : dim_to_output) {
           int64_t dim = iter.first;
           int64_t output_index = iter.second;
@@ -1456,7 +1497,7 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
                                   dimension)) {
           // Dynamic update window dimension is only allowed if it is exactly
           // the same as the corresponding operand dimension.
-          std::vector<int64> update_window_dims_in_operand;
+          std::vector<int64_t> update_window_dims_in_operand;
           for (int64_t i = 0; i < hlo->operand(0)->shape().rank(); ++i) {
             if (absl::c_linear_search(scatter_dims.inserted_window_dims(), i)) {
               continue;
@@ -1502,10 +1543,10 @@ Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
   // If the output of the kWhile contains dynamic dimension, we send
   // dynamic dimension size into the while body by adding additional root/body
   // element. A mapping from the root instruction's dynamic dimension index
-  // (represented by a shape index as output index and an int64 dimension
-  // number) to output index (represented by an int64) is tracked for the
+  // (represented by a shape index as output index and an int64_t dimension
+  // number) to output index (represented by an int64_t) is tracked for the
   // conditional instruction.
-  ShapeTree<absl::flat_hash_map<int64, int64>> dynamic_output_mapping(
+  ShapeTree<absl::flat_hash_map<int64_t, int64_t>> dynamic_output_mapping(
       hlo->shape());
   std::vector<HloInstruction*> operands_to_add;
   const int64_t original_tuple_count = hlo->shape().tuple_shapes_size();

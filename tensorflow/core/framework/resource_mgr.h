@@ -133,10 +133,10 @@ class ScopedStepContainer {
   template <typename T>
   Status LookupOrCreate(ResourceMgr* rm, const std::string& name, T** resource,
                         std::function<Status(T**)> creator) TF_MUST_USE_RESULT;
-  int64 StepId() const { return step_id_; }
+  int64_t StepId() const { return step_id_; }
 
  private:
-  const int64 step_id_;
+  const int64_t step_id_;
   const std::string container_;
   const std::function<void(const string&)> cleanup_;
   mutex mu_;
@@ -857,8 +857,8 @@ void ResourceHandleOp<T>::Compute(OpKernelContext* ctx) {
     Tensor handle;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
-    handle.scalar<ResourceHandle>()() =
-        MakeResourceHandle<T>(ctx, container_, name_);
+    handle.scalar<ResourceHandle>()() = MakeResourceHandle<T>(
+        ctx, container_, name_, /*dtypes_and_shapes=*/{}, ctx->stack_trace());
     ctx->set_output(0, handle);
   } else {
     if (!initialized_.load()) {
@@ -870,7 +870,8 @@ void ResourceHandleOp<T>::Compute(OpKernelContext* ctx) {
         OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
                                                &resource_, attr));
         resource_.scalar<ResourceHandle>()() =
-            MakeResourceHandle<T>(ctx, container_, name_);
+            MakeResourceHandle<T>(ctx, container_, name_,
+                                  /*dtypes_and_shapes=*/{}, ctx->stack_trace());
         initialized_.store(true);
       }
     }

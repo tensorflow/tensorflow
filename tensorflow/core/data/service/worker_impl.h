@@ -83,7 +83,7 @@ class DataServiceWorkerImpl {
     TaskDef task_def;
     mutex mu;
     bool initialized TF_GUARDED_BY(mu) = false;
-    int64 outstanding_requests TF_GUARDED_BY(&DataServiceWorkerImpl::mu_) = 0;
+    int64_t outstanding_requests TF_GUARDED_BY(&DataServiceWorkerImpl::mu_) = 0;
     std::unique_ptr<TaskRunner> task_runner;
   };
 
@@ -121,11 +121,11 @@ class DataServiceWorkerImpl {
   condition_variable cv_;
   // Information about tasks, keyed by task ids. The tasks are updated based on
   // the heartbeat responses from the dispatcher.
-  absl::flat_hash_map<int64, std::shared_ptr<Task>> tasks_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<int64_t, std::shared_ptr<Task>> tasks_ TF_GUARDED_BY(mu_);
   // Ids of tasks that have finished.
-  absl::flat_hash_set<int64> finished_tasks_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_set<int64_t> finished_tasks_ TF_GUARDED_BY(mu_);
   // Completed tasks which haven't yet been communicated to the dispatcher.
-  absl::flat_hash_set<int64> pending_completed_tasks_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_set<int64_t> pending_completed_tasks_ TF_GUARDED_BY(mu_);
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
   // Whether the worker has registered with the dispatcher yet.
   bool registered_ TF_GUARDED_BY(mu_) = false;
@@ -135,7 +135,7 @@ class DataServiceWorkerImpl {
   // A thread for performing regular heartbeats to the dispatcher.
   std::unique_ptr<Thread> heartbeat_thread_;
   condition_variable heartbeat_cv_ TF_GUARDED_BY(mu_);
-  int64 outstanding_requests_ TF_GUARDED_BY(mu_) = 0;
+  int64_t outstanding_requests_ TF_GUARDED_BY(mu_) = 0;
   CancellationManager cancellation_manager_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceWorkerImpl);

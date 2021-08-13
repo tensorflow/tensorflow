@@ -41,7 +41,7 @@ class AllToAllDecomposer : public OpExpanderPass {
   StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
   bool decompose_to_tuple_;
-  int64 min_array_rank_;
+  int64_t min_array_rank_;
 };
 
 }  // namespace xla

@@ -1,4 +1,5 @@
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+load("//tensorflow:tensorflow.bzl", "if_oss")
 
 package(licenses = ["notice"])
 
@@ -8,14 +9,7 @@ glob_lit_tests(
         "@llvm-project//mlir:run_lit.sh",
     ],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
-    tags_override = {
-        # TODO(b/188517768): fix and enable these tests in OSS.
-        "convert_ref_variables.mlir": ["no_oss"],
-        "cross_device_transfer.mlir": ["no_oss"],
-        "hoist_invariant_ops.mlir": ["no_oss"],
-        "remote_run_encapsulate.mlir": ["no_oss"],
-        "remove_device_attribute.mlir": ["no_oss"],
-    },
+    features = if_oss(["--path=org_tensorflow/tensorflow/compiler/mlir/tfrt"]),
     test_file_exts = ["mlir"],
 )
 

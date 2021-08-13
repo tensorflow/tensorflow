@@ -119,6 +119,9 @@ std::unique_ptr<FunctionPass> CreateVectorizationPass();
 // Pass to remove unneeded code generated in VectorizationPass.
 std::unique_ptr<FunctionPass> CreateVectorizationCleanupPass();
 
+// Pass to remove copies which are consumed by a GenericOp.
+std::unique_ptr<FunctionPass> CreateCopyCleanupPass();
+
 }  // namespace transforms
 
 #define GEN_PASS_REGISTRATION

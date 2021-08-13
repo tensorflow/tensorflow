@@ -74,13 +74,13 @@ class CpuExecutable : public Executable {
     ir_module_string_ = ir_module_string;
   }
 
-  static int64 ShapeSizeBytes(const Shape& shape);
+  static int64_t ShapeSizeBytes(const Shape& shape);
 
   // Type of the computation function we expect in the JIT.
   using ComputeFunctionType =
       void (*)(void* /*result*/, const ExecutableRunOptions* /*run_options*/,
                const void** /*args*/, void** /*buffer_table*/,
-               int64* /*profile_counters*/);
+               int64_t* /*profile_counters*/);
 
   const ComputeFunctionType& compute_function() const {
     return compute_function_;
@@ -88,7 +88,7 @@ class CpuExecutable : public Executable {
 
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
-  int64 SizeOfGeneratedCodeInBytes() const override;
+  int64_t SizeOfGeneratedCodeInBytes() const override;
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the

@@ -50,9 +50,9 @@ class RedzoneAllocator : public ScratchAllocator {
                    uint8 redzone_pattern = kDefaultRedzonePattern);
 
   // Redzones don't count towards the memory limit.
-  int64 GetMemoryLimitInBytes() override { return memory_limit_; }
+  int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
 
-  int64 TotalAllocatedBytesExcludingRedzones() const {
+  int64_t TotalAllocatedBytesExcludingRedzones() const {
     return allocated_bytes_excluding_redzones_;
   }
 
@@ -64,8 +64,8 @@ class RedzoneAllocator : public ScratchAllocator {
     RedzoneCheckStatus() = default;
 
     RedzoneCheckStatus(absl::string_view buffer_name, void* user_buffer_address,
-                       int64_t offset, uint64 expected_value,
-                       uint64 actual_value)
+                       int64_t offset, uint64_t expected_value,
+                       uint64_t actual_value)
         : buffer_name(buffer_name),
           user_buffer_address(user_buffer_address),
           offset(offset),
@@ -80,9 +80,9 @@ class RedzoneAllocator : public ScratchAllocator {
 
     std::string buffer_name = {};
     void* user_buffer_address = nullptr;
-    int64 offset = 0;
-    uint64 expected_value = 0;
-    uint64 actual_value = 0;
+    int64_t offset = 0;
+    uint64_t expected_value = 0;
+    uint64_t actual_value = 0;
   };
 
   // Determines whether redzones around all allocated buffers are unmodified.
@@ -103,13 +103,13 @@ class RedzoneAllocator : public ScratchAllocator {
   Stream* stream_;
 
   // Memory limit of the allocator in bytes.
-  const int64 memory_limit_;
+  const int64_t memory_limit_;
 
   // Redzone size on *one side* of allocation in bytes.
   //
   // Must be a multiple of kXlaAllocatedBufferAlignBytes, otherwise the buffers
   // returned to users will be misaligned.
-  const int64 redzone_size_;
+  const int64_t redzone_size_;
 
   const uint8 redzone_pattern_;
   DeviceMemoryAllocator* memory_allocator_;
@@ -122,9 +122,9 @@ class RedzoneAllocator : public ScratchAllocator {
   //
   // ScratchAllocators need to free all allocated memory on destruction so we
   // use `OwningDeviceMemory` here.
-  std::vector<std::pair<OwningDeviceMemory, int64>> allocated_buffers_;
+  std::vector<std::pair<OwningDeviceMemory, int64_t>> allocated_buffers_;
 
-  int64 allocated_bytes_excluding_redzones_ = 0;
+  int64_t allocated_bytes_excluding_redzones_ = 0;
 };
 
 }  // namespace stream_executor

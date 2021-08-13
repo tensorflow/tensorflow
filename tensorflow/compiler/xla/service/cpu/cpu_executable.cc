@@ -174,7 +174,7 @@ Status CpuExecutable::ExecuteComputeFunction(
   size_t profile_counters_size =
       hlo_execution_profile ? hlo_execution_profile->profile_counters().size()
                             : 0;
-  int64* profile_counters =
+  int64_t* profile_counters =
       hlo_execution_profile
           ? hlo_execution_profile->mutable_profile_counters()->data()
           : nullptr;
@@ -395,7 +395,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   return std::move(result);
 }
 
-/*static*/ int64 CpuExecutable::ShapeSizeBytes(const Shape& shape) {
+/*static*/ int64_t CpuExecutable::ShapeSizeBytes(const Shape& shape) {
   // On the cpu, opaques are pointers.
   if (shape.IsOpaque()) {
     return sizeof(void*);
@@ -413,7 +413,7 @@ const InstructionValueSet& CpuExecutable::GetRootValueSet() const {
       module().entry_computation()->root_instruction());
 }
 
-int64 CpuExecutable::SizeOfGeneratedCodeInBytes() const {
+int64_t CpuExecutable::SizeOfGeneratedCodeInBytes() const {
   return jit_->SizeOfGeneratedCodeInBytes();
 }
 

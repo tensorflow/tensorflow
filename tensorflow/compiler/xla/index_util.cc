@@ -25,8 +25,8 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ int64 IndexUtil::MultidimensionalIndexToLinearIndex(
-    const Shape& shape, absl::Span<const int64> multi_index) {
+/* static */ int64_t IndexUtil::MultidimensionalIndexToLinearIndex(
+    const Shape& shape, absl::Span<const int64_t> multi_index) {
   DCHECK_EQ(shape.dimensions_size(), multi_index.size());
 
   for (size_t i = 0; i < multi_index.size(); ++i) {
@@ -89,7 +89,7 @@ namespace xla {
   return linear_index;
 }
 
-/* static */ std::vector<int64> IndexUtil::LinearIndexToMultidimensionalIndex(
+/* static */ std::vector<int64_t> IndexUtil::LinearIndexToMultidimensionalIndex(
     const Shape& shape, int64_t linear_index) {
   DCHECK_GE(linear_index, 0);
   DCHECK_LT(linear_index, ShapeUtil::ElementsIn(shape));
@@ -101,7 +101,7 @@ namespace xla {
   // I{L(1)} = (linear_index / D{L(0)}) % D{L(1)}
   // I{L(2)} = (linear_index / (D{L(0)} * D{L(1)})) % D{L(2)}
   // ...
-  std::vector<int64> multi_index(shape.dimensions_size());
+  std::vector<int64_t> multi_index(shape.dimensions_size());
 
   // Accumulated product D{L(0)} * D{L(1)} * ...
   int64_t divisor = 1;
@@ -114,7 +114,7 @@ namespace xla {
 }
 
 /* static */ bool IndexUtil::BumpIndices(const Shape& shape,
-                                         absl::Span<int64> indices) {
+                                         absl::Span<int64_t> indices) {
   for (int64_t dimno = indices.size() - 1; dimno >= 0; --dimno) {
     int64_t limit = shape.dimensions(dimno);
     if (indices[dimno] + 1 < limit) {
@@ -128,8 +128,8 @@ namespace xla {
   return false;
 }
 
-/* static */ int64 IndexUtil::GetDimensionStride(const Shape& shape,
-                                                 int64_t dimension) {
+/* static */ int64_t IndexUtil::GetDimensionStride(const Shape& shape,
+                                                   int64_t dimension) {
   int64_t stride = 1;
   for (auto dim : LayoutUtil::MinorToMajor(shape)) {
     if (dim == dimension) {
@@ -141,7 +141,7 @@ namespace xla {
 }
 
 /* static */ bool IndexUtil::IndexInBounds(const Shape& shape,
-                                           absl::Span<const int64> index) {
+                                           absl::Span<const int64_t> index) {
   int64_t rank = shape.rank();
   const int64_t index_size = index.size();
   if (rank != index_size) {
@@ -155,8 +155,8 @@ namespace xla {
   return true;
 }
 
-/* static */ int IndexUtil::CompareIndices(absl::Span<const int64> lhs,
-                                           absl::Span<const int64> rhs) {
+/* static */ int IndexUtil::CompareIndices(absl::Span<const int64_t> lhs,
+                                           absl::Span<const int64_t> rhs) {
   int64_t rank = lhs.size();
   const int64_t rhs_rank = rhs.size();
   CHECK_EQ(rhs_rank, rank);

@@ -49,7 +49,7 @@ class ScratchBufAllocator : public se::ScratchAllocator {
 
   ~ScratchBufAllocator() override = default;
 
-  int64 GetMemoryLimitInBytes() override { return scratch_.size(); }
+  int64_t GetMemoryLimitInBytes() override { return scratch_.size(); }
 
   se::port::StatusOr<DeviceMemory<uint8>> AllocateBytes(
       int64_t byte_size) override {
@@ -265,7 +265,7 @@ Status RunGpuConvImpl(const GpuConvParams& params,
   return Status::OK();
 }
 
-int64 GetVectCSize(DataLayout layout) {
+int64_t GetVectCSize(DataLayout layout) {
   switch (layout) {
     case DataLayout::kBatchDepthYX4:
       return 4;
@@ -276,7 +276,7 @@ int64 GetVectCSize(DataLayout layout) {
   }
 }
 
-int64 GetVectCSize(FilterLayout layout) {
+int64_t GetVectCSize(FilterLayout layout) {
   switch (layout) {
     case FilterLayout::kOutputInputYX4:
       return 4;

@@ -420,7 +420,7 @@ class IteratorVariantSerializer {
     return Status::OK();
   }
 
-  int64 NumTensors() { return num_tensors_; }
+  int64_t NumTensors() { return num_tensors_; }
 
   // Stores the IteratorStateVariant list into a pre-allocated tensor. Expects
   // that InitializeFromIterator was called before.
@@ -446,7 +446,7 @@ class IteratorVariantSerializer {
 
  private:
   bool can_serialize_ = false;
-  int64 num_tensors_;
+  int64_t num_tensors_;
   std::vector<IteratorStateVariant> variants_;
   std::unique_ptr<IteratorStateReader> reader_;
 };

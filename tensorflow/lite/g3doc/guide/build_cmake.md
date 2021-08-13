@@ -7,8 +7,7 @@ The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
 , macOS Catalina (x86_64), Windows 10 and TensorFlow devel Docker image
 [tensorflow/tensorflow:devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
-**Note:** This feature is currently experimental and available since version 2.4
-and may change.
+**Note:** This feature is available since version 2.4.
 
 ### Step 1. Install CMake tool
 

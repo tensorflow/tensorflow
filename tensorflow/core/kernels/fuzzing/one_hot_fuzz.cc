@@ -50,13 +50,13 @@ class FuzzOneHot : public FuzzSession {
       depth = static_cast<int32>(data[0]);
       on = data[1];
       off = data[2];
-      input_size = static_cast<int64>(size - 3);
+      input_size = static_cast<int64_t>(size - 3);
       input_data = data + 3;
     } else {
       depth = 1;
       on = 1;
       off = 0;
-      input_size = static_cast<int64>(size);
+      input_size = static_cast<int64_t>(size);
       input_data = data;
     }
 

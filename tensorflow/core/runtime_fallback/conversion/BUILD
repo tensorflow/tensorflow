@@ -31,6 +31,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_tensor",
+        "//tensorflow/core/tfrt/utils:error_util",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",
     ],

@@ -175,7 +175,7 @@ class HloTestBase : public ManifestCheckingTest {
   // Same as above, but allows passing different programs for replicas.
   StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::function<Executable*(int64_t)> executable_provider,
-      std::function<int64(int64_t)> argument_count_provider,
+      std::function<int64_t(int64_t)> argument_count_provider,
       std::function<const Literal*(int64_t, int64_t)> argument_provider,
       int64_t num_replicas, bool run_hlo_passes);
 

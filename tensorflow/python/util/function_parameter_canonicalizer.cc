@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/python/util/function_parameter_canonicalizer.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/python/lib/core/py_util.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
@@ -71,7 +72,7 @@ bool FunctionParameterCanonicalizer::Canonicalize(
 
   DCheckPyGilState();
   DCHECK(PyTuple_CheckExact(args));
-  DCHECK(PyDict_CheckExact(kwargs));
+  DCHECK(kwargs == nullptr || PyDict_CheckExact(kwargs));
   DCHECK_EQ(result.size(), interned_arg_names_.size());
 
   const int args_size = Py_SIZE(args);
@@ -79,8 +80,11 @@ bool FunctionParameterCanonicalizer::Canonicalize(
 
   // Check if the number of input arguments are too many.
   if (TF_PREDICT_FALSE(args_size > interned_arg_names_.size())) {
-    // TODO(kkb): Also report the actual numbers.
-    PyErr_SetString(PyExc_TypeError, "Too many arguments were given");
+    PyErr_SetString(
+        PyExc_TypeError,
+        absl::StrCat("Too many arguments were given. Expected ",
+                     interned_arg_names_.size(), " but got ", args_size, ".")
+            .c_str());
     return false;
   }
 

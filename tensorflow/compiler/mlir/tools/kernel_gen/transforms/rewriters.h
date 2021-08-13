@@ -48,6 +48,11 @@ void populateExtraBufferizePatterns(MLIRContext *context,
                                     BufferizeTypeConverter *converter,
                                     RewritePatternSet *patterns);
 
+/// Populate pattern to bufferize `linalg.tiled_loop`.
+void populateTiledLoopBufferizePattern(MLIRContext *context,
+                                       BufferizeTypeConverter *converter,
+                                       RewritePatternSet *patterns);
+
 /// Populate patterns to rewrite TF operations to TF framework JIT invocations.
 void PopulateTFToJITInvocationPatterns(MLIRContext *ctx,
                                        RewritePatternSet *patterns,

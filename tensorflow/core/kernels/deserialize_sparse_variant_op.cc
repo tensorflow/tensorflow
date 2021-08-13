@@ -107,8 +107,8 @@ class DeserializeSparseOp : public OpKernel {
                    context->allocate_output(
                        2, {input_dims_to_stack + element_shape->NumElements()},
                        &output_shape));
-    const auto element_shape_vec = element_shape->vec<int64>();
-    auto output_shape_vec = output_shape->vec<int64>();
+    const auto element_shape_vec = element_shape->vec<int64_t>();
+    auto output_shape_vec = output_shape->vec<int64_t>();
     output_shape_vec(0) = num_sparse_tensors;
     for (int64_t j = 0; j < input_dims_to_stack; ++j) {
       output_shape_vec(j) = input.dim_size(j);
@@ -141,7 +141,7 @@ class DeserializeSparseOp : public OpKernel {
               i, "] was: ", output_shape->NumElements() - input_dims_to_stack,
               " but rank of SparseTensor[", i,
               "] is: ", element_shape->NumElements()));
-      const auto element_shape_vec = element_shape->vec<int64>();
+      const auto element_shape_vec = element_shape->vec<int64_t>();
       for (int j = 0; j < element_shape->NumElements(); ++j) {
         output_shape_vec(j + input_dims_to_stack) = std::max(
             output_shape_vec(j + input_dims_to_stack), element_shape_vec(j));
@@ -155,18 +155,18 @@ class DeserializeSparseOp : public OpKernel {
     const int output_rank = output_shape->NumElements();
     OP_REQUIRES_OK(context,
                    context->allocate_output(
-                       0, {static_cast<int64>(total_non_zeros), output_rank},
+                       0, {static_cast<int64_t>(total_non_zeros), output_rank},
                        &output_indices));
-    OP_REQUIRES_OK(
-        context, context->allocate_output(
-                     1, {static_cast<int64>(total_non_zeros)}, &output_values));
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                1, {static_cast<int64_t>(total_non_zeros)},
+                                &output_values));
 
     // The bulk of the work in this method involves building the output indices
     // in a tight loop. For cache friendliness, we generate the indices in the
     // order that they will be laid out in memory. We use raw pointers instead
     // of Eigen element/slice indexing methods, to access the underlying index
     // buffer to minimize the amount of work in that tight loop.
-    int64* output_indices_data = output_indices->matrix<int64>().data();
+    int64_t* output_indices_data = output_indices->matrix<int64_t>().data();
     size_t current_row = 0;
 
     for (int i = 0; i < num_sparse_tensors; ++i) {
@@ -192,8 +192,8 @@ class DeserializeSparseOp : public OpKernel {
       // `element_indices` will be an empty tensor, and this pointer will not
       // be valid. However, we will not dereference the pointer in that case,
       // because `input_dims_to_stack == output_rank`.
-      const int64* element_indices_data =
-          element_indices->matrix<int64>().data();
+      const int64_t* element_indices_data =
+          element_indices->matrix<int64_t>().data();
 
       // Build the submatrix of `output_indices` for the i^th sparse tensor
       // in the input.
@@ -224,7 +224,7 @@ class DeserializeSparseOp : public OpKernel {
         // to outermost/major dimension). The `cumulative_product` represents
         // the size of the inner subtensor for which `sparse_tensor_index` has
         // already been built.
-        gtl::InlinedVector<int64, 4> sparse_tensor_index(input_dims_to_stack);
+        gtl::InlinedVector<int64_t, 4> sparse_tensor_index(input_dims_to_stack);
         int cumulative_product = 1;
         for (size_t j = 0; j < sparse_tensor_index.size(); ++j) {
           size_t reverse_index = sparse_tensor_index.size() - j - 1;
@@ -276,7 +276,7 @@ class DeserializeSparseOp : public OpKernel {
   Status GetAndValidateSparseTensorShape(const Variant& serialized_values,
                                          const Variant& serialized_shape,
                                          int index, const Tensor** output_shape,
-                                         int64* output_num_non_zeros) {
+                                         int64_t* output_num_non_zeros) {
     // Deserialize and validate the shape.
     *output_shape = serialized_shape.get<Tensor>();
     if (*output_shape == nullptr) {

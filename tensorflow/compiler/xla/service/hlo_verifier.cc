@@ -82,8 +82,8 @@ Status CheckParameterCount(const HloInstruction* calling_instruction,
   return Status::OK();
 }
 
-int64 GetSubgroupSize(HloCollectiveInstruction* hlo,
-                      CollectiveOpGroupMode group_mode) {
+int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
+                        CollectiveOpGroupMode group_mode) {
   const HloModuleConfig& config = hlo->GetModule()->config();
   // empty replica groups imply all replicas form a single group.
   int64_t replica_subgroup_size =
@@ -234,7 +234,7 @@ static Status CheckReplicaGroups(HloInstruction* hlo,
                                  CollectiveOpGroupMode group_mode,
                                  bool uniform_replica_group_size = true) {
   if (!hlo->replica_groups().empty()) {
-    absl::flat_hash_set<int64> replicas_seen;
+    absl::flat_hash_set<int64_t> replicas_seen;
     for (const ReplicaGroup& g : hlo->replica_groups()) {
       if (g.replica_ids().empty()) {
         return InternalError(
@@ -306,7 +306,7 @@ static Status CheckReplicaGroups(HloInstruction* hlo,
 }
 
 static Status CheckCommonAllGatherInvariants(HloInstruction* hlo,
-                                             int64* computed_shard_count) {
+                                             int64_t* computed_shard_count) {
   auto ag = Cast<HloAllGatherInstruction>(hlo);
   CHECK_NE(computed_shard_count, nullptr) << "Expected a shard count as input";
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
@@ -615,8 +615,8 @@ Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
   const int64_t limit = group_mode == CollectiveOpGroupMode::kCrossReplica
                             ? config.replica_count()
                             : config.num_partitions();
-  absl::flat_hash_map<int64, std::vector<int64>> seen_source_to_targets;
-  absl::flat_hash_map<int64, std::vector<int64>> seen_target_to_sources;
+  absl::flat_hash_map<int64_t, std::vector<int64_t>> seen_source_to_targets;
+  absl::flat_hash_map<int64_t, std::vector<int64_t>> seen_target_to_sources;
   int allowed_seen_count = 1;
   if (hlo->operand_count() == 4) {
     if (hlo->operand(0)->shape().IsArray()) {
@@ -1212,7 +1212,7 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
   }
   // TODO(b/65689298) Remove code below once Map is generalized to accept
   // arbitrary map dimensions.
-  std::vector<int64> map_dims(max_operand_rank);
+  std::vector<int64_t> map_dims(max_operand_rank);
   std::iota(map_dims.begin(), map_dims.end(), 0);
 
   TF_RETURN_IF_ERROR(CheckShape(
@@ -1883,7 +1883,7 @@ Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
 // Checks various invariants of channel instructions (send/recv and
 // collectives).
 Status VerifyChannels(const HloModule& module, absl::string_view pass_name) {
-  absl::flat_hash_map<int64, std::vector<const HloInstruction*>>
+  absl::flat_hash_map<int64_t, std::vector<const HloInstruction*>>
       channel_instructions;
 
   // Send/Recv instruction must have a single user: the corresponding
@@ -2308,7 +2308,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   }
 
   TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
-      *module, [this](const Shape& shape) -> int64 {
+      *module, [this](const Shape& shape) -> int64_t {
         if (target_metadata_->IsLayoutSensitive()) {
           return target_metadata_->ShapeSize(shape);
         } else {

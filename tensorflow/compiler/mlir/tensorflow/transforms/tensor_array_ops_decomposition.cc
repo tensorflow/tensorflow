@@ -310,7 +310,7 @@ LogicalResult HandleTensorArrayConcatV3Op(
   tensorflow::Tensor lengths_tensor(tensorflow::DT_INT64,
                                     {buffer_type.getDimSize(0)});
   for (int64_t i = 0; i < buffer_type.getDimSize(0); ++i) {
-    lengths_tensor.vec<tensorflow::int64>()(i) = buffer_type.getDimSize(1);
+    lengths_tensor.vec<int64_t>()(i) = buffer_type.getDimSize(1);
   }
   concat.lengths().replaceAllUsesWith(builder.create<TF::ConstOp>(
       concat.getLoc(),

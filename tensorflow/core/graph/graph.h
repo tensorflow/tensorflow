@@ -789,7 +789,7 @@ class Graph {
   std::unordered_map<string, TypeRef> node_name_to_out_type_;
 
   // Number of nodes alive.
-  int64 num_nodes_ = 0;
+  int64_t num_nodes_ = 0;
 
   // Map from edge ids to allocated edges.  edges_[id] may be nullptr if
   // the edge with that id was removed from the graph.

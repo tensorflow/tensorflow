@@ -1546,6 +1546,7 @@ inline void LstmStepInteger8x8_16(
 //   cell_state_scale: the power of two scale for cell state.
 //
 // Zero points:
+//   input_zp: zero point for input tensor.
 //   output_state_zp: zero point of output state.
 //   hidden_zp: zero point for hidden state.
 //
@@ -1564,7 +1565,8 @@ inline void LstmStepInteger8x8_16(
 //   output_state_ptr - size 'n_batch * n_output'
 //   cell_state_ptr   - size 'n_batch * n_cell'
 //   output_ptr       - size 'n_batch * n_output'
-// TODO(b/148688698): Move zero point calculation into Prepare().
+//
+// Can move zero point calculation into Prepare() for better perfomance.
 // TODO(b/159947023): scratch5 is unused, remove.
 inline void LstmStepInteger8x8_8(
     const int8_t* input_ptr, int32_t input_zp,

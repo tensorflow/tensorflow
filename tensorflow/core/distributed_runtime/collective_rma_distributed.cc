@@ -50,7 +50,7 @@ class RecvBufCall : public CancellableCall {
     *req_.mutable_client_locality() = client_locality;
     *req_.mutable_server_locality() = server_attributes.locality();
     req_.set_num_bytes(to_tensor->TotalBytes());
-    req_.set_buf_ptr(reinterpret_cast<int64>(DMAHelper::base(to_tensor)));
+    req_.set_buf_ptr(reinterpret_cast<int64_t>(DMAHelper::base(to_tensor)));
     req_.set_src_device(peer_device);
     req_.set_src_incarnation(server_attributes.incarnation());
     req_.set_dst_device(to_device->name());

@@ -220,12 +220,12 @@ class CudnnRnnParameters {
   uint64 hash_code_;
 };
 
-struct RnnAutoTuneGroup {
+struct RnnAutotuneGroup {
   static string name() { return "Rnn"; }
 };
 
-using AutoTuneRnnConfigMap =
-    AutoTuneSingleton<RnnAutoTuneGroup, CudnnRnnParameters, AlgorithmConfig>;
+using AutotuneRnnConfigMap =
+    AutotuneSingleton<RnnAutotuneGroup, CudnnRnnParameters, AlgorithmConfig>;
 
 Status ParseRNNMode(const string& str, RnnMode* rnn_mode) {
   if (str == "rnn_relu") {
@@ -365,15 +365,15 @@ class CudnnRnnAllocatorInTemp : public ScratchAllocator {
 
   explicit CudnnRnnAllocatorInTemp(OpKernelContext* context)
       : context_(context) {}
-  int64 GetMemoryLimitInBytes() override {
-    return std::numeric_limits<int64>::max();
+  int64_t GetMemoryLimitInBytes() override {
+    return std::numeric_limits<int64_t>::max();
   }
 
   StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
     Tensor temporary_memory;
     const DataType tf_data_type = ToTFDataType<T>::value;
     int64_t allocate_count =
-        Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
+        Eigen::divup(byte_size, static_cast<int64_t>(sizeof(T)));
     Status allocation_status(context_->allocate_temp(
         tf_data_type, TensorShape({allocate_count}), &temporary_memory));
     if (!allocation_status.ok()) {
@@ -388,14 +388,14 @@ class CudnnRnnAllocatorInTemp : public ScratchAllocator {
         temporary_memory.template flat<T>().size() * sizeof(T));
   }
 
-  int64 TotalByteSize() const { return total_byte_size_; }
+  int64_t TotalByteSize() const { return total_byte_size_; }
 
   Tensor get_allocated_tensor(int index) const {
     return allocated_tensors_[index];
   }
 
  private:
-  int64 total_byte_size_ = 0;
+  int64_t total_byte_size_ = 0;
   OpKernelContext* context_;  // not owned
   std::vector<Tensor> allocated_tensors_;
 };
@@ -410,14 +410,14 @@ class CudnnRnnAllocatorInOutput : public ScratchAllocator {
   ~CudnnRnnAllocatorInOutput() override {}
   CudnnRnnAllocatorInOutput(OpKernelContext* context, int output_index)
       : context_(context), output_index_(output_index) {}
-  int64 GetMemoryLimitInBytes() override {
-    return std::numeric_limits<int64>::max();
+  int64_t GetMemoryLimitInBytes() override {
+    return std::numeric_limits<int64_t>::max();
   }
   StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
     CHECK(total_byte_size_ == 0)
         << "Reserve space allocator can only be called once";
     int64_t allocate_count =
-        Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
+        Eigen::divup(byte_size, static_cast<int64_t>(sizeof(T)));
 
     Tensor* temporary_memory = nullptr;
     Status allocation_status(context_->allocate_output(
@@ -431,10 +431,10 @@ class CudnnRnnAllocatorInOutput : public ScratchAllocator {
         temporary_memory->template flat<T>().size() * sizeof(T));
     return StatusOr<DeviceMemory<uint8>>(memory_uint8);
   }
-  int64 TotalByteSize() { return total_byte_size_; }
+  int64_t TotalByteSize() { return total_byte_size_; }
 
  private:
-  int64 total_byte_size_ = 0;
+  int64_t total_byte_size_ = 0;
   OpKernelContext* context_;  // not owned
   int output_index_;
 };
@@ -449,8 +449,8 @@ class CudnnRNNSpaceAllocator : public ScratchAllocator {
 
   ~CudnnRNNSpaceAllocator() override {}
 
-  int64 GetMemoryLimitInBytes() override {
-    return std::numeric_limits<int64>::max();
+  int64_t GetMemoryLimitInBytes() override {
+    return std::numeric_limits<int64_t>::max();
   }
 
   StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
@@ -467,10 +467,10 @@ class CudnnRNNSpaceAllocator : public ScratchAllocator {
     total_byte_size_ += byte_size;
     return AsDeviceMemory<uint8>(&tensor_);
   }
-  int64 TotalByteSize() { return total_byte_size_; }
+  int64_t TotalByteSize() { return total_byte_size_; }
 
  private:
-  int64 total_byte_size_ = 0;
+  int64_t total_byte_size_ = 0;
   Tensor tensor_;
   OpKernelContext* context_;  // not owned
 };
@@ -1540,7 +1540,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
       output_algo_config->set_algorithm(algo_desc);
     } else {
       OP_REQUIRES_OK(context,
-                     MaybeAutoTune(context, model_shapes, input_mode, input,
+                     MaybeAutotune(context, model_shapes, input_mode, input,
                                    input_h, input_c, params, output, output_h,
                                    output_c, output_algo_config));
     }
@@ -1563,7 +1563,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
   }
 
  protected:
-  virtual Status MaybeAutoTune(OpKernelContext* context,
+  virtual Status MaybeAutotune(OpKernelContext* context,
                                const CudnnRnnModelShapes& model_shapes,
                                const RnnInputMode& input_mode,
                                const Tensor* input, const Tensor* input_h,
@@ -1579,7 +1579,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
   bool is_training() const { return is_training_; }
   bool is_debug_mode_;
   bool debug_use_tensor_ops_;
-  int64 debug_cudnn_rnn_algo_;
+  int64_t debug_cudnn_rnn_algo_;
 
  private:
   Status AllocateOutputs(OpKernelContext* context,
@@ -1670,7 +1670,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
   }
 
  protected:
-  Status MaybeAutoTune(OpKernelContext* context,
+  Status MaybeAutotune(OpKernelContext* context,
                        const CudnnRnnModelShapes& model_shapes,
                        const RnnInputMode& input_mode, const Tensor* input,
                        const Tensor* input_h, const Tensor* input_c,
@@ -1699,7 +1699,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
         /*has_dropout=*/std::abs(dropout()) > 1e-8, is_training(),
         modeltypes.rnn_mode, modeltypes.rnn_input_mode, input->dtype());
 
-    if (AutoTuneRnnConfigMap::GetInstance()->Find(rnn_params, algo_config)) {
+    if (AutotuneRnnConfigMap::GetInstance()->Find(rnn_params, algo_config)) {
       VLOG(1) << "Using existing best Cudnn RNN algorithm "
               << "(algo, tensor_op_enabled) = ("
               << algo_config->algorithm()->algo_id() << ", "
@@ -1807,7 +1807,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
     VLOG(1) << "Best Cudnn RNN algorithm (algo, tensor_op_enabled) =  ("
             << best_result.algorithm().algo_id() << ", "
             << best_result.algorithm().tensor_ops_enabled() << ").";
-    AutoTuneRnnConfigMap::GetInstance()->Insert(rnn_params, *algo_config);
+    AutotuneRnnConfigMap::GetInstance()->Insert(rnn_params, *algo_config);
     return Status::OK();
   }
 };

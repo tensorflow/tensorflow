@@ -35,7 +35,7 @@ typedef Eigen::GpuDevice GPUDevice;
 // InTopK argument can be passed either via mode attribute (InTopK op), or as an
 // input tensor (InTopKV2 op).
 struct TopKArg {
-  int64 k_value = -1;
+  int64_t k_value = -1;
   const Tensor* k_tensor = nullptr;
 };
 
@@ -64,7 +64,7 @@ struct InTopKFunctor<CPUDevice, T, TargetT> {
       if (k.k_tensor->dtype() == DT_INT32) {
         k_val = k.k_tensor->scalar<int32>()();
       } else {
-        k_val = k.k_tensor->scalar<int64>()();
+        k_val = k.k_tensor->scalar<int64_t>()();
       }
     }
 

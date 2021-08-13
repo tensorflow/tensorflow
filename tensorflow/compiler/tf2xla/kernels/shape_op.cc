@@ -261,7 +261,7 @@ class ExpandDimsOp : public XlaOpKernel {
     const TensorShape input_shape = ctx->InputShape("input");
     const TensorShape dim_shape = ctx->InputShape("dim");
 
-    std::vector<int64> dims;
+    std::vector<int64_t> dims;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputReshapedToIntVector("dim", &dims));
     OP_REQUIRES(ctx, dims.size() == 1,
                 errors::InvalidArgument(absl::StrCat(
@@ -278,7 +278,7 @@ class ExpandDimsOp : public XlaOpKernel {
     auto existing_dims = input_shape.dim_sizes();
     // Safe - # elements in tensor dims bounded.
     const int existing_dims_size = static_cast<int>(existing_dims.size());
-    std::vector<int64> new_shape(existing_dims_size);
+    std::vector<int64_t> new_shape(existing_dims_size);
     for (size_t i = 0; i < new_shape.size(); ++i) {
       new_shape[i] = existing_dims[i];
     }
@@ -311,7 +311,7 @@ class SqueezeOp : public XlaOpKernel {
     const TensorShape input_shape = ctx->InputShape(0);
     auto existing_dims = input_shape.dim_sizes();
     int existing_dims_size = input_shape.dims();
-    std::vector<int64> new_shape;
+    std::vector<int64_t> new_shape;
 
     std::unordered_set<int32> wrapped_squeeze_dims;
     wrapped_squeeze_dims.reserve(squeeze_dims_.size());

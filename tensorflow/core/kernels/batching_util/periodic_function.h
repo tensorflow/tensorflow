@@ -93,7 +93,7 @@ class PeriodicFunction {
     // function.
     // This can be used for adding a random jitter to avoid synchronous behavior
     // across multiple periodic functions.
-    int64 startup_delay_micros = 0;
+    int64_t startup_delay_micros = 0;
   };
 
   // Also starts the background thread which will be calling the function.
@@ -112,7 +112,7 @@ class PeriodicFunction {
   void RunLoop(int64_t start);
 
   const std::function<void()> function_;  // Actual client function
-  const int64 interval_micros_;           // Interval between calls.
+  const int64_t interval_micros_;         // Interval between calls.
   const Options options_;
 
   // Used to notify the thread to stop.

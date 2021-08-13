@@ -99,6 +99,8 @@ class ResourceHandle {
 
   std::string DebugString() const;
 
+  std::string SummarizeValue() const { return "Resource Tensor"; }
+
   // GUID for anonymous resources. Resources with this shared_name will have
   // their shared_name replaced with a GUID at creation time
   static constexpr const char* ANONYMOUS_NAME =
@@ -161,7 +163,7 @@ class ResourceHandle {
   Status ValidateType(const TypeIndex& type_index) const;
 
   // Generates unique IDs (e.g. for names of anonymous variables)
-  static int64 GenerateUniqueId();
+  static int64_t GenerateUniqueId();
 
  private:
   std::string device_;
@@ -178,7 +180,7 @@ class ResourceHandle {
   // a "weak-ref" mode, only containing the name of the resource (conceptually a
   // weak reference).
   core::IntrusivePtr<ResourceBase> resource_;
-  static std::atomic<int64> current_id_;
+  static std::atomic<int64_t> current_id_;
 };
 
 // For backwards compatibility for when this was a proto

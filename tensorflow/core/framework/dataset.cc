@@ -389,7 +389,7 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
   return Status::OK();
 }
 
-int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
+int64_t GetAllocatedBytes(const std::vector<Tensor>& element) {
   int64_t allocated_bytes = 0;
   DatasetBase* dataset;
   for (auto& tensor : element) {
@@ -403,7 +403,7 @@ int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
   return allocated_bytes;
 }
 
-int64 GetTotalBytes(const std::vector<Tensor>& element) {
+int64_t GetTotalBytes(const std::vector<Tensor>& element) {
   int64_t total_bytes = 0;
   DatasetBase* dataset;
   for (auto& tensor : element) {
@@ -584,6 +584,12 @@ Status DatasetBase::ComputeNumSources() {
     num_sources_ += input->num_sources();
   }
   return Status::OK();
+}
+
+Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
+                        std::vector<Tensor>* out_tensors) {
+  return errors::Unimplemented(
+      "Random access is not implemented for this dataset.");
 }
 
 Status DatasetBase::MergeOptionsFromInputs() {
@@ -803,10 +809,15 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
     }
     node_->record_start(now_nanos);
   }
+  out_tensors->clear();
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-  if (TF_PREDICT_TRUE(s.ok() && !*end_of_sequence)) {
-    DCHECK_EQ(out_tensors->size(), dataset()->output_dtypes().size());
-    RecordElement(ctx, out_tensors);
+  if (TF_PREDICT_TRUE(s.ok())) {
+    if (TF_PREDICT_TRUE(!*end_of_sequence)) {
+      DCHECK_EQ(out_tensors->size(), dataset()->output_dtypes().size());
+      RecordElement(ctx, out_tensors);
+    } else {
+      out_tensors->clear();
+    }
   }
   if (model && model->collect_resource_usage() && node_) {
     int64_t now_nanos = EnvTime::NowNanos();

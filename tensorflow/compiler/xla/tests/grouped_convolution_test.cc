@@ -37,14 +37,14 @@ string GetFloatDataType(bool use_bfloat16) {
 }
 
 struct GroupedConvolution2DSpec {
-  int64 input_feature, output_feature, window, stride, pad, lhs_dilate;
-  int64 group_size, group_count;
-  std::vector<int64> activation_dims;
-  std::vector<int64> activation_layout;
-  std::vector<int64> kernel_dims;
-  std::vector<int64> kernel_layout;
-  std::vector<int64> output_dims;
-  std::vector<int64> output_layout;
+  int64_t input_feature, output_feature, window, stride, pad, lhs_dilate;
+  int64_t group_size, group_count;
+  std::vector<int64_t> activation_dims;
+  std::vector<int64_t> activation_layout;
+  std::vector<int64_t> kernel_dims;
+  std::vector<int64_t> kernel_layout;
+  std::vector<int64_t> output_dims;
+  std::vector<int64_t> output_layout;
 };
 
 class GroupedConvolution2DTest
@@ -56,11 +56,12 @@ static std::vector<GroupedConvolution2DSpec> GetConv2DTestCases() {
   std::vector<GroupedConvolution2DSpec> config_set;
   // Add to this set if you want a new test configuration.
   // Rule : the penultimate number must be divisible by the last number.
-  std::vector<std::vector<int64>> config_options = {{8, 2, 2, 1, 1024, 128},
-                                                    {512, 3, 3, 144, 1024, 16},
-                                                    {256, 3, 3, 129, 512, 64},
-                                                    {64, 1, 2, 127, 32, 8},
-                                                    {256, 3, 3, 256, 1024, 4}};
+  std::vector<std::vector<int64_t>> config_options = {
+      {8, 2, 2, 1, 1024, 128},
+      {512, 3, 3, 144, 1024, 16},
+      {256, 3, 3, 129, 512, 64},
+      {64, 1, 2, 127, 32, 8},
+      {256, 3, 3, 256, 1024, 4}};
 
   for (auto option : config_options) {
     int64_t output_feature = option[0];
@@ -70,7 +71,7 @@ static std::vector<GroupedConvolution2DSpec> GetConv2DTestCases() {
     int64_t input_feature = option[4];
     int64_t group_size = option[5];
 
-    std::vector<int64> kernel_layout = {3, 2, 1, 0};
+    std::vector<int64_t> kernel_layout = {3, 2, 1, 0};
     GroupedConvolution2DSpec config;
     config.group_size = group_size;
     config.group_count = input_feature / group_size;

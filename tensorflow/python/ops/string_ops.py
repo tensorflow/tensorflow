@@ -164,9 +164,10 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
   if tensor_util.is_tf_type(inputs):
     inputs = [inputs]
   if template.count(placeholder) != len(inputs):
-    raise ValueError("%s placeholder(s) in template does not match %s tensor(s)"
-                     " provided as input" % (template.count(placeholder),
-                                             len(inputs)))
+    raise ValueError(f"The template expects {template.count(placeholder)} "
+                     f"tensors, but the inputs only has {len(inputs)}. "
+                     "Please ensure the number of placeholders in template "
+                     "matches inputs length.")
 
   return gen_string_ops.string_format(inputs,
                                       template=template,

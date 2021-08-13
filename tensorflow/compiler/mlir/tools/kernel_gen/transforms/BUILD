@@ -27,7 +27,6 @@ cc_library(
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -57,11 +56,9 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -87,6 +84,7 @@ cc_library(
         "buffer_reuse_pass.cc",
         "bufferize_pass.cc",
         "convert_to_signless_pass.cc",
+        "copy_cleanup_pass.cc",
         "embed_memref_prints.cc",
         "embed_tf_framework_pass.cc",
         "fuse_inner_parallel_loops_pass.cc",
@@ -165,8 +163,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core/platform:cuda_libdevice_path",
         "//tensorflow/core:lib",
     ] + if_cuda_is_configured([

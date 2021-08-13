@@ -15,37 +15,41 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
 
+constexpr char kTestCostName[] = "test";
+
 class TestCostMeasurement : public CostMeasurement {
  public:
   absl::Duration GetTotalCost() override { return absl::ZeroDuration(); }
+  absl::string_view GetCostType() const override { return kTestCostName; }
 };
 
-REGISTER_COST_MEASUREMENT("test_cost_measurement", TestCostMeasurement);
+REGISTER_COST_MEASUREMENT(kTestCostName, TestCostMeasurement);
 
 TEST(CostMeasurementRegistryTest, Basic) {
-  std::unique_ptr<const CostMeasurement> test_cost_messurement =
-      CostMeasurementRegistry::CreateByNameOrNull(
-          "unregistered_cost_measurement");
-  EXPECT_EQ(test_cost_messurement, nullptr);
+  std::unique_ptr<const CostMeasurement> test_cost_measurement =
+      CostMeasurementRegistry::CreateByNameOrNull("unregistered");
+  EXPECT_EQ(test_cost_measurement, nullptr);
 
-  test_cost_messurement =
-      CostMeasurementRegistry::CreateByNameOrNull("test_cost_measurement");
-  EXPECT_NE(test_cost_messurement, nullptr);
+  test_cost_measurement =
+      CostMeasurementRegistry::CreateByNameOrNull(kTestCostName);
+  EXPECT_NE(test_cost_measurement, nullptr);
 }
 
 TEST(CostMeasurementRegistryDeathTest, CrashWhenRegisterTwice) {
   const auto creator = []() {
     return absl::make_unique<TestCostMeasurement>();
   };
-  EXPECT_DEATH(CostMeasurementRegistry::RegisterCostMeasurement(
-                   "test_cost_measurement", creator),
-               "CostMeasurement test_cost_measurement is registered twice.");
+  EXPECT_DEATH(
+      CostMeasurementRegistry::RegisterCostMeasurement(kTestCostName, creator),
+      absl::StrCat("CostMeasurement ", kTestCostName, " is registered twice."));
 }
 
 }  // namespace

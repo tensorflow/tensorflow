@@ -61,7 +61,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     return "";
   }
 
-  int64 processing_time() {
+  int64_t processing_time() {
     tf_shared_lock l(mu_);
     return processing_time_;
   }
@@ -99,13 +99,13 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     void SetScheduled(int64_t nanos) override {}
 
    private:
-    int64 start_time_ns_ = 0;
-    int64 end_time_ns_ = 0;
+    int64_t start_time_ns_ = 0;
+    int64_t end_time_ns_ = 0;
     SimpleStepStatsCollector* step_stats_collector_;  // Not owned.
   };
 
   mutex mu_;
-  int64 processing_time_ TF_GUARDED_BY(mu_) = 0;
+  int64_t processing_time_ TF_GUARDED_BY(mu_) = 0;
 };
 
 Status GetCapturedInput(const CapturedFunction* const func, int index,
@@ -791,6 +791,7 @@ Status InstantiatedCapturedFunction::Run(
   f_opts.create_rendezvous = ShouldCreateRendezvous();
   CancellationManager cancellation_manager(ctx->cancellation_manager());
   f_opts.cancellation_manager = &cancellation_manager;
+  f_opts.collective_executor = ctx->collective_executor();
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (node || ctx->stats_aggregator()) {
@@ -854,6 +855,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   f_opts.create_rendezvous = ShouldCreateRendezvous();
   CancellationManager cancellation_manager(ctx->cancellation_manager());
   f_opts.cancellation_manager = &cancellation_manager;
+  f_opts.collective_executor = ctx->collective_executor();
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (node || ctx->stats_aggregator()) {
@@ -957,6 +959,7 @@ void InstantiatedCapturedFunction::RunAsync(
   auto cancellation_manager =
       absl::make_unique<CancellationManager>(ctx->cancellation_manager());
   f_opts.cancellation_manager = cancellation_manager.get();
+  f_opts.collective_executor = ctx->collective_executor();
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (node || ctx->stats_aggregator()) {

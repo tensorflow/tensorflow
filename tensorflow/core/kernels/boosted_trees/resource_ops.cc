@@ -42,7 +42,7 @@ class BoostedTreesCreateEnsembleOp : public OpKernel {
     // Get the stamp token.
     const Tensor* stamp_token_t;
     OP_REQUIRES_OK(context, context->input("stamp_token", &stamp_token_t));
-    int64_t stamp_token = stamp_token_t->scalar<int64>()();
+    int64_t stamp_token = stamp_token_t->scalar<int64_t>()();
 
     // Get the tree ensemble proto.
     const Tensor* tree_ensemble_serialized_t;
@@ -115,7 +115,7 @@ class BoostedTreesGetEnsembleStatesOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(
                                 4, {2}, &output_last_layer_nodes_range_t));
 
-    output_stamp_token_t->scalar<int64>()() = tree_ensemble_resource->stamp();
+    output_stamp_token_t->scalar<int64_t>()() = tree_ensemble_resource->stamp();
     output_num_trees_t->scalar<int32>()() = num_trees;
     output_num_finalized_trees_t->scalar<int32>()() = num_finalized_trees;
     output_num_attempted_layers_t->scalar<int32>()() = num_attempted_layers;
@@ -149,7 +149,7 @@ class BoostedTreesSerializeEnsembleOp : public OpKernel {
     Tensor* output_stamp_token_t = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape(),
                                                      &output_stamp_token_t));
-    output_stamp_token_t->scalar<int64>()() = tree_ensemble_resource->stamp();
+    output_stamp_token_t->scalar<int64_t>()() = tree_ensemble_resource->stamp();
     Tensor* output_proto_t = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(1, TensorShape(), &output_proto_t));
@@ -177,7 +177,7 @@ class BoostedTreesDeserializeEnsembleOp : public OpKernel {
     // Get the stamp token.
     const Tensor* stamp_token_t;
     OP_REQUIRES_OK(context, context->input("stamp_token", &stamp_token_t));
-    int64_t stamp_token = stamp_token_t->scalar<int64>()();
+    int64_t stamp_token = stamp_token_t->scalar<int64_t>()();
 
     // Get the tree ensemble proto.
     const Tensor* tree_ensemble_serialized_t;

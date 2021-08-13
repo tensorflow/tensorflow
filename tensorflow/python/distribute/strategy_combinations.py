@@ -202,12 +202,15 @@ def get_cluster_def(num_workers, num_ps):
   }
 
 
-def _get_ps_strategy_creator(num_workers, num_ps, required_gpus=0):
+def _get_ps_strategy_creator(
+    num_workers, num_ps, required_gpus=0,
+    variable_partitioner=sharded_variable.FixedShardsPartitioner(2)):
 
-  def _create_ps_strategy(resolver):
+  def _create_ps_strategy(resolver, variable_partitioner):
     return parameter_server_strategy_v2.ParameterServerStrategyV2(
         resolver,
-        variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
+        variable_partitioner=variable_partitioner
+        )
 
   def _create_parameter_server():
     if framework_test_util.is_xla_enabled():
@@ -219,7 +222,7 @@ def _get_ps_strategy_creator(num_workers, num_ps, required_gpus=0):
           server_lib.ClusterSpec(cluster_def),
           num_accelerators={"GPU": required_gpus},
           rpc_layer="grpc")
-      return _create_ps_strategy(resolver)
+      return _create_ps_strategy(resolver, variable_partitioner)
     else:
       tf_config = cluster_resolver.TFConfigClusterResolver()
       cluster_def = tf_config.cluster_spec().as_dict()
@@ -257,7 +260,7 @@ def _get_ps_strategy_creator(num_workers, num_ps, required_gpus=0):
         # Blocking the process that starts a server from exiting.
         server.join()
 
-      return _create_ps_strategy(resolver)
+      return _create_ps_strategy(resolver, variable_partitioner)
 
   return _create_parameter_server
 
@@ -433,39 +436,30 @@ multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
     no_xla=True,
 )
 
-parameter_server_strategy_3worker_2ps_cpu = combinations.NamedDistribution(
-    "ParameterServer3Worker2PSCPU",
-    _get_ps_strategy_creator(num_workers=3, num_ps=2),
-    num_workers=3,
-    has_chief=True,
-    num_ps=2,
-)
 
-parameter_server_strategy_1worker_2ps_cpu = combinations.NamedDistribution(
-    "ParameterServer1Worker2PSCPU",
-    _get_ps_strategy_creator(num_workers=1, num_ps=2),
-    num_workers=1,
-    has_chief=True,
-    num_ps=2,
-)
+def parameter_server_strategy_fn(
+    name, num_workers, num_ps, required_gpus=0,
+    variable_partitioner=sharded_variable.FixedShardsPartitioner(2)):
+  return combinations.NamedDistribution(
+      name,
+      _get_ps_strategy_creator(
+          num_workers=num_workers, num_ps=num_ps, required_gpus=required_gpus,
+          variable_partitioner=variable_partitioner),
+      required_gpus=required_gpus,
+      num_workers=num_workers,
+      has_chief=True,
+      num_ps=num_ps)
 
-parameter_server_strategy_3worker_2ps_1gpu = combinations.NamedDistribution(
-    "ParameterServer3Worker2PS1GPU",
-    _get_ps_strategy_creator(num_workers=3, num_ps=2, required_gpus=1),
-    required_gpus=1,
-    num_workers=3,
-    has_chief=True,
-    num_ps=2,
-)
 
-parameter_server_strategy_1worker_2ps_1gpu = combinations.NamedDistribution(
-    "ParameterServer1Worker2PS1GPU",
-    _get_ps_strategy_creator(num_workers=1, num_ps=2, required_gpus=1),
-    required_gpus=1,
-    num_workers=1,
-    has_chief=True,
-    num_ps=2,
-)
+parameter_server_strategy_3worker_2ps_cpu = parameter_server_strategy_fn(
+    "ParameterServer3Worker2PSCPU", num_workers=3, num_ps=2)
+parameter_server_strategy_1worker_2ps_cpu = parameter_server_strategy_fn(
+    "ParameterServer1Worker2PSCPU", num_workers=1, num_ps=2)
+parameter_server_strategy_3worker_2ps_1gpu = parameter_server_strategy_fn(
+    "ParameterServer3Worker2PS1GPU", num_workers=3, num_ps=2, required_gpus=1)
+parameter_server_strategy_1worker_2ps_1gpu = parameter_server_strategy_fn(
+    "ParameterServer1Worker2PS1GPU", num_workers=1, num_ps=2, required_gpus=1)
+
 
 graph_and_eager_modes = ["graph", "eager"]
 

@@ -61,7 +61,7 @@ class BoostedTreesQuantileStreamResource : public ResourceBase {
   }
 
   float epsilon() const { return epsilon_; }
-  int64 num_streams() const { return num_streams_; }
+  int64_t num_streams() const { return num_streams_; }
 
   bool are_buckets_ready() const { return are_buckets_ready_; }
   void set_buckets_ready(const bool are_buckets_ready) {
@@ -93,9 +93,9 @@ class BoostedTreesQuantileStreamResource : public ResourceBase {
   bool are_buckets_ready_;
 
   const float epsilon_;
-  const int64 num_streams_;
+  const int64_t num_streams_;
   // An upper-bound for the number of elements.
-  int64 max_elements_;
+  int64_t max_elements_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BoostedTreesQuantileStreamResource);
 };

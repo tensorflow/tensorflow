@@ -123,7 +123,7 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
   // would be dimensions [2]. If we were matching a matrix against a
   // 4-D tensor the dimensions to match would be [2,3],
   // etc. extend_dimension encodes the general case.
-  std::vector<int64> extend_dimension;
+  std::vector<int64_t> extend_dimension;
   int max_rank = std::max(lhs_shape.dims(), rhs_shape.dims());
   int min_rank = std::min(lhs_shape.dims(), rhs_shape.dims());
   if (min_rank != max_rank) {

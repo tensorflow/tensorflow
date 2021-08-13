@@ -68,7 +68,7 @@ struct MarkForCompilationPassFlags {
 
   // "Compiler fuel" for clustering.  Only this many ops will be marked as
   // eligible for clustering.
-  int64 tf_xla_clustering_fuel;
+  int64_t tf_xla_clustering_fuel;
 
   // If tf_xla_disable_deadness_safety_checks_for_debugging is set to true then
   // we do not do deadness related safety checks.  This is unsound in general,

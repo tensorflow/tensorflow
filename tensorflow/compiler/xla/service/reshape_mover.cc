@@ -152,7 +152,7 @@ HloInstruction* UpdateOperand(const HloInstruction* first_reshape_operand,
       } else {
         CHECK(first_reshape_operand->opcode() == HloOpcode::kTranspose);
         VLOG(5) << "Adding transpose to kConstant operand";
-        std::vector<int64> inverse_permutation =
+        std::vector<int64_t> inverse_permutation =
             InversePermutation(first_reshape_operand->dimensions());
         return computation->AddInstruction(HloInstruction::CreateTranspose(
             new_shape, operand, inverse_permutation));

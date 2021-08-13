@@ -114,7 +114,7 @@ class XlaCompilationCache : public ResourceBase {
 
     // List of Tensor types & shapes for compile-time constant arguments to the
     // compilation, ordered by argument number.
-    absl::InlinedVector<std::pair<DataType, absl::InlinedVector<int64, 4>>, 4>
+    absl::InlinedVector<std::pair<DataType, absl::InlinedVector<int64_t, 4>>, 4>
         arg_shapes;
 
     // List of Tensor values for compile-time constant arguments to the
@@ -170,7 +170,7 @@ class XlaCompilationCache : public ResourceBase {
     CompileState compile_state = CompileState::kUncompiled;
 
     // The number of times a compilation with this signature has been requested.
-    int64 request_count = 0;
+    int64_t request_count = 0;
 
     // Did compilation succeed?
     Status compilation_status TF_GUARDED_BY(mu);
@@ -203,13 +203,13 @@ class XlaCompilationCache : public ResourceBase {
 
   struct ClusterCompileStats {
     // Number of times the cluster has been (re-)compiled.
-    int64 compile_count = 0;
+    int64_t compile_count = 0;
 
     // The number of times this cluster has been executed.
-    int64 execution_count = 0;
+    int64_t execution_count = 0;
 
     // Cumulative time spent compiling the cluster.
-    int64 cumulative_compile_time_us = 0;
+    int64_t cumulative_compile_time_us = 0;
 
     // True if we have decided that this cluster is too dynamic (i.e. its shapes
     // change too frequently) to profitably JIT compile.  Once a cluster is
@@ -233,7 +233,7 @@ class XlaCompilationCache : public ResourceBase {
     static constexpr int64_t kMaxNumOngoingCompilations = kNumCompilerThreads;
 
     // Number of ongoing compilations.
-    int64 num_ongoing_compilations TF_GUARDED_BY(async_compilation_state_mu) =
+    int64_t num_ongoing_compilations TF_GUARDED_BY(async_compilation_state_mu) =
         0;
 
     // Pool of threads for asynchronous compilations.

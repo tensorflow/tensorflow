@@ -103,7 +103,7 @@ class HloModuleGroupMetadata {
 
   // Represents a channel and the instructions that form the channel.
   struct Channel {
-    int64 id = -1;
+    int64_t id = -1;
     HloInstruction* send = nullptr;
     HloInstruction* recv = nullptr;
     HloInstruction* send_done = nullptr;
@@ -163,16 +163,16 @@ class HloModuleGroupMetadata {
 
   // Returns the unique integer for each module. The returned id is the index of
   // the module in the module vector.
-  int64 GetModuleId(const HloModule* module) const;
+  int64_t GetModuleId(const HloModule* module) const;
 
   // Retrieves the device an instruction is assigned to. Either from the
   // sharding information, or from the ordinal of the module the instruction
   // is in.
-  absl::optional<int64> GetInstructionDevice(
+  absl::optional<int64_t> GetInstructionDevice(
       const HloInstruction& instruction) const;
 
   // Returns the number of modules for devices (excluding the host module).
-  int64 GetDeviceModulesCount() const;
+  int64_t GetDeviceModulesCount() const;
 
   // Returns the companion set for the given instruction, including the
   // instruction itself.
@@ -191,7 +191,7 @@ class HloModuleGroupMetadata {
   }
 
   // Returns the companion set index of the given instruction.
-  int64 companion_set_index(HloInstruction* instruction) const {
+  int64_t companion_set_index(HloInstruction* instruction) const {
     return companion_set_index_.at(instruction);
   }
 
@@ -206,7 +206,7 @@ class HloModuleGroupMetadata {
   const std::vector<Channel>& channels() const { return channels_; }
 
   // Returns the maximum channel id used in the module group.
-  int64 max_channel_id() const { return max_channel_id_; }
+  int64_t max_channel_id() const { return max_channel_id_; }
 
   HloAliasAnalysis* alias_analysis(HloModule* module) const {
     return alias_analyses_.at(module).get();
@@ -257,7 +257,7 @@ class HloModuleGroupMetadata {
   std::vector<std::unique_ptr<std::vector<HloInstruction*>>> companion_sets_;
 
   // Map from each companion while instruction to the index into companion_set_.
-  absl::flat_hash_map<const HloInstruction*, int64> companion_set_index_;
+  absl::flat_hash_map<const HloInstruction*, int64_t> companion_set_index_;
 
   // Map from computation to the instruction using it (a kWhile, kConditional).
   absl::flat_hash_map<const HloComputation*, TrackedInstruction>
@@ -272,13 +272,13 @@ class HloModuleGroupMetadata {
   std::vector<Channel> channels_;
 
   // Map from channel ids to the index in channels_.
-  absl::flat_hash_map<int64, int64> channel_id_map_;
+  absl::flat_hash_map<int64_t, int64_t> channel_id_map_;
 
   // Map from all-reduce ids to the all reduce instructions.
-  absl::flat_hash_map<int64, std::vector<HloInstruction*>> all_reduce_map_;
+  absl::flat_hash_map<int64_t, std::vector<HloInstruction*>> all_reduce_map_;
 
   // The maximum channel id used in the module group.
-  int64 max_channel_id_ = -1;
+  int64_t max_channel_id_ = -1;
 
   // The modules that this metadata was built from.
   const std::vector<HloModule*> modules_;

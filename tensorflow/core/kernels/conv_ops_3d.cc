@@ -155,22 +155,27 @@ class Conv3DOp : public BinaryOp<T> {
                 errors::InvalidArgument(
                     "Input depth must be evenly divisible by filter depth: ",
                     in_depth, " vs ", filter_depth));
+    OP_REQUIRES(
+        context, filter.NumElements() > 0,
+        errors::InvalidArgument("filter must not have zero elements "
+                                "(i.e. all dimensions must be non-zero)"));
 
     // Dimension order for these arrays is: z, y, x.
-    std::array<int64, 3> input_size = {
+    std::array<int64_t, 3> input_size = {
         {GetTensorDim(input, data_format_, '0'),
          GetTensorDim(input, data_format_, '1'),
          GetTensorDim(input, data_format_, '2')}};
-    std::array<int64, 3> filter_size = {
+    std::array<int64_t, 3> filter_size = {
         {filter.dim_size(0), filter.dim_size(1), filter.dim_size(2)}};
-    std::array<int64, 3> dilations = {
+    std::array<int64_t, 3> dilations = {
         {GetTensorDim(dilation_, data_format_, '0'),
          GetTensorDim(dilation_, data_format_, '1'),
          GetTensorDim(dilation_, data_format_, '2')}};
-    std::array<int64, 3> strides = {{GetTensorDim(stride_, data_format_, '0'),
-                                     GetTensorDim(stride_, data_format_, '1'),
-                                     GetTensorDim(stride_, data_format_, '2')}};
-    std::array<int64, 3> out, padding;
+    std::array<int64_t, 3> strides = {
+        {GetTensorDim(stride_, data_format_, '0'),
+         GetTensorDim(stride_, data_format_, '1'),
+         GetTensorDim(stride_, data_format_, '2')}};
+    std::array<int64_t, 3> out, padding;
 
     OP_REQUIRES_OK(
         context, Get3dOutputSizeV2(input_size, filter_size, dilations, strides,
@@ -208,13 +213,13 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // A dummy type to group forward convolution autotune results together.
-struct Conv3dAutoTuneGroup {
+struct Conv3dAutotuneGroup {
   static string name() { return "Conv3d"; }
 };
 
-typedef AutoTuneSingleton<Conv3dAutoTuneGroup, ConvParameters,
+typedef AutotuneSingleton<Conv3dAutotuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
-    AutoTuneConv3d;
+    AutotuneConv3d;
 
 // TODO(mjanusz): Share logic with 2d implementation as much as possible.
 template <typename T>
@@ -247,11 +252,11 @@ struct LaunchConvOp<GPUDevice, T> {
     int64_t out_cols = GetTensorDim(*output, data_format, '2');
 
     if (padding == Padding::SAME) {
-      pad_planes = std::max<int64>(
+      pad_planes = std::max<int64_t>(
           0, (out_planes - 1) * strides[0] + filter_planes - in_planes);
-      pad_rows = std::max<int64>(
+      pad_rows = std::max<int64_t>(
           0, (out_rows - 1) * strides[1] + filter_rows - in_rows);
-      pad_cols = std::max<int64>(
+      pad_cols = std::max<int64_t>(
           0, (out_cols - 1) * strides[2] + filter_cols - in_cols);
     }
 
@@ -502,7 +507,7 @@ struct LaunchConvOp<GPUDevice, T> {
 #endif
     AlgorithmConfig algorithm_config;
 
-    if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
+    if (cudnn_use_autotune && !AutotuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
       profiler::ScopedAnnotation trace("cudnn_autotuning");
 
@@ -667,7 +672,7 @@ struct LaunchConvOp<GPUDevice, T> {
         OP_REQUIRES_OK(
             ctx, BestCudnnConvAlgorithm(results, nullptr, &algorithm_config));
       }
-      AutoTuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
+      AutotuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
     }
 
     Status cudnn_launch_status;
@@ -677,7 +682,7 @@ struct LaunchConvOp<GPUDevice, T> {
         VLOG(4) << "Conv3D Execution Plan: "
                 << algorithm_config.algorithm()->exec_plan_id();
       } else {
-        VLOG(4) << "Convolution AutoTune has been turned off";
+        VLOG(4) << "Convolution Autotune has been turned off";
       }
       cudnn_launch_status = stream->ConvolveWithExecutionPlan(
           input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,

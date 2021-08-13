@@ -61,6 +61,7 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
@@ -94,10 +95,10 @@ struct LaunchFusedConv2DOp {
 template <typename T>
 class LaunchFusedConv2DWithOutputKernel {
  public:
-  LaunchFusedConv2DWithOutputKernel(int row_stride, int col_stride,      //
-                                    int row_dilation, int col_dilation,  //
-                                    Padding padding,
-                                    const std::vector<int64>& explicit_paddings)
+  LaunchFusedConv2DWithOutputKernel(
+      int row_stride, int col_stride,      //
+      int row_dilation, int col_dilation,  //
+      Padding padding, const std::vector<int64_t>& explicit_paddings)
       : row_stride_(row_stride),
         col_stride_(col_stride),
         row_dilation_(row_dilation),
@@ -203,7 +204,7 @@ class LaunchFusedConv2DWithOutputKernel {
   int row_dilation_;
   int col_dilation_;
   const Padding padding_;
-  const std::vector<int64>& explicit_paddings_;
+  const std::vector<int64_t>& explicit_paddings_;
 };
 
 template <typename T>
@@ -304,16 +305,7 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
 
 #if GOOGLE_CUDA
 
-// A dummy type to group forward convolution autotune results together.
-struct FusedConvAutoTuneGroup {
-  static string name() { return "FusedConv"; }
-};
-
-using AutoTuneFusedConv =
-    AutoTuneSingleton<FusedConvAutoTuneGroup, ConvParameters,
-                      se::dnn::AlgorithmConfig>;
-
-inline int64 ConvolveScratchSize() {
+inline int64_t ConvolveScratchSize() {
   static int64_t convolve_scratch_size = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
@@ -337,7 +329,7 @@ Status FindBestConvolveAlgorithm(
     se::Stream* stream, se::DeviceMemory<T> output_ptr, const LogFunc& log,
     se::dnn::AlgorithmConfig* algorithm_config) {
   // Check if we already have an algorithm selected for the given parameters.
-  if (AutoTuneFusedConv::GetInstance()->Find(params, algorithm_config)) {
+  if (AutotuneConv::GetInstance()->Find(params, algorithm_config)) {
     return Status::OK();
   }
   profiler::ScopedAnnotation trace("cudnn_autotuning");
@@ -430,7 +422,7 @@ Status FindBestConvolveAlgorithm(
                        profile_config.algorithm()->exec_plan_id()));
     }
   }
-  // Only log on an AutoTuneFusedConv cache miss.
+  // Only log on an AutotuneConv cache miss.
   log(results);
   if (CudnnUseFrontend()) {
     TF_RETURN_IF_ERROR(
@@ -439,7 +431,7 @@ Status FindBestConvolveAlgorithm(
     TF_RETURN_IF_ERROR(
         BestCudnnConvAlgorithm(results, nullptr, algorithm_config));
   }
-  AutoTuneFusedConv::GetInstance()->Insert(params, *algorithm_config);
+  AutotuneConv::GetInstance()->Insert(params, *algorithm_config);
   return Status::OK();
 }
 
@@ -675,9 +667,10 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         dtype,                         // tensor datatype
         device_id,                     // device_id
         conv_desc.group_count(),
-        /*has_side_input=*/false,  // this op doesn't support side inputs.
-        dnn_activation_mode        // activation_mode
-    };
+        ConvParameters::FusionInfo{
+            /*has_side_input=*/false,  // this op doesn't support side inputs.
+            dnn_activation_mode,       // activation_mode
+            /*is_contrib=*/false}};
 
     constexpr double kConvInputScale = 1.0;
     constexpr double kSideInputScale = 0.0;

@@ -76,12 +76,19 @@ def _is_device_list_single_worker(devices):
   any_local = any(d.job in (None, "localhost") for d in specs)
 
   if any_local and not all_local:
-    raise ValueError("Local device string cannot have job specified other "
-                     "than 'localhost'")
+    raise ValueError("Local device should have only 'localhost' in the job "
+                     "field in device string. "
+                     "E.g. 'job:localhost' in "
+                     "/job:localhost/replica:0/task:0/device:CPU:0"
+                     "Devices cannot have mixed list of device strings "
+                     "containing both localhost and other job types such as "
+                     "worker, ps etc. ")
 
   if num_workers == 1 and not all_local:
     if any(d.task is None for d in specs):
-      raise ValueError("Remote device string must have task specified.")
+      raise ValueError("Remote device string must have task specified."
+                       "E.g. 'task:0' in "
+                       "/job:worker/replica:0/task:0/device:CPU:0")
 
   return num_workers == 1
 
@@ -561,7 +568,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       raise NotImplementedError(
           "InputReplicationMode.PER_REPLICA "
           "is only supported in "
-          "`experimental_distribute_datasets_from_function`."
+          "`distribute_datasets_from_function`."
       )
     return input_lib.get_distributed_dataset(
         dataset,
@@ -754,8 +761,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       if cross_device_ops is None:
         cross_device_ops = self._get_cross_device_ops(value)
       elif cross_device_ops is not self._get_cross_device_ops(value):
-        raise ValueError("inputs to batch_reduce_to must be either all on the "
-                         "the host or all on the compute devices")
+        raise ValueError("Inputs to batch_reduce_to must be either all on "
+                         "the host or all on the compute devices.")
     return cross_device_ops.batch_reduce(
         reduce_op,
         value_destination_pairs,

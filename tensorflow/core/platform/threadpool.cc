@@ -203,7 +203,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(
 void ThreadPool::ParallelFor(int64_t total, int64_t cost_per_unit,
                              const std::function<void(int64_t, int64_t)>& fn) {
   CHECK_GE(total, 0);
-  CHECK_EQ(total, (int64)(Eigen::Index)total);
+  CHECK_EQ(total, (int64_t)(Eigen::Index)total);
   threadpool_device_->parallelFor(
       total, Eigen::TensorOpCost(0, 0, cost_per_unit),
       [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); });
@@ -213,7 +213,7 @@ void ThreadPool::ParallelForWithWorkerId(
     int64_t total, int64_t cost_per_unit,
     const std::function<void(int64_t, int64_t, int)>& fn) {
   CHECK_GE(total, 0);
-  CHECK_EQ(total, (int64)(Eigen::Index)total);
+  CHECK_EQ(total, (int64_t)(Eigen::Index)total);
 
   threadpool_device_->parallelFor(total,
                                   Eigen::TensorOpCost(0, 0, cost_per_unit),

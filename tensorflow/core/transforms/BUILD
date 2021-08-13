@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
@@ -22,7 +23,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
-    td_srcs = [
+    deps = [
         "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )
@@ -82,25 +83,24 @@ cc_library(
     ],
 )
 
-# TODO(jpienaar): Re-enable, build breakage, so just disabling until fixed.
 # Custom `mlir-opt` replacement that links our dialect and passes
-#tf_native_cc_binary(
-#    name = "tfg-transforms-opt",
-#    srcs = ["tfg-transforms-opt.cc"],
-#    deps = [
-#        ":PassRegistration",
-#        "@llvm-project//mlir:MlirOptLib",
-#        "@llvm-project//mlir:TransformUtils",
-#        "//tensorflow/core/ir:Dialect",
-#        "//tensorflow/core/ir/types:Dialect",
-#    ],
-#)
+tf_native_cc_binary(
+    name = "tfg-transforms-opt",
+    srcs = ["tfg-transforms-opt.cc"],
+    deps = [
+        ":PassRegistration",
+        "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
 
 filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        # ":tfg-transforms-opt", TODO(jpienaar): Re-enable
+        ":tfg-transforms-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
     ],
@@ -109,9 +109,6 @@ filegroup(
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
-    exclude = [
-        "graph_to_func/tests/simple.mlir",
-        "toposort/tests/toposort.mlir",
-    ],
+    exclude = [],
     test_file_exts = ["mlir"],
 )

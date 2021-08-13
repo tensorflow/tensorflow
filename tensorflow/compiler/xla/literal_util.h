@@ -118,7 +118,7 @@ class LiteralUtil {
   // Creates a literal of the given shape where each element is `value`.
   template <typename NativeT>
   static Literal CreateFullWithDescendingLayout(
-      absl::Span<const int64> dimensions, NativeT value);
+      absl::Span<const int64_t> dimensions, NativeT value);
 
   // Creates a new literal from an Array type. The variants not ending with
   // WithLayout use the default XLA layout for the literal's linear
@@ -211,7 +211,7 @@ class LiteralUtil {
   // The content of the literal values is the default value of the primitive
   // type of literal itself (0 for numeric types, and false for predicates).
   static Literal CreateFromDimensions(PrimitiveType primitive_type,
-                                      absl::Span<const int64> dimensions);
+                                      absl::Span<const int64_t> dimensions);
 
   // If the given literal's data type is bfloat16, converts it to a float
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
@@ -251,8 +251,8 @@ class LiteralUtil {
   // data in the given input literal. For reshaping purposes the (flat) data
   // buffer of the input literal is assumed to have the given minor_to_major
   // layout order.
-  static Literal ReshapeSlice(absl::Span<const int64> new_dimensions,
-                              absl::Span<const int64> minor_to_major,
+  static Literal ReshapeSlice(absl::Span<const int64_t> new_dimensions,
+                              absl::Span<const int64_t> minor_to_major,
                               const LiteralSlice& literal);
 
   // Creates a literal with the supplied shape, and uses the provided value
@@ -263,7 +263,7 @@ class LiteralUtil {
       typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
   static StatusOr<Literal> CreateLiteralWithGenerator(
       const Shape& shape,
-      const std::function<T(absl::Span<const int64>)>& generator);
+      const std::function<T(absl::Span<const int64_t>)>& generator);
 
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
@@ -291,7 +291,7 @@ class LiteralUtil {
   // Returns a multi-dimensional index as a string. For example: '{7, 8}' will
   // be returned for a 2-dimensional index with dimension 0 index equal to 7,
   // dimension 1 equal to 8.
-  static string MultiIndexAsString(absl::Span<const int64> multi_index);
+  static string MultiIndexAsString(absl::Span<const int64_t> multi_index);
 };
 
 std::ostream& operator<<(std::ostream& out, const Literal& literal);
@@ -308,7 +308,7 @@ template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateR1(absl::Span<const NativeT> values) {
   Literal literal(
       ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<NativeT>(),
-                           {static_cast<int64>(values.size())}));
+                           {static_cast<int64_t>(values.size())}));
   literal.PopulateR1(values);
   return literal;
 }
@@ -319,8 +319,8 @@ template <typename NativeT>
     const Layout& layout) {
   Literal literal(ShapeUtil::MakeShapeWithLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(),
-      {static_cast<int64>(values.size()),
-       static_cast<int64>(values.begin()->size())},
+      {static_cast<int64_t>(values.size()),
+       static_cast<int64_t>(values.begin()->size())},
       AsInt64Slice(layout.minor_to_major())));
   literal.PopulateR2(values);
   return literal;
@@ -521,7 +521,7 @@ template <typename NativeT>
 
 template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateFullWithDescendingLayout(
-    absl::Span<const int64> dimensions, NativeT value) {
+    absl::Span<const int64_t> dimensions, NativeT value) {
   Literal literal(ShapeUtil::MakeShapeWithDescendingLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), dimensions));
   literal.PopulateWithValue(value);
@@ -531,12 +531,12 @@ template <typename NativeT>
 template <PrimitiveType type, typename T>
 /* static */ StatusOr<Literal> LiteralUtil::CreateLiteralWithGenerator(
     const Shape& shape,
-    const std::function<T(absl::Span<const int64>)>& generator) {
+    const std::function<T(absl::Span<const int64_t>)>& generator) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
   TF_RET_CHECK(shape.element_type() == type);
   Literal literal(shape);
   TF_RETURN_IF_ERROR(literal.Populate<NativeT>(
-      [&](absl::Span<const int64> indexes) { return generator(indexes); }));
+      [&](absl::Span<const int64_t> indexes) { return generator(indexes); }));
   return std::move(literal);
 }
 
@@ -546,8 +546,9 @@ template <PrimitiveType type, typename E, typename T>
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
   std::normal_distribution<NativeT> generator(mean, stddev);
   return CreateLiteralWithGenerator<type, NativeT>(
-      shape,
-      [&](absl::Span<const int64> /*indexes*/) { return generator(*engine); });
+      shape, [&](absl::Span<const int64_t> /*indexes*/) {
+        return generator(*engine);
+      });
 }
 
 template <PrimitiveType type, typename T>

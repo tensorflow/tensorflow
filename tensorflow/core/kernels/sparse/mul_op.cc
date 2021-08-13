@@ -56,7 +56,7 @@ class CSRMulOp : public OpKernel {
     const int b_rank = b_t.dims();
 
     const Tensor& a_dense_shape_t = a_matrix->dense_shape();
-    auto a_dense_shape = a_dense_shape_t.vec<int64>();
+    auto a_dense_shape = a_dense_shape_t.vec<int64_t>();
     const int batch_size = a_dense_shape(0);
     if (b_rank == 3) {
       OP_REQUIRES(

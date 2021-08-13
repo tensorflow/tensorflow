@@ -1130,6 +1130,8 @@ def TFL_GatherOp : TFL_Op<"gather", [
   );
 
   let hasOptions = 1;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TFL_GatherNdOp : TFL_Op<"gather_nd", [
@@ -1665,6 +1667,7 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
     AnyTensor:$output
   );
 
+  let hasFolder = 1;
   let hasOptions = 1;
 
   let customOption = "SqueezeOptions";

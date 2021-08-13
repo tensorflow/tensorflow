@@ -47,6 +47,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core/kernels/data:shard_dataset_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/data:dataset_utils",

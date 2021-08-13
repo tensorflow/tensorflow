@@ -59,7 +59,7 @@ namespace {
 // StepId must leave the most-significant 7 bits empty for future use.
 static const int64_t kStepIdMask = (((1uLL << 56) - 1) | (1uLL << 56));
 
-int64 NewRandomStepId() {
+int64_t NewRandomStepId() {
   int64_t step_id = random::New64();
   // Leave MS 8 bits clear for future use.
   step_id &= kStepIdMask;
@@ -145,7 +145,7 @@ Status RpcCollectiveExecutorMgr::UpdateStepSequences(
   return Status::OK();
 }
 
-int64 RpcCollectiveExecutorMgr::NextStepId(int64_t graph_key) {
+int64_t RpcCollectiveExecutorMgr::NextStepId(int64_t graph_key) {
   mutex_lock l(sequence_mu_);
   auto it = sequence_table_.find(graph_key);
   if (it != sequence_table_.end()) {

@@ -533,8 +533,8 @@ llvm::Error FillAttrValueMap(const tfrt::OpAttrsRef& attrs,
 namespace {
 
 tensorflow::Tensor CreateTfTensorFromDenseAttr(tfrt::DenseAttr attr) {
-  tensorflow::TensorShape shape(
-      absl::InlinedVector<int64, 4>(attr.shape().begin(), attr.shape().end()));
+  tensorflow::TensorShape shape(absl::InlinedVector<int64_t, 4>(
+      attr.shape().begin(), attr.shape().end()));
   tensorflow::DataType dtype = ConvertBefAttrTypeToTfDataType(attr.dtype());
 
   tensorflow::Tensor tensor(dtype, shape);

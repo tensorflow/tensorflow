@@ -34,6 +34,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
+#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
+
+#if BEF_THUNKS
+#include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
+#endif  // BEF_THUNKS
 
 #if TENSORFLOW_USE_ROCM
 // Local hipify of cuda symbols
@@ -165,7 +170,7 @@ struct NcclCliqueParticipantData : public ParticipantData {
                             se::gpu::GpuContextHandle context)
       : ParticipantData(rendezvous_key), stream(nullptr), context(context) {}
 
-  int64 device_ordinal;
+  int64_t device_ordinal;
   se::Stream* stream;
   se::gpu::GpuContextHandle context;
 
@@ -181,6 +186,19 @@ struct NcclCliqueParticipantData : public ParticipantData {
         rendezvous_key.ToString(), context);
   }
 };
+
+#if BEF_THUNKS
+// This struct contains stateful resource(s) needed to execute collective
+// BefThunks.
+struct XcclContext {
+  XcclContext(const NcclClique& clique, int num_ranks)
+      : clique(clique), num_ranks(num_ranks) {}
+
+  const NcclClique& clique;
+  const int num_ranks;
+  tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> ccl_handle;
+};
+#endif  // BEF_THUNKS
 
 // Acquires a locked NCCL clique for use in NCCL collective operations.
 StatusOr<LockedNcclClique> AcquireNcclClique(

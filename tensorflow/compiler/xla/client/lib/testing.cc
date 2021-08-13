@@ -33,7 +33,7 @@ namespace {
 // Calculates the number of bytes required to store the data within the
 // specified shape. In case of a (nested) tuple shape this is the total byte
 // size of all sub-shapes within the tuple.
-int64 DataSizeOfShape(const Shape& shape) {
+int64_t DataSizeOfShape(const Shape& shape) {
   if (shape.IsArray()) {
     return ShapeUtil::ByteSizeOf(shape);
   }

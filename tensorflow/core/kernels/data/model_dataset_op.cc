@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/model_dataset_op.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 
 // On mobile we do not provide model dataset op because not all of its
@@ -89,7 +90,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override { return "ModelDatasetOp::Dataset"; }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64_t Cardinality() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -108,7 +109,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node}, output));
     AttrValue algorithm_attr;
-    b->BuildAttrValue(static_cast<int64>(algorithm_), &algorithm_attr);
+    b->BuildAttrValue(static_cast<int64_t>(algorithm_), &algorithm_attr);
     AttrValue cpu_budget_attr;
     b->BuildAttrValue(cpu_budget_, &cpu_budget_attr);
     AttrValue ram_budget_attr;
@@ -128,7 +129,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
-          cpu_budget_(dataset()->cpu_budget_ == 0 ? port::NumSchedulableCPUs()
+          cpu_budget_(dataset()->cpu_budget_ == 0 ? GetCpuBudget()
                                                   : dataset()->cpu_budget_),
           ram_budget_(dataset()->ram_budget_ == 0
                           ? kRamBudgetShare * port::AvailableRam()
@@ -208,14 +209,14 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<CancellationManager> cancellation_manager_;
     std::unique_ptr<Thread> model_thread_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_;
-    const int64 cpu_budget_;
-    const int64 ram_budget_;
+    const int64_t cpu_budget_;
+    const int64_t ram_budget_;
   };
 
   const DatasetBase* input_;
   const model::AutotuneAlgorithm algorithm_;
-  const int64 cpu_budget_;
-  const int64 ram_budget_;
+  const int64_t cpu_budget_;
+  const int64_t ram_budget_;
   const TraceMeMetadata traceme_metadata_;
 };
 

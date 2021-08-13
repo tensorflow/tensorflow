@@ -411,8 +411,8 @@ class ScratchSpace {
   const Scalar& operator()(int64_t i) const {
     return scratch_tensor_.template flat<Scalar>()(i);
   }
-  int64 bytes() const { return scratch_tensor_.TotalBytes(); }
-  int64 size() const { return scratch_tensor_.NumElements(); }
+  int64_t bytes() const { return scratch_tensor_.TotalBytes(); }
+  int64_t size() const { return scratch_tensor_.NumElements(); }
   const std::string& debug_info() const { return debug_info_; }
 
   Tensor& tensor() { return scratch_tensor_; }

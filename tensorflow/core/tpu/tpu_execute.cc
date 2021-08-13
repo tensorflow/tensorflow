@@ -115,7 +115,7 @@ xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) {
   return device_shape;
 }
 
-int64 ShapeSizeCompact(const xla::Shape& shape) {
+int64_t ShapeSizeCompact(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
   int64_t size =
@@ -124,7 +124,7 @@ int64 ShapeSizeCompact(const xla::Shape& shape) {
   return size;
 }
 
-int64 ShapeSizeCompactRaw(const xla::Shape& shape) {
+int64_t ShapeSizeCompactRaw(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
   int64_t size =

@@ -30,7 +30,7 @@ namespace tensorflow {
 namespace {
 const char* kDeviceNamePrefix = "/job:localhost/replica:0/task:0";
 
-int64 GetTotalGPUMemory(PlatformDeviceId gpu_id) {
+int64_t GetTotalGPUMemory(PlatformDeviceId gpu_id) {
   se::StreamExecutor* se =
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
           .ValueOrDie();
@@ -380,8 +380,8 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
 
   int64_t memory_limit = devices[0]->attributes().memory_limit();
   ASSERT_EQ(memory_limit,
-            static_cast<int64>(GetTotalGPUMemory(kPlatformDeviceId) *
-                               kGpuMemoryFraction));
+            static_cast<int64_t>(GetTotalGPUMemory(kPlatformDeviceId) *
+                                 kGpuMemoryFraction));
 
   AllocatorAttributes allocator_attributes = AllocatorAttributes();
   allocator_attributes.set_gpu_compatible(true);
@@ -475,7 +475,7 @@ TEST_F(GPUKernelTrackerTest, CappingOnly) {
   // 1 is the expected value when no kernels have yet terminated.
   EXPECT_EQ(1, kernel_tracker_->LastTerminatedCount(0));
 
-  std::deque<int64> queued_counts;
+  std::deque<int64_t> queued_counts;
   for (int i = 0; i < 32; ++i) {
     uint64 queued_count = timing_counter_->next();
     queued_counts.push_back(queued_count);

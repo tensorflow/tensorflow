@@ -82,6 +82,14 @@ func @testGatherUnsupportedRank(%arg0 : tensor<f32>, %arg1 : tensor<1xi32>) -> t
 
 // -----
 
+func @testGatherUnsupported2DStringInput(%arg0 : tensor<?x?x!tf_type.string>, %arg1 : tensor<?xi32>) -> tensor<*x!tf_type.string> {
+  // expected-error @+1 {{'tfl.gather' op expect 1d input when the given type is string, got 'tensor<?x?x!tf_type.string>'}}
+  %0 = "tfl.gather"(%arg0, %arg1) {axis = 1 : i32}: (tensor<?x?x!tf_type.string>,tensor<?xi32>) -> tensor<*x!tf_type.string>
+  return %0 : tensor<*x!tf_type.string>
+}
+
+// -----
+
 // CHECK-LABEL: testGatherWithBatchDims
 func @testGatherWithBatchDims(%arg0 : tensor<2xf32>, %arg1 : tensor<2xi32>) -> tensor<2xf32> {
   %0 = "tfl.gather"(%arg0, %arg1) {axis = 1 : i32, batch_dims = 2 : i32}: (tensor<2xf32>,tensor<2xi32>) -> tensor<2xf32>

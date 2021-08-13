@@ -852,6 +852,20 @@ func @reshape_multiple_collapse
 // CHECK-LABEL: func @reshape_multiple_collapse
 //       CHECK: linalg.tensor_collapse_shape %{{.*}} {{\[}}[0], [1, 2], [3], [4, 5]]
 
+
+// -----
+
+// CHECK-LABEL: func @bitcast_convert
+func @bitcast_convert(%input: tensor<2x2xi32>) -> tensor<2x2xf32> {
+  %result = "mhlo.bitcast_convert"(%input) : (tensor<2x2xi32>) -> tensor<2x2xf32>
+  return %result : tensor<2x2xf32>
+}
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %{{.*}}: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = bitcast %[[OPERAND_IN]] : i32 to f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
 // -----
 
 // CHECK-LABEL: func @convert_i1_to_f32

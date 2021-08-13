@@ -104,7 +104,7 @@ XlaOp Any(XlaOp predicates) {
     XlaComputation logical_or = CreateScalarOrComputation(PRED, builder);
     TF_ASSIGN_OR_RETURN(const Shape& predicates_shape,
                         builder->GetShape(predicates));
-    std::vector<int64> all_dimensions(predicates_shape.rank());
+    std::vector<int64_t> all_dimensions(predicates_shape.rank());
     std::iota(all_dimensions.begin(), all_dimensions.end(), 0);
     return Reduce(predicates, f, logical_or, all_dimensions);
   });
@@ -191,7 +191,7 @@ XlaOp ArgMinMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis,
         builder, ShapeUtil::ChangeElementType(input_shape, output_type), axis);
     XlaOp reduced_input = Reduce(input, init_value, reducer,
                                  /*dimensions_to_reduce=*/{axis});
-    std::vector<int64> broadcast_dims(input_shape.rank() - 1);
+    std::vector<int64_t> broadcast_dims(input_shape.rank() - 1);
     std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
     std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
     if (tie_low) {

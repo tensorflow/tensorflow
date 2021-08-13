@@ -59,10 +59,10 @@ class ScratchAllocator : public se::ScratchAllocator {
                    se::DeviceMemoryAllocator* memory_allocator)
       : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
-  int64 GetMemoryLimitInBytes() override {
+  int64_t GetMemoryLimitInBytes() override {
     return 1LL << 32;  // 4GB.  TODO(jlebar): Tune this?
   }
-  int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
+  int64_t TotalAllocatedBytes() { return total_allocated_bytes_; }
 
   StatusOr<se::DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
 
@@ -77,7 +77,7 @@ class ScratchAllocator : public se::ScratchAllocator {
   const int device_ordinal_;
   se::DeviceMemoryAllocator* memory_allocator_;
   std::vector<se::OwningDeviceMemory> allocated_buffers_;
-  int64 total_allocated_bytes_ = 0;
+  int64_t total_allocated_bytes_ = 0;
 };
 
 StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
@@ -226,7 +226,7 @@ StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
   fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
   *fail->mutable_msg() = redzone_check.RedzoneFailureMsg();
   fail->set_buffer_address(
-      reinterpret_cast<uint64>(redzone_check.user_buffer_address));
+      reinterpret_cast<uint64_t>(redzone_check.user_buffer_address));
 
   LOG(ERROR) << absl::StreamFormat(
       "Detected cudnn out-of-bounds write in conv %s buffer! This is likely a "
@@ -249,8 +249,8 @@ using ConvCacheKey =
                /* conv->ToString(HloPrintOptions::Canonical()) */ std::string>;
 
 struct ConvCacheStats {
-  int64 cache_hits = 0;
-  int64 cache_misses = 0;
+  int64_t cache_hits = 0;
+  int64_t cache_misses = 0;
 
   void LogStats() {
     VLOG(2) << "Cache hits: " << cache_hits;
@@ -449,10 +449,12 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
                    &scratch_allocator, stream, options);
 
     if (!launch_status.ok()) {
+      VLOG(4) << "Launch failed: " << launch_status;
       continue;
     }
 
     if (!profile_result.is_valid()) {
+      VLOG(4) << "Launch succeeded but profile result is invalid.";
       continue;
     }
 
@@ -527,7 +529,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
         auto* fail = result.mutable_failure();
         fail->set_kind(AutotuneResult::WRONG_RESULT);
         fail->set_buffer_address(
-            reinterpret_cast<uint64>(result_buffer.opaque()));
+            reinterpret_cast<uint64_t>(result_buffer.opaque()));
         auto* reference_conv = fail->mutable_reference_conv();
         reference_conv->set_algorithm(first_algorithm.algo_id());
         reference_conv->set_tensor_ops_enabled(
@@ -554,10 +556,10 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       for (int i = 0; i < instr->operand_count(); i++) {
         *instr_log.add_operand_shapes() = instr->operand(i)->shape().ToProto();
         instr_log.add_operand_addresses(
-            reinterpret_cast<uint64>(operand_buffers[i].opaque()));
+            reinterpret_cast<uint64_t>(operand_buffers[i].opaque()));
       }
       instr_log.set_result_address(
-          reinterpret_cast<uint64>(result_buffer.opaque()));
+          reinterpret_cast<uint64_t>(result_buffer.opaque()));
       log.mutable_instr()->PackFrom(instr_log);
     }
     for (const auto& profile : profile_results) {

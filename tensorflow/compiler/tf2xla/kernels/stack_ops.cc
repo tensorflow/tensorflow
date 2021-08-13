@@ -213,7 +213,8 @@ class StackPopOp : public XlaOpKernel {
     xla::XlaOp read = xla::DynamicSlice(ta, start_indices, slice_shape);
 
     // Remove the leading '1' dimension.
-    std::vector<int64> value_shape(slice_shape.begin() + 1, slice_shape.end());
+    std::vector<int64_t> value_shape(slice_shape.begin() + 1,
+                                     slice_shape.end());
     ctx->SetOutput(0, xla::Reshape(read, value_shape));
   }
 

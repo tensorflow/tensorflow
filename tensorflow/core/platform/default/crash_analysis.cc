@@ -27,5 +27,8 @@ BufferedDataSource* ReportProtoDataOnCrash(const std::string& file_name,
 
 void RemoveReportData(const BufferedDataSource* data_source) {}
 
+void ReportEvent(const std::string& event_name, const std::string& message,
+                 const std::string& event_data) {}
+
 }  // namespace crash_analysis
 }  // namespace tensorflow

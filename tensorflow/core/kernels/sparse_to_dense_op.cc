@@ -130,9 +130,9 @@ class SparseToDense : public OpKernel {
       if (indices.dtype() == DT_INT64) {
         CHECK(indices_shaped_holder->CopyFrom(indices, ix_shape));
       } else {
-        indices_shaped_holder->matrix<int64>() =
+        indices_shaped_holder->matrix<int64_t>() =
             indices.shaped<Index, 2>(ix_shape.dim_sizes())
-                .template cast<int64>();
+                .template cast<int64_t>();
       }
     }
 
@@ -151,7 +151,7 @@ class SparseToDense : public OpKernel {
     }
 
     // Assume SparseTensor is lexicographically sorted.
-    gtl::InlinedVector<int64, 8> order(output->shape().dims());
+    gtl::InlinedVector<int64_t, 8> order(output->shape().dims());
     std::iota(order.begin(), order.end(), 0);
     sparse::SparseTensor st;
     OP_REQUIRES_OK(
@@ -182,7 +182,7 @@ class SparseToDense : public OpKernel {
 
 #define REGISTER_KERNELS_ALL(type) \
   REGISTER_KERNELS(type, int32);   \
-  REGISTER_KERNELS(type, int64);
+  REGISTER_KERNELS(type, int64_t);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS_ALL);
 REGISTER_KERNELS_ALL(bool);
@@ -268,7 +268,7 @@ class SparseToDenseGPU : public AsyncOpKernel {
 
 #define REGISTER_GPU_KERNELS_ALL(type) \
   REGISTER_GPU_KERNELS(type, int32);   \
-  REGISTER_GPU_KERNELS(type, int64);
+  REGISTER_GPU_KERNELS(type, int64_t);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS_ALL);
 TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS_ALL)

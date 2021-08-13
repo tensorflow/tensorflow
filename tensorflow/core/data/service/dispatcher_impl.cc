@@ -32,9 +32,9 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
-#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
@@ -203,7 +203,7 @@ Status DataServiceDispatcherImpl::Start() {
 Status DataServiceDispatcherImpl::RestoreSplitProviders(
     const Job& job, std::vector<std::unique_ptr<SplitProvider>>& restored)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  const std::vector<int64>& indices =
+  const std::vector<int64_t>& indices =
       job.distributed_epoch_state.value().indices;
   std::vector<std::unique_ptr<SplitProvider>> split_providers;
   TF_RETURN_IF_ERROR(MakeSplitProviders(job.dataset_id, split_providers));
@@ -224,10 +224,10 @@ Status DataServiceDispatcherImpl::RestoreSplitProviders(
 }
 
 Status DataServiceDispatcherImpl::FindTasksToDelete(
-    const absl::flat_hash_set<int64>& current_tasks,
+    const absl::flat_hash_set<int64_t>& current_tasks,
     const std::vector<std::shared_ptr<const Task>> assigned_tasks,
     WorkerHeartbeatResponse* response) {
-  absl::flat_hash_set<int64> assigned_ids;
+  absl::flat_hash_set<int64_t> assigned_ids;
   for (const auto& assigned : assigned_tasks) {
     assigned_ids.insert(assigned->task_id);
   }
@@ -241,12 +241,12 @@ Status DataServiceDispatcherImpl::FindTasksToDelete(
 
 Status DataServiceDispatcherImpl::FindNewTasks(
     const std::string& worker_address,
-    const absl::flat_hash_set<int64>& current_tasks,
+    const absl::flat_hash_set<int64_t>& current_tasks,
     std::vector<std::shared_ptr<const Task>>& assigned_tasks,
     WorkerHeartbeatResponse* response) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   // Check for round-robin jobs that had tasks on the worker removed. Now that
   // the worker is back, we create a new pending task for the worker.
-  absl::flat_hash_set<int64> assigned_job_ids;
+  absl::flat_hash_set<int64_t> assigned_job_ids;
   for (const auto& task : assigned_tasks) {
     assigned_job_ids.insert(task->job->job_id);
   }
@@ -294,7 +294,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     TF_RETURN_IF_ERROR(CreateTasksForWorker(worker_address));
     TF_RETURN_IF_ERROR(state_.TasksForWorker(worker_address, assigned_tasks));
   }
-  absl::flat_hash_set<int64> current_tasks;
+  absl::flat_hash_set<int64_t> current_tasks;
   current_tasks.insert(request->current_tasks().cbegin(),
                        request->current_tasks().cend());
   TF_RETURN_IF_ERROR(
@@ -451,7 +451,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
 
 Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
                                                   const DatasetDef& dataset,
-                                                  int64& dataset_id)
+                                                  int64_t& dataset_id)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   dataset_id = state_.NextAvailableDatasetId();
   Update update;
@@ -498,7 +498,6 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     key.emplace(request->job_key().job_name(),
                 request->job_key().job_name_index());
   }
-  ProcessingModeDef requested_processing_mode = request->processing_mode_def();
   std::shared_ptr<const Job> job;
   std::vector<std::shared_ptr<const Task>> tasks;
   {
@@ -506,8 +505,7 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     if (key.has_value()) {
       Status s = state_.NamedJobByKey(key.value(), job);
       if (s.ok()) {
-        TF_RETURN_IF_ERROR(ValidateMatchingJob(job, requested_processing_mode,
-                                               request->dataset_id()));
+        TF_RETURN_IF_ERROR(ValidateMatchingJob(job, *request));
         // If the matching job was already garbage-collected, we fall through to
         // re-create the job.
         if (!job->garbage_collected) {
@@ -523,14 +521,7 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
         return s;
       }
     }
-    absl::optional<int64> num_consumers;
-    if (request->optional_num_consumers_case() ==
-        GetOrCreateJobRequest::kNumConsumers) {
-      num_consumers = request->num_consumers();
-    }
-    TF_RETURN_IF_ERROR(CreateJob(request->dataset_id(),
-                                 requested_processing_mode, key, num_consumers,
-                                 job));
+    TF_RETURN_IF_ERROR(CreateJob(*request, job));
     int64_t job_client_id;
     TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
     response->set_job_client_id(job_client_id);
@@ -602,51 +593,61 @@ Status DataServiceDispatcherImpl::ReleaseJobClient(
   return Status::OK();
 }
 
-// Validates that the job matches the given processing_mode and dataset_id.
+// Validates that the job matches the requested processing mode.
 Status DataServiceDispatcherImpl::ValidateMatchingJob(
-    std::shared_ptr<const Job> job, const ProcessingModeDef& processing_mode,
-    int64_t dataset_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    std::shared_ptr<const Job> job, const GetOrCreateJobRequest& request)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   DCHECK(job->named_job_key.has_value());
   std::string job_name = job->named_job_key->name;
 
-  if (!MessageDifferencer::Equals(job->processing_mode, processing_mode)) {
+  if (!MessageDifferencer::Equals(job->processing_mode,
+                                  request.processing_mode_def())) {
     return errors::FailedPrecondition(
         "Tried to create a job with name ", job_name, " and processing_mode <",
-        processing_mode.ShortDebugString(),
+        request.processing_mode_def().ShortDebugString(),
         "> but there is already an existing job with that name using "
         "processing mode <",
         job->processing_mode.ShortDebugString(), ">");
+  }
+
+  if (job->target_workers != request.target_workers()) {
+    return errors::InvalidArgument(
+        "Tried to create job with name ", job_name, " and target_workers <",
+        TargetWorkersToString(request.target_workers()),
+        ">, but there is already an existing job "
+        "with that name using target_workers <",
+        TargetWorkersToString(job->target_workers), ">.");
   }
   return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::CreateJob(
-    int64_t dataset_id, const ProcessingModeDef& processing_mode,
-    absl::optional<NamedJobKey> named_job_key,
-    absl::optional<int64> num_consumers, std::shared_ptr<const Job>& job)
+    const GetOrCreateJobRequest& request, std::shared_ptr<const Job>& job)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  TF_RETURN_IF_ERROR(ValidateProcessingMode(processing_mode));
+  TF_RETURN_IF_ERROR(ValidateProcessingMode(request.processing_mode_def()));
   int64_t job_id = state_.NextAvailableJobId();
   int64_t num_split_providers = 0;
-  if (IsDynamicShard(processing_mode)) {
+  if (IsDynamicShard(request.processing_mode_def())) {
     TF_RETURN_IF_ERROR(
-        MakeSplitProviders(dataset_id, split_providers_[job_id]));
+        MakeSplitProviders(request.dataset_id(), split_providers_[job_id]));
     num_split_providers = split_providers_[job_id].size();
   }
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_job_id(job_id);
-  create_job->set_dataset_id(dataset_id);
-  *create_job->mutable_processing_mode_def() = processing_mode;
+  create_job->set_dataset_id(request.dataset_id());
+  *create_job->mutable_processing_mode_def() = request.processing_mode_def();
   create_job->set_num_split_providers(num_split_providers);
-  if (named_job_key.has_value()) {
+  if (request.has_job_key()) {
     NamedJobKeyDef* key = create_job->mutable_named_job_key();
-    key->set_name(named_job_key->name);
-    key->set_index(named_job_key->index);
+    key->set_name(request.job_key().job_name());
+    key->set_index(request.job_key().job_name_index());
   }
-  if (num_consumers.has_value()) {
-    create_job->set_num_consumers(num_consumers.value());
+  if (request.optional_num_consumers_case() ==
+      GetOrCreateJobRequest::kNumConsumers) {
+    create_job->set_num_consumers(request.num_consumers());
   }
+  create_job->set_target_workers(request.target_workers());
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
   return Status::OK();
@@ -670,7 +671,7 @@ Status DataServiceDispatcherImpl::CreateTasksForWorker(
 }
 
 Status DataServiceDispatcherImpl::AcquireJobClientId(
-    const std::shared_ptr<const Job>& job, int64& job_client_id)
+    const std::shared_ptr<const Job>& job, int64_t& job_client_id)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   job_client_id = state_.NextAvailableJobClientId();
   Update update;
@@ -782,6 +783,13 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   TF_RETURN_IF_ERROR(GetOrCreateWorkerStub(task->worker_address, stub));
   grpc::Status s = stub->ProcessTask(&client_ctx, req, &resp);
   if (!s.ok()) {
+    if (s.error_code() == grpc::StatusCode::UNAVAILABLE ||
+        s.error_code() == grpc::StatusCode::ABORTED ||
+        s.error_code() == grpc::StatusCode::CANCELLED) {
+      // Worker is presumably preempted. We will assign the task to the worker
+      // when it reconnects.
+      return Status::OK();
+    }
     return grpc_util::WrapError(
         absl::StrCat("Failed to submit task to worker ", task->worker_address),
         s);
@@ -823,7 +831,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     ClientHeartbeatUpdate* client_heartbeat = update.mutable_client_heartbeat();
     bool apply_update = false;
     client_heartbeat->set_job_client_id(request->job_client_id());
-    absl::optional<int64> blocked_round;
+    absl::optional<int64_t> blocked_round;
     if (request->optional_blocked_round_case() ==
         ClientHeartbeatRequest::kBlockedRound) {
       blocked_round = request->blocked_round();

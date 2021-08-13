@@ -128,7 +128,8 @@ def check_graphs(*args):
     if graph is None and sgv.graph is not None:
       graph = sgv.graph
     elif sgv.graph is not None and sgv.graph is not graph:
-      raise ValueError("Argument[{}]: Wrong graph!".format(i))
+      raise ValueError(f"args[{i}] does not belong to the same graph as "
+                       "other arguments.")
 
 
 def make_list_of_t(ts, check_graph=True, allow_graph=True, ignore_ops=False):

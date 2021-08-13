@@ -827,7 +827,7 @@ XLA_TEST_F(LocalClientExecuteTest,
   EXPECT_EQ(1, executables.size());
   // The executable should be at least as large as the constant it contains.
   EXPECT_GT(executables.front()->executable()->SizeOfGeneratedCodeInBytes(),
-            int64{sizeof(float) * size});
+            int64_t{sizeof(float) * size});
 }
 
 XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
@@ -886,12 +886,12 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
 
   test_to_device_and_back(LiteralUtil::CreateR2<double>(
       {{1.0, 2.0, 3.0}, {44.0, 0.099999999999999978, -3}}));
-  test_to_device_and_back(LiteralUtil::CreateR2<int64>({{2, 1}, {4444, 56}}));
+  test_to_device_and_back(LiteralUtil::CreateR2<int64_t>({{2, 1}, {4444, 56}}));
   test_to_device_and_back(
-      LiteralUtil::CreateR2<uint64>({{20000000000ULL, 1}, {4444, 56}}));
+      LiteralUtil::CreateR2<uint64_t>({{20000000000ULL, 1}, {4444, 56}}));
   test_to_device_and_back(LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR1<double>({1.0, -42.0}),
-       LiteralUtil::CreateR0<int64>(123456789000LL)}));
+       LiteralUtil::CreateR0<int64_t>(123456789000LL)}));
 }
 
 // Disabled on interpreter backend since infeed HLO is unsupported.

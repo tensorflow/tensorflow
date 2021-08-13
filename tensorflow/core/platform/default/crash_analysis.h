@@ -25,10 +25,22 @@ namespace crash_analysis {
 
 class BufferedDataSource {};
 
+// Reports `message` proto which will be stored in the `file_name` in case
+// of a process crash.
+// Default implementation is currently NOOP.
 BufferedDataSource* ReportProtoDataOnCrash(const std::string& file_name,
                                            const protobuf::Message& message);
 
+// Removes `data_source` from the list of data reported in case of a process
+// crash.
+// Default implementation is currently NOOP.
 void RemoveReportData(const BufferedDataSource* data_source);
+
+// Reports `event_data` with the associated `message` under `event_name` to the
+// crash analysis system. This does not require process crash.
+// Default implementation is currently NOOP.
+void ReportEvent(const std::string& event_name, const std::string& message,
+                 const std::string& event_data);
 
 }  // namespace crash_analysis
 }  // namespace tensorflow

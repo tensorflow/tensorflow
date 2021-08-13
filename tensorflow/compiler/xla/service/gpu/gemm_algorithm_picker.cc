@@ -73,7 +73,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
 
   se::RedzoneAllocator input_output_allocator(
       stream, allocator, PtxOptsFromConfig(hlo_module_config),
-      /*memory_limit=*/std::numeric_limits<int64>::max());
+      /*memory_limit=*/std::numeric_limits<int64_t>::max());
 
   BufferComparator comparator(gemm->shape(), hlo_module_config);
 

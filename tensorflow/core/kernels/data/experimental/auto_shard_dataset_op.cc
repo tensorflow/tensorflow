@@ -87,7 +87,7 @@ RewriterConfig AutoShardDatasetOp::CreateConfig(int64_t num_workers,
   auto custom_optimizer = rewriter_config.add_custom_optimizers();
   custom_optimizer->set_name(kOptimizerName);
 
-  const std::array<std::pair<const char* const, int64>, 4> attr_pairs = {
+  const std::array<std::pair<const char* const, int64_t>, 4> attr_pairs = {
       {{kNumWorkers, num_workers},
        {kIndex, index},
        {kAutoShardPolicy, auto_shard_policy},

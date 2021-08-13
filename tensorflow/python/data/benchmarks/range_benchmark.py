@@ -27,7 +27,7 @@ class RangeBenchmark(benchmark_base.DatasetBenchmarkBase):
 
   def _benchmark_range(self, num_elements, autotune, benchmark_id):
     options = options_lib.Options()
-    options.experimental_optimization.autotune = autotune
+    options.autotune.enabled = autotune
     dataset = dataset_ops.Dataset.range(num_elements)
     dataset = dataset.with_options(options)
 

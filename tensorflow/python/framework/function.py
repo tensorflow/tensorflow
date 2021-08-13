@@ -130,15 +130,15 @@ class Defun(object):
   def __call__(self, func):
     # Various sanity checks on the callable func.
     if not callable(func):
-      raise ValueError("function %s must be callable" % func)
+      raise ValueError(f"Function {func} must be a callable.")
 
     # Func should not use kwargs and defaults.
     argspec = tf_inspect.getargspec(func)
     if argspec.keywords or argspec.defaults:
       raise ValueError(
-          "function with argument defaults or keywords arguments are not"
-          " supported. {} has defaults {} and keywords {}.".format(
-              func, argspec.defaults, argspec.keywords))
+          "Functions with argument defaults or keywords arguments are not "
+          f"supported. {func} has defaults {argspec.defaults} and keywords "
+          f"{argspec.keywords}.")
 
     # Computes how many arguments 'func' has.
     min_args = len(argspec.args)
@@ -157,8 +157,10 @@ class Defun(object):
       num = len(self._input_types)
       if num < min_args or num > max_args:
         raise ValueError(
-            "The function has fewer arguments than the number of specified "
-            "input types.")
+            "The number of tf.function input types is not compatible with the "
+            f"allowed arguments of {func}. The tf.function have {num} input "
+            f"types, while the python function allows minimum {min_args} and "
+            f"maximum {max_args} arguments.")
       return _DefinedFunction(
           func,
           argnames,
@@ -570,8 +572,9 @@ class _DefinedFunction(object):
     if self._shape_func is not None:
       shapes = self._shape_func(op)
       if len(shapes) != len(op.outputs):
-        raise ValueError("shape_func produced %d shapes for %d outputs" %
-                         (len(shapes), len(op.outputs)))
+        raise ValueError(f"shape_func {self._shape_func} produced "
+                         f"{len(shapes):d} shapes, which does not match "
+                         f"{len(op.outputs)} outputs.")
       for (t, shape) in zip(op.outputs, shapes):
         t.set_shape(shape)
     return ret
@@ -670,7 +673,7 @@ class _OverloadedFunction(object):
     for (i, x) in enumerate(args):
       x = ops.convert_to_tensor(x)
       if not isinstance(x, ops.Tensor):
-        raise ValueError("Expect a Tensor but get ", x)
+        raise ValueError(f"Expected a Tensor but got {x} with type {type(x)}.")
       input_types.append(x.dtype)
       args[i] = x
     return self.instantiate(input_types)(*args, **kwargs)
@@ -878,11 +881,11 @@ class _FuncGraph(ops.Graph):
     # pylint: disable=protected-access
     op_def = graph_to_function_def._get_op_def(op)
     if op._is_stateful and op not in self._allowlisted_stateful_ops:
-      raise ValueError("Cannot capture a stateful node (name:%s, type:%s) "
-                       "by value." % (op.name, op.type))
+      raise ValueError(f"Cannot capture a stateful node (name:{op.name}, "
+                       f"type:{op.type}) by value.")
     elif op.type in ("Placeholder", "PlaceholderV2"):
-      raise ValueError("Cannot capture a placeholder (name:%s, type:%s) "
-                       "by value." % (op.name, op.type))
+      raise ValueError(f"Cannot capture a placeholder (name:{op.name}, "
+                       f"type:{op.type}) by value.")
     # pylint: enable=protected-access
 
     captured_inputs = [self._add_tensor_and_parents(x) for x in op.inputs]
@@ -981,7 +984,7 @@ def func_graph_from_py_func(func,
       if not isinstance(outputs, (list, tuple)):
         outputs = (outputs,)
       if any(_ is None for _ in outputs):
-        raise ValueError("Function %s can not return None." % name)
+        raise ValueError(f"Function {name} can not return None.")
     # Ensures each output is a Tensor in the function graph.
     outputs = [ops.convert_to_tensor(t) for t in outputs]
     outputs = [func_graph.capture(t) if t.graph is not func_graph else t
@@ -1072,8 +1075,8 @@ def _call(sig, *inputs, **kwargs):
     ValueError: if the arguments are invalid.
   """
   if len(inputs) != len(sig.input_arg):
-    raise ValueError("Expected number of arguments: %d, received: %d" % (len(
-        sig.input_arg), len(inputs)))
+    raise ValueError(f"Expected {len(sig.input_arg):d} arguments, got "
+                     f"{len(inputs):d}.")
   name = kwargs.pop("name", None)
   g = ops.get_default_graph()
   func_name = sig.name
@@ -1155,11 +1158,11 @@ def from_library(lib):
   # Validate that all references function names have function defs
   for g in lib.gradient:
     if g.function_name not in funcs:
-      raise ValueError("FunctionDefLibrary missing '%s' FunctionDef\n%s" %
-                       (g.function_name, str(lib)))
+      raise ValueError(f"FunctionDefLibrary missing '{g.function_name}' "
+                       f"FunctionDef\n{lib}")
     if g.gradient_func not in funcs:
-      raise ValueError("FunctionDefLibrary missing '%s' FunctionDef\n%s" %
-                       (g.gradient_func, str(lib)))
+      raise ValueError(f"FunctionDefLibrary missing '{g.gradient_func}' "
+                       f"FunctionDef\n{lib}")
 
   # function name -> gradient function name
   func_to_grad = collections.defaultdict(lambda: None)
@@ -1176,7 +1179,7 @@ def from_library(lib):
   ]
   if not ready:
     raise ValueError(
-        "FunctionDefLibrary contains cyclic gradient functions!\n" + str(lib))
+        f"FunctionDefLibrary contains cyclic gradient functions!\n{lib}")
   # function name -> _DefinedFunction
   initialized = {}
 
@@ -1206,8 +1209,8 @@ def _get_experimental_kwarg_as_attr(attr_name, value):
   elif isinstance(value, str):
     return attr_value_pb2.AttrValue(s=compat.as_bytes(value))
   else:
-    raise ValueError("Unsupported attribute type for %s with type %s" %
-                     (attr_name, type(value)))
+    raise ValueError(f"Attribute {attr_name} must be bool, int, float, or "
+                     f"str. Got {type(value)}.")
 
 
 def _get_kwarg_as_str_attr(attr_name, value):
@@ -1215,8 +1218,7 @@ def _get_kwarg_as_str_attr(attr_name, value):
   if isinstance(value, str):
     return attr_value_pb2.AttrValue(s=compat.as_bytes(value))
   else:
-    raise ValueError("Unsupported attribute type for %s with type %s" %
-                     (attr_name, type(value)))
+    raise ValueError(f"Attribute {attr_name} must be str. Got {type(value)}.")
 
 
 def _parse_kwargs_as_attrs(func_name, **kwargs):
@@ -1256,7 +1258,7 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
       attrs[key] = _get_kwarg_as_str_attr(key, kwargs[key])
       del kwargs[key]
   if kwargs:
-    raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
+    raise ValueError(f"Unknown keyword arguments: {kwargs.keys()}.")
   return attrs
 
 
@@ -1309,7 +1311,10 @@ def get_extra_args():
 
 def _type_list_to_str(types):
   if any(_ not in _DTYPE_TO_STR for _ in types):
-    raise ValueError("Unsupported dtypes: %s" % types)
+    unsupported_types = [type_ for type_ in types if type_ not in _DTYPE_TO_STR]
+    raise ValueError(f"Unsupported dtypes {unsupported_types} in "
+                     "`types`. Supported dtypes are "
+                     f"{_DTYPE_TO_STR.keys()}.")
   return "".join(_DTYPE_TO_STR[_] for _ in types)
 
 

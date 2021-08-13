@@ -35,7 +35,9 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/PassDetail.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/ccl_pattern.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gemm_pattern.h"
+#include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/pass/pass.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
@@ -56,8 +58,8 @@ struct LmhloGpuAsyncConversionPass
 
     ConversionTarget target(*context);
     target.addIllegalDialect<lmhlo_gpu::LmhloGpuDialect>();
-    target
-        .addLegalDialect<tfrt::compiler::TFRTDialect, tfrt::gpu::GpuDialect>();
+    target.addLegalDialect<tfrt::compiler::TFRTDialect, tfrt::gpu::GpuDialect,
+                           xla::gpu::XlirDialect>();
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       return converter.isSignatureLegal(op.getType()) &&
              converter.isLegal(&op.body());
@@ -68,11 +70,13 @@ struct LmhloGpuAsyncConversionPass
         });
 
     RewritePatternSet patterns(context);
+    populateCclConversionPattern(patterns);
     populateGemmConversionPattern(patterns);
     populateFuncOpTypeConversionPattern(patterns, converter);
 
     ConversionTarget wrap_target(*context);
     wrap_target.addLegalDialect<lmhlo_gpu::LmhloGpuDialect>();
+    wrap_target.addLegalOp<lmhlo::AllReduceOp>();
     tfrt::gpu::populateGpuAsyncConversionPatterns(patterns, converter,
                                                   wrap_target);
 
@@ -89,8 +93,8 @@ struct AsyncGpuTfrtConversionPass
     auto* context = &getContext();
 
     ConversionTarget target(*context);
-    target
-        .addLegalDialect<tfrt::compiler::TFRTDialect, tfrt::gpu::GpuDialect>();
+    target.addLegalDialect<tfrt::compiler::TFRTDialect, tfrt::gpu::GpuDialect,
+                           xla::gpu::XlirDialect>();
 
     RewritePatternSet patterns(context);
     tfrt::gpu::populateTfrtConversionPatterns(patterns, target);

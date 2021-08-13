@@ -683,6 +683,13 @@ TF_CAPI_EXPORT extern void TFE_DeleteConfigKeyValue(TFE_Context* ctx,
                                                     const char* key,
                                                     TF_Status* status);
 
+// Report error (specified by error_code and error_message) to other tasks in
+// the cluster.
+TF_CAPI_EXPORT extern void TFE_ReportErrorToCluster(TFE_Context* ctx,
+                                                    int error_code,
+                                                    const char* error_message,
+                                                    TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

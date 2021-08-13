@@ -59,21 +59,21 @@ using ::tensorflow::strings::HumanReadableNumBytes;
 // for each node), perform graph coloring such that interfering nodes are
 // assigned to different colors. Returns the assigned color of the nodes, where
 // the colors are represented as integer values [0, color_count).
-std::vector<int64> ColorInterferenceGraph(
-    const std::vector<std::vector<int64>>& interference_map) {
+std::vector<int64_t> ColorInterferenceGraph(
+    const std::vector<std::vector<int64_t>>& interference_map) {
   const int64_t node_count = interference_map.size();
 
   // Sort the nodes such that we assign nodes with more interference first. This
   // relies on the common heuristic of assigning the most constrained node
   // first, but it would be good to investigate other ordering heuristics too.
-  std::vector<int64> nodes(node_count);
+  std::vector<int64_t> nodes(node_count);
   std::iota(nodes.begin(), nodes.end(), 0);
   absl::c_sort(nodes, [&interference_map](const int64_t i, const int64_t j) {
     return interference_map[i].size() > interference_map[j].size();
   });
 
   const int64_t kColorUnassigned = -1;
-  std::vector<int64> assigned_colors(node_count, kColorUnassigned);
+  std::vector<int64_t> assigned_colors(node_count, kColorUnassigned);
   for (int64_t node : nodes) {
     // Mark the colors that are already assigned to the neighbors.
     std::vector<bool> available_colors(node_count, true);
@@ -791,7 +791,8 @@ string BufferAssignment::ToString() const {
       used_values.push_back(p.first);
     }
   }
-  absl::StrAppend(&output, "\nTotal bytes used: ", total_size, "\n");
+  absl::StrAppend(&output, "\nTotal bytes used: ", total_size, " (",
+                  HumanReadableNumBytes(total_size), ")\n");
   absl::StrAppend(&output, "\nUsed values:\n");
   absl::c_sort(used_values, &CompareHloValuesById);
   for (const HloValue* value : used_values) {
@@ -840,14 +841,14 @@ string BufferAssignment::BufferInfoString() const {
       continue;
     }
     // Ordering uses by their use position.
-    std::vector<std::pair<int64, std::string>> uses;
+    std::vector<std::pair<int64_t, std::string>> uses;
     uses.reserve(buffer.uses().size());
     for (const HloUse& use : buffer.uses()) {
       uses.emplace_back(instruction_schedule.at(use.instruction),
                         use.ToString());
     }
     absl::c_sort(uses);
-    std::vector<int64> use_positions;
+    std::vector<int64_t> use_positions;
     std::vector<std::string> use_names;
     use_positions.reserve(uses.size());
     use_names.reserve(uses.size());
@@ -1318,7 +1319,7 @@ Status BufferAssigner::AssignBuffersForComputations(
     }
   }
 
-  absl::c_sort(
+  absl::c_stable_sort(
       sorted_buffers, [&post_order_position, &alias_analysis, assignment](
                           const HloBuffer* a, const HloBuffer* b) {
         // Primary sort is by decreasing buffer size.
@@ -1518,7 +1519,7 @@ std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
   // Create a map from LogicalBuffer::Id to LogicalBuffer* for the logical
   // buffers in this allocation.
   absl::flat_hash_map<BufferValue::Id, const HloValue*> id_to_value;
-  absl::flat_hash_map<const HloValue*, int64> buffer_sizes;
+  absl::flat_hash_map<const HloValue*, int64_t> buffer_sizes;
   for (const auto& pair : allocation.assigned_buffers()) {
     const HloValue* value = pair.first;
     const BufferAllocation::OffsetSize& offset_size = pair.second;
@@ -1530,7 +1531,7 @@ std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
   // Returns how much the given event increases the total size of live
   // buffers. Can be negative.
   auto memory_delta = [&id_to_value, &buffer_sizes](
-                          const HeapSimulatorTrace::Event& event) -> int64 {
+                          const HeapSimulatorTrace::Event& event) -> int64_t {
     const HloValue* buffer = id_to_value.at(event.buffer_id());
     const int64_t buffer_size = buffer_sizes.at(buffer);
     if (event.kind() == HeapSimulatorTrace::Event::ALLOC ||

@@ -2368,7 +2368,7 @@ versions {
 
   // Helper method for checking nodes dependency.
   void ValidateDependencyChain(
-      const std::unordered_map<string, int64>& start_times,
+      const std::unordered_map<string, int64_t>& start_times,
       const std::vector<string>& nodes_in_dependency_order) {
     int64_t prev_node_time = -1;
     for (const auto& node : nodes_in_dependency_order) {
@@ -2436,12 +2436,13 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   EXPECT_EQ(1, stepstats.dev_stats().size());
 
   // Create a map of op name -> start and end times (micros).
-  std::map<string, std::pair<int64, int64>> start_end_times;
+  std::map<string, std::pair<int64_t, int64_t>> start_end_times;
   for (const auto& device_step_stats : stepstats.dev_stats()) {
     for (const auto& stats : device_step_stats.node_stats()) {
       int64_t start = stats.all_start_micros();
       int64_t end = start + stats.all_end_rel_micros();
-      start_end_times[stats.node_name()] = std::pair<int64, int64>(start, end);
+      start_end_times[stats.node_name()] =
+          std::pair<int64_t, int64_t>(start, end);
 
       // Make sure that the output properties are correct for
       // MatMul and RandomUniform operations.
@@ -2462,10 +2463,10 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   }
 
   // The base start_time is the time to compute RandomUniforms
-  int64_t cur_time = static_cast<int64>(5000005);
+  int64_t cur_time = static_cast<int64_t>(5000005);
   // The increment is the execution time of one matmul. See
   // CreateGrapplerItemWithMatmulChain for details.
-  int64_t increment = static_cast<int64>(2000000);
+  int64_t increment = static_cast<int64_t>(2000000);
   auto op_names = {"ab", "abc", "abcd", "abcde"};
   for (const auto& op_name : op_names) {
     int64_t actual_start = start_end_times[op_name].first;
@@ -2748,7 +2749,7 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
   int64_t exit_start_micro;
   int64_t exit_1_start_micro;
 
-  std::unordered_map<string, int64> start_times;
+  std::unordered_map<string, int64_t> start_times;
   for (const auto& device_step_stats : metadata.step_stats().dev_stats()) {
     for (const auto& stats : device_step_stats.node_stats()) {
       start_times[stats.node_name()] = stats.all_start_micros();

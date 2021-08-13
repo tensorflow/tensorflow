@@ -59,7 +59,8 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
 // dimension, because only cudnn convolutions have this feature; it's not
 // applicable elsewhere.  We find it by finding a dimension in the
 // input/filter/output shape that is *not* in dnums.
-std::tuple<absl::optional<int64>, absl::optional<int64>, absl::optional<int64>>
+std::tuple<absl::optional<int64_t>, absl::optional<int64_t>,
+           absl::optional<int64_t>>
 FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
                           const Shape& input, const Shape& filter,
                           const Shape& output);
@@ -97,7 +98,7 @@ se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config);
 // Precondition: `buffer_type` is a floating point type, `rng_state` needs to be
 // initialized to zero on the first use.
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
-                      int64* rng_state, se::DeviceMemoryBase buffer);
+                      int64_t* rng_state, se::DeviceMemoryBase buffer);
 
 StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
     CudnnConvKind kind);

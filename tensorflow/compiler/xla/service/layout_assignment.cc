@@ -1111,16 +1111,12 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
 
 LayoutAssignment::LayoutAssignment(
     ComputationLayout* entry_computation_layout,
-    std::function<bool(const HloInstruction*)>
-        instruction_can_change_layout_func,
     ChannelLayoutConstraints* channel_constraints,
     bool reverse_computation_order)
     : entry_computation_layout_(entry_computation_layout),
       saved_entry_computation_layout_(*entry_computation_layout),
       reverse_computation_order_(reverse_computation_order),
-      channel_layout_constraints_(channel_constraints),
-      instruction_can_change_layout_func_(
-          std::move(instruction_can_change_layout_func)) {
+      channel_layout_constraints_(channel_constraints) {
   if (channel_layout_constraints_ != nullptr) {
     // Save a copy of the input ChannelLayoutConstraints so that we can reset it
     // if we have to undo previous operations (ClearPreviousPassSideEffects()).
@@ -1138,7 +1134,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   CHECK(operand->shape().IsArray());
   if (!ShapeUtil::IsScalar(operand->shape()) &&
       operand->shape().rank() == instruction->shape().rank() &&
-      !instruction_can_change_layout_func_(instruction)) {
+      !InstructionCanChangeLayoutInstance(instruction)) {
     // Propagate the result layout to the operand layout if the instruction
     // requires the same layout out for the result and the operand.
     //
@@ -1182,7 +1178,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   if (instruction->opcode() == HloOpcode::kTranspose) {
     // Pick the operand layout that makes the transpose a bitcast.
     int64_t rank = instruction->shape().rank();
-    std::vector<int64> new_minor_to_major(rank);
+    std::vector<int64_t> new_minor_to_major(rank);
     for (int64_t i = 0; i < rank; ++i) {
       int64_t output_dim = LayoutUtil::Minor(output_layout, i);
       int64_t operand_dim = instruction->dimensions(output_dim);
@@ -1206,7 +1202,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
 
   if (!ShapeUtil::IsScalar(operand->shape()) &&
       operand->shape().rank() == user->shape().rank() &&
-      !instruction_can_change_layout_func_(user)) {
+      !InstructionCanChangeLayoutInstance(user)) {
     // Assign users the same layout as the operand.
     return absl::make_unique<Layout>(operand_layout);
   }
@@ -1243,7 +1239,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
   if (user->opcode() == HloOpcode::kTranspose) {
     // Pick the user layout that makes the transpose a bitcast.
     int64_t rank = user->shape().rank();
-    std::vector<int64> new_minor_to_major(rank);
+    std::vector<int64_t> new_minor_to_major(rank);
     auto inverse_dimensions = InversePermutation(user->dimensions());
     for (int64_t i = 0; i < rank; ++i) {
       int64_t operand_dim = LayoutUtil::Minor(operand_layout, i);
@@ -1315,11 +1311,11 @@ namespace {
 
 // Returns a vector containing all array-shaped uses (instruction and operand
 // number) of the given logical buffer or its aliases.
-std::vector<std::pair<const HloInstruction*, int64>> GetArrayUsesOfBuffer(
+std::vector<std::pair<const HloInstruction*, int64_t>> GetArrayUsesOfBuffer(
     const LogicalBuffer& buffer,
     const TuplePointsToAnalysis& points_to_analysis) {
   CHECK(buffer.IsArray());
-  std::vector<std::pair<const HloInstruction*, int64>> uses;
+  std::vector<std::pair<const HloInstruction*, int64_t>> uses;
   for (const auto& buffer_alias : points_to_analysis.GetBufferAliases(buffer)) {
     if (!buffer_alias.instruction()->shape().IsArray()) {
       continue;
@@ -1431,7 +1427,7 @@ Status LayoutAssignment::PropagateOperandConstraint(
           /*mandatory=*/false));
     }
   }
-  if (instruction_can_change_layout_func_(user) && !user->shape().IsArray()) {
+  if (InstructionCanChangeLayoutInstance(user) && !user->shape().IsArray()) {
     return Status::OK();
   }
 
@@ -1449,7 +1445,7 @@ Status LayoutAssignment::PropagateOperandConstraint(
 
   // Propagate layouts between operands of the same instruction. This is a
   // constraint on non-layout-changing instructions.
-  if (!instruction_can_change_layout_func_(user)) {
+  if (!InstructionCanChangeLayoutInstance(user)) {
     // Only propgate the layout of the largest concatenate operand.
     if (user->opcode() == HloOpcode::kConcatenate) {
       for (int64_t operand_no = 0; operand_no < user->operand_count();
@@ -1597,7 +1593,7 @@ Status LayoutAssignment::PropagateBufferConstraintToOperands(
     if (IsAtMostRank1(operand->shape())) {
       continue;
     }
-    if (!instruction_can_change_layout_func_(instruction)) {
+    if (!InstructionCanChangeLayoutInstance(instruction)) {
       // Copy the layout to the operand.
       if (buffer.IsArray() && operand->shape().IsArray() &&
           operand->shape().rank() ==
@@ -2464,6 +2460,11 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kGetDimensionSize:
       return true;
   }
+}
+
+bool LayoutAssignment::InstructionCanChangeLayoutInstance(
+    const HloInstruction* instruction) {
+  return InstructionCanChangeLayout(instruction);
 }
 
 /* static */

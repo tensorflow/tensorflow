@@ -24,7 +24,7 @@ class FuzzIdentity : public FuzzSession {
 
   void FuzzImpl(const uint8_t* data, size_t size) final {
     Tensor input_tensor(tensorflow::DT_INT8,
-                        TensorShape({static_cast<int64>(size)}));
+                        TensorShape({static_cast<int64_t>(size)}));
     auto flat_tensor = input_tensor.flat<int8>();
     for (size_t i = 0; i < size; i++) {
       flat_tensor(i) = data[i];

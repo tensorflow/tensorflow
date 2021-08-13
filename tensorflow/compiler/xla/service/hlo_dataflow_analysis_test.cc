@@ -2386,7 +2386,7 @@ TEST_F(CanShareOperandBufferWithUserTest,
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, data_shape, "param0"));
   auto zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64_t>(0)));
   auto ds = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
       slice_shape, param, {zero, zero}, {1, 2}));
 

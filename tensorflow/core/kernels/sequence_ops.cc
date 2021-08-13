@@ -168,7 +168,7 @@ class LinSpaceOp : public OpKernel {
 
 #define REGISTER_KERNEL_ALL_NUMS(dev, T) \
   REGISTER_KERNEL(dev, T, int32);        \
-  REGISTER_KERNEL(dev, T, int64)
+  REGISTER_KERNEL(dev, T, int64_t)
 
 #define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL_ALL_NUMS(DEVICE_CPU, T)
 TF_CALL_float(REGISTER_CPU_KERNEL);

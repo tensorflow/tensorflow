@@ -353,6 +353,23 @@ class AutoShardTest(data_service_test_base.TestBase,
       self.getDatasetOutput(dataset, requires_initialization=True)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testTFRecordDataset_FewerFilesThanWorkers_HintShard(self):
+    cluster = _make_service_cluster(num_workers=5, local_shard_index=3)
+    dataset = dataset_ops.Dataset.list_files(self._filenames[:4], shuffle=False)
+    dataset = dataset.shard(distribute.SHARD_HINT, distribute.SHARD_HINT)
+    dataset = dataset.flat_map(readers.TFRecordDataset)
+    dataset = self.make_distributed_dataset(
+        dataset,
+        cluster=cluster,
+        processing_mode=ShardingPolicy.HINT,
+        target_workers="LOCAL")
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "not enough for the required 5 shards/workers."):
+      self.getDatasetOutput(dataset, requires_initialization=True)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testTFRecordDataset_FewerFilesThanWorkers_DataShard(self):
     cluster = _make_service_cluster(num_workers=5, local_shard_index=3)
     dataset = dataset_ops.Dataset.list_files(self._filenames[:4], shuffle=False)

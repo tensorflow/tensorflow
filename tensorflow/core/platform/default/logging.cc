@@ -209,7 +209,7 @@ int ParseInteger(const char* str, size_t size) {
 }
 
 // Parse log level (int64) from environment variable (char*)
-int64 LogLevelStrToInt(const char* tf_env_var_val) {
+int64_t LogLevelStrToInt(const char* tf_env_var_val) {
   if (tf_env_var_val == nullptr) {
     return 0;
   }
@@ -292,7 +292,7 @@ bool EmitThreadIdFromEnv() {
 
 }  // namespace
 
-int64 MinLogLevelFromEnv() {
+int64_t MinLogLevelFromEnv() {
   // We don't want to print logs during fuzzing as that would slow fuzzing down
   // by almost 2x. So, if we are in fuzzing mode (not just running a test), we
   // return a value so that nothing is actually printed. Since LOG uses >=
@@ -307,7 +307,7 @@ int64 MinLogLevelFromEnv() {
 #endif
 }
 
-int64 MaxVLogLevelFromEnv() {
+int64_t MaxVLogLevelFromEnv() {
   // We don't want to print logs during fuzzing as that would slow fuzzing down
   // by almost 2x. So, if we are in fuzzing mode (not just running a test), we
   // return a value so that nothing is actually printed. Since VLOG uses <=
@@ -343,7 +343,7 @@ void LogMessage::GenerateLogMessage() {
   TFLogSinks::Instance().Send(TFLogEntry(severity_, fname_, line_, str()));
 }
 
-int64 LogMessage::MaxVLogLevel() {
+int64_t LogMessage::MaxVLogLevel() {
   static int64_t max_vlog_level = MaxVLogLevelFromEnv();
   return max_vlog_level;
 }

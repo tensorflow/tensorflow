@@ -43,7 +43,7 @@ struct NcclUniqueIdFactory {
   virtual ~NcclUniqueIdFactory() {}
 
   // Generates the NCCL unique ID for the given set of replica IDs.
-  virtual std::string GetUniqueId(absl::Span<const xla::int64> replicas) = 0;
+  virtual std::string GetUniqueId(absl::Span<const int64_t> replicas) = 0;
 };
 
 void SetNcclUniqueIdFactory(std::shared_ptr<NcclUniqueIdFactory> factory);
@@ -55,7 +55,7 @@ struct InputCoords {
   InputCoords(int64_t handle, xla::ShapeIndex index)
       : handle(handle), index(std::move(index)) {}
 
-  int64 handle = 0;
+  int64_t handle = 0;
   xla::ShapeIndex index;
 };
 

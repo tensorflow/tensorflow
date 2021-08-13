@@ -20,9 +20,10 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-TEST(NoOpTpuMeasurementTest, Basic) {
+TEST(NoOpCostMeasurementTest, Basic) {
   NoOpCostMeasurement measurement;
   EXPECT_EQ(measurement.GetTotalCost(), absl::ZeroDuration());
+  EXPECT_EQ(measurement.GetCostType(), "no_op");
 }
 
 }  // namespace

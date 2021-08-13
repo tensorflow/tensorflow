@@ -38,22 +38,16 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// TODO(cheshire): duplication w/ GetReductionTiling, but we need to get a
-// minimum possible tiling, regardless of the input.
-static constexpr int64_t kRowAtomicFreeBound = kWarpSize * kWarpSize * 8;
-static constexpr int64_t kColumnAtomicFreeBound = kWarpSize * 128;
-// TODO(cheshire): This is very small, we could increase it at the cost of
-// decreased column/row tiling.
-static constexpr int64_t kBatchedAtomicFreeBound = 8;
-
 // Returns the square root of the input rounded up to the nearest square.
-static int64 SqrtOfRoundUpToNearestSquare(int64_t input) {
-  return static_cast<int64>(std::ceil(std::sqrt(input)));
+static int64_t SqrtOfRoundUpToNearestSquare(int64_t input) {
+  return static_cast<int64_t>(std::ceil(std::sqrt(input)));
 }
 
 class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit ReductionRewriterVisitor() {}
+  explicit ReductionRewriterVisitor(
+      se::CudaComputeCapability cuda_compute_capability)
+      : cuda_compute_capability_(cuda_compute_capability) {}
 
   Status HandleReduce(HloInstruction *hlo) override {
     if (!hlo->shape().IsArray()) {
@@ -71,6 +65,10 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   Status RewriteReduction(HloInstruction *hlo) {
     ReductionDimensions reduction_dimensions =
         GetReductionKindAndContiguousComponents(*hlo);
+    std::array<int64_t, 3> reduction_tiling = GetReductionTiling(
+        reduction_dimensions,
+        primitive_util::BitWidth(hlo->shape().element_type()),
+        cuda_compute_capability_);
     VLOG(5) << "Input: " << hlo->ToString();
 
     HloInstruction *input = hlo->mutable_operand(0);
@@ -81,7 +79,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     bool reduce_batch_dimension = hlo->dimensions().size() > 1;
     VLOG(3) << "reduce_batch_dimension = " << reduce_batch_dimension;
 
-    std::vector<int64> reduced_dimensions = hlo->dimensions();
+    std::vector<int64_t> reduced_dimensions = hlo->dimensions();
     absl::c_sort(reduced_dimensions);
     CHECK_LE(reduced_dimensions.size(), 2);
     int64_t reduced_input_dimension =
@@ -90,7 +88,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Case (1): batched dimension does not fit.
     if (reduce_batch_dimension &&
-        input_shape.dimensions(0) > kBatchedAtomicFreeBound) {
+        input_shape.dimensions(0) > kBatchedReductionRaceFreeBound) {
       VLOG(2) << "Splitting batched dimension reduce into a separate reduction";
       VLOG(1) << "Input: " << hlo->ToString();
       return RewriteBatchDimensionLargerThanTile(hlo, reduction_dimensions,
@@ -99,12 +97,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     }
     bool is_row_reduction = reduction_dimensions.is_row_reduction;
 
-    int64_t atomic_free_bound =
-        is_row_reduction ? kRowAtomicFreeBound : kColumnAtomicFreeBound;
-    VLOG(3) << "atomic_free_bound: " << atomic_free_bound;
-
     // Base case: everything fits.
-    if (input_shape.dimensions(reduced_input_dimension) <= atomic_free_bound) {
+    if (ReductionIsRaceFree(reduction_dimensions, reduction_tiling)) {
       VLOG(3) << "Base case: dimensions fit";
       return Status::OK();
     }
@@ -127,8 +121,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       PaddingConfig padding_config = MakeNoPaddingConfig(input_shape.rank());
       padding_config.mutable_dimensions(reduced_input_dimension)
           ->set_edge_padding_high(padded_num_elements - reduced_dim_size);
-      std::vector<int64> padded_dimensions(input_shape.dimensions().begin(),
-                                           input_shape.dimensions().end());
+      std::vector<int64_t> padded_dimensions(input_shape.dimensions().begin(),
+                                             input_shape.dimensions().end());
       padded_dimensions[reduced_input_dimension] = padded_num_elements;
       Shape padded_shape =
           ShapeUtil::MakeShape(input_shape.element_type(), padded_dimensions);
@@ -138,7 +132,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     }();
 
     VLOG(2) << "Generated padding: " << padded->ToString();
-    std::vector<int64> reshaped_dimensions;
+    std::vector<int64_t> reshaped_dimensions;
     for (int64_t dim_idx = 0; dim_idx < padded->shape().dimensions_size();
          dim_idx++) {
       if (dim_idx == reduced_input_dimension) {
@@ -155,7 +149,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
         HloInstruction::CreateBitcast(reshaped_shape, padded));
     VLOG(2) << "Generated reshape: " << reshaped_padded_input->ToString();
 
-    std::vector<int64> inner_reduce_dimensions = reshaped_dimensions;
+    std::vector<int64_t> inner_reduce_dimensions = reshaped_dimensions;
     int64_t inner_reduced_dimension = is_row_reduction
                                           ? inner_reduce_dimensions.size() - 1
                                           : reduced_input_dimension;
@@ -167,7 +161,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     }
     Shape inner_reduce_shape = ShapeUtil::MakeShape(input_shape.element_type(),
                                                     inner_reduce_dimensions);
-    std::vector<int64> dims_to_reduce = {inner_reduced_dimension};
+    std::vector<int64_t> dims_to_reduce = {inner_reduced_dimension};
     if (reduce_batch_dimension) {
       dims_to_reduce.push_back(0);
       inner_reduced_dimension -= 1;
@@ -178,7 +172,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
             inner_reduce_shape, reshaped_padded_input, initial_value,
             dims_to_reduce, hlo->to_apply()));
     VLOG(1) << "Generated inner reduction: " << inner_reduce->ToString();
-    std::vector<int64> outer_reduce_dimensions = inner_reduce_dimensions;
+    std::vector<int64_t> outer_reduce_dimensions = inner_reduce_dimensions;
     VLOG(3) << "outer_reduce_dimensions = "
             << absl::StrJoin(outer_reduce_dimensions, ", ");
     int64_t outer_reduced_dimension = is_row_reduction
@@ -222,12 +216,15 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     VLOG(1) << "Generated: " << out->ToString();
     return ReplaceWithNewInstruction(hlo, std::move(out));
   }
+
+  se::CudaComputeCapability cuda_compute_capability_;
 };
 
 StatusOr<bool> GpuTreeReductionRewriter::Run(HloModule *module) {
   VLOG(5) << "Rewriter input: " << module->ToString();
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      ReductionRewriterVisitor().RunOnModule(module));
+  TF_ASSIGN_OR_RETURN(
+      bool changed,
+      ReductionRewriterVisitor(cuda_compute_capability_).RunOnModule(module));
   VLOG(5) << "Rewriter output: " << module->ToString();
   return changed;
 }

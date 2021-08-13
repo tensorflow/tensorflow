@@ -40,7 +40,7 @@ static StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
     return scatter_indices;
   }
 
-  std::vector<int64> permutation;
+  std::vector<int64_t> permutation;
   permutation.reserve(scatter_indices_shape.dimensions_size());
   for (int64_t i = 0, e = scatter_indices_shape.dimensions_size(); i < e; i++) {
     if (i != index_vector_dim) {
@@ -92,8 +92,8 @@ static StatusOr<HloInstruction*> CanonicalizeScatterIndices(
 // major dimensions and all the window dimensions appear in the minor
 // dimensions.
 static StatusOr<HloInstruction*> PermuteScatterAndWindowDims(
-    HloInstruction* updates, absl::Span<const int64> update_window_dims) {
-  std::vector<int64> permutation;
+    HloInstruction* updates, absl::Span<const int64_t> update_window_dims) {
+  std::vector<int64_t> permutation;
   const int64_t updates_rank = updates->shape().rank();
   permutation.reserve(updates_rank);
 
@@ -170,8 +170,8 @@ static StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
 
 static StatusOr<HloInstruction*> CheckIndexValidity(
     HloComputation* computation, HloInstruction* index,
-    absl::Span<const int64> operand_dims, absl::Span<const int64> window_sizes,
-    HloModule* module) {
+    absl::Span<const int64_t> operand_dims,
+    absl::Span<const int64_t> window_sizes, HloModule* module) {
   DCHECK_NE(nullptr, module);
   DCHECK_EQ(operand_dims.size(), window_sizes.size());
 
@@ -186,14 +186,14 @@ static StatusOr<HloInstruction*> CheckIndexValidity(
       MakeCompareHlo(ComparisonDirection::kLe, zero_index, index));
 
   // Check if the index is OOB w.r.t. the operand dimensions and window sizes.
-  std::vector<int64> max_valid_index(operand_dims.size());
+  std::vector<int64_t> max_valid_index(operand_dims.size());
   for (int i = 0; i < operand_dims.size(); ++i) {
     max_valid_index[i] = operand_dims[i] - window_sizes[i];
   }
   TF_ASSIGN_OR_RETURN(
       HloInstruction * max_valid_index_constant,
-      MakeR1ConstantHlo<int64>(computation, index->shape().element_type(),
-                               max_valid_index));
+      MakeR1ConstantHlo<int64_t>(computation, index->shape().element_type(),
+                                 max_valid_index));
   TF_ASSIGN_OR_RETURN(HloInstruction * oob_index_check,
                       MakeCompareHlo(ComparisonDirection::kGe,
                                      max_valid_index_constant, index));
@@ -265,8 +265,9 @@ static StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
       PadVectorWithZeros(
           induction_var_as_vector, /*zeros_to_prepend=*/0,
           /*zeros_to_append=*/updates->shape().dimensions_size() - 1));
-  std::vector<int64> update_slice_bounds(updates->shape().dimensions().begin(),
-                                         updates->shape().dimensions().end());
+  std::vector<int64_t> update_slice_bounds(
+      updates->shape().dimensions().begin(),
+      updates->shape().dimensions().end());
   update_slice_bounds[0] = 1;
   TF_ASSIGN_OR_RETURN(
       HloInstruction * update_slice,
@@ -325,7 +326,7 @@ static StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
       {updated_operand, scatter_indices, updates}};
 }
 
-static int64 ScatterTripCount(HloInstruction* scatter) {
+static int64_t ScatterTripCount(HloInstruction* scatter) {
   // Compute the trip count for the while loop to be used for scatter. This
   // should be the number of indices we should scatter into the operand.
   HloInstruction* scatter_indices = scatter->mutable_operand(1);

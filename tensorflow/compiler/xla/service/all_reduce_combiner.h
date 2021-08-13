@@ -40,10 +40,10 @@ class AllReduceCombiner : public HloModulePass {
 
  private:
   // Combine all reduce ops up to this threshold.
-  int64 combine_threshold_in_bytes_;
+  int64_t combine_threshold_in_bytes_;
 
   // Combine all reduce ops up to this threshold (number of operands).
-  int64 combine_threshold_count_;
+  int64_t combine_threshold_count_;
 };
 
 }  // namespace xla

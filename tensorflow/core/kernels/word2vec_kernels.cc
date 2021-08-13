@@ -90,9 +90,9 @@ class SkipgramOp : public OpKernel {
           }
         }
       }
-      words_per_epoch.scalar<int64>()() = corpus_size_;
+      words_per_epoch.scalar<int64_t>()() = corpus_size_;
       current_epoch.scalar<int32>()() = current_epoch_;
-      total_words_processed.scalar<int64>()() = total_words_processed_;
+      total_words_processed.scalar<int64_t>()() = total_words_processed_;
     }
     ctx->set_output(0, word_);
     ctx->set_output(1, freq_);
@@ -116,7 +116,7 @@ class SkipgramOp : public OpKernel {
   int32 vocab_size_ = 0;
   Tensor word_;
   Tensor freq_;
-  int64 corpus_size_ = 0;
+  int64_t corpus_size_ = 0;
   std::vector<int32> corpus_;
   std::vector<Example> precalc_examples_;
   int precalc_index_ = 0;
@@ -127,7 +127,7 @@ class SkipgramOp : public OpKernel {
   random::PhiloxRandom philox_ TF_GUARDED_BY(mu_);
   random::SimplePhilox rng_ TF_GUARDED_BY(mu_);
   int32 current_epoch_ TF_GUARDED_BY(mu_) = -1;
-  int64 total_words_processed_ TF_GUARDED_BY(mu_) = 0;
+  int64_t total_words_processed_ TF_GUARDED_BY(mu_) = 0;
   int32 example_pos_ TF_GUARDED_BY(mu_);
   int32 label_pos_ TF_GUARDED_BY(mu_);
   int32 label_limit_ TF_GUARDED_BY(mu_);

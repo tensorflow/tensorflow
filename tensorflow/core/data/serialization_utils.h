@@ -47,9 +47,9 @@ class VariantTensorDataReader : public IteratorStateReader {
   bool Contains(StringPiece key) const override;
   bool Contains(StringPiece name, StringPiece key) const override;
 
-  Status ReadScalar(StringPiece key, int64* val) const override;
+  Status ReadScalar(StringPiece key, int64_t* val) const override;
   Status ReadScalar(StringPiece name, StringPiece key,
-                    int64* val) const override;
+                    int64_t* val) const override;
   Status ReadScalar(StringPiece key, tstring* val) const override;
   Status ReadScalar(StringPiece name, StringPiece key,
                     tstring* val) const override;

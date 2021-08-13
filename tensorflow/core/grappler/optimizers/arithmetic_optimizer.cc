@@ -175,7 +175,7 @@ bool GetElementUnexhaustive(const Tensor& t, int i, const std::set<int>& dtypes,
       *element = complex128(t.flat<int32>()(i));
       return true;
     case DT_INT64:
-      *element = complex128(t.flat<int64>()(i));
+      *element = complex128(t.flat<int64_t>()(i));
       return true;
     case DT_FLOAT:
       *element = complex128(t.flat<float>()(i));
@@ -1195,7 +1195,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     if (!IsConstant(*node_perm)) {
       return Status::OK();
     }
-    std::vector<int64> node_perm_values;
+    std::vector<int64_t> node_perm_values;
     TF_RETURN_IF_ERROR(GetPermutation(*node_perm, &node_perm_values));
     if (first_transpose->op() == node->op()) {
       // Remove pairs of transposes that cancel each other.
@@ -1205,7 +1205,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
       if (!IsConstant(*first_transpose_perm)) {
         return Status::OK();
       }
-      std::vector<int64> first_transpose_perm_values;
+      std::vector<int64_t> first_transpose_perm_values;
       TF_RETURN_IF_ERROR(
           GetPermutation(*first_transpose_perm, &first_transpose_perm_values));
       if (AreInversePermutations(node_perm_values,
@@ -1245,12 +1245,12 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
 
  private:
   Status GetPermutation(const NodeDef& node_perm,
-                        std::vector<int64>* perm64) const {
+                        std::vector<int64_t>* perm64) const {
     std::vector<int> perm32;
     if (ValuesFromConstNode(node_perm, &perm32)) {
       perm64->reserve(perm32.size());
       for (int val : perm32) {
-        perm64->push_back(static_cast<int64>(val));
+        perm64->push_back(static_cast<int64_t>(val));
       }
       return Status::OK();
     }
@@ -1261,8 +1261,8 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
                                    node_perm.name());
   }
 
-  bool AreInversePermutations(const std::vector<int64>& a,
-                              const std::vector<int64>& b) {
+  bool AreInversePermutations(const std::vector<int64_t>& a,
+                              const std::vector<int64_t>& b) {
     if (a.size() != b.size()) {
       return false;
     }
@@ -1274,7 +1274,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     return true;
   }
 
-  bool IsIdentityPermutation(const std::vector<int64>& perm) {
+  bool IsIdentityPermutation(const std::vector<int64_t>& perm) {
     for (int64_t i = 0, end = perm.size(); i < end; ++i) {
       if (i != perm[i]) {
         return false;
@@ -2467,7 +2467,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     if (ValuesFromConstNode(*perm_node, &perm32)) {
       return IsInnerMatrixTranspose(perm32);
     }
-    std::vector<int64> perm64;
+    std::vector<int64_t> perm64;
     if (ValuesFromConstNode(*perm_node, &perm64)) {
       return IsInnerMatrixTranspose(perm64);
     }
@@ -3276,7 +3276,7 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
         t->flat<int32>()(i) = 1;
         return Status::OK();
       case DT_INT64:
-        t->flat<int64>()(i) = 1L;
+        t->flat<int64_t>()(i) = 1L;
         return Status::OK();
       case DT_FLOAT:
         t->flat<float>()(i) = 1.0f;
@@ -3795,7 +3795,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
 
   Status GetSliceAxis(const NodeDef* node, const NodeDef* pack,
                       const PartialTensorShape& pack_output_shape,
-                      int pack_axis, int64* slice_start_value, bool* found,
+                      int pack_axis, int64_t* slice_start_value, bool* found,
                       bool* must_expand_dims) {
     *found = false;
     if (IsSlice(*node)) {
@@ -3810,7 +3810,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
 
   Status GetSimpleSliceAxis(const NodeDef* node, const NodeDef* pack,
                             const PartialTensorShape& pack_output_shape,
-                            int pack_axis, int64* slice_start_value,
+                            int pack_axis, int64_t* slice_start_value,
                             bool* found) {
     NodeDef* slice_begin;
     NodeDef* slice_size;
@@ -3847,8 +3847,8 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
           return Status::OK();
         };
 
-    gtl::InlinedVector<int64, 4> slice_begin_vec;
-    gtl::InlinedVector<int64, 4> slice_size_vec;
+    gtl::InlinedVector<int64_t, 4> slice_begin_vec;
+    gtl::InlinedVector<int64_t, 4> slice_size_vec;
     TF_RETURN_IF_ERROR(
         copy_tensor_values_to_vector(slice_begin_t, &slice_begin_vec));
     TF_RETURN_IF_ERROR(
@@ -3901,7 +3901,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
 
   Status GetStridedSliceAxis(const NodeDef* node, const NodeDef* pack,
                              const PartialTensorShape& pack_output_shape,
-                             int pack_axis, int64* slice_start_value,
+                             int pack_axis, int64_t* slice_start_value,
                              bool* found, bool* must_expand_dims) {
     TF_RETURN_IF_ERROR(
         CheckAttrsExist(*node, {"begin_mask", "end_mask", "ellipsis_mask",
@@ -3952,9 +3952,9 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
     bool is_identity;
     bool is_simple_slice;
     bool slice_dim0;
-    gtl::InlinedVector<int64, 4> slice_begin_vec;
-    gtl::InlinedVector<int64, 4> slice_end_vec;
-    gtl::InlinedVector<int64, 4> slice_strides_vec;
+    gtl::InlinedVector<int64_t, 4> slice_begin_vec;
+    gtl::InlinedVector<int64_t, 4> slice_end_vec;
+    gtl::InlinedVector<int64_t, 4> slice_strides_vec;
     TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
         &slice_begin_t, &slice_end_t, slice_strides_t, pack_output_shape,
         begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
@@ -4218,7 +4218,7 @@ class SimplifyEmbeddingLookupStage : public ArithmeticOptimizerStage {
     if (axis_tensor.dtype() == DT_INT32) {
       return axis_tensor.flat<int32>()(0) == 0;
     } else if (axis_tensor.dtype() == DT_INT64) {
-      return axis_tensor.flat<int64>()(0) == 0;
+      return axis_tensor.flat<int64_t>()(0) == 0;
     } else {
       return false;
     }

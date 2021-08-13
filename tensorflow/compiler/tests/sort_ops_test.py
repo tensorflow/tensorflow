@@ -234,7 +234,7 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
                 args,  # Pass the arguments as a tuple
                 comparator=compare_lt,
                 dimension=dimension,
-                is_stable=False)
+                is_stable=True)
 
           self._assertOpOutputMatchesExpected(
               wrap_sort, inputs, expected=inputs)

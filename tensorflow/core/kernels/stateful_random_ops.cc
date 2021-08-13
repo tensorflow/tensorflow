@@ -67,7 +67,7 @@ Status CheckState(const Tensor& state) {
 }
 
 Status CheckPhiloxState(const Tensor& state, int64_t alg_tag_skip = 0) {
-  static_assert(std::is_same<StateElementType, int64>::value,
+  static_assert(std::is_same<StateElementType, int64_t>::value,
                 "StateElementType must be int64");
   static_assert(std::is_same<PhiloxRandom::ResultElementType, uint32>::value,
                 "PhiloxRandom::ResultElementType must be uint32");
@@ -183,7 +183,7 @@ class StatefulRandomOpV2 : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     Algorithm alg;
-    OP_REQUIRES_OK(ctx, GetAlg<int64>(ctx, 1, &alg));
+    OP_REQUIRES_OK(ctx, GetAlg<int64_t>(ctx, 1, &alg));
     StatefulRandomCompute<Device>(ctx, Distribution(), /*state_input_idx=*/0,
                                   /*shape_input_idx=*/2,
                                   /*read_alg_from_state=*/false, alg);
@@ -197,7 +197,7 @@ class StatefulUniformIntOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     Algorithm alg;
-    OP_REQUIRES_OK(ctx, GetAlg<int64>(ctx, 1, &alg));
+    OP_REQUIRES_OK(ctx, GetAlg<int64_t>(ctx, 1, &alg));
     const Tensor& minval = ctx->input(3);
     const Tensor& maxval = ctx->input(4);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(minval.shape()),
@@ -234,7 +234,7 @@ class StatefulUniformFullIntOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     Algorithm alg;
-    OP_REQUIRES_OK(ctx, GetAlg<int64>(ctx, 1, &alg));
+    OP_REQUIRES_OK(ctx, GetAlg<int64_t>(ctx, 1, &alg));
     StatefulRandomCompute<Device>(
         ctx,
         random::UniformFullIntDistribution<random::PhiloxRandom, IntType>(),
@@ -257,8 +257,8 @@ struct RngSkip_Philox<CPUDevice> {
 
 }  // end namespace functor
 
-template <typename Device, typename AlgEnumType = int64,
-          typename DeltaType = int64, bool read_old_value = false>
+template <typename Device, typename AlgEnumType = int64_t,
+          typename DeltaType = int64_t, bool read_old_value = false>
 class RngSkipOp : public OpKernel {
  public:
   explicit RngSkipOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}

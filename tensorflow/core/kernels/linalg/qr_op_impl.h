@@ -80,7 +80,7 @@ class QrOp : public LinearAlgebraOp<Scalar> {
     }
   }
 
-  int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
+  int64_t GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
     double m = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double n = static_cast<double>(input_matrix_shapes[0].dim_size(1));
     double max_size = std::max(m, n);
@@ -90,7 +90,7 @@ class QrOp : public LinearAlgebraOp<Scalar> {
     // TODO(jpoulson): Increase the cost if full_matrices is true in a manner
     // that reflects the algorithm used for the expansion.
     return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64>(cost);
+                                                  : static_cast<int64_t>(cost);
   }
 
   using Matrix = typename Base::Matrix;

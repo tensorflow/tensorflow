@@ -58,7 +58,7 @@ BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
 
   // Allocate the requested amount of memory.
   memory_limit_ = total_memory;
-  stats_.bytes_limit = static_cast<int64>(total_memory);
+  stats_.bytes_limit = static_cast<int64_t>(total_memory);
 
   // Create a bunch of bins of various good sizes.
 
@@ -475,7 +475,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   return nullptr;
 }
 
-int64 BFCAllocator::LargestFreeChunk() {
+int64_t BFCAllocator::LargestFreeChunk() {
   for (int i = kNumBins - 1; i >= 0; i--) {
     if (!BinFromIndex(i)->free_chunks.empty()) {
       return ChunkFromHandle(*BinFromIndex(i)->free_chunks.rbegin())->size;
@@ -559,7 +559,7 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
                 ? internal_fragmentation_fraction_ * memory_limit_
                 : 128 << 20;
         if (chunk->size >= rounded_bytes * 2 ||
-            static_cast<int64>(chunk->size) - rounded_bytes >=
+            static_cast<int64_t>(chunk->size) - rounded_bytes >=
                 kMaxInternalFragmentation) {
           SplitChunk(h, rounded_bytes);
           chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
@@ -928,7 +928,7 @@ size_t BFCAllocator::AllocatedSize(const void* ptr) const {
   return c->size;
 }
 
-int64 BFCAllocator::AllocationId(const void* ptr) const {
+int64_t BFCAllocator::AllocationId(const void* ptr) const {
   mutex_lock l(lock_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)

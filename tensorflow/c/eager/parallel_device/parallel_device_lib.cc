@@ -428,7 +428,7 @@ ParallelDevice::Join(
     if (expected_output_shapes[i].IsFullyDefined()) {
       per_device_outputs.push_back(ParallelTensor::FromTensorHandles(
           *this, std::move(components),
-          absl::Span<const int64>(expected_output_shapes[i].dim_sizes()),
+          absl::Span<const int64_t>(expected_output_shapes[i].dim_sizes()),
           status));
     } else {
       per_device_outputs.push_back(ParallelTensor::FromTensorHandles(
@@ -466,7 +466,7 @@ std::vector<std::string> ParallelDevice::SummarizeDeviceNames() const {
 
 std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
     const ParallelDevice& parallel_device,
-    std::vector<TensorHandlePtr> components, absl::Span<const int64> shape,
+    std::vector<TensorHandlePtr> components, absl::Span<const int64_t> shape,
     TF_Status* status) {
   TF_DataType dtype = TFE_TensorHandleDataType(components[0].get());
   // Verify that the TensorHandle's shape and dtype match all of the component

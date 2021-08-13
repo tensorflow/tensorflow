@@ -3998,7 +3998,7 @@ TEST_F(ArithmeticOptimizerTest, OptimizeArgMaxOrArgMinOfMonotonicElementWise) {
   const auto tensors = EvaluateNodes(output, item.fetch);
   ASSERT_EQ(tensors.size(), 1);
 
-  test::ExpectTensorEqual<int64>(tensors[0], tensors_expected[0]);
+  test::ExpectTensorEqual<int64_t>(tensors[0], tensors_expected[0]);
   EXPECT_EQ(output.node_size(), item.graph.node_size() - 1);
   // Check if the inputs are switched
   int required_node_count = 0;

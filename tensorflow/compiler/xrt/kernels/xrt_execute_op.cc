@@ -337,7 +337,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
   if (nccl_factory != nullptr) {
     auto uid_callback =
         [&](const xla::gpu::NcclCliqueKey& key) -> xla::StatusOr<std::string> {
-      std::vector<xla::int64> replicas;
+      std::vector<int64_t> replicas;
       for (auto& device : key.devices()) {
         replicas.push_back(device.value());
       }
@@ -443,7 +443,7 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
 
   const Tensor& execution_input = context->input(0);
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_input.shape()));
-  int64_t compilation_handle = execution_input.scalar<int64>()();
+  int64_t compilation_handle = execution_input.scalar<int64_t>()();
 
   const Tensor& execution_config = context->input(1);
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_config.shape()));

@@ -40,7 +40,7 @@ Node* Send(Graph* g, Node* input, const string& tensor, const string& sender,
                   .Attr("tensor_name", tensor)
                   .Attr("send_device", sender)
                   .Attr("send_device_incarnation",
-                        static_cast<int64>(sender_incarnation))
+                        static_cast<int64_t>(sender_incarnation))
                   .Attr("recv_device", receiver)
                   .Finalize(g, &ret));
   return ret;
@@ -57,7 +57,7 @@ Node* Recv(Graph* g, const string& tensor, const string& type,
                   .Attr("tensor_name", tensor)
                   .Attr("send_device", sender)
                   .Attr("send_device_incarnation",
-                        static_cast<int64>(sender_incarnation))
+                        static_cast<int64_t>(sender_incarnation))
                   .Attr("recv_device", receiver)
                   .Finalize(g, &ret));
   return ret;

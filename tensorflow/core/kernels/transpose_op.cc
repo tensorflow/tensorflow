@@ -75,7 +75,7 @@ REGISTER_KERNEL_BUILDER(
     Name("InvertPermutation").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
     InvertPermutationOp<int32>);
 REGISTER_KERNEL_BUILDER(
-    Name("InvertPermutation").Device(DEVICE_CPU).TypeConstraint<int64>("T"),
+    Name("InvertPermutation").Device(DEVICE_CPU).TypeConstraint<int64_t>("T"),
     InvertPermutationOp<int64>);
 
 REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
@@ -86,11 +86,10 @@ REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
                         InvertPermutationOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int64>("T")
+                            .TypeConstraint<int64_t>("T")
                             .HostMemory("x")
                             .HostMemory("y"),
                         InvertPermutationOp<int64>);
-
 
 namespace {
 template <typename Tperm>
@@ -142,7 +141,7 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   if (perm.dtype() == DT_INT32) {
     OP_REQUIRES_OK(ctx, PermutationHelper<int32>(perm, dims, &permutation));
   } else {
-    OP_REQUIRES_OK(ctx, PermutationHelper<int64>(perm, dims, &permutation));
+    OP_REQUIRES_OK(ctx, PermutationHelper<int64_t>(perm, dims, &permutation));
   }
   TensorShape shape;
 

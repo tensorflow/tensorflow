@@ -300,7 +300,7 @@ std::string StringifyNum(const std::array<NativeT, N>& inputs) {
 }
 
 template <typename ErrorGenerator>
-void PrintMismatch(int64* mismatches, const ErrorGenerator& err_generator) {
+void PrintMismatch(int64_t* mismatches, const ErrorGenerator& err_generator) {
   // We send a few mismatches to gunit so they show up nicely in test logs.
   // Then we send more to LOG(ERROR).  The remainder we squelch unless we're
   // at vlog level 2.

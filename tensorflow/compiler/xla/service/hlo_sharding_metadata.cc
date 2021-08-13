@@ -312,8 +312,8 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
 // Tries to propagate the sharding information into the instructions that are
 // part of the domain, in a reverse post order manner (users propagate to
 // instruction).
-StatusOr<int64> ApplyDomainShardingPass(const DomainMetadata::Domain& domain,
-                                        const HloSharding& domain_sharding) {
+StatusOr<int64_t> ApplyDomainShardingPass(const DomainMetadata::Domain& domain,
+                                          const HloSharding& domain_sharding) {
   int64_t assigned = 0;
   // domain.instructions are ordered in a post-order manner. As we do
   // user->operand propagation we process instructions in reverse order. In so

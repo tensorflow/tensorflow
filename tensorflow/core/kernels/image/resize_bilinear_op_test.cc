@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -100,20 +101,20 @@ class ResizeBilinearOpTestBase
             half_pixel_centers_
                 ? (static_cast<float>(y) + 0.5f) * height_scale - 0.5f
                 : y * height_scale;
-        const int64_t top_y_index =
-            std::max(static_cast<int64>(floorf(in_y)), static_cast<int64>(0));
+        const int64_t top_y_index = std::max(static_cast<int64_t>(floorf(in_y)),
+                                             static_cast<int64_t>(0));
         const int64_t bottom_y_index =
-            std::min(static_cast<int64>(ceilf(in_y)), in_height - 1);
+            std::min(static_cast<int64_t>(ceilf(in_y)), in_height - 1);
         const float y_lerp = in_y - std::floor(in_y);
         for (int64_t x = 0; x < out_width; ++x) {
           const float in_x =
               half_pixel_centers_
                   ? (static_cast<float>(x) + 0.5f) * width_scale - 0.5f
                   : x * width_scale;
-          const int64_t left_x_index =
-              std::max(static_cast<int64>(floorf(in_x)), static_cast<int64>(0));
+          const int64_t left_x_index = std::max(
+              static_cast<int64_t>(floorf(in_x)), static_cast<int64_t>(0));
           const int64_t right_x_index =
-              std::min(static_cast<int64>(ceilf(in_x)), in_width - 1);
+              std::min(static_cast<int64_t>(ceilf(in_x)), in_width - 1);
           const float x_lerp = in_x - std::floor(in_x);
           for (int c = 0; c < channels; ++c) {
             const float top_left = images(b, top_y_index, left_x_index, c);
@@ -493,8 +494,9 @@ TEST_P(ResizeBilinearOpTest, TestInvalidOutputSize) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
   Status s = RunOpKernel();
-  EXPECT_TRUE(absl::StrContains(
-      s.ToString(), "Invalid argument: output dimensions must be positive"))
+  EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                "output dimensions must be positive"))
       << s;
 }
 
@@ -502,8 +504,9 @@ TEST_P(ResizeBilinearOpTest, TestInvalidInputShape) {
   AddInputFromArray<float>(TensorShape({2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {4, 4});
   Status s = RunOpKernel();
-  EXPECT_TRUE(absl::StrContains(
-      s.ToString(), "Invalid argument: input must be 4-dimensional"))
+  EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "input must be 4-dimensional"))
       << s;
 }
 
@@ -511,8 +514,9 @@ TEST_P(ResizeBilinearOpTest, TestInvalidSizeDim) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2, 1}), {4, 4});
   Status s = RunOpKernel();
-  EXPECT_TRUE(absl::StrContains(
-      s.ToString(), "Invalid argument: shape_t must be 1-dimensional"))
+  EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "shape_t must be 1-dimensional"))
       << s;
 }
 
@@ -520,8 +524,9 @@ TEST_P(ResizeBilinearOpTest, TestInvalidSizeElements) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({3}), {4, 4, 1});
   Status s = RunOpKernel();
-  EXPECT_TRUE(absl::StrContains(
-      s.ToString(), "Invalid argument: shape_t must have two elements"))
+  EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "shape_t must have two elements"))
       << s;
 }
 

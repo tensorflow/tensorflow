@@ -70,8 +70,8 @@ struct MemCpyFunctor {
 
 template <>
 struct MemCpyFunctor<ResourceHandle> {
-  bool Copy(const Tensor& input, const gtl::InlinedVector<int64, 4>& begin,
-            const gtl::InlinedVector<int64, 4>& end, Tensor* result) {
+  bool Copy(const Tensor& input, const gtl::InlinedVector<int64_t, 4>& begin,
+            const gtl::InlinedVector<int64_t, 4>& end, Tensor* result) {
     return false;
   }
 };
@@ -95,9 +95,9 @@ class StridedSliceOp : public OpKernel {
     bool is_identity = true;
     bool slice_dim0 = true;
     bool is_simple_slice = true;
-    gtl::InlinedVector<int64, 4> begin;
-    gtl::InlinedVector<int64, 4> end;
-    gtl::InlinedVector<int64, 4> strides;
+    gtl::InlinedVector<int64_t, 4> begin;
+    gtl::InlinedVector<int64_t, 4> end;
+    gtl::InlinedVector<int64_t, 4> strides;
 
     OP_REQUIRES_OK(
         context, ValidateStridedSliceOp(
@@ -203,9 +203,9 @@ class StridedSliceGradOp : public OpKernel {
     bool is_identity = true;
     bool slice_dim0 = true;
     bool is_simple_slice = true;
-    gtl::InlinedVector<int64, 4> begin;
-    gtl::InlinedVector<int64, 4> end;
-    gtl::InlinedVector<int64, 4> strides;
+    gtl::InlinedVector<int64_t, 4> begin;
+    gtl::InlinedVector<int64_t, 4> end;
+    gtl::InlinedVector<int64_t, 4> strides;
 
     TensorShape input_shape;
     const Tensor& input_shape_tensor = context->input(0);
@@ -218,9 +218,9 @@ class StridedSliceGradOp : public OpKernel {
           context, TensorShapeUtils::MakeShape(input_shape_tensor.vec<int32>(),
                                                &input_shape));
     } else if (input_shape_tensor.dtype() == DT_INT64) {
-      OP_REQUIRES_OK(
-          context, TensorShapeUtils::MakeShape(input_shape_tensor.vec<int64>(),
-                                               &input_shape));
+      OP_REQUIRES_OK(context,
+                     TensorShapeUtils::MakeShape(
+                         input_shape_tensor.vec<int64_t>(), &input_shape));
     } else {
       LOG(FATAL) << "shape must have type int32 or int64.";
     }
@@ -297,9 +297,9 @@ class StridedSliceAssignOp : public OpKernel {
     bool is_identity = true;
     bool slice_dim0 = true;
     bool is_simple_slice = true;
-    gtl::InlinedVector<int64, 4> begin;
-    gtl::InlinedVector<int64, 4> end;
-    gtl::InlinedVector<int64, 4> strides;
+    gtl::InlinedVector<int64_t, 4> begin;
+    gtl::InlinedVector<int64_t, 4> end;
+    gtl::InlinedVector<int64_t, 4> strides;
 
     Tensor* old_lhs = nullptr;
     Tensor tmp;

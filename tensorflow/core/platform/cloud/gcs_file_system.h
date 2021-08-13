@@ -184,8 +184,8 @@ class GcsFileSystem : public FileSystem {
   Status IsDirectory(const string& fname, TransactionToken* token) override;
 
   Status DeleteRecursively(const string& dirname, TransactionToken* token,
-                           int64* undeleted_files,
-                           int64* undeleted_dirs) override;
+                           int64_t* undeleted_files,
+                           int64_t* undeleted_dirs) override;
 
   void FlushCaches(TransactionToken* token) override;
 
@@ -342,7 +342,7 @@ class GcsFileSystem : public FileSystem {
   // GCS file statistics.
   struct GcsFileStat {
     FileStatistics base;
-    int64 generation_number = 0;
+    int64_t generation_number = 0;
   };
 
   /// \brief Checks if the bucket exists. Returns OK if the check succeeded.

@@ -34,8 +34,8 @@ namespace {
 // unordered maps.
 const int kDeviceBits = 12;
 
-int64 MakeDeviceHandle(int64_t device_ordinal, int64_t rnd_value) {
-  const int64_t kUidMask = (static_cast<int64>(1) << (64 - kDeviceBits)) - 1;
+int64_t MakeDeviceHandle(int64_t device_ordinal, int64_t rnd_value) {
+  const int64_t kUidMask = (static_cast<int64_t>(1) << (64 - kDeviceBits)) - 1;
   return (device_ordinal << (64 - kDeviceBits)) | (rnd_value & kUidMask);
 }
 
@@ -56,7 +56,7 @@ class XRTMemoryManager::DeviceContext {
   using AllocList = std::list<Alloc>;
 
  public:
-  int64 Register(RefPtr<XRTTupleAllocation> tuple) {
+  int64_t Register(RefPtr<XRTTupleAllocation> tuple) {
     while (true) {
       int64_t handle = MakeDeviceHandle(tuple->device_ordinal(), CreateUid());
       mutex_lock lock(lock_);
@@ -170,7 +170,7 @@ class XRTMemoryManager::DeviceContext {
   }
 
  private:
-  static int64 CreateUid() {
+  static int64_t CreateUid() {
     int64_t uid;
     do {
       uid = random::New64() & INT64_MAX;
@@ -183,7 +183,7 @@ class XRTMemoryManager::DeviceContext {
   // invalidated by (other elements) removals or position swaps.
   mutex lock_;
   AllocList allocs_;
-  std::unordered_map<int64, AllocList::iterator> alloc_map_;
+  std::unordered_map<int64_t, AllocList::iterator> alloc_map_;
 };
 
 XRTMemoryManager::WorkingSet::WorkingSet(
@@ -218,7 +218,7 @@ Status XRTMemoryManager::WorkingSet::LookupAndPin(
   return memory_manager;
 }
 
-int64 XRTMemoryManager::Register(RefPtr<XRTTupleAllocation> tuple) {
+int64_t XRTMemoryManager::Register(RefPtr<XRTTupleAllocation> tuple) {
   DeviceContext* device_context = GetDeviceContext(tuple->device_ordinal(),
                                                    /*create_if_missing=*/true);
   return device_context->Register(std::move(tuple));

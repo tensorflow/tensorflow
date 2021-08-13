@@ -88,7 +88,7 @@ class VariablePolicy(enum.Enum):
     for policy in VariablePolicy:
       if key == policy.value:
         return policy
-    raise ValueError('Invalid VariablePolicy value "%s".' % obj)
+    raise ValueError(f"Received invalid VariablePolicy value: {obj}.")
 
 
 @tf_export("saved_model.SaveOptions")
@@ -110,14 +110,15 @@ class SaveOptions(object):
                function_aliases=None,
                experimental_io_device=None,
                experimental_variable_policy=None,
-               experimental_custom_gradients=False):
+               experimental_custom_gradients=True):
     """Creates an object that stores options for SavedModel saving.
 
     Args:
       namespace_whitelist: List of strings containing op namespaces to whitelist
         when saving a model. Saving an object that uses namespaced ops must
         explicitly add all namespaces to the whitelist. The namespaced ops must
-        be registered into the framework when loading the SavedModel.
+        be registered into the framework when loading the SavedModel. If no
+        whitelist is provided, all namespaced ops will be allowed.
       save_debug_info: Boolean indicating whether debug information is saved. If
         True, then a debug/saved_model_debug_info.pb file will be written with
         the contents of a GraphDebugInfo binary protocol buffer containing stack
@@ -160,7 +161,7 @@ class SaveOptions(object):
         default policy.
       experimental_custom_gradients: Boolean. When True, will save traced
         gradient functions for the functions decorated by `tf.custom_gradient`.
-        Defaults to `False`.
+        Defaults to `True`.
     """
     self.namespace_whitelist = _validate_namespace_whitelist(
         namespace_whitelist)
@@ -175,14 +176,16 @@ class SaveOptions(object):
 def _validate_namespace_whitelist(namespace_whitelist):
   """Validates namespace whitelist argument."""
   if namespace_whitelist is None:
-    return []
+    return None
   if not isinstance(namespace_whitelist, list):
-    raise TypeError("Namespace whitelist must be a list of strings.")
+    raise TypeError("`namespace_whitelist` must be a list of strings. Got: "
+                    f"{namespace_whitelist} with type "
+                    f"{type(namespace_whitelist)}.")
 
   processed = []
   for namespace in namespace_whitelist:
     if not isinstance(namespace, six.string_types):
-      raise ValueError("Whitelisted namespace must be a string. Got: {} of type"
-                       " {}.".format(namespace, type(namespace)))
+      raise ValueError("Whitelisted namespace must be a string. Got: "
+                       f"{namespace} of type {type(namespace)}.")
     processed.append(compat.as_str(namespace))
   return processed

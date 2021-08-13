@@ -56,7 +56,7 @@ void Shard(int max_parallelism, thread::ThreadPool* workers, int64_t total,
 // a fixed shard size.
 void Sharder::Do(int64_t total, int64_t cost_per_unit, const Work& work,
                  const Runner& runner, int max_parallelism) {
-  cost_per_unit = std::max(int64{1}, cost_per_unit);
+  cost_per_unit = std::max(int64_t{1}, cost_per_unit);
   // We shard [0, total) into "num_shards" shards.
   //   1 <= num_shards <= num worker threads
   //
@@ -65,7 +65,7 @@ void Sharder::Do(int64_t total, int64_t cost_per_unit, const Work& work,
   // is 10us.
   static const int64_t kMinCostPerShard = 10000;
   const int num_shards =
-      std::max<int>(1, std::min(static_cast<int64>(max_parallelism),
+      std::max<int>(1, std::min(static_cast<int64_t>(max_parallelism),
                                 total * cost_per_unit / kMinCostPerShard));
 
   // Each shard contains up to "block_size" units. [0, total) is sharded

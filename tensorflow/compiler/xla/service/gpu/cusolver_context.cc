@@ -280,9 +280,9 @@ GpuSolverContext::~GpuSolverContext() {
 // Note: NVidia have promised that it is safe to pass 'nullptr' as the argument
 // buffers to cuSolver buffer size methods and this will be a documented
 // behavior in a future cuSolver release.
-StatusOr<int64> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
-                                                  se::blas::UpperLower uplo,
-                                                  int n, int lda) {
+StatusOr<int64_t> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
+                                                    se::blas::UpperLower uplo,
+                                                    int n, int lda) {
 #if !defined(TENSORFLOW_USE_ROCM)
   int size = -1;
   switch (type) {

@@ -1204,17 +1204,25 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(variable_scope.VariableAggregation.SUM,
                      replica_local.aggregation)
 
-  @test_util.run_v2_only
-  def testCanPassToDefFun(self):
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu
+          ],
+          mode=["eager"]))
+  def testCanPassToDefFun(self, distribution):
+
     @def_function.function
     def add1(x):
-      return x + 1
+      return x + 1.
 
-    v = variable_scope.get_variable(
-        name="v", initializer=[1.], use_resource=True)
-    replica_local = values_lib.SyncOnReadVariable(
-        None, (v,), variable_scope.VariableAggregation.MEAN)
-    self.assertEqual(2., self.evaluate(add1(replica_local)))
+    with distribution.scope():
+      v = variables_lib.Variable(
+          1.,
+          aggregation=variables_lib.VariableAggregation.MEAN,
+          synchronization=variables_lib.VariableSynchronization.ON_READ)
+
+    self.assertEqual(2., self.evaluate(add1(v)))
 
   @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testTensorConversion(self, distribution):
@@ -1244,6 +1252,33 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(replica_local.value(), ops.Tensor)
     self.assertEqual(self.evaluate(replica_local.value()),
                      self.evaluate(value_list[0].value()))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy_packed_var,
+          ],
+          mode=["eager"]))
+  def testValueInDefaultReplicaContext(self, distribution):
+    with distribution.scope():
+      v1 = variables_lib.Variable(
+          0.0,
+          aggregation=variables_lib.VariableAggregation.SUM,
+          synchronization=variables_lib.VariableSynchronization.ON_READ)
+      v2 = variables_lib.Variable(
+          0.0,
+          aggregation=variables_lib.VariableAggregation.SUM,
+          synchronization=variables_lib.VariableSynchronization.ON_READ)
+
+    @def_function.function
+    def replica_fn():
+      v1.assign_add(1.0)
+      v2.assign_add(2.0)
+
+    distribution.run(replica_fn)
+    sum_v = v1 + v2
+    self.assertEqual(sum_v, 6.0)
 
   @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testSaveAndRestoreReplicaLocalSumOneGraph(self, distribution):

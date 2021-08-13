@@ -17,14 +17,26 @@ limitations under the License.
 // small (and don't use the functionality).
 #include <iostream>
 
+#include "tensorflow/cc/experimental/libtf/impl/none.h"
 #include "tensorflow/cc/experimental/libtf/impl/string.h"
+#include "tensorflow/cc/experimental/libtf/impl/tensor_spec.h"
 
 namespace tf {
 namespace libtf {
 namespace impl {
 
+std::ostream& operator<<(std::ostream& o, const None& none) {
+  return o << "None";
+}
+
 std::ostream& operator<<(std::ostream& o, const String& str) {
   return o << str.str();
+}
+
+std::ostream& operator<<(std::ostream& o, const TensorSpec& x) {
+  o << "TensorSpec(shape = " << x.shape.DebugString() << ", dtype = " << x.dtype
+    << ")";
+  return o;
 }
 
 }  // namespace impl

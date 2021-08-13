@@ -187,15 +187,17 @@ class ParamResolverInterface {
                                    CancellationManager* cancel_mgr,
                                    const StatusCallback& done) = 0;
 
-  // Used within a distributed implementation to discover/verify
-  // data shared across a device group.
-  virtual void CompleteGroupAsync(const CompleteGroupRequest* request,
-                                  CompleteGroupResponse* response,
+  // Completes group_params with data gathered from all devices in the group.
+  // This blocks until all devices are there.
+  virtual void CompleteGroupAsync(const DeviceAttributes& device,
+                                  CollGroupParams* group_params,
                                   CancellationManager* cancel_mgr,
                                   const StatusCallback& done) = 0;
 
   // Used within a distributed implementation to discover/verify data
   // shared across an instance group.
+  // Note: this works differently from CompleteGroupAsync as a refactor is in
+  // progress.
   virtual void CompleteInstanceAsync(const CompleteInstanceRequest* request,
                                      CompleteInstanceResponse* response,
                                      CancellationManager* cancel_mgr,
@@ -227,7 +229,7 @@ class StepSequenceInterface {
   // Returns the step_id that should be used for initiating a new execution
   // on the specified graph. May return the same step_id multiple times if
   // RetireStepId or RefreshStepIdReservation is not called.
-  virtual int64 NextStepId(int64_t graph_key) = 0;
+  virtual int64_t NextStepId(int64_t graph_key) = 0;
 
   // Reports that execution of the given step has completed successfully.
   // Should be called immediately after a step completes with OK status,
@@ -374,7 +376,7 @@ struct CollectiveContext {
   OpKernelContext::Params* op_params;            // Not owned
   const CollectiveParams* col_params;            // Not owned
   const string exec_key;
-  const int64 step_id;
+  const int64_t step_id;
   const Tensor* input;  // Not owned
   Tensor* output;       // Not owned
   Device* device;       // The device for which this instance labors

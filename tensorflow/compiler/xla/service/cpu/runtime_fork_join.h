@@ -25,8 +25,8 @@ extern "C" {
 extern void __xla_cpu_runtime_ParallelForkJoin(
     void* result_ptr, const void* run_options_ptr, const void** params,
     void** buffer_table, tensorflow::uint64* prof_counters,
-    int32_t num_partitions, tensorflow::int64* partitions,
-    int32_t num_partitioned_dims, void* function_ptr);
+    int32_t num_partitions, int64_t* partitions, int32_t num_partitioned_dims,
+    void* function_ptr);
 
 }  // extern "C"
 

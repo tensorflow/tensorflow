@@ -184,9 +184,9 @@ Shape GetPerDeviceShape(const Shape& shape, const HloSharding& sharding,
     return shape;
   }
 
-  std::vector<int64> dimensions;
-  std::vector<int64> offset = sharding.TileOffsetForDevice(shape, device);
-  std::vector<int64> limit = sharding.TileLimitForDevice(shape, device);
+  std::vector<int64_t> dimensions;
+  std::vector<int64_t> offset = sharding.TileOffsetForDevice(shape, device);
+  std::vector<int64_t> limit = sharding.TileLimitForDevice(shape, device);
   dimensions.resize(limit.size());
   for (int64_t i = 0; i < limit.size(); ++i) {
     dimensions[i] = limit[i] - offset[i];

@@ -54,19 +54,19 @@ class LayoutAssignmentTest : public HloTestBase {
   void AssignLayouts(HloModule* m, ComputationLayout* entry_computation_layout,
                      ChannelLayoutConstraints* channel_constraints = nullptr) {
     LayoutAssignment layout_assignment(
-        entry_computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+        entry_computation_layout,
         /*channel_constraints=*/channel_constraints);
     EXPECT_IS_OK(layout_assignment.Run(m).status());
   }
 
-  std::vector<int64> LayoutOf(HloModule* m, absl::string_view name) {
+  std::vector<int64_t> LayoutOf(HloModule* m, absl::string_view name) {
     auto minor_to_major =
         FindInstruction(m, name)->shape().layout().minor_to_major();
-    return std::vector<int64>(minor_to_major.begin(), minor_to_major.end());
+    return std::vector<int64_t>(minor_to_major.begin(), minor_to_major.end());
   }
 
   void ExpectLayoutIs(const Shape& shape,
-                      absl::Span<const int64> minor_to_major) {
+                      absl::Span<const int64_t> minor_to_major) {
     const Layout expected = LayoutUtil::MakeLayout(minor_to_major);
     EXPECT_TRUE(LayoutUtil::Equal(shape.layout(), expected))
         << "Expected layout " << expected << ", actual " << shape.layout();
@@ -74,9 +74,9 @@ class LayoutAssignmentTest : public HloTestBase {
 
   void ExpectTupleLayoutIs(
       const Shape& shape,
-      std::initializer_list<absl::Span<const int64>> minor_to_majors) {
+      std::initializer_list<absl::Span<const int64_t>> minor_to_majors) {
     int i = 0;
-    for (const absl::Span<const int64> minor_to_major : minor_to_majors) {
+    for (const absl::Span<const int64_t> minor_to_major : minor_to_majors) {
       const Layout expected = LayoutUtil::MakeLayout(minor_to_major);
       const Layout& actual = ShapeUtil::GetTupleElementShape(shape, i).layout();
       EXPECT_TRUE(LayoutUtil::Equal(actual, expected))
@@ -90,7 +90,7 @@ class LayoutAssignmentTest : public HloTestBase {
 TEST_F(LayoutAssignmentTest, ComputationLayout) {
   // Verify the layouts of the root and parameter instructions of a computation
   // match the ComputationLayout for two different layouts.
-  std::vector<std::vector<int64>> minor_to_majors = {{0, 1}, {1, 0}};
+  std::vector<std::vector<int64_t>> minor_to_majors = {{0, 1}, {1, 0}};
   for (auto& minor_to_major : minor_to_majors) {
     auto builder = HloComputation::Builder(TestName());
     Shape ashape = ShapeUtil::MakeShape(F32, {42, 12});
@@ -159,7 +159,7 @@ TEST_F(LayoutAssignmentTest, FusionInstruction) {
   // Verify that the layout of the fused parameters in a fusion instruction
   // match that of the fusion operands. Other fused instructions should have no
   // layout.
-  std::vector<std::vector<int64>> minor_to_majors = {{0, 1}, {1, 0}};
+  std::vector<std::vector<int64_t>> minor_to_majors = {{0, 1}, {1, 0}};
   for (auto& minor_to_major : minor_to_majors) {
     auto builder = HloComputation::Builder(TestName());
     auto constant_literal1 = LiteralUtil::CreateR2WithLayout<float>(
@@ -1329,9 +1329,8 @@ Status AssignLayoutsToComputation(
         ->mutable_result_layout()
         ->SetToDefaultLayout();
   }
-  LayoutAssignment layout_assignment(
-      m->mutable_entry_computation_layout(),
-      LayoutAssignment::InstructionCanChangeLayout, channel_constraints);
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
+                                     channel_constraints);
   return layout_assignment.Run(m).status();
 }
 
@@ -1524,7 +1523,7 @@ ENTRY main {
   std::cerr << computation_layout.ToString();
   ChannelLayoutConstraints channel_constraints;
   LayoutAssignment layout_assignment(
-      &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+      &computation_layout,
       /*channel_constraints=*/&channel_constraints,
       /* reverse_computation_order = */ true);
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());

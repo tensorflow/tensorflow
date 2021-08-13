@@ -69,7 +69,7 @@ Status TapeOperation::SetAttrString(const char* attr_name, const char* data,
   return parent_op_->SetAttrString(attr_name, data, length);
 }
 Status TapeOperation::SetAttrInt(const char* attr_name, int64_t value) {
-  forward_op_.attrs.Set(attr_name, static_cast<int64>(value));
+  forward_op_.attrs.Set(attr_name, static_cast<int64_t>(value));
   return parent_op_->SetAttrInt(attr_name, value);
 }
 Status TapeOperation::SetAttrFloat(const char* attr_name, float value) {
@@ -139,8 +139,8 @@ Status TapeOperation::SetAttrFloatList(const char* attr_name,
 Status TapeOperation::SetAttrIntList(const char* attr_name,
                                      const int64_t* values, int num_values) {
   forward_op_.attrs.Set(
-      attr_name, gtl::ArraySlice<const int64>(
-                     reinterpret_cast<const int64*>(values), num_values));
+      attr_name, gtl::ArraySlice<const int64_t>(
+                     reinterpret_cast<const int64_t*>(values), num_values));
   return parent_op_->SetAttrIntList(attr_name, values, num_values);
 }
 Status TapeOperation::SetAttrTypeList(const char* attr_name,

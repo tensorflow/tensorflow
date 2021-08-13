@@ -48,7 +48,7 @@ enum Padding {
 
 // Returns an error if the padding attributes are invalid.
 Status CheckValidPadding(Padding padding_type,
-                         const std::vector<int64>& explicit_paddings,
+                         const std::vector<int64_t>& explicit_paddings,
                          int num_dims, TensorFormat data_format);
 
 // Return the string containing the list of valid padding types, that can be

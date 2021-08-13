@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/DenseMap.h"
@@ -81,6 +82,13 @@ bool IsCublasGemm(const HloInstruction& hlo);
 
 constexpr int64_t kWarpSize = 32;
 
+// Need at least 256 threads/block for reasonable tree reduction
+// performance (assuming all data fits).
+constexpr int64_t kMinThreadsXRowReduction = 256;
+
+// When doing batched row reduction, how big the batch dimension could be.
+static constexpr int64_t kBatchedReductionRaceFreeBound = 8;
+
 // A call to cuBLAS general matrix multiplication API.
 extern const char* const kGemmCallTarget;
 
@@ -115,7 +123,7 @@ bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
 //
 // These CustomCalls have window() and convolution_dimension_numbers() set like
 // regular convolution ops.  They have the same LHS and RHS operands, plus two
-// additional constant operands: an int64 operand for the cudnn algorithm and
+// additional constant operands: an int64_t operand for the cudnn algorithm and
 // a bool operand for whether tensor_ops is enabled. A value of -1 for the cudnn
 // algorithm means that the implementation is free to choose the best algorithm
 // it can.
@@ -206,7 +214,7 @@ struct ReductionDimensions {
   //
   // For row reduction, we do: [D, H, W] -> [D, H].
   // For column reduction, we do: [D, H, W] -> [D, W].
-  std::array<int64, 3> dimensions;
+  std::array<int64_t, 3> dimensions;
 };
 
 // Given the input shape and dimensions to reduce for a reduction, returns
@@ -220,11 +228,8 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
 ReductionDimensions GetReductionKindAndContiguousComponents(
     mlir::Operation* reduce);
 
-// Get tiling per thread for the given reduction in dimensions [D, H, W] per
-// thread.
-// If the device isn't known pass null for device_description and you will get
-// non-optimized value.
-std::array<int64, 3> GetReductionTiling(
+// Get tiling per thread for the given reduction in dimensions [D, H, W].
+std::array<int64_t, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     int smallest_input_dtype_bits,
     se::CudaComputeCapability cuda_compute_capability);
@@ -305,6 +310,11 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     absl::Span<const BufferAllocation> allocations);
 
 Shape GetShape(mlir::Value value);
+
+// Returns whether the given reduction can be safely generated without atomics:
+// that is, at most one block will write to every output element.
+bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
+                         const std::array<int64_t, 3>& reduction_tiling);
 
 }  // namespace gpu
 }  // namespace xla

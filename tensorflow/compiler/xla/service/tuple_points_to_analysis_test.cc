@@ -653,8 +653,8 @@ TEST_F(TuplePointsToAnalysisTest, CustomCall) {
       ShapeUtil::MakeTupleShape({data_shape, data_shape}), {constant},
       "TestOp"));
   Cast<HloCustomCallInstruction>(ccall)->set_output_to_operand_aliasing(
-      {std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>{
-          ShapeIndex{1}, std::pair<int64, ShapeIndex>(0, {})}});
+      {std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>{
+          ShapeIndex{1}, std::pair<int64_t, ShapeIndex>(0, {})}});
   auto gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(data_shape, ccall, 0));
   auto gte1 = builder.AddInstruction(

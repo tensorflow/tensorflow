@@ -164,9 +164,9 @@ PaddingConfig MakeNoPaddingConfig(int64_t rank) {
 }
 
 PaddingConfig MakeEdgePaddingConfig(
-    absl::Span<const std::pair<int64, int64>> padding) {
+    absl::Span<const std::pair<int64_t, int64_t>> padding) {
   PaddingConfig padding_config;
-  for (const std::pair<int64, int64>& dim : padding) {
+  for (const std::pair<int64_t, int64_t>& dim : padding) {
     auto dimension = padding_config.add_dimensions();
     dimension->set_edge_padding_low(dim.first);
     dimension->set_edge_padding_high(dim.second);
@@ -192,7 +192,7 @@ string HumanReadableNumOps(double flops, double nanoseconds,
   }
   double nano_flops = flops / nanoseconds;
   string throughput = tensorflow::strings::HumanReadableNum(
-      static_cast<int64>(nano_flops * 1e9));
+      static_cast<int64_t>(nano_flops * 1e9));
   absl::string_view sp(throughput);
   // Use the more common "G(FLOPS)", rather than "B(FLOPS)"
   if (absl::EndsWith(sp, "B") ||  // Ends in 'B', ignoring case
@@ -241,15 +241,15 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
   }
 }
 
-int64 Product(absl::Span<const int64> xs) {
-  return std::accumulate(xs.begin(), xs.end(), static_cast<int64>(1),
-                         std::multiplies<int64>());
+int64_t Product(absl::Span<const int64_t> xs) {
+  return std::accumulate(xs.begin(), xs.end(), static_cast<int64_t>(1),
+                         std::multiplies<int64_t>());
 }
 
-absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
-    absl::Span<const int64> a, absl::Span<const int64> b) {
+absl::InlinedVector<std::pair<int64_t, int64_t>, 8> CommonFactors(
+    absl::Span<const int64_t> a, absl::Span<const int64_t> b) {
   CHECK_EQ(Product(a), Product(b));
-  absl::InlinedVector<std::pair<int64, int64>, 8> bounds;
+  absl::InlinedVector<std::pair<int64_t, int64_t>, 8> bounds;
   if (absl::c_equal(a, b)) {
     bounds.reserve(a.size() + 1);
     for (int64_t i = 0; i <= a.size(); ++i) {
@@ -319,8 +319,8 @@ absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
 }
 
 ConvertedDimensionNumbers ConvertDimensionNumbers(
-    absl::Span<const int64> from_dimensions, absl::Span<const int64> from_sizes,
-    absl::Span<const int64> to_sizes) {
+    absl::Span<const int64_t> from_dimensions,
+    absl::Span<const int64_t> from_sizes, absl::Span<const int64_t> to_sizes) {
   ConvertedDimensionNumbers dimensions;
   auto common_factors = CommonFactors(from_sizes, to_sizes);
   for (int64_t i = 0; i < common_factors.size() - 1; ++i) {
