@@ -20,8 +20,10 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -106,6 +108,21 @@ class BincountTest(test_util.TensorFlowTestCase):
         self.assertAllClose(
             self.evaluate(bincount_ops.bincount(arr, None)),
             np.bincount(arr, weights))
+
+  def test_bincount_determinism_error(self):
+    num_samples = 10000
+    np.random.seed(42)
+    arr = np.random.randint(0, 1000, num_samples)
+    try:
+      config.enable_deterministic_ops(True)
+      with test_util.use_gpu():
+        if test_util.is_gpu_available(cuda_only=True):
+          with self.assertRaisesRegexp(
+              errors_impl.UnimplementedError, "Determinism is not yet "
+              "supported for Bincount."):
+            self.evaluate(bincount_ops.bincount(arr, None))
+    finally:
+      config.enable_deterministic_ops(False)
 
   def test_zero_weights(self):
     with self.session():
