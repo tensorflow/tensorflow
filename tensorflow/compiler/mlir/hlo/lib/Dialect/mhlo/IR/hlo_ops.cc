@@ -1400,6 +1400,45 @@ class ConcatenateOperandRemoval : public OpRewritePattern<ConcatenateOp> {
     return failure();
   }
 };
+
+class ConcatenateForwarding : public OpRewritePattern<ConcatenateOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(ConcatenateOp op,
+                                PatternRewriter& rewriter) const override {
+    auto getFlattenedOperands = [&](const Value& val) -> ValueRange {
+      auto definingOp = dyn_cast_or_null<ConcatenateOp>(val.getDefiningOp());
+      // To avoid inflate the memory footprint, only flatten the ConcatenateOp
+      // when it has only one use.
+      if (definingOp && definingOp->hasOneUse() &&
+          definingOp.dimension() == op.dimension())
+        return definingOp.val();
+      return val;
+    };
+
+    bool needToFlatten = false;
+    int operandCount = 0;
+    llvm::for_each(op.val(), [&](Value val) {
+      auto result = getFlattenedOperands(val);
+      if (result.size() != 1 || result[0] != val) needToFlatten = true;
+      operandCount += result.size();
+    });
+
+    if (!needToFlatten) return failure();
+
+    llvm::SmallVector<Value, 6> newOperands;
+    newOperands.reserve(operandCount);
+
+    for (auto operand : op.val()) {
+      auto flattenedOperands = getFlattenedOperands(operand);
+      newOperands.append(flattenedOperands.begin(), flattenedOperands.end());
+    }
+
+    rewriter.replaceOpWithNewOp<ConcatenateOp>(op, op.getResult().getType(),
+                                               newOperands, op.dimension());
+    return success();
+  }
+};
+
 }  // namespace
 
 LogicalResult ConcatenateOp::inferReturnTypes(
@@ -1484,7 +1523,7 @@ LogicalResult ConcatenateOp::inferReturnTypes(
 
 void ConcatenateOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<ConcatenateOperandRemoval>(context);
+  results.insert<ConcatenateOperandRemoval, ConcatenateForwarding>(context);
 }
 
 template <typename T>
