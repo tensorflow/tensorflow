@@ -8,7 +8,9 @@ tensorflow/compiler/mlir/glob_lit_test.bzl
 tensorflow/compiler/mlir/hlo/WORKSPACE
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h
 tensorflow/core/tfrt/tpu/tpu_resources.h
+tensorflow/go/README.md
 tensorflow/go/op/wrappers.go
+tensorflow/java/README.md
 tensorflow/lite/core/shims/BUILD
 tensorflow/lite/core/shims/c/builtin_op_data.h
 tensorflow/lite/core/shims/c/c_api.h
