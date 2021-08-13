@@ -47,7 +47,7 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
-#include <fp16.h>
+#include "fp16.h"  // from @FP16
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
