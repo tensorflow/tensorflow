@@ -548,7 +548,7 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
     py::handle aval = arg.attr("aval");
     TF_ASSIGN_OR_RETURN(auto dtype, DtypeToPrimitiveType(aval.attr("dtype")));
     return PyArgSignature(dtype,
-                          py::cast<std::vector<int64>>(aval.attr("shape")),
+                          py::cast<std::vector<int64_t>>(aval.attr("shape")),
                           sda->weak_type());
   }
 
