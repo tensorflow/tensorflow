@@ -526,6 +526,7 @@ tf_cuda_cc_test(
     ),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # TODO(b/171341759): re-enable.
+        "no_cuda",  # TODO(b/196608406): re-enable
     ],
     deps = [
         ":base_ops_test",
