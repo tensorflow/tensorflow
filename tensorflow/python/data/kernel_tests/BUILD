@@ -592,7 +592,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "multi_device_iterator_test",
-    size = "small",
+    size = "medium",
     srcs = ["multi_device_iterator_test.py"],
     shard_count = 2,
     tags = [
@@ -840,7 +840,7 @@ tf_py_test(
 
 tf_py_test(
     name = "shuffle_test",
-    size = "small",
+    size = "medium",
     srcs = ["shuffle_test.py"],
     shard_count = 4,
     deps = [
