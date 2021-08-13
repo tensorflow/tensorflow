@@ -437,15 +437,15 @@ HloSharding ReverseSharding(const HloSharding& sharding,
   }
 
   Array<int64_t> new_tile_assignment(sharding.tile_assignment().dimensions());
-  new_tile_assignment.Each([&](absl::Span<const int64_t> indices,
-                               int64_t* device) {
-    std::vector<int64_t> original_indices(indices.begin(), indices.end());
-    for (int64_t d : dimensions) {
-      original_indices[d] =
-          new_tile_assignment.dim(d) - 1 - original_indices[d];
-    }
-    *device = sharding.tile_assignment()(original_indices);
-  });
+  new_tile_assignment.Each(
+      [&](absl::Span<const int64_t> indices, int64_t* device) {
+        std::vector<int64_t> original_indices(indices.begin(), indices.end());
+        for (int64_t d : dimensions) {
+          original_indices[d] =
+              new_tile_assignment.dim(d) - 1 - original_indices[d];
+        }
+        *device = sharding.tile_assignment()(original_indices);
+      });
   return sharding.ReplicateOnLastTileDim()
              ? HloSharding::PartialTile(new_tile_assignment,
                                         sharding.metadata())
@@ -677,7 +677,7 @@ HloSharding ScatterIndexSharding(const HloSharding& data_sharding,
 
   const ScatterDimensionNumbers& dnums = hlo->scatter_dimension_numbers();
   std::vector<int64_t> index_tile_assignment_dims;
-  for (int64_t i = 0; i < hlo->shape().rank(); ++i) {
+  for (int64_t i = 0; i < hlo->operand(2)->shape().rank(); ++i) {
     if (!absl::c_binary_search(dnums.update_window_dims(), i)) {
       index_tile_assignment_dims.push_back(
           data_sharding.tile_assignment().dim(i));
