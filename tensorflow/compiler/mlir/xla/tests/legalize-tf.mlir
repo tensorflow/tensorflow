@@ -5404,3 +5404,14 @@ func @simple_print() -> (tensor<*xi32>) {
   %print = "tf.Print"(%const) { message = "bla" } : (tensor<*xi32>) -> (tensor<*xi32>)
   return %print: tensor<*xi32>
 }
+
+//===----------------------------------------------------------------------===//
+// tf.NextAfter legalization
+//===----------------------------------------------------------------------===//
+// CHECK-LABEL: func @nextafter
+func @nextafter(%arg0: tensor<2xf32>, %arg1 : tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK-NEXT:  %0 = chlo.broadcast_next_after %arg0, %arg1 : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK-NEXT:  return %0 : tensor<2xf32>
+  %0 = "tf.NextAfter"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %0: tensor<2xf32>
+}

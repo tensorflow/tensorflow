@@ -816,6 +816,34 @@ GENERATE_DEFAULT_TESTS(MulNoNan,
                        std::complex<double>, baseline_mul_no_nan,
                        test::OpsTestConfig())
 
+/// Test `tf.NextAfter`.
+
+template <typename T>
+T baseline_nextafter(T from, T to) {
+  T res = std::nextafter(from, to);
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+  // The Eigen GPU kernel returns the next normal value if ftz is set.
+  if (!std::isnormal(res)) {
+    if (res < 0 && res > -1) {                // NOLINT
+      return -std::numeric_limits<T>::min();  // NOLINT
+    }
+    if (res > 0 && res < 1) {                // NOLINT
+      return std::numeric_limits<T>::min();  // NOLINT
+    }
+  }
+#endif
+  return res;
+}
+
+GENERATE_DEFAULT_TESTS(NextAfter, /*test_name=*/Float, float, float,
+                       baseline_nextafter,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TESTS(NextAfter, /*test_name=*/Double, double, double,
+                       std::nextafter,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+
 /// Test `tf.NotEqual`.
 
 template <typename T>
