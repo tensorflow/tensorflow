@@ -412,8 +412,9 @@ static void ExecuteImpl(Executable& executable,
   // Bind execution trace to the request context.
   TraceMe trace_me([&] {
     int64_t id = exec_ctx.request_ctx()->id();
+    absl::string_view name(executable.name().data(), executable.name().size());
     return TraceMeEncode("tf_cpurt.Execute",
-                         {{"id", id}, {"executable", executable.name()}});
+                         {{"id", id}, {"executable", name}});
   });
 
   // Keep track of memory address to tensor mapping for result conversion.
