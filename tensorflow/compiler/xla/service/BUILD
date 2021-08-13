@@ -83,10 +83,12 @@ cc_library(
     srcs = ["async_collective_creator.cc"],
     hdrs = ["async_collective_creator.h"],
     deps = [
+        ":computation_placer_hdr",
         ":hlo",
         ":hlo_casting_utils",
         ":hlo_pass",
         ":shape_inference",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

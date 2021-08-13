@@ -485,8 +485,11 @@ Status GpuCompiler::OptimizeHloModule(
     if (hlo_module->config()
             .debug_options()
             .xla_gpu_enable_async_all_reduce()) {
-      pipeline.AddPass<AsyncCollectiveCreator>(/*convert_all_reduce=*/true,
-                                               /*convert_all_gather=*/false);
+      pipeline.AddPass<AsyncCollectiveCreator>(
+          AsyncCollectiveCreator::CollectiveCreatorConfig{
+              /*convert_all_reduce=*/true,
+              /*convert_all_gather=*/false,
+              /*convert_collective_permute=*/false});
     }
 
     pipeline.AddPass<CollectivesScheduleLinearizer>();
