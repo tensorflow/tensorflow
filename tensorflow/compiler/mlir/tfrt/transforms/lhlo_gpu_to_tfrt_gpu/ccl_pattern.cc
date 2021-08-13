@@ -80,16 +80,40 @@ FailureOr<ncclDataType_t> ToNcclDataType(xla::PrimitiveType element_type) {
   }
 }
 
-FailureOr<Value> CclOpConversionRewrite(lmhlo::AllReduceOp srcOp, Value chain,
-                                        Value stream,
+FailureOr<Value> CclOpConversionRewrite(lmhlo::AllGatherOp srcOp, Value chain,
+                                        Value stream, Value handle,
                                         mlir::BlockAndValueMapping& mapping,
                                         ConversionPatternRewriter& rewriter) {
   const auto& operands = srcOp.operands();
   const auto& results = srcOp.results();
-  if (operands.size() != results.size()) {
-    return rewriter.notifyMatchFailure(
-        srcOp, "Number of operands and results do not match.");
+
+  for (int i = 0; i < operands.size(); i++) {
+    xla::Shape shape = xla::TypeToShape(operands[i].getType());
+    auto nccl_data_type_or = ToNcclDataType(shape.element_type());
+    if (mlir::failed(nccl_data_type_or)) {
+      return rewriter.notifyMatchFailure(
+          srcOp, "Failed to convert operand data type to ncclDataType_t.");
+    }
+    ncclDataType_t nccl_data_type = nccl_data_type_or.getValue();
+
+    Value input = mapping.lookup(operands[i]);
+    Value output = mapping.lookup(results[i]);
+
+    chain =
+        rewriter
+            .create<tfrt::gpu::CclAllGatherOp>(srcOp.getLoc(), handle, input,
+                                               output, nccl_data_type, chain)
+            .getResult();
   }
+  return chain;
+}
+
+FailureOr<Value> CclOpConversionRewrite(lmhlo::AllReduceOp srcOp, Value chain,
+                                        Value stream, Value handle,
+                                        mlir::BlockAndValueMapping& mapping,
+                                        ConversionPatternRewriter& rewriter) {
+  const auto& operands = srcOp.operands();
+  const auto& results = srcOp.results();
 
   auto reduction_kind =
       xla::gpu::NcclAllReduceThunkBase::MatchAllReduceComputation(
@@ -100,13 +124,6 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::AllReduceOp srcOp, Value chain,
         "Failed to match the reduction computation to a reduction kind.");
   }
   ncclRedOp_t reduction_op = ToNcclReduction(*reduction_kind);
-
-  auto context =
-      rewriter.create<tfrt::gpu::StreamGetContextOp>(srcOp.getLoc(), stream)
-          .getResult();
-
-  auto handle = rewriter.create<xla::gpu::CclCreateOp>(srcOp.getLoc(), context)
-                    .getResult();
 
   for (int i = 0; i < operands.size(); i++) {
     xla::Shape shape = xla::TypeToShape(operands[i].getType());
@@ -126,34 +143,50 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::AllReduceOp srcOp, Value chain,
                     reduction_op, chain)
                 .getResult();
   }
-
-  return rewriter
-      .create<tfrt::gpu::CclExecuteOp>(srcOp.getLoc(), stream, handle, chain)
-      .getResult();
+  return chain;
 }
 
-// TODO(hanbinyoon): Support additional lmhlo collective ops (in addition to
-// lmhlo::AllReduceOp).
-struct CclRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo::AllReduceOp> {
+template <class CclOpType>
+struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
   using tfrt::gpu::GpuAsyncOpConversionPattern<
-      lmhlo::AllReduceOp>::GpuAsyncOpConversionPattern;
+      CclOpType>::GpuAsyncOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
-      lmhlo::AllReduceOp op, Value chain, Value stream,
-      ArrayRef<Value> operands,
+      CclOpType op, Value chain, Value stream, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const override {
+    if (op.operands().size() != op.results().size()) {
+      return rewriter.notifyMatchFailure(
+          op, "Number of op inputs does not match number of op outputs.");
+    }
+
     if (!all_of(operands, [](Value operand) {
           return operand.getType().isa<tfrt::gpu::BufferType>();
         }))
       return rewriter.notifyMatchFailure(op, "expected buffer operands");
 
+    if (operands.size() != op.operands().size() + op.results().size()) {
+      return rewriter.notifyMatchFailure(
+          op,
+          "Number of buffer operands does not match the number of op inputs "
+          "and outputs.");
+    }
+
     BlockAndValueMapping mapping;
     for (auto pair : llvm::zip_first(op->getOperands(), operands))
       mapping.map(std::get<0>(pair), std::get<1>(pair));
 
+    auto context =
+        rewriter.create<tfrt::gpu::StreamGetContextOp>(op.getLoc(), stream)
+            .getResult();
+    auto handle = rewriter.create<xla::gpu::CclCreateOp>(op.getLoc(), context)
+                      .getResult();
+
     auto out_chain_or =
-        CclOpConversionRewrite(op, chain, stream, mapping, rewriter);
+        CclOpConversionRewrite(op, chain, stream, handle, mapping, rewriter);
     if (mlir::succeeded(out_chain_or)) {
+      out_chain_or = rewriter
+                         .create<tfrt::gpu::CclExecuteOp>(op.getLoc(), stream,
+                                                          handle, *out_chain_or)
+                         .getResult();
       rewriter.eraseOp(op);
     }
     return out_chain_or;
@@ -163,7 +196,10 @@ struct CclRewritePattern
 }  // namespace
 
 void populateCclConversionPattern(RewritePatternSet& patterns) {
-  patterns.add<CclRewritePattern>(patterns.getContext());
+  // TODO(hanbinyoon): Support additional lmhlo collective ops (in addition to
+  // lmhlo::AllGatherOp and lmhlo::AllReduceOp).
+  patterns.add<CclRewritePattern<lmhlo::AllGatherOp>,
+               CclRewritePattern<lmhlo::AllReduceOp>>(patterns.getContext());
 }
 
 }  // namespace tensorflow

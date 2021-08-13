@@ -98,6 +98,10 @@ class BefThunk : public Thunk {
         bef_buffer_(std::move(bef_buffer)),
         bef_file_(std::move(bef_file)) {
     // TODO(hanbinyoon): Also handle other collective ops.
+    if (auto all_gather_op = mlir::dyn_cast<mlir::lmhlo::AllGatherOp>(*op)) {
+      xccl_config_ = GetNcclCollectiveConfigForMlir(
+          all_gather_op, all_gather_op.use_global_device_ids());
+    }
     if (auto all_reduce_op = mlir::dyn_cast<mlir::lmhlo::AllReduceOp>(*op)) {
       xccl_config_ = GetNcclCollectiveConfigForMlir(
           all_reduce_op, all_reduce_op.use_global_device_ids());
@@ -166,6 +170,9 @@ static StatusOr<tfrt::BefBuffer> ConvertToBef(mlir::ModuleOp module) {
 static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
   if (mlir::isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(op)) {
     return Thunk::Kind::kGemm;
+  }
+  if (mlir::isa<mlir::lmhlo::AllGatherOp>(op)) {
+    return Thunk::Kind::kNcclAllGather;
   }
   if (mlir::isa<mlir::lmhlo::AllReduceOp>(op)) {
     return Thunk::Kind::kNcclAllReduce;
