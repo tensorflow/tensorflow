@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
@@ -35,6 +36,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
+#include "tensorflow/compiler/xla/python/py_values.h"
+#include "tensorflow/compiler/xla/python/sharded_device_array.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
@@ -45,28 +48,138 @@ namespace py = pybind11;
 
 namespace {
 
+// Specifies how to shard the inputs. Even though everything could be computed
+// from `sharding_specs` and the argument shape, we cache derived computations
+// for performance.
+struct InputSpec {
+  InputSpec(ShardingSpec sharding_spec, py::object indices)
+      : sharding_spec(std::move(sharding_spec)), indices(std::move(indices)) {}
+  ShardingSpec sharding_spec;
+  py::object indices;
+};
+
+// An object containing the arguments to create ShardedDeviceArray from the
+// output buffers.
+struct ResultSpec {
+ public:
+  ResultSpec(py::object aval, ShardingSpec out_spec, py::object out_indices)
+      : out_aval(std::move(aval)),
+        weak_type(py::cast<bool>(out_aval.attr("weak_type"))),
+        out_spec(std::move(out_spec)),
+        out_indices(std::move(out_indices)) {}
+  py::object out_aval;
+  bool weak_type;
+  ShardingSpec out_spec;
+  py::object out_indices;
+};
+
+// The result of `ShardArg`.
+struct ShardArgResult {
+  // Points to the on-device buffers. Not owned.
+  // Size `num_devices`.
+  std::vector<xla::PjRtBuffer*> per_device_buffers;
+
+  // The Python argument will be always be copied to `owning_sda`.
+  // If we need to copy data to a device, the newly created buffers will be
+  // added to `owned_buffers`.
+  std::vector<std::unique_ptr<xla::PjRtBuffer>> owned_buffers;
+  py::object owning_sda;
+};
+
+// Shars a single argument over devices.
+//
+// We currently only support fully in C++, C++ ShardedDeviceArray. For all
+// other usages, we call a Python function returning C++ ShardedDeviceArray
+// that will be casted back to the C++ objects.
+//
+// This function is not usable for JAX extensions that do not comply with the
+// PjRt interfaces.
+//
+// Arguments:
+// `arg`: The object to shard across `devices`. If a `ShardedDeviceArray`,
+//   a fast-path will be executed if it's already correctly sharded.
+//
+// Returns a failure Status when an unrecoverable error occured, so we don't
+// need to fallback to Python.
+//
+// Both `devices` and `sharding_spec` has the same length.
+xla::StatusOr<ShardArgResult> ShardArg(
+    py::handle arg, absl::Span<xla::PjRtDevice* const> devices,
+    const InputSpec& input_spec, py::handle py_devices,
+    const py::function& python_fallback) {
+  static PyObject* sda_type = []() {
+    return py::type::handle_of<ShardedDeviceArray>().ptr();
+  }();
+  if (arg.get_type().ptr() == sda_type) {
+    ShardedDeviceArray* sda = py::cast<ShardedDeviceArray*>(arg);
+    const ShardingSpec& sharding_spec = input_spec.sharding_spec;
+    if (sharding_spec == sda->GetShardingSpec()) {
+      const int num_devices = devices.size();
+      TF_ASSIGN_OR_RETURN(absl::Span<xla::PjRtBuffer* const> sda_buffers,
+                          sda->GetPjRtBuffers());
+      CHECK_EQ(sda_buffers.size(), num_devices);
+
+      ShardArgResult result;
+      result.owning_sda = py::reinterpret_borrow<py::object>(arg);
+      std::vector<xla::PjRtBuffer*>& per_device_buffers =
+          result.per_device_buffers;
+      per_device_buffers.reserve(num_devices);
+
+      for (int i = 0; i < num_devices; ++i) {
+        xla::PjRtBuffer* current_buffer = sda_buffers[i];
+        if (devices[i] == current_buffer->device()) {  // Pointer equality.
+          per_device_buffers.push_back(current_buffer);
+        } else {
+          TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> out,
+                              current_buffer->CopyToDevice(devices[i]));
+          per_device_buffers.push_back(out.get());
+          result.owned_buffers.push_back(std::move(out));
+        }
+      }
+      return result;
+    }
+  }
+
+  // This fallback is better than nothing, but ideally we should be able to
+  // convert the argument in C++. At least, we can call the C++ DevicePut from
+  // Python.
+  auto per_device_pybuffers =
+      py::cast<py::list>(python_fallback(arg, py_devices, input_spec.indices));
+  ShardArgResult result;
+  result.owning_sda = py::reinterpret_borrow<py::object>(per_device_pybuffers);
+  std::vector<xla::PjRtBuffer*>& per_device_buffers = result.per_device_buffers;
+  if (!per_device_pybuffers.empty()) {
+    per_device_buffers.reserve(per_device_pybuffers.size());
+
+    // The JAX Python shard_arg function is expected to return JAX PyBuffer
+    // objects. If executing a JAX extension, it should have fallbacked to
+    // Python well before this point.
+    TF_RET_CHECK(xla::PyBuffer::IsPyBuffer(per_device_pybuffers[0]));
+    for (py::handle per_device_pybuffer : per_device_pybuffers) {
+      xla::PjRtBuffer* buf =
+          xla::PyBuffer::AsPyBuffer(per_device_pybuffer).ValueOrDie()->buffer();
+      per_device_buffers.push_back(buf);
+    }
+  }
+  return result;
+}
+
 struct PmapCacheEntry {
-  // To get a first version running, we use extensively Python here for the
-  // handling of the arguments and outputs.
-  // TODO(jblespiau): Move more to C++.
   std::shared_ptr<xla::PyExecutable> executable;
-  // See _cpp_pmap in api.py.
-  py::object backend;
-  // A function taking as argument a list of arguments and returns a list of
-  // list of buffers `[num_devices x num_args]`.
-  py::function handle_args;
-  // A function taking as argument the output of `ExecuteShardedOnLocalDevices`
-  // and returning a list of ShardedDeviceArray objects.
-  py::function out_handler;
+  // The value `backend.local_devices()`.
+  py::object py_devices;  // To pass back to Python.
+  std::vector<xla::PjRtDevice*> devices;
+  std::vector<InputSpec> input_specs;
   xla::PyTreeDef out_pytree_def;
+  // Objects necessary to build the out ShardedDeviceArray objects.
+  std::vector<ResultSpec> out_result_specs;
 
   // Ensures a single thread performs the compilation for a given executable.
   //
   // The first thread (holding the GIL) will create the CacheEntry associated to
-  // a signature and if the object has been insterted already, other threads
+  // a signature and if the object has been inserted already, other threads
   // will wait for the notification.
   absl::Notification compilation_complete;
-  absl::optional<xla::Status> compilation_error = absl::nullopt;
 
   bool fall_back_to_python = false;
 };
@@ -79,10 +192,12 @@ struct PmapCacheEntry {
 class PmapFunction {
  public:
   PmapFunction(py::function fun, py::function cache_miss,
-               std::vector<int> static_argnums)
+               std::vector<int> static_argnums,
+               py::function python_shard_arg_fallback)
       : fun_(std::move(fun)),
         cache_miss_(std::move(cache_miss)),
-        static_argnums_(std::move(static_argnums)) {
+        static_argnums_(std::move(static_argnums)),
+        python_shard_arg_fallback_(std::move(python_shard_arg_fallback)) {
     std::sort(static_argnums_.begin(), static_argnums_.end());
   }
 
@@ -92,7 +207,7 @@ class PmapFunction {
   // (c) call the executable
   // (d) construct `ShardedDeviceArray` objects from the outputs
   // (e) reconstruct the `PyTree`.
-  py::object Call(py::args args, py::kwargs kwargs);
+  xla::StatusOr<py::object> Call(py::args args, py::kwargs kwargs);
 
   py::object PythonSignature() {
     static const auto* inspect = new py::module(py::module::import("inspect"));
@@ -102,12 +217,9 @@ class PmapFunction {
   int cache_size() const { return executables_.size(); }
 
  private:
-  // Returns nullptr if not present in the cache.
-  PmapCacheEntry* GetCacheEntryIfPresent(const CallSignature& signature);
-  // Should never return nullptr.
-  PmapCacheEntry* AddCacheEntry(const py::args& args, const py::kwargs& kwargs,
-                                const CallSignature& signature,
-                                py::object out_and_fastpath_data);
+  void PopulateCacheEntry(PmapCacheEntry* cache_entry,
+                          const CallSignature& signature,
+                          const py::tuple& out_and_fastpath_data);
 
   bool always_fallback_to_python_ = false;
 
@@ -122,46 +234,21 @@ class PmapFunction {
   absl::flat_hash_map<CallSignature, std::unique_ptr<PmapCacheEntry>>
       executables_;
 
-  // A vector of size `num_outputs`, specifying the sharding of each output
-  std::vector<ShardingSpec> sharding_specs_;
+  // The fallback function to use with `ShardArgs`.
+  // TODO(jblespiau): Add support for more types from C++.
+  py::function python_shard_arg_fallback_;
 };
 
-PmapCacheEntry* PmapFunction::GetCacheEntryIfPresent(
-    const CallSignature& signature) {
-  auto found_iterator = executables_.find(signature);
-  if (found_iterator != executables_.end()) {  // Cache hit!
-    if (!found_iterator->second->compilation_complete.HasBeenNotified()) {
-      py::gil_scoped_release gil_release;
-      found_iterator->second->compilation_complete.WaitForNotification();
-    }
-    if (found_iterator->second->compilation_error) {
-      throw std::invalid_argument(
-          found_iterator->second->compilation_error.value().error_message());
-    }
-    return found_iterator->second.get();
-  }
-  return nullptr;
-}
-
-PmapCacheEntry* PmapFunction::AddCacheEntry(const py::args& args,
-                                            const py::kwargs& kwargs,
-                                            const CallSignature& signature,
-                                            py::object out_and_fastpath_data) {
-  // We need to insert the element.
-  auto result =
-      executables_.emplace(signature, std::make_unique<PmapCacheEntry>());
-  auto it = result.first;
-  PmapCacheEntry* cache_entry = it->second.get();
-
-  py::tuple tuple = py::cast<py::tuple>(out_and_fastpath_data);
-  CHECK_EQ(tuple.size(), 2);
-  if (tuple[1].is_none()) {
+void PmapFunction::PopulateCacheEntry(PmapCacheEntry* cache_entry,
+                                      const CallSignature& signature,
+                                      const py::tuple& out_and_fastpath_data) {
+  CHECK_EQ(out_and_fastpath_data.size(), 2);
+  if (out_and_fastpath_data[1].is_none()) {
     cache_entry->fall_back_to_python = true;
-    cache_entry->compilation_complete.Notify();
-    return cache_entry;
+    return;
   }
 
-  py::tuple pmap_data = py::cast<py::tuple>(tuple[1]);
+  py::tuple pmap_data = py::cast<py::tuple>(out_and_fastpath_data[1]);
   if (py::cast<int>(pmap_data.attr("version")) != 1) {
     throw std::runtime_error(absl::StrCat(
         "The versions of jaxlib and Jax are incompatible (pmap cpp version 1 "
@@ -172,30 +259,67 @@ PmapCacheEntry* PmapFunction::AddCacheEntry(const py::args& args,
   }
   // See api.py::_PmapFastpathData in the JAX code base for the expected
   // namedtuple.
-  auto executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
-      pmap_data.attr("xla_executable"));
+  std::shared_ptr<xla::PyExecutable> executable;
+  try {
+    executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
+        pmap_data.attr("xla_executable"));
+  } catch (const py::cast_error& e) {
+    // Backends that don't implement the C++ PjRt APIs
+    always_fallback_to_python_ = true;
+    return;
+  }
   cache_entry->executable = std::move(executable);
-  cache_entry->handle_args =
-      py::cast<py::function>(pmap_data.attr("in_handler"));
-  cache_entry->out_handler =
-      py::cast<py::function>(pmap_data.attr("out_handler"));
+
+  const std::vector<xla::ClientAndPtr<xla::PjRtDevice>>& client_and_devices =
+      cache_entry->executable->AddressableDevices();
+  cache_entry->devices.reserve(client_and_devices.size());
+  for (auto& client_and_device : client_and_devices) {
+    cache_entry->devices.push_back(client_and_device.get());
+  }
+
+  // Inputs shard args details.
+  auto input_sharding_specs = py::cast<std::vector<ShardingSpec>>(
+      pmap_data.attr("input_sharding_specs"));
+  py::list input_indices = pmap_data.attr("input_indices");
+
+  cache_entry->py_devices = pmap_data.attr("input_devices");
+  auto input_devices =
+      py::cast<std::vector<xla::PjRtDevice*>>(pmap_data.attr("input_devices"));
+  CHECK_EQ(input_sharding_specs.size(), input_indices.size());
+  cache_entry->input_specs.reserve(input_sharding_specs.size());
+  for (int i = 0; i < input_sharding_specs.size(); ++i) {
+    cache_entry->input_specs.emplace_back(input_sharding_specs[i],
+                                          input_indices[i]);
+  }
+
+  // Outputs specs.
   auto out_tree = py::cast<xla::PyTreeDef>(pmap_data.attr("out_pytree_def"));
   cache_entry->out_pytree_def = std::move(out_tree);
+  py::list out_avals = pmap_data.attr("out_avals");
+  py::list out_indices = pmap_data.attr("out_indices");
+  auto out_sharding_specs =
+      py::cast<std::vector<ShardingSpec>>(pmap_data.attr("out_sharding_specs"));
+  CHECK_EQ(out_avals.size(), out_indices.size());
+  CHECK_EQ(out_indices.size(), out_sharding_specs.size());
 
-  cache_entry->compilation_complete.Notify();
-  return cache_entry;
+  cache_entry->out_result_specs.reserve(out_avals.size());
+  for (int i = 0; i < out_avals.size(); ++i) {
+    cache_entry->out_result_specs.emplace_back(
+        out_avals[i], std::move(out_sharding_specs[i]), out_indices[i]);
+  }
 }
 
-py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
+xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
   if (always_fallback_to_python_) {
-    return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
 
   ParsedArgumentsAsBuffers arguments;
-  if (!ParseArguments(args, kwargs, static_argnums_, /*static_argnames=*/{},
-                      arguments)
-           .ok()) {
-    return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+  xla::Status status = ParseArguments(args, kwargs, static_argnums_,
+                                      /*static_argnames=*/{}, arguments);
+  if (!status.ok()) {
+    VLOG(2) << "ParseArguments failed: " << status;
+    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
 
   // Get dynamic argument signatures.
@@ -206,7 +330,9 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   for (py::handle arg : arguments.flat_dynamic_args) {
     auto signature_or_error = xla::PyArgSignatureOfValue(arg, jax_enable_x64);
     if (!signature_or_error.ok()) {
-      return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+      VLOG(2) << "PyArgSignatureOfValue failed: "
+              << signature_or_error.status();
+      return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
     }
     arguments.signature.dynamic_arg_signatures.push_back(
         std::move(signature_or_error).ValueOrDie());
@@ -215,68 +341,150 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
 
   // Retrieve/Maybe add the executable to the cache.
-  PmapCacheEntry* cache_entry = GetCacheEntryIfPresent(arguments.signature);
-  if (!cache_entry) {
-    py::object out_and_fastpath_data = cache_miss_(*args, **kwargs);
-    cache_entry = GetCacheEntryIfPresent(arguments.signature);
-    if (!cache_entry) {
-      cache_entry = AddCacheEntry(args, kwargs, arguments.signature,
-                                  out_and_fastpath_data);
+  absl::flat_hash_map<CallSignature, std::unique_ptr<PmapCacheEntry>>::iterator
+      it;
+  bool inserted;
+  std::tie(it, inserted) = executables_.try_emplace(
+      arguments.signature, absl::make_unique<PmapCacheEntry>());
+  std::unique_ptr<PmapCacheEntry>& cache_entry = it->second;
+
+  if (!cache_entry->compilation_complete.HasBeenNotified()) {
+    std::cout << "inserted: " << inserted << std::endl;
+    // In case of several threads attempting to compile the executable, only
+    // the one that inserted the item will perform the compilation.
+    if (inserted) {
+      py::object out_and_fastpath_data;
+      py::tuple out_tuple;
+      VLOG(2) << "Cache miss for " << arguments.signature.DebugString();
+      try {
+        // Calls Python and may release the GIL. May also throw if
+        // compilation/tracing fails.
+        out_and_fastpath_data = cache_miss_(*args, **kwargs);
+        out_tuple = py::cast<py::tuple>(out_and_fastpath_data);
+        PopulateCacheEntry(cache_entry.get(), arguments.signature, out_tuple);
+      } catch (const std::exception& e) {
+        cache_entry->fall_back_to_python = true;
+        cache_entry->compilation_complete.Notify();
+        throw;
+      }
+      cache_entry->compilation_complete.Notify();
+
+      // We have already computed the result in the miss path so we can return
+      // it. We are even *required* to do so if there are donated arguments,
+      // because any donated buffers will now be invalid.
+      return py::object(out_tuple[0]);
+    } else {
+      // Release the GIL while we wait, making sure the compile thread can
+      // lock it.
+      py::gil_scoped_release release;
+      cache_entry->compilation_complete.WaitForNotification();
     }
-    CHECK(cache_entry);
-    if (cache_entry->fall_back_to_python) {
-      return py::cast<py::tuple>(out_and_fastpath_data)[0];
-    }
-    // As we have already computed the results, we can return it.
-    // It's even *required* e.g. if there are donated arguments, because
-    // otherwise the buffer which has been donated already will be invalid.
-    return py::cast<py::tuple>(out_and_fastpath_data)[0];
   }
 
   CHECK(cache_entry);
   if (cache_entry->fall_back_to_python) {
-    return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
 
-  // TODO(jblespiau): Use C++ only for this.
-  py::list arg_list;
-  for (auto& v : arguments.flat_dynamic_args) {
-    arg_list.append(v);
+  // 1. Parse arguments.
+  std::vector<xla::PjRtDevice*>& input_devices = cache_entry->devices;
+  const int num_computations =
+      cache_entry->executable->AddressableDevices().size();
+  std::vector<InputSpec>& input_specs = cache_entry->input_specs;
+
+  const int num_args = arguments.flat_dynamic_args.size();
+  // args_buffers is `[num_args, num_devices]`.
+  std::vector<std::vector<xla::PjRtBuffer*>> arg_buffers;
+
+  // We need [num_computation, num_args] for the `Execute` call bellow,
+  std::vector<std::vector<xla::PjRtBuffer*>> num_computation_num_args_buffers(
+      num_computations);
+  for (int computation = 0; computation < num_computations; ++computation) {
+    num_computation_num_args_buffers[computation].resize(num_args);
   }
-
-  py::object handled_args = cache_entry->handle_args(arg_list);
-  // The Python shard_args returns `[num_args, num_devices]`.
-  py::list list_of_list_of_buffers = py::cast<py::list>(handled_args);
-
-  arguments.keep_alive_objects.push_back(
-      py::cast<py::object>(list_of_list_of_buffers));
-  // arg_buffers is `[num_args x num_devices]`.
-  std::vector<std::vector<xla::PyBuffer::object>> arg_buffers;
-  const int num_args = list_of_list_of_buffers.size();
-  arg_buffers.reserve(num_args);
   for (int i = 0; i < num_args; ++i) {
-    std::vector<xla::PyBuffer::object> buffers;
-    buffers.reserve(py::cast<py::list>(list_of_list_of_buffers[i]).size());
-    for (auto& buf : list_of_list_of_buffers[i]) {
-      buffers.push_back(py::cast<xla::PyBuffer::object>(buf));
+    TF_ASSIGN_OR_RETURN(
+        ShardArgResult sharded_arg,
+        ShardArg(arguments.flat_dynamic_args[i], input_devices, input_specs[i],
+                 cache_entry->py_devices, python_shard_arg_fallback_));
+
+    std::vector<xla::PjRtBuffer*>& per_device_buffers =
+        sharded_arg.per_device_buffers;
+    for (int computation = 0; computation < num_computations; ++computation) {
+      num_computation_num_args_buffers[computation][i] =
+          per_device_buffers[computation];
     }
-    arg_buffers.push_back(std::move(buffers));
+    for (auto& owned_buffer : sharded_arg.owned_buffers) {
+      arguments.keep_alive.push_back(std::move(owned_buffer));
+    }
+    if (sharded_arg.owning_sda) {
+      arguments.keep_alive_objects.push_back(std::move(sharded_arg.owning_sda));
+    }
   }
 
-  // TODO(jblespiau): `ExecuteShardedOnLocalDevices` performs an inversion of
-  // the [args, num_devices] axis. When moving shard_args to C++, we can prevent
-  // this by calling Execute directly.
+  // This is a simpler version of:
+  // cache_entry->executable->ExecuteShardedOnLocalDevices().
+
   // A vector of [num_outputs, num_devices].
-  std::vector<std::vector<xla::PyBuffer::object>> outputs = ValueOrThrow(
-      cache_entry->executable->ExecuteShardedOnLocalDevices(arg_buffers));
-
-  // TODO(jblespiau): Move this to C++.
-  py::list outputs_as_python_objects;
-  for (int i = 0; i < outputs.size(); ++i) {
-    outputs_as_python_objects.append(py::cast(std::move(outputs[i])));
+  std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> output_buffers;
+  {
+    py::gil_scoped_release gil_release;
+    for (const auto& arg : arg_buffers) {
+      if (arg.size() != num_computations) {
+        return xla::InvalidArgument(
+            "Expected args to execute_sharded_on_local_devices to have %d "
+            "shards, got: [%s]",
+            num_computations,
+            absl::StrJoin(
+                arg_buffers, ", ",
+                [](std::string* out, const std::vector<xla::PjRtBuffer*>& arg) {
+                  out->append(std::to_string(arg.size()));
+                }));
+      }
+    }
+    auto pjrt_executable = cache_entry->executable->mutable_pjrt_executable();
+    TF_ASSIGN_OR_RETURN(
+        output_buffers,
+        pjrt_executable->Execute(num_computation_num_args_buffers,
+                                 cache_entry->executable->options()));
   }
-  py::list flat_sharded_device_arrays =
-      cache_entry->out_handler(outputs_as_python_objects);
+
+  // TODO(jblespiau): We don't need to create the PyBuffer objects.
+  // Having a C++ `ShardedDeviceArray`, keeping internally the PjRtBuffer
+  // objects is sufficient, and we can lazily create the `PyBuffer` only if
+  // we access them from Python.
+  auto traceback = xla::Traceback::Get();
+  // TODO(jblespiau): Change the `client` function to return a reference.
+  std::shared_ptr<xla::PyClient> client = cache_entry->executable->client();
+
+  // Convert the PjRtBuffer objects to PyBuffer, and invert the order from
+  // [num_devices, num_args] to [num_args, num_devices].
+  const int num_outputs = output_buffers[0].size();
+  std::vector<std::vector<xla::PyBuffer::object>> outputs;
+  outputs.resize(num_outputs);
+  for (int output_id = 0; output_id < num_outputs; ++output_id) {
+    outputs[output_id].reserve(num_computations);
+    for (int computation = 0; computation < num_computations; ++computation) {
+      outputs[output_id].push_back(xla::PyBuffer::Make(
+          client, std::move(output_buffers[computation][output_id]),
+          traceback));
+    }
+  }
+
+  py::list outputs_as_python_objects;
+  const auto& output_specs = cache_entry->out_result_specs;
+
+  std::vector<py::object> flat_sharded_device_arrays;
+  flat_sharded_device_arrays.reserve(num_outputs);
+  for (int i = 0; i < num_outputs; ++i) {
+    const ResultSpec& result_spec = output_specs[i];
+    flat_sharded_device_arrays.push_back(py::cast(
+        ShardedDeviceArray(/*aval=*/result_spec.out_aval,
+                           /*sharding_spec=*/result_spec.out_spec,
+                           /*device_buffers=*/py::cast(std::move(outputs[i])),
+                           /*indices=*/result_spec.out_indices,
+                           /*weak_type=*/result_spec.weak_type)));
+  }
   return cache_entry->out_pytree_def.Unflatten(flat_sharded_device_arrays);
 }
 
@@ -374,9 +582,9 @@ void BuildPmapSubmodule(py::module& m) {
 
   py::class_<ShardedDeviceArray, ShardedDeviceArrayBase> sda(
       pmap_lib, "ShardedDeviceArray");
-  sda.def(py::init<py::handle, ShardingSpec, py::list, py::handle>(),
+  sda.def(py::init<py::object, ShardingSpec, py::list, py::object, bool>(),
           py::arg("aval"), py::arg("sharding_spec"), py::arg("device_buffers"),
-          py::arg("indices"))
+          py::arg("indices"), py::arg("weak_type"))
       .def_property_readonly("aval", &ShardedDeviceArray::aval)
       .def_property_readonly("indices", &ShardedDeviceArray::indices)
       .def_property_readonly("sharding_spec",
@@ -406,9 +614,11 @@ void BuildPmapSubmodule(py::module& m) {
             }
             return size;
           })
-      .def_property_readonly("ndim", [](const ShardedDeviceArray& self) {
-        return py::len(self.aval().attr("shape"));
-      });
+      .def_property_readonly("ndim",
+                             [](const ShardedDeviceArray& self) {
+                               return py::len(self.aval().attr("shape"));
+                             })
+      .def("delete", &ShardedDeviceArray::Delete);
 
   py::class_<PmapFunction, std::unique_ptr<PmapFunction>> cfun(pmap_lib,
                                                                "PmapFunction");
@@ -417,13 +627,16 @@ void BuildPmapSubmodule(py::module& m) {
   // All private members are only for testing/debugging purposes
   cfun.def("_cache_size", &PmapFunction::cache_size);
 
-  pmap_lib.def(
-      "pmap",
-      [](py::function fun, py::function cache_miss,
-         std::vector<int> static_argnums) -> std::unique_ptr<PmapFunction> {
-        return std::make_unique<PmapFunction>(
-            std::move(fun), std::move(cache_miss), std::move(static_argnums));
-      });
+  pmap_lib.def("pmap",
+               [](py::function fun, py::function cache_miss,
+                  std::vector<int> static_argnums,
+                  py::function python_shard_arg_fallback)
+                   -> std::unique_ptr<PmapFunction> {
+                 return std::make_unique<PmapFunction>(
+                     std::move(fun), std::move(cache_miss),
+                     std::move(static_argnums),
+                     std::move(python_shard_arg_fallback));
+               });
 }
 
 }  // namespace jax
