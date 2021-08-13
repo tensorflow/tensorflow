@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
+#include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
 #include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
@@ -61,7 +62,7 @@ llvm::Expected<tensorflow::Tensor> ConvertTFRTTensorToTFTensor(
     const tensorflow::Tensor* tf_tensor;
     Status s = rtfbt->GetTensorHandle()->Tensor(&tf_tensor);
     if (!s.ok()) {
-      return tfrt::MakeStringError(s.ToString());
+      return tfrt::MakeStatusError(s);
     }
     return *tf_tensor;
   }
