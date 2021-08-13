@@ -266,20 +266,12 @@ static bool IsUnnestedReductionFasterThanElemental(
   return reduction_dimensions.dimensions[1] >= kWarpSize;
 }
 
-bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
-  if (HloOpcode::kReduce != reduce.opcode()) {
-    return false;
-  }
-
-  // TODO(b/129698548): Remove this check after fixing the bug.
-  if (reduce.shape().element_type() == C128) {
-    return false;
-  }
-
-  const HloInstruction* input = reduce.operand(0);
+// Whether we can/should use the unnested emitter for reduction.
+static bool IsReductionFromOrToContiguousDimensionsHelper(
+    const Shape& operand_shape, absl::Span<int64_t const> dims_to_reduce) {
   std::vector<int64_t> dims_to_keep;
-  for (int64_t dim = 0; dim < input->shape().dimensions().size(); ++dim) {
-    if (!absl::c_linear_search(reduce.dimensions(), dim)) {
+  for (int64_t dim = 0; dim < operand_shape.dimensions().size(); ++dim) {
+    if (!absl::c_linear_search(dims_to_reduce, dim)) {
       dims_to_keep.push_back(dim);
     }
   }
@@ -288,15 +280,20 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
   // 1) Row reduction: (K, R)
   // 2) Column reduction: (K, R, K)
   // 3) "Batched" row reduction: (R, K, R)
-  if (!LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
-                                            dims_to_keep) &&
-      !LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
-                                            reduce.dimensions())) {
-    return false;
-  }
+  return (LayoutUtil::AreDimensionsConsecutive(operand_shape.layout(),
+                                               dims_to_keep) ||
+          LayoutUtil::AreDimensionsConsecutive(operand_shape.layout(),
+                                               dims_to_reduce)) &&
+         IsUnnestedReductionFasterThanElemental(
+             GetReductionKindAndContiguousComponentsImpl(operand_shape,
+                                                         dims_to_reduce)) &&
+         operand_shape.element_type() != C128;
+}
 
-  return IsUnnestedReductionFasterThanElemental(
-      GetReductionKindAndContiguousComponents(reduce));
+bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
+  return reduce.opcode() == HloOpcode::kReduce &&
+         IsReductionFromOrToContiguousDimensionsHelper(
+             reduce.operand(0)->shape(), reduce.dimensions());
 }
 
 // Constructs the fusion layout analysis object by using a heuristic to infer
@@ -376,55 +373,24 @@ Shape FusionLayoutAnalysis::GetShape(mlir::Value value) const {
 }
 
 bool IsReductionFromOrToContiguousDimensions(
-    mlir::Operation* reduce, const FusionLayoutAnalysis& layout_analysis) {
-  if (!mlir::isa<mlir::mhlo::ReduceOp>(reduce)) {
+    mlir::Operation* op, const FusionLayoutAnalysis& layout_analysis) {
+  auto reduce = mlir::dyn_cast<mlir::mhlo::ReduceOp>(op);
+  if (!reduce) {
     return false;
   }
   std::vector<mlir::Value> results = GetHloOutputs(reduce);
   CHECK_EQ(1, results.size());
 
-  auto c128_type =
-      mlir::ComplexType::get(mlir::FloatType::getF64(reduce->getContext()));
-
-  // TODO(b/129698548): Remove this check after fixing the bug.
-  if (results[0].getType().cast<mlir::ShapedType>().getElementType() ==
-      c128_type) {
-    return false;
-  }
-
   mlir::Value input = reduce->getOperand(0);
-  const Shape operand_shape = layout_analysis.GetShape(input);
+  Shape operand_shape = layout_analysis.GetShape(input);
 
-
-  std::vector<int64_t> dimensions;
-  {
-    auto attr = reduce->getAttrOfType<mlir::DenseIntElementsAttr>("dimensions");
-    CHECK(attr);
-    absl::c_transform(
-        attr, std::back_inserter(dimensions),
-        std::function<int64_t(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
+  std::vector<int64_t> dimensions_to_reduce;
+  for (const llvm::APInt& d : reduce.dimensions()) {
+    dimensions_to_reduce.push_back(d.getZExtValue());
   }
 
-  std::vector<int64_t> dims_to_keep;
-  for (int64_t dim = 0; dim < operand_shape.dimensions().size(); ++dim) {
-    if (!absl::c_linear_search(dimensions, dim)) {
-      dims_to_keep.push_back(dim);
-    }
-  }
-
-  // We support fast codegen for three cases:
-  // 1) Row reduction: (K, R)
-  // 2) Column reduction: (K, R, K)
-  // 3) "Batched" row reduction: (R, K, R)
-  if (!LayoutUtil::AreDimensionsConsecutive(operand_shape.layout(),
-                                            dims_to_keep) &&
-      !LayoutUtil::AreDimensionsConsecutive(operand_shape.layout(),
-                                            dimensions)) {
-    return false;
-  }
-
-  return IsUnnestedReductionFasterThanElemental(
-      GetReductionKindAndContiguousComponentsImpl(operand_shape, dimensions));
+  return IsReductionFromOrToContiguousDimensionsHelper(operand_shape,
+                                                       dimensions_to_reduce);
 }
 
 bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
@@ -462,15 +428,13 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
     mlir::Operation* reduce) {
   mlir::Value input = reduce->getOperand(0);
   Shape operand_shape = GetShape(input);
-  std::vector<int64_t> dimensions;
-  {
-    auto attr = reduce->getAttrOfType<mlir::DenseIntElementsAttr>("dimensions");
-    CHECK(attr);
-    absl::c_transform(
-        attr, std::back_inserter(dimensions),
-        std::function<int64_t(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
+  std::vector<int64_t> dimensions_to_reduce;
+  for (const llvm::APInt& d :
+       mlir::cast<mlir::mhlo::ReduceOp>(reduce).dimensions()) {
+    dimensions_to_reduce.push_back(d.getZExtValue());
   }
-  return GetReductionKindAndContiguousComponentsImpl(operand_shape, dimensions);
+  return GetReductionKindAndContiguousComponentsImpl(operand_shape,
+                                                     dimensions_to_reduce);
 }
 
 // This emits a device-side call to
