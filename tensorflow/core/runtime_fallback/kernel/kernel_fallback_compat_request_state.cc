@@ -88,7 +88,6 @@ KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
   DCHECK(device_manager_);
   DCHECK(runner_table_);
   DCHECK(resource_array_);
-  DCHECK(rendezvous_);
 
   // TODO(tfrt-devs): Support customizing non-CPU devices.
   auto* device = device_manager_->HostCPU();
@@ -127,11 +126,8 @@ KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
                     }
                   })},
           /*collective_executor=*/nullptr,
-          /*rendezvous=*/
-          core::RefCountPtr<RefCountedIntraProcessRendezvous>(
-              new RefCountedIntraProcessRendezvous(device_manager)),
-          runner_table, resource_array, user_intra_op_threadpool,
-          model_metadata, pflr) {}
+          /*rendezvous=*/nullptr, runner_table, resource_array,
+          user_intra_op_threadpool, model_metadata, pflr) {}
 
 }  // namespace tfd
 }  // namespace tensorflow
