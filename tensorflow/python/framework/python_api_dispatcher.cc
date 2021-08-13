@@ -28,13 +28,28 @@ namespace py_dispatch {
 
 namespace {
 
-// Returns true if `py_class` is a subclass of tf.CompositeTensor.
-bool IsSubclassOfCompositeTensor(PyObject* py_class) {
-  static PyObject* composite_tensor =
-      swig::GetRegisteredPyObject("CompositeTensor");
-  int result = PyObject_IsSubclass(py_class, composite_tensor);
-  if (result < 0) PyErr_Clear();
-  return result > 0;
+std::vector<Safe_PyObjectPtr>& GetRegisteredDispatchableTypes() {
+  static std::vector<Safe_PyObjectPtr>* registered_dispatchable_types =
+      new std::vector<Safe_PyObjectPtr>();
+  if (registered_dispatchable_types->empty()) {
+    static PyObject* composite_tensor =
+        swig::GetRegisteredPyObject("CompositeTensor");
+    Py_INCREF(composite_tensor);
+    registered_dispatchable_types->push_back(
+        Safe_PyObjectPtr(composite_tensor));
+  }
+  return *registered_dispatchable_types;
+}
+
+// Returns true if `py_class` is a registered dispatchable type.
+bool IsRegisteredDispatchableType(PyObject* py_class) {
+  DCheckPyGilState();
+  for (const auto& registered_type : GetRegisteredDispatchableTypes()) {
+    int result = PyObject_IsSubclass(py_class, registered_type.get());
+    if (result > 0) return true;
+    if (result < 0) PyErr_Clear();
+  }
+  return false;
 }
 
 // Raises an exception indicating that multiple dispatch targets matched.
@@ -42,20 +57,42 @@ Safe_PyObjectPtr RaiseDispatchConflictError(const std::string& api_name,
                                             PyObject* selected,
                                             PyObject* target) {
   Safe_PyObjectPtr s1(PyObject_Str(selected));
-  if (!s1) return nullptr;
   Safe_PyObjectPtr s2(PyObject_Str(target));
-  if (!s2) return nullptr;
   PyErr_SetString(PyExc_ValueError,
                   absl::StrCat("Multiple dispatch targets that were "
                                "registered with tf.dispatch_for (",
-                               PyUnicode_AsUTF8(s1.get()), " and ",
-                               PyUnicode_AsUTF8(s2.get()),
+                               s1 ? PyUnicode_AsUTF8(s1.get()) : "?", " and ",
+                               s2 ? PyUnicode_AsUTF8(s2.get()) : "?",
                                ") match the arguments to ", api_name)
                       .c_str());
   return nullptr;
 }
 
 }  // namespace
+
+bool RegisterDispatchableType(PyObject* py_class) {
+  DCheckPyGilState();
+  if (!PyType_Check(py_class)) {
+    PyErr_SetString(
+        PyExc_ValueError,
+        absl::StrCat("Expected a type object; got object with type ",
+                     py_class->ob_type->tp_name)
+            .c_str());
+    return false;
+  }
+  if (IsRegisteredDispatchableType(py_class)) {
+    Safe_PyObjectPtr s(PyObject_Str(py_class));
+    PyErr_SetString(PyExc_ValueError,
+                    absl::StrCat("Type ", s ? PyUnicode_AsUTF8(s.get()) : "?",
+                                 " (or one of its bases clases) has "
+                                 "already been registered")
+                        .c_str());
+    return false;
+  }
+  Py_INCREF(py_class);
+  GetRegisteredDispatchableTypes().push_back(Safe_PyObjectPtr(py_class));
+  return true;
+}
 
 PythonAPIDispatcher::PythonAPIDispatcher(const std::string& api_name,
                                          absl::Span<const char*> arg_names,
@@ -139,7 +176,7 @@ PySignatureChecker::PySignatureChecker(
 
 bool PySignatureChecker::CheckCanonicalizedArgs(
     absl::Span<PyObject*> canon_args) const {
-  bool matched_composite_tensor = false;
+  bool matched_dispatchable_type = false;
   for (auto& c : positional_parameter_checkers_) {
     int index = c.first;
     auto& param_checker = c.second;
@@ -149,14 +186,14 @@ bool PySignatureChecker::CheckCanonicalizedArgs(
     switch (param_checker->Check(canon_args[index])) {
       case PyTypeChecker::MatchType::NO_MATCH:
         return false;
-      case PyTypeChecker::MatchType::MATCH_COMPOSITE:
-        matched_composite_tensor = true;
+      case PyTypeChecker::MatchType::MATCH_DISPATCHABLE:
+        matched_dispatchable_type = true;
         break;
       case PyTypeChecker::MatchType::MATCH:
         break;
     }
   }
-  return matched_composite_tensor;
+  return matched_dispatchable_type;
 }
 
 std::string PySignatureChecker::DebugString() const {
@@ -170,8 +207,8 @@ std::string PySignatureChecker::DebugString() const {
 PyInstanceChecker::PyInstanceChecker(PyObject* py_class) : py_class_(py_class) {
   DCheckPyGilState();
   Py_INCREF(py_class);
-  match_type_ = IsSubclassOfCompositeTensor(py_class)
-                    ? MatchType::MATCH_COMPOSITE
+  match_type_ = IsRegisteredDispatchableType(py_class)
+                    ? MatchType::MATCH_DISPATCHABLE
                     : MatchType::MATCH;
 }
 
@@ -222,8 +259,8 @@ PyTypeChecker::MatchType PyListChecker::Check(PyObject* value) {
     switch (element_type_->Check(PySequence_Fast_GET_ITEM(seq.get(), i))) {
       case MatchType::NO_MATCH:
         return MatchType::NO_MATCH;
-      case MatchType::MATCH_COMPOSITE:
-        result = MatchType::MATCH_COMPOSITE;
+      case MatchType::MATCH_DISPATCHABLE:
+        result = MatchType::MATCH_DISPATCHABLE;
         break;
       case MatchType::MATCH:
         break;
@@ -245,8 +282,8 @@ PyTypeChecker::MatchType PyUnionChecker::Check(PyObject* value) {
       case MatchType::MATCH:
         result = MatchType::MATCH;
         break;
-      case MatchType::MATCH_COMPOSITE:
-        return MatchType::MATCH_COMPOSITE;
+      case MatchType::MATCH_DISPATCHABLE:
+        return MatchType::MATCH_DISPATCHABLE;
       case MatchType::NO_MATCH:
         break;
     }

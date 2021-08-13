@@ -425,6 +425,7 @@ tensorflow::py_dispatch::PyUnionChecker::PyUnionChecker
 tensorflow::py_dispatch::PyUnionChecker::Check
 tensorflow::py_dispatch::PyUnionChecker::cost
 tensorflow::py_dispatch::PyUnionChecker::DebugString
+tensorflow::py_dispatch::RegisterDispatchableType
 
 [//tensorflow/python:python_tensor_converter] # python_tensor_converter
 tensorflow::PythonTensorConverter

@@ -71,7 +71,7 @@ PYBIND11_MODULE(_pywrap_python_api_dispatcher, m) {
   py::enum_<PyTypeChecker::MatchType>(m, "MatchType")
       .value("NO_MATCH", PyTypeChecker::MatchType::NO_MATCH)
       .value("MATCH", PyTypeChecker::MatchType::MATCH)
-      .value("MATCH_COMPOSITE", PyTypeChecker::MatchType::MATCH_COMPOSITE)
+      .value("MATCH_DISPATCHABLE", PyTypeChecker::MatchType::MATCH_DISPATCHABLE)
       .export_values();
 
   py::class_<PyTypeChecker, std::shared_ptr<PyTypeChecker>>(m, "PyTypeChecker")
@@ -127,4 +127,11 @@ PYBIND11_MODULE(_pywrap_python_api_dispatcher, m) {
           return std::shared_ptr<PyTypeChecker>(
               std::make_shared<PyUnionChecker>(options));
         });
+  m.def("register_dispatchable_type", [](py::handle py_class) {
+    if (!tensorflow::py_dispatch::RegisterDispatchableType(py_class.ptr())) {
+      throw py::error_already_set();
+    } else {
+      return py_class;
+    }
+  });
 }

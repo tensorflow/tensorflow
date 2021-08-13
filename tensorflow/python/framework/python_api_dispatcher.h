@@ -111,6 +111,20 @@ class PythonAPIDispatcher {
   absl::Span<PyObject*> canonicalized_args_span_;
 };
 
+// Registers a type for use with dispatch.  Dispatch will only occur if at least
+// one parameter value matches an annotation corresponding to a registered
+// dispatchable type.
+//
+// Returns true on success; or sets a Python exception and returns false
+// on error.
+//
+// Must be called before any PyInstanceChecker object is created from py_class.
+//
+// (Note: the CompositeTensor class is automatically registered for dispatch,
+// so you do not need to use this method for any class that is a subclass of
+// CompositeTensor or ExtensionType.)
+bool RegisterDispatchableType(PyObject* py_class);
+
 // Class used by dispatch to check if parameters' values match a signature.
 //
 // Currently only supports checking parameters with kind POSITIONAL_ONLY or
@@ -157,11 +171,12 @@ class PyTypeChecker {
   // annotation. MATCH and NO_MATCH simply indicate whether a value matches the
   // annotation.
   //
-  // MATCH_COMPOSITE indicates that a value matches the annotation, and
-  // additionally that the value (or one of its nested values) matched a
-  // CompositeTensor annotation. This is important information because we only
-  // want to perform dispatch if at least one CompositeTensor value matches.
-  // Otherwise, we would end up using dispatch in undesirable cases.  Examples:
+  // MATCH_DISPATCHABLE indicates that a value matches the annotation, and
+  // additionally that the value (or one of its nested values) matched a type
+  // that has been registered for dispatch. This is important information
+  // because we only want to perform dispatch if at least one such value
+  // matches. Otherwise, we would end up using dispatch in undesirable cases.
+  // Examples:
   //
   // @tf.dispatch_for(tf.concat)(x=List[MyType])
   //
@@ -174,7 +189,7 @@ class PyTypeChecker {
   //   We should not dispatch to `my_add` when the user calls
   //   `tf.add(tf.constant(1), tf.constant(2))` (even though this technically
   //   matches the annotated types).
-  enum class MatchType { NO_MATCH, MATCH, MATCH_COMPOSITE };
+  enum class MatchType { NO_MATCH, MATCH, MATCH_DISPATCHABLE };
 
   // Returns a value indicating how this type checker matched with the given
   // value.
@@ -205,8 +220,8 @@ class PyInstanceChecker : public PyTypeChecker {
   Safe_PyObjectPtr py_class_;
 
   // Value to return if the value is a subclass of `py_type_`.  Either MATCH or
-  // MATCH_COMPOSITE (depending on whether py_class_ is a subclass of
-  // CompositeTensor).
+  // MATCH_DISPATCHABLE (depending on whether py_class_ has been registered
+  // for dispatch).
   MatchType match_type_;
 
   // Cache to avoid having to call PyObject_IsInstance.  Note: we rely on the
