@@ -215,6 +215,7 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
       out_stream << "  ";  // indents for tensors
       dump_tensor_detail(out_stream, tensor, j);
     }
+    out_stream << "\n";
   }
   if (check_gpu_compatibility && model_is_gpu_compatibile) {
     out_stream
