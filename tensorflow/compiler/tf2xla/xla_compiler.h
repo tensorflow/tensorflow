@@ -138,9 +138,6 @@ class XlaCompiler {
 
   using CompilationResult = ::tensorflow::XlaCompilationResult;
 
-  typedef std::function<StatusOr<xla::Shape>(const TensorShape&, DataType,
-                                             bool)>
-      ShapeRepresentationFn;
   struct Options {
     // Name of the compilation device to use. It must be set by the caller.
     // The default empty value is invalid.
@@ -173,7 +170,7 @@ class XlaCompiler {
     // If set, the XLA representation of variables represented to XLA as the
     // shape given by this shape function. Variables are reshaped to this shape
     // on write, and reshaped to their original shape on read.
-    ShapeRepresentationFn shape_representation_fn;
+    XlaHelpers::ShapeRepresentationFn shape_representation_fn;
 
     // If not nullptr, populate_resource_manager is called with the
     // compilation device's resource manager when the compilation
