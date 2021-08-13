@@ -925,11 +925,12 @@ distribute_py_test(
     main = "dataset_creator_model_fit_test.py",
     shard_count = 50,
     tags = [
+        "broken",  # TODO(b/196485739)
         "multi_gpu",
         "no_oss",  # TODO(b/183640564): Reenable
         "no_rocm",
         "noasan",  # TODO(b/196485739)
-        "notsan",  # TODO(b/184542721)
+        "notsan",  # TODO(b/184542721),
     ],
     deps = [
         ":dataset_creator_model_fit_test_base",
