@@ -840,7 +840,6 @@ gpu_kernel_library(
     op = "reciprocal",
     tile_size = "256",
     types = [
-        # TODO(b/162572921): Enable when it works for complex types.
         "c64",
         "c128",
         "f16",
@@ -1224,8 +1223,8 @@ gpu_kernel_library(
     name = "gpu_floor_div_kernels",
     op = "floor_div",
     tile_size = "1024",
-    # TODO(172804967): Enable for integer types also once unsigned integers are
-    # supported.
+    # TODO(b/196539835): Enable for integer types also once unsigned integers
+    # and unranked tensors are supported.
     types = [
         "f16",
         "f32",
