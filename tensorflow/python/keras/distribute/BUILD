@@ -928,6 +928,7 @@ distribute_py_test(
         "multi_gpu",
         "no_oss",  # TODO(b/183640564): Reenable
         "no_rocm",
+        "noasan",  # TODO(b/196485739)
         "notsan",  # TODO(b/184542721)
     ],
     deps = [
