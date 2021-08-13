@@ -38,7 +38,9 @@ tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
 tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h
 tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl
 tensorflow/lite/ios/BUILD
+tensorflow/lite/lib_package/BUILD
 tensorflow/lite/schema/schema_generated.h
+tensorflow/lite/special_rules.bzl
 tensorflow/python/autograph/core/config.py
 tensorflow/python/eager/benchmarks_test_base.py
 tensorflow/python/framework/tfrt_utils.py
