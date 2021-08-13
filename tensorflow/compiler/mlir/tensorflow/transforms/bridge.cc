@@ -59,9 +59,10 @@ tensorflow::Status RunTPUBridge(
   // Add set of passes to lower back to graph (from tf_executor).
   TF::AddGraphExportLoweringPasses(bridge);
 
-  // Run the bridge on the module, in case of failure, the `diag_handler`
-  // converts MLIR errors emitted to the MLIRContext into a tensorflow::Status.
-  mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+  mlir::StatusScopedDiagnosticHandler diag_handler(
+      module.getContext(), /*propagate=*/false,
+      /*filter_stack=*/!VLOG_IS_ON(1));
+
   LogicalResult result = bridge.run(module);
   (void)result;
   if (enable_logging || VLOG_IS_ON(1))
@@ -224,7 +225,11 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
   StandardPipelineOptions pipeline_options;
   pipeline_options.enable_inliner.setValue(enable_inliner);
   CreateTFStandardPipeline(bridge, pipeline_options);
-  mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+
+  mlir::StatusScopedDiagnosticHandler diag_handler(
+      module.getContext(), /*propagate=*/false,
+      /*filter_stack=*/!VLOG_IS_ON(1));
+
   LogicalResult result = bridge.run(module);
   (void)result;
   if (enable_logging || VLOG_IS_ON(1))
