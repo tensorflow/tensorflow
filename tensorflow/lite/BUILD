@@ -904,6 +904,7 @@ cc_test(
         "testdata/multi_add.bin",
     ],
     tags = [
+        "-broken",  # TODO(b/196598744)
         "no_windows",  # No weak symbols with MSVC.
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
