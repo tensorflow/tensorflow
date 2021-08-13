@@ -598,9 +598,9 @@ class GcsWritableFile : public WritableFile {
     if (upload_status.code() == errors::Code::NOT_FOUND) {
       // GCS docs recommend retrying the whole upload. We're relying on the
       // RetryingFileSystem to retry the Sync() call.
-      return errors::Unavailable(
-          strings::StrCat("Upload to gs://", bucket_, "/", object_,
-                          " failed, caused by: ", upload_status.ToString()));
+      return errors::Unavailable(strings::StrCat(
+          "Upload to gs://", bucket_, "/", object_,
+          " failed, caused by: ", upload_status.error_message()));
     }
     if (upload_status.ok()) {
       if (should_compose) {
