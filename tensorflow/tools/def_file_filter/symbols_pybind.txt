@@ -410,7 +410,21 @@ tensorflow::GetCompilerIr
 tensorflow::TensorHandle::Tensor
 
 [//tensorflow/python:python_api_dispatcher] # python_api_dispatcher
-tensorflow::PythonAPIDispatcher
+tensorflow::py_dispatch::PythonAPIDispatcher
+tensorflow::py_dispatch::PySignatureChecker
+tensorflow::py_dispatch::PyTypeChecker::MatchType
+tensorflow::py_dispatch::PyInstanceChecker::PyInstanceChecker
+tensorflow::py_dispatch::PyInstanceChecker::Check
+tensorflow::py_dispatch::PyInstanceChecker::cost
+tensorflow::py_dispatch::PyInstanceChecker::DebugString
+tensorflow::py_dispatch::PyListChecker::PyListChecker
+tensorflow::py_dispatch::PyListChecker::Check
+tensorflow::py_dispatch::PyListChecker::cost
+tensorflow::py_dispatch::PyListChecker::DebugString
+tensorflow::py_dispatch::PyUnionChecker::PyUnionChecker
+tensorflow::py_dispatch::PyUnionChecker::Check
+tensorflow::py_dispatch::PyUnionChecker::cost
+tensorflow::py_dispatch::PyUnionChecker::DebugString
 
 [//tensorflow/python:python_tensor_converter] # python_tensor_converter
 tensorflow::PythonTensorConverter
