@@ -644,6 +644,19 @@ cc_library(
 )
 
 cc_library(
+    name = "bounds",
+    srcs = ["bounds.cc"],
+    hdrs = ["bounds.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "xla_mlir_translate",
     srcs = ["xla_mlir_translate.cc"],
     hdrs = ["xla_mlir_translate.h"],

@@ -40,3 +40,22 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
     ],
 )
+
+tf_cc_test(
+    name = "bounds_test",
+    size = "small",
+    srcs = ["bounds_test.cc"],
+    deps = [
+        "//tensorflow/compiler/mlir/xla:bounds",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
