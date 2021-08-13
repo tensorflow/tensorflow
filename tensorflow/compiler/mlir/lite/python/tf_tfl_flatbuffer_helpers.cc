@@ -261,6 +261,8 @@ Status PopulateQuantizationSpecs(
   // not used by MLIR passes.
   if (toco_flags.post_training_quantize()) {
     quant_specs->weight_quantization = true;
+    quant_specs->disable_per_channel =
+        toco_flags.disable_per_channel_quantization();
     if (toco_flags.quantize_to_float16()) {
       quant_specs->inference_type = tensorflow::DT_HALF;
       quant_specs->inference_input_type = tensorflow::DT_HALF;
