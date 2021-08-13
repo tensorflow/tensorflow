@@ -419,6 +419,7 @@ py_library(
         ":map_defun",
         ":matching_files",
         ":prefetching_ops",
+        ":random_access",
         ":readers",
         ":resampling",
         ":scan_ops",

@@ -85,6 +85,23 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
   Status CheckExternalState() const override { return Status::OK(); }
 
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) override {
+    if (tensors_.empty()) {
+      return errors::FailedPrecondition("Cannot index into empty tensor.");
+    }
+    if (index < 0 || index >= tensors_[0].dim_size(0)) {
+      return errors::OutOfRange("Index out of range [0, ",
+                                tensors_[0].dim_size(0), "):", index);
+    }
+    out_tensors->clear();
+    out_tensors->reserve(tensors_.size());
+    for (int i = 0; i < tensors_.size(); ++i) {
+      out_tensors->push_back(MaybeCopySubSlice(tensors_[i], index));
+    }
+    return Status::OK();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -137,12 +154,8 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       int64_t index = split.scalar<int64_t>()();
       out_tensors->reserve(dataset()->tensors_.size());
       for (size_t i = 0; i < dataset()->tensors_.size(); ++i) {
-        Tensor slice = dataset()->tensors_[i].SubSlice(index);
-        if (slice.IsAligned()) {
-          out_tensors->push_back(std::move(slice));
-        } else {
-          out_tensors->push_back(tensor::DeepCopy(std::move(slice)));
-        }
+        out_tensors->push_back(
+            MaybeCopySubSlice(dataset()->tensors_[i], index));
       }
       *end_of_sequence = false;
       return Status::OK();
@@ -210,6 +223,7 @@ void TensorSliceDatasetOp::MakeDataset(OpKernelContext* ctx,
 }
 
 namespace {
+
 REGISTER_KERNEL_BUILDER(Name("TensorSliceDataset").Device(DEVICE_CPU),
                         TensorSliceDatasetOp);
 }  // namespace

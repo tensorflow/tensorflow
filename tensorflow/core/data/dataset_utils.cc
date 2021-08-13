@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -552,6 +553,15 @@ absl::flat_hash_set<tstring> SelectOptimizations(
   }
 
   return optimizations;
+}
+
+Tensor MaybeCopySubSlice(const Tensor& tensor, int64 index) {
+  Tensor slice = tensor.SubSlice(index);
+  if (slice.IsAligned()) {
+    return slice;
+  } else {
+    return tensorflow::tensor::DeepCopy(slice);
+  }
 }
 
 void StripDevicePlacement(FunctionDefLibrary* library) {

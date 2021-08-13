@@ -22,6 +22,7 @@ import collections
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -292,6 +293,67 @@ class FromTensorSlicesTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(expected_types,
                      dataset_ops.get_legacy_output_types(dataset))
     self.assertDatasetProduces(dataset, expected_output)
+
+
+class FromTensorSlicesRandomAccessTest(test_base.DatasetTestBase,
+                                       parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testInvalidIndex(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, -1))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, 3))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testOneDimensionalArray(self):
+    tensor = [1, 2, 3]
+    dataset = dataset_ops.Dataset.from_tensor_slices(tensor)
+    for i in range(len(tensor)):
+      results = self.evaluate(random_access.at(dataset, i))
+      self.assertAllEqual(tensor[i], results)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTwoDimensionalArray(self):
+    tensor = [[1, 2], [3, 4]]
+    dataset = dataset_ops.Dataset.from_tensor_slices(tensor)
+    for i in range(2):
+      results = self.evaluate(random_access.at(dataset, i))
+      self.assertAllEqual(tensor[i], results)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMultipleComponents(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(([1, 2], [3, 4], [5, 6]))
+    self.assertEqual((1, 3, 5), self.evaluate(random_access.at(dataset, 0)))
+    self.assertEqual((2, 4, 6), self.evaluate(random_access.at(dataset, 1)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDictionary(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices({"a": [1, 2], "b": [3, 4]})
+    self.assertEqual({
+        "a": 1,
+        "b": 3
+    }, self.evaluate(random_access.at(dataset, 0)))
+    self.assertEqual({
+        "a": 2,
+        "b": 4
+    }, self.evaluate(random_access.at(dataset, 1)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNumpy(self):
+    components = (
+        np.tile(np.array([[0], [1]], dtype=np.uint8), 2),
+        np.tile(np.array([[2], [256]], dtype=np.uint16), 2),
+        np.tile(np.array([[4], [65536]], dtype=np.uint32), 2),
+        np.tile(np.array([[8], [4294967296]], dtype=np.uint64), 2),
+    )
+    expected_output = [tuple([c[i] for c in components]) for i in range(2)]
+
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    for i in range(2):
+      result = self.evaluate(random_access.at(dataset, i))
+      self.assertAllEqual(expected_output[i], result)
 
 
 class FromTensorSlicesCheckpointTest(checkpoint_test_base.CheckpointTestBase,

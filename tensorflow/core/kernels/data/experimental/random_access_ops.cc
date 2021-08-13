@@ -41,8 +41,12 @@ Status GetElementAtIndexOp::DoCompute(OpKernelContext* ctx) {
   return Status::OK();
 }
 
+namespace {
+
 REGISTER_KERNEL_BUILDER(Name("GetElementAtIndex").Device(DEVICE_CPU),
                         GetElementAtIndexOp);
+
+}
 
 }  // namespace experimental
 }  // namespace data
