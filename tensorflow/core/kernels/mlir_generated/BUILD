@@ -391,6 +391,24 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "gpu_nextafter_op",
+    srcs = if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_next_after.cc",
+    ]),
+    tags = ["manual"],
+    deps = if_mlir_generated_experimental_kernels_enabled([
+        ":base_gpu_op",
+        ":gpu_next_after_kernels",
+    ]),
+)
+
+tf_kernel_library(
+    name = "nextafter_op",
+    srcs = [],
+    deps = [] + if_cuda_or_rocm([":gpu_nextafter_op"]),
+)
+
+tf_kernel_library(
     name = "gpu_relu_op",
     srcs = if_mlir_generated_gpu_kernels_enabled([
         "gpu_op_elu.cc",
@@ -559,6 +577,10 @@ tf_cuda_cc_test(
     srcs = ["gpu_binary_ops_test.cc"],
     extra_copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ) + if_mlir_generated_experimental_kernels_enabled(
+        [
+            "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+        ],
     ),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
@@ -1697,5 +1719,15 @@ gpu_kernel_library(
         # TODO(b/190374484): Enable it for complex types once it is supported.
         # "c64",
         # "c128",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_next_after_kernels",
+    op = "next_after",
+    tile_size = "1024",
+    types = [
+        "f32",
+        "f64",
     ],
 )

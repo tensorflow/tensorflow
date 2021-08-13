@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,21 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
-#include "tensorflow/core/kernels/nextafter_op.h"
+#include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
-namespace functor {
 
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-DEFINE_BINARY2(nextafter, float, double);
-#endif
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(NextAfter, DT_FLOAT);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(NextAfter, DT_DOUBLE);
 
-}  // namespace functor
 }  // namespace tensorflow
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
