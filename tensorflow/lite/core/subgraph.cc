@@ -104,11 +104,15 @@ void SetForbiddenContextFunction(FunctionType* func) {
 // Returns true if at least one tensor in the given list is kTfLiteDynamic.
 template <typename TensorIntArray>
 bool HasDynamicTensorImpl(const TfLiteContext& context,
-                          const TensorIntArray& int_array) {
+                          const TensorIntArray& int_array,
+                          int* dynamic_tensor_index_) {
   for (int i : int_array) {
     if (i == kTfLiteOptionalTensor) continue;
     const TfLiteTensor& tensor = context.tensors[i];
     if (tensor.allocation_type == kTfLiteDynamic) {
+      if (dynamic_tensor_index_) {
+        *dynamic_tensor_index_ = i;
+      }
       return true;
     }
   }
@@ -116,8 +120,10 @@ bool HasDynamicTensorImpl(const TfLiteContext& context,
 }
 
 bool HasDynamicTensor(const TfLiteContext& context,
-                      const TfLiteIntArray* int_array) {
-  return HasDynamicTensorImpl(context, TfLiteIntArrayView{int_array});
+                      const TfLiteIntArray* int_array,
+                      int* dynamic_tensor_index_) {
+  return HasDynamicTensorImpl(context, TfLiteIntArrayView{int_array},
+                              dynamic_tensor_index_);
 }
 
 // Gets the legacy TfLiteQuantizationParams from the current TfLiteQuantization.
@@ -722,7 +728,7 @@ TfLiteStatus Subgraph::AllocateTensors() {
   // have been resized. For inputs marked as dynamic, we can't short-circuit the
   // allocation as the client may have done the resize manually.
   if (state_ != kStateUninvokable &&
-      !HasDynamicTensorImpl(context_, inputs())) {
+      !HasDynamicTensorImpl(context_, inputs(), &dynamic_tensor_index_)) {
     if (memory_planner_ && !memory_planner_->HasNonPersistentMemory()) {
       // If the only change was the release of non-persistent memory via
       // ReleaseNonPersistentMemory(), just re-allocate it. For any other type
@@ -978,7 +984,8 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     // Forwarding inputs without modification won't be not evaluated in the
     // operators. So, it needs to look up the subgraph's output tensors at the
     // beginning.
-    has_dynamic_tensors_ = HasDynamicTensorImpl(context_, outputs());
+    has_dynamic_tensors_ =
+        HasDynamicTensorImpl(context_, outputs(), &dynamic_tensor_index_);
   }
   for (int execution_plan_index = first_execution_plan_index;
        execution_plan_index < execution_plan.size(); execution_plan_index++) {
@@ -997,7 +1004,7 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     // Discontinue if the node has dynamic outputs. Note that we don't
     // stop for dynamic temporary tensors since they won't affect the
     // sizes of other tensors in the graph.
-    if (HasDynamicTensor(context_, node.outputs)) {
+    if (HasDynamicTensor(context_, node.outputs, &dynamic_tensor_index_)) {
       has_dynamic_tensors_ = true;
       return kTfLiteOk;
     }
@@ -1158,7 +1165,7 @@ TfLiteStatus Subgraph::Invoke() {
     // Force execution prep for downstream ops if the latest op triggered the
     // resize of a dynamic tensor.
     if (tensor_resized_since_op_invoke_ &&
-        HasDynamicTensor(context_, node.outputs)) {
+        HasDynamicTensor(context_, node.outputs, nullptr)) {
       next_execution_plan_index_to_prepare_ = execution_plan_index + 1;
 
       // This happens when an intermediate dynamic tensor is resized.
@@ -1634,7 +1641,9 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
       TF_LITE_ENSURE_STATUS(EnsureMemoryAllocations());
       ReportError(
           "Attempting to use a delegate that only supports static-sized "
-          "tensors with a graph that has dynamic-sized tensors.");
+          "tensors with a graph that has dynamic-sized tensors (tensor#%d is a "
+          "dynamic-sized tensor).",
+          dynamic_tensor_index_);
       return kTfLiteApplicationError;
     }
   }
