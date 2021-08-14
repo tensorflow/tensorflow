@@ -254,7 +254,7 @@ class RemoteValueImpl(RemoteValue):
 
 @tf_export("distribute.experimental.coordinator.PerWorkerValues", v1=[])
 class PerWorkerValues(composite_tensor.CompositeTensor):
-  """A container that holds a list of values, one value per worker.
+  """A container that holds a dict of values, one value per worker.
 
   `tf.distribute.experimental.coordinator.PerWorkerValues` contains a collection
   of values, where each of the values is located on its corresponding worker,
@@ -271,16 +271,24 @@ class PerWorkerValues(composite_tensor.CompositeTensor):
   """
 
   def __init__(self, values):
-    for v in values:
-      if not isinstance(v, RemoteValue):
-        raise AssertionError(
-            "`PerWorkerValues` should only take `RemoteValue`s.")
-    self._values = tuple(values)
+    def filter_by_type(v):
+      if isinstance(v, RemoteValue):
+        return v
+      else:
+        raise AssertionError("`PerWorkerValues` should only take `RemoteValue`s.")
+
+    if isinstance(values, list):
+      self._values = {i: filter_by_type(values[i]) for i in range(len(values))}
+    elif isinstance(values, dict):
+      self._values = {k: filter_by_type(v) for k,v in values.items()}
+    else:
+      raise ValueError("values must be of type list or dict.")
 
   @property
   def _type_spec(self):
+    k0 = list(self._values.keys())[0]
     return PerWorkerValuesTypeSpec(
-        self._values[0]._type_spec,  # pylint: disable=protected-access
+        self._values[k0]._type_spec,  # pylint: disable=protected-access
         type(self))
 
 

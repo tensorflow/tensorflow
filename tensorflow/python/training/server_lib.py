@@ -495,6 +495,47 @@ class ClusterSpec(object):
                           task_address)
         job_def.tasks[i] = task_address
 
+  def add_task(self, job_name, task_index, task_address):
+    """Add a task to the cluster.
+
+    Args:
+      job_name: The string name of a job, that may not be in the cluster.
+      task_index: A non-negative integer.
+      task_address: The address of added task.
+
+    Raises:
+      ValueError: If there is already a task with index `task_index`
+      in job `job_name`.
+    """
+    if job_name not in self._cluster_spec:
+      self._cluster_spec[job_name] = {}
+    elif task_index in self._cluster_spec[job_name]:
+      raise ValueError("There is Already a task with index %r in job %r" %
+                       (task_index, job_name))
+    self._cluster_spec[job_name][task_index] = task_address
+    self._make_cluster_def()
+
+  def remove_task(self, job_name, task_index):
+    """Remove a task from the cluster.
+
+    Args:
+      job_name: The string name of a job in this cluster.
+      task_index: A non-negative integer.
+
+    Raises:
+      ValueError: If there is no task with index `task_index`
+      in job `job_name`. Or if there is no job `job_name`.
+    """
+    if job_name in self._cluster_spec:
+      if task_index in self._cluster_spec[job_name]:
+        del self._cluster_spec[job_name][task_index]
+        self._make_cluster_def()
+      else:
+        raise ValueError("No task with index %r in job %r" %
+                  (task_index, job_name))
+    else:
+      raise ValueError("No such job in cluster: %r" % job_name)
+
 
 @tf_export("config.experimental.ClusterDeviceFilters")
 class ClusterDeviceFilters(object):
