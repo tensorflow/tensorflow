@@ -349,3 +349,30 @@ func @async(%memref: memref<4x4xf32>) {
   // CHECK: tfrt.return %[[ch8]] : !tfrt.chain
   "lmhlo.terminator"() : () -> ()
 }
+
+// CHECK:      func @return(
+// CHECK-SAME:   %arg0: !tfrt.chain,
+// CHECK-SAME:   %arg1: !tfrt_gpu.stream,
+// CHECK-SAME:   %arg2: !tfrt_gpu.buffer
+// CHECK-SAME: ) -> (!tfrt.chain, !tfrt_gpu.buffer)
+func @return(%memref: memref<4x4xf32>) -> memref<4x4xf32> {
+  // CHECK-NOT: cast
+  // CHECK-NOT: async.execute
+
+  // CHECK: tfrt_gpu.blas.gemm
+  "lmhlo_gpu.gemm"(%memref, %memref, %memref) { dot_dimension_numbers = {
+       lhs_batching_dimensions = dense<[]> : tensor<0xi64>,
+       rhs_batching_dimensions = dense<[]> : tensor<0xi64>,
+       lhs_contracting_dimensions = dense<[1]> : tensor<1xi64>,
+       rhs_contracting_dimensions = dense<[0]> : tensor<1xi64>},
+       alpha_real = 1.0,
+       alpha_imag = 0.0,
+       batch_size = 1,
+       lhs_stride = 16,
+       rhs_stride = 16}
+    : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
+
+  // CHECK-NOT: cast
+  // CHECK: tfrt.return {{.*}}, %arg2 : !tfrt.chain, !tfrt_gpu.buffer
+  return %memref : memref<4x4xf32>
+}
