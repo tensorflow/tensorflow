@@ -16,4 +16,10 @@ message CompilationResultProto {
 
   // HLO proto.
   repeated xla.HloProto hlo_protos = 3;
+
+  enum ErrorCode {
+    UNKNOWN = 0;
+    OUT_OF_MEMORY = 1;
+  }
+  ErrorCode error_code = 4;
 }
