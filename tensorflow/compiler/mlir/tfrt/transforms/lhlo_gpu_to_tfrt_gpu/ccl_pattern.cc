@@ -146,6 +146,44 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::AllReduceOp srcOp, Value chain,
   return chain;
 }
 
+FailureOr<Value> CclOpConversionRewrite(lmhlo::ReduceScatterOp srcOp,
+                                        Value chain, Value stream, Value handle,
+                                        mlir::BlockAndValueMapping& mapping,
+                                        ConversionPatternRewriter& rewriter) {
+  const auto& operands = srcOp.operands();
+  const auto& results = srcOp.results();
+
+  auto reduction_kind =
+      xla::gpu::NcclAllReduceThunkBase::MatchAllReduceComputation(
+          srcOp.computation());
+  if (!reduction_kind.has_value()) {
+    return rewriter.notifyMatchFailure(
+        srcOp,
+        "Failed to match the reduction computation to a reduction kind.");
+  }
+  ncclRedOp_t reduction_op = ToNcclReduction(*reduction_kind);
+
+  for (int i = 0; i < operands.size(); i++) {
+    xla::Shape shape = xla::TypeToShape(operands[i].getType());
+    auto nccl_data_type_or = ToNcclDataType(shape.element_type());
+    if (mlir::failed(nccl_data_type_or)) {
+      return rewriter.notifyMatchFailure(
+          srcOp, "Failed to convert operand data type to ncclDataType_t.");
+    }
+    ncclDataType_t nccl_data_type = nccl_data_type_or.getValue();
+
+    Value input = mapping.lookup(operands[i]);
+    Value output = mapping.lookup(results[i]);
+
+    chain = rewriter
+                .create<tfrt::gpu::CclReduceScatterOp>(
+                    srcOp.getLoc(), handle, input, output, nccl_data_type,
+                    reduction_op, chain)
+                .getResult();
+  }
+  return chain;
+}
+
 template <class CclOpType>
 struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
   using tfrt::gpu::GpuAsyncOpConversionPattern<
@@ -196,10 +234,11 @@ struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
 }  // namespace
 
 void populateCclConversionPattern(RewritePatternSet& patterns) {
-  // TODO(hanbinyoon): Support additional lmhlo collective ops (in addition to
-  // lmhlo::AllGatherOp and lmhlo::AllReduceOp).
+  // TODO(hanbinyoon): Support additional lmhlo collective ops.
   patterns.add<CclRewritePattern<lmhlo::AllGatherOp>,
-               CclRewritePattern<lmhlo::AllReduceOp>>(patterns.getContext());
+               CclRewritePattern<lmhlo::AllReduceOp>,
+               CclRewritePattern<lmhlo::ReduceScatterOp>>(
+      patterns.getContext());
 }
 
 }  // namespace tensorflow

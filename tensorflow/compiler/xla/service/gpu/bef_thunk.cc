@@ -106,6 +106,11 @@ class BefThunk : public Thunk {
       xccl_config_ = GetNcclCollectiveConfigForMlir(
           all_reduce_op, all_reduce_op.use_global_device_ids());
     }
+    if (auto reduce_scatter_op =
+            mlir::dyn_cast<mlir::lmhlo::ReduceScatterOp>(*op)) {
+      xccl_config_ = GetNcclCollectiveConfigForMlir(
+          reduce_scatter_op, reduce_scatter_op.use_global_device_ids());
+    }
   }
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
@@ -176,6 +181,9 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
   }
   if (mlir::isa<mlir::lmhlo::AllReduceOp>(op)) {
     return Thunk::Kind::kNcclAllReduce;
+  }
+  if (mlir::isa<mlir::lmhlo::ReduceScatterOp>(op)) {
+    return Thunk::Kind::kNcclReduceScatter;
   }
   return tensorflow::errors::Unimplemented(
       "Operation is not supported by BefThunk.");
