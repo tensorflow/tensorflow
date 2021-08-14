@@ -2933,20 +2933,16 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
   return Status::OK();
 }
 
-template <typename NcclThunkType>
-Status MaybeAddAllReduceStartThunkToMap(
-    absl::flat_hash_map<mlir::Operation*, NcclAllReduceStartThunk*>&,
-    mlir::Operation* op, NcclThunkType* thunk) {
-  return Status::OK();
-}
-
-template <>
 Status MaybeAddAllReduceStartThunkToMap(
     absl::flat_hash_map<mlir::Operation*, NcclAllReduceStartThunk*>&
         all_reduce_start_thunks,
-    mlir::Operation* op, NcclAllReduceStartThunk* thunk) {
-  TF_RET_CHECK(all_reduce_start_thunks.emplace(op, thunk).second)
-      << "all-reduce-start with this unique ID already seen";
+    mlir::Operation* op, Thunk* thunk) {
+  if (mlir::isa<mlir::lmhlo_gpu::AllReduceStartOp>(op)) {
+    TF_RET_CHECK(all_reduce_start_thunks
+                     .emplace(op, static_cast<NcclAllReduceStartThunk*>(thunk))
+                     .second)
+        << "all-reduce-start with this unique ID already seen";
+  }
   return Status::OK();
 }
 
@@ -3007,8 +3003,8 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   }
 
   // Signal that all-reduce-start thunk not created with nullptr.
-  TF_RETURN_IF_ERROR(MaybeAddAllReduceStartThunkToMap(
-      all_reduce_start_thunks_, op, static_cast<NcclThunkType*>(nullptr)));
+  TF_RETURN_IF_ERROR(
+      MaybeAddAllReduceStartThunkToMap(all_reduce_start_thunks_, op, nullptr));
 
   if (!is_degenerate) {
     CollectiveOpGroupMode group_mode = NcclThunkType::GetGroupMode(op);
