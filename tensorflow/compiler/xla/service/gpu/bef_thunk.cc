@@ -340,8 +340,7 @@ CreateXcclExecutionContext(const Thunk::ExecuteParams& params,
   return CreateExecutionContext(
       [&](tfrt::RequestContextBuilder& request_context_builder) {
         request_context_builder.context_data().emplace<XcclContext>(
-            locked_clique_or->ValueOrDie().clique,
-            rendezvous_key.global_devices.size());
+            locked_clique_or->ValueOrDie().clique);
         return Status::OK();
       });
 }
