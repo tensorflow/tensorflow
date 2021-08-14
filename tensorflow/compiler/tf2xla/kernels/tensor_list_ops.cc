@@ -144,7 +144,9 @@ class TensorListReserveOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     int64_t num_elements;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &num_elements));
+    OP_REQUIRES_OK(ctx,
+                   ctx->ConstantInputAsIntScalar(
+                       1, &num_elements, xla::ValueInferenceMode::kUpperBound));
     bool num_element_is_dynamic;
     OP_REQUIRES_OK(
         ctx, ctx->ResolveInputDynamismIntoPred(1, &num_element_is_dynamic));

@@ -259,6 +259,16 @@ TEST_F(DynamismInferenceTest, GetDimensionSize) {
   EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {1}).ValueOrDie(), false);
 }
 
+TEST_F(DynamismInferenceTest, DynamicSliceWithConstantOperands) {
+  XlaBuilder b(TestName());
+
+  auto constant = ConstantR1<int32>(&b, {0, 1, 2, 3});
+  auto slice_start = ConstantR0(&b, 1);
+  auto dynamic_slice = DynamicSlice(constant, {slice_start}, {1});
+  EXPECT_FALSE(
+      ComputeDynamismLiteral(dynamic_slice, &b).ValueOrDie().Get<bool>({0}));
+}
+
 TEST_F(DynamismInferenceTest, GatherWithCommonParent) {
   XlaBuilder b(TestName());
   // Test the analysis on a gather where first operand and second operand have

@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -134,6 +136,11 @@ class StridedSliceOp : public XlaOpKernel {
       // Pad input to 2x to avoid OOB access.
       slice = xla::Pad(slice, xla::Zero(ctx->builder(), ctx->input_xla_type(0)),
                        padding_config);
+      for (int64 i = 0; i < result_dims_are_dynamic.size(); ++i) {
+        if (result_dims_are_dynamic[i]) {
+          slice = xla::RemoveDynamicDimension(slice, i);
+        }
+      }
     }
     std::vector<xla::XlaOp> start_indices;
     std::vector<xla::XlaOp> slice_sizes_dynamic;
@@ -156,16 +163,30 @@ class StridedSliceOp : public XlaOpKernel {
             xla::ConstantR0WithType(ctx->builder(), ctx->InputXlaType("begin"),
                                     input_xla_shape.dimensions(i));
       }
+
+      auto scalar_must_be_non_negative = [ctx](xla::XlaOp value) -> bool {
+        // Check if the lower-bound of a value is always >= 0
+        auto lower_bound = ctx->value_inference().AnalyzeConstant(
+            value, xla::ValueInferenceMode::kLowerBound);
+        if (!lower_bound.ok() || !lower_bound->AllValid()) {
+          // Can't infer a lower bound.
+          return false;
+        }
+        return lower_bound->Get<int32>({}) >= 0;
+      };
       if (begin_mask) {
         begin_index = zero;
       } else {
         begin_index = xla::Slice(ctx->Input("begin"), {sparse_index},
                                  {sparse_index + 1}, {1});
         begin_index = xla::Reshape(begin_index, {});
-        auto index_negative = xla::Lt(begin_index, zero);
-        auto wrapped_index = xla::Add(dim_size, begin_index);
-        // Wrap negative indices around.
-        begin_index = xla::Select(index_negative, wrapped_index, begin_index);
+        if (!scalar_must_be_non_negative(begin_index)) {
+          // begin could be negative.
+          auto index_negative = xla::Lt(begin_index, zero);
+          auto wrapped_index = xla::Add(dim_size, begin_index);
+          // Wrap negative indices around.
+          begin_index = xla::Select(index_negative, wrapped_index, begin_index);
+        }
       }
       start_indices.push_back(begin_index);
       if (end_mask) {
@@ -174,9 +195,12 @@ class StridedSliceOp : public XlaOpKernel {
         end_index = xla::Slice(ctx->Input("end"), {sparse_index},
                                {sparse_index + 1}, {1});
         end_index = xla::Reshape(end_index, {});
-        auto index_negative = xla::Lt(end_index, zero);
-        auto wrapped_index = xla::Add(dim_size, end_index);
-        end_index = xla::Select(index_negative, wrapped_index, end_index);
+        if (!scalar_must_be_non_negative(end_index)) {
+          // end could be negative.
+          auto index_negative = xla::Lt(end_index, zero);
+          auto wrapped_index = xla::Add(dim_size, end_index);
+          end_index = xla::Select(index_negative, wrapped_index, end_index);
+        }
       }
       slice_sizes_dynamic.push_back(
           xla::Max(xla::Sub(end_index, begin_index), zero));
@@ -184,13 +208,24 @@ class StridedSliceOp : public XlaOpKernel {
 
     slice =
         xla::DynamicSlice(slice, start_indices, processing_shape.dim_sizes());
-
-    for (int64_t i = 0; i < input_shape.dims(); ++i) {
-      if (result_dims_are_dynamic[i]) {
-        slice = xla::SetDimensionSize(slice, slice_sizes_dynamic[i], i);
+    // new_axis_mask_, ellipsis_mask_ and shrink_axis_mask_ may add or remove
+    // size 1 dims of a shape.
+    slice = xla::Reshape(slice, final_shape.dim_sizes());
+    for (int64_t i = 0; i < final_shape.dims(); ++i) {
+      int64 processing_shape_dim = shape_spec.output_to_processing_mapping[i];
+      // If processing_shape_dim is -1, it means the output dimension was newly
+      // added by new_axis_mask_, which doesn't show up in input.
+      if (processing_shape_dim != -1 &&
+          result_dims_are_dynamic[processing_shape_dim]) {
+        // We gave a generous bound (same as input) to the output, try reset
+        // the bound if a tighter one can be found.
+        auto status = xla::SetDimensionSizeWithRebound(
+            &ctx->value_inference(), slice,
+            slice_sizes_dynamic[processing_shape_dim], i);
+        OP_REQUIRES_OK(ctx, status.status());
+        slice = status.ValueOrDie();
       }
     }
-    slice = xla::Reshape(slice, final_shape.dim_sizes());
     ctx->SetOutput(0, slice);
   }
 
@@ -483,7 +518,9 @@ class StridedSliceGradOp : public XlaOpKernel {
     absl::InlinedVector<int64_t, 4> strides;
 
     TensorShape input_shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &input_shape));
+    OP_REQUIRES_OK(
+        ctx, ctx->ConstantInputAsShape(0, &input_shape,
+                                       xla::ValueInferenceMode::kUpperBound));
     xla::Literal begin_literal, end_literal, strides_literal;
 
     bool begin_is_constant = ctx->ConstantInput(1, &begin_literal).ok();
@@ -565,14 +602,14 @@ class StridedSliceGradOp : public XlaOpKernel {
 
     xla::XlaOp dynamic_shape = ctx->Input(0);
     xla::Shape grad_shape = ctx->builder()->GetShape(grad).ValueOrDie();
-    ctx->set_dynamic_dimension_is_minus_one(true);
-    std::vector<int64> dynamic_size;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(0, &dynamic_size));
+    std::vector<bool> dynamic_input;
+    OP_REQUIRES_OK(ctx,
+                   ctx->ResolveInputDynamismIntoPredVector(0, &dynamic_input));
     // Input of strided_slice_op has to have the same shape as output.
     DCHECK_EQ(grad_shape.rank(), input_shape.dims());
     for (int64_t dim = 0; dim < input_shape.dims(); ++dim) {
       DCHECK_EQ(grad_shape.dimensions(dim), input_shape.dim_size(dim));
-      if (dynamic_size[dim] == -1) {
+      if (dynamic_input[dim]) {
         // Input is a dynamic dimension, set the same dynamic dimension size in
         // the output.
         auto dim_size = xla::Slice(dynamic_shape, {dim}, {dim + 1}, {1});
