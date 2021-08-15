@@ -296,11 +296,6 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
   }
 }
 
-// This kernel is "unrolled" by 3 loop levels. Recursive calls have a non-zero
-// overhead, which we can amortize by having more than one loop per recursive
-// step. The loop planning code adds additional size-1 outer loops to ensure the
-// number of loops in the plan is a multiple of 3.
-static constexpr int kMemcpyUnrollFactor = 3;
 template <typename T>
 void TransposeConstStride1(const char* __restrict a, char* __restrict b,
                            TransposePlan::Node const* __restrict node) {
