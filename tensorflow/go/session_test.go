@@ -384,7 +384,9 @@ func TestSessionConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := SessionOptions{Config: []byte("(\x01")}
+	// Use the zero values for Config.GlobalJitLevel and NumCPUs
+	config := Config{AllowGPUMemoryGrowth: true}
+	opts := SessionOptions{Config: config.Bytes()}
 	s, err := NewSession(graph, &opts)
 	if err != nil {
 		t.Fatal(err)
