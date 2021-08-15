@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -157,7 +156,7 @@ struct RendezvousKey {
   explicit RendezvousKey(const RunId& run_id,
                          std::vector<GlobalDeviceId> global_devices,
                          int num_local_participants,
-                         CollectiveOpKind collective_op_kind, int64 op_id)
+                         CollectiveOpKind collective_op_kind, int64_t op_id)
       : run_id(run_id),
         global_devices(std::move(global_devices)),
         num_local_participants(num_local_participants),
@@ -201,7 +200,7 @@ struct RendezvousKey {
   std::vector<GlobalDeviceId> global_devices;
   int num_local_participants;
   CollectiveOpKind collective_op_kind;
-  int64 op_id;
+  int64_t op_id;
 };
 
 template <typename DescFn>
@@ -237,7 +236,7 @@ struct ParticipantData {
 // Encapsulates parameters to Rendezvous::SubmitParticipant.
 struct AllReduceParticipantData : ParticipantData {
   AllReduceParticipantData(const RendezvousKey& rendezvous_key_p,
-                           int64 device_ordinal_p, se::Stream* stream_p)
+                           int64_t device_ordinal_p, se::Stream* stream_p)
       : ParticipantData(rendezvous_key_p),
         device_ordinal(device_ordinal_p),
         stream(stream_p) {}
@@ -247,21 +246,20 @@ struct AllReduceParticipantData : ParticipantData {
   // on how well the NCCL in-place implementation performs vs the out-of-place
   // implementation).
   struct Buffer {
-    int64 element_count;
+    int64_t element_count;
     se::DeviceMemoryBase source_data;
     se::DeviceMemoryBase destination_data;
     PrimitiveType primitive_type;
   };
-  int64 device_ordinal;
+  int64_t device_ordinal;
   se::Stream* stream;
   std::vector<Buffer> buffers;
-  const gpu::NcclUniqueIdCallback* nccl_unique_id_callback = nullptr;
 
   ReductionKind reduction_kind;
 
   // For each local all-reduce participant a (global ID, local device ordinal)
   // pair for the participant. Participants are in no particular order.
-  std::vector<std::pair<GlobalDeviceId, int64>> local_devices;
+  std::vector<std::pair<GlobalDeviceId, int64_t>> local_devices;
 
   string ToString() const override {
     std::vector<std::string> buffer_strs;

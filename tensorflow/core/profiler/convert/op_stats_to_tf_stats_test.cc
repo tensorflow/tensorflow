@@ -33,8 +33,8 @@ namespace profiler {
 namespace {
 
 XEventBuilder AddTensorFlowOpEvent(std::string&& tf_op_fullname,
-                                   int64 start_timestamp_ns, int64 duration_ns,
-                                   bool on_device,
+                                   int64_t start_timestamp_ns,
+                                   int64_t duration_ns, bool on_device,
                                    absl::string_view kernel_name,
                                    XPlaneBuilder* plane, XLineBuilder* line) {
   absl::string_view name = on_device ? kernel_name : tf_op_fullname;
@@ -49,8 +49,8 @@ XEventBuilder AddTensorFlowOpEvent(std::string&& tf_op_fullname,
 }
 
 void AddTensorFlowOpEventWithKernelDetails(std::string&& tf_op_fullname,
-                                           int64 start_timestamp_ns,
-                                           int64 duration_ns, bool on_device,
+                                           int64_t start_timestamp_ns,
+                                           int64_t duration_ns, bool on_device,
                                            absl::string_view kernel_name,
                                            absl::string_view kernel_details,
                                            XPlaneBuilder* plane,
@@ -75,16 +75,16 @@ TEST(OpStatsToTfStats, GpuTfStats) {
   // Kernel4 is a kernel using TensorCore
   static constexpr char kKernel4[] = "volta_fp16_s884gemm";
   static constexpr char kKernel5[] = "kernel5";
-  constexpr int64 kKernel1StartNs = 100000;
-  constexpr int64 kKernel1DurationNs = 8000;
-  constexpr int64 kKernel2StartNs = 110000;
-  constexpr int64 kKernel2DurationNs = 10000;
-  constexpr int64 kKernel3StartNs = 120000;
-  constexpr int64 kKernel3DurationNs = 10000;
-  constexpr int64 kKernel4StartNs = 130000;
-  constexpr int64 kKernel4DurationNs = 10000;
-  constexpr int64 kKernel5StartNs = 150000;
-  constexpr int64 kKernel5DurationNs = 10000;
+  constexpr int64_t kKernel1StartNs = 100000;
+  constexpr int64_t kKernel1DurationNs = 8000;
+  constexpr int64_t kKernel2StartNs = 110000;
+  constexpr int64_t kKernel2DurationNs = 10000;
+  constexpr int64_t kKernel3StartNs = 120000;
+  constexpr int64_t kKernel3DurationNs = 10000;
+  constexpr int64_t kKernel4StartNs = 130000;
+  constexpr int64_t kKernel4DurationNs = 10000;
+  constexpr int64_t kKernel5StartNs = 150000;
+  constexpr int64_t kKernel5DurationNs = 10000;
 
   // Mock kernel details for both kernel4 and kernel5.
   const std::string kKernelDetails = R"MULTI(regs:32

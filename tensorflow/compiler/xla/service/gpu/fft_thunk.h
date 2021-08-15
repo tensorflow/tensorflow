@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -41,9 +40,9 @@ class FftScratchAllocator : public se::ScratchAllocator {
   FftScratchAllocator(int device_ordinal,
                       se::DeviceMemoryAllocator* memory_allocator);
 
-  int64 GetMemoryLimitInBytes() override;
+  int64_t GetMemoryLimitInBytes() override;
 
-  int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
+  int64_t TotalAllocatedBytes() { return total_allocated_bytes_; }
 
   se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
       int64_t byte_size) override;
@@ -52,7 +51,7 @@ class FftScratchAllocator : public se::ScratchAllocator {
   const int device_ordinal_;
   se::DeviceMemoryAllocator* memory_allocator_;
   std::vector<se::OwningDeviceMemory> allocated_buffers_;
-  int64 total_allocated_bytes_ = 0;
+  int64_t total_allocated_bytes_ = 0;
 };
 
 // This class stores everything that StreamExecutor needs to launch an FFT.
@@ -64,7 +63,7 @@ class FftThunk : public Thunk {
   // Constructs a thunk for launching an FFT on a stream.
   // Semantics of null hlo_instruction argument are as in Thunk.
   FftThunk(ThunkInfo thunk_info, FftType fft_type,
-           absl::Span<const int64> fft_length,
+           absl::Span<const int64_t> fft_length,
            const BufferAllocation::Slice& input_buffer,
            const BufferAllocation::Slice& output_buffer,
            const Shape& input_shape, const Shape& output_shape);
@@ -77,7 +76,7 @@ class FftThunk : public Thunk {
 
  private:
   const se::fft::Type fft_type_;
-  const std::vector<int64> fft_length_;
+  const std::vector<int64_t> fft_length_;
 
   float scale_factor_;
 

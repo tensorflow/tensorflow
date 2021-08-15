@@ -72,7 +72,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override {
+  int64_t Cardinality() const override {
     if (preserve_cardinality_) {
       return input_->Cardinality();
     } else {

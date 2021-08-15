@@ -202,8 +202,9 @@ def _maybe_expand_labels(labels, predictions):
         if predictions_rank == labels_rank + 1:
           return array_ops.expand_dims(labels, -1, name=scope)
         raise ValueError(
-            'Unexpected labels shape %s for predictions shape %s.' %
-            (labels.get_shape(), predictions.get_shape()))
+            f'Unexpected labels shape {labels.get_shape()} for predictions '
+            f'shape {predictions.get_shape()}. Predictions rank should be the '
+            'same rank as labels rank or labels rank plus one .')
 
     # Otherwise, use dynamic shape.
     return control_flow_ops.cond(
@@ -602,7 +603,7 @@ def _confusion_matrix_at_thresholds(labels,
   else:
     for include in includes:
       if include not in all_includes:
-        raise ValueError('Invalid key: %s.' % include)
+        raise ValueError(f'Invalid key: {include}')
 
   with ops.control_dependencies([
       check_ops.assert_greater_equal(
@@ -815,7 +816,8 @@ def auc(labels,
   with variable_scope.variable_scope(name, 'auc',
                                      (labels, predictions, weights)):
     if curve != 'ROC' and curve != 'PR':
-      raise ValueError('curve must be either ROC or PR, %s unknown' % (curve))
+      raise ValueError(f'Curve must be either ROC or PR. Curve {curve} is '
+                       'unknown.')
 
     kepsilon = 1e-7  # To account for floating point imprecisions.
     if thresholds is not None:
@@ -932,7 +934,10 @@ def auc(labels,
                               math_ops.maximum(y[:num_thresholds - 1], y[1:])),
             name=name)
       else:
-        raise ValueError('Invalid summation_method: %s' % summation_method)
+        raise ValueError(f'Invalid summation_method: {summation_method} '
+                         'summation_method should be \'trapezoidal\', '
+                         '\'careful_interpolation\', \'minoring\', or '
+                         '\'majoring\'.')
 
     # sum up the areas of all the trapeziums
     def compute_auc_value(_, values):
@@ -2961,7 +2966,8 @@ def sensitivity_at_specificity(labels,
                        'supported when eager execution is enabled.')
 
   if specificity < 0 or specificity > 1:
-    raise ValueError('`specificity` must be in the range [0, 1].')
+    raise ValueError('`specificity` must be in the range [0, 1]. Currently, '
+                     f'`specificity` got {specificity}.')
 
   with variable_scope.variable_scope(name, 'sensitivity_at_specificity',
                                      (predictions, labels, weights)):
@@ -3019,7 +3025,8 @@ def _expand_and_tile(tensor, multiple, dim=0, name=None):
     `[-rank(tensor), rank(tensor)]`.
   """
   if multiple < 1:
-    raise ValueError('Invalid multiple %s, must be > 0.' % multiple)
+    raise ValueError(f'Invalid argument multiple={multiple} for '
+                     'expand_and_tile  call. `multiple` must be an integer > 0')
   with ops.name_scope(name, 'expand_and_tile',
                       (tensor, multiple, dim)) as scope:
     # Sparse.
@@ -3074,7 +3081,7 @@ def _num_relevant(labels, k):
     ValueError: if inputs have invalid dtypes or values.
   """
   if k < 1:
-    raise ValueError('Invalid k=%s.' % k)
+    raise ValueError(f'Invalid k={k}')
   with ops.name_scope(None, 'num_relevant', (labels,)) as scope:
     # For SparseTensor, calculate separate count for each row.
     labels = sparse_tensor.convert_to_tensor_or_sparse_tensor(labels)
@@ -3128,10 +3135,11 @@ def _sparse_average_precision_at_top_k(labels, predictions_idx):
     predictions_idx = math_ops.cast(
         predictions_idx, dtypes.int64, name='predictions_idx')
     if predictions_idx.get_shape().ndims == 0:
-      raise ValueError('The rank of predictions_idx must be at least 1.')
+      raise ValueError('The rank of `predictions_idx` must be at least 1.')
     k = predictions_idx.get_shape().as_list()[-1]
     if k is None:
-      raise ValueError('The last dimension of predictions_idx must be set.')
+      raise ValueError('The last dimension of predictions_idx must be set. '
+                       'Currently, it is None.')
     labels = _maybe_expand_labels(labels, predictions_idx)
 
     # Expand dims to produce [D1, ... DN, k, 1] tensor. This gives us a separate
@@ -3399,7 +3407,7 @@ def average_precision_at_k(labels,
                        'supported when eager execution is enabled.')
 
   if k < 1:
-    raise ValueError('Invalid k=%s.' % k)
+    raise ValueError(f'Invalid k={k}. `k` should be >= 1.')
   with ops.name_scope(name, _at_k_name('average_precision', k),
                       (predictions, labels, weights)) as scope:
     # Calculate top k indices to produce [D1, ... DN, k] tensor.
@@ -3783,7 +3791,8 @@ def specificity_at_sensitivity(labels,
                        'supported when eager execution is enabled.')
 
   if sensitivity < 0 or sensitivity > 1:
-    raise ValueError('`sensitivity` must be in the range [0, 1].')
+    raise ValueError('`sensitivity` must be in the range [0, 1]. Currently, '
+                     f'`sensitivity` is {sensitivity}.')
 
   with variable_scope.variable_scope(name, 'specificity_at_sensitivity',
                                      (predictions, labels, weights)):

@@ -63,7 +63,7 @@ def read_saved_model(saved_model_dir):
       saved_model.ParseFromString(file_content)
       return saved_model
     except message.DecodeError as e:
-      raise IOError("Cannot parse file %s: %s." % (path_to_pb, str(e)))
+      raise IOError("Cannot parse proto file %s: %s." % (path_to_pb, str(e)))
   elif file_io.file_exists(path_to_pbtxt):
     with file_io.FileIO(path_to_pbtxt, "rb") as f:
       file_content = f.read()
@@ -71,7 +71,7 @@ def read_saved_model(saved_model_dir):
       text_format.Merge(file_content.decode("utf-8"), saved_model)
       return saved_model
     except text_format.ParseError as e:
-      raise IOError("Cannot parse file %s: %s." % (path_to_pbtxt, str(e)))
+      raise IOError("Cannot parse pbtxt file %s: %s." % (path_to_pbtxt, str(e)))
   else:
     raise IOError("SavedModel file does not exist at: %s/{%s|%s}" %
                   (saved_model_dir, constants.SAVED_MODEL_FILENAME_PBTXT,
@@ -117,9 +117,15 @@ def get_meta_graph_def(saved_model_dir, tag_set):
   saved_model = read_saved_model(saved_model_dir)
   # Note: Discard empty tags so that "" can mean the empty tag set.
   set_of_tags = set([tag for tag in tag_set.split(",") if tag])
-  for meta_graph_def in saved_model.meta_graphs:
-    if set(meta_graph_def.meta_info_def.tags) == set_of_tags:
-      return meta_graph_def
 
-  raise RuntimeError("MetaGraphDef associated with tag-set %r could not be"
-                     " found in SavedModel" % tag_set)
+  valid_tags = []
+  for meta_graph_def in saved_model.meta_graphs:
+    meta_graph_tags = set(meta_graph_def.meta_info_def.tags)
+    if meta_graph_tags == set_of_tags:
+      return meta_graph_def
+    else:
+      valid_tags.append(",".join(meta_graph_tags))
+
+  raise RuntimeError(
+      f"MetaGraphDef associated with tag-set {tag_set} could not be found in "
+      f"the SavedModel. Please use one of the following tag-sets: {valid_tags}")

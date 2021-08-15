@@ -99,6 +99,8 @@ class ResourceHandle {
 
   std::string DebugString() const;
 
+  std::string SummarizeValue() const { return "Resource Tensor"; }
+
   // GUID for anonymous resources. Resources with this shared_name will have
   // their shared_name replaced with a GUID at creation time
   static constexpr const char* ANONYMOUS_NAME =
@@ -161,7 +163,7 @@ class ResourceHandle {
   Status ValidateType(const TypeIndex& type_index) const;
 
   // Generates unique IDs (e.g. for names of anonymous variables)
-  static int64 GenerateUniqueId();
+  static int64_t GenerateUniqueId();
 
  private:
   std::string device_;
@@ -178,19 +180,19 @@ class ResourceHandle {
   // a "weak-ref" mode, only containing the name of the resource (conceptually a
   // weak reference).
   core::IntrusivePtr<ResourceBase> resource_;
-  static std::atomic<int64> current_id_;
+  static std::atomic<int64_t> current_id_;
 };
 
 // For backwards compatibility for when this was a proto
 std::string ProtoDebugString(const ResourceHandle& handle);
 
 // Encodes a list of ResourceHandle protos in the given StringListEncoder.
-void EncodeResourceHandleList(const ResourceHandle* p, int64 n,
+void EncodeResourceHandleList(const ResourceHandle* p, int64_t n,
                               std::unique_ptr<port::StringListEncoder> e);
 
 // Decodes a list of ResourceHandle protos from the given StringListDecoder.
 bool DecodeResourceHandleList(std::unique_ptr<port::StringListDecoder> d,
-                              ResourceHandle* ps, int64 n);
+                              ResourceHandle* ps, int64_t n);
 
 }  // namespace tensorflow
 

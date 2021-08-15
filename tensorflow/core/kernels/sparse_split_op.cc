@@ -30,7 +30,7 @@ class SparseSplitOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    const int64 axis_input = context->input(0).scalar<int64>()();
+    const int64_t axis_input = context->input(0).scalar<int64_t>()();
     const Tensor& input_indices = context->input(1);
     const Tensor& input_values = context->input(2);
     const Tensor& input_shape = context->input(3);
@@ -48,24 +48,26 @@ class SparseSplitOp : public OpKernel {
                     "Input shape should be a vector but received shape ",
                     input_shape.shape().DebugString()));
 
-    const int64 input_rank = input_shape.vec<int64>().size();
-    const int64 axis = (axis_input < 0) ? input_rank + axis_input : axis_input;
+    const int64_t input_rank = input_shape.vec<int64_t>().size();
+    const int64_t axis =
+        (axis_input < 0) ? input_rank + axis_input : axis_input;
 
     OP_REQUIRES(
         context, axis >= 0 && axis < input_rank,
         errors::InvalidArgument("Input axis should be in range [", -input_rank,
                                 ", ", input_rank, "), got ", axis_input));
 
-    OP_REQUIRES(context,
-                num_split_ >= 1 && num_split_ <= input_shape.vec<int64>()(axis),
-                errors::InvalidArgument("Input num_split should be between 1 "
-                                        "and the splitting dimension size (",
-                                        input_shape.vec<int64>()(axis),
-                                        "), got ", num_split_));
+    OP_REQUIRES(
+        context,
+        num_split_ >= 1 && num_split_ <= input_shape.vec<int64_t>()(axis),
+        errors::InvalidArgument("Input num_split should be between 1 "
+                                "and the splitting dimension size (",
+                                input_shape.vec<int64_t>()(axis), "), got ",
+                                num_split_));
 
     // Prevent overflow by constructing the dense shape separately
     TensorShape dense_shape;
-    const auto input_shape_flat = input_shape.flat<int64>();
+    const auto input_shape_flat = input_shape.flat<int64_t>();
     for (int i = 0; i < input_shape.NumElements(); i++) {
       OP_REQUIRES_OK(context,
                      dense_shape.AddDimWithStatus(input_shape_flat(i)));
@@ -90,7 +92,7 @@ class SparseSplitOp : public OpKernel {
                                   {outputs[slice_index].dims()}, &shape));
       auto output_shape = outputs[slice_index].shape();
       for (int dim = 0; dim < outputs[slice_index].dims(); ++dim) {
-        shape->vec<int64>()(dim) = output_shape[dim];
+        shape->vec<int64_t>()(dim) = output_shape[dim];
       }
     }
   }

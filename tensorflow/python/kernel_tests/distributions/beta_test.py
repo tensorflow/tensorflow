@@ -182,7 +182,7 @@ class BetaTest(test.TestCase):
   def testLogPdfOnBoundaryIsFiniteWhenAlphaIsOne(self):
     b = [[0.01, 0.1, 1., 2], [5., 10., 2., 3]]
     pdf = self.evaluate(beta_lib.Beta(1., b).prob(0.))
-    self.assertAllEqual(np.ones_like(pdf, dtype=np.bool), np.isfinite(pdf))
+    self.assertAllEqual(np.ones_like(pdf, dtype=np.bool_), np.isfinite(pdf))
 
   def testBetaMean(self):
     a = [1., 2, 3]
@@ -330,8 +330,8 @@ class BetaTest(test.TestCase):
       b = 10. * np.random.random(shape).astype(dt)
       x = np.random.random(shape).astype(dt)
       actual = self.evaluate(beta_lib.Beta(a, b).cdf(x))
-      self.assertAllEqual(np.ones(shape, dtype=np.bool), 0. <= x)
-      self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
+      self.assertAllEqual(np.ones(shape, dtype=np.bool_), 0. <= x)
+      self.assertAllEqual(np.ones(shape, dtype=np.bool_), 1. >= x)
       if not stats:
         return
       self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=9e-3, atol=5e-6)
@@ -343,8 +343,8 @@ class BetaTest(test.TestCase):
       b = 10. * np.random.random(shape).astype(dt)
       x = np.random.random(shape).astype(dt)
       actual = self.evaluate(math_ops.exp(beta_lib.Beta(a, b).log_cdf(x)))
-      self.assertAllEqual(np.ones(shape, dtype=np.bool), 0. <= x)
-      self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
+      self.assertAllEqual(np.ones(shape, dtype=np.bool_), 0. <= x)
+      self.assertAllEqual(np.ones(shape, dtype=np.bool_), 1. >= x)
       if not stats:
         return
       self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=3e-3, atol=2e-5)

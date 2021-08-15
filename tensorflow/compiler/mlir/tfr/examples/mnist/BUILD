@@ -11,7 +11,6 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["@llvm-project//mlir:subpackages"],
     packages = [
         "//tensorflow/compiler/mlir/tfr/...",
     ],
@@ -71,6 +70,7 @@ distribute_py_test(
         "no_oss",  # Avoid downloading mnist data set in oss.
         "nomultivm",  # Not needed. Save some resources and test time.
         "notap",  # The test is too long to run as part of llvm presubmits (b/173661843).
+        "notpu",  # Takes too long (b/192305423)
         "notsan",  # Not needed, and there were issues with timeouts.
     ],
 

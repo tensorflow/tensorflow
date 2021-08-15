@@ -20,9 +20,9 @@ limitations under the License.
 namespace tensorflow {
 
 Status ScopedAllocatorContainer::AddScopedAllocator(
-    const Tensor& backing_tensor, int32 scope_id, const string& scope_name,
+    const Tensor& backing_tensor, int32_t scope_id, const string& scope_name,
     const gtl::ArraySlice<ScopedAllocator::Field>& fields,
-    int32 expected_call_count) {
+    int32_t expected_call_count) {
   VLOG(1) << "AddScopedAllocator " << mgr_->device_name()
           << " step_id_=" << step_id_ << " scope_id=" << scope_id;
   mutex_lock l(mu_);
@@ -56,7 +56,7 @@ Status ScopedAllocatorContainer::AddScopedAllocator(
   return Status::OK();
 }
 
-ScopedAllocator* ScopedAllocatorContainer::GetAllocator(int32 scope_id) {
+ScopedAllocator* ScopedAllocatorContainer::GetAllocator(int32_t scope_id) {
   mutex_lock l(mu_);
   auto it = allocators_.find(scope_id);
   if (it != allocators_.end()) {
@@ -70,7 +70,8 @@ ScopedAllocator* ScopedAllocatorContainer::GetAllocator(int32 scope_id) {
   }
 }
 
-ScopedAllocatorInstance* ScopedAllocatorContainer::GetInstance(int32 scope_id) {
+ScopedAllocatorInstance* ScopedAllocatorContainer::GetInstance(
+    int32_t scope_id) {
   VLOG(2) << "GetInstance " << scope_id << " step " << step_id_ << " on "
           << mgr_->device_name();
   mutex_lock l(mu_);
@@ -83,7 +84,7 @@ ScopedAllocatorInstance* ScopedAllocatorContainer::GetInstance(int32 scope_id) {
   return nullptr;
 }
 
-void ScopedAllocatorContainer::Drop(int32 scope_id, ScopedAllocator* sa) {
+void ScopedAllocatorContainer::Drop(int32_t scope_id, ScopedAllocator* sa) {
   VLOG(2) << "Drop " << scope_id << " from container " << this << " step "
           << step_id_ << " on " << mgr_->device_name();
   mutex_lock l(mu_);
@@ -150,10 +151,10 @@ ScopedAllocatorContainer* ScopedAllocatorMgr::GetContainer(int64_t step_id) {
 }
 
 Status ScopedAllocatorMgr::AddScopedAllocator(
-    const Tensor& backing_tensor, int64_t step_id, int32 scope_id,
+    const Tensor& backing_tensor, int64_t step_id, int32_t scope_id,
     const string& scope_name,
     const gtl::ArraySlice<ScopedAllocator::Field>& fields,
-    int32 expected_call_count) {
+    int32_t expected_call_count) {
   ScopedAllocatorContainer* sac = GetContainer(step_id);
   return sac->AddScopedAllocator(backing_tensor, scope_id, scope_name, fields,
                                  expected_call_count);
@@ -161,15 +162,15 @@ Status ScopedAllocatorMgr::AddScopedAllocator(
 
 /*static*/
 size_t ScopedAllocatorMgr::PopulateFields(
-    int32 scope_id, const gtl::ArraySlice<TensorShape>& shapes,
+    int32_t scope_id, const gtl::ArraySlice<TensorShape>& shapes,
     const DataType dtype, std::vector<ScopedAllocator::Field>* fields) {
-  const int32 num_fields = static_cast<int32>(shapes.size());
+  const int32_t num_fields = static_cast<int32>(shapes.size());
   fields->resize(num_fields);
   // At the end of iteration `i`, `offset` points to the offset from the start
   // of the backing buffer until the end of `field[i].bytes_allocated`.  This
   // is aligned to `kAllocatorAlignment`.
   size_t offset = 0;
-  for (int32 i = 0; i < num_fields; ++i) {
+  for (int32_t i = 0; i < num_fields; ++i) {
     size_t bytes_requested = shapes[i].num_elements() * DataTypeSize(dtype);
     auto* field = &((*fields)[i]);
     field->scope_id = scope_id + 1 + i;

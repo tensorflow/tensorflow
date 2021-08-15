@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 
-#include <fp16.h>
+#include "fp16.h"  // from @FP16
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 

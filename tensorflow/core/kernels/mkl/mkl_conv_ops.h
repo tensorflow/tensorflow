@@ -192,6 +192,7 @@ class MklDnnConvUtil {
   virtual inline void GetFilterSizeInMklOrder(const TensorShape& input_shape,
                                               const TensorShape& filter_shape,
                                               memory::dims* filter_dims,
+                                              bool* is_grouped_convolution,
                                               bool is_depthwise) {
     DCHECK(filter_dims);
 
@@ -211,11 +212,6 @@ class MklDnnConvUtil {
     int input_depth = GetTensorDim(input_shape, data_format_, 'C');
 
     if (strides_.size() == 4) {  // Conv2D
-      OP_REQUIRES(context_, input_depth == filter_shape.dim_size(2),
-                  errors::InvalidArgument(
-                      "input and filter must have the same depth: ",
-                      input_depth, " vs ", filter_shape.dim_size(2)));
-
       // TF filter is always in (rows, cols, in_depth, out_depth) order.
       int filter_rows =
           static_cast<int>(filter_shape.dim_size(TF_2DFILTER_DIM_H));
@@ -225,6 +221,12 @@ class MklDnnConvUtil {
           static_cast<int>(filter_shape.dim_size(TF_2DFILTER_DIM_I));
       int filter_out_depth =
           static_cast<int>(filter_shape.dim_size(TF_2DFILTER_DIM_O));
+      OP_REQUIRES(context_, input_depth % filter_in_depth == 0,
+                  errors::InvalidArgument(
+                      "input depth must be evenly divisible by filter depth: ",
+                      input_depth, " vs ", filter_in_depth));
+      *is_grouped_convolution = filter_in_depth != input_depth;
+      int group_count = input_depth / filter_in_depth;
       // MKL-DNN always needs filter in OIHW format for regular convolutions
       // and GOIHW for grouped/depthwise convolutions,
       // OIHW = (out_depth, in_depth, rows, cols)
@@ -235,6 +237,16 @@ class MklDnnConvUtil {
         mkldnn_sizes[MKL_GROUP_FILTER_DIM_G] = filter_in_depth;
         mkldnn_sizes[MKL_GROUP_FILTER_DIM_O] = filter_out_depth;
         mkldnn_sizes[MKL_GROUP_FILTER_DIM_I] = 1;
+        mkldnn_sizes[MKL_GROUP_FILTER_DIM_H] = filter_rows;
+        mkldnn_sizes[MKL_GROUP_FILTER_DIM_W] = filter_cols;
+
+        *filter_dims = mkldnn_sizes;
+      } else if (*is_grouped_convolution) {
+        // TODO(intel-tf): Directly set filter_dims. Same for other places.
+        std::vector<MKLDNN_SIZE_DTYPE> mkldnn_sizes(5, -1);
+        mkldnn_sizes[MKL_GROUP_FILTER_DIM_G] = group_count;
+        mkldnn_sizes[MKL_GROUP_FILTER_DIM_O] = filter_out_depth / group_count;
+        mkldnn_sizes[MKL_GROUP_FILTER_DIM_I] = filter_in_depth;
         mkldnn_sizes[MKL_GROUP_FILTER_DIM_H] = filter_rows;
         mkldnn_sizes[MKL_GROUP_FILTER_DIM_W] = filter_cols;
 
@@ -286,11 +298,12 @@ class MklDnnConvUtil {
   virtual inline void GetFilterSizeInMklOrder(size_t src_index,
                                               size_t filter_index,
                                               memory::dims* filter_dims,
+                                              bool* is_grouped_convolution,
                                               bool is_depthwise) {
     DCHECK(filter_dims);
     GetFilterSizeInMklOrder(GetTfShape(context_, src_index),
                             GetTfShape(context_, filter_index), filter_dims,
-                            is_depthwise);
+                            is_grouped_convolution, is_depthwise);
   }
 
   // Calculate Bias size for 2D or 3D Convolution. Function does not
@@ -319,8 +332,8 @@ class MklDnnConvUtil {
       const TensorShape& input_shape, const TensorShape& filter_shape,
       const memory::dims& strides, const memory::dims& dilations,
       memory::dims* output_dims_tf_order, memory::dims* output_dims_mkl_order,
-      memory::dims* pad_l, memory::dims* pad_r, bool pad_enabled = false,
-      bool is_depthwise = false) {
+      memory::dims* pad_l, memory::dims* pad_r, bool is_grouped_convolution,
+      bool pad_enabled = false, bool is_depthwise = false) {
     DCHECK(output_dims_tf_order);
     DCHECK(output_dims_mkl_order);
     DCHECK(pad_l);
@@ -381,12 +394,14 @@ class MklDnnConvUtil {
     // TODO add support for 3-D Depthwise
 
     // Output depth is same as last dimension for filters for regular
-    // convolutions. For depthwise it is in_depth * channel_multiplier.
-    // The channel_multiplier is the last dimension of TF filter for
-    // depthwise convolutions.
+    // convolutions and group convolutions. For depthwise it is in_depth *
+    // channel_multiplier. The channel_multiplier is the last dimension of
+    // TF filter for depthwise convolutions.
     if (is_depthwise) {
       out_depth = (filter_shape.dim_size(TF_2DFILTER_DIM_I) *
                    filter_shape.dim_size(TF_2DFILTER_DIM_O));
+    } else if (is_grouped_convolution) {
+      out_depth = filter_shape.dim_size(TF_2DFILTER_DIM_O);
     } else {
       out_depth = filter_shape.dim_size(
           is_conv2d ? static_cast<int>(TF_2DFILTER_DIM_O)
@@ -458,7 +473,18 @@ class MklDnnConvUtil {
             : ShapeFromFormat(data_format_, out_batch,
                               {{out_planes, out_rows, out_cols}}, out_depth);
     *output_dims_tf_order = TFShapeToMklDnnDims(out_shape);
-
+    if (is_grouped_convolution) {
+      int out_depth = GetTensorDim(out_shape, data_format_, 'C');
+      int input_depth = GetTensorDim(input_shape, data_format_, 'C');
+      int filter_in_depth =
+          static_cast<int>(filter_shape.dim_size(TF_2DFILTER_DIM_I));
+      int num_groups = input_depth / filter_in_depth;
+      OP_REQUIRES(
+          context_, out_depth % num_groups == 0 && out_depth >= num_groups,
+          errors::InvalidArgument(
+              "output depth must be evenly divisible by number of groups: ",
+              out_depth, " vs ", num_groups));
+    }
     if (is_conv2d) {
       // For Conv2D, MKL-DNN always needs output in NCHW format.
       std::vector<MKLDNN_SIZE_DTYPE> mkldnn_sizes(4, -1);
@@ -486,7 +512,7 @@ class MklDnnConvUtil {
       size_t src_index, size_t filter_index, const memory::dims& strides,
       const memory::dims& dilations, memory::dims* output_dims_tf_order,
       memory::dims* output_dims_mkl_order, memory::dims* pad_l,
-      memory::dims* pad_r, bool is_depthwise) {
+      memory::dims* pad_r, bool is_grouped_convolution, bool is_depthwise) {
     DCHECK(output_dims_tf_order);
     DCHECK(output_dims_mkl_order);
     DCHECK(pad_l);
@@ -510,7 +536,7 @@ class MklDnnConvUtil {
     GetOutputAndPadSizeInMklOrder(input_tf_shape, filter_tf_shape, strides,
                                   dilations, output_dims_tf_order,
                                   output_dims_mkl_order, pad_l, pad_r,
-                                  is_depthwise);
+                                  is_grouped_convolution, is_depthwise);
   }
 
   // Wrapper function to calculate input, filter, and output sizes of
@@ -526,8 +552,8 @@ class MklDnnConvUtil {
       memory::dims* input_dims, memory::dims* filter_dims,
       memory::dims* strides, memory::dims* dilations,
       memory::dims* output_dims_tf_order, memory::dims* output_dims_mkl_order,
-      memory::dims* pad_l, memory::dims* pad_r, bool pad_enabled = false,
-      bool is_depthwise = false) {
+      memory::dims* pad_l, memory::dims* pad_r, bool* is_grouped_convolution,
+      bool pad_enabled = false, bool is_depthwise = false) {
     DCHECK(input_dims);
     DCHECK(filter_dims);
     DCHECK(strides);
@@ -540,13 +566,14 @@ class MklDnnConvUtil {
     GetInputSizeInMklOrder(input_shape, input_dims);
     if (!context_->status().ok()) return;
     GetFilterSizeInMklOrder(input_shape, filter_shape, filter_dims,
-                            is_depthwise);
+                            is_grouped_convolution, is_depthwise);
     if (!context_->status().ok()) return;
     GetStridesInMklOrder(strides);
     GetDilationsInMklOrder(dilations);
     GetOutputAndPadSizeInMklOrder(
         input_shape, filter_shape, *strides, *dilations, output_dims_tf_order,
-        output_dims_mkl_order, pad_l, pad_r, pad_enabled, is_depthwise);
+        output_dims_mkl_order, pad_l, pad_r, *is_grouped_convolution,
+        pad_enabled, is_depthwise);
     if (!context_->status().ok()) return;
   }
 };

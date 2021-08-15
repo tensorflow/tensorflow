@@ -25,7 +25,7 @@ namespace tpu {
 
 // A reserved ID for deferred core selection. Intentionally set at a number
 // that is more than the number of cores available in a future system.
-constexpr int32 kDeferredCoreSelectionReserved = -8193;
+constexpr int32_t kDeferredCoreSelectionReserved = -8193;
 
 class TPUOrdinalSelector : TPUOrdinalSelectorInterface {
  public:
@@ -36,7 +36,7 @@ class TPUOrdinalSelector : TPUOrdinalSelectorInterface {
   ~TPUOrdinalSelector() override {
     OpsApiFn()->TfTpuOrdinalSelector_DestroyFn(ordinal_selector_);
   }
-  int64 GetOrdinal(absl::optional<uint64> key, int64_t* req_id) override {
+  int64_t GetOrdinal(absl::optional<uint64> key, int64_t* req_id) override {
     int64_t ordinal;
     OpsApiFn()->TfTpuOrdinalSelector_GetOrdinalFn(ordinal_selector_, key,
                                                   req_id, &ordinal);

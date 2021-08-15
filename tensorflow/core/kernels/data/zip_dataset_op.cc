@@ -85,10 +85,10 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override {
-    int64 result = kInfiniteCardinality;
+  int64_t Cardinality() const override {
+    int64_t result = kInfiniteCardinality;
     for (const auto& input : inputs_) {
-      int64 n = input->Cardinality();
+      int64_t n = input->Cardinality();
       if (n == kUnknownCardinality) {
         return kUnknownCardinality;
       }

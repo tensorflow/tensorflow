@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 40.
+// Next ID to use: 44.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -257,4 +257,21 @@ message TocoFlags {
   // If true, automatically adds all tf ops into the model as select Tensorflow
   // ops.
   optional bool allow_all_select_tf_ops = 39;
+
+  // Whether to unfold large splat constant tensors in the flatbuffer to reduce
+  // model size.
+  optional bool unfold_large_splat_constant = 40 [default = false];
+
+  // Name of TFLite backends which are needed to check compatibility.
+  // WARNING: Experimental interface, subject to change.
+  repeated string supported_backends = 41;
+
+  // Whether to force to use batch size one when the batch size is None during
+  // lowering tensor list ops.
+  optional bool default_to_single_batch_in_tensor_list_ops = 42
+      [default = false];
+
+  // Disable per_channel quantization for dynamic range quantization.
+  // Note: This is an experimental feature
+  optional bool disable_per_channel_quantization = 43 [default = false];
 }

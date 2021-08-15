@@ -73,7 +73,7 @@ bool IsPyFloat(PyObject* obj) {
 
 struct ConverterState {
   // The inferred tensor shape.
-  gtl::InlinedVector<int64, 4> inferred_shape;
+  gtl::InlinedVector<int64_t, 4> inferred_shape;
 
   // The inferred tensor data type.
   DataType inferred_dtype;
@@ -253,21 +253,21 @@ struct Converter {
     Safe_PyObjectPtr seq = make_safe(PySequence_Fast(obj, ""));
     if (TF_PREDICT_FALSE(seq == nullptr)) return ErrorRectangular;
 
-    const int64 s = state->inferred_shape[depth];
+    const int64_t s = state->inferred_shape[depth];
     if (TF_PREDICT_FALSE(s != PySequence_Fast_GET_SIZE(seq.get()))) {
       return ErrorRectangular;
     }
 
     if (state->inferred_shape.size() - depth > 1) {
       /* Iterate over outer dim, and recursively convert each element. */
-      for (int64 i = 0; i < s; ++i) {
+      for (int64_t i = 0; i < s; ++i) {
         const char* error = Helper(PySequence_Fast_GET_ITEM(seq.get(), i),
                                    depth + 1, state, buf);
         if (TF_PREDICT_FALSE(error != nullptr)) return error;
       }
     } else {
       PyObject** l = PySequence_Fast_ITEMS(seq.get());
-      for (int64 i = 0; i < s; ++i) {
+      for (int64_t i = 0; i < s; ++i) {
         auto scalar = ZeroDimArrayToScalar(l[i], state);
         const char* error = ConverterTraits<T>::ConvertScalar(scalar, *buf);
         Py_DECREF(scalar);
@@ -315,17 +315,18 @@ struct Converter {
 // Int support
 
 template <>
-struct ConverterTraits<int64> {
-  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, int64 value) {
+struct ConverterTraits<int64_t> {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx,
+                                               int64_t value) {
     return tensorflow::unwrap(ctx)->CreateInt64Scalar(value);
   }
 
   static AbstractTensorInterface* CreateTensor(
-      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+      TFE_Context* ctx, absl::Span<const int64_t> dim_sizes) {
     return tensorflow::unwrap(ctx)->CreateTensor(DT_INT64, dim_sizes);
   }
 
-  static const char* ConvertScalar(PyObject* v, int64* out) {
+  static const char* ConvertScalar(PyObject* v, int64_t* out) {
 #if PY_MAJOR_VERSION < 3
     if (TF_PREDICT_TRUE(PyInt_Check(v))) {
       *out = PyInt_AS_LONG(v);
@@ -352,7 +353,7 @@ struct ConverterTraits<int64> {
   }
 };
 
-typedef Converter<int64> Int64Converter;
+typedef Converter<int64_t> Int64Converter;
 
 template <>
 struct ConverterTraits<uint64> {
@@ -361,7 +362,7 @@ struct ConverterTraits<uint64> {
   }
 
   static AbstractTensorInterface* CreateTensor(
-      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+      TFE_Context* ctx, absl::Span<const int64_t> dim_sizes) {
     return tensorflow::unwrap(ctx)->CreateTensor(DT_UINT64, dim_sizes);
   }
 
@@ -393,17 +394,18 @@ typedef Converter<uint64> UInt64Converter;
 
 template <>
 struct ConverterTraits<int32> {
-  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, int32 value) {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx,
+                                               int32_t value) {
     return tensorflow::unwrap(ctx)->CreateInt32Scalar(value);
   }
 
   static AbstractTensorInterface* CreateTensor(
-      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+      TFE_Context* ctx, absl::Span<const int64_t> dim_sizes) {
     return tensorflow::unwrap(ctx)->CreateTensor(DT_INT32, dim_sizes);
   }
 
   static const char* ConvertScalar(PyObject* v, int32* out) {
-    int64 i;
+    int64_t i;
 #if PY_MAJOR_VERSION < 3
     if (TF_PREDICT_TRUE(PyInt_Check(v))) {
       i = PyInt_AS_LONG(v);
@@ -504,7 +506,7 @@ struct ConverterTraits<float> {
   }
 
   static AbstractTensorInterface* CreateTensor(
-      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+      TFE_Context* ctx, absl::Span<const int64_t> dim_sizes) {
     return tensorflow::unwrap(ctx)->CreateTensor(DT_FLOAT, dim_sizes);
   }
 
@@ -520,7 +522,7 @@ struct ConverterTraits<double> {
   }
 
   static AbstractTensorInterface* CreateTensor(
-      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+      TFE_Context* ctx, absl::Span<const int64_t> dim_sizes) {
     return tensorflow::unwrap(ctx)->CreateTensor(DT_DOUBLE, dim_sizes);
   }
 
@@ -540,7 +542,7 @@ struct ConverterTraits<Eigen::half> {
   }
 
   static AbstractTensorInterface* CreateTensor(
-      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+      TFE_Context* ctx, absl::Span<const int64_t> dim_sizes) {
     return tensorflow::unwrap(ctx)->CreateTensor(DT_HALF, dim_sizes);
   }
 
@@ -561,7 +563,7 @@ struct ConverterTraits<tstring> {
   }
 
   static AbstractTensorInterface* CreateTensor(
-      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+      TFE_Context* ctx, absl::Span<const int64_t> dim_sizes) {
     return tensorflow::unwrap(ctx)->CreateTensor(DT_STRING, dim_sizes);
   }
 
@@ -628,7 +630,7 @@ struct ConverterTraits<complex128> {
   }
 
   static AbstractTensorInterface* CreateTensor(
-      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+      TFE_Context* ctx, absl::Span<const int64_t> dim_sizes) {
     return tensorflow::unwrap(ctx)->CreateTensor(DT_COMPLEX128, dim_sizes);
   }
 
@@ -660,7 +662,7 @@ struct ConverterTraits<bool> {
   }
 
   static AbstractTensorInterface* CreateTensor(
-      TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
+      TFE_Context* ctx, absl::Span<const int64_t> dim_sizes) {
     return tensorflow::unwrap(ctx)->CreateTensor(DT_BOOL, dim_sizes);
   }
 

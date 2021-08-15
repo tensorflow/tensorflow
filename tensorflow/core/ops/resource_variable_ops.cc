@@ -250,7 +250,7 @@ REGISTER_OP("ResourceGather")
       ShapeHandle indices_shape = c->input(1);
 
       ShapeHandle unused;
-      int32 batch_dims;
+      int32_t batch_dims;
       TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
       if (batch_dims < 0)
         return errors::InvalidArgument("batch_dims is negative (", batch_dims,

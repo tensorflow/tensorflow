@@ -211,18 +211,13 @@ StatusOr<py::bytes> PyClient::SerializeExecutable(
 }
 
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
-    const std::string& serialized, std::shared_ptr<HloModule> hlo_module,
-    CompileOptions options) {
+    const std::string& serialized, CompileOptions options) {
   std::unique_ptr<PjRtExecutable> executable;
   absl::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
-    std::unique_ptr<HloModule> unique_module_copy =
-        hlo_module->Clone(hlo_module->config(), /*suffix=*/"");
-    TF_ASSIGN_OR_RETURN(
-        executable,
-        pjrt_client_->DeserializeExecutable(
-            serialized, std::move(unique_module_copy), std::move(options)));
+    TF_ASSIGN_OR_RETURN(executable, pjrt_client_->DeserializeExecutable(
+                                        serialized, std::move(options)));
     TF_ASSIGN_OR_RETURN(fingerprint,
                         pjrt_client_->ExecutableFingerprint(*executable));
   }
@@ -297,7 +292,7 @@ namespace {
 
 struct HeapProfileKey {
   Traceback* traceback;
-  int64 size;
+  int64_t size;
   PjRtDevice* device;
   bool operator==(const HeapProfileKey& other) const;
 };
@@ -330,12 +325,12 @@ H AbslHashValue(H h, const HeapProfileKey& key) {
 StatusOr<py::bytes> PyClient::HeapProfile() {
   CHECK(PyGILState_Check());
   absl::flat_hash_set<PjRtBuffer*> buffer_set;
-  absl::flat_hash_map<HeapProfileKey, int64> entries;
+  absl::flat_hash_map<HeapProfileKey, int64_t> entries;
   for (PyBuffer* device_buffers : buffers_) {
     for (PyBuffer* buffer = device_buffers; buffer; buffer = buffer->next_) {
       // We only wish to count each PjRtBuffer once, even though they may be
       // shared by multiple PyBuffers.
-      if (buffer_set.insert(buffer->buffer()).second) {
+      if (!buffer->is_deleted() && buffer_set.insert(buffer->buffer()).second) {
         TF_ASSIGN_OR_RETURN(size_t size,
                             buffer->buffer()->GetOnDeviceSizeInBytes());
         HeapProfileKey key{buffer->traceback().get(),
@@ -348,9 +343,11 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
 
   for (PyExecutable* executable = executables_; executable;
        executable = executable->next_) {
-    HeapProfileKey key{executable->traceback(),
-                       executable->SizeOfGeneratedCodeInBytes(), nullptr};
-    ++entries[key];
+    if (!executable->is_deleted()) {
+      HeapProfileKey key{executable->traceback(),
+                         executable->SizeOfGeneratedCodeInBytes(), nullptr};
+      ++entries[key];
+    }
   }
 
   ProfileBuilder builder;

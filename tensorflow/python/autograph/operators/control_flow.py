@@ -74,13 +74,16 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.types import distribute
@@ -460,10 +463,30 @@ def _py_for_stmt(iter_, extra_test, body, get_state, set_state):
     body = protected_body
 
   if extra_test is not None:
-    if extra_test():
+    def guarded_extra_test():
+      extra_test_result = extra_test()
+      try:
+        # Note: Using try/except and not tensor_util.is_tf_type to avoid
+        # performance degradation.
+        return bool(extra_test_result)
+      except errors_impl.OperatorNotAllowedInGraphError:
+        ag_logging.log(
+            1,
+            'Caught error while evaluating loop stop condition',
+            exc_info=True)
+        # TODO(mdan): We can pass the location of extra_test and show it here.
+        raise NotImplementedError(
+            'break and return statements which depend on a TF condition are not'
+            ' supported in Python for loops. Did you intend to make it a TF'
+            ' loop?\nSee '
+            'https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
+            'python/autograph/g3doc/reference/limitations.md'
+            '#consistency-of-control-flow-types for more info.')
+
+    if guarded_extra_test():
       for target in iter_:
         body(target)
-        if not extra_test():
+        if not guarded_extra_test():
           break
 
   else:
@@ -950,7 +973,28 @@ def _py_while_stmt(test, body, get_state, set_state, opts):
       before_iteration()
     body = protected_body
 
-  while test():
+  def guarded_test():
+    test_result = test()
+    try:
+      # Note: Using try/except and not tensor_util.is_tf_type to avoid
+      # performance degradation.
+      return bool(test_result)
+    except errors_impl.OperatorNotAllowedInGraphError:
+      ag_logging.log(
+          1,
+          'Caught error while evaluating while loop condition',
+          exc_info=True)
+      # TODO(mdan): distinguish beteen these two cases.
+      raise NotImplementedError(
+          'The condition of while loop started as non-Tensor, then changed to'
+          ' Tensor. This may happen either because variables changed type, or'
+          ' when a break or return statement inside the loop depends on a'
+          ' Tensor condition. In both cases, changing to a TF loop should'
+          ' remove the error.\nSee '
+          'https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
+          'python/autograph/g3doc/reference/limitations.md'
+          '#consistency-of-control-flow-types for more info.')
+  while guarded_test():
     body()
 
 
@@ -971,14 +1015,39 @@ LEGAL_LOOP_TYPES = 'Tensor, int, float, bool or a list, tuple or dict thereof'
 
 
 def _placeholder_value(like, original=None):
+  """Constructs a (dummy) placeholder value for a loop-initialized variable."""
   if isinstance(like, (variables.Undefined, variables.UndefinedReturnValue)):
     return original
-  if isinstance(like, (int, float, bool)):
+
+  elif isinstance(like, (int, float, bool)):
     return type(like)(0)
-  if tensor_util.is_tf_type(like):
-    return array_ops.zeros(like.shape, like.dtype)
+
+  elif tensor_util.is_tf_type(like):
+
+    # To avoid while_loop complaining about shape invariants, the placeholder's
+    # shape must be identical to the corresponding loop var's shape. This means
+    # dynamic dimensions where the like value had dynamic dimensions. We
+    # simulate that by passing a tensor that is deterministically 0, but is
+    # obtained by means which most constant folders can't see through.
+    # TODO(mdan): Just use 0 once while_loop is smarter about shape invariants.
+    dynamic_zero = random_ops.random_uniform(minval=0, maxval=1, shape=())
+    placeholder_shape = []
+    for s in like.shape:
+      if s is None:
+        placeholder_shape.append(dynamic_zero)
+      elif isinstance(s, tensor_shape.Dimension):
+        if s.value is None:
+          placeholder_shape.append(dynamic_zero)
+        else:
+          placeholder_shape.append(s.value)
+      else:
+        placeholder_shape.append(s)
+
+    return array_ops.zeros(placeholder_shape, like.dtype)
+
   elif isinstance(like, (list, tuple, dict)):
     return nest.map_structure(_placeholder_value, like)
+
   return original
 
 

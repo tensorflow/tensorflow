@@ -47,15 +47,15 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
       return Status::OK();
     }
 
-    std::vector<int64> new_reduce_dimensions;
-    std::vector<int64> new_operand_shape_data;
-    std::vector<int64> new_reduce_shape_data;
+    std::vector<int64_t> new_reduce_dimensions;
+    std::vector<int64_t> new_operand_shape_data;
+    std::vector<int64_t> new_reduce_shape_data;
 
     // The layout order of the reduction output can be different to the
     // ordering of kept dimensions in the input operand, thus we need to
     // calculate the new layout.
-    std::vector<int64> new_reduce_shape_layout(reduce_shape.rank());
-    std::vector<int64> reduce_shape_logical_to_physical =
+    std::vector<int64_t> new_reduce_shape_layout(reduce_shape.rank());
+    std::vector<int64_t> reduce_shape_logical_to_physical =
         LayoutUtil::MakeLogicalToPhysical(reduce_shape.layout());
 
     auto to_reduce_logical_dim = [&](int64_t op_logical_dim) {

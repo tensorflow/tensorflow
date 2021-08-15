@@ -44,7 +44,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
 
   Status EnqueueTransferHostToDevice(
       stream_executor::DeviceMemoryBase device_dst, const void* host_src,
-      uint64 size) {
+      uint64_t size) {
     StatusHelper status;
     tensorflow::tpu::ExecutorApiFn()->TpuStream_EnqueueTransferHostToDeviceFn(
         stream_, ApiConverter::ToC(device_dst), const_cast<void*>(host_src),
@@ -54,7 +54,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
 
   Status EnqueueTransferDeviceToHost(
       stream_executor::DeviceMemoryBase device_src, void* host_dst,
-      uint64 size) {
+      uint64_t size) {
     StatusHelper status;
     tensorflow::tpu::ExecutorApiFn()->TpuStream_EnqueueTransferDeviceToHostFn(
         stream_, ApiConverter::ToC(device_src), host_dst, size,

@@ -24,7 +24,7 @@ namespace tensorflow {
 // Returns a request_id for use with RecentRequestIds. This number will not be
 // zero, and must be unique over RecentRequestIds' window of
 // num_tracked_request_ids. See recent_request_ids.h for more details.
-int64 GetUniqueRequestId();
+int64_t GetUniqueRequestId();
 
 }  // namespace tensorflow
 

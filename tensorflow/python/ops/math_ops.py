@@ -101,6 +101,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
@@ -624,7 +625,8 @@ def scalar_mul(scalar, x, name=None):
     else:
       return gen_math_ops.mul(scalar, x, name)
   else:
-    raise ValueError("Only scalar multiply works, got shape %s" % shape)
+    raise ValueError(
+        f"The input scalar must be a 0-D value. Received shape {shape}.")
 
 
 @tf_export("math.softplus", "nn.softplus", v1=["math.softplus", "nn.softplus"])
@@ -729,8 +731,10 @@ def complex(real, imag, name=None):
     elif input_types == (dtypes.float32, dtypes.float32):
       Tout = dtypes.complex64
     else:
-      raise TypeError("real and imag have incorrect types: "
-                      "{} {}".format(real.dtype.name, imag.dtype.name))
+      raise TypeError(
+          f"The `real` and `imag` components have incorrect types: "
+          f"{real.dtype.name} {imag.dtype.name}. They must be consistent, and "
+          f"one of {[dtypes.float32, dtypes.float64]}")
     return gen_math_ops._complex(real, imag, Tout=Tout, name=name)
 
 
@@ -1316,7 +1320,7 @@ def _maybe_get_dtype(x):
   if isinstance(x, tensor_shape.TensorShape):
     return np.int32
   if isinstance(x, (list, tuple)):
-    raise ValueError("Got sequence {}".format(x))
+    raise ValueError(f"Cannot determine dtype.  Got sequence {x}.")
   return x
 
 
@@ -1357,6 +1361,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
     clazz_object: class to override for.  Either `Tensor` or `SparseTensor`.
   """
 
+  @traceback_utils.filter_traceback
   def binary_op_wrapper(x, y):
     with ops.name_scope(None, op_name, [x, y]) as name:
       try:
@@ -1384,6 +1389,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
         else:
           raise
 
+  @traceback_utils.filter_traceback
   def binary_op_wrapper_sparse(sp_x, y):
     with ops.name_scope(None, op_name, [sp_x, y]) as name:
       y = ops.convert_to_tensor(y, dtype=sp_x.dtype.base_dtype, name="y")
@@ -1392,6 +1398,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
           func(sp_x.indices, sp_x.values, sp_x.dense_shape, y, name=name),
           sp_x.dense_shape)
 
+  @traceback_utils.filter_traceback
   def r_binary_op_wrapper(y, x):
     with ops.name_scope(None, op_name, [x, y]) as name:
       # TODO(b/178860388): Figure out why binary_op_wrapper and
@@ -1450,12 +1457,14 @@ def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
     x_dtype = sp_values.dtype.base_dtype
     y_dtype = y.dtype.base_dtype
     if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
+      raise TypeError(f"`x` and `y` must have the same dtype, "
+                      f"got {x_dtype!r} != {y_dtype!r}.")
     try:
       dtype = _TRUEDIV_TABLE[x_dtype]
     except KeyError:
-      raise TypeError("Invalid dtype %r in __truediv__" % x_dtype)
+      raise TypeError(
+          f"Invalid dtype {x_dtype!r} in __truediv__. Expected one "
+          f"of {{{', '.join([repr(x) for x in _TRUEDIV_TABLE.keys()])}}}.")
     if dtype is not None:
       sp_values = cast(sp_values, dtype)
       y = cast(y, dtype)
@@ -1470,12 +1479,14 @@ def _truediv_python3(x, y, name=None):
     x_dtype = x.dtype.base_dtype
     y_dtype = y.dtype.base_dtype
     if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
+      raise TypeError(f"`x` and `y` must have the same dtype, "
+                      f"got {x_dtype!r} != {y_dtype!r}.")
     try:
       dtype = _TRUEDIV_TABLE[x_dtype]
     except KeyError:
-      raise TypeError("Invalid dtype %r in __truediv__" % x_dtype)
+      raise TypeError(
+          f"Invalid dtype {x_dtype!r} in __truediv__. Expected one "
+          f"of {{{', '.join([repr(x) for x in _TRUEDIV_TABLE.keys()])}}}.")
     if dtype is not None:
       x = cast(x, dtype)
       y = cast(y, dtype)
@@ -1502,8 +1513,8 @@ def _div_python2(x, y, name=None):
     x_dtype = x.dtype.base_dtype
     y_dtype = y.dtype.base_dtype
     if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
+      raise TypeError(f"`x` and `y` must have the same dtype, "
+                      f"got {x_dtype!r} != {y_dtype!r}.")
     if x_dtype.is_floating or x_dtype.is_complex:
       return gen_math_ops.real_div(x, y, name=name)
     else:
@@ -1551,8 +1562,12 @@ def truediv(x, y, name=None):
 def div(x, y, name=None):
   """Divides x / y elementwise (using Python 2 division operator semantics).
 
-  NOTE: Prefer using the Tensor division operator or tf.divide which obey Python
-  3 division operator semantics.
+  @compatibility(TF2)
+  This function is deprecated in TF2. Prefer using the Tensor division operator,
+  `tf.divide`, or `tf.math.divide`, which obey the Python 3 division operator
+  semantics.
+  @end_compatibility
+
 
   This function divides `x` and `y`, forcing Python 2 semantics. That is, if `x`
   and `y` are both integers then the result will be an integer. This is in
@@ -1619,8 +1634,8 @@ def multiply_no_nan(x, y, name=None):
     x_dtype = x.dtype.base_dtype
     y_dtype = y.dtype.base_dtype
     if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
+      raise TypeError(f"`x` and `y` must have the same dtype, "
+                      f"got {x_dtype!r} != {y_dtype!r}")
     return gen_math_ops.mul_no_nan(x, y, name=name)
 
 
@@ -2632,7 +2647,8 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
     input_tensor = ops.convert_to_tensor(input_tensor)
     means = reduce_mean(input_tensor, axis=axis, keepdims=True)
     if means.dtype.is_integer:
-      raise TypeError("Input must be either real or complex")
+      raise TypeError(f"Input must be either real or complex. "
+                      f"Received integer type {means.dtype}.")
     diff = input_tensor - means
     if diff.dtype.is_complex:
       # For complex values we need to take the absolute value before squaring.
@@ -3562,9 +3578,15 @@ def matmul(a,
 
   with ops.name_scope(name, "MatMul", [a, b]) as name:
     if transpose_a and adjoint_a:
-      raise ValueError("Only one of transpose_a and adjoint_a can be True.")
+      raise ValueError(
+          f"Only one of `transpose_a` and `adjoint_a` can be True. "
+          f"Received `transpose_a`={transpose_a}, "
+          f"`adjoint_a`={adjoint_a}.")
     if transpose_b and adjoint_b:
-      raise ValueError("Only one of transpose_b and adjoint_b can be True.")
+      raise ValueError(
+          f"Only one of `transpose_b` and `adjoint_b` can be True. "
+          f"Received `transpose_b`={transpose_b}, "
+          f"`adjoint_b`={adjoint_b}.")
 
     if context.executing_eagerly():
       if not isinstance(a, (ops.EagerTensor, _resource_variable_type)):
@@ -3821,7 +3843,7 @@ def _as_indexed_slices(x, optimize=True):
   """
   # TODO(touts): op_scope
   if not isinstance(x, (ops.Tensor, ops.IndexedSlices)):
-    raise TypeError("Not a Tensor or IndexedSlices: %s" % type(x))
+    raise TypeError(f"Not a Tensor or IndexedSlices: {type(x)}.")
   if isinstance(x, ops.IndexedSlices):
     return x
   x_shape = array_ops.shape_internal(x, optimize=optimize)
@@ -3845,7 +3867,7 @@ def _as_indexed_slices_list(inputs, optimize=True):
     TypeError: If 'inputs' is not a list or a tuple.
   """
   if not isinstance(inputs, (list, tuple)):
-    raise TypeError("Expected a list or tuple, not a %s" % type(inputs))
+    raise TypeError(f"Expected a list or tuple, not {type(inputs)}.")
   outputs = [_as_indexed_slices(i, optimize=optimize) for i in inputs]
   with_int32_index = [
       o.indices for o in outputs if o.indices.dtype == dtypes.int32
@@ -3982,12 +4004,12 @@ def add_n(inputs, name=None):
     cannot be inferred.
   """
   if not inputs or not isinstance(inputs, collections_abc.Iterable):
-    raise ValueError("inputs must be an iterable of at least one "
-                     "Tensor/IndexedSlices with the same dtype and shape")
+    raise ValueError("Inputs must be an iterable of at least one "
+                     "Tensor/IndexedSlices with the same dtype and shape.")
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(isinstance(x, (ops.Tensor, ops.IndexedSlices)) for x in inputs):
-    raise ValueError("inputs must be an iterable of at least one "
-                     "Tensor/IndexedSlices with the same dtype and shape")
+    raise ValueError("Inputs must be an iterable of at least one "
+                     "Tensor/IndexedSlices with the same dtype and shape.")
 
   if len(inputs) == 1:
     if isinstance(inputs[0], ops.IndexedSlices):
@@ -4062,8 +4084,10 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
 
   # tensor_dtype is for safety only; operator's output type computed in C++
   if tensor_dtype is not None and tensor_dtype != inputs[0].dtype:
-    raise TypeError("tensor_dtype is {}, but input is of type {}".format(
-        tensor_dtype, inputs[0].dtype))
+    raise TypeError(
+        f"The `tensor_dtype` argument is {tensor_dtype}, but `input` is of type "
+        f"{inputs[0].dtype}. These must be equal. Try casting the input to the "
+        f"desired type.")
 
   if len(inputs) == 1 and name is None:
     return inputs[0]
@@ -4411,8 +4435,8 @@ def conj(x, name=None):
     elif x.dtype.is_floating or x.dtype.is_integer:
       return x
     else:
-      raise TypeError("Expected numeric or variant tensor, got dtype %r" %
-                      x.dtype)
+      raise TypeError(
+          f"Expected numeric or variant tensor, got dtype {x.dtype!r}.")
 
 
 def reduced_shape(input_shape, axes):
@@ -5003,11 +5027,12 @@ def tensordot(a, b, axes, name=None):
     a_shape = a.get_shape()
     if isinstance(axes, compat.integral_types):
       if axes < 0:
-        raise ValueError("'axes' must be at least 0.")
+        raise ValueError(f"`axes` must be at least 0. Received: {axes}.")
       if a_shape.ndims is not None:
         if axes > a_shape.ndims:
-          raise ValueError("'axes' must not be larger than the number of "
-                           "dimensions of tensor %s." % a)
+          raise ValueError(f"`axes` must not be larger than the number of "
+                           f"dimensions of tensor {a}.  Received {axes}, vs "
+                           f"tensor dimensions {a_shape.ndims}.")
         return (list(xrange(a_shape.ndims - axes,
                             a_shape.ndims)), list(xrange(axes)))
       else:
@@ -5016,7 +5041,8 @@ def tensordot(a, b, axes, name=None):
                       dtype=dtypes.int32), range(axes, dtype=dtypes.int32))
     elif isinstance(axes, (list, tuple)):
       if len(axes) != 2:
-        raise ValueError("'axes' must be an integer or have length 2.")
+        raise ValueError(
+            f"`axes` must be an integer or have length 2. Received {axes}.")
       a_axes = axes[0]
       b_axes = axes[1]
       if isinstance(a_axes, compat.integral_types) and \
@@ -5024,9 +5050,8 @@ def tensordot(a, b, axes, name=None):
         a_axes = [a_axes]
         b_axes = [b_axes]
       if len(a_axes) != len(b_axes):
-        raise ValueError(
-            "Different number of contraction axes 'a' and 'b', %s != %s." %
-            (len(a_axes), len(b_axes)))
+        raise ValueError(f"Different number of contraction axes `a` and `b`, "
+                         f"{len(a_axes)} != {len(b_axes)}.")
       return a_axes, b_axes
     else:
       axes = ops.convert_to_tensor(axes, name="axes", dtype=dtypes.int32)
@@ -5112,8 +5137,8 @@ def polyval(coeffs, x, name=None):
   @end_compatibility
   """
   if not isinstance(coeffs, list):
-    raise ValueError("Argument coeffs must be list type "
-                     "found {}.".format(type(coeffs)))
+    raise ValueError(
+        f"Argument coeffs must be list type. Received type {type(coeffs)}.")
 
   with ops.name_scope(name, "polyval", nest.flatten(coeffs) + [x]) as name:
     x = ops.convert_to_tensor(x, name="x")

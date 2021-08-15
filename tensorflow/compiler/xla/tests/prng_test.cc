@@ -37,19 +37,19 @@ namespace {
 class PrngTest : public ClientLibraryTestBase {
  protected:
   template <typename T>
-  Literal UniformTest(T a, T b, absl::Span<const int64> dims,
+  Literal UniformTest(T a, T b, absl::Span<const int64_t> dims,
                       int64_t seed = 42);
 
   // Computes the χ² statistic of a sample of the discrete uniform distribution
   // of the given range size. `expected_count` is the number of times each
   // possible value is expected to be generated. Thus, the sample size is
   // `range_size * expected_count`.
-  double UniformChiSquared(int32 range_size, int32 expected_count,
+  double UniformChiSquared(int32_t range_size, int32_t expected_count,
                            int64_t seed = 42);
 };
 
 template <typename T>
-Literal PrngTest::UniformTest(T a, T b, absl::Span<const int64> dims,
+Literal PrngTest::UniformTest(T a, T b, absl::Span<const int64_t> dims,
                               int64_t seed) {
   XlaBuilder builder(TestName());
   RngUniform(
@@ -60,7 +60,7 @@ Literal PrngTest::UniformTest(T a, T b, absl::Span<const int64> dims,
   auto actual =
       ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
   EXPECT_THAT(dims, ::testing::ElementsAreArray(actual.shape().dimensions()));
-  actual.EachCell<T>([=](absl::Span<const int64>, T value) {
+  actual.EachCell<T>([=](absl::Span<const int64_t>, T value) {
     EXPECT_LE(a, value);
     EXPECT_LT(value, b);
   });
@@ -82,7 +82,7 @@ XLA_TEST_F(PrngTest, TwelveValuesU524) { UniformTest<int32>(5, 24, {12}); }
 
 // TODO(b/71543667): Fix Rng ops on LLVM backends.
 // TODO(b/122047800): Interpreter does not support BF16 for RNG ops.
-using ScalarBF16TestCase = std::tuple<int64, std::pair<float, float>>;
+using ScalarBF16TestCase = std::tuple<int64_t, std::pair<float, float>>;
 
 class ScalarBF16Test
     : public PrngTest,
@@ -100,7 +100,7 @@ XLA_TEST_P(ScalarBF16Test,
 INSTANTIATE_TEST_SUITE_P(
     ScalarBF16TestInstance, ScalarBF16Test,
     ::testing::Combine(
-        ::testing::Range<int64>(0, 100),
+        ::testing::Range<int64_t>(0, 100),
         ::testing::Values(
             // The largest negative number smaller than zero in bf16 that's not
             // denormalized.
@@ -121,13 +121,13 @@ XLA_TEST_F(PrngTest, DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
   bfloat16 low = static_cast<bfloat16>(32.25);
   bfloat16 high = static_cast<bfloat16>(33);
   bfloat16 interval = static_cast<bfloat16>(0.25);
-  std::vector<int32> counts(static_cast<int64>((high - low) / interval), 0);
+  std::vector<int32> counts(static_cast<int64_t>((high - low) / interval), 0);
 
-  constexpr int64 count = 1000;
+  constexpr int64_t count = 1000;
   for (int64_t seed = 0; seed < count; ++seed) {
     auto result = UniformTest<bfloat16>(low, high, {}, /*seed=*/seed);
-    result.EachCell<bfloat16>([&](absl::Span<const int64>, bfloat16 value) {
-      int64_t index = static_cast<int64>((value - low) / interval);
+    result.EachCell<bfloat16>([&](absl::Span<const int64_t>, bfloat16 value) {
+      int64_t index = static_cast<int64_t>((value - low) / interval);
       counts[index]++;
     });
   }
@@ -145,9 +145,9 @@ T Square(T x) {
 }
 }  // namespace
 
-double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count,
+double PrngTest::UniformChiSquared(int32_t range_size, int32_t expected_count,
                                    int64_t seed) {
-  int32 sample_size = range_size * expected_count;
+  int32_t sample_size = range_size * expected_count;
 
   XlaBuilder builder(TestName());
   RngUniform(ConstantR0<int32>(&builder, 0),
@@ -159,10 +159,10 @@ double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count,
       ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
   std::vector<int32> counts(range_size, 0);
   actual.EachCell<int32>(
-      [&counts](absl::Span<const int64>, int32 value) { ++counts[value]; });
+      [&counts](absl::Span<const int64_t>, int32_t value) { ++counts[value]; });
   int64_t sum = 0;
-  for (int32 i = 0; i < range_size; ++i) {
-    sum += Square(static_cast<int64>(counts[i] - expected_count));
+  for (int32_t i = 0; i < range_size; ++i) {
+    sum += Square(static_cast<int64_t>(counts[i] - expected_count));
   }
   return static_cast<double>(sum) / expected_count;
 }

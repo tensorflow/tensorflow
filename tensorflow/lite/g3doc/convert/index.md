@@ -115,14 +115,12 @@ The following example shows how to convert
 [concrete functions](https://www.tensorflow.org/guide/intro_to_graphs) into a
 TensorFlow Lite model.
 
-Note: Currently, it only supports the conversion of a single concrete function.
-
 ```python
 import tensorflow as tf
 
 # Create a model using low-level tf.* APIs
 class Squared(tf.Module):
-  @tf.function
+  @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.float32)])
   def __call__(self, x):
     return tf.square(x)
 model = Squared()
@@ -130,7 +128,11 @@ model = Squared()
 # (to generate a SavedModel) tf.saved_model.save(model, "saved_model_tf_dir")
 concrete_func = model.__call__.get_concrete_function()
 
-# Convert the model
+# Convert the model.
+# Notes that for the versions earlier than TensorFlow 2.7, the
+# from_concrete_functions API is able to work when there is only the first
+# argument given:
+# > converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
 converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func],
                                                             model)
 tflite_model = converter.convert()
@@ -148,41 +150,46 @@ with open('model.tflite', 'wb') as f:
     which can further reduce your model latency and size with minimal loss in
     accuracy.
 
-*   Handle unsupported operations. You have the following options if your model
-    has operators:
+*   Add [metadata](metadata.md), which makes it easier to create platform
+    specific wrapper code when deploying models on devices.
 
-    1.  Supported in TensorFlow but unsupported in TensorFlow Lite: If you have
-        size constraints, you need to
-        [create the TensorFlow Lite operator](../guide/ops_custom.md), otherwise
-        just [use TensorFlow operators](../guide/ops_select.md) in your
-        TensorFlow Lite model.
+### Conversion errors
 
-    2.  Unsupported in TensorFlow: You need to
-        [create the TensorFlow operator](https://www.tensorflow.org/guide/create_op)
-        and then [create the TensorFlow Lite operator](../guide/ops_custom.md).
-        If you were unsuccessful at creating the TensorFlow operator or don't
-        wish to create one (**not recommended, proceed with caution**), you can
-        still convert using the `register_custom_opdefs` method and then
-        directly [create the TensorFlow Lite operator](../guide/ops_custom.md).
-        The `register_custom_opdefs` method takes a list of a string containing
-        an
-        [OpDef](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op_def.proto)
-        (s). Below is an example of a `TFLiteAwesomeCustomOp` with 1 input, 1
-        output, and 2 attributes:
+The following are common conversion errors and their solutions:
 
-        ```python
-          import tensorflow as tf
+*   Error: `Some ops are not supported by the native TFLite runtime, you can
+    enable TF kernels fallback using TF Select. See instructions:
+    https://www.tensorflow.org/lite/guide/ops_select. TF Select ops: ..., ..,
+    ...`
 
-          custom_opdef = """name: 'TFLiteAwesomeCustomOp' input_arg:
-          { name: 'In' type: DT_FLOAT } output_arg: { name: 'Out' type: DT_FLOAT }
-          attr : { name: 'a1' type: 'float'} attr : { name: 'a2' type: 'list(float)'}"""
+    Solution: The error occurs as your model has TF ops that don't have a
+    corresponding TFLite implementation. You can resolve this by
+    [using the TF op in the TFLite model](../guide/ops_select.md) (recommended).
+    If you want to generate a model with TFLite ops only, you can either add a
+    request for the missing TFLite op in
+    [Github issue #21526](https://github.com/tensorflow/tensorflow/issues/21526)
+    (leave a comment if your request hasn’t already been mentioned) or
+    [create the TFLite op](../guide/ops_custom#create_and_register_the_operator)
+    yourself.
 
-          # Register custom opdefs before the invocation of converter API.
-          tf.lite.python.convert.register_custom_opdefs([custom_opdef])
+*   Error: `.. is neither a custom op nor a flex op`
 
-          converter = tf.lite.TFLiteConverter.from_saved_model(...)
-          converter.allow_custom_ops = True
-        ```
+    Solution: If this TF op is:
+
+    *   Supported in TF: The error occurs because the TF op is missing from the
+        [allowlist](../guide/op_select_allowlist.md) (an exhaustive list of TF
+        ops supported by TFLite). You can resolve this as follows:
+
+        1.  [Add missing ops to the allowlist](../guide/op_select_allowlist.md#add_tensorflow_core_operators_to_the_allowed_list).
+        2.  [Convert the TF model to a TFLite model and run inference](../guide/ops_select.md).
+
+    *   Unsupported in TF: The error occurs because TFLite is unaware of the
+        custom TF operator defined by you. You can resolve this as follows:
+
+        1.  [Create the TF op](https://www.tensorflow.org/guide/create_op).
+        2.  [Convert the TF model to a TFLite model](../guide/op_select_allowlist.md#users_defined_operators).
+        3.  [Create the TFLite op](../guide/ops_custom.md#create_and_register_the_operator)
+            and run inference by linking it to the TFLite runtime.
 
 ## Command Line Tool <a name="cmdline"></a>
 
@@ -232,7 +239,5 @@ tflite_convert \
 
 ## Next Steps
 
-*   Add [metadata](metadata.md), which makes it easier to create platform
-    specific wrapper code when deploying models on devices.
-*   Use the [TensorFlow Lite interpreter](../guide/inference.md) to run
-    inference on a client device (e.g. mobile, embedded).
+Use the [TensorFlow Lite interpreter](../guide/inference.md) to run inference on
+a client device (e.g. mobile, embedded).

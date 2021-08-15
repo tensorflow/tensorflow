@@ -36,36 +36,33 @@ class CoordinatedReadTest(data_service_test_base.TestBase,
           combinations.combine(num_workers=[1, 3], num_consumers=[1, 2, 5])))
   def testBasic(self, num_workers, num_consumers):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
-    # Round robin reads can cause slow cluster shutdown.
-    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
     ds = self.make_coordinated_read_dataset(cluster, num_consumers)
-    ds = ds.take(100)
-    results = self.getDatasetOutput(ds)
+    get_next = self.getNext(ds, requires_initialization=False)
+    results = [self.evaluate(get_next()) for _ in range(100)]
     self.checkCoordinatedReadGroups(results, num_consumers)
+    cluster.stop_workers()
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations()))
   def testConsumerRestart(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
-    # Round robin reads can cause slow cluster shutdown.
-    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
     num_consumers = 3
     ds = self.make_coordinated_read_dataset(cluster, num_consumers)
-    ds = ds.take(20)
-    self.getDatasetOutput(ds)
+    get_next = self.getNext(ds, requires_initialization=False)
+    _ = [self.evaluate(get_next()) for _ in range(20)]
+
     ds2 = self.make_coordinated_read_dataset(cluster, num_consumers)
-    ds2 = ds2.take(20)
     with self.assertRaisesRegex(errors.FailedPreconditionError,
                                 "current round has already reached"):
-      self.getDatasetOutput(ds2)
+      get_next_ds2 = self.getNext(ds2, requires_initialization=False)
+      _ = [self.evaluate(get_next_ds2()) for _ in range(20)]
+    cluster.stop_workers()
 
   @combinations.generate(test_base.default_test_combinations())
   def testBucketizing(self):
     # Tests a common use case for round robin reads. At each step, all
     # consumers should get batches with the same bucket size.
     cluster = data_service_test_base.TestCluster(num_workers=4)
-    # Round robin reads can cause slow cluster shutdown.
-    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
     num_elements = 100
     low_bucket_max = 30
     mid_bucket_max = 60

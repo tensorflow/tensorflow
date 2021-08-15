@@ -314,7 +314,7 @@ Status ContainerInfo::Init(ResourceMgr* rmgr, const NodeDef& ndef,
     name_ = ndef.name();
   } else {
     resource_is_private_to_kernel_ = true;
-    static std::atomic<int64> counter(0);
+    static std::atomic<int64_t> counter(0);
     name_ = strings::StrCat("_", counter.fetch_add(1), "_", ndef.name());
   }
   return Status::OK();

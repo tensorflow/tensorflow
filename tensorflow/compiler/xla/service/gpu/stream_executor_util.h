@@ -59,7 +59,8 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
 // dimension, because only cudnn convolutions have this feature; it's not
 // applicable elsewhere.  We find it by finding a dimension in the
 // input/filter/output shape that is *not* in dnums.
-std::tuple<absl::optional<int64>, absl::optional<int64>, absl::optional<int64>>
+std::tuple<absl::optional<int64_t>, absl::optional<int64_t>,
+           absl::optional<int64_t>>
 FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
                           const Shape& input, const Shape& filter,
                           const Shape& output);
@@ -97,7 +98,7 @@ se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config);
 // Precondition: `buffer_type` is a floating point type, `rng_state` needs to be
 // initialized to zero on the first use.
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
-                      int64* rng_state, se::DeviceMemoryBase buffer);
+                      int64_t* rng_state, se::DeviceMemoryBase buffer);
 
 StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
     CudnnConvKind kind);
@@ -110,20 +111,6 @@ StatusOr<tensorflow::AutotuneResult> PickBestResult(
     const HloInstruction& instr);
 
 // Returns whether determinism is required.
-//
-// The following function allows deterministic ops to be implemented relatively
-// quickly using environment variables. It is intended to be temporary. The
-// longer-term intention is to enable deterministic ops via tf.config and
-// appropriate plumbing. See the discussion on PR 34951 for more information:
-// https://github.com/tensorflow/tensorflow/pull/34951#discussion_r355682316
-// This function and associated comment are replicated in the following three
-// places:
-//   1. tensorflow/core/kernels/gpu_utils.cc
-//   2. tensorflow/stream_executor/cuda/cuda_dnn.cc
-// When implementing the plumbing, you should also search for the use of
-// TF_DETERMINISTIC_OPS on its own.
-// TODO(duncanriach): move to an API that uses tf.config and implement the first
-//                    phase of plumbing.
 bool RequireDeterminism(const HloModuleConfig& config);
 
 }  // namespace gpu

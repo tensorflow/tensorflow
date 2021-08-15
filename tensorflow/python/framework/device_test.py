@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.python.framework.device."""
 from __future__ import absolute_import
 from __future__ import division
@@ -28,9 +27,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
-
-TEST_V1_AND_V2 = (("v1", device_spec.DeviceSpecV1),
-                  ("v2", device_spec.DeviceSpecV2))
+TEST_V1_AND_V2 = (("v1", device_spec.DeviceSpecV1), ("v2",
+                                                     device_spec.DeviceSpecV2))
 
 
 class DeviceTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -65,17 +63,15 @@ class DeviceTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual("/job:foo/replica:0/task:0",
                      device.canonical_name("/job:foo/task:0/replica:0"))
 
-    self.assertEqual("/device:CPU:0",
-                     device.canonical_name("/device:CPU:0"))
-    self.assertEqual("/device:GPU:2",
-                     device.canonical_name("/device:GPU:2"))
+    self.assertEqual("/device:CPU:0", device.canonical_name("/device:CPU:0"))
+    self.assertEqual("/device:GPU:2", device.canonical_name("/device:GPU:2"))
 
-    self.assertEqual("/job:foo/replica:0/task:0/device:GPU:0",
-                     device.canonical_name(
-                         "/job:foo/replica:0/task:0/device:GPU:0"))
-    self.assertEqual("/job:foo/replica:0/task:0/device:GPU:0",
-                     device.canonical_name(
-                         "/device:GPU:0/task:0/replica:0/job:foo"))
+    self.assertEqual(
+        "/job:foo/replica:0/task:0/device:GPU:0",
+        device.canonical_name("/job:foo/replica:0/task:0/device:GPU:0"))
+    self.assertEqual(
+        "/job:foo/replica:0/task:0/device:GPU:0",
+        device.canonical_name("/device:GPU:0/task:0/replica:0/job:foo"))
 
   def testCheckValid(self):
     device.check_valid("/job:foo/replica:0")
@@ -87,10 +83,11 @@ class DeviceTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       device.check_valid("/job:j/task:bar")
 
     # Assume no one will register a device type named "barcpugpu"
-    with self.assertRaisesRegex(ValueError, "Unknown attribute: 'barcpugpu'"):
+    with self.assertRaisesRegex(ValueError, "Unknown attribute 'barcpugpu'"):
       device.check_valid("/barcpugpu:muu/baz:2")
 
-    with self.assertRaisesRegex(ValueError, "Cannot specify multiple device"):
+    with self.assertRaisesRegex(ValueError,
+                                "Multiple device types are not allowed"):
       device.check_valid("/cpu:0/device:GPU:2")
 
 

@@ -54,7 +54,7 @@ class XlaHelpers {
   // Reshapes literal 'input' to have 'shape'. Both the original shape and
   // 'shape' must contain the same number of elements.
   static Status ReshapeLiteral(const xla::Literal& input,
-                               absl::Span<const int64> shape,
+                               absl::Span<const int64_t> shape,
                                xla::Literal* output);
 
   // Converts `indices` into a one-hot representation. `depth` is the size

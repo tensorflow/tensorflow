@@ -341,12 +341,12 @@ int main(int argc, char* argv[]) {
   string box_priors =
       "tensorflow/examples/multibox_detector/data/"
       "multibox_location_priors.txt";
-  int32 input_width = 224;
-  int32 input_height = 224;
-  int32 input_mean = 128;
-  int32 input_std = 128;
-  int32 num_detections = 5;
-  int32 num_boxes = 784;
+  int32_t input_width = 224;
+  int32_t input_height = 224;
+  int32_t input_mean = 128;
+  int32_t input_std = 128;
+  int32_t num_detections = 5;
+  int32_t num_boxes = 784;
   string input_layer = "ResizeBilinear";
   string output_location_layer = "output_locations/Reshape";
   string output_score_layer = "output_scores/Reshape";

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -36,8 +35,6 @@ Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   VLOG(2) << "Outfeeding from GPU";
 
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
   OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager(stream.parent());
   ShapeTree<std::unique_ptr<OutfeedBuffer>>* output_buffers =
       outfeed_manager->BlockingGetNextDestination();

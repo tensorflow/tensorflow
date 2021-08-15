@@ -2376,7 +2376,7 @@ class DecodeRawTest(test.TestCase):
 class DecodeJSONExampleTest(test.TestCase):
 
   def _testRoundTrip(self, examples):
-    examples = np.array(examples, dtype=np.object)
+    examples = np.array(examples, dtype=np.object_)
 
     json_tensor = constant_op.constant(
         [json_format.MessageToJson(m) for m in examples.flatten()],

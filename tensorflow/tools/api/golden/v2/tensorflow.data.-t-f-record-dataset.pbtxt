@@ -108,6 +108,10 @@ tf_class {
     argspec: "args=[\'self\', \'initial_state\', \'reduce_func\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "rejection_resample"
+    argspec: "args=[\'self\', \'class_func\', \'target_dist\', \'initial_dist\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "repeat"
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

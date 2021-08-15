@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/serialization.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
@@ -233,6 +234,10 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   static const std::vector<MemoryRegistration>& GetTensorMemoryMap(
       TfLiteDelegate* delegate);
 
+  // Returns ptr to delegates::Serialization, if caching is enabled by user via
+  // cache_dir & model_token.
+  static delegates::Serialization* GetCache(TfLiteDelegate* delegate);
+
   // Returns the int value of the ResultCode returned by the latest
   // failed call to NNAPI, if any. Zero only in case of NO failed calls since
   // the construction of this instance of StatefulNnApiDelegate.
@@ -295,6 +300,10 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // Smart pointer for automatically cleaning up NnApi structure in case the
     // delegate was constructed from an NNAPI support library
     std::unique_ptr<const NnApi> owned_nnapi = nullptr;
+
+    // TFLite Serialization in case caching has been enabled by the user through
+    // Options.
+    std::unique_ptr<delegates::Serialization> cache;
 
     explicit Data(const NnApi* nnapi);
     explicit Data(std::unique_ptr<const NnApi> nnapi);

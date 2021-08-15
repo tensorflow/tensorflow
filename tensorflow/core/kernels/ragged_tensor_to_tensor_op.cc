@@ -437,12 +437,14 @@ void copy_array(VALUE_TYPE* dst, const VALUE_TYPE* src, INDEX_TYPE size) {
 }
 
 template <>
-void copy_array<tstring, int64>(tstring* dst, const tstring* src, int64 size) {
+void copy_array<tstring, int64_t>(tstring* dst, const tstring* src,
+                                  int64_t size) {
   slow_copy_array(dst, src, size);
 }
 
 template <>
-void copy_array<tstring, int32>(tstring* dst, const tstring* src, int32 size) {
+void copy_array<tstring, int32>(tstring* dst, const tstring* src,
+                                int32_t size) {
   slow_copy_array(dst, src, size);
 }
 
@@ -450,14 +452,14 @@ void copy_array<tstring, int32>(tstring* dst, const tstring* src, int32 size) {
 // undefined behavior, destination object type 'Eigen::half'
 // is not TriviallyCopyable
 template <>
-void copy_array<Eigen::half, int64>(Eigen::half* dst, const Eigen::half* src,
-                                    int64 size) {
+void copy_array<Eigen::half, int64_t>(Eigen::half* dst, const Eigen::half* src,
+                                      int64_t size) {
   slow_copy_array(dst, src, size);
 }
 
 template <>
 void copy_array<Eigen::half, int32>(Eigen::half* dst, const Eigen::half* src,
-                                    int32 size) {
+                                    int32_t size) {
   slow_copy_array(dst, src, size);
 }
 
@@ -583,8 +585,8 @@ class RaggedTensorToTensorOp : public RaggedTensorToTensorBaseOp<INDEX_TYPE> {
                               .TypeConstraint<index_type>("Tindex"), \
                           RaggedTensorToTensorOp<value_type, index_type>);
 
-#define REGISTER_CPU_KERNEL(value_type)                          \
-  REGISTER_CPU_KERNEL_INDEX_TYPE(value_type, tensorflow::int64); \
+#define REGISTER_CPU_KERNEL(value_type)                \
+  REGISTER_CPU_KERNEL_INDEX_TYPE(value_type, int64_t); \
   REGISTER_CPU_KERNEL_INDEX_TYPE(value_type, tensorflow::int32);
 
 TF_CALL_POD_TYPES(REGISTER_CPU_KERNEL);

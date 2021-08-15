@@ -23,8 +23,8 @@ import warnings
 
 import six
 
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import optional_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
@@ -38,6 +38,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.compat import collections_abc
@@ -930,7 +931,7 @@ class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
       self,
       iterator_resource,
       name,
-      external_state_policy=distribute_options.ExternalStatePolicy.FAIL):
+      external_state_policy=options_lib.ExternalStatePolicy.FAIL):
     serialized_iterator = gen_dataset_ops.serialize_iterator(
         iterator_resource, external_state_policy=external_state_policy.value)
     specs = [
@@ -964,3 +965,6 @@ def get_next_as_optional(iterator):
     of the iterator (if it exists) or no value.
   """
   return iterator.get_next_as_optional()
+
+
+_pywrap_utils.RegisterType("OwnedIterator", OwnedIterator)

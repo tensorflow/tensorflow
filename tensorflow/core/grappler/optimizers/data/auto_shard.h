@@ -39,9 +39,9 @@ class AutoShard : public TFDataOptimizerBase {
                                  OptimizationStats* stats) override;
 
  private:
-  int64 num_workers_;
-  int64 num_replicas_;
-  int64 index_;
+  int64_t num_workers_;
+  int64_t num_replicas_;
+  int64_t index_;
   tensorflow::data::AutoShardPolicy auto_shard_policy_;
 };
 

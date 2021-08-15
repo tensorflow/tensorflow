@@ -28,7 +28,7 @@ namespace tensorflow {
 namespace {
 // Maximum number of step_ids for which RPC logs can be maintained.
 // TODO(mrry): Make this configurable if necessary.
-const int32 kWorkerCacheLoggerLimit = 1 << 10;
+const int32_t kWorkerCacheLoggerLimit = 1 << 10;
 }  // namespace
 
 void WorkerCacheLogger::SetLogging(bool v) {

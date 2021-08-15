@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_OPS_TEST_H_
 #define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_OPS_TEST_H_
 
+#include <string>
+
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
@@ -25,8 +27,8 @@ namespace tensorflow {
 namespace test {
 
 template <typename T>
-using is_integer = llvm::is_one_of<T, int8, int16, int32, int64, uint8, uint16,
-                                   uint32, uint64>;
+using is_integer = llvm::is_one_of<T, int8_t, int16_t, int32_t, int64_t,
+                                   uint8_t, uint16_t, uint32_t, uint64_t>;
 
 /// Helper functions to create or derive inputs of the right type and size.
 
@@ -82,6 +84,7 @@ struct OpsTestConfig {
   double rtol = -1;
   std::string input_attribute = "T";
   std::string output_attribute = "Tout";
+  bool jit_compilation = false;
   OpsTestConfig ExpectStrictlyEqual() {
     OpsTestConfig config = *this;
     config.expect_strictly_equal = true;
@@ -125,6 +128,11 @@ struct OpsTestConfig {
   OpsTestConfig OutputAttribute(const std::string& attr) {
     OpsTestConfig config = *this;
     config.output_attribute = attr;
+    return config;
+  }
+  OpsTestConfig JITCompilation() {
+    OpsTestConfig config = *this;
+    config.jit_compilation = true;
     return config;
   }
 };

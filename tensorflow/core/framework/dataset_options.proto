@@ -25,6 +25,27 @@ enum AutoShardPolicy {
   OFF = -1;
 }
 
+// next: 4
+message AutotuneOptions {
+  // Whether to automatically tune performance knobs.
+  oneof optional_enabled {
+    bool enabled = 1;
+  }
+  // When autotuning is enabled (through autotune), determines the CPU budget to
+  // use. Values greater than the number of schedulable CPU cores are allowed
+  // but may result in CPU contention.
+  oneof optional_cpu_budget {
+    int32 cpu_budget = 2;
+  }
+  // When autotuning is enabled (through autotune), determines the RAM budget to
+  // use. Values greater than the available RAM in bytes may result in OOM. If
+  // 0, defaults to half of the available RAM in bytes.
+  oneof optional_ram_budget {
+    int64 ram_budget = 3;
+  }
+}
+
+// next: 3
 message DistributeOptions {
   AutoShardPolicy auto_shard_policy = 1;
   // The number of devices attached to this input pipeline.
@@ -33,33 +54,17 @@ message DistributeOptions {
   }
 }
 
+// next: 18
 message OptimizationOptions {
   // Whether to apply default graph optimizations. If False, only graph
   // optimizations that have been explicitly enabled will be applied.
   oneof optional_apply_default_optimizations {
     bool apply_default_optimizations = 1;
   }
-  // Whether to automatically tune performance knobs.
-  oneof optional_autotune {
-    bool autotune = 2;
-  }
-  // When autotuning is enabled (through autotune), determines whether to also
-  // autotune buffer sizes for datasets with parallelism.
-  oneof optional_autotune_buffers {
-    bool autotune_buffers = 3;
-  }
-  // When autotuning is enabled (through autotune), determines the CPU budget to
-  // use. Values greater than the number of schedulable CPU cores are allowed
-  // but may result in CPU contention.
-  oneof optional_autotune_cpu_budget {
-    int32 autotune_cpu_budget = 4;
-  }
-  // When autotuning is enabled (through autotune), determines the RAM budget to
-  // use. Values greater than the available RAM in bytes may result in OOM. If
-  // 0, defaults to half of the available RAM in bytes.
-  oneof optional_autotune_ram_budget {
-    int64 autotune_ram_budget = 5;
-  }
+  reserved 2;
+  reserved 3;
+  reserved 4;
+  reserved 5;
   // Whether to fuse filter transformations.
   oneof optional_filter_fusion {
     bool filter_fusion = 6;
@@ -109,6 +114,7 @@ message OptimizationOptions {
   }
 }
 
+// next: 3
 message ThreadingOptions {
   // If set, it overrides the maximum degree of intra-op parallelism.
   oneof optional_max_intra_op_parallelism {
@@ -129,11 +135,15 @@ enum ExternalStatePolicy {
 
 // Message stored with Dataset objects to control how datasets are processed and
 // optimized.
+//
+// next: 8
 message Options {
   // Whether the outputs need to be produced in deterministic order.
   oneof optional_deterministic {
     bool deterministic = 1;
   }
+  // The distribution strategy options associated with the dataset.
+  AutotuneOptions autotune_options = 7;
   // The distribution strategy options associated with the dataset.
   DistributeOptions distribute_options = 2;
   // The optimization options associated with the dataset.

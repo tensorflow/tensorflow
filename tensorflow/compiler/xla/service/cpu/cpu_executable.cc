@@ -140,9 +140,11 @@ StatusOr<std::vector<MaybeOwningDeviceMemory>> CpuExecutable::CreateBufferTable(
                                         device_ordinal));
   }
 
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
-                      assignment_->GetUniqueTopLevelOutputSlice());
-  VLOG(3) << "result index: " << result_slice.index();
+  if (VLOG_IS_ON(3)) {
+    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                        assignment_->GetUniqueTopLevelOutputSlice());
+    VLOG(3) << "result index: " << result_slice.index();
+  }
   return std::move(buffers);
 }
 
@@ -172,7 +174,7 @@ Status CpuExecutable::ExecuteComputeFunction(
   size_t profile_counters_size =
       hlo_execution_profile ? hlo_execution_profile->profile_counters().size()
                             : 0;
-  int64* profile_counters =
+  int64_t* profile_counters =
       hlo_execution_profile
           ? hlo_execution_profile->mutable_profile_counters()->data()
           : nullptr;
@@ -183,16 +185,12 @@ Status CpuExecutable::ExecuteComputeFunction(
     buffer_pointers.push_back(
         const_cast<void*>(buffer.AsDeviceMemoryBase().opaque()));
   }
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
-                      assignment_->GetUniqueTopLevelOutputSlice());
-  void* result_buffer = buffer_pointers[result_slice.index()];
   if (VLOG_IS_ON(3)) {
     VLOG(3) << "Executing compute function:";
     VLOG(3) << absl::StrFormat(
         "  func(void* result, void* params[null], void* buffer_table[%u], "
         "uint64 profile_counters[%u])",
         buffer_pointers.size(), profile_counters_size);
-    VLOG(3) << absl::StrFormat("    result = %p", result_buffer);
     auto ptr_printer = [](string* out, const void* p) {
       absl::StrAppend(out, absl::StrFormat("%p", p));
     };
@@ -203,7 +201,7 @@ Status CpuExecutable::ExecuteComputeFunction(
     VLOG(3) << absl::StrFormat("    profile_counters = %p", profile_counters);
   }
 
-  compute_function_(result_buffer, run_options, nullptr, buffer_pointers.data(),
+  compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
                     profile_counters);
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
@@ -393,7 +391,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   return std::move(result);
 }
 
-/*static*/ int64 CpuExecutable::ShapeSizeBytes(const Shape& shape) {
+/*static*/ int64_t CpuExecutable::ShapeSizeBytes(const Shape& shape) {
   // On the cpu, opaques are pointers.
   if (shape.IsOpaque()) {
     return sizeof(void*);
@@ -411,7 +409,7 @@ const InstructionValueSet& CpuExecutable::GetRootValueSet() const {
       module().entry_computation()->root_instruction());
 }
 
-int64 CpuExecutable::SizeOfGeneratedCodeInBytes() const {
+int64_t CpuExecutable::SizeOfGeneratedCodeInBytes() const {
   return jit_->SizeOfGeneratedCodeInBytes();
 }
 

@@ -78,8 +78,8 @@ class TensorDatasetParams : public DatasetParams {
 class TensorDatasetOpTest : public DatasetOpsTestBase {};
 
 std::vector<Tensor> PlainTensors() {
-  return {CreateTensor<int64>(TensorShape({}), {1}),
-          CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
+  return {CreateTensor<int64_t>(TensorShape({}), {1}),
+          CreateTensor<int64_t>(TensorShape({1, 3}), {1, 2, 3}),
           CreateTensor<double>(TensorShape({}), {37.0}),
           CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})};
 }
@@ -99,7 +99,7 @@ TensorDatasetParams NestedTensorDatasetParams() {
            CreateTensor<Variant>(
                TensorShape({}),
                {CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})}),
-           CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})},
+           CreateTensor<int64_t>(TensorShape({1, 3}), {1, 2, 3})},
           /*node_name=*/kNodeName};
 }
 
@@ -114,7 +114,7 @@ std::vector<GetNextTestCase<TensorDatasetParams>> GetNextTestCases() {
             CreateTensor<Variant>(
                 TensorShape({}),
                 {CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})}),
-            CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})}}};
+            CreateTensor<int64_t>(TensorShape({1, 3}), {1, 2, 3})}}};
 }
 
 class ParameterizedGetNextTest : public TensorDatasetOpTest,
@@ -127,10 +127,9 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
 
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
-  while (!end_of_sequence) {
-    TF_EXPECT_OK(iterator_->GetNext(iterator_ctx_.get(), &out_tensors,
-                                    &end_of_sequence));
-  }
+  TF_EXPECT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  ASSERT_FALSE(end_of_sequence);
   EXPECT_EQ(out_tensors.size(), test_case.expected_outputs.size());
   for (int i = 0; i < out_tensors.size(); ++i) {
     if (out_tensors[i].dtype() == DT_VARIANT) {
@@ -144,6 +143,10 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
       TF_EXPECT_OK(ExpectEqual(out_tensors[i], test_case.expected_outputs[i]));
     }
   }
+  TF_EXPECT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_TRUE(end_of_sequence);
+  EXPECT_TRUE(out_tensors.empty());
 }
 
 INSTANTIATE_TEST_CASE_P(TensorDatasetOpTest, ParameterizedGetNextTest,
@@ -214,7 +217,7 @@ IteratorSaveAndRestoreTestCases() {
             CreateTensor<Variant>(
                 TensorShape({}),
                 {CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})}),
-            CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})}}};
+            CreateTensor<int64_t>(TensorShape({1, 3}), {1, 2, 3})}}};
 }
 
 class ParameterizedIteratorSaveAndRestoreTest
@@ -284,7 +287,7 @@ TEST_F(TensorDatasetOpTest, Splitting) {
       params, /*expected_outputs=*/PlainTensors()));
   TF_EXPECT_OK(CheckSplitProviderShardedIteration(
       params, /*num_shards=*/3, /*shard_index=*/2,
-      /*expected_outputs=*/CreateTensors<int64>(TensorShape({}), {})));
+      /*expected_outputs=*/CreateTensors<int64_t>(TensorShape({}), {})));
   TF_EXPECT_OK(CheckSplitProviderShardedIteration(
       params, /*num_shards=*/3, /*shard_index=*/0,
       /*expected_outputs=*/PlainTensors()));

@@ -60,15 +60,15 @@ class TraceMeRecorder {
     bool IsStart() const { return end_time < 0; }
     bool IsEnd() const { return start_time < 0; }
 
-    int64 ActivityId() const {
+    int64_t ActivityId() const {
       if (IsStart()) return -end_time;
       if (IsEnd()) return -start_time;
       return 1;  // complete
     }
 
     std::string name;
-    int64 start_time;
-    int64 end_time;
+    int64_t start_time;
+    int64_t end_time;
   };
   struct ThreadInfo {
     uint32 tid;
@@ -101,7 +101,7 @@ class TraceMeRecorder {
   static void Record(Event&& event);
 
   // Returns an activity_id for TraceMe::ActivityStart.
-  static int64 NewActivityId();
+  static int64_t NewActivityId();
 
  private:
   class ThreadLocalRecorder;

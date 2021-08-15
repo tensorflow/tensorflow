@@ -394,21 +394,33 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertEqual(output_details[1]['dtype'], expected_dtype)
 
   @parameterized.named_parameters(
-      ('_PerChannelQuant', False, False), ('_PerChannelMlirQuant', False, True),
-      ('_PerTensorQuant', True, False), ('_PerTensorMlirQuant', True, True))
+      ('_PerChannelQuant', False, False),
+      ('_PerChannelMlirQuant', False, True),
+      ('_PerTensorQuant', True, False),
+      ('_PerTensorMlirQuant', True, True),
+      ('_PerChannelMlirDynamicRangeQuant', False, False, False),
+      ('_PerTensorMlirDynamicRangeQuant', True, False, False),
+      ('_PerChannelTocoDynamicRangeQuant', False, False, False, False),
+      ('_PerTensorTocoDynamicRangeQuant', True, False, False, False))
   def testDisablePerChannelQuantization(self,
                                         disable_per_channel=False,
-                                        enable_mlir_quantizer=False):
-    k_conv_name = 'Conv2D1'
-    k_num_filters = 16
+                                        enable_mlir_quantizer=False,
+                                        representative_dataset=True,
+                                        enable_mlir_converter=True):
+    k_conv_name = 'Conv2D1' if enable_mlir_converter else 'ones'
+    # Dynamic range quant requires total num elements of filters > 1024.
+    k_num_filters = 38
     with ops.Graph().as_default():
-      inp, output, calibration_gen = self._getIntegerQuantizeModel()
+      inp, output, calibration_gen = self._getIntegerQuantizeModel(
+          k_num_filters)
       sess = session.Session()
 
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
-    quantized_converter.representative_dataset = calibration_gen
+    if representative_dataset:
+      quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.experimental_new_converter = enable_mlir_converter
     quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
     if disable_per_channel:
       quantized_converter._experimental_disable_per_channel = (
@@ -895,13 +907,13 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
-  def _getIntegerQuantizeModel(self):
+  def _getIntegerQuantizeModel(self, num_filters=16):
     np.random.seed(0)
     inp = array_ops.placeholder(
         dtype=dtypes.float32, shape=(1, 5, 5, 3), name='input')
     conv = nn_ops.conv2d(
         inp,
-        filter=array_ops.ones([3, 3, 3, 16]),
+        filter=array_ops.ones([3, 3, 3, num_filters]),
         strides=[1, 1, 1, 1],
         padding='SAME')
     output = nn_ops.relu(conv, name='output')

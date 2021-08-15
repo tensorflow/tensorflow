@@ -97,6 +97,11 @@ namespace tensorflow {
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaEinsum").Device(DEVICE),                    \
                           XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(Name("XlaRngBitGenerator")                           \
+                              .HostMemory("algorithm")                         \
+                              .HostMemory("shape")                             \
+                              .Device(DEVICE),                                 \
+                          XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaSpmdShardToFullShape").Device(DEVICE),      \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaSharding").Device(DEVICE),                  \

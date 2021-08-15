@@ -190,40 +190,22 @@ def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
         cls=cls,
         skip=["__init__"])
 
-  try:
-    doc_controls.do_not_generate_docs(tf.__internal__)
-  except AttributeError:
-    pass
-
-  try:
-    doc_controls.do_not_generate_docs(tf.keras.__internal__)
-  except AttributeError:
-    pass
-
-  try:
-    doc_controls.do_not_generate_docs(tf.__operators__)
-  except AttributeError:
-    pass
-
-  try:
-    doc_controls.do_not_generate_docs(tf.tools)
-  except AttributeError:
-    pass
-
-  try:
-    doc_controls.do_not_generate_docs(tf.compat.v1.pywrap_tensorflow)
-  except AttributeError:
-    pass
-
-  try:
-    doc_controls.do_not_generate_docs(tf.pywrap_tensorflow)
-  except AttributeError:
-    pass
-
-  try:
-    doc_controls.do_not_generate_docs(tf.flags)
-  except AttributeError:
-    pass
+  do_not_document = ["tf.__internal__",
+                     "tf.keras.__internal__",
+                     "tf.__operators__",
+                     "tf.tools",
+                     "tf.compat.v1.pywrap_tensorflow",
+                     "tf.pywrap_tensorflow",
+                     "tf.flags",
+                     "tf.batch_mat_mul_v3",
+                     "tf.sparse_segment_sum_grad"]
+  for path in do_not_document:
+    item = tf
+    for part in path.split(".")[1:]:
+      item = getattr(item, part, None)
+    if item is None:
+      continue
+    doc_controls.do_not_generate_docs(item)
 
   base_dirs, code_url_prefixes = base_dir.get_base_dirs_and_prefixes(
       code_url_prefix)

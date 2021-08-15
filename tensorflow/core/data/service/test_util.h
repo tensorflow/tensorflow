@@ -19,6 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -26,9 +28,24 @@ namespace data {
 namespace testing {
 
 // Returns a test dataset representing
-// tf.data.Dataset.range(range).map(lambda x: x*x). Useful for testing dataset
-// graph execution.
-DatasetDef RangeSquareDataset(int64 range);
+// tf.data.Dataset.range(range). Useful for testing dataset graph execution.
+DatasetDef RangeDataset(int64_t range);
+
+// Returns a test dataset representing
+// tf.data.Dataset.range(range).map(lambda x: x*x).
+DatasetDef RangeSquareDataset(int64_t range);
+
+// Returns a test dataset representing
+// tf.data.Dataset.range(range).shard(SHARD_HINT, SHARD_HINT).
+DatasetDef RangeDatasetWithShardHint(int64_t range);
+
+// Returns a test dataset representing
+// tf.data.Dataset.from_tensor_slices(["filenames"]).interleave(
+//     lambda filepath: tf.data.TextLineDataset(filepath),
+//     cycle_length=10)
+StatusOr<DatasetDef> InterleaveTextlineDataset(
+    const std::vector<tstring>& filenames,
+    const std::vector<tstring>& contents);
 
 }  // namespace testing
 }  // namespace data

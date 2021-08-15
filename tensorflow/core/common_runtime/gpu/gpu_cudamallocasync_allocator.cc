@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
@@ -40,6 +41,60 @@ static std::string GetCudaErrorMessage(CUresult result) {
                       name ? name : "Unknown", ")");
 }
 #endif  // GOOGLE_CUDA
+
+void GpuCudaMallocAsyncAllocator::PrintAllocatorStatistics() {
+  mutex_lock lock(lock_);
+
+  std::map<size_t, int> size_map_historgram;
+  std::vector<string> ptr_size_string;
+  for (auto p : size_map_) {
+    if (VLOG_IS_ON(8)) {
+      ptr_size_string.push_back(
+          absl::StrCat("(", absl::Hex(p.first), ",", p.second) + ")");
+    }
+    size_map_historgram[p.second]++;
+  }
+  LOG(ERROR) << "Histogram of current allocation: (allocation_size_in_bytes, "
+             << "nb_allocation_of_that_sizes), ...;";
+  for (auto p : size_map_historgram) {
+    LOG(ERROR) << p.first << ", " << p.second;
+  }
+
+  VLOG(8) << "\nThe sorted list of (ptr,size):";
+  VLOG(8) << absl::StrJoin(ptr_size_string, ",");
+
+#if CUDA_VERSION >= 11030
+  cuuint64_t mem_reserved_current;
+  if (auto result = cuMemPoolGetAttribute(
+          pool_, CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT, &mem_reserved_current)) {
+    LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
+               << GetCudaErrorMessage(result);
+  }
+  cuuint64_t mem_used_current;
+  if (auto result = cuMemPoolGetAttribute(
+          pool_, CU_MEMPOOL_ATTR_USED_MEM_CURRENT, &mem_used_current)) {
+    LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
+               << GetCudaErrorMessage(result);
+  }
+  cuuint64_t mem_reserved_high;
+  if (auto result = cuMemPoolGetAttribute(
+          pool_, CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH, &mem_reserved_high)) {
+    LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
+               << GetCudaErrorMessage(result);
+  }
+  cuuint64_t mem_used_high;
+  if (auto result = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_USED_MEM_HIGH,
+                                          &mem_used_high)) {
+    LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
+               << GetCudaErrorMessage(result);
+  }
+  LOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT: "
+             << mem_reserved_current;
+  LOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_CURRENT: " << mem_used_current;
+  LOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH: " << mem_reserved_high;
+  LOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_HIGH: " << mem_used_high;
+#endif
+}
 
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     PlatformDeviceId platform_device_id, size_t pool_size, bool reserve_memory,
@@ -76,9 +131,11 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
         "Failed to get device attribute: " << GetCudaErrorMessage(status);
   if (!cuda_malloc_async_supported)
     LOG(FATAL)  // Crash OK.
-        << "TF_GPU_ALLOCATOR=cuda_malloc_async isn't currently supported."
-        << " Possible causes: device not supported, driver too old, "
-        << " OS not supported, CUDA version too old.";
+        << "TF_GPU_ALLOCATOR=cuda_malloc_async isn't currently supported on "
+        << "GPU id " << platform_device_id.value() << ":"
+        << " Possible causes: device not supported (request SM60+), driver too "
+           "old, "
+        << " OS not supported, CUDA version too old(request CUDA11.2+).";
 
   if (auto status =
           cuDeviceGetDefaultMemPool(&pool_, platform_device_id.value()))
@@ -99,13 +156,12 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     stats_->bytes_limit = static_cast<int64>(pool_size);
   }  // If not set, it means we do not compute stats.
 
-  // If in TF_DETERMINISTIC_OPS is set, then make the allocator behave
+  // If op determinism is enabled, then make the allocator behave
   // determistically.
-  bool deterministic_ops = false;
-  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                             /*default_val=*/false,
-                                             &deterministic_ops));
-  if (deterministic_ops) {
+  // TODO(reedwm): OpDeterminismRequired() should not be used here since op
+  // determinism only is supposed to affect the determinism of op outputs and
+  // side effects.
+  if (OpDeterminismRequired()) {
     int disable = 0;
     if (auto status = cuMemPoolSetAttribute(
             pool_, CU_MEMPOOL_ATTR_REUSE_ALLOW_OPPORTUNISTIC, &disable)) {
@@ -138,7 +194,9 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
             &canAccessPeer, platform_device_id.value(), map.location.id)) {
       pool_ = nullptr;
       LOG(FATAL)  // Crash OK.
-          << "cuDeviceCanAccessPeer failed: " << GetCudaErrorMessage(status);
+          << "cuDeviceCanAccessPeer failed to know if GPU id "
+          << map.location.id << " can access GPU id "
+          << platform_device_id.value() << ": " << GetCudaErrorMessage(status);
     }
     if (canAccessPeer == 1) {
       if (auto status = cuMemPoolSetAccess(pool_, &map, 1)) {
@@ -219,10 +277,14 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
     size_t free, total;
     cuMemGetInfo(&free, &total);
     LOG(ERROR) << Name() << " cuMemAllocAsync failed to allocate " << num_bytes
-               << ": " << GetCudaErrorMessage(result)
-               << "\n Free memory/Total memory: " << free << "/" << total;
+               << " bytes: " << GetCudaErrorMessage(result)
+               << "\n Reported by CUDA: Free memory/Total memory: " << free
+               << "/" << total;
     if (auto stats = GetStats())
       LOG(ERROR) << "Stats: " << stats->DebugString();
+
+    PrintAllocatorStatistics();
+
     return nullptr;
   }
 
@@ -231,6 +293,10 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
     mutex_lock lock(lock_);
     ++(stats_->num_allocs);
     stats_->bytes_in_use += num_bytes;
+    if (stats_->bytes_in_use > stats_->peak_bytes_in_use) {
+      VLOG(9) << "New Peak memory usage of " << stats_->bytes_in_use
+              << " bytes.";
+    }
     stats_->peak_bytes_in_use =
         std::max(stats_->peak_bytes_in_use, stats_->bytes_in_use);
     stats_->largest_alloc_size =

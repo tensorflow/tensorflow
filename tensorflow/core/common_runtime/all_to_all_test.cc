@@ -48,7 +48,7 @@ TEST_F(AllToAllTest, Success) {
                                                tensors[i].shape());
       Device* device = nullptr;
       TF_CHECK_OK(test_env_->device_mgr->LookupDevice(
-          col_params->group.device_names[i], &device));
+          col_params->group.devices[i].name(), &device));
       TF_CHECK_OK(RunCollective(test_env_.get(), col_params.get(), device,
                                 &tensors[i], &tensors[i]));
       counter.DecrementCount();
@@ -82,7 +82,7 @@ TEST_F(AllToAllTest, Failure) {
                                                tensors[i].shape());
       Device* device = nullptr;
       TF_CHECK_OK(test_env_->device_mgr->LookupDevice(
-          col_params->group.device_names[i], &device));
+          col_params->group.devices[i].name(), &device));
       Status status = RunCollective(test_env_.get(), col_params.get(), device,
                                     &tensors[i], &tensors[i]);
       if (!status.ok()) {
@@ -114,7 +114,7 @@ TEST_F(AllToAllTest, WrongFirstDimensionSize) {
                                                tensors[i].shape());
       Device* device = nullptr;
       TF_CHECK_OK(test_env_->device_mgr->LookupDevice(
-          col_params->group.device_names[i], &device));
+          col_params->group.devices[i].name(), &device));
       Status status = RunCollective(test_env_.get(), col_params.get(), device,
                                     &tensors[i], &tensors[i]);
       counter.DecrementCount();

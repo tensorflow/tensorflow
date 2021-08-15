@@ -96,7 +96,7 @@ bool MaybeReplaceShapeOrShapeNOp(
     DataType op_type = n->output_type(0);
     Tensor t(op_type, TensorShape({rank}));
     if (op_type == DT_INT64) {
-      auto vec = t.vec<int64>();
+      auto vec = t.vec<int64_t>();
       for (int i = 0; i < rank; ++i) {
         vec(i) = shape.dim_size(i);
       }
@@ -152,7 +152,7 @@ bool MaybeReplaceSizeOp(const Node* n,
   Tensor t(op_type, TensorShape({}));
   int64_t size = input_shapes[0].num_elements();
   if (op_type == DT_INT64) {
-    t.scalar<int64>()() = size;
+    t.scalar<int64_t>()() = size;
   } else {
     CHECK(op_type == DT_INT32);
     if (size > INT_MAX) {
@@ -372,7 +372,7 @@ void FindConstantFoldableNodes(
 
 typedef std::pair<Node*, int> NodeAndOutput;
 
-int64 UniqueConstantId() {
+int64_t UniqueConstantId() {
   static std::atomic_int_fast64_t unique_constant_id;
   return unique_constant_id.fetch_add(1);
 }
@@ -670,7 +670,7 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
 
   // Fetch the constant tensors and replace the corresponding tensors in the
   // original graph with those constants.
-  int32 num_nodes_replaced = 0;
+  int32_t num_nodes_replaced = 0;
   for (size_t c = 0; c < outputs.size(); ++c) {
     const gtl::FlatSet<Node*>& control_deps =
         constant_control_deps[tensors_to_replace[c].first];

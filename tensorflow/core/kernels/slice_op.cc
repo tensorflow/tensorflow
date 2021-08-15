@@ -37,17 +37,17 @@ namespace tensorflow {
 namespace {
 
 void IntTensorToInt64Vec(const Tensor& tensor,
-                         gtl::InlinedVector<int64, 4>* out) {
+                         gtl::InlinedVector<int64_t, 4>* out) {
   out->resize(tensor.NumElements());
-  int64* out_ptr = out->data();
+  int64_t* out_ptr = out->data();
   if (tensor.dtype() == DT_INT32) {
     const int32* tensor_ptr = tensor.flat<int32>().data();
-    for (int64 i = 0; i < tensor.NumElements(); ++i) {
+    for (int64_t i = 0; i < tensor.NumElements(); ++i) {
       out_ptr[i] = tensor_ptr[i];
     }
   } else if (tensor.dtype() == DT_INT64) {
-    const int64* tensor_ptr = tensor.flat<int64>().data();
-    for (int64 i = 0; i < tensor.NumElements(); ++i) {
+    const int64_t* tensor_ptr = tensor.flat<int64_t>().data();
+    for (int64_t i = 0; i < tensor.NumElements(); ++i) {
       out_ptr[i] = tensor_ptr[i];
     }
   } else {
@@ -63,8 +63,8 @@ typedef Eigen::GpuDevice GPUDevice;
 void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
                            TensorShape* output_shape, bool* is_identity,
                            bool* slice_dim0,
-                           gtl::InlinedVector<int64, 4>* begin,
-                           gtl::InlinedVector<int64, 4>* size) {
+                           gtl::InlinedVector<int64_t, 4>* begin,
+                           gtl::InlinedVector<int64_t, 4>* size) {
   const Tensor& begin_tensor = context->input(1);
   const Tensor& size_tensor = context->input(2);
 
@@ -92,8 +92,8 @@ void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
   *is_identity = true;
   *slice_dim0 = true;
   for (int i = 0; i < input_dims; ++i) {
-    int64 b = (*begin)[i];
-    int64 s = (*size)[i];
+    int64_t b = (*begin)[i];
+    int64_t s = (*size)[i];
     if (input.dim_size(i) == 0) {
       OP_REQUIRES(
           context, b == 0 && s == 0,
@@ -157,8 +157,8 @@ class SliceOp : public OpKernel {
   explicit SliceOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    gtl::InlinedVector<int64, 4> begin;
-    gtl::InlinedVector<int64, 4> size;
+    gtl::InlinedVector<int64_t, 4> begin;
+    gtl::InlinedVector<int64_t, 4> size;
     const Tensor& input = context->input(0);
     Tensor* result = nullptr;
     bool done = false;
@@ -173,15 +173,15 @@ class SliceOp : public OpKernel {
         auto input_t = input.tensor<T, 2>();
         auto output_t = result->tensor<T, 2>();
 
-        const int64 row_begin = begin[0];
-        const int64 col_begin = begin[1];
-        const int64 row_size = size[0];
-        const int64 col_size = size[1];
+        const int64_t row_begin = begin[0];
+        const int64_t col_begin = begin[1];
+        const int64_t row_size = size[0];
+        const int64_t col_size = size[1];
 
         // TODO(agarwal): Consider multi-threading this loop for cases where
         // row_size is very large.
         for (int i = 0; i < row_size; ++i) {
-          const int64 row = row_begin + i;
+          const int64_t row = row_begin + i;
           if (i + 1 < size[0]) {
             port::prefetch<port::PREFETCH_HINT_T0>(&output_t(i + 1, 0));
             port::prefetch<port::PREFETCH_HINT_T0>(
@@ -217,8 +217,8 @@ class SliceOp : public OpKernel {
 
  private:
   template <int NDIM>
-  void HandleCase(OpKernelContext* context, gtl::ArraySlice<int64> begin,
-                  gtl::ArraySlice<int64> size, const Tensor& input,
+  void HandleCase(OpKernelContext* context, gtl::ArraySlice<int64_t> begin,
+                  gtl::ArraySlice<int64_t> size, const Tensor& input,
                   Tensor* result) {
     Eigen::DSizes<Eigen::DenseIndex, NDIM> indices;
     Eigen::DSizes<Eigen::DenseIndex, NDIM> sizes;

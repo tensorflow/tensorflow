@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -223,7 +224,7 @@ class MultiDeviceIterator(object):
         prevent deadlocks, if the prefetch_buffer_size is greater than the
         max_buffer_size, we set the max_buffer_size to prefetch_buffer_size.
     """
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.num_devices = len(devices)
     dataset = dataset.with_options(options)
     self._dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
@@ -505,7 +506,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
     else:
       if (components is not None or element_spec is not None):
         raise ValueError(error_message)
-      options = dataset_ops.Options()
+      options = options_lib.Options()
       options.experimental_distribute.num_devices = len(devices)
       dataset = dataset.with_options(options)
       dataset = dataset._apply_debug_options()  # pylint: disable=protected-access

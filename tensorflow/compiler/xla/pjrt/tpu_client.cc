@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
+#include "tensorflow/compiler/xla/pjrt/utils.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/tpu_computation_placer.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -152,13 +153,26 @@ StatusOr<std::string> PjRtTpuClient::SerializeExecutable(
 }
 
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtTpuClient::DeserializeExecutable(
-    absl::string_view serialized, std::unique_ptr<HloModule> hlo_module,
-    CompileOptions options) {
+    absl::string_view serialized, CompileOptions options) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<TpuExecutable> tpu_executable,
+                      TpuExecutable::Deserialize(serialized));
+
   TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<TpuExecutable> tpu_executable,
-      TpuExecutable::Deserialize(serialized, std::move(hlo_module)));
+  // TODO(skyewm): can we streamline this? e.g. removing proto serialization
+  XlaComputation computation(tpu_executable->module().ToProto());
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
+  std::vector<const Shape*> unused_argument_layout_pointers;
+  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+      computation,
+      [local_client = client()](Shape shape) {
+        return local_client->backend()
+            .transfer_manager()
+            ->ChooseCompactLayoutForShape(shape);
+      },
+      options.argument_layouts, &options.executable_build_options,
+      &unused_argument_layout_pointers));
 
   auto local_executable = absl::make_unique<LocalExecutable>(
       std::move(tpu_executable), client_->mutable_backend(),

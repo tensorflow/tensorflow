@@ -61,7 +61,7 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
     case S32:
       return py::dtype::of<int32>();
     case S64:
-      return py::dtype::of<int64>();
+      return py::dtype::of<int64_t>();
     case U8:
       return py::dtype::of<uint8>();
     case U16:
@@ -69,7 +69,7 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
     case U32:
       return py::dtype::of<uint32>();
     case U64:
-      return py::dtype::of<uint64>();
+      return py::dtype::of<uint64_t>();
     case BF16: {
       py::handle bfloat16(tensorflow::Bfloat16Dtype());
       return py::dtype::from_args(py::reinterpret_borrow<py::object>(bfloat16));
@@ -306,19 +306,13 @@ static py::tuple IntSpanToTupleHelper(absl::Span<IntType const> xs) {
   return out;
 }
 
-py::tuple IntSpanToTuple(absl::Span<int64 const> xs) {
+template <>
+pybind11::tuple SpanToTuple(absl::Span<int const> xs) {
   return IntSpanToTupleHelper(xs);
 }
-py::tuple IntSpanToTuple(absl::Span<int const> xs) {
+template <>
+pybind11::tuple SpanToTuple(absl::Span<int64_t const> xs) {
   return IntSpanToTupleHelper(xs);
-}
-
-std::vector<int64> IntSequenceToVector(const py::object& sequence) {
-  std::vector<int64> output;
-  for (auto item : sequence) {
-    output.push_back(item.cast<int64>());
-  }
-  return output;
 }
 
 absl::optional<CastToArrayResult> CastToArray(py::handle h) {
@@ -333,7 +327,7 @@ absl::optional<CastToArrayResult> CastToArray(py::handle h) {
   }
   PrimitiveType type = type_or_status.ValueOrDie();
 
-  absl::InlinedVector<int64, 4> dims(array.ndim());
+  absl::InlinedVector<int64_t, 4> dims(array.ndim());
   for (int i = 0; i < array.ndim(); ++i) {
     dims[i] = array.shape(i);
   }

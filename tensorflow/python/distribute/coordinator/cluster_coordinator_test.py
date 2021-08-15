@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import collections
 import contextlib
 import functools
@@ -27,6 +28,7 @@ import sys
 import threading
 import time
 import traceback
+from absl.testing import parameterized
 
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
@@ -458,7 +460,8 @@ def make_coordinator(num_workers, num_ps):
   return coordinator_lib.ClusterCoordinator(strategy)
 
 
-class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
+class ClusterCoordinatorTest(TestCaseWithErrorReportingThread,
+                             parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -567,7 +570,8 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
     # Likewise, it's now 20.
     self.assertEqual(v.read_value().numpy(), 20.)
 
-  def testInputFunctionWithMap(self):
+  @parameterized.parameters(True, False)
+  def testInputFunctionWithMap(self, use_input_fn):
     self._map_fn_tracing_count = 0
 
     def input_fn():
@@ -582,7 +586,12 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
     def worker_fn(iterator):
       return next(iterator)
 
-    distributed_dataset = self.coordinator.create_per_worker_dataset(input_fn)
+    if use_input_fn:
+      distributed_dataset = self.coordinator.create_per_worker_dataset(input_fn)
+    else:
+      distributed_dataset = self.coordinator.create_per_worker_dataset(
+          input_fn())
+
     result = self.coordinator.schedule(
         worker_fn, args=(iter(distributed_dataset),))
     self.assertEqual(result.fetch(), (10,))
@@ -597,7 +606,8 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
     with self.assertRaises(ValueError):
       self.coordinator.create_per_worker_dataset(input_fn)
 
-  def testDatasetsShuffledDifferently(self):
+  @parameterized.parameters(True, False)
+  def testDatasetsShuffledDifferently(self, use_input_fn):
     # This test requires at least two workers in the cluster.
     self.assertGreaterEqual(len(self.coordinator._cluster.workers), 2)
 
@@ -607,7 +617,11 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
       dataset = dataset_ops.DatasetV2.range(0, 100).shuffle(100).batch(1)
       return self.strategy.experimental_distribute_dataset(dataset)
 
-    distributed_dataset = self.coordinator.create_per_worker_dataset(input_fn)
+    if use_input_fn:
+      distributed_dataset = self.coordinator.create_per_worker_dataset(input_fn)
+    else:
+      distributed_dataset = self.coordinator.create_per_worker_dataset(
+          input_fn())
     distributed_iterator = iter(distributed_dataset)
     # Get elements from the first two iterators.
     iterator_1 = distributed_iterator._values[0]
@@ -954,7 +968,7 @@ class LimitedClosureQueueErrorTest(ErrorReportingTest):
       cls.iteration = variables.Variable(initial_value=0.0)
 
 
-class StrategyIntegrationTest(test.TestCase):
+class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -1213,11 +1227,18 @@ class StrategyIntegrationTest(test.TestCase):
         with distribute_utils.cache_variable_reads():
           v.read_value()
 
-  def testDistributedDatasetInsidePerWorkerDatasetFn(self):
+  @parameterized.parameters(True, False)
+  def testDistributedDatasetInsidePerWorkerDatasetFn(self, from_function):
+    if from_function:
 
-    def per_worker_dataset_fn():
-      dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
-      return self.strategy.experimental_distribute_dataset(dataset)
+      def per_worker_dataset_fn():
+        dataset_fn = lambda _: dataset_ops.DatasetV2.range(1, 11).batch(4)
+        return self.strategy.distribute_datasets_from_function(dataset_fn)
+    else:
+
+      def per_worker_dataset_fn():
+        dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
+        return self.strategy.experimental_distribute_dataset(dataset)
 
     @def_function.function
     def worker_fn(iterator):
@@ -1235,9 +1256,16 @@ class StrategyIntegrationTest(test.TestCase):
 
     self.assertAllEqual(result, (expected_result))
 
-  def testPassDistributedDatasetToCreatePerWorkerDataset(self):
-    dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
-    distributed_dataset = self.strategy.experimental_distribute_dataset(dataset)
+  @parameterized.parameters(True, False)
+  def testPassDistributedDatasetToCreatePerWorkerDataset(self, from_function):
+    if from_function:
+      dataset_fn = lambda _: dataset_ops.DatasetV2.range(1, 11).batch(4)
+      distributed_dataset = self.strategy.distribute_datasets_from_function(
+          dataset_fn)
+    else:
+      dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
+      distributed_dataset = self.strategy.experimental_distribute_dataset(
+          dataset)
 
     @def_function.function
     def worker_fn(iterator):
@@ -1360,11 +1388,6 @@ class StrategyIntegrationTest(test.TestCase):
         self.strategy.experimental_local_results(result.fetch()),
         tuple(expected_result))
     self.assertEqual(self._map_fn_tracing_count, 1)
-
-  def testCallingDistributeDatasetOutside(self):
-    with self.assertRaises(ValueError):
-      self.strategy.distribute_datasets_from_function(
-          lambda _: dataset_ops.DatasetV2.range(1, 2).batch(2))
 
   def testPerWorkerDistributeDatasetsElementSpec(self):
 

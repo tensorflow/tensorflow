@@ -1,7 +1,7 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
-"module"() ( {
-  "func"() ( {
+"builtin.module"() ( {
+  "builtin.func"() ( {
     "tf_executor.graph"() ( {
       %outputs, %control = "tf_executor.island"() ( {
         %0 = "tf.Const"() {device = "", value = dense<0> : tensor<i32>} : () -> tensor<i32>

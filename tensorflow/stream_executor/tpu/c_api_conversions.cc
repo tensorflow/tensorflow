@@ -150,8 +150,8 @@ stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base) {
 // Helper functions for copying data to possibly-inlined C arrays.
 
 // 'Src' and 'Dst' are allowed to be different types to make this usable with
-// memory-identical types, e.g. int64 and int64_t. This should not be used with
-// types that require a static_cast.
+// memory-identical types, e.g. int64_t and int64_t. This should not be used
+// with types that require a static_cast.
 template <typename Src, typename Dst, typename DstList>
 static void CopyVectorBase(const absl::Span<Src> src, DstList* dst) {
   static_assert(sizeof(Src) == sizeof(Dst), "Mismatched types");
@@ -164,10 +164,8 @@ static void CopyVectorBase(const absl::Span<Src> src, DstList* dst) {
   }
 }
 
-static void CopyVector(const absl::Span<const typename tensorflow::int64> src,
-                       Int64List* dst) {
-  return CopyVectorBase<const typename tensorflow::int64, int64_t, Int64List>(
-      src, dst);
+static void CopyVector(const absl::Span<const int64_t> src, Int64List* dst) {
+  return CopyVectorBase<const int64_t, int64_t, Int64List>(src, dst);
 }
 static void CopyVector(const absl::Span<const bool> src, BoolList* dst) {
   return CopyVectorBase<const bool, bool, BoolList>(src, dst);
@@ -190,8 +188,8 @@ static void CopyVector(const absl::Span<const xla::Tile> src, TileList* dst) {
 // Helper functions for creating a view of possibly-inlined C arrays.
 
 // 'Src' and 'Dst' are allowed to be different types to make this usable with
-// memory-identical types, e.g. int64 and int64_t. This should not be used with
-// types that require a static_cast.
+// memory-identical types, e.g. int64_t and int64_t. This should not be used
+// with types that require a static_cast.
 template <typename Dst, typename Src, typename SrcList>
 static absl::Span<const Dst> MakeSpanBase(const SrcList& src_list) {
   static_assert(sizeof(Src) == sizeof(Dst), "Mismatched types");
@@ -201,9 +199,8 @@ static absl::Span<const Dst> MakeSpanBase(const SrcList& src_list) {
                                src_list.size);
 }
 
-static absl::Span<const typename tensorflow::int64> MakeSpan(
-    const Int64List& src_list) {
-  return MakeSpanBase<typename tensorflow::int64, int64_t, Int64List>(src_list);
+static absl::Span<const int64_t> MakeSpan(const Int64List& src_list) {
+  return MakeSpanBase<int64_t, int64_t, Int64List>(src_list);
 }
 static absl::Span<const bool> MakeSpan(const BoolList& src_list) {
   return MakeSpanBase<bool, bool, BoolList>(src_list);
@@ -231,8 +228,7 @@ void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape) {
 }
 
 xla::Shape FromC(const XLA_Shape* c_shape) {
-  absl::Span<const typename tensorflow::int64> dims =
-      MakeSpan(c_shape->dimensions);
+  absl::Span<const int64_t> dims = MakeSpan(c_shape->dimensions);
   absl::Span<const bool> dynamic_dims = MakeSpan(c_shape->dynamic_dimensions);
 
   std::vector<xla::Shape> tuple_shapes;
@@ -276,8 +272,7 @@ void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
 }
 
 xla::Layout FromC(const XLA_Layout* c_layout) {
-  absl::Span<const typename tensorflow::int64> minor_to_major =
-      MakeSpan(c_layout->minor_to_major);
+  absl::Span<const int64_t> minor_to_major = MakeSpan(c_layout->minor_to_major);
   absl::InlinedVector<xla::Tile, 1> tiles;
   const XLA_Tile* c_tiles = c_layout->tiles.size > TPU_C_API_MAX_INLINED
                                 ? c_layout->tiles.heap
@@ -303,8 +298,7 @@ void ToC(const xla::Tile& tile, XLA_Tile* c_tile) {
 }
 
 xla::Tile FromC(const XLA_Tile* c_tile) {
-  absl::Span<const typename tensorflow::int64> dims =
-      MakeSpan(c_tile->dimensions);
+  absl::Span<const int64_t> dims = MakeSpan(c_tile->dimensions);
   return xla::Tile(dims);
 }
 

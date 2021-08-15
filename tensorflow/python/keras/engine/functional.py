@@ -53,7 +53,7 @@ class Functional(training_lib.Model):
   than with subclassed `Model`s, specifically:
 
   - Model cloning (`keras.models.clone`)
-  - Serialization (`model.get_config()/from_config`, `model.to_json()/to_yaml()`
+  - Serialization (`model.get_config()/from_config`, `model.to_json()`
   - Whole-model saving (`model.save()`)
 
   A `Functional` model can be instantiated by passing two arguments to

@@ -86,7 +86,7 @@ class StructureCoder(object):
         recursion_fn = functools.partial(self._map_structure, coders=coders)
         return do(pyobj, recursion_fn)
     raise NotEncodableError(
-        "No encoder for object [%s] of type [%s]." % (str(pyobj), type(pyobj)))
+        f"No encoder for object {str(pyobj)} of type {type(pyobj)}.")
 
   def encode_structure(self, nested_structure):
     """Encodes nested structures composed of encodable types into a proto.
@@ -582,9 +582,9 @@ class _TypeSpecCodec(object):
         type_spec_class = type_spec.lookup(class_name)
       except ValueError as e:
         raise ValueError(
-            "The type '%s' has not been registered.  It must be registered "
-            "before you load this object (typically by importing its module)."
-            % class_name) from e
+            f"The type '{class_name}' has not been registered.  It must be "
+            "registered before you load this object (typically by importing "
+            "its module).") from e
     elif type_spec_class_enum == struct_pb2.TypeSpecProto.EXTENSION_TYPE_SPEC:
       try:
         type_spec_class = type_spec.lookup(class_name)
@@ -595,9 +595,9 @@ class _TypeSpecCodec(object):
     else:
       if type_spec_class_enum not in self.TYPE_SPEC_CLASS_FROM_PROTO:
         raise ValueError(
-            "The type '%s' is not supported by this version of TensorFlow. "
-            "(The object you are loading must have been created with a newer "
-            "version of TensorFlow.)" % class_name)
+            f"The type '{class_name}' is not supported by this version of "
+            "TensorFlow. (The object you are loading must have been created "
+            "with a newer version of TensorFlow.)")
       type_spec_class = self.TYPE_SPEC_CLASS_FROM_PROTO[type_spec_class_enum]
 
     # pylint: disable=protected-access

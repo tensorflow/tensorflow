@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "pybind11/attr.h"
 #include "pybind11/cast.h"
 #include "pybind11/numpy.h"
@@ -163,6 +164,7 @@ PYBIND11_MODULE(xla_extension, m) {
       });
 
   py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
+      .def_property_readonly("device_vendor", &GpuDevice::device_vendor)
       .def("__repr__", [](const GpuDevice& device) {
         return absl::StrFormat("GpuDevice(id=%i, process_index=%i)",
                                device.id(), device.process_index());
@@ -173,7 +175,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly(
           "coords",
           [](const PjRtTpuDevice& device) -> pybind11::tuple {
-            return IntSpanToTuple(device.coords());
+            return SpanToTuple(absl::MakeConstSpan(device.coords()));
           },
           "The coordinates of this TpuDevice's chip in the TPU mesh network.")
       .def_property_readonly(
@@ -236,7 +238,13 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions())
       .def("serialize_executable", &PyClient::SerializeExecutable)
-      .def("deserialize_executable", &PyClient::DeserializeExecutable)
+      .def("deserialize_executable",
+           py::overload_cast<const std::string&, CompileOptions>(
+               &PyClient::DeserializeExecutable))
+      // TODO(skyewm): remove when jax stop providing hlo_module
+      .def("deserialize_executable",
+           py::overload_cast<const std::string&, std::shared_ptr<HloModule>,
+                             CompileOptions>(&PyClient::DeserializeExecutable))
       .def("heap_profile", &PyClient::HeapProfile)
       // TODO(zhangqiaorjc): Experimental.
       .def("defragment", &PyClient::Defragment)
@@ -248,6 +256,7 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def(
       "get_cpu_client",
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
+        py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetCpuClient(asynchronous));
         return std::make_shared<PyClient>(std::move(client));
@@ -256,12 +265,14 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def(
       "get_tfrt_cpu_client",
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
+        py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetTfrtCpuClient(asynchronous));
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true);
   m.def("get_interpreter_client", []() -> StatusOr<std::shared_ptr<PyClient>> {
+    py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                         GetInterpreterClient());
     return std::make_shared<PyClient>(std::move(client));
@@ -271,6 +282,7 @@ PYBIND11_MODULE(xla_extension, m) {
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
          int node_id) -> StatusOr<std::shared_ptr<PyClient>> {
+        py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<PjRtClient> client,
             GetGpuClient(asynchronous, allocator_config,
@@ -283,6 +295,7 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def(
       "get_tpu_client",
       [](int max_inflight_computations) -> StatusOr<std::shared_ptr<PyClient>> {
+        py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
                             GetTpuClient(max_inflight_computations));
         return std::make_shared<PyClient>(std::move(client));
@@ -347,8 +360,84 @@ PYBIND11_MODULE(xla_extension, m) {
   distributed_runtime_client.def("connect", &DistributedRuntimeClient::Connect)
       .def("shutdown", &DistributedRuntimeClient::Shutdown);
 
-  m.def("get_distributed_runtime_service", &GetDistributedRuntimeService);
-  m.def("get_distributed_runtime_client", &GetDistributedRuntimeClient);
+  m.def(
+      "get_distributed_runtime_service",
+      [](std::string address, int num_nodes,
+         absl::optional<int> heartbeat_interval,
+         absl::optional<int> max_missing_heartbeats,
+         absl::optional<int> enumerate_devices_timeout,
+         absl::optional<int> shutdown_timeout)
+          -> StatusOr<std::unique_ptr<DistributedRuntimeService>> {
+        DistributedRuntimeServiceImpl::Options options;
+        options.num_nodes = num_nodes;
+        if (heartbeat_interval.has_value()) {
+          options.heartbeat_interval = absl::Seconds(*heartbeat_interval);
+        }
+        if (max_missing_heartbeats.has_value()) {
+          options.max_missing_heartbeats = *max_missing_heartbeats;
+        }
+        if (enumerate_devices_timeout.has_value()) {
+          options.enumerate_devices_timeout =
+              absl::Seconds(*enumerate_devices_timeout);
+        }
+        if (shutdown_timeout.has_value()) {
+          options.shutdown_timeout = absl::Seconds(*shutdown_timeout);
+        }
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<DistributedRuntimeService> service,
+                            GetDistributedRuntimeService(address, options));
+        return service;
+      },
+      py::arg("address"), py::arg("num_nodes"), py::kw_only(),
+      py::arg("heartbeat_interval") = absl::nullopt,
+      py::arg("max_missing_heartbeats") = absl::nullopt,
+      py::arg("enumerate_devices_timeout") = absl::nullopt,
+      py::arg("shutdown_timeout") = absl::nullopt);
+
+  m.def(
+      "get_distributed_runtime_client",
+      [](std::string address, int node_id, absl::optional<int> rpc_timeout,
+         absl::optional<int> init_timeout, absl::optional<int> shutdown_timeout,
+         absl::optional<int> heartbeat_interval,
+         absl::optional<int> max_missing_heartbeats,
+         absl::optional<std::function<void(xla::Status,
+                                           bool coordinator_reported_failure)>>
+             missed_heartbeat_callback,
+         absl::optional<bool> shutdown_on_destruction)
+          -> StatusOr<std::shared_ptr<DistributedRuntimeClient>> {
+        DistributedRuntimeClient::Options options;
+        options.node_id = node_id;
+        if (rpc_timeout.has_value()) {
+          options.rpc_timeout = absl::Seconds(*rpc_timeout);
+        }
+        if (init_timeout.has_value()) {
+          options.init_timeout = absl::Seconds(*init_timeout);
+        }
+        if (shutdown_timeout.has_value()) {
+          options.shutdown_timeout = absl::Seconds(*shutdown_timeout);
+        }
+        if (heartbeat_interval.has_value()) {
+          options.heartbeat_interval = absl::Seconds(*heartbeat_interval);
+        }
+        if (max_missing_heartbeats.has_value()) {
+          options.max_missing_heartbeats = *max_missing_heartbeats;
+        }
+        if (missed_heartbeat_callback.has_value()) {
+          options.missed_heartbeat_callback =
+              std::move(*missed_heartbeat_callback);
+        }
+        if (shutdown_on_destruction.has_value()) {
+          options.shutdown_on_destruction = *shutdown_on_destruction;
+        }
+        return GetDistributedRuntimeClient(address, options);
+      },
+      py::arg("address"), py::arg("node_id"), py::kw_only(),
+      py::arg("rpc_timeout") = absl::nullopt,
+      py::arg("init_timeout") = absl::nullopt,
+      py::arg("shutdown_timeout") = absl::nullopt,
+      py::arg("heartbeat_interval") = absl::nullopt,
+      py::arg("max_missing_heartbeats") = absl::nullopt,
+      py::arg("missed_heartbeat_callback") = absl::nullopt,
+      py::arg("shutdown_on_destruction") = absl::nullopt);
 
   m.def("collect_garbage", []() { GlobalPyRefManager()->CollectGarbage(); });
 

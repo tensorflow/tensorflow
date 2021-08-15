@@ -146,7 +146,7 @@ TEST_F(RpcCollectiveExecutorMgrTest, GetStepSequence) {
     EXPECT_TRUE(status.ok());
   }
   ASSERT_EQ(2, response.step_sequence_size());
-  std::unordered_map<int64, int64> values;
+  std::unordered_map<int64_t, int64_t> values;
   for (const auto& ss : response.step_sequence()) {
     values[ss.graph_key()] = ss.next_step_id();
   }

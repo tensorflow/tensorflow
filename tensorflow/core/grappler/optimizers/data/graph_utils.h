@@ -91,7 +91,7 @@ Status GetScalarConstNodeValue(const NodeDef& node, T* value) {
 }
 
 template <>
-Status GetScalarConstNodeValue(const NodeDef& node, int64* value);
+Status GetScalarConstNodeValue(const NodeDef& node, int64_t* value);
 template <>
 Status GetScalarConstNodeValue(const NodeDef& node, bool* value);
 

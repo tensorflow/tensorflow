@@ -27,7 +27,7 @@ class MemRefDialect;
 }
 
 namespace mhlo {
-
+class MhloDialect;
 #define GEN_PASS_CLASSES
 #include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
 

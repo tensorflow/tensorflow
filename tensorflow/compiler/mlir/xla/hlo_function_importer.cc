@@ -333,6 +333,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kCustomCall: {
       auto custom_call = Cast<HloCustomCallInstruction>(instruction);
+      TF_ASSIGN_OR_RETURN(
+          auto mlir_api_version,
+          ConvertCustomCallApiVersion(custom_call->api_version()));
       attributes.push_back(builder_->getNamedAttr(
           "call_target_name",
           builder_->getStringAttr(custom_call->custom_call_target())));
@@ -342,6 +345,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "backend_config",
           builder_->getStringAttr(custom_call->raw_backend_config_string())));
+      attributes.push_back(builder_->getNamedAttr(
+          "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
+                             builder_->getContext(), mlir_api_version)));
       MakeAndReturn(CustomCallOp);
     }
     case HloOpcode::kCompare: {
@@ -670,7 +676,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       MakeAndReturn(TriangularSolveOp);
     }
     case HloOpcode::kReduceWindow: {
-      llvm::SmallVector<int64, 4> sizes, strides, base_dilations, win_dilations;
+      llvm::SmallVector<int64_t, 4> sizes, strides, base_dilations,
+          win_dilations;
       llvm::SmallVector<int64_t, 8> padding;
       for (const auto& dim : instruction->window().dimensions()) {
         sizes.push_back(dim.size());
@@ -801,6 +808,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NoAttributeCase(kReal, RealOp);
       NoAttributeCase(kRemainder, RemOp);
       NoAttributeCase(kReplicaId, ReplicaIdOp);
+      NoAttributeCase(kLogistic, LogisticOp);
       // The dimensions attribute is not present on the HLO Reshape
       // instruction. If dimensions are non-default, the XLA builder
       // implements it as a separate transpose.
@@ -946,7 +954,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonType(
 }
 
 mlir::DenseIntElementsAttr HloFunctionImporter::ConvertDimensions(
-    llvm::ArrayRef<int64> op_dimensions) {
+    llvm::ArrayRef<int64_t> op_dimensions) {
   llvm::SmallVector<APInt, 8> dimensions;
   dimensions.reserve(op_dimensions.size());
   for (auto value : op_dimensions) dimensions.emplace_back(APInt(64, value));
@@ -973,8 +981,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(
-    const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
-        source_target_pairs,
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
     mlir::Builder* builder) {
   std::vector<int64_t> attr(source_target_pairs.size() * 2);
   for (auto p : llvm::enumerate(source_target_pairs)) {
@@ -1001,7 +1008,8 @@ mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
   std::vector<int64_t> attr(num_groups * group_size, -1);
   for (int i = 0; i < num_groups; ++i) {
     int index = i * group_size;
-    for (const int64& id : replica_groups[i].replica_ids()) attr[index++] = id;
+    for (const int64_t& id : replica_groups[i].replica_ids())
+      attr[index++] = id;
   }
   auto type = mlir::RankedTensorType::get({num_groups, group_size},
                                           builder->getIntegerType(64));
@@ -1010,7 +1018,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
-    absl::optional<tensorflow::int64> channel_id) {
+    absl::optional<int64_t> channel_id) {
   xla::ChannelHandle channel_handle;
   if (channel_id) channel_handle.set_handle(*channel_id);
   return ConvertChannelHandle(channel_handle);

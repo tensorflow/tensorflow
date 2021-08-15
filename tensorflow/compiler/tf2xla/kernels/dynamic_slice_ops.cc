@@ -105,7 +105,7 @@ class DynamicSliceOp : public XlaOpKernel {
                     input_shape.dims(), " and size_indices has shape ",
                     size_indices_shape.DebugString()));
 
-    std::vector<int64> size_indices;
+    std::vector<int64_t> size_indices;
     OP_REQUIRES_OK(
         ctx, ctx->ConstantInputAsIntVector("size_indices", &size_indices));
 

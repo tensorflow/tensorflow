@@ -29,7 +29,7 @@ namespace mlir {
 // intended for tools that need to register dialects before parsing .mlir files.
 inline void RegisterAllTensorFlowDialects(DialectRegistry &registry) {
   registry.insert<mlir::StandardOpsDialect, mlir::TF::TensorFlowDialect,
-                  mlir::complex::ComplexDialect,
+                  mlir::tf_type::TFTypeDialect, mlir::complex::ComplexDialect,
                   mlir::tf_device::TensorFlowDeviceDialect,
                   mlir::tf_executor::TensorFlowExecutorDialect,
                   mlir::tf_saved_model::TensorFlowSavedModelDialect>();

@@ -89,29 +89,30 @@ struct CudaRuntimeCache {
 // The wrapper uses intptr_t instead of CUDA's unsigned int to match
 // the type of MLIR's index type. This avoids the need for casts in the
 // generated MLIR code.
-extern "C" void tfKernelGenLaunchKernel(tensorflow::OpKernelContext *ctx,
-                                        void *module_blob, char *kernel_name,
-                                        intptr_t gridX, intptr_t gridY,
-                                        intptr_t gridZ, intptr_t blockX,
-                                        intptr_t blockY, intptr_t blockZ,
-                                        void **params) {
+extern "C" void _mlir_ciface_tf_launch_kernel(void *ctx, void *module_blob,
+                                              char *kernel_name, intptr_t gridX,
+                                              intptr_t gridY, intptr_t gridZ,
+                                              intptr_t blockX, intptr_t blockY,
+                                              intptr_t blockZ, void **params) {
   // For empty grids, we don't need to do anything.
   if (!gridX || !gridY || !gridZ) {
     return;
   }
 
-  stream_executor::Stream *se_stream = ctx->op_device_context()->stream();
+  auto *op_kernel_ctx = static_cast<tensorflow::OpKernelContext *>(ctx);
+  stream_executor::Stream *se_stream =
+      op_kernel_ctx->op_device_context()->stream();
   auto stream =
       reinterpret_cast<CUstream>(se_stream->implementation()->GpuStreamHack());
   CUmodule module = CudaRuntimeCache::get(stream)->loadModule(module_blob);
   CUfunction function;
   CUDA_REPORT_IF_ERROR_WITH_CTX(
-      cuModuleGetFunction(&function, module, kernel_name), ctx);
+      cuModuleGetFunction(&function, module, kernel_name), op_kernel_ctx);
 
   CUDA_REPORT_IF_ERROR_WITH_CTX(
       cuLaunchKernel(function, gridX, gridY, gridZ, blockX, blockY, blockZ,
                      /*sharedMemBytes=*/0, stream, params, nullptr),
-      ctx);
+      op_kernel_ctx);
 }
 
 #endif  // GOOGLE_CUDA

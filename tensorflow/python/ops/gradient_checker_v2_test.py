@@ -126,7 +126,7 @@ class GradientCheckerTest(test.TestCase):
     p_shape = (4, 2)
     p_size = 8
     params = constant_op.constant(
-        np.arange(p_size).astype(np.float), shape=p_shape, name="p")
+        np.arange(p_size).astype(np.float64), shape=p_shape, name="p")
     error = gradient_checker.max_error(
         *gradient_checker.compute_gradient(f, [params]))
     tf_logging.info("gather error = %f", error)
@@ -145,7 +145,7 @@ class GradientCheckerTest(test.TestCase):
     p_shape = (8, 2)
     p_size = 16
     params = constant_op.constant(
-        np.arange(p_size).astype(np.float), shape=p_shape, name="p")
+        np.arange(p_size).astype(np.float64), shape=p_shape, name="p")
     error = gradient_checker.max_error(
         *gradient_checker.compute_gradient(f, [params]))
     tf_logging.info("nested gather error = %f", error)

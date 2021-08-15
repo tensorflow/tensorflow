@@ -105,6 +105,7 @@ DECL_CONVERT_OP(Fill);
 DECL_CONVERT_OP(Elu);
 DECL_CONVERT_OP(Softmax);
 DECL_CONVERT_OP(LogSoftmax);
+DECL_CONVERT_OP(Sqrt);
 DECL_CONVERT_OP(ReduceAny);
 DECL_CONVERT_OP(ReduceMax);
 DECL_CONVERT_OP(ReduceMin);
@@ -171,10 +172,9 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
     ConversionPatternRewriter& rewriter) const {
   auto tfl_relu_op = cast<TFL::ReluOp>(op);
 
-  RankedTensorType input_type =
-      tfl_relu_op.x().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_relu_op.getResult().getType().dyn_cast<RankedTensorType>();
+  ShapedType input_type = tfl_relu_op.x().getType().dyn_cast<ShapedType>();
+  ShapedType output_type =
+      tfl_relu_op.getResult().getType().dyn_cast<ShapedType>();
   // Not a ranked tensor output
   if (!input_type || !output_type) return failure();
 
@@ -222,10 +222,9 @@ LogicalResult ConvertTFLRelu6Op::matchAndRewrite(
     ConversionPatternRewriter& rewriter) const {
   auto tfl_relu6_op = cast<TFL::Relu6Op>(op);
 
-  RankedTensorType input_type =
-      tfl_relu6_op.x().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_relu6_op.getResult().getType().dyn_cast<RankedTensorType>();
+  ShapedType input_type = tfl_relu6_op.x().getType().dyn_cast<ShapedType>();
+  ShapedType output_type =
+      tfl_relu6_op.getResult().getType().dyn_cast<ShapedType>();
   // Not a ranked tensor output
   if (!input_type || !output_type) return failure();
 
@@ -271,18 +270,18 @@ LogicalResult ConvertTFLRelu6Op::matchAndRewrite(
   return success();
 }
 
-LogicalResult ConvertTFLEqualOp::matchAndRewrite(
+static LogicalResult prepareMatchAndRewriteComparison(
     Operation* op, ArrayRef<Value> operands,
-    ConversionPatternRewriter& rewriter) const {
-  auto tfl_equal_op = cast<TFL::EqualOp>(op);
+    ConversionPatternRewriter& rewriter,
+    llvm::SmallVectorImpl<Value>& newOperands) {
+  Value x = operands[0];
+  Value y = operands[1];
+  Value result = op->getResult(0);
 
-  RankedTensorType input_x_type =
-      tfl_equal_op.x().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType input_y_type =
-      tfl_equal_op.y().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_equal_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
+  ShapedType input_x_type = x.getType().dyn_cast<ShapedType>();
+  ShapedType input_y_type = y.getType().dyn_cast<ShapedType>();
+  ShapedType output_type = result.getType().dyn_cast<ShapedType>();
+  // Not a shaped tensor output
   if (!input_x_type || !input_y_type || !output_type) return failure();
 
   bool input_x_is_qtype =
@@ -292,260 +291,140 @@ LogicalResult ConvertTFLEqualOp::matchAndRewrite(
   bool output_is_qtype =
       output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
 
-  if (input_x_is_qtype != output_is_qtype ||
+  if (input_x_is_qtype != input_y_is_qtype ||
       input_y_is_qtype != output_is_qtype) {
     return op->emitOpError(
         "ConvertTFLEqualOp: input/output tensor should "
         "be all quantized or all floating-point.");
   }
 
-  Value output;
-  if (output_is_qtype && input_x_is_qtype && input_y_is_qtype) {
-    UniformQuantizedType input_x_qtype =
-        input_x_type.getElementType()
-            .dyn_cast<mlir::quant::UniformQuantizedType>();
-    UniformQuantizedType input_y_qtype =
-        input_y_type.getElementType()
-            .dyn_cast<mlir::quant::UniformQuantizedType>();
-
-    if (input_x_qtype.getScale() != input_y_qtype.getScale() ||
-        input_x_qtype.getZeroPoint() != input_y_qtype.getZeroPoint()) {
-      return op->emitOpError(
-          "ConvertTFLEqualOp: input_x and input_y scale/zp "
-          "must be the same");
-    }
-
-    Value op1_rescale_x = buildRescaleToInt32(
-        rewriter, op, tfl_equal_op.x(), 1.0f, input_x_qtype.getZeroPoint());
-    Value op2_rescale_y = buildRescaleToInt32(
-        rewriter, op, tfl_equal_op.y(), 1.0f, input_y_qtype.getZeroPoint());
-    auto op3_equal_op1_op2 = rewriter.create<tosa::EqualOp>(
-        op->getLoc(), output_type, op1_rescale_x, op2_rescale_y);
-
-    output = op3_equal_op1_op2.getResult();
-  } else {
-    auto op1_equal_in = rewriter.create<tosa::EqualOp>(
-        op->getLoc(), output_type, tfl_equal_op.x(), tfl_equal_op.y());
-
-    output = op1_equal_in.getResult();
+  if (!output_is_qtype && !input_x_is_qtype && !input_y_is_qtype) {
+    newOperands.push_back(x);
+    newOperands.push_back(y);
+    return success();
   }
 
-  rewriter.replaceOp(op, {output});
+  UniformQuantizedType input_x_qtype =
+      input_x_type.getElementType()
+          .dyn_cast<mlir::quant::UniformQuantizedType>();
+  UniformQuantizedType input_y_qtype =
+      input_y_type.getElementType()
+          .dyn_cast<mlir::quant::UniformQuantizedType>();
+
+  if (input_x_qtype.getScale() != input_y_qtype.getScale() ||
+      input_x_qtype.getZeroPoint() != input_y_qtype.getZeroPoint()) {
+    return op->emitOpError(
+        "ConvertTFLEqualOp: input_x and input_y scale/zp "
+        "must be the same");
+  }
+
+  x = buildRescaleToInt32(rewriter, op, x, 1.0f, input_x_qtype.getZeroPoint());
+  y = buildRescaleToInt32(rewriter, op, y, 1.0f, input_y_qtype.getZeroPoint());
+
+  newOperands.push_back(x);
+  newOperands.push_back(y);
+  return success();
+}
+
+LogicalResult ConvertTFLEqualOp::matchAndRewrite(
+    Operation* op, ArrayRef<Value> operands,
+    ConversionPatternRewriter& rewriter) const {
+  llvm::SmallVector<Value, 2> newOperands;
+  LogicalResult status =
+      prepareMatchAndRewriteComparison(op, operands, rewriter, newOperands);
+  if (status.failed()) return failure();
+
+  rewriter.replaceOpWithNewOp<tosa::EqualOp>(op, op->getResult(0).getType(),
+                                             newOperands[0], newOperands[1]);
+
   return success();
 }
 
 LogicalResult ConvertTFLNotEqualOp::matchAndRewrite(
     Operation* op, ArrayRef<Value> operands,
     ConversionPatternRewriter& rewriter) const {
-  auto tfl_not_equal_op = cast<TFL::NotEqualOp>(op);
+  llvm::SmallVector<Value, 2> newOperands;
+  LogicalResult status =
+      prepareMatchAndRewriteComparison(op, operands, rewriter, newOperands);
+  if (status.failed()) return failure();
 
-  RankedTensorType input_lhs_type =
-      tfl_not_equal_op.lhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType input_rhs_type =
-      tfl_not_equal_op.rhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_not_equal_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!input_lhs_type || !input_rhs_type || !output_type) return failure();
+  auto equal_op = rewriter.create<tosa::EqualOp>(
+      op->getLoc(), op->getResult(0).getType(), newOperands[0], newOperands[1]);
 
-  bool input_lhs_is_qtype =
-      input_lhs_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-  bool input_rhs_is_qtype =
-      input_rhs_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-  bool output_is_qtype =
-      output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
+  rewriter.replaceOpWithNewOp<tosa::LogicalNotOp>(
+      op, op->getResult(0).getType(), equal_op);
 
-  if (input_lhs_is_qtype != output_is_qtype ||
-      input_rhs_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLNotEqualOp: input/output tensor should "
-        "be all quantized or all floating-point.");
-  }
-
-  Value output;
-  if (output_is_qtype && input_lhs_is_qtype && input_rhs_is_qtype) {
-    UniformQuantizedType input_lhs_qtype =
-        input_lhs_type.getElementType()
-            .dyn_cast<mlir::quant::UniformQuantizedType>();
-    UniformQuantizedType input_rhs_qtype =
-        input_rhs_type.getElementType()
-            .dyn_cast<mlir::quant::UniformQuantizedType>();
-
-    if (input_lhs_qtype.getScale() != input_rhs_qtype.getScale() ||
-        input_lhs_qtype.getZeroPoint() != input_rhs_qtype.getZeroPoint()) {
-      return op->emitOpError(
-          "ConvertTFLNotEqualOp: input_x and input_y scale/zp "
-          "must be the same");
-    }
-
-    Value op1_rescale_lhs =
-        buildRescaleToInt32(rewriter, op, tfl_not_equal_op.lhs(), 1.0f,
-                            input_lhs_qtype.getZeroPoint());
-    Value op2_rescale_rhs =
-        buildRescaleToInt32(rewriter, op, tfl_not_equal_op.rhs(), 1.0f,
-                            input_rhs_qtype.getZeroPoint());
-    auto op3_equal_op1_op2 = rewriter.create<tosa::EqualOp>(
-        op->getLoc(), output_type, op1_rescale_lhs, op2_rescale_rhs);
-    auto op4_not_op3 = rewriter.create<tosa::LogicalNotOp>(
-        op->getLoc(), output_type, op3_equal_op1_op2.getResult());
-
-    output = op4_not_op3.getResult();
-  } else {
-    auto op1_equal_in = rewriter.create<tosa::EqualOp>(
-        op->getLoc(), output_type, tfl_not_equal_op.lhs(),
-        tfl_not_equal_op.rhs());
-    auto op2_not_op1 = rewriter.create<tosa::LogicalNotOp>(
-        op->getLoc(), output_type, op1_equal_in.getResult());
-
-    output = op2_not_op1.getResult();
-  }
-
-  rewriter.replaceOp(op, {output});
   return success();
 }
 
 LogicalResult ConvertTFLGreaterOp::matchAndRewrite(
     Operation* op, ArrayRef<Value> operands,
     ConversionPatternRewriter& rewriter) const {
-  auto tfl_greater_op = cast<TFL::GreaterOp>(op);
+  llvm::SmallVector<Value, 2> newOperands;
+  LogicalResult status =
+      prepareMatchAndRewriteComparison(op, operands, rewriter, newOperands);
+  if (status.failed()) return failure();
 
-  RankedTensorType input_lhs_type =
-      tfl_greater_op.lhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType input_rhs_type =
-      tfl_greater_op.rhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_greater_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!input_lhs_type || !input_rhs_type || !output_type) return failure();
+  rewriter.replaceOpWithNewOp<tosa::GreaterOp>(op, op->getResult(0).getType(),
+                                               newOperands[0], newOperands[1]);
 
-  bool input_lhs_is_qtype =
-      input_lhs_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-  bool input_rhs_is_qtype =
-      input_rhs_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-  bool output_is_qtype =
-      output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-
-  if (input_lhs_is_qtype != output_is_qtype ||
-      input_rhs_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLGreaterOp: input/output tensor should "
-        "be all quantized or all floating-point.");
-  }
-
-  Value output;
-  if (output_is_qtype && input_lhs_is_qtype && input_rhs_is_qtype) {
-    UniformQuantizedType input_lhs_qtype =
-        input_lhs_type.getElementType()
-            .dyn_cast<mlir::quant::UniformQuantizedType>();
-    UniformQuantizedType input_rhs_qtype =
-        input_rhs_type.getElementType()
-            .dyn_cast<mlir::quant::UniformQuantizedType>();
-
-    if (input_lhs_qtype.getScale() != input_rhs_qtype.getScale() ||
-        input_lhs_qtype.getZeroPoint() != input_rhs_qtype.getZeroPoint()) {
-      return op->emitOpError(
-          "ConvertTFLGreaterOp: input_x and input_y scale/zp "
-          "must be the same");
-    }
-
-    Value op1_rescale_lhs =
-        buildRescaleToInt32(rewriter, op, tfl_greater_op.lhs(), 1.0f,
-                            input_lhs_qtype.getZeroPoint());
-    Value op2_rescale_rhs =
-        buildRescaleToInt32(rewriter, op, tfl_greater_op.rhs(), 1.0f,
-                            input_rhs_qtype.getZeroPoint());
-    auto op3_greater_op1_op2 = rewriter.create<tosa::GreaterOp>(
-        op->getLoc(), output_type, op1_rescale_lhs, op2_rescale_rhs);
-
-    output = op3_greater_op1_op2.getResult();
-  } else {
-    auto op1_greater_in = rewriter.create<tosa::GreaterOp>(
-        op->getLoc(), output_type, tfl_greater_op.lhs(), tfl_greater_op.rhs());
-
-    output = op1_greater_in.getResult();
-  }
-
-  rewriter.replaceOp(op, {output});
   return success();
 }
 
 LogicalResult ConvertTFLGreaterEqualOp::matchAndRewrite(
     Operation* op, ArrayRef<Value> operands,
     ConversionPatternRewriter& rewriter) const {
-  auto tfl_greater_equal_op = cast<TFL::GreaterEqualOp>(op);
+  llvm::SmallVector<Value, 2> newOperands;
+  LogicalResult status =
+      prepareMatchAndRewriteComparison(op, operands, rewriter, newOperands);
+  if (status.failed()) return failure();
 
-  RankedTensorType input_lhs_type =
-      tfl_greater_equal_op.lhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType input_rhs_type =
-      tfl_greater_equal_op.rhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_greater_equal_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!input_lhs_type || !input_rhs_type || !output_type) return failure();
+  rewriter.replaceOpWithNewOp<tosa::GreaterEqualOp>(
+      op, op->getResult(0).getType(), newOperands[0], newOperands[1]);
 
-  bool input_lhs_is_qtype =
-      input_lhs_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-  bool input_rhs_is_qtype =
-      input_rhs_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-  bool output_is_qtype =
-      output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-
-  if (input_lhs_is_qtype != output_is_qtype ||
-      input_rhs_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLGreaterEqualOp: input/output tensor should "
-        "be all quantized or all floating-point.");
-  }
-
-  Value output;
-  if (output_is_qtype && input_lhs_is_qtype && input_rhs_is_qtype) {
-    UniformQuantizedType input_lhs_qtype =
-        input_lhs_type.getElementType()
-            .dyn_cast<mlir::quant::UniformQuantizedType>();
-    UniformQuantizedType input_rhs_qtype =
-        input_rhs_type.getElementType()
-            .dyn_cast<mlir::quant::UniformQuantizedType>();
-
-    if (input_lhs_qtype.getScale() != input_rhs_qtype.getScale() ||
-        input_lhs_qtype.getZeroPoint() != input_rhs_qtype.getZeroPoint()) {
-      return op->emitOpError(
-          "ConvertTFLGreaterEqualOp: input_x and input_y scale/zp "
-          "must be the same");
-    }
-
-    Value op1_rescale_lhs =
-        buildRescaleToInt32(rewriter, op, tfl_greater_equal_op.lhs(), 1.0f,
-                            input_lhs_qtype.getZeroPoint());
-    Value op2_rescale_rhs =
-        buildRescaleToInt32(rewriter, op, tfl_greater_equal_op.rhs(), 1.0f,
-                            input_rhs_qtype.getZeroPoint());
-    auto op3_greater_equal_op1_op2 = rewriter.create<tosa::GreaterEqualOp>(
-        op->getLoc(), output_type, op1_rescale_lhs, op2_rescale_rhs);
-
-    output = op3_greater_equal_op1_op2.getResult();
-  } else {
-    auto op1_greater_equal_in = rewriter.create<tosa::GreaterEqualOp>(
-        op->getLoc(), output_type, tfl_greater_equal_op.lhs(),
-        tfl_greater_equal_op.rhs());
-
-    output = op1_greater_equal_in.getResult();
-  }
-
-  rewriter.replaceOp(op, {output});
   return success();
 }
 
-LogicalResult ConvertTFLAddOp::matchAndRewrite(
+LogicalResult ConvertTFLLessOp::matchAndRewrite(
     Operation* op, ArrayRef<Value> operands,
     ConversionPatternRewriter& rewriter) const {
-  auto tfl_add_op = cast<TFL::AddOp>(op);
+  llvm::SmallVector<Value, 2> newOperands;
+  LogicalResult status =
+      prepareMatchAndRewriteComparison(op, operands, rewriter, newOperands);
+  if (status.failed()) return failure();
 
-  RankedTensorType input_lhs_type =
-      tfl_add_op.lhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType input_rhs_type =
-      tfl_add_op.rhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_add_op.getResult().getType().dyn_cast<RankedTensorType>();
+  rewriter.replaceOpWithNewOp<tosa::GreaterOp>(op, op->getResult(0).getType(),
+                                               newOperands[1], newOperands[0]);
+  return success();
+}
+
+LogicalResult ConvertTFLLessEqualOp::matchAndRewrite(
+    Operation* op, ArrayRef<Value> operands,
+    ConversionPatternRewriter& rewriter) const {
+  llvm::SmallVector<Value, 2> newOperands;
+  LogicalResult status =
+      prepareMatchAndRewriteComparison(op, operands, rewriter, newOperands);
+  if (status.failed()) return failure();
+
+  // Swapping the args handles the greater/less difference.
+  rewriter.replaceOpWithNewOp<tosa::GreaterEqualOp>(
+      op, op->getResult(0).getType(), newOperands[1], newOperands[0]);
+
+  return success();
+}
+
+template <typename TflOp, typename TosaOp>
+static LogicalResult matchAndRewriteAddSub(
+    Operation* op, ArrayRef<Value> operands,
+    ConversionPatternRewriter& rewriter) {
+  auto tfl_add_op = cast<TflOp>(op);
+
+  ShapedType input_lhs_type =
+      tfl_add_op.lhs().getType().template dyn_cast<ShapedType>();
+  ShapedType input_rhs_type =
+      tfl_add_op.rhs().getType().template dyn_cast<ShapedType>();
+  ShapedType output_type =
+      tfl_add_op.getResult().getType().template dyn_cast<ShapedType>();
   // Not a ranked tensor output
   if (!input_lhs_type || !input_rhs_type || !output_type) return failure();
 
@@ -565,8 +444,7 @@ LogicalResult ConvertTFLAddOp::matchAndRewrite(
 
   Value output;
   if (output_is_qtype && input_lhs_is_qtype && input_rhs_is_qtype) {
-    RankedTensorType rescale_type =
-        RankedTensorType::get(output_type.getShape(), rewriter.getI32Type());
+    ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
     UniformQuantizedType input_lhs_qtype =
         input_lhs_type.getElementType()
             .dyn_cast<mlir::quant::UniformQuantizedType>();
@@ -608,14 +486,14 @@ LogicalResult ConvertTFLAddOp::matchAndRewrite(
     Value op2_rescale_rhs =
         buildRescaleToInt32(rewriter, op, tfl_add_op.rhs(), rhs_rescale_scale,
                             input_rhs_qtype.getZeroPoint());
-    auto op3_add_op1_op2 = rewriter.create<tosa::AddOp>(
+    auto op3_add_op1_op2 = rewriter.create<TosaOp>(
         op->getLoc(), rescale_type, op1_rescale_lhs, op2_rescale_rhs);
     Value op4_rescale_op3 = buildRescaleFromInt32(
         rewriter, op, output_type, op3_add_op1_op2.getResult(),
         output_rescale_scale, output_qtype.getZeroPoint());
     output = op4_rescale_op3;
   } else {
-    auto op1_add_in = rewriter.create<tosa::AddOp>(
+    auto op1_add_in = rewriter.create<TosaOp>(
         op->getLoc(), output_type, tfl_add_op.lhs(), tfl_add_op.rhs());
 
     output = op1_add_in.getResult();
@@ -637,101 +515,16 @@ LogicalResult ConvertTFLAddOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLAddOp::matchAndRewrite(
+    Operation* op, ArrayRef<Value> operands,
+    ConversionPatternRewriter& rewriter) const {
+  return matchAndRewriteAddSub<TFL::AddOp, tosa::AddOp>(op, operands, rewriter);
+}
+
 LogicalResult ConvertTFLSubOp::matchAndRewrite(
     Operation* op, ArrayRef<Value> operands,
     ConversionPatternRewriter& rewriter) const {
-  auto tfl_sub_op = cast<TFL::SubOp>(op);
-
-  RankedTensorType input_lhs_type =
-      tfl_sub_op.lhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType input_rhs_type =
-      tfl_sub_op.rhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_sub_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!input_lhs_type || !input_rhs_type || !output_type) return failure();
-
-  bool input_lhs_is_qtype =
-      input_lhs_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-  bool input_rhs_is_qtype =
-      input_rhs_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-  bool output_is_qtype =
-      output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-
-  if (input_lhs_is_qtype != output_is_qtype ||
-      input_rhs_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLSubOp: input/output tensor should "
-        "be all quantized or all floating-point.");
-  }
-
-  Value output;
-  if (output_is_qtype && input_lhs_is_qtype && input_rhs_is_qtype) {
-    RankedTensorType rescale_type =
-        RankedTensorType::get(output_type.getShape(), rewriter.getI32Type());
-    UniformQuantizedType input_lhs_qtype =
-        input_lhs_type.getElementType()
-            .cast<mlir::quant::UniformQuantizedType>();
-    UniformQuantizedType input_rhs_qtype =
-        input_rhs_type.getElementType()
-            .cast<mlir::quant::UniformQuantizedType>();
-    UniformQuantizedType output_qtype =
-        output_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
-
-    // Following quantization described in tensorflow/lite/kernels/add.cc
-    // In details it does:
-    // 1. Rescale inputs to scale = 2.0 x max(lhs.scale, rhs.scale)
-    // 2. Extra left shift to input to increase precision
-    // Where input_shift = 20 if input is 8-bit
-    // input_shift = 15 if input is 16-bit
-    double in_lhs_scale = input_lhs_qtype.getScale();
-    double in_rhs_scale = input_rhs_qtype.getScale();
-    double output_scale = output_qtype.getScale();
-    double max_scale_2x = 2.0 * std::max(in_lhs_scale, in_rhs_scale);
-
-    const int32_t SHIFT_8_BIT = 20;
-    int32_t input_shift = SHIFT_8_BIT;
-
-    double lhs_rescale_scale =
-        static_cast<double>(1 << input_shift) * in_lhs_scale / max_scale_2x;
-    double rhs_rescale_scale =
-        static_cast<double>(1 << input_shift) * in_rhs_scale / max_scale_2x;
-    double output_rescale_scale =
-        max_scale_2x / (output_scale * static_cast<double>(1 << input_shift));
-
-    Value op1_rescale_lhs =
-        buildRescaleToInt32(rewriter, op, tfl_sub_op.lhs(), lhs_rescale_scale,
-                            input_lhs_qtype.getZeroPoint());
-    Value op2_rescale_rhs =
-        buildRescaleToInt32(rewriter, op, tfl_sub_op.rhs(), rhs_rescale_scale,
-                            input_rhs_qtype.getZeroPoint());
-    auto op3_sub_op1_op2 = rewriter.create<tosa::SubOp>(
-        op->getLoc(), rescale_type, op1_rescale_lhs, op2_rescale_rhs);
-    Value op4_rescale_op3 = buildRescaleFromInt32(
-        rewriter, op, output_type, op3_sub_op1_op2.getResult(),
-        output_rescale_scale, output_qtype.getZeroPoint());
-    output = op4_rescale_op3;
-  } else {
-    auto op1_sub_in = rewriter.create<tosa::SubOp>(
-        op->getLoc(), output_type, tfl_sub_op.lhs(), tfl_sub_op.rhs());
-
-    output = op1_sub_in.getResult();
-  }
-
-  auto fused_activation_fn = tfl_sub_op.fused_activation_functionAttr();
-
-  if (fused_activation_fn) {
-    llvm::Optional<Value> fused_activation_val =
-        convertFusedActivation(rewriter, op, output, fused_activation_fn);
-
-    if (!fused_activation_val) return failure();
-
-    rewriter.replaceOp(op, {fused_activation_val.getValue()});
-    return success();
-  }
-
-  rewriter.replaceOp(op, {output});
-  return success();
+  return matchAndRewriteAddSub<TFL::SubOp, tosa::SubOp>(op, operands, rewriter);
 }
 
 LogicalResult ConvertTFLMulOp::matchAndRewrite(
@@ -795,10 +588,9 @@ LogicalResult ConvertTFLRoundOp::matchAndRewrite(
     ConversionPatternRewriter& rewriter) const {
   auto tfl_round_op = cast<TFL::RoundOp>(op);
 
-  RankedTensorType input_type =
-      tfl_round_op.x().getType().dyn_cast<RankedTensorType>();
+  ShapedType input_type = tfl_round_op.x().getType().dyn_cast<ShapedType>();
   if (!input_type) {
-    return op->emitOpError("Round: input not ranked tensor type");
+    return op->emitOpError("Round: input not shaped tensor type");
   }
 
   if (input_type.getElementType().isa<FloatType>()) {
@@ -823,8 +615,8 @@ LogicalResult ConvertTFLDivOp::matchAndRewrite(
     ConversionPatternRewriter& rewriter) const {
   auto tfl_div_op = cast<TFL::DivOp>(op);
 
-  RankedTensorType output_type =
-      tfl_div_op.getResult().getType().dyn_cast<RankedTensorType>();
+  ShapedType output_type =
+      tfl_div_op.getResult().getType().dyn_cast<ShapedType>();
   // Not a ranked tensor output
   if (!output_type) return failure();
 
@@ -867,14 +659,12 @@ LogicalResult ConvertTFLMaximumOp::matchAndRewrite(
     ConversionPatternRewriter& rewriter) const {
   auto tfl_max_op = cast<TFL::MaximumOp>(op);
 
-  RankedTensorType input_lhs_type =
-      tfl_max_op.lhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType input_rhs_type =
-      tfl_max_op.rhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_max_op.getResult().getType().dyn_cast<RankedTensorType>();
+  ShapedType input_lhs_type = tfl_max_op.lhs().getType().dyn_cast<ShapedType>();
+  ShapedType input_rhs_type = tfl_max_op.rhs().getType().dyn_cast<ShapedType>();
+  ShapedType output_type =
+      tfl_max_op.getResult().getType().dyn_cast<ShapedType>();
 
-  // Not a ranked tensor output
+  // Not a shaped tensor output
   if (!input_lhs_type || !input_rhs_type || !output_type) return failure();
 
   bool input_lhs_is_qtype =
@@ -893,8 +683,7 @@ LogicalResult ConvertTFLMaximumOp::matchAndRewrite(
 
   Value output;
   if (output_is_qtype) {
-    RankedTensorType rescale_type =
-        RankedTensorType::get(output_type.getShape(), rewriter.getI32Type());
+    ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
 
     Value op1_rescale_lhs =
         buildRescaleToInt32(rewriter, op, tfl_max_op.lhs(), 1.0f, 0);
@@ -923,13 +712,11 @@ LogicalResult ConvertTFLMinimumOp::matchAndRewrite(
     ConversionPatternRewriter& rewriter) const {
   auto tfl_min_op = cast<TFL::MinimumOp>(op);
 
-  RankedTensorType input_lhs_type =
-      tfl_min_op.lhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType input_rhs_type =
-      tfl_min_op.rhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_min_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
+  ShapedType input_lhs_type = tfl_min_op.lhs().getType().dyn_cast<ShapedType>();
+  ShapedType input_rhs_type = tfl_min_op.rhs().getType().dyn_cast<ShapedType>();
+  ShapedType output_type =
+      tfl_min_op.getResult().getType().dyn_cast<ShapedType>();
+  // Not a shaped tensor output
   if (!input_lhs_type || !input_rhs_type || !output_type) return failure();
 
   bool input_lhs_is_qtype =
@@ -948,8 +735,7 @@ LogicalResult ConvertTFLMinimumOp::matchAndRewrite(
 
   Value output;
   if (output_is_qtype) {
-    RankedTensorType rescale_type =
-        RankedTensorType::get(output_type.getShape(), rewriter.getI32Type());
+    ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
 
     Value op1_rescale_lhs =
         buildRescaleToInt32(rewriter, op, tfl_min_op.lhs(), 1.0f, 0);
@@ -1010,9 +796,9 @@ LogicalResult ConvertTFLAddNOp::matchAndRewrite(
     ConversionPatternRewriter& rewriter) const {
   auto tfl_addn_op = cast<TFL::AddNOp>(op);
 
-  RankedTensorType output_type =
-      tfl_addn_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
+  ShapedType output_type =
+      tfl_addn_op.getResult().getType().dyn_cast<ShapedType>();
+  // Not a shaped output
   if (!output_type) return failure();
 
   SmallVector<Value> inputs(tfl_addn_op.inputs());
@@ -1036,11 +822,11 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
     ConversionPatternRewriter& rewriter) const {
   auto tfl_avgpool_op = cast<TFL::AveragePool2DOp>(op);
 
-  RankedTensorType input_type =
-      tfl_avgpool_op.input().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_avgpool_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
+  ShapedType input_type =
+      tfl_avgpool_op.input().getType().dyn_cast<ShapedType>();
+  ShapedType output_type =
+      tfl_avgpool_op.getResult().getType().dyn_cast<ShapedType>();
+  // Not a shaped output
   if (!output_type) return failure();
 
   // Kernels and strides are dimensionally ordered
@@ -1091,11 +877,11 @@ LogicalResult ConvertTFLMaxPool2DOp::matchAndRewrite(
     ConversionPatternRewriter& rewriter) const {
   auto tfl_maxpool_op = cast<TFL::MaxPool2DOp>(op);
 
-  RankedTensorType input_type =
-      tfl_maxpool_op.input().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_maxpool_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
+  ShapedType input_type =
+      tfl_maxpool_op.input().getType().dyn_cast<ShapedType>();
+  ShapedType output_type =
+      tfl_maxpool_op.getResult().getType().dyn_cast<ShapedType>();
+  // Not a shaped type
   if (!output_type) return failure();
 
   // Kernels and strides are dimensionally ordered
@@ -1146,12 +932,12 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
     ConversionPatternRewriter& rewriter) const {
   auto tfl_conv2d_op = cast<TFL::Conv2DOp>(op);
 
-  RankedTensorType input_type =
-      tfl_conv2d_op.input().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType filter_type =
-      tfl_conv2d_op.filter().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_conv2d_op.getResult().getType().dyn_cast<RankedTensorType>();
+  ShapedType input_type =
+      tfl_conv2d_op.input().getType().dyn_cast<ShapedType>();
+  ShapedType filter_type =
+      tfl_conv2d_op.filter().getType().dyn_cast<ShapedType>();
+  ShapedType output_type =
+      tfl_conv2d_op.getResult().getType().dyn_cast<ShapedType>();
   // Not a ranked tensor output
   if (!input_type) return failure();
   if (!output_type) return failure();
@@ -1235,12 +1021,11 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
     ConversionPatternRewriter& rewriter) const {
   auto tfl_conv_op = cast<TFL::TransposeConvOp>(op);
 
-  RankedTensorType input_type =
-      tfl_conv_op.input().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType filter_type =
-      tfl_conv_op.weights().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_conv_op.getResult().getType().dyn_cast<RankedTensorType>();
+  ShapedType input_type = tfl_conv_op.input().getType().dyn_cast<ShapedType>();
+  ShapedType filter_type =
+      tfl_conv_op.weights().getType().dyn_cast<ShapedType>();
+  ShapedType output_type =
+      tfl_conv_op.getResult().getType().dyn_cast<ShapedType>();
   // Not a ranked tensor output
   if (!input_type) return failure();
   if (!output_type) return failure();
@@ -1296,13 +1081,25 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
         shape_vec.push_back(
             output_shape_elems.getValue<IntegerAttr>(i).getInt());
       output_shape = rewriter.getI64ArrayAttr(shape_vec);
-    } else {
+    } else if (output_type.hasRank()) {
       // Use output tensor's shape otherwise
       output_shape = rewriter.getI64ArrayAttr(output_type.getShape());
+    } else {
+      // TODO(suderman): Figure out rankless shape propagation.
+      return failure();
     }
   }
 
-  int output_channel = output_type.getShape()[3];
+  int output_channel = 0;
+  // TODO(suderman): We need to figure out how to guarantee output channel
+  // propagation.
+  if (output_type.hasRank()) {
+    output_channel = output_type.getDimSize(3);
+  } else if (filter_type.hasRank()) {
+    output_channel = filter_type.getDimSize(0);
+  } else {
+    return failure();
+  }
 
   llvm::Optional<Value> zero_bias;
   if (input_is_qtype) {
@@ -1350,13 +1147,13 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
     ConversionPatternRewriter& rewriter) const {
   auto tfl_conv2d_op = cast<TFL::DepthwiseConv2DOp>(op);
 
-  RankedTensorType input_type =
-      tfl_conv2d_op.input().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType filter_type =
-      tfl_conv2d_op.filter().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_conv2d_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
+  ShapedType input_type =
+      tfl_conv2d_op.input().getType().dyn_cast<ShapedType>();
+  ShapedType filter_type =
+      tfl_conv2d_op.filter().getType().dyn_cast<ShapedType>();
+  ShapedType output_type =
+      tfl_conv2d_op.getResult().getType().dyn_cast<ShapedType>();
+  // Not a shaped output
   if (!input_type) return failure();
   if (!output_type) return failure();
   if (!filter_type) return failure();
@@ -1375,6 +1172,8 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
         "be all quantized or all floating-point.");
   }
 
+  // We need the filter shape to compute the transpose.
+  if (!filter_type.hasRank()) return failure();
   auto filter_shape = filter_type.getShape();
   // Operator depthwiseConv2D
   // TFLite orders the depthwiseConv2D filter in IHWO, while TOSA orders
@@ -1628,19 +1427,40 @@ LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
     ConversionPatternRewriter& rewriter) const {
   auto tfl_reshape_op = cast<TFL::ReshapeOp>(op);
 
-  RankedTensorType output_type =
+  ShapedType output_type =
       tfl_reshape_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
+  // Not a shaped tensor output
   if (!output_type) return failure();
 
   SmallVector<int64_t> shape_vals;
-  for (int i = 0; i < output_type.getShape().size(); i++) {
-    shape_vals.push_back(output_type.getShape()[i]);
-  }
-  ArrayAttr shape_attr = rewriter.getI64ArrayAttr(shape_vals);
 
+  // Either the output type needs to be ranked or we need a constant input
+  // to compute the output rank.
+  ElementsAttr shape_attr;
+  if (!matchPattern(tfl_reshape_op.shape(), m_Constant(&shape_attr))) {
+    if (!output_type.hasRank()) return failure();
+    shape_vals.resize(output_type.getRank(), -1);
+  } else {
+    for (auto dim : shape_attr.getValues<int32_t>()) shape_vals.push_back(dim);
+  }
+
+  // Propagate the agreement between the output shape and constant value.
+  if (output_type.hasRank()) {
+    if (output_type.getRank() != shape_vals.size()) return failure();
+    for (int i = 0; i < output_type.getRank(); i++) {
+      if (shape_vals[i] == -1) shape_vals[i] = output_type.getDimSize(i);
+    }
+  }
+
+  // We cannot handle more than 1 dynamic dimension.
+  int64_t dynamic_count = 0;
+  for (auto val : shape_vals)
+    if (val == -1) dynamic_count++;
+  if (dynamic_count > 1) return failure();
+
+  ArrayAttr new_shape_attr = rewriter.getI64ArrayAttr(shape_vals);
   rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
-      op, output_type, tfl_reshape_op.input(), shape_attr);
+      op, output_type, tfl_reshape_op.input(), new_shape_attr);
   return success();
 }
 
@@ -1978,6 +1798,18 @@ LogicalResult ConvertTFLSoftmaxOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLSqrtOp::matchAndRewrite(
+    Operation* op, ArrayRef<Value> operands,
+    ConversionPatternRewriter& rewriter) const {
+  auto tfl_softmax_op = cast<TFL::SqrtOp>(op);
+  auto rsqrt = rewriter.create<tosa::RsqrtOp>(
+      op->getLoc(), tfl_softmax_op.getType(), operands.front());
+
+  rewriter.replaceOpWithNewOp<tosa::ReciprocalOp>(op, rsqrt.getType(), rsqrt);
+
+  return success();
+}
+
 LogicalResult ConvertTFLLogSoftmaxOp::matchAndRewrite(
     Operation* op, ArrayRef<Value> operands,
     ConversionPatternRewriter& rewriter) const {
@@ -2187,143 +2019,6 @@ LogicalResult ConvertTFLSplitVOp::matchAndRewrite(
 
   rewriter.replaceOp(op, results.getValue());
 
-  return success();
-}
-
-LogicalResult ConvertTFLLessOp::matchAndRewrite(
-    Operation* op, ArrayRef<Value> operands,
-    ConversionPatternRewriter& rewriter) const {
-  auto tfl_less_op = cast<TFL::LessOp>(op);
-
-  RankedTensorType input_lhs_type =
-      tfl_less_op.lhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType input_rhs_type =
-      tfl_less_op.rhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_less_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!input_lhs_type || !input_rhs_type || !output_type) return failure();
-
-  bool input_lhs_is_qtype =
-      input_lhs_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-  bool input_rhs_is_qtype =
-      input_rhs_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-  bool output_is_qtype =
-      output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-
-  if (input_lhs_is_qtype != output_is_qtype ||
-      input_rhs_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLLessOp: input/output tensor should "
-        "be all quantized or all floating-point.");
-  }
-
-  Value output;
-  if (output_is_qtype) {
-    UniformQuantizedType input_lhs_qtype =
-        input_lhs_type.getElementType()
-            .dyn_cast<mlir::quant::UniformQuantizedType>();
-    UniformQuantizedType input_rhs_qtype =
-        input_rhs_type.getElementType()
-            .dyn_cast<mlir::quant::UniformQuantizedType>();
-
-    if (input_lhs_qtype.getScale() != input_rhs_qtype.getScale() ||
-        input_lhs_qtype.getZeroPoint() != input_rhs_qtype.getZeroPoint()) {
-      return op->emitOpError(
-          "ConvertTFLLessOp: input_x and input_y scale/zp "
-          "must be the same");
-    }
-
-    Value op1_rescale_lhs = buildRescaleToInt32(
-        rewriter, op, tfl_less_op.lhs(), 1.0f, input_lhs_qtype.getZeroPoint());
-    Value op2_rescale_rhs = buildRescaleToInt32(
-        rewriter, op, tfl_less_op.rhs(), 1.0f, input_rhs_qtype.getZeroPoint());
-    auto op3_greater_equal_op1_op2 = rewriter.create<tosa::GreaterEqualOp>(
-        op->getLoc(), output_type, op1_rescale_lhs, op2_rescale_rhs);
-    auto op4_not_op3 = rewriter.create<tosa::LogicalNotOp>(
-        op->getLoc(), output_type, op3_greater_equal_op1_op2.getResult());
-
-    output = op4_not_op3.getResult();
-  } else {
-    auto op1_greater_equal_in = rewriter.create<tosa::GreaterEqualOp>(
-        op->getLoc(), output_type, tfl_less_op.lhs(), tfl_less_op.rhs());
-    auto op2_not_op1 = rewriter.create<tosa::LogicalNotOp>(
-        op->getLoc(), output_type, op1_greater_equal_in.getResult());
-
-    output = op2_not_op1.getResult();
-  }
-
-  rewriter.replaceOp(op, {output});
-  return success();
-}
-
-LogicalResult ConvertTFLLessEqualOp::matchAndRewrite(
-    Operation* op, ArrayRef<Value> operands,
-    ConversionPatternRewriter& rewriter) const {
-  auto tfl_less_equal_op = cast<TFL::LessEqualOp>(op);
-
-  RankedTensorType input_lhs_type =
-      tfl_less_equal_op.lhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType input_rhs_type =
-      tfl_less_equal_op.rhs().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_less_equal_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!input_lhs_type || !input_rhs_type || !output_type) return failure();
-
-  bool input_lhs_is_qtype =
-      input_lhs_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-  bool input_rhs_is_qtype =
-      input_rhs_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-  bool output_is_qtype =
-      output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
-
-  if (input_lhs_is_qtype != output_is_qtype ||
-      input_rhs_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLLessEqualOp: input/output tensor should "
-        "be all quantized or all floating-point.");
-  }
-
-  Value output;
-  if (output_is_qtype) {
-    UniformQuantizedType input_lhs_qtype =
-        input_lhs_type.getElementType()
-            .dyn_cast<mlir::quant::UniformQuantizedType>();
-    UniformQuantizedType input_rhs_qtype =
-        input_rhs_type.getElementType()
-            .dyn_cast<mlir::quant::UniformQuantizedType>();
-
-    if (input_lhs_qtype.getScale() != input_rhs_qtype.getScale() ||
-        input_lhs_qtype.getZeroPoint() != input_rhs_qtype.getZeroPoint()) {
-      return op->emitOpError(
-          "ConvertTFLLessEqualOp: input_x and input_y scale/zp "
-          "must be the same");
-    }
-
-    Value op1_rescale_lhs =
-        buildRescaleToInt32(rewriter, op, tfl_less_equal_op.lhs(), 1.0f,
-                            input_lhs_qtype.getZeroPoint());
-    Value op2_rescale_rhs =
-        buildRescaleToInt32(rewriter, op, tfl_less_equal_op.rhs(), 1.0f,
-                            input_rhs_qtype.getZeroPoint());
-    auto op3_greater_op1_op2 = rewriter.create<tosa::GreaterOp>(
-        op->getLoc(), output_type, op1_rescale_lhs, op2_rescale_rhs);
-    auto op4_not_op3 = rewriter.create<tosa::LogicalNotOp>(
-        op->getLoc(), output_type, op3_greater_op1_op2.getResult());
-
-    output = op4_not_op3.getResult();
-  } else {
-    auto op1_greater_in = rewriter.create<tosa::GreaterOp>(
-        op->getLoc(), output_type, tfl_less_equal_op.lhs(),
-        tfl_less_equal_op.rhs());
-    auto op2_not_op1 = rewriter.create<tosa::LogicalNotOp>(
-        op->getLoc(), output_type, op1_greater_in.getResult());
-
-    output = op2_not_op1.getResult();
-  }
-
-  rewriter.replaceOp(op, {output});
   return success();
 }
 
@@ -3254,13 +2949,14 @@ static bool isIllegalType(Type type) {
   return false;
 }
 
-class TosaConversionTarget : public ConversionTarget {
- public:
-  using ConversionTarget::ConversionTarget;
+void LegalizeTFL::runOnFunction() {
+  QuantTypeConverter converter;
+  ConversionTarget target(getContext());
 
- protected:
+  target.addIllegalDialect<TFL::TensorFlowLiteDialect>();
+  target.addIllegalDialect<quant::QuantizationDialect>();
   // Operations are legal if they don't contain any illegal type.
-  bool isDynamicallyLegal(Operation* op) const override {
+  target.markUnknownOpDynamicallyLegal([](Operation* op) {
     if (auto constantOp = dyn_cast<ConstantOp>(op)) {
       return constantOp.getType().isa<NoneType>();
     }
@@ -3279,16 +2975,7 @@ class TosaConversionTarget : public ConversionTarget {
       if (type && isIllegalType(type)) return false;
     }
     return true;
-  }
-};
-
-void LegalizeTFL::runOnFunction() {
-  QuantTypeConverter converter;
-  TosaConversionTarget target(getContext());
-
-  target.addIllegalDialect<TFL::TensorFlowLiteDialect>();
-  target.addIllegalDialect<quant::QuantizationDialect>();
-  target.markUnknownOpDynamicallyLegal();
+  });
 
   auto* ctx = &getContext();
   auto func = getFunction();
@@ -3332,6 +3019,7 @@ void LegalizeTFL::runOnFunction() {
   DEF_PATTERN_INSERT(TFLElu);
   DEF_PATTERN_INSERT(TFLSoftmax);
   DEF_PATTERN_INSERT(TFLLogSoftmax);
+  DEF_PATTERN_INSERT(TFLSqrt);
   DEF_PATTERN_INSERT(TFLReduceAny);
   DEF_PATTERN_INSERT(TFLReduceMax);
   DEF_PATTERN_INSERT(TFLReduceMin);

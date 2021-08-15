@@ -44,16 +44,16 @@ namespace xla {
 
 bool HloDomainMap::InSameDomain(const HloInstruction* instruction1,
                                 const HloInstruction* instruction2) const {
-  int64 domain_id1 = GetDomainId(instruction1);
-  int64 domain_id2 = GetDomainId(instruction2);
+  int64_t domain_id1 = GetDomainId(instruction1);
+  int64_t domain_id2 = GetDomainId(instruction2);
   return domain_id1 >= 0 && domain_id1 == domain_id2;
 }
 
-int64 HloDomainMap::GetDomainId(const HloInstruction* instruction) const {
+int64_t HloDomainMap::GetDomainId(const HloInstruction* instruction) const {
   return FindOrDefault(instruction_to_domain_, instruction, -1);
 }
 
-int64 HloDomainMap::GetDomainMetadataId(
+int64_t HloDomainMap::GetDomainMetadataId(
     const HloInstruction* instruction) const {
   return FindOrDie(domain_metadata_id_, instruction);
 }
@@ -80,7 +80,7 @@ Status HloDomainMap::TryProcessEmptyDomain(HloInstruction* instruction) {
 
 Status HloDomainMap::Populate(HloComputation* computation) {
   InstructionOrderMap instructions_post_order;
-  int64 count = 0;
+  int64_t count = 0;
   for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
     instructions_post_order.insert(std::make_pair(instruction, count++));
   }
@@ -91,7 +91,7 @@ Status HloDomainMap::Populate(HloComputation* computation) {
       TF_RETURN_IF_ERROR(TryProcessEmptyDomain(instruction));
       continue;
     }
-    int64 domain_id = FindOrDefault(instruction_to_domain_, instruction, -1);
+    int64_t domain_id = FindOrDefault(instruction_to_domain_, instruction, -1);
     if (domain_id >= 0) {
       // We have already processed this instruction.
       continue;
@@ -109,12 +109,12 @@ Status HloDomainMap::PopulateDomainMetadataMap() {
   auto equal = [](const DomainMetadata* a, const DomainMetadata* b) {
     return a->Matches(*b);
   };
-  absl::flat_hash_map<const DomainMetadata*, int64, decltype(hash),
+  absl::flat_hash_map<const DomainMetadata*, int64_t, decltype(hash),
                       decltype(equal)>
       domain_metadata(1024, hash, equal);
 
   for (auto& domain : instruction_domains_) {
-    int64 domain_metadata_id = -1;
+    int64_t domain_metadata_id = -1;
     if (!domain->enter_domains.empty()) {
       const HloInstruction* domain_instruction = *domain->enter_domains.begin();
       domain_metadata_id =
@@ -142,7 +142,7 @@ Status HloDomainMap::PopulateDomainMetadataMap() {
 
 Status HloDomainMap::InsertDomain(
     std::unique_ptr<DomainMetadata::Domain> domain) {
-  int64 domain_id = instruction_domains_.size();
+  int64_t domain_id = instruction_domains_.size();
   instruction_domains_.push_back(std::move(domain));
   for (HloInstruction* instruction : instruction_domains_.back()->reach_set) {
     instruction_to_domain_[instruction] = domain_id;
@@ -161,7 +161,7 @@ Status HloDomainMap::ExpandDomain(HloInstruction* instruction,
       // We should not be finding instructions with assigned domain here.
       // If we assigned a domain to the instruction, it means that all the
       // instructions reached by it, should have a domain as well.
-      int64 domain_id =
+      int64_t domain_id =
           FindOrDefault(instruction_to_domain_, current_instruction, -1);
       TF_RET_CHECK(domain_id < 0)
           << "Instruction " << current_instruction->ToString()

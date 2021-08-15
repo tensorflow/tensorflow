@@ -1,6 +1,7 @@
 # Bazel BUILD file for LLVM.
 #
-# This BUILD file is auto-generated; do not edit!
+# This BUILD file use to be auto-generated, but is now manually maintained.
+# TODO(tensorflow-team): should migrate to use the Bazel file in LLVM.
 
 licenses(["notice"])
 
@@ -109,6 +110,22 @@ template_rule(
     },
 )
 
+# List of targets with mca, filtered to our list of overall targets.
+llvm_target_mcas = [t for t in [
+    "AMDGPU",
+] if t in llvm_targets]
+
+template_rule(
+    name = "target_mca_def_gen",
+    src = "include/llvm/Config/TargetMCAs.def.in",
+    out = "include/llvm/Config/TargetMCAs.def",
+    substitutions = {
+        "@LLVM_ENUM_TARGETMCAS@": "\n".join(
+            ["LLVM_TARGETMCA({})".format(t) for t in llvm_target_disassemblers],
+        ),
+    },
+)
+
 # A common library that all LLVM targets depend on.
 # TODO(b/113996071): We need to glob all potentially #included files and stage
 # them here because LLVM's build files are not strict headers clean, and remote
@@ -124,6 +141,7 @@ cc_library(
         "include/llvm/Config/AsmPrinters.def",
         "include/llvm/Config/Disassemblers.def",
         "include/llvm/Config/Targets.def",
+        "include/llvm/Config/TargetMCAs.def",
         "include/llvm/Config/config.h",
         "include/llvm/Config/llvm-config.h",
         "include/llvm/Config/abi-breaking.h",
@@ -408,7 +426,6 @@ cc_library(
         "utils/TableGen/GlobalISel/*.h",
     ]),
     deps = [
-        ":MC",
         ":Support",
         ":TableGen",
         ":config",
@@ -2880,6 +2897,7 @@ cc_library(
     deps = [
         ":BinaryFormat",
         ":DebugInfoCodeView",
+        ":ProfileData",
         ":Support",
         ":config",
     ],
@@ -4231,7 +4249,6 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
-        ":MC",
         ":Support",
         ":config",
     ],

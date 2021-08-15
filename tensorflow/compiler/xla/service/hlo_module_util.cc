@@ -49,7 +49,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
   auto config = absl::make_unique<HloModuleConfig>(program_shape);
   ComputationLayout* computation_layout =
       config->mutable_entry_computation_layout();
-  const int64 argument_shapes_size = argument_shapes.size();
+  const int64_t argument_shapes_size = argument_shapes.size();
   if (program_shape.parameters_size() != argument_shapes_size) {
     return InvalidArgument("computation takes %d parameters, but %u given",
                            program_shape.parameters_size(),

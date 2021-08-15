@@ -39,7 +39,7 @@ Status GenerateKey(Tensor seed, random::PhiloxRandom::Key* out_key,
     seed0 = internal::SubtleMustCopy(seed_vals(0));
     seed1 = internal::SubtleMustCopy(seed_vals(1));
   } else if (seed.dtype() == DT_INT64) {
-    const auto seed_vals = seed.flat<int64>();
+    const auto seed_vals = seed.flat<int64_t>();
     seed0 = internal::SubtleMustCopy(seed_vals(0));
     seed1 = internal::SubtleMustCopy(seed_vals(1));
   } else {
@@ -187,8 +187,8 @@ class StatelessRandomPoissonOp : public StatelessRandomOpBase {
                 errors::InvalidArgument(
                     "Shape passed in must end with broadcasted shape."));
 
-    const int64 num_rate = rate_t.NumElements();
-    const int64 samples_per_rate = samples_shape.num_elements() / num_rate;
+    const int64_t num_rate = rate_t.NumElements();
+    const int64_t samples_per_rate = samples_shape.num_elements() / num_rate;
     const auto rate_flat = rate_t.flat<T>().data();
     auto samples_flat = output->flat<U>().data();
 
@@ -280,7 +280,7 @@ TF_CALL_uint64(REGISTER_FULL_INT_CPU);
   REGISTER_POISSON(RATE_TYPE, float);       \
   REGISTER_POISSON(RATE_TYPE, double);      \
   REGISTER_POISSON(RATE_TYPE, int32);       \
-  REGISTER_POISSON(RATE_TYPE, int64)
+  REGISTER_POISSON(RATE_TYPE, int64_t)
 
 TF_CALL_half(REGISTER_ALL_POISSON);
 TF_CALL_float(REGISTER_ALL_POISSON);

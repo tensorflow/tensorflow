@@ -1011,6 +1011,7 @@ class AutoMixedPrecisionImpl {
   void ConvertBatchNormOpsToV2();
   bool SupportsF16(const NodeTypeId& node_type) const;
   bool SupportsF16DataType(const NodeTypeId& node_type) const;
+  bool IsQuantized(const NodeTypeId& node_type) const;
   const NodeTypeId* GetTensorListFloat32NodeTypeId(const NodeDef& node) const;
   bool IsSourceOrSinkOp(const string& op) const;
   void FindFloat32TensorListOpClustersAndDenylistUnsafe(
@@ -1065,9 +1066,9 @@ NodeDef AutoMixedPrecisionImpl::BuildCastNode(
     const string& device) const {
   DataType src_type = to_f16 ? DT_FLOAT : target_dtype_;
   DataType dst_type = to_f16 ? target_dtype_ : DT_FLOAT;
-  const char* cast_string =
-      !to_f16 ? kCastToFp32
-              : target_dtype_ == DT_HALF ? kCastToFp16 : kCastToBf16;
+  const char* cast_string = !to_f16                    ? kCastToFp32
+                            : target_dtype_ == DT_HALF ? kCastToFp16
+                                                       : kCastToBf16;
   string name = strings::StrCat(src.node->name(), "-", src.port_id, "-",
                                 cast_string, "-", kSuffix);
   NodeDef node;
@@ -1228,6 +1229,16 @@ bool AutoMixedPrecisionImpl::SupportsF16DataType(
       OpRegistry::Global()->LookUpOpDef(node_type.node->op(), &op_def);
   if (!status.ok()) return false;
   return AllowedDataTypes(*op_def, node_type.type_attr).Contains(target_dtype_);
+}
+
+bool AutoMixedPrecisionImpl::IsQuantized(const NodeTypeId& node_type) const {
+  for (const TypeAttrId& type_attr :
+       node_type_map_.GetTypeAttrs(*node_type.node)) {
+    if (DataTypeIsQuantized(GetDataType(*node_type.node, type_attr))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // TODO(mconley): Make this change the node's name (to aid debugging). Need to
@@ -1723,12 +1734,13 @@ void AutoMixedPrecisionImpl::PropagateAllowThroughClear(
 // If ops have one or more type_attr, But this type_attr could not be converted
 // to F16. Such as FusedBatchNormV2/FusedBatchNormV3, its type_attr 'U' only
 // support float. So we will remove this node from allow_set.
+// Also don't convert quantized ops to FP16.
 void AutoMixedPrecisionImpl::RemoveAllowsetWithFp32(
     absl::flat_hash_set<int>* allow_set) const {
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
     if (f16_allowlist_.count(root.node->op()) && allow_set->count(root_idx) &&
-        !SupportsF16DataType(root)) {
+        (!SupportsF16DataType(root) || IsQuantized(root))) {
       auto erased = allow_set->erase(root_idx);
       if (VLOG_IS_ON(2) && erased) {
         VLOG(2) << "UnPainting type " << root.type_attr.DebugString()

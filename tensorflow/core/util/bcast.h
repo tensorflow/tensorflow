@@ -31,10 +31,10 @@ namespace tensorflow {
 // (flattened) batch index of the input that must be used to compute the i'th
 // batch output.
 //
-inline void ComputeBatchIndices(const int64 output_batch_size,
-                                const gtl::InlinedVector<int64, 4>& reshape,
-                                const gtl::InlinedVector<int64, 4>& bcast,
-                                std::vector<int64>* out_indices) {
+inline void ComputeBatchIndices(const int64_t output_batch_size,
+                                const gtl::InlinedVector<int64_t, 4>& reshape,
+                                const gtl::InlinedVector<int64_t, 4>& bcast,
+                                std::vector<int64_t>* out_indices) {
   // Populates the mapping in out_indices. This algorithm is identical to
   // the following steps:
   //  - Reshape {0, 1, ..., input_batch_size - 1} to the input shape.
@@ -47,8 +47,8 @@ inline void ComputeBatchIndices(const int64 output_batch_size,
     // Replicate the already populated mapping an additional (dim - 1) times.
     // If we are broadcasting, just copy the existing mapping.
     // Otherwise, add another dimension from the input shape.
-    const int64 dim = std::max(reshape[i], bcast[i]);
-    const int64 incr = bcast[i] > 1 ? 0 : num_input_elements;
+    const int64_t dim = std::max(reshape[i], bcast[i]);
+    const int64_t incr = bcast[i] > 1 ? 0 : num_input_elements;
     for (int64_t k = 0; k < (dim - 1) * num_output_elements; ++k) {
       (*out_indices)[num_output_elements + k] = (*out_indices)[k] + incr;
     }
@@ -64,7 +64,7 @@ class BCastList {
   // element is the outer-most dimension and the last element is the
   // inner-most dimension. Note that we do not use TensorShape since
   // it's more convenient to manipulate Vec directly for this module.
-  typedef gtl::InlinedVector<int64, 4> Vec;
+  typedef gtl::InlinedVector<int64_t, 4> Vec;
 
   // Constructs all helper shapes, following the aforementioned rules.
   //
@@ -96,7 +96,7 @@ class BCastList {
   const Vec& result_shape() const { return result_; }
   const Vec& output_shape() const { return output_; }
   const Vec& grad_reduce_idx(int i) const { return grad_reduce_idx_[i]; }
-  const int64 output_batch_size() const { return output_batch_size_; }
+  const int64_t output_batch_size() const { return output_batch_size_; }
 
   // Returns the mapping from the flattened output batch indices to x's
   // flattened batch indices. The result is a vector of length
@@ -117,7 +117,7 @@ class BCastList {
   Vec output_;
   Vec grad_reduce_idx_[N];
 
-  int64 output_batch_size_;
+  int64_t output_batch_size_;
   std::vector<int64> batch_indices_[N];
 
   static void Reverse(Vec* shape) {
@@ -158,7 +158,7 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
     const int rank = x[0].size();
     output_.resize(rank);
     for (int i = 0; i < rank; i++) {
-      const int64 dim = x[0][i];
+      const int64_t dim = x[0][i];
       elements = mul_dims(elements, dim);
       output_[i] = dim;
     }
@@ -359,7 +359,7 @@ class BCast : public BCastList<2> {
   //
   // If false, all intermediate shapes (except for grad_{x,y}_reduce_idx()) have
   // the same number of dimensions as the larger of the two inputs.
-  typedef gtl::InlinedVector<int64, 4> Vec;
+  typedef gtl::InlinedVector<int64_t, 4> Vec;
 
   BCast(const Vec& x, const Vec& y, const bool fewer_dims_optimization = true,
         const bool return_flattened_batch_indices = false)
@@ -386,14 +386,14 @@ class BCast : public BCastList<2> {
   // operation should use the `x_batch_indices()[i]`th batch index of `x`.
   // Note: Returns an empty vector if broadcasting is not required. Callers
   // should only use this when IsBroadcastingRequired() returns true.
-  const std::vector<int64>& x_batch_indices() const {
+  const std::vector<int64_t>& x_batch_indices() const {
     return batch_indices_[0];
   }
   // Returns the mapping from the flattened output batch indices to y's
   // flattened batch indices. Similar to x_batch_indices().
   // Note: Returns an empty vector if broadcasting is not required. Callers
   // should only use this when IsBroadcastingRequired() returns true.
-  const std::vector<int64>& y_batch_indices() const {
+  const std::vector<int64_t>& y_batch_indices() const {
     return batch_indices_[1];
   }
 

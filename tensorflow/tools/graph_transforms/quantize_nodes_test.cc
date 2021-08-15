@@ -245,14 +245,14 @@ class QuantizeNodesTest : public ::testing::Test {
   void TestQuantizeMul() {
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
-    std::vector<int64> x_shape({10, 100});
+    std::vector<int64_t> x_shape({10, 100});
     const size_t x_num_elements = TensorShape(x_shape).num_elements();
     std::vector<float> x_values(x_num_elements);
     for (int i = 0; i < x_num_elements; ++i) {
       x_values[i] = (i % 256) / 256.0f;
     }
 
-    std::vector<int64> y_shape({100});
+    std::vector<int64_t> y_shape({100});
     const size_t y_num_elements = TensorShape(y_shape).num_elements();
     std::vector<float> y_values(y_num_elements);
     for (int i = 0; i < y_num_elements; ++i) {
@@ -280,14 +280,14 @@ class QuantizeNodesTest : public ::testing::Test {
   void TestQuantizeAdd() {
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
-    std::vector<int64> x_shape({10, 100});
+    std::vector<int64_t> x_shape({10, 100});
     const size_t x_num_elements = TensorShape(x_shape).num_elements();
     std::vector<float> x_values(x_num_elements);
     for (int i = 0; i < x_num_elements; ++i) {
       x_values[i] = (i % 256) / 256.0f;
     }
 
-    std::vector<int64> y_shape({100});
+    std::vector<int64_t> y_shape({100});
     const size_t y_num_elements = TensorShape(y_shape).num_elements();
     std::vector<float> y_values(y_num_elements);
     for (int i = 0; i < y_num_elements; ++i) {

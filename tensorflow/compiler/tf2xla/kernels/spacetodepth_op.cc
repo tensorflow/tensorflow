@@ -57,7 +57,7 @@ class SpaceToDepthOp : public XlaOpKernel {
     xla::XlaBuilder* builder = input.builder();
     auto input_xla_shape = builder->GetShape(input);
     OP_REQUIRES_OK(ctx, input_xla_shape.status());
-    absl::Span<const int64> input_shape =
+    absl::Span<const int64_t> input_shape =
         input_xla_shape.ValueOrDie().dimensions();
     int input_rank = input_shape.size();
 
@@ -69,9 +69,9 @@ class SpaceToDepthOp : public XlaOpKernel {
     int feature_dim = GetTensorFeatureDimIndex(input_rank, data_format);
     int num_spatial_dims = GetTensorSpatialDims(input_rank, data_format);
 
-    std::vector<int64> reshaped_shape;
-    std::vector<int64> transpose_order;
-    std::vector<int64> output_shape;
+    std::vector<int64_t> reshaped_shape;
+    std::vector<int64_t> transpose_order;
+    std::vector<int64_t> output_shape;
     reshaped_shape.reserve(input_rank);
     transpose_order.reserve(input_rank);
     output_shape.reserve(input_rank);

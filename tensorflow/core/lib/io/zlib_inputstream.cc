@@ -193,7 +193,7 @@ size_t ZlibInputStream::NumUnreadBytes() const {
          read_bytes;
 }
 
-Status ZlibInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
+Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
   if (init_error_) {
     return errors::DataLoss("Unable to decompress Zlib file.");
   }
@@ -229,7 +229,7 @@ Status ZlibInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
 }
 
 #if defined(TF_CORD_SUPPORT)
-Status ZlibInputStream::ReadNBytes(int64 bytes_to_read, absl::Cord* result) {
+Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read, absl::Cord* result) {
   // TODO(frankchn): Optimize this instead of bouncing through the buffer.
   tstring buf;
   TF_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &buf));
@@ -239,7 +239,7 @@ Status ZlibInputStream::ReadNBytes(int64 bytes_to_read, absl::Cord* result) {
 }
 #endif
 
-int64 ZlibInputStream::Tell() const { return bytes_read_; }
+int64_t ZlibInputStream::Tell() const { return bytes_read_; }
 
 Status ZlibInputStream::Inflate() {
   int error = inflate(z_stream_def_->stream.get(), zlib_options_.flush_mode);

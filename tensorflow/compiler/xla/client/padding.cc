@@ -23,9 +23,9 @@ limitations under the License.
 
 namespace xla {
 
-Status ValidatePaddingValues(absl::Span<const int64> input_dimensions,
-                             absl::Span<const int64> window_dimensions,
-                             absl::Span<const int64> window_strides) {
+Status ValidatePaddingValues(absl::Span<const int64_t> input_dimensions,
+                             absl::Span<const int64_t> window_dimensions,
+                             absl::Span<const int64_t> window_strides) {
   bool ok = input_dimensions.size() == window_dimensions.size() &&
             input_dimensions.size() == window_strides.size();
   if (!ok) {
@@ -38,13 +38,13 @@ Status ValidatePaddingValues(absl::Span<const int64> input_dimensions,
   return Status::OK();
 }
 
-std::vector<std::pair<int64, int64>> MakePadding(
-    absl::Span<const int64> input_dimensions,
-    absl::Span<const int64> window_dimensions,
-    absl::Span<const int64> window_strides, Padding padding) {
+std::vector<std::pair<int64_t, int64_t>> MakePadding(
+    absl::Span<const int64_t> input_dimensions,
+    absl::Span<const int64_t> window_dimensions,
+    absl::Span<const int64_t> window_strides, Padding padding) {
   TF_CHECK_OK(ValidatePaddingValues(input_dimensions, window_dimensions,
                                     window_strides));
-  std::vector<std::pair<int64, int64>> low_high_padding;
+  std::vector<std::pair<int64_t, int64_t>> low_high_padding;
   switch (padding) {
     case Padding::kValid:
       low_high_padding.resize(window_dimensions.size(), {0, 0});
@@ -52,9 +52,9 @@ std::vector<std::pair<int64, int64>> MakePadding(
 
     case Padding::kSame:
       for (size_t i = 0; i < input_dimensions.size(); ++i) {
-        int64 input_dimension = input_dimensions[i];
-        int64 window_dimension = window_dimensions[i];
-        int64 window_stride = window_strides[i];
+        int64_t input_dimension = input_dimensions[i];
+        int64_t window_dimension = window_dimensions[i];
+        int64_t window_stride = window_strides[i];
         // We follow the same convention as in Tensorflow, such that
         // output dimension := ceil(input_dimension / window_stride).
         // See tensorflow/tensorflow/python/ops/nn.py
@@ -119,15 +119,15 @@ std::vector<std::pair<int64, int64>> MakePadding(
         // 3'rd kernel:             12345
         // 4'th kernel:                12345
         // padded base area:  00----------00
-        int64 output_dimension =
+        int64_t output_dimension =
             tensorflow::MathUtil::CeilOfRatio(input_dimension, window_stride);
-        int64 padding_size =
-            std::max<int64>((output_dimension - 1) * window_stride +
-                                window_dimension - input_dimension,
-                            0);
+        int64_t padding_size =
+            std::max<int64_t>((output_dimension - 1) * window_stride +
+                                  window_dimension - input_dimension,
+                              0);
         low_high_padding.emplace_back(
-            tensorflow::MathUtil::FloorOfRatio(padding_size, int64{2}),
-            tensorflow::MathUtil::CeilOfRatio(padding_size, int64{2}));
+            tensorflow::MathUtil::FloorOfRatio(padding_size, int64_t{2}),
+            tensorflow::MathUtil::CeilOfRatio(padding_size, int64_t{2}));
       }
       break;
   }

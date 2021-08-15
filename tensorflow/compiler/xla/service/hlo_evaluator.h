@@ -46,7 +46,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
  public:
   // Only evaluate up to max_loop_iterations per while-loop execution if
   // specified.
-  explicit HloEvaluator(int64 max_loop_iterations = -1);
+  explicit HloEvaluator(int64_t max_loop_iterations = -1);
 
   // Evaluates an HLO module and an array of pointers to literals.  Returns the
   // evaluated result as a literal if successful.
@@ -348,7 +348,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
     Literal result(shape);
     TF_RETURN_IF_ERROR(
-        result.Populate<ReturnT>([&](absl::Span<const int64> multi_index) {
+        result.Populate<ReturnT>([&](absl::Span<const int64_t> multi_index) {
           return unary_op(operand_literal.Get<NativeT>(multi_index));
         }));
     return std::move(result);
@@ -364,7 +364,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   std::vector<const Literal*> arg_literals_;
 
   // Max loop iterations to execute with no maximum if negative.
-  int64 max_loop_iterations_ = 0;
+  int64_t max_loop_iterations_ = 0;
 
   // Module-level seed handle.
   uint64 seed_ = 0;

@@ -15,6 +15,8 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
@@ -78,19 +80,22 @@ public interface InterpreterApi extends AutoCloseable {
 
   /** An options class for controlling runtime interpreter behavior. */
   public static class Options {
-    public Options() {}
+    public Options() {
+      this.delegates = new ArrayList<>();
+    }
 
     public Options(Options other) {
       this.numThreads = other.numThreads;
       this.useNNAPI = other.useNNAPI;
       this.allowCancellation = other.allowCancellation;
+      this.delegates = new ArrayList<>(other.delegates);
     }
 
     /**
      * Sets the number of threads to be used for ops that support multi-threading.
      *
-     * <p>{@code numThreads} should be >= -1. Setting {@code numThreads} to 0 has the effect to
-     * disable multithreading, which is equivalent to setting {@code numThreads} to 1. If
+     * <p>{@code numThreads} should be {@code >= -1}. Setting {@code numThreads} to 0 has the effect
+     * of disabling multithreading, which is equivalent to setting {@code numThreads} to 1. If
      * unspecified, or set to the value -1, the number of threads used will be
      * implementation-defined and platform-dependent.
      */
@@ -115,9 +120,18 @@ public interface InterpreterApi extends AutoCloseable {
       return this;
     }
 
+    /** Adds a {@link Delegate} to be applied during interpreter creation. */
+    public Options addDelegate(Delegate delegate) {
+      delegates.add(delegate);
+      return this;
+    }
+
     int numThreads = -1;
     Boolean useNNAPI;
     Boolean allowCancellation;
+
+    // See InterpreterApi.Options#addDelegate(boolean).
+    final List<Delegate> delegates;
   }
 
   /**

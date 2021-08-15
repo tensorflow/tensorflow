@@ -775,7 +775,7 @@ Status OpKernelContext::allocate_temp(
   if (track_allocations() && s.ok() && out_temp->TotalBytes() > 0) {
     Allocator* a = get_allocator(allocator_attr);
     if (a->TracksAllocationSizes()) {
-      int64 alloc_size = a->AllocatedSize(out_temp->tensor_data().data());
+      int64_t alloc_size = a->AllocatedSize(out_temp->tensor_data().data());
       record_temp_memory_allocation(alloc_size, *out_temp);
     }
   } else if (record_memory_consumption_) {
@@ -969,7 +969,7 @@ Status OpKernelContext::MatchSignature(const DataTypeSlice expected_inputs,
                               outputs);
 }
 
-void OpKernelContext::record_temp_memory_allocation(int64 size,
+void OpKernelContext::record_temp_memory_allocation(int64_t size,
                                                     const Tensor& t) {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
@@ -979,7 +979,7 @@ void OpKernelContext::record_temp_memory_allocation(int64 size,
   }
 }
 
-int64 OpKernelContext::temp_memory_allocated() const {
+int64_t OpKernelContext::temp_memory_allocated() const {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
     return tracking_state_->temp_memory_allocated;
@@ -988,8 +988,8 @@ int64 OpKernelContext::temp_memory_allocated() const {
   }
 }
 
-void OpKernelContext::record_persistent_memory_allocation(int64 size,
-                                                          int64 alloc_id) {
+void OpKernelContext::record_persistent_memory_allocation(int64_t size,
+                                                          int64_t alloc_id) {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
     tracking_state_->persistent_memory_allocated += size;
@@ -999,7 +999,7 @@ void OpKernelContext::record_persistent_memory_allocation(int64 size,
   }
 }
 
-int64 OpKernelContext::persistent_memory_allocated() const {
+int64_t OpKernelContext::persistent_memory_allocated() const {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
     return tracking_state_->persistent_memory_allocated;
@@ -1008,13 +1008,13 @@ int64 OpKernelContext::persistent_memory_allocated() const {
   }
 }
 
-std::vector<int64> OpKernelContext::persistent_alloc_ids() const {
+std::vector<int64_t> OpKernelContext::persistent_alloc_ids() const {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
-    return std::vector<int64>(tracking_state_->persistent_alloc_ids.begin(),
-                              tracking_state_->persistent_alloc_ids.end());
+    return std::vector<int64_t>(tracking_state_->persistent_alloc_ids.begin(),
+                                tracking_state_->persistent_alloc_ids.end());
   } else {
-    return std::vector<int64>();
+    return std::vector<int64_t>();
   }
 }
 
@@ -1399,7 +1399,7 @@ Status SupportedDeviceTypesForNode(
           FindKernelRegistration(device_type, def, &reg, &was_attr_mismatch));
       exists_attr_mismatch = exists_attr_mismatch || was_attr_mismatch;
       if (reg != nullptr) {
-        int32 priority = reg->def.priority();
+        int32_t priority = reg->def.priority();
         prioritized_device_types->emplace_back(device_type, priority);
       }
     }
@@ -1436,12 +1436,12 @@ Status SupportedDeviceTypesForNode(
       TF_RETURN_IF_ERROR(ValidateNodeDef(def, op_reg_data->op_def));
     }
 
-    std::sort(prioritized_device_types->begin(),
-              prioritized_device_types->end(),
-              [](const std::pair<DeviceType, int32>& a,
-                 const std::pair<DeviceType, int32>& b) {
-                return a.second > b.second;
-              });
+    std::stable_sort(prioritized_device_types->begin(),
+                     prioritized_device_types->end(),
+                     [](const std::pair<DeviceType, int32>& a,
+                        const std::pair<DeviceType, int32>& b) {
+                       return a.second > b.second;
+                     });
   } else {
     // Assumes that all device types support this node.
     for (const DeviceType& device_type : prioritized_types) {

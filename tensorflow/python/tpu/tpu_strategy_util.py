@@ -228,8 +228,10 @@ def shutdown_tpu_system(cluster_resolver=None):
       with session_lib.Session(config=session_config, target=master) as sess:
         sess.run(tpu.shutdown_system())
   else:
-    raise RuntimeError("initialize_tpu_system is not supported within "
-                       "tf.functions.")
+    raise RuntimeError(
+        "initialize_tpu_system is not supported within "
+        "tf.functions.  You should call initialize_tpu_system outside of your tf.function. "
+    )
 
   logging.info("Finished shutting down TPU system.")
   if tpu_name in _INITIALIZED_TPU_SYSTEMS:

@@ -154,7 +154,7 @@ class ReduceTest : public ClientLibraryTestBase {
   // Reduce predicate tensor with dimension rows * cols to dimension cols, to
   // test the implementation of atomic operations on misaligned small data
   // types.
-  template <int64 cols>
+  template <int64_t cols>
   void RunR2ToR1PredTest(bool and_reduce, int64_t rows, int64_t minor = 1,
                          int64_t major = 0) {
     XlaBuilder builder(TestName());
@@ -324,11 +324,11 @@ class ReduceTest : public ClientLibraryTestBase {
           reduction_function_generator_for_type,
       const std::function<float(float, float)>&
           reference_reduction_function_for_floats,
-      const std::function<int32(int32, int32)>&
+      const std::function<int32(int32_t, int32_t)>&
           reference_reduction_function_for_ints,
       const std::function<uint32(uint32, uint32)>&
           reference_reduction_function_for_uints,
-      float floating_point_identity, int32 signed_int_identity,
+      float floating_point_identity, int32_t signed_int_identity,
       uint32 unsigned_int_identity) {
     // Float version
     RunVectorizedReduceTestForType<float>(
@@ -438,7 +438,7 @@ XLA_TEST_F(ReduceTest, OrReduceOnesAndZerosR1_10_Pred) {
 }
 
 XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
-  const int64 rows = 111, cols = 50;
+  const int64_t rows = 111, cols = 50;
 
   XlaBuilder builder(TestName());
   XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
@@ -468,7 +468,7 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
 }
 
 XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
-  const int64 rows = 111, cols = 50;
+  const int64_t rows = 111, cols = 50;
 
   XlaBuilder builder(TestName());
   XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
@@ -515,7 +515,7 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceR3_12x111x50_To_R2) {
 }
 
 XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
-  const int64 rows = 111, cols = 50;
+  const int64_t rows = 111, cols = 50;
 
   XlaBuilder builder(TestName());
   XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
@@ -547,9 +547,9 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
 }
 
 struct BoundsLayout {
-  std::vector<int64> bounds;
-  std::vector<int64> layout;
-  std::vector<int64> reduce_dims;
+  std::vector<int64_t> bounds;
+  std::vector<int64_t> layout;
+  std::vector<int64_t> reduce_dims;
 };
 
 void PrintTo(const BoundsLayout& spec, std::ostream* os) {
@@ -754,7 +754,7 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Add) {
   RunVectorizedReduceTest(
       static_cast<FuncGeneratorForType>(CreateScalarAddComputation),
       [](float a, float b) { return a + b; },
-      [](int32 a, int32 b) {
+      [](int32_t a, int32_t b) {
         return static_cast<int32>(static_cast<uint32>(a) +
                                   static_cast<uint32>(b));
       },
@@ -765,7 +765,7 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Multiply) {
   RunVectorizedReduceTest(
       static_cast<FuncGeneratorForType>(CreateScalarMultiplyComputation),
       [](float a, float b) { return a * b; },
-      [](int32 a, int32 b) {
+      [](int32_t a, int32_t b) {
         return static_cast<int32>(static_cast<uint32>(a) *
                                   static_cast<uint32>(b));
       },
@@ -776,7 +776,7 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Max) {
   RunVectorizedReduceTest(
       static_cast<FuncGeneratorForType>(CreateScalarMaxComputation),
       [](float a, float b) { return std::max(a, b); },
-      [](int32 a, int32 b) { return std::max(a, b); },
+      [](int32_t a, int32_t b) { return std::max(a, b); },
       [](uint32 a, uint32 b) { return std::max(a, b); },
       std::numeric_limits<float>::min(), std::numeric_limits<int32>::min(),
       std::numeric_limits<uint32>::min());
@@ -786,7 +786,7 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Min) {
   RunVectorizedReduceTest(
       static_cast<FuncGeneratorForType>(CreateScalarMinComputation),
       [](float a, float b) { return std::min(a, b); },
-      [](int32 a, int32 b) { return std::min(a, b); },
+      [](int32_t a, int32_t b) { return std::min(a, b); },
       [](uint32 a, uint32 b) { return std::min(a, b); },
       std::numeric_limits<float>::max(), std::numeric_limits<int32>::max(),
       std::numeric_limits<uint32>::max());
@@ -916,15 +916,15 @@ XLA_TEST_F(ReduceInitializerTest, U8InitializerBigNonPowerOf2) {
 }
 
 XLA_TEST_F(ReduceInitializerTest, U64InitializerZero) {
-  DoTest<uint64>(0, 1024);
+  DoTest<uint64_t>(0, 1024);
 }
 
 XLA_TEST_F(ReduceInitializerTest, U64InitializerOne) {
-  DoTest<uint64>(1, 1024);
+  DoTest<uint64_t>(1, 1024);
 }
 
 XLA_TEST_F(ReduceInitializerTest, U64InitializerBigValue) {
-  DoTest<uint64>(1234556789123, 1024);
+  DoTest<uint64_t>(1234556789123, 1024);
 }
 
 // Test the operational semantic that the init value is passed on the lhs for
@@ -960,29 +960,31 @@ XLA_TEST_F(ReduceTest, ReduceIdentity) {
 
 XLA_TEST_F(ReduceTest, AndReduceU64) {
   XlaBuilder builder(TestName());
-  Array2D<uint64> initializer = {{0x123456789ABCDEF0ULL, 0x3BCDEF12A4567890ULL},
-                                 {0XFFFFFFFFFFFFFFD6ULL, 101},
-                                 {1, 0XFFFFFFFFFFFFFFFFULL}};
+  Array2D<uint64_t> initializer = {
+      {0x123456789ABCDEF0ULL, 0x3BCDEF12A4567890ULL},
+      {0XFFFFFFFFFFFFFFD6ULL, 101},
+      {1, 0XFFFFFFFFFFFFFFFFULL}};
   auto reducer = CreateScalarAndComputation(U64, &builder);
   auto m = ConstantR2FromArray2D(&builder, initializer);
-  Reduce(m, ConstantR0<uint64>(&builder, 0xFFFFFFFFFFFFFFFFLL), reducer, {1});
+  Reduce(m, ConstantR0<uint64_t>(&builder, 0xFFFFFFFFFFFFFFFFLL), reducer, {1});
 
-  std::vector<uint64> expected = {0x1204461080145890LL, 68, 1};
-  ComputeAndCompareR1<uint64>(&builder, expected, {});
+  std::vector<uint64_t> expected = {0x1204461080145890LL, 68, 1};
+  ComputeAndCompareR1<uint64_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(ReduceTest, OrReduceU64) {
   XlaBuilder builder(TestName());
-  Array2D<uint64> initializer = {{0x123456789ABCDEF0ULL, 0x3BCDEF12A4567890ULL},
-                                 {0xFFFFFFFFFFFFFFD6ULL, 101},
-                                 {1, 0xCAFEBEEFABABABABULL}};
+  Array2D<uint64_t> initializer = {
+      {0x123456789ABCDEF0ULL, 0x3BCDEF12A4567890ULL},
+      {0xFFFFFFFFFFFFFFD6ULL, 101},
+      {1, 0xCAFEBEEFABABABABULL}};
   auto reducer = CreateScalarOrComputation(U64, &builder);
   auto m = ConstantR2FromArray2D(&builder, initializer);
-  Reduce(m, ConstantR0<uint64>(&builder, 0), reducer, {1});
+  Reduce(m, ConstantR0<uint64_t>(&builder, 0), reducer, {1});
 
-  std::vector<uint64> expected = {0X3BFDFF7ABEFEFEF0ULL, 0XFFFFFFFFFFFFFFF7ULL,
-                                  0xCAFEBEEFABABABABULL};
-  ComputeAndCompareR1<uint64>(&builder, expected, {});
+  std::vector<uint64_t> expected = {
+      0X3BFDFF7ABEFEFEF0ULL, 0XFFFFFFFFFFFFFFF7ULL, 0xCAFEBEEFABABABABULL};
+  ComputeAndCompareR1<uint64_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(ReduceTest, R0ReduceInDisguise) {

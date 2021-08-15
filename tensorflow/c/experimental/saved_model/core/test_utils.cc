@@ -59,8 +59,8 @@ std::vector<DataType> DataTypeSetToVector(DataTypeSet set) {
   return result;
 }
 
-std::vector<std::vector<int64>> InterestingShapes() {
-  std::vector<std::vector<int64>> interesting_shapes;
+std::vector<std::vector<int64_t>> InterestingShapes() {
+  std::vector<std::vector<int64_t>> interesting_shapes;
   interesting_shapes.push_back({});             // Scalar
   interesting_shapes.push_back({10});           // 1D Vector
   interesting_shapes.push_back({3, 3});         // 2D Matrix
@@ -70,8 +70,8 @@ std::vector<std::vector<int64>> InterestingShapes() {
 
 ImmediateTensorHandlePtr CreateTensorHandle(ImmediateExecutionContext* ctx,
                                             DataType dtype,
-                                            absl::Span<const int64> shape,
-                                            int8 value) {
+                                            absl::Span<const int64_t> shape,
+                                            int8_t value) {
   AbstractTensorPtr tensor(ctx->CreateTensor(dtype, shape));
   CHECK_NE(tensor.get(), nullptr)
       << "Tensor creation failed for tensor of dtype: "
@@ -88,7 +88,7 @@ ImmediateTensorHandlePtr CreateTensorHandle(ImmediateExecutionContext* ctx,
 }
 
 void FillNumericTensorBuffer(DataType dtype, size_t num_elements, void* buffer,
-                             int8 value) {
+                             int8_t value) {
   switch (dtype) {
 #define CASE(type)                                   \
   case DataTypeToEnum<type>::value: {                \
@@ -111,14 +111,14 @@ void FillNumericTensorBuffer(DataType dtype, size_t num_elements, void* buffer,
 // Checks the underlying data is equal for the buffers for two numeric tensors.
 // Note: The caller must ensure to check that the dtypes and sizes of the
 // underlying buffers are the same before calling this.
-void CheckBufferDataIsEqual(DataType dtype, int64 num_elements, void* a,
+void CheckBufferDataIsEqual(DataType dtype, int64_t num_elements, void* a,
                             void* b) {
   switch (dtype) {
 #define CASE(type)                               \
   case DataTypeToEnum<type>::value: {            \
     type* typed_a = static_cast<type*>(a);       \
     type* typed_b = static_cast<type*>(b);       \
-    for (int64 i = 0; i < num_elements; ++i) {   \
+    for (int64_t i = 0; i < num_elements; ++i) { \
       if (DataTypeIsFloating(dtype)) {           \
         EXPECT_FLOAT_EQ(typed_a[i], typed_b[i]); \
       } else {                                   \

@@ -147,8 +147,9 @@ Tensor FeatureSparseCopy(const std::size_t batch, const string& key,
 // tensor at a given batch index and element offset. This method
 // assumes that the indices/values Tensors have been properly allocated
 // for the batch.
-int64 CopyIntoSparseTensor(const Tensor& in, const int batch,
-                           const int64 offset, Tensor* indices, Tensor* values);
+int64_t CopyIntoSparseTensor(const Tensor& in, const int batch,
+                             const int64_t offset, Tensor* indices,
+                             Tensor* values);
 
 // Check that each dense_shape has known rank and inner dimensions; and
 // update variable_length (whether the outer dimension is None) and
@@ -186,9 +187,9 @@ struct ParseExampleAttrs {
     return FinishInit(op_version);
   }
 
-  int64 num_sparse;
-  int64 num_dense;
-  int64 num_ragged;
+  int64_t num_sparse;
+  int64_t num_dense;
+  int64_t num_ragged;
   std::vector<DataType> sparse_types;
   std::vector<DataType> dense_types;
   std::vector<DataType> ragged_value_types;
@@ -296,12 +297,12 @@ struct ParseSequenceExampleAttrs {
   }
 
   std::unordered_set<string> feature_list_dense_missing_assumed_empty;
-  int64 num_context_sparse;
-  int64 num_context_dense;
-  int64 num_context_ragged;
-  int64 num_feature_list_sparse;
-  int64 num_feature_list_dense;
-  int64 num_feature_list_ragged;
+  int64_t num_context_sparse;
+  int64_t num_context_dense;
+  int64_t num_context_ragged;
+  int64_t num_feature_list_sparse;
+  int64_t num_feature_list_dense;
+  int64_t num_feature_list_ragged;
   std::vector<tstring> context_sparse_keys;
   std::vector<tstring> context_dense_keys;
   std::vector<tstring> feature_list_sparse_keys;
@@ -347,10 +348,10 @@ struct ParseSingleSequenceExampleAttrs {
     return FinishInit();
   }
 
-  int64 num_context_sparse;
-  int64 num_context_dense;
-  int64 num_feature_list_sparse;
-  int64 num_feature_list_dense;
+  int64_t num_context_sparse;
+  int64_t num_context_dense;
+  int64_t num_feature_list_sparse;
+  int64_t num_feature_list_dense;
   std::vector<DataType> context_sparse_types;
   std::vector<DataType> context_dense_types;
   std::vector<TensorShape> context_dense_shapes;

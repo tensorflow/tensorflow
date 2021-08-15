@@ -34,7 +34,7 @@ template <typename DstT,
           typename std::enable_if<std::is_same<DstT, Eigen::half>::value ||
                                   std::is_same<DstT, bfloat16>::value>::type* =
               nullptr>
-DstT CastTo(int32 src) {
+DstT CastTo(int32_t src) {
   return absl::bit_cast<DstT>(static_cast<uint16>(src));
 }
 
@@ -61,7 +61,7 @@ xla::XlaOp GetScalarConst(const TensorProto& proto, xla::XlaBuilder* b) {
       HANDLE_SPLAT(DT_INT8, int, xla::int8);
       HANDLE_SPLAT(DT_INT16, int, xla::int16);
       HANDLE_SPLAT(DT_INT32, int, xla::int32);
-      HANDLE_SPLAT(DT_INT64, int64, xla::int64);
+      HANDLE_SPLAT(DT_INT64, int64, int64_t);
 
       HANDLE_SPLAT(DT_UINT8, int, xla::uint8);
       HANDLE_SPLAT(DT_UINT16, int, xla::uint16);

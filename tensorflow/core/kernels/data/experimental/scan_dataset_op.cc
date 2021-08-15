@@ -106,7 +106,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "ScanDatasetOp::Dataset"; }
 
-    int64 Cardinality() const override {
+    int64_t Cardinality() const override {
       if (preserve_cardinality_) {
         return input_->Cardinality();
       } else {
@@ -282,7 +282,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         if (reader->Contains(full_name("state_size"))) {
-          int64 size;
+          int64_t size;
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name("state_size"), &size));
           state_.resize(size);

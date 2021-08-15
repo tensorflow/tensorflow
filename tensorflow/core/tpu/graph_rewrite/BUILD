@@ -139,6 +139,7 @@ cc_library(
         ":host_training_loop_optimization_util",
         ":incomplete_nodedef_builder",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",

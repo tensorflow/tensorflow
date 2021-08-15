@@ -47,7 +47,7 @@ class ScalarComputationsTest : public ClientLibraryTestBase {
   template <typename NativeT>
   void TestCompare(NativeT lhs, NativeT rhs, bool expected,
                    const std::function<XlaOp(const XlaOp&, const XlaOp&,
-                                             absl::Span<const int64>)>& op) {
+                                             absl::Span<const int64_t>)>& op) {
     XlaBuilder builder(TestName());
     XlaOp lhs_op = ConstantR0<NativeT>(&builder, lhs);
     XlaOp rhs_op = ConstantR0<NativeT>(&builder, rhs);
@@ -58,7 +58,7 @@ class ScalarComputationsTest : public ClientLibraryTestBase {
   template <typename NativeT>
   void TestMinMax(NativeT lhs, NativeT rhs, NativeT expected,
                   const std::function<XlaOp(const XlaOp&, const XlaOp&,
-                                            absl::Span<const int64>)>& op) {
+                                            absl::Span<const int64_t>)>& op) {
     XlaBuilder builder(TestName());
     XlaOp lhs_op = ConstantR0<NativeT>(&builder, lhs);
     XlaOp rhs_op = ConstantR0<NativeT>(&builder, rhs);
@@ -118,20 +118,20 @@ XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsU8) {
 
 XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsU64) {
   XlaBuilder builder(TestName());
-  const uint64 a = static_cast<uint64>(1) << 63;
+  const uint64 a = static_cast<uint64_t>(1) << 63;
   const uint64 b = a + 1;
-  Add(ConstantR0<uint64>(&builder, a), ConstantR0<uint64>(&builder, b));
+  Add(ConstantR0<uint64_t>(&builder, a), ConstantR0<uint64_t>(&builder, b));
 
-  ComputeAndCompareR0<uint64>(&builder, a + b, {});
+  ComputeAndCompareR0<uint64_t>(&builder, a + b, {});
 }
 
 XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsS64) {
   XlaBuilder builder(TestName());
-  const int64 a = static_cast<int64>(1) << 62;
-  const int64 b = a - 1;
-  Add(ConstantR0<int64>(&builder, a), ConstantR0<int64>(&builder, b));
+  const int64_t a = static_cast<int64_t>(1) << 62;
+  const int64_t b = a - 1;
+  Add(ConstantR0<int64_t>(&builder, a), ConstantR0<int64_t>(&builder, b));
 
-  ComputeAndCompareR0<int64>(&builder, a + b, {});
+  ComputeAndCompareR0<int64_t>(&builder, a + b, {});
 }
 
 XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsF64) {
@@ -161,7 +161,7 @@ XLA_TEST_F(ScalarComputationsTest, CastS64ToF32) {
   ConvertElementType(a, F32);
 
   int64_t value = 3LL << 35;
-  Literal a_literal = LiteralUtil::CreateR0<int64>(value);
+  Literal a_literal = LiteralUtil::CreateR0<int64_t>(value);
   std::unique_ptr<GlobalData> a_data =
       client_->TransferToServer(a_literal).ConsumeValueOrDie();
   ComputeAndCompareR0<float>(&builder, static_cast<float>(value),
@@ -195,15 +195,15 @@ XLA_TEST_F(ScalarComputationsTest, MulTwoScalarsS32) {
                              std::numeric_limits<int32>::max(),
                              std::numeric_limits<int32>::min()};
 
-  for (int32 x : data) {
-    for (int32 y : data) {
+  for (int32_t x : data) {
+    for (int32_t y : data) {
       XlaBuilder builder(TestName());
       Mul(ConstantR0<int32>(&builder, x), ConstantR0<int32>(&builder, y));
 
       // Signed integer overflow is undefined behavior in C++. Convert the input
       // integers to unsigned, perform the multiplication unsigned, and convert
       // back.
-      int32 expected = static_cast<uint32>(x) * static_cast<uint32>(y);
+      int32_t expected = static_cast<uint32>(x) * static_cast<uint32>(y);
 
       ComputeAndCompareR0<int32>(&builder, expected, {});
     }
@@ -485,8 +485,8 @@ XLA_TEST_F(ScalarComputationsTest, AndBool) {
 }
 
 XLA_TEST_F(ScalarComputationsTest, AndS32) {
-  for (int32 x : {0, 8}) {
-    for (int32 y : {1, -16}) {
+  for (int32_t x : {0, 8}) {
+    for (int32_t y : {1, -16}) {
       XlaBuilder builder(TestName());
       And(ConstantR0<int32>(&builder, x), ConstantR0<int32>(&builder, y));
 
@@ -518,8 +518,8 @@ XLA_TEST_F(ScalarComputationsTest, OrBool) {
 }
 
 XLA_TEST_F(ScalarComputationsTest, OrS32) {
-  for (int32 x : {0, 8}) {
-    for (int32 y : {1, -16}) {
+  for (int32_t x : {0, 8}) {
+    for (int32_t y : {1, -16}) {
       XlaBuilder builder(TestName());
       Or(ConstantR0<int32>(&builder, x), ConstantR0<int32>(&builder, y));
 
@@ -549,7 +549,7 @@ XLA_TEST_F(ScalarComputationsTest, NotBool) {
 }
 
 XLA_TEST_F(ScalarComputationsTest, NotS32) {
-  for (int32 x : {-1, 0, 1}) {
+  for (int32_t x : {-1, 0, 1}) {
     XlaBuilder builder(TestName());
     Not(ConstantR0<int32>(&builder, x));
 
@@ -740,6 +740,13 @@ XLA_TEST_F(ScalarComputationsTest, PowScalar) {
   Pow(ConstantR0<float>(&builder, 2.0f), ConstantR0<float>(&builder, 3.0f));
 
   ComputeAndCompareR0<float>(&builder, 8.0, {}, error_spec_);
+}
+
+XLA_TEST_F(ScalarComputationsTest, CbrtScalar) {
+  XlaBuilder builder(TestName());
+  Cbrt(ConstantR0<float>(&builder, 2.0f));
+
+  ComputeAndCompare(&builder, {}, error_spec_);
 }
 
 XLA_TEST_F(ScalarComputationsTest, ClampScalarHighS32) {

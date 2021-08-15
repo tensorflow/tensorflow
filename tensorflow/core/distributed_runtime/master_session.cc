@@ -113,7 +113,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
   const BuildGraphOptions& build_graph_options() { return bg_opts_; }
 
-  int64 collective_graph_key() { return collective_graph_key_; }
+  int64_t collective_graph_key() { return collective_graph_key_; }
 
   std::unique_ptr<ProfileHandler> GetProfileHandler(uint64 step,
                                                     int64_t execution_count,
@@ -121,7 +121,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     return stats_publisher_->GetProfileHandler(step, execution_count, ropts);
   }
 
-  int64 get_and_increment_execution_count() {
+  int64_t get_and_increment_execution_count() {
     return execution_count_.fetch_add(1);
   }
 
@@ -246,8 +246,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   std::unordered_map<string, NodeDetails> name_to_node_details_;
 
   const bool should_deregister_;
-  const int64 collective_graph_key_;
-  std::atomic<int64> execution_count_ = {0};
+  const int64_t collective_graph_key_;
+  std::atomic<int64_t> execution_count_ = {0};
 
   // Graph partitioned into per-location subgraphs.
   struct Part {
@@ -406,7 +406,7 @@ void MasterSession::ReffedClientGraph::TrackFeedsAndFetches(
         uint64 send_device_incarnation;
         TF_CHECK_OK(
             GetNodeAttr(ndef, "send_device_incarnation",
-                        reinterpret_cast<int64*>(&send_device_incarnation)));
+                        reinterpret_cast<int64_t*>(&send_device_incarnation)));
         const string& key =
             Rendezvous::CreateKey(send_device, send_device_incarnation,
                                   recv_device, name, FrameAndIter(0, 0));
@@ -718,7 +718,7 @@ Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
         if (iter == feeds.end()) {
           return errors::Internal("No feed index found for feed: ", feed);
         }
-        const int64 feed_index = iter->second;
+        const int64_t feed_index = iter->second;
         TF_RETURN_IF_ERROR(
             AddSendFromClientRequest(req, c->req.get(), feed_index, key));
       }
@@ -1313,7 +1313,7 @@ Status MasterSession::CreateWorkerSessions(
   string local_device_name;
   DeviceNameUtils::SplitDeviceName(devices_->client_device()->name(),
                                    &task_name, &local_device_name);
-  const int64 client_device_incarnation =
+  const int64_t client_device_incarnation =
       devices_->client_device()->attributes().incarnation();
 
   Status status = Status::OK();
@@ -1515,7 +1515,8 @@ WorkerCacheInterface* MasterSession::get_worker_cache() const {
 }
 
 Status MasterSession::StartStep(const BuildGraphOptions& opts, bool is_partial,
-                                ReffedClientGraph** out_rcg, int64* out_count) {
+                                ReffedClientGraph** out_rcg,
+                                int64_t* out_count) {
   const uint64 hash = HashBuildGraphOptions(opts);
   {
     mutex_lock l(mu_);
@@ -1567,8 +1568,8 @@ uint64 MasterSession::NewStepId(int64_t graph_key) {
     return random::New64() & (((1uLL << 56) - 1) | (1uLL << 56));
   } else {
     uint64 step_id = env_->collective_executor_mgr->NextStepId(graph_key);
-    int32 retry_count = 0;
-    while (static_cast<int64>(step_id) == CollectiveExecutor::kInvalidId) {
+    int32_t retry_count = 0;
+    while (static_cast<int64_t>(step_id) == CollectiveExecutor::kInvalidId) {
       Notification note;
       Status status;
       env_->collective_executor_mgr->RefreshStepIdSequenceAsync(
@@ -1741,9 +1742,9 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     // Build the cost model every 'build_cost_model_every' steps after skipping
     // an
     // initial 'build_cost_model_after' steps.
-    const int64 build_cost_model_after =
+    const int64_t build_cost_model_after =
         session_opts_.config.graph_options().build_cost_model_after();
-    const int64 build_cost_model_every =
+    const int64_t build_cost_model_every =
         session_opts_.config.graph_options().build_cost_model();
     pss.collect_costs =
         build_cost_model_every > 0 &&
@@ -1876,9 +1877,9 @@ void MasterSession::FillPerStepState(MasterSession::ReffedClientGraph* rcg,
       run_options.report_tensor_allocations_upon_oom();
   // Build the cost model every 'build_cost_model_every' steps after skipping an
   // initial 'build_cost_model_after' steps.
-  const int64 build_cost_model_after =
+  const int64_t build_cost_model_after =
       session_opts_.config.graph_options().build_cost_model_after();
-  const int64 build_cost_model_every =
+  const int64_t build_cost_model_every =
       session_opts_.config.graph_options().build_cost_model();
   out_pss->collect_costs =
       build_cost_model_every > 0 &&
@@ -2138,7 +2139,7 @@ void MasterSession::GarbageCollect() {
 MasterSession::RunState::RunState(const std::vector<string>& input_names,
                                   const std::vector<string>& output_names,
                                   ReffedClientGraph* rcg, const uint64 step_id,
-                                  const int64 count)
+                                  const int64_t count)
     : rcg(rcg), step_id(step_id), count(count) {
   // Initially all the feeds and fetches are pending.
   for (auto& name : input_names) {

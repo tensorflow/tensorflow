@@ -865,7 +865,8 @@ void SchedulerState::GetOutputNodes(const NodeDef* node,
 }
 
 std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
-    const NodeDef* node, const Costs& node_costs, const OpContext& op_context) {
+    const NodeDef* node, const Costs& node_costs, const OpContext& op_context,
+    const std::string& override_device_name) {
   auto& node_state = node_map_[node];
   // TODO(dyoon, andiryxu): Consider to revisit node execution w.r.t. Switch and
   // Merge -- it can create a loop which may include loop-carried dependency,
@@ -898,8 +899,16 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
                        !node_costs.inaccurate);
   }
 
+  std::string device_name = node_state.device_name;
+  if (!override_device_name.empty()) {
+    // N.B. There's a chance that device_name doesn't exist in the device map
+    // (device_), but it's ok because we'll effectively create a new device the
+    // first time a new device is seen.
+    device_name = override_device_name;
+  }
+
   // Update node and device states.
-  auto& device = device_[node_state.device_name];
+  auto& device = device_[device_name];
   device.nodes_executed.push_back(node);
   // Node is scheduled when the device is available AND all the inputs are
   // ready; hence, time_scheduled is time_ready if time_ready > device curr
@@ -1060,7 +1069,7 @@ Costs SchedulerState::Summary() const {
   for (const auto& name : device_names) {
     const auto& state = device_.at(name);
 
-    std::map<string, int64> op_to_memory;
+    std::map<string, int64_t> op_to_memory;
     // First profile only persistent memory usage.
     int64_t persistent_memory_usage = 0;
     std::set<string> persistent_ops;
@@ -1281,9 +1290,9 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
   }
 }
 
-const std::unordered_map<string, int64> SchedulerState::GetPeakMemoryUsage()
+const std::unordered_map<string, int64_t> SchedulerState::GetPeakMemoryUsage()
     const {
-  std::unordered_map<string, int64> result;
+  std::unordered_map<string, int64_t> result;
   for (const auto& device : device_) {
     const string& name = device.first;
     const DeviceState& state = device.second;
@@ -1292,9 +1301,9 @@ const std::unordered_map<string, int64> SchedulerState::GetPeakMemoryUsage()
   return result;
 }
 
-const std::unordered_map<string, int64>
+const std::unordered_map<string, int64_t>
 SchedulerState::GetPersistentMemoryUsage() const {
-  std::unordered_map<string, int64> result;
+  std::unordered_map<string, int64_t> result;
   for (const auto& device : device_) {
     const string& name = device.first;
     const DeviceState& state = device.second;

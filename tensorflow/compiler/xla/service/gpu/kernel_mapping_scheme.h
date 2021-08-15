@@ -87,10 +87,11 @@ class KernelMappingScheme {
     StridedLinearIndexingX
   };
 
-  KernelMappingScheme(absl::Span<const int64> dims_in_elems,
-                      absl::Span<const int64> tile_sizes, int64_t num_threads_y,
-                      int64_t num_threads_x, IndexingOrder indexing_order,
-                      int vector_size, bool is_row_contiguous = false)
+  KernelMappingScheme(absl::Span<const int64_t> dims_in_elems,
+                      absl::Span<const int64_t> tile_sizes,
+                      int64_t num_threads_y, int64_t num_threads_x,
+                      IndexingOrder indexing_order, int vector_size,
+                      bool is_row_contiguous = false)
       : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
         tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
         num_threads_x_(num_threads_x),
@@ -110,9 +111,9 @@ class KernelMappingScheme {
   }
 
   // Number of elements in each dimension (Z/Y/X respectively).
-  absl::Span<const int64> GetDimsInElems() const { return dims_in_elems_; }
+  absl::Span<const int64_t> GetDimsInElems() const { return dims_in_elems_; }
 
-  int64 GetNumberOfBlocks() const {
+  int64_t GetNumberOfBlocks() const {
     return CeilOfRatio(dims_in_elems_[0], GetTileSizeZ()) *
            CeilOfRatio(dims_in_elems_[1], GetTileSizeY()) *
            CeilOfRatio(dims_in_elems_[2], GetTileSizeX());
@@ -120,16 +121,16 @@ class KernelMappingScheme {
 
   // Tile size for a given dimensions. Tiles are assigned per thread block,
   // and are processed by all threads in the block.
-  int64 GetTileSizeFor(int d) const { return tile_sizes_.at(d); }
+  int64_t GetTileSizeFor(int d) const { return tile_sizes_.at(d); }
 
-  int64 GetTileSizeZ() const { return GetTileSizeFor(DimZ); }
-  int64 GetTileSizeX() const { return GetTileSizeFor(DimX); }
-  int64 GetTileSizeY() const { return GetTileSizeFor(DimY); }
+  int64_t GetTileSizeZ() const { return GetTileSizeFor(DimZ); }
+  int64_t GetTileSizeX() const { return GetTileSizeFor(DimX); }
+  int64_t GetTileSizeY() const { return GetTileSizeFor(DimY); }
 
-  int64 GetNumThreadsX() const { return num_threads_x_; }
-  int64 GetNumThreadsY() const { return num_threads_y_; }
+  int64_t GetNumThreadsX() const { return num_threads_x_; }
+  int64_t GetNumThreadsY() const { return num_threads_y_; }
 
-  int64 GetThreadsPerBlock() const {
+  int64_t GetThreadsPerBlock() const {
     return GetNumThreadsX() * GetNumThreadsY();
   }
 
@@ -139,16 +140,16 @@ class KernelMappingScheme {
 
  private:
   // The number of elements in each dimension.
-  const std::array<int64, 3> dims_in_elems_;
+  const std::array<int64_t, 3> dims_in_elems_;
 
   // The number of elements for each dimension of a tile.
-  const std::array<int64, 3> tile_sizes_;
+  const std::array<int64_t, 3> tile_sizes_;
 
   // Number of threads used to process elements in the X direction of a tile.
-  const int64 num_threads_x_;
+  const int64_t num_threads_x_;
 
   // Number of threads used to process elements in the Y direction of a tile.
-  const int64 num_threads_y_;
+  const int64_t num_threads_y_;
 
   // When num_threads_x threads process a total of tile_size_x
   // elements in the X dimension of a tile, each threads process
@@ -164,15 +165,15 @@ class KernelMappingScheme {
   const bool is_row_contiguous_;
 };
 
-// Information to support the code generation for a tiled reduction kernel.
-using AddressVector = absl::InlinedVector<llvm::AllocaInst*, 1>;
 class ReductionCodegenInfo {
  public:
   explicit ReductionCodegenInfo(KernelMappingScheme mapping_scheme,
-                                int num_partial_results, bool is_row_reduction)
+                                int num_partial_results, bool is_row_reduction,
+                                bool is_race_free)
       : mapping_scheme_(mapping_scheme),
         num_partial_results_(num_partial_results),
-        is_row_reduction_(is_row_reduction) {
+        is_row_reduction_(is_row_reduction),
+        is_race_free_(is_race_free) {
     if (num_partial_results > 1) {
       CHECK_EQ(num_partial_results, (mapping_scheme.GetTileSizeX() /
                                      mapping_scheme.GetNumThreadsX()));
@@ -181,6 +182,30 @@ class ReductionCodegenInfo {
 
   const KernelMappingScheme& GetKernelMappingScheme() const {
     return mapping_scheme_;
+  }
+
+  bool IsRaceFree() const { return is_race_free_; }
+
+ private:
+  friend class ReductionCodegenState;
+
+  const KernelMappingScheme mapping_scheme_;
+  int num_partial_results_;
+  bool is_row_reduction_;
+  bool is_race_free_;
+};
+
+// Information to support the code generation for a tiled reduction kernel.
+using AddressVector = absl::InlinedVector<llvm::AllocaInst*, 1>;
+
+class ReductionCodegenState {
+ public:
+  explicit ReductionCodegenState(
+      const ReductionCodegenInfo& reduction_codegen_info)
+      : reduction_codegen_info_(reduction_codegen_info) {}
+
+  const KernelMappingScheme& GetKernelMappingScheme() const {
+    return reduction_codegen_info_.mapping_scheme_;
   }
 
   // Gets writeable pointer to the address (or addresses) used to store
@@ -213,8 +238,15 @@ class ReductionCodegenInfo {
     return reduction_input_addresses_;
   }
 
-  int GetNumPartialResults() const { return num_partial_results_; }
-  bool IsRowReduction() const { return is_row_reduction_; }
+  int GetNumPartialResults() const {
+    return reduction_codegen_info_.num_partial_results_;
+  }
+
+  bool IsRowReduction() const {
+    return reduction_codegen_info_.is_row_reduction_;
+  }
+
+  bool IsRaceFree() const { return reduction_codegen_info_.IsRaceFree(); }
 
   // Gets a pointer to a mutable shared cache used by reduction.
   std::vector<llvm::GlobalVariable*>* GetMutableSharedCache() {
@@ -227,13 +259,11 @@ class ReductionCodegenInfo {
   }
 
  private:
+  ReductionCodegenInfo reduction_codegen_info_;
   std::vector<llvm::GlobalVariable*> shared_cache_;
   std::vector<llvm::Value*> initial_values_;
-  const KernelMappingScheme mapping_scheme_;
   AddressVector partial_result_addresses_;
   AddressVector reduction_input_addresses_;
-  int num_partial_results_;
-  bool is_row_reduction_;
 };
 
 }  // end namespace gpu

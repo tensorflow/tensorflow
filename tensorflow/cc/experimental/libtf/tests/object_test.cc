@@ -77,7 +77,7 @@ TEST(ObjectTest, MakeObject) {
   Object child;
   child.Set(String("test1"), Integer(1));
   child.Set(String("test2"), Integer(2));
-  child.Set(*Object::parent_, parent);
+  child.Set(Object::ParentKey(), parent);
   EXPECT_EQ(child.Get<Integer>(String("test1"))->get(), 1);
   EXPECT_EQ(child.Get<Integer>(String("test2"))->get(), 2);
   EXPECT_EQ(child.Get<Integer>(String("test3"))->get(), 3);

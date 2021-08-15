@@ -39,7 +39,7 @@ struct DatasetTestParam {
   // parameters of the test case do not become globals. Ordering of static
   // initializers and globals can cause errors in the test.
   std::function<std::vector<Tensor>()> tensor_factory;
-  const int64 expected_bytes;
+  const int64_t expected_bytes;
 };
 
 class DatasetTestTotalBytes
@@ -63,8 +63,8 @@ std::vector<Tensor> tensor_tf_int_32s() {
 }
 
 std::vector<Tensor> tensor_tf_int_64s() {
-  return {test::AsTensor<int64>({1, 2, 3, 4, 5}),
-          test::AsTensor<int64>({10, 12})};
+  return {test::AsTensor<int64_t>({1, 2, 3, 4, 5}),
+          test::AsTensor<int64_t>({10, 12})};
 }
 
 std::vector<Tensor> tensor_tf_float_s() {
@@ -87,7 +87,7 @@ INSTANTIATE_TEST_SUITE_P(
         {_tf_float_, tensor_tf_float_s, 4 /*bytes*/ * 4 /*elements*/},
         {_tf_double_, tensor_tf_double_s, 8 /*bytes*/ * 4 /*elements*/},
         {_tf_string_, tensor_strs,
-         static_cast<int64>(sizeof(str) + str.size()) /*bytes*/}}));
+         static_cast<int64_t>(sizeof(str) + str.size()) /*bytes*/}}));
 
 struct MergeOptionsTestParam {
   const std::string source;

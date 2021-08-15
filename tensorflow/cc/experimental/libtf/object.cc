@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// C++ API for TensorFlow, implementation file.
+// Implementation of objects.
 #include "tensorflow/cc/experimental/libtf/object.h"
 
 #include <type_traits>
@@ -20,7 +20,10 @@ limitations under the License.
 namespace tf {
 namespace libtf {
 
-const String* Object::parent_ = new String("__parent__");
+const String& Object::ParentKey() {
+  static const String* key = new String("__parent__");
+  return *key;
+}
 
 }  // namespace libtf
 }  // namespace tf

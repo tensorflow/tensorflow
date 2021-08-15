@@ -1203,7 +1203,9 @@ func @main(%arg0: tensor<16x16xf32>) -> tensor<16x16xf32> {
 
 // CHECK:  ENTRY
 // CHECK:  %[[ARG0:.*]] = f32[16,16] parameter(0)
-// CHECK:  ROOT %[[RESULT:.*]] = f32[16,16] custom-call(f32[16,16] %[[ARG0]]), custom_call_target="Sharding", sharding={devices=[1,2]0,1}
+// CHECK:  ROOT %[[RESULT:.*]] = f32[16,16] custom-call(f32[16,16] %[[ARG0]])
+// CHECK-SAME: custom_call_target="Sharding"
+// CHECK-SAME: sharding={devices=[1,2]0,1}
 
 // -----
 

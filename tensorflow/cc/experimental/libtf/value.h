@@ -12,79 +12,86 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Tagged union for holding values in the TensorFlow Lite C++ API.
+/// @file value.h
+/// @brief The TaggedValue struct that supports Python-like behavior in C++.
+///
+/// The TaggedValue struct implements a tagged union data structure
+/// (https://en.wikipedia.org/wiki/Tagged_union) in the TensorFlow C++ API. It
+/// contains a `Type` enum (sometimes referred to as a "tag")
+/// and a `Data` union for holding values.
+
 #ifndef TENSORFLOW_CC_EXPERIMENTAL_LIBTF_VALUE_H_
 #define TENSORFLOW_CC_EXPERIMENTAL_LIBTF_VALUE_H_
 
 #include <iostream>
 #include <memory>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/intrusive_ptr.h"
 #include "tensorflow/core/platform/statusor.h"
+
+// TODO(b/195578409): Move all value objects into `impl`. Currently only values
+// that do not reference TaggedValue are there.
+#include "tensorflow/cc/experimental/libtf/impl/none.h"
+#include "tensorflow/cc/experimental/libtf/impl/scalars.h"
+#include "tensorflow/cc/experimental/libtf/impl/string.h"
+#include "tensorflow/cc/experimental/libtf/impl/tensor_spec.h"
 
 namespace tf {
 namespace libtf {
 namespace impl {
 // Necessary forward declares.
-class None {};
 class TaggedValue;
 class Tuple;
 template <class T>
+// TODO(ccrusius): Use absl::Hash specializations instead.
 class TaggedValueHash;
-using Float32 = float;
-using Int64 = int64_t;
-using String = const char*;
 using List = std::vector<TaggedValue>;
 using ListPtr = std::shared_ptr<List>;
 using Dict =
-    std::unordered_map<TaggedValue, TaggedValue, TaggedValueHash<TaggedValue>>;
+    absl::flat_hash_map<TaggedValue, TaggedValue, TaggedValueHash<TaggedValue>>;
 using DictPtr = std::shared_ptr<Dict>;
 using TuplePtr = std::shared_ptr<Tuple>;
 using Func =
     std::function<tensorflow::StatusOr<TaggedValue>(TaggedValue, TaggedValue)>;
-struct TensorSpec {
-  tensorflow::PartialTensorShape shape;
-  tensorflow::DataType dtype;
-  bool operator==(const TensorSpec& o) const {
-    return dtype == o.dtype && shape.IsIdenticalTo(o.shape);
-  }
-};
 // A capsule holds a pointer and a destructor for the pointer (i.e. a generic
 // shared_ptr to void with a custom deleter).
 using Capsule = std::shared_ptr<void>;
-using WeakCapsule = std::weak_ptr<void>;
 using TaggedValueTensor =
     tensorflow::core::IntrusivePtr<tensorflow::AbstractTensorHandle>;
 
 // Declare hash types so they can be instantiated below.
+
+/// @brief TaggedValue hashing infrastructure, which uses absl::hash.
+///
+/// Hashable TaggedValues overload `AbslHashValue`. Non-hashable structures
+/// return 0.
 template <>
 struct TaggedValueHash<TaggedValue> {
   size_t operator()(const TaggedValue& v) const;
 };
+
+/// @brief Hash implementation for TaggedValue Tuples.
 template <>
 struct TaggedValueHash<Tuple> {
   size_t operator()(const Tuple& t) const;
 };
 
-// Intern a string `s` into char* that is unique per sequence of characters.
-const char* InternString(const char* s);
-
-// Identity template
-template <class T>
-using IdentityHelper = T;
-
-// Basic tagged union value type. This will include all values that we
-// wish to represent. Notably tensors, primitive values, lists, tuples,
-// dictionaries. The future we might also want to have representation
-// of python objects in the form of PyObject*.
+/// @brief The basic `TaggedValue` tagged union type.
+///
+/// A `TaggedValue` contains a `Type` (or "tag") as an enum and a `Value` union.
+/// Values include tensors, primitive values, lists, tuples, and dictionaries.
+/// In the future we might also want to have representation of python objects in
+/// the form of PyObject*.
 class TaggedValue final {
  public:
+  /// @brief Enum that describes the possible types a `TaggedValue` can be.
+  ///
+  /// A `TaggedValue` must be one of the following types: NONE, INT64, FLOAT32,
+  /// STRING, FUNC, DICT, LIST, TUPLE, TENSOR, TENSOR_SPEC, CAPSULE.
   enum Type {
     NONE = 0,
     INT64 = 1,
@@ -97,39 +104,51 @@ class TaggedValue final {
     TENSOR = 8,
     TENSOR_SPEC = 9,
     CAPSULE = 10,
-    WEAK_CAPSULE = 11,
   };
   TaggedValue() : type_(NONE), data_() {}
 
+  /// Move assignment operator.
   TaggedValue& operator=(TaggedValue&& v) {
     destroy();
     MoveIntoUnion(std::move(v));
     return *this;
   }
-
+  /// Move constructor.
   TaggedValue(TaggedValue&& v) : type_(NONE) { MoveIntoUnion(std::move(v)); }
+  /// Copy constructor.
   TaggedValue(const TaggedValue& v) : type_(NONE) { CopyIntoUnion(v); }
+  /// Copy assignment operator.
   TaggedValue& operator=(const TaggedValue& v) {
     destroy();
     CopyIntoUnion(v);
     return *this;
   }
-  // Construction
+  /// TaggedValue constructor for type TENSOR.
   explicit TaggedValue(TaggedValueTensor tensor)
       : type_(TENSOR), data_(std::move(tensor)) {}
+  /// TaggedValue constructor for type TENSOR_SPEC.
   explicit TaggedValue(tensorflow::PartialTensorShape shape,
                        tensorflow::DataType dtype)
       : type_(TENSOR_SPEC), data_(shape, dtype) {}
+  /// TaggedValue constructor for type FUNC.
   explicit TaggedValue(Func f32) : type_(FUNC), data_(f32) {}
+  /// TaggedValue constructor for type FLOAT32.
+  explicit TaggedValue(float f32) : type_(FLOAT32), data_(Float32(f32)) {}
+  /// TaggedValue constructor for type INT64.
+  explicit TaggedValue(int64_t i64) : type_(INT64), data_(Int64(i64)) {}
+  /// TaggedValue constructor for type FLOAT32.
   explicit TaggedValue(Float32 f32) : type_(FLOAT32), data_(f32) {}
+  /// TaggedValue constructor for type INT64.
   explicit TaggedValue(Int64 i64) : type_(INT64), data_(i64) {}
+  /// TaggedValue constructor for type STRING.
   explicit TaggedValue(const char* s) : type_(STRING), data_(s) {}
+  /// Constructs a TaggedValue with type NONE.
   static TaggedValue None() {
     TaggedValue v;
-    new (&v.data_.none) impl::None();
     v.type_ = NONE;
     return v;
   }
+  /// Constructs a TaggedValue with type LIST.
   static TaggedValue List() {
     TaggedValue v;
     v.type_ = LIST;
@@ -137,6 +156,7 @@ class TaggedValue final {
     new (&v.data_.list) T(std::make_shared<T::element_type>());
     return v;
   }
+  /// Constructs a TaggedValue with type TUPLE.
   static TaggedValue Tuple() {
     TaggedValue v;
     v.type_ = TUPLE;
@@ -144,6 +164,7 @@ class TaggedValue final {
     new (&v.data_.tuple) T(std::make_shared<T::element_type>());
     return v;
   }
+  /// Constructs a TaggedValue with type DICT.
   static TaggedValue Dict() {
     TaggedValue v;
     v.type_ = DICT;
@@ -151,6 +172,7 @@ class TaggedValue final {
     new (&v.data_.dict) T(std::make_shared<T::element_type>());
     return v;
   }
+  /// Constructs a TaggedValue with type TENSOR.
   static TaggedValue Tensor(tensorflow::AbstractTensorHandle* raw_ptr) {
     TaggedValue v;
     v.type_ = TENSOR;
@@ -159,13 +181,13 @@ class TaggedValue final {
     return v;
   }
 
-  // Construct a capsule with a default destructor.
+  /// Constructs a TaggedValue with type CAPSULE with a default destructor.
   template <class T>
   static TaggedValue Capsule(T* data) {
     return Capsule(static_cast<void*>(data),
                    [](void* x) { delete static_cast<T*>(x); });
   }
-  // Construct a capsule with a custom destructor.
+  /// Constructs a TaggedValue with type CAPSULE with a custom destructor.
   static TaggedValue Capsule(void* data, void (*deleter)(void*)) {
     TaggedValue v;
     v.type_ = CAPSULE;
@@ -173,113 +195,89 @@ class TaggedValue final {
     new (&v.data_.capsule) T(data, deleter);
     return v;
   }
-  static TaggedValue WeakCapsule(TaggedValue capsule) {
-    TaggedValue v;
-    v.type_ = WEAK_CAPSULE;
-    using T = decltype(v.data_.weak_capsule);
-    switch (capsule.type_) {
-      case CAPSULE:
-        new (&v.data_.weak_capsule) T(capsule.data_.capsule);
-        break;
-      case WEAK_CAPSULE:
-        new (&v.data_.weak_capsule) T(capsule.data_.weak_capsule);
-        break;
-      default:
-        return v = TaggedValue::None();
-    }
-    return v;
-  }
-  // Destroy tagged union properly. Shared pointers in unions must be explicitly
-  // deleted.
+  /// Destroys TaggedValue. Shared pointers in unions must be explicitly
+  /// deleted.
   void destroy() {
-    // Explicitly run the destructor on the correct type.
-    visit<void>([](auto& x) {
-      using T =
-          IdentityHelper<typename std::remove_reference<decltype(x)>::type>;
-      x.~T();
-    });
-    // Make the type None, whenever we destroy so we always have an initialized
-    // value.
-    type_ = NONE;
-    new (&data_.none) impl::None();
+    if (type_ != NONE) {
+      // Explicitly run the destructor on the correct type.
+      visit<void>([](auto& x) {
+        using T = typename std::decay<decltype(x)>::type;
+        x.~T();
+      });
+      // Make the type None, whenever we destroy so we always have an
+      // initialized value.
+      type_ = NONE;
+    }
   }
   ~TaggedValue() { destroy(); }
 
-  Int64& i64() {
-    assert(type_ == INT64);
-    return data_.i64;
-  }
-  const Int64& i64() const {
-    assert(type_ == INT64);
-    return data_.i64;
-  }
-  Float32& f32() {
-    assert(type_ == FLOAT32);
-    return data_.f32;
-  }
-  const Float32& f32() const {
-    assert(type_ == FLOAT32);
-    return data_.f32;
-  }
-  const char* s() const {
-    assert(type_ == STRING);
-    return data_.s;
-  }
-  impl::List& list() {
-    assert(type_ == LIST);
-    return *data_.list;
-  }
-  const impl::List& list() const {
-    assert(type_ == LIST);
-    return *data_.list;
-  }
-  impl::Tuple& tuple() {
-    assert(type_ == TUPLE);
-    return *data_.tuple;
-  }
-  const impl::Tuple& tuple() const {
-    assert(type_ == TUPLE);
-    return *data_.tuple;
-  }
-  impl::Dict& dict() {
-    assert(type_ == DICT);
-    return *data_.dict;
-  }
-  const impl::Dict& dict() const {
-    assert(type_ == DICT);
-    return *data_.dict;
-  }
-  impl::Func func() const {
-    assert(type_ == FUNC);
-    return data_.func;
-  }
-  // TODO(danielellis): make const-only if possible, once the API allows for it
-  TaggedValueTensor& tensor() {
-    assert(type_ == TENSOR);
-    return data_.tensor;
-  }
-  const TaggedValueTensor& tensor() const {
-    assert(type_ == TENSOR);
-    return data_.tensor;
-  }
-  const TensorSpec& tensor_spec() const {
-    assert(type_ == TENSOR_SPEC);
-    return data_.tensor_spec;
-  }
-  void* capsule() const {
-    assert(type_ == CAPSULE);
-    return data_.capsule.get();
-  }
-  std::shared_ptr<void> weak_capsule() const {
-    // Instead of making this function, allow the user to access the weak
-    // capsule by constructing a strong capsule again with a static constructor
-    // by taking the weak capsule as a tagged value.
-    assert(type_ == WEAK_CAPSULE);
-    return data_.weak_capsule.lock();
+  /// @brief Get the underlying value based on type.
+  ///
+  /// @tparam T The desired return type.
+  /// @return The unwrapped value. If this `TaggedValue` type does not currently
+  ///         contain a value of type `T`, the program terminates via a call to
+  ///         `assert`.
+  template <typename T>
+  T& get() {
+    assert(type_ == EnumValueOf<T>::value);
+    return UnionAccess<T>::unsafe_reference(*this);
   }
 
+  /// @brief Get the underlying value based on type.
+  ///
+  /// @tparam T The desired return type.
+  /// @return The unwrapped value. If this `TaggedValue` type does not currently
+  ///         contain a value of type `T`, the program terminates via a call to
+  ///         `assert`.
+  template <typename T>
+  const T& get() const {
+    assert(type_ == EnumValueOf<T>::value);
+    return UnionAccess<T>::unsafe_reference(*this);
+  }
+
+  /// Retrieves underlying value from a TaggedValue with type INT64.
+  const Int64& i64() const { return get<impl::Int64>(); }
+
+  /// Retrieves underlying value from a TaggedValue with type FLOAT32.
+  const Float32& f32() const { return get<impl::Float32>(); }
+
+  /// Retrieves underlying value from a TaggedValue with type STRING.
+  const char* s() const { return get<impl::String>().str().c_str(); }
+
+  /// Retrieves underlying value from a TaggedValue with type LIST.
+  impl::List& list() { return *get<impl::ListPtr>(); }
+  /// Retrieves underlying value from a TaggedValue with type LIST.
+  const impl::List& list() const { return *get<impl::ListPtr>(); }
+
+  /// Retrieves underlying value from a TaggedValue with type TUPLE.
+  impl::Tuple& tuple() { return *get<impl::TuplePtr>(); }
+  /// Retrieves underlying value from TaggedValues with type TUPLE.
+  const impl::Tuple& tuple() const { return *get<impl::TuplePtr>(); }
+
+  /// Retrieves underlying value from a TaggedValue with type DICT.
+  impl::Dict& dict() { return *get<impl::DictPtr>(); }
+  /// Retrieves underlying value from TaggedValues with type DICT.
+  const impl::Dict& dict() const { return *get<impl::DictPtr>(); }
+
+  /// Retrieves underlying value from a TaggedValue with type FUNC.
+  impl::Func func() const { return get<impl::Func>(); }
+
+  // TODO(danielellis): make const-only if possible, once the API allows for it
+  /// Retrieves underlying value from a TaggedValue with type TENSOR.
+  TaggedValueTensor& tensor() { return get<TaggedValueTensor>(); }
+  /// Retrieves underlying value from a TaggedValue with type TENSOR.
+  const TaggedValueTensor& tensor() const { return get<TaggedValueTensor>(); }
+
+  /// Retrieves underlying value from a TaggedValue with type TENSOR_SPEC.
+  const TensorSpec& tensor_spec() const { return get<TensorSpec>(); }
+
+  /// Retrieves underlying value from a TaggedValue with type CAPSULE.
+  void* capsule() const { return get<impl::Capsule>().get(); }
+
+  /// Retrieves type of TaggedValue.
   Type type() const { return type_; }
 
+  /// @brief Implements equality operator for TaggedValue.
   bool operator==(const TaggedValue& o) const {
     if (type_ != o.type_) return false;
     switch (type_) {
@@ -293,7 +291,7 @@ class TaggedValue final {
         return data_.dict == o.data_.dict;
         break;
       case FUNC:
-        // TODO(b/187536093):  This is definitely wrong beacuse the exact ptr of
+        // TODO(b/187536093):  This is definitely wrong because the exact ptr of
         // the function pointer is almost always different, because we hold
         // it by value. Two tagged values that hold the same std::function
         // will have different std::function ptrs. operator== is not defined
@@ -316,13 +314,16 @@ class TaggedValue final {
         return data_.tensor_spec == o.data_.tensor_spec;
       case CAPSULE:
         return data_.capsule.get() == o.data_.capsule.get();
-      case WEAK_CAPSULE:
-        return data_.weak_capsule.lock() == o.data_.weak_capsule.lock();
       case NONE:
         return true;
     }
   }
 
+  /// @brief Implements visitor pattern for doing type-based dispatch.
+  ///
+  /// @tparam R The desired return type.
+  /// @tparam Visitor The visitor class which has a callable operator.
+  /// @return The `visitor` called on the correct value.
   template <class R, class Visitor>
   R visit(Visitor visitor) {
     switch (type_) {
@@ -346,13 +347,16 @@ class TaggedValue final {
         return visitor(data_.tensor_spec);
       case CAPSULE:
         return visitor(data_.capsule);
-      case WEAK_CAPSULE:
-        return visitor(data_.weak_capsule);
       case NONE:
-        return visitor(data_.none);
+        return visitor(impl::None::GetInstance());
     }
   }
 
+  /// @brief Implements visitor pattern for doing type-based dispatch.
+  ///
+  /// @tparam R The desired return type.
+  /// @tparam Visitor The visitor class which has a callable operator.
+  /// @return The `visitor` called on the correct value.
   template <class R, class Visitor>
   R visit(Visitor visitor) const {
     switch (type_) {
@@ -376,29 +380,31 @@ class TaggedValue final {
         return visitor(data_.tensor_spec);
       case CAPSULE:
         return visitor(data_.capsule);
-      case WEAK_CAPSULE:
-        return visitor(data_.weak_capsule);
       case NONE:
-        return visitor(data_.none);
+        return visitor(impl::None::GetInstance());
     }
   }
 
-  // get tagged value by type. Returns null if the type does not match.
-  template <class R>
-  R* get_if();
-  template <class R>
-  const R* get_if() const;
-
  private:
+  /// @brief A utility class for mapping C++ types to Type values.
+  template <typename T>
+  struct EnumValueOf;
+
+  /// @brief A utility class for accessing the `Data` union members.
+  template <typename T>
+  struct UnionAccess;
+
   // Unsafe Move, because it assumes the union has already been destroyed
   // or is new!
   void MoveIntoUnion(TaggedValue&& v) {
     assert(type_ == NONE);
     type_ = v.type_;
-    visit<void>([&v](auto& left) {
-      using T = typename std::remove_reference<decltype(left)>::type;
-      new (&left) IdentityHelper<T>(std::move(*v.get_if<T>()));
-    });
+    if (type_ != NONE) {
+      visit<void>([&v](auto& left) -> void {
+        using T = typename std::decay<decltype(left)>::type;
+        new (&left) T(std::move(UnionAccess<T>::unsafe_reference(v)));
+      });
+    }
     // Destroy the source r-value reference (making it None)
     v.destroy();
   }
@@ -408,16 +414,21 @@ class TaggedValue final {
   void CopyIntoUnion(const TaggedValue& v) {
     assert(type_ == NONE);
     type_ = v.type_;
-    visit<void>([&v](auto& left) {
-      using T = typename std::remove_reference<decltype(left)>::type;
-      new (&left) IdentityHelper<T>(*v.get_if<T>());
-    });
+    if (type_ != NONE) {
+      visit<void>([&v](auto& left) -> void {
+        using T = typename std::decay<decltype(left)>::type;
+        new (&left) T(UnionAccess<T>::unsafe_reference(v));
+      });
+    }
   }
 
-  // the union type. in principle this could be incorporated into the union
-  // for pointer types and non-64bit values, but then int64 and float64 values
-  // would need to be indirected.  This means that we are aiming for a total
-  // data type size of <=16 bytes. One pointer and one type.
+  /// @brief The type of the TaggedValue, i.e. the "tag" of a tagged union.
+  ///
+  /// In principle this could be incorporated into the union
+  /// for pointer types and non-64bit values, but then int64 and float64 values
+  /// would need to be indirected.  This means that we are aiming for a total
+  /// data type size of <=16 bytes, comprised of one pointer (8 bytes) and
+  /// one type (<=8bytes).
   Type type_;
 
   // we use an explicit union here because we want to avoid C++17's
@@ -427,7 +438,7 @@ class TaggedValue final {
     explicit Data() {}
     explicit Data(Float32 f32) : f32(f32) {}
     explicit Data(Int64 i64) : i64(i64) {}
-    explicit Data(const char* s) : s(InternString(s)) {}
+    explicit Data(const char* s) : s(String(s)) {}
     explicit Data(Func fn) : func(fn) {}
     explicit Data(TaggedValueTensor tensor_in) {
       new (&tensor) TaggedValueTensor(std::move(tensor_in));
@@ -438,25 +449,76 @@ class TaggedValue final {
     ~Data() {}
     Float32 f32;
     Int64 i64;
-    const char* s;
+    String s;
     Func func;
     // TODO(aselle): look at tensorflow thing
     std::shared_ptr<impl::Dict> dict;
     std::shared_ptr<impl::List> list;
     std::shared_ptr<impl::Tuple> tuple;
     impl::Capsule capsule;
-    impl::WeakCapsule weak_capsule;
     TaggedValueTensor tensor;
-    impl::None none;
     TensorSpec tensor_spec;
   } data_;
   friend std::ostream& operator<<(std::ostream& o, const TaggedValue& v);
   friend TaggedValueHash<TaggedValue>;
-  template <class T>
-  friend class GetHelper;
 };
 
-// Need to wrap vector in Tuple otherwise variant has duplicate types.
+#define TF_ENUM_VALUE_OF(TYPE, ENUM)      \
+  template <>                             \
+  struct TaggedValue::EnumValueOf<TYPE> { \
+    static constexpr Type value = ENUM;   \
+  };
+
+TF_ENUM_VALUE_OF(impl::Capsule, CAPSULE);
+TF_ENUM_VALUE_OF(impl::Float32, FLOAT32);
+TF_ENUM_VALUE_OF(impl::Int64, INT64);
+TF_ENUM_VALUE_OF(impl::List, LIST);
+TF_ENUM_VALUE_OF(impl::ListPtr, LIST);
+TF_ENUM_VALUE_OF(impl::Tuple, TUPLE);
+TF_ENUM_VALUE_OF(impl::TuplePtr, TUPLE);
+TF_ENUM_VALUE_OF(impl::Dict, DICT);
+TF_ENUM_VALUE_OF(impl::DictPtr, DICT);
+TF_ENUM_VALUE_OF(impl::None, NONE);
+TF_ENUM_VALUE_OF(impl::Func, FUNC);
+TF_ENUM_VALUE_OF(impl::String, STRING);
+TF_ENUM_VALUE_OF(impl::TaggedValueTensor, TENSOR);
+TF_ENUM_VALUE_OF(impl::TensorSpec, TENSOR_SPEC);
+#undef TF_ENUM_VALUE_OF
+
+#define TF_UNION_ACCESS_INSTANCE(TYPE, MEMBER)                               \
+  template <>                                                                \
+  struct TaggedValue::UnionAccess<TYPE> {                                    \
+    static TYPE& unsafe_reference(TaggedValue& t) { return t.data_.MEMBER; } \
+    static const TYPE& unsafe_reference(const TaggedValue& t) {              \
+      return t.data_.MEMBER;                                                 \
+    }                                                                        \
+  };
+
+TF_UNION_ACCESS_INSTANCE(impl::Capsule, capsule);
+TF_UNION_ACCESS_INSTANCE(impl::Float32, f32);
+TF_UNION_ACCESS_INSTANCE(impl::Int64, i64);
+TF_UNION_ACCESS_INSTANCE(impl::ListPtr, list);
+TF_UNION_ACCESS_INSTANCE(impl::TuplePtr, tuple);
+TF_UNION_ACCESS_INSTANCE(impl::DictPtr, dict);
+TF_UNION_ACCESS_INSTANCE(impl::Func, func);
+TF_UNION_ACCESS_INSTANCE(impl::String, s);
+TF_UNION_ACCESS_INSTANCE(impl::TaggedValueTensor, tensor);
+TF_UNION_ACCESS_INSTANCE(impl::TensorSpec, tensor_spec);
+#undef TF_UNION_ACCESS_INSTANCE
+
+/// The union accessor for `NoneType`.
+template <>
+struct TaggedValue::UnionAccess<impl::None> {
+  static impl::None& unsafe_reference(TaggedValue& t) {
+    return None::GetInstance();
+  }
+  static const impl::None& unsafe_reference(const TaggedValue& t) {
+    return None::GetInstance();
+  }
+};
+
+/// @brief The Tuple class for holding tuples of TaggedValues.
+/// TODO: Need to wrap vector in Tuple otherwise variant has duplicate types.
 class Tuple {
   using TU = std::vector<TaggedValue>;
   using value_type = TU::value_type;
@@ -476,7 +538,7 @@ class Tuple {
   void push_back(const TaggedValue& v) { values_.push_back(v); }
 };
 
-// Hashing infrastructure
+/// Hashing infrastructure for Tuple.
 inline size_t TaggedValueHash<Tuple>::operator()(const Tuple& t) const {
   std::size_t hash = 0;
   for (auto& i : t) {
@@ -485,15 +547,11 @@ inline size_t TaggedValueHash<Tuple>::operator()(const Tuple& t) const {
   return hash;
 }
 
+/// @brief The TaggedValueHashVisitor class for doing type-based hashing
+/// of TaggedValues.
 class TaggedValueHashVisitor {
  public:
-  size_t operator()(const char* v) { return reinterpret_cast<size_t>(v); }
-  size_t operator()(const None& v) { return 38383827; }
   size_t operator()(const TaggedValueTensor& v) {
-    assert(false);
-    return 0;
-  }
-  size_t operator()(const TensorSpec& v) {
     assert(false);
     return 0;
   }
@@ -506,9 +564,6 @@ class TaggedValueHashVisitor {
     return 0;
   }
   size_t operator()(const Capsule& t) { return std::hash<Capsule>()(t); }
-  size_t operator()(const WeakCapsule& t) {
-    return std::hash<Capsule>()(t.lock());
-  }
   size_t operator()(const Func& t) {
     assert(false);
     return 0;
@@ -522,51 +577,16 @@ class TaggedValueHashVisitor {
   }
   template <class T>
   size_t operator()(const T& t) {
-    return std::hash<T>()(t);
+    return absl::Hash<T>()(t);
   }
 };
 
-// Hashing infrastructure, considering AbslHash. non hashable structures return
-// 0, since we have no easy way to abort.
+/// Hashing infrastructure for TaggedValues. Hashable TaggedValues overload
+/// `AbslHashValue`. Non-hashable structures return 0, since we have no easy
+/// way to abort.
 inline size_t TaggedValueHash<TaggedValue>::operator()(
     const TaggedValue& v) const {
   return v.visit<size_t>(TaggedValueHashVisitor());
-}
-
-#define TF_TAG_MATCH(cpp_type, enum_type, member)        \
-  template <>                                            \
-  class GetHelper<cpp_type> {                            \
-   public:                                               \
-    cpp_type* operator()(TaggedValue& v) {               \
-      return v.type_ == enum_type ? &v.member : nullptr; \
-    }                                                    \
-    const cpp_type* operator()(const TaggedValue& v) {   \
-      return v.type_ == enum_type ? &v.member : nullptr; \
-    }                                                    \
-  };
-
-template <class T>
-class GetHelper {};
-TF_TAG_MATCH(impl::Capsule, TaggedValue::CAPSULE, data_.capsule);
-TF_TAG_MATCH(impl::WeakCapsule, TaggedValue::WEAK_CAPSULE, data_.weak_capsule);
-TF_TAG_MATCH(impl::Float32, TaggedValue::FLOAT32, data_.f32);
-TF_TAG_MATCH(impl::Int64, TaggedValue::INT64, data_.i64);
-TF_TAG_MATCH(impl::ListPtr, TaggedValue::LIST, data_.list);
-TF_TAG_MATCH(impl::TuplePtr, TaggedValue::TUPLE, data_.tuple);
-TF_TAG_MATCH(impl::DictPtr, TaggedValue::DICT, data_.dict);
-TF_TAG_MATCH(impl::None, TaggedValue::NONE, data_.none);
-TF_TAG_MATCH(impl::Func, TaggedValue::FUNC, data_.func);
-TF_TAG_MATCH(impl::String, TaggedValue::STRING, data_.s);
-TF_TAG_MATCH(impl::TaggedValueTensor, TaggedValue::TENSOR, data_.tensor);
-TF_TAG_MATCH(impl::TensorSpec, TaggedValue::TENSOR_SPEC, data_.tensor_spec);
-
-template <class R>
-R* TaggedValue::get_if() {
-  return GetHelper<R>()(*this);
-}
-template <class R>
-const R* TaggedValue::get_if() const {
-  return GetHelper<R>()(*this);
 }
 
 }  // namespace impl

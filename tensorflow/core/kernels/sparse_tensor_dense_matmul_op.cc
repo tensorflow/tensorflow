@@ -66,7 +66,7 @@ class SparseTensorDenseMatMulOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a_indices->shape()),
                 errors::InvalidArgument("Tensor 'a_indices' is not a matrix"));
 
-    const int64 nnz = a_indices->shape().dim_size(0);
+    const int64_t nnz = a_indices->shape().dim_size(0);
     OP_REQUIRES(ctx, nnz == a_values->NumElements(),
                 errors::InvalidArgument("Number of rows of a_indices does not "
                                         "match number of entries in a_values"));
@@ -76,12 +76,12 @@ class SparseTensorDenseMatMulOp : public OpKernel {
         errors::InvalidArgument("Number of columns of a_indices does not match "
                                 "number of entries in a_shape"));
 
-    auto a_shape_t = a_shape->vec<int64>();
-    const int64 outer_left = (adjoint_a_) ? a_shape_t(1) : a_shape_t(0);
-    const int64 outer_right =
+    auto a_shape_t = a_shape->vec<int64_t>();
+    const int64_t outer_left = (adjoint_a_) ? a_shape_t(1) : a_shape_t(0);
+    const int64_t outer_right =
         (adjoint_b_) ? b->shape().dim_size(0) : b->shape().dim_size(1);
-    const int64 inner_left = (adjoint_a_) ? a_shape_t(0) : a_shape_t(1);
-    const int64 inner_right =
+    const int64_t inner_left = (adjoint_a_) ? a_shape_t(0) : a_shape_t(1);
+    const int64_t inner_right =
         (adjoint_b_) ? b->shape().dim_size(1) : b->shape().dim_size(0);
 
     OP_REQUIRES(
@@ -165,7 +165,7 @@ class SparseTensorDenseMatMulOp : public OpKernel {
       SparseTensorDenseMatMulOp<CPUDevice, TypeT, TypeIndex>);
 
 #define REGISTER_KERNELS_CPU(T) \
-  REGISTER_CPU(T, int64);       \
+  REGISTER_CPU(T, int64_t);     \
   REGISTER_CPU(T, int32)
 
 REGISTER_KERNELS_CPU(Eigen::half);
@@ -192,7 +192,7 @@ namespace functor {
 
 #define REGISTER_GPU_SPEC(T, ADJ_A, ADJ_B)  \
   DECLARE_GPU_SPEC(T, int32, ADJ_A, ADJ_B); \
-  DECLARE_GPU_SPEC(T, int64, ADJ_A, ADJ_B)
+  DECLARE_GPU_SPEC(T, int64_t, ADJ_A, ADJ_B)
 
 #define DECLARE_ADJOINT_GPU_SPEC(T)  \
   REGISTER_GPU_SPEC(T, false, false) \
@@ -222,7 +222,7 @@ DECLARE_ADJOINT_GPU_SPEC(complex128);
       SparseTensorDenseMatMulOp<GPUDevice, TypeT, TypeIndex>);
 
 #define REGISTER_KERNELS_GPU(T) \
-  REGISTER_GPU(T, int64);       \
+  REGISTER_GPU(T, int64_t);     \
   REGISTER_GPU(T, int32)
 
 REGISTER_KERNELS_GPU(Eigen::half);
@@ -238,14 +238,14 @@ REGISTER_KERNELS_GPU(complex128);
 namespace functor {
 
 namespace {
-Status KOutOfBoundsError(int64 k, std::size_t i, int rhs_index_a,
+Status KOutOfBoundsError(int64_t k, std::size_t i, int rhs_index_a,
                          std::size_t lhs_right) {
   return errors::InvalidArgument("k (", k, ") from index[", i, ",", rhs_index_a,
                                  "] out of bounds (>=", lhs_right, ")");
 }
 
-Status MOutOfBoundsError(int64 m, std::size_t i, int lhs_index_a,
-                         int64 out_dim0) {
+Status MOutOfBoundsError(int64_t m, std::size_t i, int lhs_index_a,
+                         int64_t out_dim0) {
   return errors::InvalidArgument("m (", m, ") from index[", i, ",", lhs_index_a,
                                  "] out of bounds (>=", out_dim0, ")");
 }

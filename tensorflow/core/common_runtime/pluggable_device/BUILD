@@ -53,7 +53,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/device:device_event_mgr",
         "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:kernel",
     ],

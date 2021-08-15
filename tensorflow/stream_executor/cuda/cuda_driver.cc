@@ -130,7 +130,7 @@ void SynchronizeOrDie() {
 }
 
 struct ThreadLocalData {
-  int64 id;
+  int64_t id;
   GpuContext* context;  // Only valid if id == a known good context.
   int depth;
 };
@@ -397,7 +397,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   std::string message =
       "failed call to cuDevicePrimaryCtxRetain: " + ToString(res);
   if (res == CUDA_ERROR_OUT_OF_MEMORY) {
-    uint64 total_memory;
+    uint64_t total_memory;
     if (GetDeviceTotalMemory(device, &total_memory)) {
       absl::StrAppend(&message, "; total memory reported: ", total_memory);
     } else {
@@ -425,6 +425,10 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   }
 
   CreatedContexts::Remove(context->context());
+}
+
+/* static */ CUcontext GpuDriver::GetContextHandle(GpuContext* context) {
+  return context->context();
 }
 
 /* static */ port::Status GpuDriver::FuncGetAttribute(
@@ -459,13 +463,13 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ port::Status GpuDriver::LaunchKernel(
-    GpuContext* context, CUfunction function, unsigned int grid_dim_x,
-    unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,
-    unsigned int block_dim_y, unsigned int block_dim_z,
-    unsigned int shared_mem_bytes, CUstream stream, void** kernel_params,
-    void** extra) {
+    GpuContext* context, absl::string_view kernel_name, CUfunction function,
+    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
+    unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_mem_bytes, CUstream stream,
+    void** kernel_params, void** extra) {
   ScopedActivateContext activation(context);
-  VLOG(2) << "launching kernel: " << function << "; gdx: " << grid_dim_x
+  VLOG(2) << "launching kernel: " << kernel_name << "; gdx: " << grid_dim_x
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
           << " bdz: " << block_dim_z;
@@ -473,7 +477,10 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
       cuLaunchKernel(function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x,
                      block_dim_y, block_dim_z, shared_mem_bytes, stream,
                      kernel_params, extra),
-      "Failed to launch CUDA kernel");
+      "Failed to launch CUDA kernel: ", kernel_name,
+      " with block dimensions: ", block_dim_x, "x", block_dim_y, "x",
+      block_dim_z, " and grid dimensions: ", grid_dim_x, "x", grid_dim_y, "x",
+      grid_dim_z);
   return port::Status::OK();
 }
 
@@ -718,7 +725,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ void* GpuDriver::DeviceAllocate(GpuContext* context,
-                                             uint64 bytes) {
+                                             uint64_t bytes) {
   if (bytes == 0) {
     return nullptr;
   }
@@ -755,7 +762,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ void* GpuDriver::UnifiedMemoryAllocate(GpuContext* context,
-                                                    uint64 bytes) {
+                                                    uint64_t bytes) {
   ScopedActivateContext activation(context);
   CUdeviceptr result = 0;
   // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
@@ -785,7 +792,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   }
 }
 
-/* static */ void* GpuDriver::HostAllocate(GpuContext* context, uint64 bytes) {
+/* static */ void* GpuDriver::HostAllocate(GpuContext* context,
+                                           uint64_t bytes) {
   ScopedActivateContext activation(context);
   void* host_mem = nullptr;
   // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
@@ -808,7 +816,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ bool GpuDriver::HostRegister(GpuContext* context, void* location,
-                                          uint64 bytes) {
+                                          uint64_t bytes) {
   ScopedActivateContext activation(context);
   // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
   CUresult res =
@@ -835,7 +843,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 
 #if CUDA_VERSION >= 10020
 /* static */ port::StatusOr<GpuDriver::VmemSpan>
-GpuDriver::ReserveVirtualMemory(GpuContext* context, uint64 bytes) {
+GpuDriver::ReserveVirtualMemory(GpuContext* context, uint64_t bytes) {
   ScopedActivateContext activation(context);
   CUdeviceptr base;
   CUresult res = cuMemAddressReserve(&base, bytes, /*alignment=*/0,
@@ -858,7 +866,7 @@ GpuDriver::ReserveVirtualMemory(GpuContext* context, uint64 bytes) {
   }
 }
 
-/* static */ port::StatusOr<uint64> GpuDriver::GetMinAllocationGranularity(
+/* static */ port::StatusOr<uint64_t> GpuDriver::GetMinAllocationGranularity(
     GpuDeviceHandle device) {
   CUmemAllocationProp props = {};
   props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
@@ -876,7 +884,7 @@ GpuDriver::ReserveVirtualMemory(GpuContext* context, uint64 bytes) {
 }
 
 /* static */ port::StatusOr<GpuDriver::GenericMemoryHandle>
-GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
+GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   ScopedActivateContext activation(context);
   auto device = DeviceFromContext(context);
   if (!device.ok()) {
@@ -952,7 +960,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
 }
 
 /* static */ void GpuDriver::UnmapMemory(GpuContext* context, CUdeviceptr va,
-                                         uint64 bytes) {
+                                         uint64_t bytes) {
   ScopedActivateContext activation(context);
 
   CUresult res = cuMemUnmap(va, bytes);
@@ -1071,7 +1079,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
 /* static */ port::Status GpuDriver::SynchronousMemcpyD2H(GpuContext* context,
                                                           void* host_dst,
                                                           CUdeviceptr gpu_src,
-                                                          uint64 size) {
+                                                          uint64_t size) {
   ScopedActivateContext activation(context);
   RETURN_IF_CUDA_RES_ERROR(
       cuMemcpyDtoH(host_dst, gpu_src, size),
@@ -1086,7 +1094,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
 /* static */ port::Status GpuDriver::SynchronousMemcpyH2D(GpuContext* context,
                                                           CUdeviceptr gpu_dst,
                                                           const void* host_src,
-                                                          uint64 size) {
+                                                          uint64_t size) {
   ScopedActivateContext activation(context);
   RETURN_IF_CUDA_RES_ERROR(
       cuMemcpyHtoD(gpu_dst, host_src, size),
@@ -1101,7 +1109,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
 /* static */ port::Status GpuDriver::SynchronousMemcpyD2D(GpuContext* context,
                                                           CUdeviceptr gpu_dst,
                                                           CUdeviceptr gpu_src,
-                                                          uint64 size) {
+                                                          uint64_t size) {
   ScopedActivateContext activation(context);
 
   CUresult result;
@@ -1147,7 +1155,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
 /* static */ bool GpuDriver::AsynchronousMemcpyD2H(GpuContext* context,
                                                    void* host_dst,
                                                    CUdeviceptr gpu_src,
-                                                   uint64 size,
+                                                   uint64_t size,
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
   CUresult res = cuMemcpyDtoHAsync(host_dst, gpu_src, size, stream);
@@ -1167,7 +1175,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
 /* static */ bool GpuDriver::AsynchronousMemcpyH2D(GpuContext* context,
                                                    CUdeviceptr gpu_dst,
                                                    const void* host_src,
-                                                   uint64 size,
+                                                   uint64_t size,
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
   CUresult res = cuMemcpyHtoDAsync(gpu_dst, host_src, size, stream);
@@ -1186,7 +1194,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
 /* static */ bool GpuDriver::AsynchronousMemcpyD2D(GpuContext* context,
                                                    CUdeviceptr gpu_dst,
                                                    CUdeviceptr gpu_src,
-                                                   uint64 size,
+                                                   uint64_t size,
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
   CUresult result;
@@ -1424,39 +1432,39 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
                                  CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT);
 }
 
-/* static */ port::StatusOr<int64> GpuDriver::GetMaxSharedMemoryPerCore(
+/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerCore(
     CUdevice device) {
-  return GetSimpleAttribute<int64>(
+  return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_MULTIPROCESSOR);
 }
 
-/* static */ port::StatusOr<int64> GpuDriver::GetMaxSharedMemoryPerBlock(
+/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlock(
     CUdevice device) {
-  return GetSimpleAttribute<int64>(
+  return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK);
 }
 
-/* static */ port::StatusOr<int64> GpuDriver::GetMaxThreadsPerMultiprocessor(
+/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerMultiprocessor(
     CUdevice device) {
-  return GetSimpleAttribute<int64>(
+  return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR);
 }
 
-/* static */ port::StatusOr<int64> GpuDriver::GetMaxThreadsPerBlock(
+/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerBlock(
     CUdevice device) {
-  return GetSimpleAttribute<int64>(device,
-                                   CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK);
+  return GetSimpleAttribute<int64_t>(device,
+                                     CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK);
 }
 
-/* static */ port::StatusOr<int64> GpuDriver::GetMaxRegistersPerBlock(
+/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxRegistersPerBlock(
     CUdevice device) {
-  return GetSimpleAttribute<int64>(device,
-                                   CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_BLOCK);
+  return GetSimpleAttribute<int64_t>(
+      device, CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_BLOCK);
 }
 
-/* static */ port::StatusOr<int64> GpuDriver::GetThreadsPerWarp(
+/* static */ port::StatusOr<int64_t> GpuDriver::GetThreadsPerWarp(
     CUdevice device) {
-  return GetSimpleAttribute<int64>(device, CU_DEVICE_ATTRIBUTE_WARP_SIZE);
+  return GetSimpleAttribute<int64_t>(device, CU_DEVICE_ATTRIBUTE_WARP_SIZE);
 }
 
 /* static */ bool GpuDriver::GetGridLimits(int* x, int* y, int* z,
@@ -1536,8 +1544,8 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
 }
 
 /* static */ bool GpuDriver::GetDeviceMemoryInfo(GpuContext* context,
-                                                 int64* free_out,
-                                                 int64* total_out) {
+                                                 int64_t* free_out,
+                                                 int64_t* total_out) {
   ScopedActivateContext activation(context);
   size_t free = 0;
   size_t total = 0;
@@ -1553,7 +1561,7 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
 }
 
 /* static */ bool GpuDriver::GetDeviceTotalMemory(CUdevice device,
-                                                  uint64* result) {
+                                                  uint64_t* result) {
   size_t value = -1;
   CUresult res = cuDeviceTotalMem(&value, device);
   if (res != CUDA_SUCCESS) {

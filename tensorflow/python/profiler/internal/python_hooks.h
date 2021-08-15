@@ -118,7 +118,7 @@ class PythonHookContext {
   void operator=(const PythonHookContext&) = delete;
   void operator=(PythonHookContext&&) = delete;
 
-  absl::flat_hash_map<int64, PerThreadEvents> entries_;
+  absl::flat_hash_map<int64_t, PerThreadEvents> entries_;
   uint64 start_timestamp_ns_;
   PythonHooksOptions options_;
   // In end to end mode, Python get uninitialized before Stop()/Finalize(), we

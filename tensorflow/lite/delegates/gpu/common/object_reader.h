@@ -19,7 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-#include <fp16.h>
+#include "fp16.h"  // from @FP16
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"

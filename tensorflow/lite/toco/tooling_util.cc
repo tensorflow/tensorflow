@@ -1895,7 +1895,7 @@ std::string CreateInt32Array(Model* model, const std::string& param_name,
 }
 
 bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
-                                int64* result) {
+                                int64_t* result) {
   switch (op.type) {
     case OperatorType::kFullyConnected:
     case OperatorType::kConv:
@@ -1909,7 +1909,7 @@ bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
       for (int i = 0; i < output_array.shape().dimensions_count() - 1; i++) {
         cols *= output_array.shape().dims(i);
       }
-      const int64 cost_per_col =
+      const int64_t cost_per_col =
           2 * RequiredBufferSizeForShape(weights_array.shape());
       *result = cost_per_col * cols;
       if (op.inputs.size() > 2) {
@@ -1954,7 +1954,7 @@ bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
         return false;
       }
       // AddN cost is roughly the same cost as N-1 Adds.
-      const int64 num_adds = op.inputs.size() - 1;
+      const int64_t num_adds = op.inputs.size() - 1;
       *result = num_adds * RequiredBufferSizeForShape(output_array.shape());
       break;
     }
@@ -2001,7 +2001,7 @@ bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
       }
       // The sum of squares requires (kheight*kwidth) multiply-adds,
       // and then there is the sqrt which we ballpark at 32 ops.
-      const int64 cost_per_val = 2 * maxpool->kheight * maxpool->kwidth + 32;
+      const int64_t cost_per_val = 2 * maxpool->kheight * maxpool->kwidth + 32;
       *result = RequiredBufferSizeForShape(output_array.shape()) * cost_per_val;
       break;
     }
@@ -2023,7 +2023,7 @@ bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
   return true;
 }
 
-bool EstimateArithmeticOpsCount(const Model& model, int64* result) {
+bool EstimateArithmeticOpsCount(const Model& model, int64_t* result) {
   int64_t total = 0;
   for (const auto& op : model.operators) {
     int64_t num_ops;
@@ -2037,8 +2037,8 @@ bool EstimateArithmeticOpsCount(const Model& model, int64* result) {
 }
 
 std::string FormattedNumber(int64_t x) {
-  const int64 million = 1000000;
-  const int64 billion = 1000000000;
+  const int64_t million = 1000000;
+  const int64_t billion = 1000000000;
   if (x < 10000) {
     return toco::port::StringF("%d ", x);
   } else if (x < billion) {

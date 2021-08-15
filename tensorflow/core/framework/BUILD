@@ -714,7 +714,10 @@ cc_library(
     name = "resource_handle",
     srcs = ["resource_handle.cc"],
     hdrs = ["resource_handle.h"],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
+        "//tensorflow/core:__pkg__",
+    ],
     deps = [
         ":resource_base",
         ":resource_handle_proto_cc",
@@ -759,7 +762,10 @@ cc_library(
     name = "tensor_types",
     hdrs = ["tensor_types.h"],
     visibility = ["//visibility:private"],
-    deps = ["//third_party/eigen3"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -796,6 +802,7 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt/utils:__subpackages__",
         "//tensorflow/core/util:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
@@ -1551,6 +1558,11 @@ tf_proto_library(
         ":tensor_proto",
         ":tensor_shape_proto",
         ":types_proto",
+    ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/security/fuzzing:__subpackages__",
     ],
 )
 

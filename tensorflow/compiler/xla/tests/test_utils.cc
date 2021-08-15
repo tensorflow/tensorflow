@@ -322,10 +322,10 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
       PopulateWithRandomIntegralData<uint32>(&literal, engine, no_duplicates);
       break;
     case S64:
-      PopulateWithRandomIntegralData<int64>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<int64_t>(&literal, engine, no_duplicates);
       break;
     case U64:
-      PopulateWithRandomIntegralData<uint64>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<uint64_t>(&literal, engine, no_duplicates);
       break;
     case C64:
       PopulateWithComplexData<complex64>(&literal, engine, no_duplicates,
@@ -338,7 +338,7 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
     case PRED: {
       std::uniform_int_distribution<int> generator(0, 1);
       TF_CHECK_OK(
-          literal.Populate<bool>([&](absl::Span<const int64> /*indices*/) {
+          literal.Populate<bool>([&](absl::Span<const int64_t> /*indices*/) {
             return generator(*engine);
           }));
       break;
@@ -432,17 +432,21 @@ StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
       }
       break;
     case S64:
-      PopulateWithRandomIntegralDataWithBounds<int64>(
-          &literal, engine, static_cast<int64>(min), static_cast<int64>(max));
+      PopulateWithRandomIntegralDataWithBounds<int64_t>(
+          &literal, engine, static_cast<int64_t>(min),
+          static_cast<int64_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<int64>().begin(), literal.data<int64>().end());
+        std::sort(literal.data<int64_t>().begin(),
+                  literal.data<int64_t>().end());
       }
       break;
     case U64:
-      PopulateWithRandomIntegralDataWithBounds<uint64>(
-          &literal, engine, static_cast<uint64>(min), static_cast<uint64>(max));
+      PopulateWithRandomIntegralDataWithBounds<uint64_t>(
+          &literal, engine, static_cast<uint64_t>(min),
+          static_cast<uint64_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<uint64>().begin(), literal.data<uint64>().end());
+        std::sort(literal.data<uint64_t>().begin(),
+                  literal.data<uint64_t>().end());
       }
       break;
     default:
@@ -481,7 +485,7 @@ ConstantType GetInitValue(const HloComputation& computation) {
 bool NeedsInitValue(const HloUse& use) {
   const HloInstruction* const instruction = use.instruction;
   const HloOpcode opcode = instruction->opcode();
-  const int64 op_num = use.operand_number;
+  const int64_t op_num = use.operand_number;
   return ((opcode == HloOpcode::kReduceWindow && op_num == 1) ||
           (opcode == HloOpcode::kSelectAndScatter && op_num == 2) ||
           (opcode == HloOpcode::kReduce &&
@@ -508,7 +512,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
     for (const HloUse& use : value.uses()) {
       HloInstruction* instruction = use.instruction;
       const HloOpcode opcode = instruction->opcode();
-      const int64 op_num = use.operand_number;
+      const int64_t op_num = use.operand_number;
       if ((opcode == HloOpcode::kDynamicSlice && op_num >= 1) ||
           (opcode == HloOpcode::kDynamicUpdateSlice && op_num >= 2)) {
         constrained_uses.push_back(instruction);
@@ -563,7 +567,7 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
         const Shape& slice_shape = use->opcode() == HloOpcode::kDynamicSlice
                                        ? use->shape()
                                        : use->operand(1)->shape();
-        const int64 first_index =
+        const int64_t first_index =
             Cast<HloDynamicIndexInstruction>(use)->first_index_operand_number();
         for (int64_t operand = first_index; operand < use->operand_count();
              ++operand) {

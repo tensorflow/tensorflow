@@ -17,6 +17,13 @@ message DispatcherConfig {
   // Whether to run in fault tolerant mode, where dispatcher state is saved
   // across restarts. Requires that `work_dir` is nonempty.
   bool fault_tolerant_mode = 4;
+  // (Optional.) If the job uses auto-sharding, it needs to specify a fixed list
+  // of worker addresses that will register with the dispatcher. The worker
+  // addresses should be in the format "host" or "host:port", where "port" is an
+  // integer, named port, or %port% to match any port.
+  // TODO(yangchen): Also add a deployment mode flag. Auto-sharding will only be
+  // allowed in the "COLOCATED" mode.
+  repeated string worker_addresses = 7;
   // How often the dispatcher should scan through to delete old and unused jobs.
   int64 job_gc_check_interval_ms = 5;
   // How long a job needs to be unused before it becomes a candidate for garbage

@@ -58,7 +58,7 @@ class XlaDeviceContext : public DeviceContext {
       std::shared_ptr<se::Stream> device_to_host_stream,
       std::vector<std::shared_ptr<se::Stream>> device_to_device_streams,
       xla::LocalClient* client,
-      XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+      XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       thread::ThreadPool* thread_pool, bool use_fast_mem = false);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
@@ -80,7 +80,7 @@ class XlaDeviceContext : public DeviceContext {
     return device_to_device_streams_.at(index).get();
   }
   xla::TransferManager* transfer_manager() const { return transfer_manager_; }
-  const XlaCompiler::ShapeRepresentationFn& shape_representation_fn() const {
+  const XlaHelpers::ShapeRepresentationFn& shape_representation_fn() const {
     return shape_representation_fn_;
   }
 
@@ -112,7 +112,7 @@ class XlaDeviceContext : public DeviceContext {
   // Transfer manager, for marshalling data to and from the device.
   xla::TransferManager* transfer_manager_;
 
-  XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
+  XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
 
   // Thread pool used for running closures
   thread::ThreadPool* thread_pool_;

@@ -43,8 +43,8 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
       auto kernel_input_feature_dim = dnums.kernel_input_feature_dimension();
       auto kernel_output_feature_dim = dnums.kernel_output_feature_dimension();
 
-      const int64 num_spatial_dims = dnums.output_spatial_dimensions_size();
-      const int64 num_dims = num_spatial_dims + 2;
+      const int64_t num_spatial_dims = dnums.output_spatial_dimensions_size();
+      const int64_t num_dims = num_spatial_dims + 2;
 
       // A canonical convolution's dimension numbers need to satisfy the
       // following conditions (see cs/PotentiallyImplementedAsEigenConvolution).
@@ -57,8 +57,8 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
       // break the soundness.
       HloInstruction* input = hlo->mutable_operand(0);
 
-      std::vector<int64> new_input_dim_order(num_dims);
-      std::vector<int64> new_input_dims(num_dims);
+      std::vector<int64_t> new_input_dim_order(num_dims);
+      std::vector<int64_t> new_input_dims(num_dims);
       new_input_dim_order[0] = input_batch_dim;
       new_input_dims[0] = input->shape().dimensions(input_batch_dim);
       for (int64_t i = 0; i < num_spatial_dims; ++i) {
@@ -78,8 +78,8 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
 
       HloInstruction* kernel = hlo->mutable_operand(1);
 
-      std::vector<int64> new_kernel_dim_order(num_dims);
-      std::vector<int64> new_kernel_dims(num_dims);
+      std::vector<int64_t> new_kernel_dim_order(num_dims);
+      std::vector<int64_t> new_kernel_dims(num_dims);
       for (int64_t i = 0; i < num_spatial_dims; ++i) {
         new_kernel_dim_order[i] = dnums.kernel_spatial_dimensions(i);
         new_kernel_dims[i] =
@@ -98,8 +98,8 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
           HloInstruction::CreateTranspose(new_kernel_shape, kernel,
                                           new_kernel_dim_order));
 
-      std::vector<int64> new_output_dim_order(num_dims);
-      std::vector<int64> new_conv_dims(num_dims);
+      std::vector<int64_t> new_output_dim_order(num_dims);
+      std::vector<int64_t> new_conv_dims(num_dims);
       auto output_batch_dim = dnums.output_batch_dimension();
       auto output_feature_dim = dnums.output_feature_dimension();
       new_output_dim_order[0] = output_batch_dim;

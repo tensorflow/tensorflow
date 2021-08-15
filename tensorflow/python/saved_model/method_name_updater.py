@@ -91,9 +91,9 @@ class MethodNameUpdater(object):
           if no meta graph has a signature_def that matches signature_key.
     """
     if not signature_key:
-      raise ValueError("signature_key must be defined.")
+      raise ValueError("`signature_key` must be defined.")
     if not method_name:
-      raise ValueError("method_name must be defined.")
+      raise ValueError("`method_name` must be defined.")
 
     if (tags is not None and not isinstance(tags, list)):
       tags = [tags]
@@ -102,9 +102,9 @@ class MethodNameUpdater(object):
       if tags is None or set(tags) == set(meta_graph_def.meta_info_def.tags):
         if signature_key not in meta_graph_def.signature_def:
           raise ValueError(
-              "MetaGraphDef associated with tags " + str(tags) +
-              " does not have a signature_def with key: " + signature_key +
-              ". This means either you specified the wrong signature key or "
+              f"MetaGraphDef associated with tags {tags} "
+              f"does not have a signature_def with key: '{signature_key}'. "
+              "This means either you specified the wrong signature key or "
               "forgot to put the signature_def with the corresponding key in "
               "your SavedModel.")
         meta_graph_def.signature_def[signature_key].method_name = method_name
@@ -112,10 +112,9 @@ class MethodNameUpdater(object):
 
     if not found_match:
       raise ValueError(
-          "MetaGraphDef associated with tags " + str(tags) +
-          " could not be found in SavedModel. This means either you specified "
-          "the invalid tags your SavedModel does not have a MetaGraph with "
-          "the specified tags")
+          f"MetaGraphDef associated with tags {tags} could not be found in "
+          "SavedModel. This means either you specified invalid tags or your "
+          "SavedModel does not have a MetaGraphDef with the specified tags.")
 
   def save(self, new_export_dir=None):
     """Saves the updated `SavedModel`.

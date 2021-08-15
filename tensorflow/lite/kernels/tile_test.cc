@@ -243,6 +243,15 @@ TEST_P(TileTest, StringMatrix2) {
       /*multiply_type=*/TensorType_INT32, GetParam());
 }
 
+TEST(TileTest, TestEmptyInput) {
+  TileOpDynamicModel m({2, 1, 3}, TensorType_INT32, TensorType_INT32);
+  m.SetInput({11, 12, 13, 21, 22, 23});
+  m.SetMultipliers({2, 0, 2});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 0, 6}));
+}
+
 INSTANTIATE_TEST_SUITE_P(TileTest, TileTest,
                          ::testing::Values(TestType::kConst,
                                            TestType::kDynamic));

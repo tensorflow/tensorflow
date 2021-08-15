@@ -26,7 +26,7 @@ namespace xla {
 
 static bool IsNanSafeGt(HloComputation* comp) {
   namespace m = match;
-  auto match_bitcast_f32 = [](int64 parameter_number) {
+  auto match_bitcast_f32 = [](int64_t parameter_number) {
     auto param = m::Parameter(parameter_number)
                      .WithShape(m::Shape().WithElementType(F32));
     auto param_s32 =
@@ -42,7 +42,7 @@ static bool IsNanSafeGt(HloComputation* comp) {
         param_s32);
   };
 
-  auto match_bitcast_f32_with_convert = [](int64 parameter_number) {
+  auto match_bitcast_f32_with_convert = [](int64_t parameter_number) {
     auto param = m::Parameter(parameter_number)
                      .WithShape(m::Shape().WithElementType(F32));
     auto param_s32 =
@@ -58,7 +58,7 @@ static bool IsNanSafeGt(HloComputation* comp) {
                      param_s32);
   };
 
-  auto match_bitcast_bf16 = [](int64 parameter_number) {
+  auto match_bitcast_bf16 = [](int64_t parameter_number) {
     auto param = m::Convert(m::Parameter(parameter_number)
                                 .WithShape(m::Shape().WithElementType(BF16)))
                      .WithShape(m::Shape().WithElementType(F32));
@@ -75,7 +75,7 @@ static bool IsNanSafeGt(HloComputation* comp) {
         param_s32);
   };
 
-  auto match_bitcast_bf16_with_convert = [](int64 parameter_number) {
+  auto match_bitcast_bf16_with_convert = [](int64_t parameter_number) {
     auto param = m::Convert(m::Parameter(parameter_number)
                                 .WithShape(m::Shape().WithElementType(BF16)))
                      .WithShape(m::Shape().WithElementType(F32));
@@ -104,7 +104,7 @@ static bool IsNanSafeGt(HloComputation* comp) {
                      match_bitcast_bf16_with_convert(1)));
 }
 
-absl::optional<int64> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
+absl::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
   HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
   if (sort == nullptr) {
     return absl::nullopt;
@@ -127,12 +127,12 @@ absl::optional<int64> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
   if (!IsNanSafeGt(sort->to_apply())) {
     return absl::nullopt;
   }
-  const int64 sort_dim = sort->sort_dimension();
-  const int64 batch_dim = sort_dim == 1 ? 0 : 1;
+  const int64_t sort_dim = sort->sort_dimension();
+  const int64_t batch_dim = sort_dim == 1 ? 0 : 1;
   const bool has_batch = data->shape().rank() == 2;
 
   bool supported = true;
-  absl::optional<int64> k;
+  absl::optional<int64_t> k;
   for (HloInstruction* user : sort->users()) {
     const HloInstruction* slice = user;
     if (sort->operand_count() == 2) {
@@ -179,7 +179,7 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(HloModule* module) {
   for (HloComputation* comp : module->computations()) {
     for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
       // Check if sort is in TopK.
-      absl::optional<int64> k = SortIsInTopK(inst);
+      absl::optional<int64_t> k = SortIsInTopK(inst);
       if (!k) {
         continue;
       }
@@ -193,8 +193,8 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(HloModule* module) {
         continue;
       }
 
-      const int64 sort_dim = sort->sort_dimension();
-      const int64 batch_dim = sort_dim == 1 ? 0 : 1;
+      const int64_t sort_dim = sort->sort_dimension();
+      const int64_t batch_dim = sort_dim == 1 ? 0 : 1;
       const bool has_batch = data->shape().rank() == 2;
 
       // Profitability check.
@@ -202,9 +202,9 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(HloModule* module) {
         continue;
       }
 
-      const int64 batch_size =
+      const int64_t batch_size =
           has_batch ? sort->operand(0)->shape().dimensions(batch_dim) : 1;
-      const int64 input_size = sort->operand(0)->shape().dimensions(sort_dim);
+      const int64_t input_size = sort->operand(0)->shape().dimensions(sort_dim);
       HloInstruction* input = sort->mutable_operand(0);
       if (has_batch && sort_dim == 0) {
         input = comp->AddInstruction(HloInstruction::CreateTranspose(

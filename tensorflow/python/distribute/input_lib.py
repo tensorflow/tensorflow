@@ -68,8 +68,8 @@ def get_distributed_dataset(dataset,
                             strategy,
                             num_replicas_in_sync=None,
                             input_context=None,
-                            build=True,
-                            options=None):
+                            options=None,
+                            build=True):
   """Returns a distributed dataset from the given tf.data.Dataset instance.
 
   This is a common function that is used by all strategies to return a
@@ -92,10 +92,10 @@ def get_distributed_dataset(dataset,
         graph multi-worker cases where there is only one `input_worker`. In
         these cases, we will shard based on the `input_pipeline_id` and
         `num_input_pipelines` in the `InputContext`.
-    build: whether to build underlying datasets when a DistributedDataset is
-        created.
     options: Default is None. `tf.distribute.InputOptions` used to control
         options on how this dataset is distributed.
+    build: whether to build underlying datasets when a DistributedDataset is
+        created. This is only useful for `ParameterServerStrategy` now.
 
   Returns:
     A distributed dataset instance.
@@ -123,7 +123,8 @@ def get_distributed_datasets_from_function(dataset_fn,
                                            input_workers,
                                            input_contexts,
                                            strategy,
-                                           options=None):
+                                           options=None,
+                                           build=True):
   """Returns a distributed dataset from the given input function.
 
   This is a common function that is used by all strategies to return a
@@ -143,6 +144,9 @@ def get_distributed_datasets_from_function(dataset_fn,
         handle last partial batch.
     options: Default is None. `tf.distribute.InputOptions` used to control
         options on how this dataset is distributed.
+    build: whether to build underlying datasets when a
+        `DistributedDatasetFromFunction` is created. This is only useful for
+        `ParameterServerStrategy` now.
 
   Returns:
     A distributed dataset instance.
@@ -169,8 +173,14 @@ def get_distributed_datasets_from_function(dataset_fn,
         "replication mode is set to `PER_REPLICA`")
 
   if tf2.enabled():
-    return DistributedDatasetsFromFunction(input_workers, strategy,
-                                           input_contexts, dataset_fn, options)
+    return DistributedDatasetsFromFunction(
+        input_workers,
+        strategy,
+        input_contexts=input_contexts,
+        dataset_fn=dataset_fn,
+        options=options,
+        build=build,
+    )
   else:
     return DistributedDatasetsFromFunctionV1(input_workers, strategy,
                                              input_contexts, dataset_fn,
@@ -1176,6 +1186,7 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
       enable_get_next_as_optional: this is required when components is passed
         instead of dataset.
       build: whether to build underlying datasets when this object is created.
+        This is only useful for `ParameterServerStrategy` now.
       options: `tf.distribute.InputOptions` used to control options on how this
         dataset is distributed.
     """
@@ -1560,7 +1571,8 @@ class DistributedDatasetsFromFunction(_IterableInput,
                dataset_fn=None,
                options=None,
                components=None,
-               element_spec=None):
+               element_spec=None,
+               build=True):
     """Makes an iterable from datasets created by the given function.
 
     Args:
@@ -1584,6 +1596,8 @@ class DistributedDatasetsFromFunction(_IterableInput,
         DistributedDatasetSpec. This will be used to set the element_spec for
         DistributedDatasetsFromFunctionSpec and verified against element_spec
         from components.
+      build: whether to build underlying datasets when this object is created.
+        This is only useful for `ParameterServerStrategy` now.
     """
     super(DistributedDatasetsFromFunction, self).__init__(
         input_workers=input_workers)
@@ -1601,63 +1615,82 @@ class DistributedDatasetsFromFunction(_IterableInput,
             "Number of input workers (%d) is not same as number of "
             "input_contexts (%d)" %
             (input_workers.num_workers, len(input_contexts)))
-      self._datasets, element_spec = (
-          _create_datasets_from_function_with_input_context(
-              input_contexts, self._input_workers, dataset_fn))
-      self._element_spec = _create_distributed_tensor_spec(
-          self._strategy, element_spec)
+      self._input_contexts = input_contexts
+      self._dataset_fn = dataset_fn
+      self._built = False
+      if build:
+        self.build()
     else:
       if element_spec is None:
         raise ValueError(
             "element_spec should also be passed when passing components")
+      if not build:
+        raise ValueError(
+            "When constructing DistributedDatasetFromFunction with components, "
+            "build should not be False. This is an internal error. Please file "
+            "a bug.")
       self._element_spec = element_spec
       self._datasets = components
+      self._built = True
+      self._enable_get_next_as_optional = _enable_get_next_as_optional(
+          self._strategy, self._datasets[0])
 
+  def build(self):
+    assert not self._built
+    self._datasets, element_spec = (
+        _create_datasets_from_function_with_input_context(
+            self._input_contexts, self._input_workers, self._dataset_fn))
+    self._element_spec = _create_distributed_tensor_spec(
+        self._strategy, element_spec)
     self._enable_get_next_as_optional = _enable_get_next_as_optional(
         self._strategy, self._datasets[0])
+    self._built = True
 
   def __iter__(self):
-    if (ops.executing_eagerly_outside_functions() or
-        ops.get_default_graph().building_function):
-      # This is an optional flag that can be used to turn off using
-      # OwnedMultiDeviceIterators and instead use the legacy
-      # MultiDeviceIterators as a stop gap solution that will allow us to roll
-      # out this change.
-      enable_legacy_iterators = getattr(self._strategy,
-                                        "_enable_legacy_iterators", False)
-      canonicalize_devices = getattr(self._strategy, "_canonicalize_devices",
-                                     True)
+    if not (ops.executing_eagerly_outside_functions() or
+            ops.get_default_graph().building_function):
+      raise RuntimeError("__iter__() is only supported inside of tf.function "
+                         "or when eager execution is enabled.")
 
-      iterators = _create_iterators_per_worker(self._datasets,
-                                               self._input_workers,
-                                               enable_legacy_iterators,
-                                               self._options,
-                                               canonicalize_devices)
-      if enable_legacy_iterators:
-        iterator = DistributedIteratorV1(
-            self._input_workers,
-            iterators,
-            self._strategy,
-            enable_get_next_as_optional=self._enable_get_next_as_optional)
-      else:
-        iterator = DistributedIterator(
-            input_workers=self._input_workers,
-            iterators=iterators,
-            strategy=self._strategy,
-            enable_get_next_as_optional=self._enable_get_next_as_optional,
-            options=self._options)
-      iterator._element_spec = self._element_spec  # pylint: disable=protected-access
+    if not self._built:
+      raise ValueError("You need to use this dataset in "
+                       "ClusterCoordinator.create_per_worker_dataset.")
 
-      # When async eager is enabled, sometimes the iterator may not finish
-      # initialization before passing to a multi device function, add a sync
-      # point here to make sure all underlying iterators are initialized.
-      if context.executing_eagerly():
-        context.async_wait()
+    # This is an optional flag that can be used to turn off using
+    # OwnedMultiDeviceIterators and instead use the legacy MultiDeviceIterators
+    # as a stop gap solution that will allow us to roll out this change.
+    enable_legacy_iterators = getattr(self._strategy,
+                                      "_enable_legacy_iterators", False)
+    canonicalize_devices = getattr(self._strategy, "_canonicalize_devices",
+                                   True)
 
-      return iterator
+    iterators = _create_iterators_per_worker(self._datasets,
+                                             self._input_workers,
+                                             enable_legacy_iterators,
+                                             self._options,
+                                             canonicalize_devices)
+    if enable_legacy_iterators:
+      iterator = DistributedIteratorV1(
+          self._input_workers,
+          iterators,
+          self._strategy,
+          enable_get_next_as_optional=self._enable_get_next_as_optional)
+    else:
+      iterator = DistributedIterator(
+          input_workers=self._input_workers,
+          iterators=iterators,
+          strategy=self._strategy,
+          enable_get_next_as_optional=self._enable_get_next_as_optional,
+          options=self._options)
+    iterator._element_spec = self._element_spec  # pylint: disable=protected-access
 
-    raise RuntimeError("__iter__() is only supported inside of tf.function "
-                       "or when eager execution is enabled.")
+    # When async eager is enabled, sometimes the iterator may not finish
+    # initialization before passing to a multi device function, add a sync
+    # point here to make sure all underlying iterators are initialized.
+    if context.executing_eagerly():
+      context.async_wait()
+
+    return iterator
 
   @property
   def element_spec(self):
@@ -2578,8 +2611,10 @@ def _enable_get_next_as_optional(strategy, dataset):
   #
   # TODO(rxsang): We want to always enable the get_next_as_optional behavior
   # when user passed input_fn instead of dataset.
-  if not getattr(strategy.extended, "experimental_enable_get_next_as_optional",
-                 False):
+  if not getattr(
+      strategy.extended, "enable_partial_batch_handling",
+      getattr(strategy.extended, "experimental_enable_get_next_as_optional",
+              False)):
     return False
 
   if context.executing_eagerly():

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
@@ -65,9 +66,8 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
 // If `export_to_mlir` is true, the
 // result is exported in MLIR text format, otherwise exported in flat buffer.
 Status ConvertTFExecutorToTFLOrFlatbuffer(
-    mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
-    bool emit_select_tf_ops, bool emit_custom_ops, bool allow_all_select_tf_ops,
-    const std::unordered_set<std::string>& select_user_tf_ops,
+    mlir::ModuleOp module, bool export_to_mlir,
+    const toco::TocoFlags& toco_flags,
     const mlir::TFL::QuantizationSpecs& quant_specs,
     const std::unordered_set<std::string>& saved_model_tags,
     std::string* result, mlir::PassManager* pass_manager);

@@ -158,6 +158,17 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
+    name = "_pywrap_determinism",
+    srcs = ["determinism.cc"],
+    hdrs = ["//tensorflow/core/util:determinism_hdr"],
+    compatible_with = get_compatible_with_portable(),
+    module_name = "_pywrap_determinism",
+    deps = [
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
     name = "_pywrap_util_port",
     srcs = ["port_wrapper.cc"],
     hdrs = ["//tensorflow/core/util:port_hdrs"],
@@ -397,6 +408,11 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "function_parameter_canonicalizer_hdrs",
+    textual_hdrs = ["function_parameter_canonicalizer.h"],
+)
+
 tf_python_pybind_extension(
     name = "_function_parameter_canonicalizer_binding_for_test",
     testonly = True,
@@ -452,6 +468,7 @@ py_library(
     ],
     deps = [
         ":_pywrap_tensor_float_32_execution",
+        ":_pywrap_determinism",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
@@ -465,6 +482,29 @@ py_library(
         "//tensorflow/python/util/protobuf",
         "//tensorflow/tools/docs:doc_controls",
         "//tensorflow/tools/compatibility:all_renames_v2",
+    ],
+)
+
+py_strict_library(
+    name = "traceback_utils",
+    srcs = ["traceback_utils.py"],
+    compatible_with = get_compatible_with_portable(),
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":tf_decorator",
+    ],
+)
+
+tf_py_test(
+    name = "traceback_utils_test",
+    size = "small",
+    srcs = ["traceback_utils_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
@@ -655,6 +695,15 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:parsing_ops",
+    ],
+)
+
+tf_py_test(
+    name = "type_annotations_test",
+    size = "small",
+    srcs = ["type_annotations_test.py"],
+    python_version = "PY3",
+    deps = [
     ],
 )
 

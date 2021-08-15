@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -32,7 +31,7 @@ namespace gpu {
 
 struct ConditionalThunkConfig {
   bool branch_index_is_bool;
-  int64 branch_count;
+  int64_t branch_count;
   std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
 };
 

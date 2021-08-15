@@ -38,7 +38,7 @@ from tensorflow.python.util.tf_export import tf_export
     None,
     "Use `tf.data.Dataset.interleave(map_func, cycle_length, block_length, "
     "num_parallel_calls=tf.data.AUTOTUNE)` instead. If sloppy "
-    "execution is desired, use `tf.data.Options.experimental_deterministic`.")
+    "execution is desired, use `tf.data.Options.deterministic`.")
 @tf_export("data.experimental.parallel_interleave")
 def parallel_interleave(map_func,
                         cycle_length,
@@ -78,9 +78,8 @@ def parallel_interleave(map_func,
       `Dataset` before advancing to the next input `Dataset`.
     sloppy: A boolean controlling whether determinism should be traded for
       performance by allowing elements to be produced out of order.  If `sloppy`
-      is `None`, the `tf.data.Options.experimental_deterministic` dataset option
-      (`True` by default) is used to decide whether to enforce a deterministic
-      order.
+      is `None`, the `tf.data.Options.deterministic` dataset option (`True` by
+      default) is used to decide whether to enforce a deterministic order.
     buffer_output_elements: The number of elements each iterator being
       interleaved should buffer (similar to the `.prefetch()` transformation for
       each interleaved iterator).

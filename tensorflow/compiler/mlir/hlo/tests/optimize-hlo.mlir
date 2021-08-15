@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -pass-pipeline='func(mhlo-test-optimize)' | FileCheck %s
+// RUN: mlir-hlo-opt %s -pass-pipeline='builtin.func(mhlo-test-optimize)' | FileCheck %s
 
 // CHECK-LABEL: @gather_is_slice_no_rank
 func @gather_is_slice_no_rank(%arg0: tensor<2x1x2xi32>, %arg1: tensor<i64>) -> tensor<1x2xi32> {

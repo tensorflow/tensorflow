@@ -164,9 +164,10 @@ def function_def_to_graph_def(fdef, input_shapes=None):
   copied_functions = set()
 
   if input_shapes and len(input_shapes) != len(fdef.signature.input_arg):
-    raise ValueError("Length of input_shapes must match the number of " +
-                     "input_args. len(input_shapes): {} len(input_arg): {}".
-                     format(len(input_shapes), len(fdef.signature.input_arg)))
+    raise ValueError("Length of `input_shapes` must match the number "
+                     f"of `input_arg`s in `fdef`. Got "
+                     f"{len(input_shapes)} `input_shapes` and "
+                     f"{len(fdef.signature.input_arg)} `input_arg`s.")
 
   # 1. Create placeholders for input nodes.
   for i, arg_def in enumerate(fdef.signature.input_arg):
@@ -231,12 +232,14 @@ def function_def_to_graph_def(fdef, input_shapes=None):
       if attr.type == "func":
         fname = node_def.attr[attr.name].func.name
         if not is_function(fname):
-          raise ValueError("%s function not found." % fname)
+          raise ValueError(f"Function {fname} was not found. Please make sure "
+                           "the FunctionDef `fdef` is correct.")
       elif attr.type == "list(func)":
         for fn in node_def.attr[attr.name].list.func:
           fname = fn.name
           if not is_function(fname):
-            raise ValueError("%s function not found." % fname)
+            raise ValueError(f"Function {fname} was not found. Please make "
+                             "sure the FunctionDef `fdef` is correct.")
 
     # Iterate over output_args in op_def to build the map.
     # Index of the output tensor in the flattened list of *all* output
@@ -271,7 +274,8 @@ def _get_num_args(arg_def, node_def):
   elif arg_def.type_attr or arg_def.type != types_pb2.DT_INVALID:
     return 1
   else:
-    raise ValueError("Invalid arg_def:\n\n{}".format(str(arg_def)))
+    raise ValueError(f"Invalid arg_def:\n\n{arg_def}. Please make sure the "
+                     "FunctionDef `fdef` is correct.")
 
 
 def _set_handle_data(func_graph, fdef):

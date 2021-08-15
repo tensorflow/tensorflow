@@ -58,7 +58,7 @@ class HloPassFix : public Pass {
   StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) override {
     bool changed = false;
     bool changed_this_iteration = true;
-    int64 iteration_count = 0;
+    int64_t iteration_count = 0;
     VLOG(3) << "Running HloPassFix.";
     while (changed_this_iteration) {
       TF_ASSIGN_OR_RETURN(changed_this_iteration,

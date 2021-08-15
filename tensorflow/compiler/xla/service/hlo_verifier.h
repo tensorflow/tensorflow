@@ -30,7 +30,7 @@ namespace xla {
 class ShapeVerifier : public DfsHloVisitor {
  public:
   ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision,
-                std::function<int64(const Shape&)> shape_size_function)
+                std::function<int64_t(const Shape&)> shape_size_function)
       : layout_sensitive_(layout_sensitive),
         allow_mixed_precision_(allow_mixed_precision),
         shape_size_function_(shape_size_function) {}
@@ -181,14 +181,14 @@ class ShapeVerifier : public DfsHloVisitor {
 
   // Checks that the given operand of the given instruction is of type TOKEN.
   Status CheckIsTokenOperand(const HloInstruction* instruction,
-                             int64 operand_no);
+                             int64_t operand_no);
 
   // Checks that the shape of the given operand of the given instruction matches
   // the given parameter of the given computation.
   Status CheckOperandAndParameter(const HloInstruction* instruction,
-                                  int64 operand_number,
+                                  int64_t operand_number,
                                   const HloComputation* computation,
-                                  int64 parameter_number);
+                                  int64_t parameter_number);
 
   // Returns true if the shapes of the two operands have the same element type,
   // and the result shape either has the same element type as the operand shapes
@@ -207,17 +207,18 @@ class ShapeVerifier : public DfsHloVisitor {
   bool allow_mixed_precision_;
 
   // Returns a target-specific shape size.
-  std::function<int64(const Shape&)> shape_size_function_;
+  std::function<int64_t(const Shape&)> shape_size_function_;
 };
 
 // An interface used to encapsulate target-specific verification quirks.
 class TargetVerifierMetadata {
  public:
-  TargetVerifierMetadata(std::function<int64(const Shape&)> shape_size_function)
+  TargetVerifierMetadata(
+      std::function<int64_t(const Shape&)> shape_size_function)
       : shape_size_function_(shape_size_function) {}
 
   // Returns a target-specific shape size.
-  int64 ShapeSize(const Shape& shape) const {
+  int64_t ShapeSize(const Shape& shape) const {
     return shape_size_function_(shape);
   }
 
@@ -233,7 +234,7 @@ class TargetVerifierMetadata {
 
  protected:
   // Returns a target-specific shape size.
-  std::function<int64(const Shape&)> shape_size_function_;
+  std::function<int64_t(const Shape&)> shape_size_function_;
 };
 
 // The default implementation of TargetVerifierMetadata, used unless the target
@@ -242,7 +243,7 @@ class DefaultVerifierMetadata : public TargetVerifierMetadata {
  public:
   DefaultVerifierMetadata(
       bool layout_sensitive, bool allow_mixed_precision,
-      std::function<int64(const Shape&)> shape_size_function)
+      std::function<int64_t(const Shape&)> shape_size_function)
       : TargetVerifierMetadata(shape_size_function),
         layout_sensitive_(layout_sensitive),
         allow_mixed_precision_(allow_mixed_precision) {}
@@ -271,7 +272,7 @@ class HloVerifier : public HloModulePass {
       bool layout_sensitive, bool allow_mixed_precision,
       std::function<bool(const HloInstruction*)>
           instruction_can_change_layout_func = {},
-      std::function<int64(const Shape&)> shape_size_func =
+      std::function<int64_t(const Shape&)> shape_size_func =
           [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); })
       : target_metadata_(absl::make_unique<DefaultVerifierMetadata>(
             layout_sensitive, allow_mixed_precision, shape_size_func)),

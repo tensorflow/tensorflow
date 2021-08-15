@@ -235,11 +235,7 @@ int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
   // following getNbBindings() / K bindings are used by profile number 1 etc."
   // Therefore, to get the number of input tensors, we need to divide by the
   // the number of profiles.
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   int n_profiles = engine->getNbOptimizationProfiles();
-#else
-  int n_profiles = 1;
-#endif
   return n_input / n_profiles;
 }
 

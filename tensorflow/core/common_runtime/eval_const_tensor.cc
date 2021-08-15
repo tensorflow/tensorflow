@@ -68,7 +68,7 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
           flat(i) = static_cast<int32>(dimension);
         }
       } else if (node->output_type(0) == DT_INT64) {
-        auto flat = t.flat<int64>();
+        auto flat = t.flat<int64_t>();
         for (int i = 0; i < input_rank; i++) {
           flat(i) = c->Value(c->Dim(c->input(0), i));
         }
@@ -82,7 +82,7 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
   } else if (node->type_string() == "Rank") {
     bool rank_known = c->RankKnown(c->input(0));
     if (rank_known) {
-      int32 input_rank = c->Rank(c->input(0));
+      int32_t input_rank = c->Rank(c->input(0));
       Tensor t(node->output_type(0), TensorShape({}));
       t.flat<int32>()(0) = input_rank;
       *output = t;
@@ -91,7 +91,7 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
   } else if (node->type_string() == "Size") {
     bool fully_defined_inputs = c->FullyDefined(c->input(0));
     if (fully_defined_inputs) {
-      int32 rank = c->Rank(c->input(0));
+      int32_t rank = c->Rank(c->input(0));
       Tensor t(node->output_type(0), TensorShape({}));
       int64_t size = 1;
       for (int i = 0; i < rank; i++) {
@@ -105,7 +105,7 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
         }
         t.flat<int32>()(0) = static_cast<int32>(size);
       } else if (node->output_type(0) == DT_INT64) {
-        t.flat<int64>()(0) = size;
+        t.flat<int64_t>()(0) = size;
       } else {
         return errors::FailedPrecondition(
             "Size has output type that is not int32 or int64");
@@ -347,7 +347,7 @@ Status ExtractConstantSubgraph(
 
 Status EvaluateConstantTensor(OutputTensor tensor, const ShapeRefiner& refiner,
                               const OpRegistryInterface& ops,
-                              int32 graph_def_version, bool* evaluated,
+                              int32_t graph_def_version, bool* evaluated,
                               Tensor* result, GraphRunner* graph_runner,
                               std::unordered_map<string, Tensor>* cached_values,
                               int64_t max_cached_value_size,

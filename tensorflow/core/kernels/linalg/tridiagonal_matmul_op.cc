@@ -64,7 +64,7 @@ class TridiagonalMatMulOp : public LinearAlgebraOp<Scalar> {
     return TensorShapes({input_matrix_shapes[3]});
   }
 
-  int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
+  int64_t GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
     const int num_eqs = static_cast<int>(input_matrix_shapes[0].dim_size(1));
     const int num_rhss = static_cast<int>(input_matrix_shapes[3].dim_size(0));
 
@@ -74,7 +74,7 @@ class TridiagonalMatMulOp : public LinearAlgebraOp<Scalar> {
     const double cost = num_rhss * ((3 * num_eqs - 2) * mult_cost +
                                     (2 * num_eqs - 2) * add_cost);
     return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64>(cost);
+                                                  : static_cast<int64_t>(cost);
   }
 
   // Needed to prevent writing result to the same location where input is.

@@ -824,13 +824,13 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     // errors, deliberately ignore executor statuses in cleanup.
   });
   m.def(
-      "TFE_SetConfigKeyValue",
+      "TFE_InsertConfigKeyValue",
       [](py::handle& ctx, const char* config_key, const char* config_value) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
         Py_BEGIN_ALLOW_THREADS;
-        TFE_SetConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
-                              config_value, status.get());
+        TFE_InsertConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                                 config_value, status.get());
         Py_END_ALLOW_THREADS;
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
       },
@@ -856,6 +856,16 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         TFE_DeleteConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
                                  status.get());
         Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
+  m.def(
+      "TFE_ReportErrorToCluster",
+      [](py::handle& ctx, int error_code, const char* error_message) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        TFE_ReportErrorToCluster(tensorflow::InputTFE_Context(ctx), error_code,
+                                 error_message, status.get());
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
       },
       py::return_value_policy::reference);

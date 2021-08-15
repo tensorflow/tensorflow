@@ -18,12 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl.testing import parameterized
 import gc
-import numpy as np
 import os
 import threading
 import weakref
+
+from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import tensor_shape_pb2
@@ -35,8 +36,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import wrap_function
-from tensorflow.python.framework import config
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -201,7 +202,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
 
     self.assertAllEqual(x, np.ones((3, 4)))
     self.assertAllEqual(np.array(x), np.ones((3, 4)))
-    self.assertEqual(len(x), 3)
+    self.assertLen(x, 3)
 
   def testConstructor(self):
     a = array_ops.ones([])
@@ -273,7 +274,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         w.ref(),
     }
 
-    self.assertEqual(len(tensor_set), 4)
+    self.assertLen(tensor_set, 4)
     self.assertIn(x1.ref(), tensor_set)
     self.assertIn(x2.ref(), tensor_set)
     self.assertIn(y.ref(), tensor_set)
@@ -296,11 +297,11 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         w.ref(): "w",
     }
 
-    self.assertEqual(len(tensor_dict), 4)
+    self.assertLen(tensor_dict, 4)
 
     # Overwriting x1
     tensor_dict[x2.ref()] = "x2"
-    self.assertEqual(len(tensor_dict), 4)
+    self.assertLen(tensor_dict, 4)
 
     self.assertEqual(tensor_dict[x1.ref()], "x2")
     self.assertEqual(tensor_dict[x2.ref()], "x2")
@@ -528,10 +529,10 @@ class IndexedSlicesSpecTest(test_util.TensorFlowTestCase,
 
   def testConstruction(self):
     spec1 = indexed_slices.IndexedSlicesSpec()
-    self.assertEqual(spec1._shape.rank, None)
+    self.assertIsNone(spec1._shape.rank)
     self.assertEqual(spec1._values_dtype, dtypes.float32)
     self.assertEqual(spec1._indices_dtype, dtypes.int64)
-    self.assertEqual(spec1._dense_shape_dtype, None)
+    self.assertIsNone(spec1._dense_shape_dtype)
     self.assertEqual(spec1._indices_shape.as_list(), [None])
 
     spec2 = indexed_slices.IndexedSlicesSpec([None, None], dtypes.string,
@@ -622,7 +623,7 @@ class IndexedSlicesSpecTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(x.indices, st_reconstructed.indices)
     self.assertAllEqual(x.values, st_reconstructed.values)
     if dense_shape is None:
-      self.assertIs(st_reconstructed.dense_shape, None)
+      self.assertIsNone(st_reconstructed.dense_shape)
     else:
       self.assertAllEqual(x.dense_shape, st_reconstructed.dense_shape)
 
@@ -644,7 +645,7 @@ class IndexedSlicesSpecTest(test_util.TensorFlowTestCase,
     self.assertIsInstance(st2, indexed_slices.IndexedSlicesValue)
     self.assertAllEqual(st2.indices, indices)
     self.assertAllEqual(st2.values, values)
-    self.assertIs(st2.dense_shape, None)
+    self.assertIsNone(st2.dense_shape)
 
 
 class NodeDefConstructorTest(test_util.TensorFlowTestCase):
@@ -1111,7 +1112,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       # Can't add an edge beyond what's specified by "T"
       with self.assertRaises(errors.OutOfRangeError):
         while_op._add_while_inputs([new_input2])
-      self.assertEqual(len(while_op.inputs), orig_num_inputs + 2)  # pylint: disable=g-deprecated-assert
+      self.assertLen(while_op.inputs, orig_num_inputs + 2)  # pylint: disable=g-deprecated-assert
 
       test()
 
@@ -1122,12 +1123,12 @@ class OperationTest(test_util.TensorFlowTestCase):
     z = x + y
 
     self.assertEqual(x.op.op_def.name, "Const")
-    self.assertEqual(len(x.op.op_def.input_arg), 0)
-    self.assertEqual(len(x.op.op_def.output_arg), 1)
+    self.assertLen(x.op.op_def.input_arg, 0)
+    self.assertLen(x.op.op_def.output_arg, 1)
 
     self.assertRegex(z.op.op_def.name, "Add(V2)?")
-    self.assertEqual(len(z.op.op_def.input_arg), 2)
-    self.assertEqual(len(z.op.op_def.output_arg), 1)
+    self.assertLen(z.op.op_def.input_arg, 2)
+    self.assertLen(z.op.op_def.output_arg, 1)
 
   def testInputFromDifferentGraphError(self):
     g_0 = ops.Graph()
@@ -1226,7 +1227,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(op.name, "myop")
     self.assertEqual(op.type, "IntInputIntOutput")
-    self.assertEqual(len(op.outputs), 1)
+    self.assertLen(op.outputs, 1)
     self.assertEqual(op.outputs[0].shape, tensor_shape.unknown_shape())
     self.assertEqual(list(op.inputs), [x])
     self.assertEqual(op.control_inputs, [])
@@ -1245,7 +1246,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(op.name, "myop")
     self.assertEqual(op.type, "Identity")
-    self.assertEqual(len(op.outputs), 1)
+    self.assertLen(op.outputs, 1)
     self.assertEqual(op.outputs[0].shape, tensor_shape.TensorShape([2, 3]))
 
   def testUniqueName(self):
@@ -1276,7 +1277,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
         ops._create_c_op(ops.get_default_graph(),
                          ops._NodeDef("IntInput", "cond/myop"), [x], [])
         new_ops = g._add_new_tf_operations()
-        self.assertEqual(len(new_ops), 1)
+        self.assertLen(new_ops, 1)
         return x
 
       control_flow_ops.cond(x < 10, true_fn, lambda: x)
@@ -1306,7 +1307,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
         ops._create_c_op(ops.get_default_graph(),
                          ops._NodeDef("IntInput", "myloop/myop"), [x], [])
         new_ops = g._add_new_tf_operations()
-        self.assertEqual(len(new_ops), 1)
+        self.assertLen(new_ops, 1)
         return i
 
       control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
@@ -1338,7 +1339,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
                          ops._NodeDef("IntInput", "myloop/myop"), [x], [])
         with ops.control_dependencies([c]):
           new_ops = g._add_new_tf_operations()
-          self.assertEqual(len(new_ops), 1)
+          self.assertLen(new_ops, 1)
         return i
 
       control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
@@ -1362,7 +1363,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
                          ops._NodeDef("IntInput", "myloop/myop"), [x], [])
         with ops.control_dependencies([c]):
           new_ops = g._add_new_tf_operations()
-          self.assertEqual(len(new_ops), 1)
+          self.assertLen(new_ops, 1)
         return i
 
       control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
@@ -1545,6 +1546,25 @@ class NameStackTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       with g.name_scope("_bar"):
         pass
+
+  def testEmptyScopeEdgeCases(self):
+    g = ops.Graph()
+    self.assertEqual("", g.get_name_scope())
+    with g.name_scope("") as scope:
+      self.assertEqual("", scope)
+      self.assertEqual("", g.get_name_scope())
+    with g.name_scope(None) as scope:
+      self.assertEqual("", scope)
+      self.assertEqual("", g.get_name_scope())
+    with g.name_scope("foo") as scope:
+      self.assertEqual("foo/", scope)
+      self.assertEqual("foo", g.get_name_scope())
+      with g.name_scope("") as scope:
+        self.assertEqual("", scope)
+        self.assertEqual("", g.get_name_scope())
+      with g.name_scope(None) as scope:
+        self.assertEqual("", scope)
+        self.assertEqual("", g.get_name_scope())
 
 
 class NameTest(test_util.TensorFlowTestCase):
@@ -2681,9 +2701,9 @@ class InitScopeTest(test_util.TensorFlowTestCase):
           with ops.init_scope():
             _ = constant_op.constant(1.0)
 
-    self.assertEqual(len(g2.get_operations()), 0)
-    self.assertEqual(len(g1.get_operations()), 0)
-    self.assertEqual(len(g0.get_operations()), 1)
+    self.assertLen(g2.get_operations(), 0)
+    self.assertLen(g1.get_operations(), 0)
+    self.assertLen(g0.get_operations(), 1)
 
   def testPreservesDevices(self):
     g0 = ops.Graph()
@@ -2721,9 +2741,9 @@ class InitScopeTest(test_util.TensorFlowTestCase):
           # This op should be lifted into g0.
           _ = constant_op.constant(1.0)
           self.assertIs(g0, ops.get_default_graph())
-          self.assertEqual(len(g2.get_operations()), 0)
-          self.assertEqual(len(g1.get_operations()), 0)
-          self.assertEqual(len(g0.get_operations()), 1)
+          self.assertLen(g2.get_operations(), 0)
+          self.assertLen(g1.get_operations(), 0)
+          self.assertLen(g0.get_operations(), 1)
         with g2.as_default():
           with ops.init_scope():
             # This op should be lifted into g0.
@@ -2736,10 +2756,10 @@ class InitScopeTest(test_util.TensorFlowTestCase):
                 _ = constant_op.constant(1.0)
                 self.assertIs(g3, ops.get_default_graph())
 
-    self.assertEqual(len(g3.get_operations()), 1)
-    self.assertEqual(len(g2.get_operations()), 0)
-    self.assertEqual(len(g1.get_operations()), 0)
-    self.assertEqual(len(g0.get_operations()), 2)
+    self.assertLen(g3.get_operations(), 1)
+    self.assertLen(g2.get_operations(), 0)
+    self.assertLen(g1.get_operations(), 0)
+    self.assertLen(g0.get_operations(), 2)
 
   def testEscapesToEagerContext(self):
     g = ops.Graph()
@@ -2844,15 +2864,15 @@ class InitScopeTest(test_util.TensorFlowTestCase):
 
       # pylint: disable=protected-access
       fn_graph._building_function = True
-      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      self.assertLen(ops._default_graph_stack.stack, 0)
       with fn_graph.as_default():
-        self.assertEqual(len(ops._default_graph_stack.stack), 1)
+        self.assertLen(ops._default_graph_stack.stack, 1)
         with ops.init_scope():
           self.assertGreater(len(ops._default_graph_stack.stack), 1)
           dummy = constant_op.constant(1.0)
-        self.assertEqual(len(ops._default_graph_stack.stack), 1)
+        self.assertLen(ops._default_graph_stack.stack, 1)
       # Note that the global graph is _not_ on the graph stack.
-      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      self.assertLen(ops._default_graph_stack.stack, 0)
       # Ensure that `dummy` was added to the global graph.
       self.assertEqual(global_graph, dummy.graph)
       # pylint: enable=protected-access
@@ -2860,10 +2880,10 @@ class InitScopeTest(test_util.TensorFlowTestCase):
   def testInstallsDefaultGraphWhenGraphStackIsEmptyInGraphMode(self):
     with context.graph_mode():
       # pylint: disable=protected-access
-      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      self.assertLen(ops._default_graph_stack.stack, 0)
       with ops.init_scope():
         self.assertGreater(len(ops._default_graph_stack.stack), 0)
-      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      self.assertLen(ops._default_graph_stack.stack, 0)
       # pylint: enable=protected-access
 
   def testPreservesNameScopeInGraphConstruction(self):
@@ -3672,7 +3692,7 @@ class GraphDefInputShapesTest(test_util.TensorFlowTestCase):
     with test_graph.as_default():
       concrete_function.add_to_graph(g=test_graph)
     graph_def = test_graph.as_graph_def(add_shapes=True)
-    self.assertEqual(len(graph_def.library.function), 1)
+    self.assertLen(graph_def.library.function, 1)
     function_def = graph_def.library.function[0]
     input_shapes = function_def.attr["_input_shapes"]
     return input_shapes

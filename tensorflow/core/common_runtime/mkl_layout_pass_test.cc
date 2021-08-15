@@ -5169,8 +5169,9 @@ TEST_F(MklLayoutPassTest, Einsum_Positive) {
             "|B->C;B:1->C:1");
 }
 
-static void BM_MklLayoutRewritePass(int iters, int op_nodes) {
-  testing::StopTiming();
+static void BM_MklLayoutRewritePass(::testing::benchmark::State& state) {
+  int op_nodes = state.range(0);
+
   string s;
   for (int in = 0; in < 10; in++) {
     s += strings::Printf("node { name: 'in%04d' op: 'Input'}", in);
@@ -5185,22 +5186,20 @@ static void BM_MklLayoutRewritePass(int iters, int op_nodes) {
   }
 
   bool first = true;
-  while (iters > 0) {
+  const int N = graph->num_node_ids();
+  while (state.KeepRunningBatch(N)) {
+    state.PauseTiming();
     std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
     InitGraph(s, graph.get());
-    int N = graph->num_node_ids();
     if (first) {
-      testing::SetLabel(strings::StrCat("Per graph node.  Nodes: ", N));
+      state.SetLabel(strings::StrCat("Per graph node.  Nodes: ", N));
       first = false;
     }
     {
-      testing::StartTiming();
+      state.ResumeTiming();
       std::unique_ptr<Graph> ug(graph.get());
       RunMklLayoutRewritePass(&ug);
-      testing::StopTiming();
     }
-    iters -= N;  // Our benchmark units are individual graph nodes,
-                 // not whole graphs
   }
 }
 BENCHMARK(BM_MklLayoutRewritePass)->Arg(1000)->Arg(10000);

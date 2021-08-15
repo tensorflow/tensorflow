@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <utility>
+
 #include "tensorflow/core/platform/mutex.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
@@ -34,11 +35,7 @@ namespace tensorrt {
 // a push calibration This class should be updated accordingly
 
 // IInt8EntropyCalibrator2 is preferred for TRT 5.1+.
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
 struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator2 {
-#else
-struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
-#endif
  public:
   // Construct a calibrator for future calibration.
   TRTInt8Calibrator(

@@ -45,7 +45,7 @@ class ReshapeOp : public XlaOpKernel {
                                         sizes_shape.DebugString()));
     const int64_t num_dims = sizes_shape.num_elements();
 
-    std::vector<int64> shape_input;
+    std::vector<int64_t> shape_input;
     OP_REQUIRES_OK(ctx,
                    ctx->ConstantInputAsIntVector(
                        1, &shape_input, xla::ValueInferenceMode::kUpperBound));
@@ -57,7 +57,7 @@ class ReshapeOp : public XlaOpKernel {
     int unknown_index = -1;
     bool shape_has_zero_dim = false;
     for (int d = 0; d < num_dims; ++d) {
-      const int32 size = shape_input[d];
+      const int32_t size = shape_input[d];
       if (size == -1) {
         OP_REQUIRES(
             ctx, unknown_index == -1,

@@ -91,6 +91,7 @@ PyTpuClient::PyTpuClient(std::string platform_name,
                          std::vector<std::shared_ptr<PjRtDevice>> devices,
                          int process_index)
     : platform_name_(std::move(platform_name)),
+      platform_version_("tpu_driver (deprecated)"),
       driver_(std::move(driver)),
       devices_(std::move(devices)),
       process_index_(process_index) {

@@ -253,7 +253,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         {
-          int64 temp;
+          int64_t temp;
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name(kElementIndex), &temp));
           element_index_ = temp;
@@ -262,7 +262,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
                 full_name(kCurrentElementIteratorUninitialized))) {
           size_t inputs_size;
           {
-            int64 temp;
+            int64_t temp;
             TF_RETURN_IF_ERROR(
                 reader->ReadScalar(full_name(kInputsSize), &temp));
             inputs_size = static_cast<size_t>(temp);

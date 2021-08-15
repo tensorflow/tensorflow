@@ -375,7 +375,7 @@ build:v1 --define=tf_api_version=1 --action_env=TF2_BEHAVIOR=0
 build:v2 --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
 
 # Disable XLA on mobile.
-build:xla     --define=with_xla_supprt=true # TODO: remove, it's on by default.
+build:xla     --define=with_xla_support=true # TODO: remove, it's on by default.
 build:android --define=with_xla_support=false
 build:ios     --define=with_xla_support=false
 
@@ -626,3 +626,21 @@ build:ubsan --copt -O3
 build:ubsan --copt -fno-omit-frame-pointer
 build:ubsan --linkopt -fsanitize=undefined
 build:ubsan --linkopt -lubsan
+
+# Exclude TFRT integration for anything but Linux.
+build:android --config=no_tfrt
+build:macos   --config=no_tfrt
+build:windows --config=no_tfrt
+build:rocm    --config=no_tfrt
+build:no_tfrt --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compiler/mlir/tfrt/benchmarks,tensorflow/compiler/mlir/tfrt/jit/python_binding,tensorflow/compiler/mlir/tfrt/python_tests,tensorflow/compiler/mlir/tfrt/tests,tensorflow/compiler/mlir/tfrt/tests/saved_model,tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu,tensorflow/core/runtime_fallback,tensorflow/core/runtime_fallback/conversion,tensorflow/core/runtime_fallback/kernel,tensorflow/core/runtime_fallback/opdefs,tensorflow/core/runtime_fallback/runtime,tensorflow/core/runtime_fallback/util,tensorflow/core/tfrt/common,tensorflow/core/tfrt/eager,tensorflow/core/tfrt/eager/backends/cpu,tensorflow/core/tfrt/eager/backends/gpu,tensorflow/core/tfrt/eager/core_runtime,tensorflow/core/tfrt/eager/cpp_tests/core_runtime,tensorflow/core/tfrt/fallback,tensorflow/core/tfrt/gpu,tensorflow/core/tfrt/run_handler_thread_pool,tensorflow/core/tfrt/runtime,tensorflow/core/tfrt/saved_model,tensorflow/core/tfrt/saved_model/tests,tensorflow/core/tfrt/tpu,tensorflow/core/tfrt/utils
+
+# Experimental configuration for testing XLA GPU lowering to TFRT BEF thunks.
+# bazel test --config=experimental_enable_bef_thunk \
+#   //tensorflow/compiler/xla/service/gpu/tests:mlir_gemm_test
+build:experimental_enable_bef_thunk --config=cuda
+build:experimental_enable_bef_thunk --//tensorflow/compiler/xla/service/gpu:enable_bef_thunk
+build:experimental_enable_bef_thunk --@tf_runtime//:enable_gpu
+build:experimental_enable_bef_thunk --@rules_cuda//cuda:enable_cuda
+build:experimental_enable_bef_thunk --nocheck_visibility
+build:experimental_enable_bef_thunk --incompatible_strict_action_env
+build:experimental_enable_bef_thunk --config=monolithic

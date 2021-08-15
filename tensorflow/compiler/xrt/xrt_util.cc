@@ -48,14 +48,14 @@ class ScopedHandles {
     }
   }
 
-  int64 operator[](size_t index) const { return handles_.at(index); }
+  int64_t operator[](size_t index) const { return handles_.at(index); }
 
   size_t size() const { return handles_.size(); }
 
   // Adds the given handle at the index position, by marking it releasable
   // according to the release argument. If an existing, and to-be-released
   // handle already exists at the same index, it will be released.
-  Status Add(size_t index, int64 handle, bool release) {
+  Status Add(size_t index, int64_t handle, bool release) {
     if (index >= handles_.size()) {
       handles_.resize(index + 1, XRTMemoryManager::InvalidKey());
       handles_release_.resize(index + 1, false);
@@ -92,8 +92,8 @@ class ScopedHandles {
 
   // Releases the handle at the given index. The destructor will not use that
   // XRTMemoryManager::Release() API on such handle.
-  int64 Release(size_t index) {
-    int64 handle = handles_.at(index);
+  int64_t Release(size_t index) {
+    int64_t handle = handles_.at(index);
     handles_[index] = XRTMemoryManager::InvalidKey();
     handles_release_[index] = false;
     return handle;
@@ -107,7 +107,7 @@ class ScopedHandles {
 
  private:
   RefPtr<XRTMemoryManager> memory_manager_;
-  std::vector<int64> handles_;
+  std::vector<int64_t> handles_;
   std::vector<bool> handles_release_;
 };
 
@@ -133,7 +133,7 @@ string SafeDebugPath(const string& path) {
   return string();
 }
 
-Status MakeOutput(const RefPtr<XRTTupleAllocation>& output, int64 index,
+Status MakeOutput(const RefPtr<XRTTupleAllocation>& output, int64_t index,
                   RefPtr<XRTTupleAllocation>* result) {
   if (index == 0) {
     *result = output;
@@ -209,11 +209,11 @@ xla::StatusOr<std::vector<InputCoords>> GetComputationInputs(
   for (int i = 0; i < arg_list.size(); ++i) {
     const Tensor& arg = arg_list[i];
     if (TensorShapeUtils::IsScalar(arg.shape())) {
-      input_coords.emplace_back(arg.scalar<int64>()());
+      input_coords.emplace_back(arg.scalar<int64_t>()());
     } else {
       TF_RET_CHECK(TensorShapeUtils::IsVector(arg.shape()));
-      auto arg_vec = arg.vec<int64>();
-      const int64 num_elts = arg.shape().dim_size(0);
+      auto arg_vec = arg.vec<int64_t>();
+      const int64_t num_elts = arg.shape().dim_size(0);
       for (int i = 0; i < num_elts; ++i) {
         input_coords.emplace_back(arg_vec(i));
       }
@@ -236,7 +236,7 @@ bool InputShapeMatches(const xla::Shape& parameter_shape,
       if (pshape.is_static() && pshape.layout() != ishape->layout()) {
         return errors::InvalidArgument("Mismatching layouts");
       }
-      for (int64 dim = 0; dim < pshape.rank(); ++dim) {
+      for (int64_t dim = 0; dim < pshape.rank(); ++dim) {
         if (pshape.is_dynamic_dimension(dim)) {
           if (pshape.dimensions(dim) < ishape->dimensions(dim)) {
             return errors::InvalidArgument("Mismatching shapes");
@@ -256,8 +256,8 @@ bool InputShapeMatches(const xla::Shape& parameter_shape,
 xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetInputTupleAllocations(
     const std::vector<InputCoords>& input_coords,
     XRTMemoryManager::WorkingSet* working_set, xla::Backend* backend,
-    int64 num_input_shapes,
-    const std::function<xla::Shape(int64)>& shape_getter, bool release_inputs,
+    int64_t num_input_shapes,
+    const std::function<xla::Shape(int64_t)>& shape_getter, bool release_inputs,
     se::DeviceMemoryAllocator* allocator) {
   if (input_coords.size() != num_input_shapes) {
     return errors::InvalidArgument(
@@ -328,7 +328,7 @@ xla::StatusOr<std::vector<xla::ExecutionInput>> GetArgumentsBuffers(
   bool alias_outputs = release_inputs && input_tuples.size() == 1 &&
                        input_tuples[0]->IsExclusiveOwner() && !is_dynamic(0);
   arguments.reserve(input_tuples.size());
-  for (int64 i = 0; i < input_tuples.size(); ++i) {
+  for (int64_t i = 0; i < input_tuples.size(); ++i) {
     auto alias_checker =
         [&](const xla::ShapeIndex& index) -> xla::StatusOr<bool> {
       if (input_output_alias.ParameterHasAlias(i, index)) {
@@ -349,24 +349,25 @@ Status CreateExecuteOutput(OpKernelContext* context,
                            RefPtr<XRTTupleAllocation> output_tuple,
                            bool return_exploded_tuple) {
   if (return_exploded_tuple && output_tuple->on_host_shape().IsTuple()) {
-    int64 tuple_element_count =
+    int64_t tuple_element_count =
         xla::ShapeUtil::TupleElementCount(output_tuple->on_device_shape());
     Tensor* output_tensor;
     TF_RETURN_IF_ERROR(context->allocate_output(
         0, TensorShape({tuple_element_count}), &output_tensor));
 
-    for (int64 i = 0; i < tuple_element_count; ++i) {
+    for (int64_t i = 0; i < tuple_element_count; ++i) {
       XRTTupleAllocation* suballocation;
       TF_RETURN_IF_ERROR(XRTTupleAllocation::MakeSubBuffer(
           output_tuple.get(), {i}, &suballocation,
           /*alias_parent_allocation=*/false));
-      output_tensor->vec<int64>()(i) = memory_manager->Register(suballocation);
+      output_tensor->vec<int64_t>()(i) =
+          memory_manager->Register(suballocation);
     }
   } else {
     Tensor* output_tensor;
     TF_RETURN_IF_ERROR(
         context->allocate_output(0, TensorShape({}), &output_tensor));
-    output_tensor->scalar<int64>()() =
+    output_tensor->scalar<int64_t>()() =
         memory_manager->Register(std::move(output_tuple));
   }
   return Status::OK();
@@ -381,7 +382,7 @@ Status ExecuteChained(OpKernelContext* context,
                       se::DeviceMemoryAllocator* allocator) {
   // Create the vector which tracks the uses of the intermediate chained
   // operations outputs.
-  std::vector<int64> uses(plan.ops_size(), 0);
+  std::vector<int64_t> uses(plan.ops_size(), 0);
   for (auto& op : plan.ops()) {
     for (auto& input : op.inputs()) {
       uses[input.op_index()] += 1;
@@ -430,9 +431,9 @@ Status ExecuteChained(OpKernelContext* context,
 
   Tensor* output_tensor;
   TF_RETURN_IF_ERROR(context->allocate_output(
-      0, TensorShape({static_cast<int64>(results.size())}), &output_tensor));
+      0, TensorShape({static_cast<int64_t>(results.size())}), &output_tensor));
   for (size_t i = 0; i < results.size(); ++i) {
-    output_tensor->vec<int64>()(i) = results.Release(i);
+    output_tensor->vec<int64_t>()(i) = results.Release(i);
   }
   return Status::OK();
 }

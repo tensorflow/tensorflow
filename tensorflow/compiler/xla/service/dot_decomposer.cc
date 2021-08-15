@@ -39,22 +39,22 @@ namespace {
 Status CanonicalizeDot(HloInstruction* original_dot) {
   auto computation = original_dot->parent();
   const auto& original_dnums = original_dot->dot_dimension_numbers();
-  const int64 num_batch_dims = original_dnums.lhs_batch_dimensions_size();
-  const int64 num_contracting_dims =
+  const int64_t num_batch_dims = original_dnums.lhs_batch_dimensions_size();
+  const int64_t num_contracting_dims =
       original_dnums.lhs_contracting_dimensions_size();
 
   const auto& lhs_shape = original_dot->operand(0)->shape();
-  const int64 lhs_rank = lhs_shape.rank();
-  const int64 num_lhs_non_contracting_dims =
+  const int64_t lhs_rank = lhs_shape.rank();
+  const int64_t num_lhs_non_contracting_dims =
       lhs_rank - num_batch_dims - num_contracting_dims;
 
-  std::vector<int64> lhs_non_contracting_dims;
+  std::vector<int64_t> lhs_non_contracting_dims;
   lhs_non_contracting_dims.reserve(num_lhs_non_contracting_dims);
-  int64 lhs_contracting_size = 1;
-  int64 lhs_non_contracting_size = 1;
-  std::vector<int64> batch_dim_sizes;
+  int64_t lhs_contracting_size = 1;
+  int64_t lhs_non_contracting_size = 1;
+  std::vector<int64_t> batch_dim_sizes;
   batch_dim_sizes.reserve(num_batch_dims);
-  for (int64 i = 0; i < lhs_rank; ++i) {
+  for (int64_t i = 0; i < lhs_rank; ++i) {
     if (absl::c_linear_search(original_dnums.lhs_contracting_dimensions(), i)) {
       lhs_contracting_size *= lhs_shape.dimensions(i);
     } else if (absl::c_linear_search(original_dnums.lhs_batch_dimensions(),
@@ -68,7 +68,7 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   // The canonical form of the lhs is
   // [BatchDims, NonContractingDimsProduct, ContractingsDimsProduct]
   // If NonContractingDimsProduct is 1, it is omitted.
-  std::vector<int64> lhs_transpose;
+  std::vector<int64_t> lhs_transpose;
   lhs_transpose.reserve(lhs_rank);
   lhs_transpose.insert(lhs_transpose.end(),
                        original_dnums.lhs_batch_dimensions().begin(),
@@ -82,7 +82,7 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
       computation->AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::PermuteDimensions(lhs_transpose, lhs_shape),
           original_dot->mutable_operand(0), lhs_transpose));
-  std::vector<int64> lhs_reshape_dims = batch_dim_sizes;
+  std::vector<int64_t> lhs_reshape_dims = batch_dim_sizes;
   if (lhs_non_contracting_size > 1) {
     lhs_reshape_dims.push_back(lhs_non_contracting_size);
   }
@@ -94,14 +94,14 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
           transposed_lhs));
 
   const auto& rhs_shape = original_dot->operand(1)->shape();
-  const int64 rhs_rank = rhs_shape.rank();
-  const int64 num_rhs_non_contracting_dims =
+  const int64_t rhs_rank = rhs_shape.rank();
+  const int64_t num_rhs_non_contracting_dims =
       rhs_rank - num_batch_dims - num_contracting_dims;
-  std::vector<int64> rhs_non_contracting_dims;
+  std::vector<int64_t> rhs_non_contracting_dims;
   rhs_non_contracting_dims.reserve(num_rhs_non_contracting_dims);
-  int64 rhs_non_contracting_size = 1;
-  int64 rhs_contracting_size = 1;
-  for (int64 i = 0; i < rhs_rank; ++i) {
+  int64_t rhs_non_contracting_size = 1;
+  int64_t rhs_contracting_size = 1;
+  for (int64_t i = 0; i < rhs_rank; ++i) {
     if (absl::c_linear_search(original_dnums.rhs_contracting_dimensions(), i)) {
       rhs_contracting_size *= rhs_shape.dimensions(i);
     } else if (!absl::c_linear_search(original_dnums.rhs_batch_dimensions(),
@@ -114,7 +114,7 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   // The canonical form of the rhs is
   // [BatchDims, NonContractingDimsProduct, ContractingsDimsProduct]
   // If NonContractingDimsProduct is 1, it is omitted.
-  std::vector<int64> rhs_transpose;
+  std::vector<int64_t> rhs_transpose;
   rhs_transpose.reserve(rhs_rank);
   rhs_transpose.insert(rhs_transpose.end(),
                        original_dnums.rhs_batch_dimensions().begin(),
@@ -129,7 +129,7 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
           ShapeUtil::PermuteDimensions(rhs_transpose, rhs_shape),
           original_dot->mutable_operand(1), rhs_transpose));
 
-  std::vector<int64> rhs_reshape_dims = batch_dim_sizes;
+  std::vector<int64_t> rhs_reshape_dims = batch_dim_sizes;
   rhs_reshape_dims.push_back(rhs_contracting_size);
   if (rhs_non_contracting_size > 1) {
     rhs_reshape_dims.push_back(rhs_non_contracting_size);
@@ -140,7 +140,7 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
           ShapeUtil::MakeShape(rhs_shape.element_type(), rhs_reshape_dims),
           transposed_rhs));
 
-  std::vector<int64> dot_dims = batch_dim_sizes;
+  std::vector<int64_t> dot_dims = batch_dim_sizes;
   if (lhs_non_contracting_size > 1) {
     dot_dims.push_back(lhs_non_contracting_size);
   }
@@ -149,7 +149,7 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   }
 
   DotDimensionNumbers dot_dnums;
-  for (int64 i = 0; i < num_batch_dims; ++i) {
+  for (int64_t i = 0; i < num_batch_dims; ++i) {
     dot_dnums.add_lhs_batch_dimensions(i);
     dot_dnums.add_rhs_batch_dimensions(i);
   }
@@ -201,7 +201,7 @@ StatusOr<bool> DotDecomposer::Run(HloModule* module) {
       if (dnums.lhs_batch_dimensions().empty()) {
         continue;
       }
-      std::vector<int64> canonical_batch_dims(
+      std::vector<int64_t> canonical_batch_dims(
           dnums.lhs_batch_dimensions_size());
       absl::c_iota(canonical_batch_dims, 0);
       if (!absl::c_equal(dnums.lhs_batch_dimensions(), canonical_batch_dims) ||

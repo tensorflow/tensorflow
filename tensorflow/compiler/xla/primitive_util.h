@@ -79,7 +79,7 @@ inline PrimitiveType NativeToPrimitiveType<uint32>() {
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint64>() {
+inline PrimitiveType NativeToPrimitiveType<uint64_t>() {
   return U64;
 }
 
@@ -100,7 +100,7 @@ inline PrimitiveType NativeToPrimitiveType<int32>() {
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int64>() {
+inline PrimitiveType NativeToPrimitiveType<int64_t>() {
   return S64;
 }
 
@@ -155,9 +155,9 @@ int BitWidth(PrimitiveType type);
 // Returns the number of bytes in the representation for a given type.
 int ByteWidth(PrimitiveType type);
 
-PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth);
+PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth);
 
-PrimitiveType SignedIntegralTypeForBitWidth(int64 src_bitwidth);
+PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth);
 
 // Returns the real, imag component type underlying the given complex type.
 // LOG(FATAL)'s if complex_type is not complex.
@@ -320,7 +320,7 @@ struct PrimitiveTypeToNative<S32> {
 
 template <>
 struct PrimitiveTypeToNative<S64> {
-  using type = int64;
+  using type = int64_t;
 };
 
 // Floating point

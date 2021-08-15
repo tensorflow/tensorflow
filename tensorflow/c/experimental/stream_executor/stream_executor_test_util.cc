@@ -38,7 +38,7 @@ TF_Bool DeviceMemoryUsage(const SP_Device* const device, int64_t* const free,
 }
 void CreateStream(const SP_Device* const device, SP_Stream* stream,
                   TF_Status* const status) {
-  stream = nullptr;
+  *stream = nullptr;
 }
 void DestroyStream(const SP_Device* const device, SP_Stream stream) {}
 void CreateStreamDependency(const SP_Device* const device, SP_Stream dependent,
@@ -47,7 +47,7 @@ void GetStreamStatus(const SP_Device* const device, SP_Stream stream,
                      TF_Status* const status) {}
 void CreateEvent(const SP_Device* const device, SP_Event* event,
                  TF_Status* const status) {
-  event = nullptr;
+  *event = nullptr;
 }
 void DestroyEvent(const SP_Device* const device, SP_Event event) {}
 SE_EventStatus GetEventStatus(const SP_Device* const device, SP_Event event) {

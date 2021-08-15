@@ -316,7 +316,7 @@ Status HloModuleGroupUtil::VerifyComputations(
           const std::vector<HloInstruction*>& instruction_group) {
         return Status::OK();
       };
-  int64 instructions_count = 0;
+  int64_t instructions_count = 0;
   VisitStates visit_states;
   for (HloComputation* computation : computations) {
     // Visit all instructions, and not just from the root instruction of the

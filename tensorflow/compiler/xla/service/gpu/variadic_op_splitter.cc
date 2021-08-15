@@ -33,7 +33,7 @@ namespace {
 // constant here to try to prevent exceeding this parameter space. For a proper
 // fix, we would have to take into account which parameters share a buffer, and
 // how big these buffers are.
-constexpr int32 kMaxParameters = 128;
+constexpr int32_t kMaxParameters = 128;
 
 StatusOr<bool> SplitConcatenate(HloInstruction* concat, HloComputation* comp) {
   auto operands = concat->operands();

@@ -33,7 +33,7 @@ string FormatTime(int64_t micros);
 
 string FormatMemory(int64_t bytes);
 
-string FormatShapes(const std::vector<int64>& shapes);
+string FormatShapes(const std::vector<int64_t>& shapes);
 
 tensorflow::Status ParseCmdLine(const string& line, string* cmd,
                                 tensorflow::tfprof::Options* opts);

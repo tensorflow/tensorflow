@@ -152,7 +152,7 @@ HloInstruction* UpdateOperand(const HloInstruction* first_reshape_operand,
       } else {
         CHECK(first_reshape_operand->opcode() == HloOpcode::kTranspose);
         VLOG(5) << "Adding transpose to kConstant operand";
-        std::vector<int64> inverse_permutation =
+        std::vector<int64_t> inverse_permutation =
             InversePermutation(first_reshape_operand->dimensions());
         return computation->AddInstruction(HloInstruction::CreateTranspose(
             new_shape, operand, inverse_permutation));
@@ -216,7 +216,7 @@ StatusOr<bool> PerformSinkReshapeOrTranspose(
     for (const auto& fused_instruction : instruction->fused_instructions()) {
       Shape* shape = fused_instruction->mutable_shape();
       shape->clear_dimensions();
-      for (int64 i : new_operand_shape.dimensions()) {
+      for (int64_t i : new_operand_shape.dimensions()) {
         shape->add_dimensions(i);
       }
       *shape->mutable_layout() = new_operand_shape.layout();

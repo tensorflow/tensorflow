@@ -68,16 +68,39 @@ def initialize_all_tables(name="init_all_tables"):
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
-  See the [Low Level
-  Intro](https://www.tensorflow.org/guide/low_level_intro#feature_columns)
-  guide, for an example of usage.
-
   Args:
     name: Optional name for the initialization op.
 
   Returns:
     An Op that initializes all tables.  Note that if there are
     not tables the returned Op is a NoOp.
+
+  @compatibility(TF2)
+  `tf.compat.v1.tables_initializer` is no longer needed with eager execution and
+  `tf.function`. In TF2, when creating an initializable table like a
+  `tf.lookup.StaticHashTable`, the table will automatically be initialized on
+  creation.
+
+  #### Before & After Usage Example
+
+  Before:
+
+  >>> with tf.compat.v1.Session():
+  ...   init = tf.compat.v1.lookup.KeyValueTensorInitializer(['a', 'b'], [1, 2])
+  ...   table = tf.compat.v1.lookup.StaticHashTable(init, default_value=-1)
+  ...   tf.compat.v1.tables_initializer().run()
+  ...   result = table.lookup(tf.constant(['a', 'c'])).eval()
+  >>> result
+  array([ 1, -1], dtype=int32)
+
+  After:
+
+  >>> init = tf.lookup.KeyValueTensorInitializer(['a', 'b'], [1, 2])
+  >>> table = tf.lookup.StaticHashTable(init, default_value=-1)
+  >>> table.lookup(tf.constant(['a', 'c'])).numpy()
+  array([ 1, -1], dtype=int32)
+
+  @end_compatibility
   """
   initializers = ops.get_collection(ops.GraphKeys.TABLE_INITIALIZERS)
   if initializers:
@@ -98,11 +121,11 @@ def check_table_dtypes(table, key_dtype, value_dtype):
       types.
   """
   if key_dtype.base_dtype != table.key_dtype:
-    raise TypeError("Invalid key dtype, expected %s but got %s." %
-                    (table.key_dtype, key_dtype))
+    raise TypeError(f"Invalid key dtype for table, expected {table.key_dtype} "
+                    f"but got {key_dtype}.")
   if value_dtype.base_dtype != table.value_dtype:
-    raise TypeError("Invalid value dtype, expected %s but got %s." %
-                    (table.value_dtype, value_dtype))
+    raise TypeError("Invalid value dtype for table, expected "
+                    f"{table.value_dtype} but got {value_dtype}.")
 
 
 class LookupInterface(trackable.TrackableResource):
@@ -226,8 +249,8 @@ class InitializableLookupTableBase(LookupInterface):
       key_tensor = keys.values
 
     if keys.dtype.base_dtype != self._key_dtype:
-      raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
-                      (self._key_dtype, keys.dtype))
+      raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
+                      f"received: {keys.dtype}")
 
     with ops.name_scope(
         name, "%s_Lookup" % self.name,
@@ -629,37 +652,38 @@ class TextFileInitializer(TableInitializerBase):
       data types do not match the expected data types.
     """
     if not isinstance(filename, ops.Tensor) and not filename:
-      raise ValueError("Filename required for %s." % name)
+      raise ValueError("`filename` argument required for tf.lookup.TextFileInitializer")
 
     self._filename_arg = filename
     key_dtype = dtypes.as_dtype(key_dtype)
     value_dtype = dtypes.as_dtype(value_dtype)
 
     if key_index < -2:
-      raise ValueError("Invalid key index %s." % (key_index))
+      raise ValueError("`key_index` should be >= -2, received: {key_index}.")
 
     if key_index == TextFileIndex.LINE_NUMBER and key_dtype != dtypes.int64:
-      raise ValueError("Signature mismatch. Keys must be dtype %s, got %s." %
-                       (dtypes.int64, key_dtype))
+      raise ValueError("`key_dtype` must be int64 if `key_index` is "
+                       f"{TextFileIndex.LINE_NUMBER}, received: {key_dtype}")
     if ((key_index == TextFileIndex.WHOLE_LINE) and
         (not key_dtype.is_integer) and (key_dtype != dtypes.string)):
       raise ValueError(
-          "Signature mismatch. Keys must be integer or string, got %s." %
-          key_dtype)
+          "`key_dtype` should be either integer or string for `key_index` "
+          f"{TextFileIndex.WHOLE_LINE}, received: {key_dtype}")
     if value_index < -2:
-      raise ValueError("Invalid value index %s." % (value_index))
+      raise ValueError("`value_index` should be >= -2, received: "
+                       f"{value_index}")
 
     if value_index == TextFileIndex.LINE_NUMBER and value_dtype != dtypes.int64:
-      raise ValueError("Signature mismatch. Values must be dtype %s, got %s." %
-                       (dtypes.int64, value_dtype))
+      raise ValueError("`value_dtype` must be int64 for `value_index` "
+                       f"{TextFileIndex.LINE_NUMBER}, received: {key_dtype}")
     if ((value_index == TextFileIndex.WHOLE_LINE) and
         (not value_dtype.is_integer) and (value_dtype != dtypes.string)):
       raise ValueError(
-          "Signature mismatch. Values must be integer or string, got %s." %
-          (value_dtype))
+          "`value_dtype` should be either integer or string for `value_index` "
+          f"{TextFileIndex.WHOLE_LINE}, received: {value_dtype}")
 
     if (vocab_size is not None) and (vocab_size <= 0):
-      raise ValueError("Invalid vocab_size %s." % vocab_size)
+      raise ValueError(f"`vocab_size` should be > 0, received: {vocab_size}")
 
     self._key_index = key_index
     self._value_index = value_index
@@ -864,7 +888,7 @@ class StrongHashSpec(HasherSpec):
 
   def __new__(cls, key):
     if len(key) != 2:
-      raise ValueError("key must have size 2, got %s." % len(key))
+      raise ValueError(f"`key` must have size 2, received {len(key)}")
 
     if not isinstance(key[0], compat_util.integral_types) or not isinstance(
         key[1], compat_util.integral_types):
@@ -959,31 +983,31 @@ class IdTableWithHashBuckets(LookupInterface):
         key_dtype = table.key_dtype
       supported_table_key_dtypes = (dtypes.int64, dtypes.string)
       if table.key_dtype not in supported_table_key_dtypes:
-        raise TypeError("Invalid key dtype, expected one of %s, but got %s." %
-                        (supported_table_key_dtypes, key_dtype))
+        raise TypeError("Invalid `key_dtype`, expected one of "
+                        f"{supported_table_key_dtypes}, received {key_dtype}.")
       if table.key_dtype.is_integer != key_dtype.is_integer:
-        raise TypeError("Invalid key dtype, expected %s but got %s." %
+        raise TypeError("Invalid `key dtype`, expected %s but got %s." %
                         ("integer" if key_dtype.is_integer else "non-integer",
                          table.key_dtype))
       if table.value_dtype != dtypes.int64:
-        raise TypeError("Invalid value dtype, expected %s but got %s." %
-                        (dtypes.int64, table.value_dtype))
+        raise TypeError("Invalid `value_dtype`: expected int64 but got %s." %
+                        (table.value_dtype))
       self._table = table
       name = name or self._table.name
     else:
       if num_oov_buckets <= 0:
-        raise ValueError("oov_buckets must be > 0 if no table is supplied.")
+        raise ValueError("`oov_buckets` must be > 0 if no `table` is supplied.")
       key_dtype = dtypes.string if key_dtype is None else key_dtype
       self._table = None
       name = name or "hash_bucket"
     if (not key_dtype.is_integer) and (dtypes.string != key_dtype):
-      raise TypeError("Invalid key_dtype, expected integer or string, got %s." %
-                      key_dtype)
+      raise TypeError("Invalid `key_dtype`, expected integer or string, got "
+                      f"{key_dtype}.")
     self._num_oov_buckets = num_oov_buckets
 
     if not isinstance(hasher_spec, HasherSpec):
-      raise TypeError("hasher_spec must be of type HasherSpec, got %s" %
-                      hasher_spec)
+      raise TypeError("`hasher_spec` must be of type HasherSpec, got "
+                      f"{type(hasher_spec)}.")
     self._hasher_spec = hasher_spec
     if name:
       self._table_name = name.split("/")[-1]
@@ -1036,7 +1060,8 @@ class IdTableWithHashBuckets(LookupInterface):
   def _get_string_to_hash_bucket_fn(self, hasher_spec):
     """Returns the string_to_hash_bucket op to use based on `hasher_spec`."""
     if not isinstance(hasher_spec, HasherSpec):
-      raise TypeError("hasher_spec must be of type HasherSpec %s" % hasher_spec)
+      raise TypeError("`hasher_spec` must be of type HasherSpec, got "
+                      f"{type(hasher_spec)}.")
     if hasher_spec.hasher == "fasthash":
       return string_ops.string_to_hash_bucket_fast
     if hasher_spec.hasher == "legacy":
@@ -1044,7 +1069,8 @@ class IdTableWithHashBuckets(LookupInterface):
     if hasher_spec.hasher == "stronghash":
       return functools.partial(
           string_ops.string_to_hash_bucket_strong, key=hasher_spec.key)
-    raise ValueError("Unknown hasher %s" % hasher_spec.hasher)
+    raise ValueError(
+        f"Found unknown hasher {hasher_spec.hasher} in `hasher_spec`")
 
   def lookup(self, keys, name=None):
     """Looks up `keys` in the table, outputs the corresponding values.
@@ -1063,8 +1089,8 @@ class IdTableWithHashBuckets(LookupInterface):
       TypeError: when `keys` doesn't match the table key data type.
     """
     if keys.dtype.base_dtype != self._key_dtype:
-      raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
-                      (self._key_dtype, keys.dtype))
+      raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
+                      f"received: {keys.dtype}")
     values = keys
     if isinstance(keys,
                   (sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
@@ -1189,7 +1215,7 @@ class StaticVocabularyTable(LookupInterface):
         integer or string. Also when initializer.value_dtype != int64.
     """
     if num_oov_buckets <= 0:
-      raise ValueError("oov_buckets must be > 0.")
+      raise ValueError("`num_oov_buckets` must be > 0.")
     # If a name ends with a '/' it is a "name scope", remove all trailing '/'
     # characters to use as table name.
     if name:
@@ -1199,15 +1225,15 @@ class StaticVocabularyTable(LookupInterface):
         lookup_key_dtype = initializer.key_dtype
       supported_table_key_dtypes = (dtypes.int64, dtypes.string)
       if initializer.key_dtype not in supported_table_key_dtypes:
-        raise TypeError("Invalid key dtype, expected one of %s, but got %s." %
+        raise TypeError("Invalid `key_dtype`, expected one of %s, but got %s." %
                         (supported_table_key_dtypes, initializer.key_dtype))
       if initializer.key_dtype.is_integer != lookup_key_dtype.is_integer:
         raise TypeError(
-            "Invalid key dtype, expected %s but got %s." %
+            "Invalid `key_dtype`, expected %s but got %s." %
             ("integer" if lookup_key_dtype.is_integer else "non-integer",
              initializer.key_dtype))
       if initializer.value_dtype != dtypes.int64:
-        raise TypeError("Invalid value dtype, expected %s but got %s." %
+        raise TypeError("Invalid `value_dtype`, expected %s but got %s." %
                         (dtypes.int64, initializer.value_dtype))
       if isinstance(initializer, trackable_base.Trackable):
         self._initializer = self._track_trackable(initializer, "_initializer")
@@ -1219,8 +1245,8 @@ class StaticVocabularyTable(LookupInterface):
       name = name or "hash_bucket"
     if (not lookup_key_dtype.is_integer) and (dtypes.string !=
                                               lookup_key_dtype):
-      raise TypeError("Invalid key_dtype, expected integer or string, got %s." %
-                      lookup_key_dtype)
+      raise TypeError("Invalid `key_dtype`, expected integer or string, got "
+                      f"{lookup_key_dtype}")
     self._num_oov_buckets = num_oov_buckets
 
     self._table_name = None
@@ -1275,8 +1301,8 @@ class StaticVocabularyTable(LookupInterface):
       TypeError: when `keys` doesn't match the table key data type.
     """
     if keys.dtype.base_dtype != self._key_dtype:
-      raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
-                      (self._key_dtype, keys.dtype))
+      raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
+                      f"received: {keys.dtype}")
     values = keys
     if isinstance(keys,
                   (sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
@@ -1399,7 +1425,8 @@ def index_table_from_file(vocabulary_file=None,
   """
   if vocabulary_file is None or (isinstance(vocabulary_file, six.string_types)
                                  and not vocabulary_file):
-    raise ValueError("vocabulary_file must be specified and must not be empty.")
+    raise ValueError(
+        "`vocabulary_file` must be specified and must not be empty.")
   if num_oov_buckets < 0:
     raise ValueError(
         "num_oov_buckets must be greater or equal than 0, got %d." %
@@ -1408,10 +1435,10 @@ def index_table_from_file(vocabulary_file=None,
     vocab_file_value = vocabulary_file
     if isinstance(vocabulary_file, ops.Tensor):
       vocab_file_value = tensor_util.constant_value(vocabulary_file) or "?"
-    raise ValueError("vocab_size must be greater than 0, got %d. "
-                     "vocabulary_file: %s" % (vocab_size, vocab_file_value))
+    raise ValueError("`vocab_size` must be greater than 0, got %d for "
+                     "vocabulary_file: %s." % (vocab_size, vocab_file_value))
   if (not key_dtype.is_integer) and (dtypes.string != key_dtype.base_dtype):
-    raise TypeError("Only integer and string keys are supported.")
+    raise TypeError("Dtype for `keys` should be either integer or string.")
 
   with ops.name_scope(name, "string_to_index"):
     table = None
@@ -1495,24 +1522,25 @@ def index_table_from_tensor(vocabulary_list,
     ValueError: If `num_oov_buckets` is negative.
   """
   if vocabulary_list is None:
-    raise ValueError("vocabulary_list must be specified.")
+    raise ValueError("`vocabulary_list` must be specified.")
 
   if num_oov_buckets < 0:
     raise ValueError(
-        "num_oov_buckets must be greater or equal than 0, got %d." %
+        "`num_oov_buckets` must be greater or equal than 0, got %d." %
         num_oov_buckets)
 
   if (not dtype.is_integer) and (dtypes.string != dtype.base_dtype):
-    raise TypeError("Only integer and string keys are supported.")
+    raise TypeError("`dtype` must either be integer or string.")
 
   with ops.name_scope(name, "string_to_index"):
     keys = ops.convert_to_tensor(vocabulary_list)
     if keys.dtype.is_integer != dtype.is_integer:
       raise ValueError(
-          "Expected %s, got %s." %
+          "Invalid `dtype`: Expected %s, got %s." %
           ("integer" if dtype.is_integer else "non-integer", keys.dtype))
     if (not dtype.is_integer) and (keys.dtype.base_dtype != dtype):
-      raise ValueError("Expected %s, got %s." % (dtype, keys.dtype))
+      raise ValueError("Invalid `dtype`: Expected %s, got %s." %
+                       (dtype, keys.dtype))
     num_elements = array_ops.size(keys)
     values = math_ops.cast(math_ops.range(num_elements), dtypes.int64)
 
@@ -1608,10 +1636,11 @@ def index_to_string_table_from_file(vocabulary_file,
   """
   if vocabulary_file is None or (isinstance(vocabulary_file, six.string_types)
                                  and not vocabulary_file):
-    raise ValueError("vocabulary_file must be specified and must not be empty.")
+    raise ValueError(
+        "`vocabulary_file` must be specified and must not be empty.")
 
   if vocab_size is not None and vocab_size < 1:
-    raise ValueError("vocab_size must be greater than 0, got %d." % vocab_size)
+    raise ValueError(f"`vocab_size` must be greater than 0, got {vocab_size}.")
 
   with ops.name_scope(name, "index_to_string"):
     init = TextFileStringTableInitializer(
@@ -1675,7 +1704,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
   """
 
   if vocabulary_list is None:
-    raise ValueError("vocabulary_list must be specified.")
+    raise ValueError("`vocabulary_list` argument must be specified.")
 
   with ops.name_scope(name, "index_to_string"):
     vocabulary_list = ops.convert_to_tensor(vocabulary_list, dtypes.string)
@@ -1829,8 +1858,8 @@ class MutableHashTable(LookupInterface):
       TypeError: when `keys` do not match the table data types.
     """
     if keys.dtype != self._key_dtype:
-      raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
-                      (self._key_dtype, keys.dtype))
+      raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
+                      f"received: {keys.dtype}")
 
     with ops.name_scope(name, "%s_lookup_table_remove" % self.name,
                         (self.resource_handle, keys, self._default_value)):

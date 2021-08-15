@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 
@@ -161,9 +162,9 @@ static LogicalResult MlirToFlatBufferFileTranslateFunction(
         std::make_unique<tensorflow::OpOrArgLocNameMapper>();
   }
   tflite::FlatbufferExportOptions options;
-  options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
-  options.emit_custom_ops = emit_custom_ops;
-  options.emit_select_tf_ops = emit_select_tf_ops;
+  options.toco_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
+  options.toco_flags.set_enable_select_tf_ops(emit_select_tf_ops);
+  options.toco_flags.set_allow_custom_ops(emit_custom_ops);
   options.op_or_arg_name_mapper = op_or_arg_name_mapper.get();
   if (!tflite::MlirToFlatBufferTranslateFunction(module, options,
                                                  &serialized_flatbuffer))
@@ -186,7 +187,7 @@ static TranslateFromMLIRRegistration MLIRToFlatBufferTranslate(
     "mlir-to-tflite-flatbuffer", MlirToFlatBufferFileTranslateFunction,
     [](DialectRegistry& registry) {
       registry.insert<quant::QuantizationDialect>();
-      registry.insert<TF::TensorFlowDialect>();
+      mlir::RegisterAllTensorFlowDialects(registry);
       registry.insert<TFL::TensorFlowLiteDialect>();
       registry.insert<StandardOpsDialect>();
     });

@@ -33,12 +33,12 @@ namespace tensorflow {
 namespace data {
 
 namespace {
-const int64 kRetryTimeoutMicros = 1000LL * 1000 * 60 * 60;  // 60 minutes.
+const int64_t kRetryTimeoutMicros = 1000LL * 1000 * 60 * 60;  // 60 minutes.
 }
 
 RegisterDatasetOp::RegisterDatasetOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {
-  int64 external_state_policy_int;
+  int64_t external_state_policy_int;
   OP_REQUIRES_OK(
       ctx, ctx->GetAttr(kExternalStatePolicy, &external_state_policy_int));
   external_state_policy_ =
@@ -87,8 +87,8 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   }
 
   DataServiceDispatcherClient client(address, protocol);
-  int64 dataset_id;
-  int64 deadline_micros = EnvTime::NowMicros() + kRetryTimeoutMicros;
+  int64_t dataset_id;
+  int64_t deadline_micros = EnvTime::NowMicros() + kRetryTimeoutMicros;
   OP_REQUIRES_OK(
       ctx, grpc_util::Retry(
                [&]() {
@@ -101,7 +101,7 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
 
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &output));
-  auto output_dataset_id = output->tensor<int64, 0>();
+  auto output_dataset_id = output->tensor<int64_t, 0>();
   output_dataset_id() = dataset_id;
 }
 

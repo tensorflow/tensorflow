@@ -80,7 +80,7 @@ string NameUniquer::GetUniqueName(absl::string_view prefix) {
   // Strip away numeric suffix (if any). Only recognize separator if it is in
   // the middle of the name.
   bool has_numeric_suffix = false;
-  int64 numeric_suffix = 0;
+  int64_t numeric_suffix = 0;
   size_t separator_index = root.rfind(separator_);
   if (separator_index != string::npos && (separator_index > 0) &&
       (separator_index < root.size() - 1)) {

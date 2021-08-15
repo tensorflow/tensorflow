@@ -74,24 +74,27 @@ class HloProfileIndexMap {
     return instruction_count() + computation_count() + extra_metrics_count();
   }
 
-  const std::unordered_map<const HloInstruction*, int64>&
+  const std::unordered_map<const HloInstruction*, int64_t>&
   instruction_to_profile_idx() const {
     return instruction_to_profile_idx_;
   }
 
-  const std::unordered_map<const HloComputation*, int64>&
+  const std::unordered_map<const HloComputation*, int64_t>&
   computation_to_profile_idx() const {
     return computation_to_profile_idx_;
   }
 
-  const std::unordered_map<string, int64>& extra_metric_to_profile_idx() const {
+  const std::unordered_map<string, int64_t>& extra_metric_to_profile_idx()
+      const {
     return extra_metric_to_profile_idx_;
   }
 
  private:
-  std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx_;
-  std::unordered_map<const HloComputation*, int64> computation_to_profile_idx_;
-  std::unordered_map<string, int64> extra_metric_to_profile_idx_;
+  std::unordered_map<const HloInstruction*, int64_t>
+      instruction_to_profile_idx_;
+  std::unordered_map<const HloComputation*, int64_t>
+      computation_to_profile_idx_;
+  std::unordered_map<string, int64_t> extra_metric_to_profile_idx_;
 };
 
 // Create an instance of `HloProfilePrinterData`.
@@ -151,8 +154,10 @@ class HloExecutionProfile {
                            clock_rate_ghz);
   }
 
-  std::vector<int64>* mutable_profile_counters() { return &profile_counters_; }
-  const std::vector<int64>& profile_counters() const {
+  std::vector<int64_t>* mutable_profile_counters() {
+    return &profile_counters_;
+  }
+  const std::vector<int64_t>& profile_counters() const {
     return profile_counters_;
   }
 
@@ -164,7 +169,7 @@ class HloExecutionProfile {
 
   // Stores per-Hlo profile counters.  This is the only thing that changes when
   // we execute an XLA computation.
-  std::vector<int64> profile_counters_;
+  std::vector<int64_t> profile_counters_;
 };
 
 }  // namespace xla

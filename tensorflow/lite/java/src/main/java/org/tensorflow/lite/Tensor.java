@@ -42,18 +42,27 @@ public final class Tensor {
    * interpreter is valid until the tensor is closed.
    */
   static Tensor fromIndex(long nativeInterpreterHandle, int tensorIndex) {
-    return new Tensor(create(nativeInterpreterHandle, tensorIndex, /*subgraphIndex=*/ 0));
+    return new Tensor(create(nativeInterpreterHandle, tensorIndex));
   }
 
   /**
-   * Creates a Tensor wrapper from the provided interpreter instance, subgraph and tensor indices.
+   * Creates a Tensor wrapper for a Signature input.
    *
    * <p>The caller is responsible for closing the created wrapper, and ensuring the provided native
-   * interpreter is valid until the tensor is closed.
+   * SignatureRunner is valid until the tensor is closed.
    */
-  static Tensor fromSubgraphAndIndex(
-      long nativeInterpreterHandle, int subgraphIndex, int tensorIndex) {
-    return new Tensor(create(nativeInterpreterHandle, tensorIndex, subgraphIndex));
+  static Tensor fromSignatureInput(long signatureRunnerHandle, String inputName) {
+    return new Tensor(createSignatureInputTensor(signatureRunnerHandle, inputName));
+  }
+
+  /**
+   * Creates a Tensor wrapper for a Signature output.
+   *
+   * <p>The caller is responsible for closing the created wrapper, and ensuring the provided native
+   * SignatureRunner is valid until the tensor is closed.
+   */
+  static Tensor fromSignatureOutput(long signatureRunnerHandle, String outputName) {
+    return new Tensor(createSignatureOutputTensor(signatureRunnerHandle, outputName));
   }
 
   /**
@@ -158,15 +167,6 @@ public final class Tensor {
    */
   public int index() {
     return index(nativeHandle);
-  }
-
-  /**
-   * Returns the subgraph index of the tensor within the owning {@link Interpreter}.
-   *
-   * @hide
-   */
-  public int subgraph() {
-    return subgraph(nativeHandle);
   }
 
   /**
@@ -590,7 +590,13 @@ public final class Tensor {
     return buffer(nativeHandle).order(ByteOrder.nativeOrder());
   }
 
-  private static native long create(long interpreterHandle, int tensorIndex, int subgraphIndex);
+  private static native long create(long interpreterHandle, int tensorIndex);
+
+  private static native long createSignatureInputTensor(
+      long signatureRunnerHandle, String inputName);
+
+  private static native long createSignatureOutputTensor(
+      long signatureRunnerHandle, String outputName);
 
   private static native void delete(long handle);
 
@@ -615,8 +621,6 @@ public final class Tensor {
   private static native void writeScalar(long handle, Object src);
 
   private static native int index(long handle);
-
-  private static native int subgraph(long handle);
 
   private static native String name(long handle);
 

@@ -96,7 +96,7 @@ class ScatterUpdateOp : public OpKernel {
     if (!c->status().ok()) return;
 
     // Check that we have enough index space
-    const int64 N_big = indices.NumElements();
+    const int64_t N_big = indices.NumElements();
     OP_REQUIRES(
         c, N_big <= std::numeric_limits<Index>::max(),
         errors::InvalidArgument("indices has too many elements for ",
@@ -155,7 +155,7 @@ class ScatterUpdateOp : public OpKernel {
 
 #define REGISTER_SCATTER_KERNEL(type, dev, name, op)         \
   REGISTER_SCATTER_KERNEL_INDEX(type, int32, dev, name, op); \
-  REGISTER_SCATTER_KERNEL_INDEX(type, int64, dev, name, op);
+  REGISTER_SCATTER_KERNEL_INDEX(type, int64_t, dev, name, op);
 
 #define REGISTER_SCATTER_ARITHMETIC(type, dev)                                 \
   REGISTER_SCATTER_KERNEL(type, dev, "ScatterAdd", scatter_op::UpdateOp::ADD); \

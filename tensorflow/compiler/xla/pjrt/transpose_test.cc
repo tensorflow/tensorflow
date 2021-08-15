@@ -128,8 +128,8 @@ TEST(TransposeTest, InvalidTilings) {
 }
 
 // Computes the size in elements of a tiled array.
-int64_t SizeOfTiledArray(absl::Span<int64 const> shape,
-                         absl::Span<int64 const> tiling) {
+int64_t SizeOfTiledArray(absl::Span<int64_t const> shape,
+                         absl::Span<int64_t const> tiling) {
   int64_t size = 1;
   for (size_t i = 0; i < shape.size(); ++i) {
     if (i >= shape.size() - tiling.size()) {
@@ -144,7 +144,7 @@ int64_t SizeOfTiledArray(absl::Span<int64 const> shape,
 
 // Advances 'indices' in the lexicographical order of the multidimensional
 // array with `shape`. Returns false if the end of the array has been reached.
-bool BumpIndices(absl::Span<int64 const> shape, absl::Span<int64> indices) {
+bool BumpIndices(absl::Span<int64_t const> shape, absl::Span<int64_t> indices) {
   CHECK_EQ(shape.size(), indices.size());
   for (int dimno = indices.size() - 1; dimno >= 0; --dimno) {
     if (indices[dimno] + 1 < shape[dimno]) {
@@ -160,13 +160,13 @@ bool BumpIndices(absl::Span<int64 const> shape, absl::Span<int64> indices) {
 
 // Converts a multidimensional index `indices` into an array with `shape` and
 // tiling `tiling` into a linear offset into a buffer.
-int64 IndexToLinearIndex(absl::Span<int64 const> shape,
-                         absl::Span<int64 const> tiling,
-                         absl::Span<int64 const> indices) {
+int64_t IndexToLinearIndex(absl::Span<int64_t const> shape,
+                           absl::Span<int64_t const> tiling,
+                           absl::Span<int64_t const> indices) {
   CHECK_LE(tiling.size(), shape.size());
   CHECK_EQ(shape.size(), indices.size());
-  int64 stride = 1;
-  int64 offset = 0;
+  int64_t stride = 1;
+  int64_t offset = 0;
 
   auto index_it = indices.rbegin();
   auto tile_it = tiling.rbegin();
@@ -196,9 +196,9 @@ std::vector<T> TileArray(const Array<T>& in, absl::Span<int64_t const> tiling) {
   if (in.num_elements() == 0) {
     return out;
   }
-  std::vector<int64> indices(in.num_dimensions(), 0);
+  std::vector<int64_t> indices(in.num_dimensions(), 0);
   do {
-    int64 i = IndexToLinearIndex(in.dimensions(), tiling, indices);
+    int64_t i = IndexToLinearIndex(in.dimensions(), tiling, indices);
     out.at(i) = in(indices);
   } while (BumpIndices(in.dimensions(), absl::MakeSpan(indices)));
   return out;
@@ -357,12 +357,13 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
     const TransposeTestCase test = GetParam();
     tensorflow::thread::ThreadPool threadpool(tensorflow::Env::Default(),
                                               "Transpose", parallelism);
-    std::vector<int64> output_dims = Permute(test.dims, test.permutation);
+    std::vector<int64_t> output_dims = Permute(test.dims, test.permutation);
     TF_ASSERT_OK_AND_ASSIGN(
         auto plan, TransposePlan::Create(
                        sizeof(T), test.dims, test.permutation,
                        TransposePlan::Tiling{test.input_tiling},
-                       TransposePlan::Tiling{test.output_tiling}, parallelism));
+                       TransposePlan::Tiling{test.output_tiling},
+                       TransposePlan::Transformation::kNone, parallelism));
     VLOG(1) << plan->ToString();
     xla::Array<T> untiled_input(test.dims);
     untiled_input.FillIota(0);
@@ -387,7 +388,7 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
 TEST_P(TransposeTest, TransposeInt8) { TestTranspose<int8>(1); }
 TEST_P(TransposeTest, TransposeInt16) { TestTranspose<int16>(1); }
 TEST_P(TransposeTest, TransposeInt32) { TestTranspose<int32>(1); }
-TEST_P(TransposeTest, TransposeInt64) { TestTranspose<int64>(1); }
+TEST_P(TransposeTest, TransposeInt64) { TestTranspose<int64_t>(1); }
 TEST_P(TransposeTest, TransposeInt128) { TestTranspose<absl::int128>(1); }
 
 TEST_P(TransposeTest, ParallelTransposeInt8) { TestTranspose<int8>(16); }
@@ -396,8 +397,45 @@ TEST_P(TransposeTest, ParallelTransposeInt32) { TestTranspose<int32>(16); }
 INSTANTIATE_TEST_SUITE_P(TransposeTestInstance, TransposeTest,
                          ::testing::ValuesIn(GetTransposeTestCases()));
 
-const std::vector<TransposeTestCase>* benchmark_cases = []() {
-  return new std::vector<TransposeTestCase>{
+TEST(TransposeTest, NegativeStrides1D) {
+  int64_t n = 10;
+  std::vector<int32_t> input(n);
+  std::vector<int32_t> output(n);
+  std::vector<int32_t> expected(n);
+  absl::c_iota(input, int32_t{7});
+  std::iota(expected.rbegin(), expected.rend(), 7);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto plan, TransposePlan::Create(
+                     sizeof(int32_t), {n}, /*permutation=*/{0},
+                     TransposePlan::Striding{{-int64_t{sizeof(int32_t)}}}));
+  plan->Execute(input.data() + (n - 1), output.data());
+  EXPECT_EQ(expected, output);
+}
+
+TEST(TransposeTest, NegativeStrides2D) {
+  xla::Array<int16_t> input = {
+      {1, 2, 3, 4},
+      {5, 6, 7, 8},
+      {9, 10, 11, 12},
+  };
+  xla::Array<int16_t> expected = {
+      {4, 8, 12},
+      {3, 7, 11},
+      {2, 6, 10},
+      {1, 5, 9},
+  };
+  xla::Array<int16_t> output({4, 3});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto plan, TransposePlan::Create(
+                     sizeof(int16_t), {3, 4}, /*permutation=*/{1, 0},
+                     TransposePlan::Striding{
+                         {4 * sizeof(int16_t), -int64_t{sizeof(int16_t)}}}));
+  plan->Execute(input.data() + 3, output.data());
+  EXPECT_EQ(expected, output);
+}
+
+static std::vector<TransposeTestCase> BenchmarkCases() {
+  return std::vector<TransposeTestCase>{
       TransposeTestCase(/*dims=*/{256, 256},
                         /*permutation=*/{1, 0}),
       TransposeTestCase(/*dims=*/{64, 224, 224, 3},
@@ -407,14 +445,15 @@ const std::vector<TransposeTestCase>* benchmark_cases = []() {
       TransposeTestCase(/*dims=*/{1024, 1024},
                         /*permutation=*/{1, 0}),
   };
-}();
+}
 
 template <typename T>
-void BM_Eigen(::testing::benchmark::State& state) {
-  const TransposeTestCase& bm = benchmark_cases->at(state.range(0));
+void BM_Eigen(const TransposeTestCase& bm, int parallelism,
+              ::testing::benchmark::State& state) {
+  CHECK_EQ(parallelism, 1);
   Array<T> input(bm.dims);
   input.FillIota(0);
-  std::vector<int64> output_dims = Permute(bm.dims, bm.permutation);
+  std::vector<int64_t> output_dims = Permute(bm.dims, bm.permutation);
   Array<T> output(output_dims);
   for (auto s : state) {
     TransposeUsingEigen(input.data(), output.data(), bm.dims, output_dims,
@@ -422,24 +461,26 @@ void BM_Eigen(::testing::benchmark::State& state) {
     tensorflow::testing::DoNotOptimize(output);
   }
 }
-void BM_Eigen_uint8(::testing::benchmark::State& state) {
-  BM_Eigen<uint8_t>(state);
+static void BM_Eigen_uint8(const TransposeTestCase& bm, int parallelism,
+                           ::testing::benchmark::State& state) {
+  BM_Eigen<uint8_t>(std::move(bm), parallelism, state);
 }
-void BM_Eigen_float(::testing::benchmark::State& state) {
-  BM_Eigen<float>(state);
+static void BM_Eigen_float(const TransposeTestCase& bm, int parallelism,
+                           ::testing::benchmark::State& state) {
+  BM_Eigen<float>(bm, parallelism, state);
 }
 
 template <typename T>
-void BM_Transpose(::testing::benchmark::State& state) {
-  const TransposeTestCase& bm = benchmark_cases->at(state.range(0));
-  int parallelism = state.range(1);
+void BM_Transpose(const TransposeTestCase& bm, int parallelism,
+                  ::testing::benchmark::State& state) {
   TF_ASSERT_OK_AND_ASSIGN(
-      auto plan, TransposePlan::Create(sizeof(T), bm.dims, bm.permutation,
-                                       TransposePlan::Tiling{},
-                                       TransposePlan::Tiling{}, parallelism));
+      auto plan,
+      TransposePlan::Create(sizeof(T), bm.dims, bm.permutation,
+                            TransposePlan::Tiling{}, TransposePlan::Tiling{},
+                            TransposePlan::Transformation::kNone, parallelism));
   Array<T> input(bm.dims);
   input.FillIota(0);
-  std::vector<int64> output_dims = Permute(bm.dims, bm.permutation);
+  std::vector<int64_t> output_dims = Permute(bm.dims, bm.permutation);
   Array<T> output(output_dims);
   tensorflow::thread::ThreadPool threadpool(tensorflow::Env::Default(),
                                             "Transpose", parallelism);
@@ -451,52 +492,57 @@ void BM_Transpose(::testing::benchmark::State& state) {
     tensorflow::testing::DoNotOptimize(output);
   }
 }
-void BM_Transpose_uint8(::testing::benchmark::State& state) {
-  BM_Transpose<uint8_t>(state);
+static void BM_Transpose_uint8(const TransposeTestCase& bm, int parallelism,
+                               ::testing::benchmark::State& state) {
+  BM_Transpose<uint8_t>(bm, parallelism, state);
 }
-void BM_Transpose_float(::testing::benchmark::State& state) {
-  BM_Transpose<float>(state);
+static void BM_Transpose_float(const TransposeTestCase& bm, int parallelism,
+                               ::testing::benchmark::State& state) {
+  BM_Transpose<float>(bm, parallelism, state);
 }
 
-#if defined(TENSORFLOW_CORE_PLATFORM_DEFAULT_TEST_BENCHMARK_H_)
-#define USING_TF_BENCHMARK 1
-#else  // TENSORFLOW_CORE_PLATFORM_DEFAULT_TEST_BENCHMARK_H_
-#define USING_TF_BENCHMARK 0
-#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_TEST_BENCHMARK_H_
-
-static std::vector<tensorflow::testing::Benchmark*>* benchmarks =
-    []() -> std::vector<tensorflow::testing::Benchmark*>* {
-  std::vector<tensorflow::testing::Benchmark*>* bms =
-      new std::vector<tensorflow::testing::Benchmark*>();
-
-  std::vector<std::tuple<std::string, void (*)(testing::benchmark::State&),
-                         std::vector<int>>>
-      variants = {
+static void* benchmarks = []() {
+  using BenchmarkFn =
+      void (*)(const TransposeTestCase&, int, testing::benchmark::State&);
+  std::vector<std::tuple<std::string, BenchmarkFn, std::vector<int>>> variants =
+      {
           {"BM_Eigen_uint8", BM_Eigen_uint8, {1}},
           {"BM_Transpose_uint8", BM_Transpose_uint8, {1, 4, 8}},  //
           {"BM_Eigen_float", BM_Eigen_float, {1}},
           {"BM_Transpose_float", BM_Transpose_float, {1, 4, 8}},  //
   };
-  for (size_t i = 0; i < benchmark_cases->size(); ++i) {
+  auto benchmark_cases = BenchmarkCases();
+  for (const auto& benchmark_case : benchmark_cases) {
     for (const auto& variant : variants) {
       for (int num_threads : std::get<2>(variant)) {
         std::string name = absl::StrCat(
-            std::get<0>(variant), "_",
-            absl::StrJoin(benchmark_cases->at(i).dims, "_"), "_perm_",
-            absl::StrJoin(benchmark_cases->at(i).permutation, "_"));
+            std::get<0>(variant), "_", absl::StrJoin(benchmark_case.dims, "_"),
+            "_perm_", absl::StrJoin(benchmark_case.permutation, "_"));
+
+        TransposeTestCase testcase = benchmark_case;
+        // FIXME(vyng):
+        // Once we've added OSS benchmark as a dependency, this #if-#else case
+        // should be updated to simply:
+        //
+        // benchmark::RegisterBenchmark( name.c_str(),
+        //    [fn, num_threads, testcase](benchmark::State& state) {
+        //      fn(testcase, num_threads, state);
+        //    });
 #if USING_TF_BENCHMARK
-        auto* bm = new tensorflow::testing::Benchmark(name.c_str(),
-                                                      std::get<1>(variant));
-#else
+        BenchmarkFn fn = std::get<1>(variant);
         auto* bm = new tensorflow::testing::Benchmark(
-            name, NewPermanentCallback(std::get<1>(variant)));
+            name.c_str(),
+            [fn, num_threads, &testcase](benchmark::State& state) {
+              fn(testcase, num_threads, state);
+            });
+#else
+        LOG(WARNING) << "Benchmarks can only be run with USING_TF_BENCHMARK";
+        (void)(&num_threads);  // avoid "unused variable" warnings.
 #endif
-        bm->ArgPair(i, num_threads);
-        bms->push_back(bm);
       }
     }
   }
-  return bms;
+  return nullptr;
 }();
 
 TEST(TransposePlanCache, Basics) {

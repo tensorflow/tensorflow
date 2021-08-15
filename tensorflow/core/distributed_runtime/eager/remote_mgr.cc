@@ -36,7 +36,7 @@ void RemoteMgr::AddOperationOutputs(
 }
 
 void RemoteMgr::AddOperationOutput(tensorflow::TensorHandle* handle,
-                                   int64_t operation_id, int32 output_num) {
+                                   int64_t operation_id, int32_t output_num) {
   mutex_lock l(remote_tensor_handle_mu_);
   remote_tensor_handle_map_.emplace(
       RemoteTensorHandleInternal(operation_id, output_num), handle);
@@ -82,7 +82,7 @@ Status RemoteMgr::GetMirroredResourceShape(
 
 Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
                                         const bool wait_until_ready,
-                                        int64* op_id, int32* output_num) {
+                                        int64_t* op_id, int32* output_num) {
   TF_RETURN_IF_ERROR(handle->RemoteAddress(handle->device(), wait_until_ready,
                                            op_id, output_num));
   tensorflow::TensorHandle* h;
@@ -125,7 +125,7 @@ Status RemoteMgr::SerializeRemoteTensorHandle(
     Device* device, const string& device_name,
     const bool serialize_resource_dtype_and_shape) {
   int64_t op_id;
-  int32 output_num;
+  int32_t output_num;
   if (!in->RemoteAddress(device, wait_until_ready, &op_id, &output_num).ok()) {
     tf_shared_lock l(remote_tensor_handle_mu_);
     TF_RETURN_IF_ERROR(

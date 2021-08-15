@@ -18,8 +18,6 @@ limitations under the License.
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
-using tensorflow::int64;
-
 #ifdef ENABLE_MKL
 #include <omp.h>
 #include "mkldnn.hpp"
@@ -27,12 +25,12 @@ using tensorflow::int64;
 
 namespace {
 
-// Downcast an int64 to int and check if value is in range.
-int ToInt(int64 input) {
+// Downcast an int64_t to int and check if value is in range.
+int ToInt(int64_t input) {
   int output = static_cast<int>(input);
-  if (static_cast<int64>(output) != input) {
-    std::cerr << "Error occurred in downcasting int64 to int32: Value " << input
-              << " is out-of-range for type int32. \n";
+  if (static_cast<int64_t>(output) != input) {
+    std::cerr << "Error occurred in downcasting int64_t to int32: Value "
+              << input << " is out-of-range for type int32. \n";
     exit(1);
   }
   return output;
@@ -50,14 +48,16 @@ using mkldnn::stream;
 
 template <typename EigenDevice, typename ScalarType>
 void MKLConvImpl(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
-                 ScalarType* rhs, int64 input_batch, int64 input_rows,
-                 int64 input_cols, int64 input_channels, int64 kernel_rows,
-                 int64 kernel_cols, int64 kernel_channels, int64 kernel_filters,
-                 int64 output_rows, int64 output_cols, int64 row_stride,
-                 int64 col_stride, int64 padding_top, int64 padding_bottom,
-                 int64 padding_left, int64 padding_right,
-                 int64 lhs_row_dilation, int64 lhs_col_dilation,
-                 int64 rhs_row_dilation, int64 rhs_col_dilation) {
+                 ScalarType* rhs, int64_t input_batch, int64_t input_rows,
+                 int64_t input_cols, int64_t input_channels,
+                 int64_t kernel_rows, int64_t kernel_cols,
+                 int64_t kernel_channels, int64_t kernel_filters,
+                 int64_t output_rows, int64_t output_cols, int64_t row_stride,
+                 int64_t col_stride, int64_t padding_top,
+                 int64_t padding_bottom, int64_t padding_left,
+                 int64_t padding_right, int64_t lhs_row_dilation,
+                 int64_t lhs_col_dilation, int64_t rhs_row_dilation,
+                 int64_t rhs_col_dilation) {
   auto cpu_engine = engine(engine::cpu, 0);
 
   // Create a vector primitive to hold the network.

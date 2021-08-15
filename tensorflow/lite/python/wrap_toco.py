@@ -42,12 +42,12 @@ def wrapped_experimental_mlir_quantize(input_data_str, disable_per_channel,
                                        input_data_type, output_data_type,
                                        enable_numeric_verify,
                                        enable_whole_model_verify,
-                                       blocklisted_ops, blocklisted_nodes):
+                                       denylisted_ops, denylisted_nodes):
   """Wraps experimental mlir quantize model."""
   return _pywrap_toco_api.ExperimentalMlirQuantizeModel(
       input_data_str, disable_per_channel, fully_quantize, inference_type,
       input_data_type, output_data_type, enable_numeric_verify,
-      enable_whole_model_verify, blocklisted_ops, blocklisted_nodes)
+      enable_whole_model_verify, denylisted_ops, denylisted_nodes)
 
 
 def wrapped_experimental_mlir_sparsify(input_data_str):

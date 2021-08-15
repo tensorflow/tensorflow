@@ -265,7 +265,7 @@ void DebugNodeInserter::DeparallelizeWhileLoops(Graph* graph, Device* device) {
                 << "Enter/RefEnter node \"" << node->name() << "\" on device \""
                 << device->name() << "\" from " << parallel_iterations->i()
                 << " to 1.";
-        node->AddAttr<int64>("parallel_iterations", 1);
+        node->AddAttr<int64_t>("parallel_iterations", 1);
       }
     }
   }

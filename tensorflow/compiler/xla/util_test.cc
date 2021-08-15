@@ -50,7 +50,7 @@ TEST(UtilTest, CommaSeparatedString) {
 }
 
 TEST(UtilTest, VectorString) {
-  std::list<int64> empty_list;
+  std::list<int64_t> empty_list;
   EXPECT_EQ(VectorString(empty_list), "()");
 
   std::vector<float> float_vector = {5.5};
@@ -70,8 +70,8 @@ TEST(UtilTest, LogLines) {
 
 TEST(UtilTest, CommonFactors) {
   struct {
-    std::vector<int64> a, b;
-    absl::InlinedVector<std::pair<int64, int64>, 8> expected;
+    std::vector<int64_t> a, b;
+    absl::InlinedVector<std::pair<int64_t, int64_t>, 8> expected;
   } test_cases[] = {
       {/*.a =*/{0}, /*.b =*/{0}, /*.expected =*/{{0, 0}, {1, 1}}},
       {/*.a =*/{1}, /*.b =*/{}, /*.expected =*/{{0, 0}, {1, 0}}},

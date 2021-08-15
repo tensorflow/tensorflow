@@ -19,9 +19,11 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -305,6 +307,29 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     return s;
   }
 
+#if !defined(IS_MOBILE_PLATFORM)
+  const auto& config = request->server_def().default_session_config();
+  const bool enable_coordination =
+      !config.experimental().coordination_service().empty();
+  if (enable_coordination) {
+    auto dist_mgr = std::make_unique<EagerContextDistributedManager>(ctx);
+    ctx->SetDistributedManager(std::move(dist_mgr));
+    TF_RETURN_IF_ERROR(ctx->GetDistributedManager()->EnableCoordinationService(
+        config.experimental().coordination_service(), env_,
+        request->server_def(), worker_session->worker_cache()));
+    std::unique_ptr<CoordinationClientCache> client_cache;
+    TF_RETURN_IF_ERROR(
+        worker_session->worker_cache()->GetCoordinationClientCache(
+            &client_cache));
+    TF_RETURN_IF_ERROR(
+        ctx->GetDistributedManager()->GetCoordinationServiceAgent()->Initialize(
+            env_, request->server_def(), std::move(client_cache),
+            /*error_fn=*/[](Status s) {
+              LOG(ERROR) << "Coordination agent is set to error: " << s;
+            }));
+  }
+#endif  // !IS_MOBILE_PLATFORM
+
   std::vector<DeviceAttributes> device_attributes;
   device_mgr->ListDeviceAttributes(&device_attributes);
 
@@ -471,7 +496,7 @@ void EagerServiceImpl::RunComponentFunction(
   VLOG(3) << "ServerContext: Calling EagerLocalExecuteAsync for op "
           << operation.id();
   std::vector<int32> output_nums;
-  for (const int32 output_num : request->output_num()) {
+  for (const int32_t output_num : request->output_num()) {
     output_nums.push_back(output_num);
   }
 

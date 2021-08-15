@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
@@ -61,8 +62,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-
-namespace tracing = tensorflow::tracing;
 
 static std::vector<std::string> CandidateCudaRoots(
     const HloModuleConfig& config) {
@@ -124,9 +123,10 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       stream_exec->GetDeviceDescription().cuda_compute_capability());
   pipeline.AddPass<CudnnVectorizeConvolutions>(
       stream_exec->GetDeviceDescription().cuda_compute_capability());
-  // CudnnConvPadForIntegerConvolutions and CudnnConvPadForTensorCores leave
-  // behind unnecessary tuple/get-tuple-element pairs that TupleSimplifier
-  // fixes.
+  // The conv padding/vectorization passes which we need to get rid of.  They
+  // also leave behind unnecessary tuple/get-tuple-element pairs that
+  // TupleSimplifier fixes.
+  pipeline.AddPass<CallInliner>();
   pipeline.AddPass<TupleSimplifier>();
 
   // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter

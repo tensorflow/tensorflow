@@ -504,12 +504,15 @@ class WorkerPreemptionHandler(object):
   @contextlib.contextmanager
   def wait_on_failure(self,
                       on_failure_fn=None,
+                      on_transient_failure_fn=None,
                       on_recovery_fn=None,
                       worker_device_name="(unknown)"):
     """Catches worker preemption error and wait until failed workers are back.
 
     Args:
       on_failure_fn: an optional function to run if preemption happens.
+      on_transient_failure_fn: an optional function to run if transient failure
+        happens.
       on_recovery_fn: an optional function to run when a worker is recovered
         from preemption.
       worker_device_name: the device name of the worker instance that is passing
@@ -525,8 +528,12 @@ class WorkerPreemptionHandler(object):
       # If the error is due to temporary connectivity issues between worker and
       # ps, put back closure, ignore error and do not mark worker as failure.
       if self._cluster._record_and_ignore_transient_ps_failure(e):  # pylint: disable=protected-access
-        if on_failure_fn:
-          on_failure_fn()
+        logging.error(
+            "Remote function on worker %s failed with %r:%s\n"
+            "It is treated as a transient connectivity failure for now.",
+            worker_device_name, e, e)
+        if on_transient_failure_fn:
+          on_transient_failure_fn()
         return
 
       # Ignoring derived CancelledErrors to tolerate transient failures in
@@ -536,13 +543,13 @@ class WorkerPreemptionHandler(object):
       # We do not mark either worker or PS as failed due to only CancelledError.
       # If there are real (non-transient) failures, they must also be reported
       # as other errors (UnavailableError most likely) in closure executions.
-      if isinstance(e, errors.CancelledError):
+      if isinstance(e, errors.CancelledError) and "/job:" in str(e):
         logging.error(
             "Remote function on worker %s failed with %r:%s\n"
             "This derived error is ignored and not reported to users.",
             worker_device_name, e, e)
-        if on_failure_fn:
-          on_failure_fn()
+        if on_transient_failure_fn:
+          on_transient_failure_fn()
         return
 
       # This reraises the error, if it's not considered recoverable; otherwise,
@@ -571,6 +578,7 @@ class WorkerPreemptionHandler(object):
       if on_recovery_fn:
         with self.wait_on_failure(
             on_recovery_fn=on_recovery_fn,
+            on_transient_failure_fn=on_transient_failure_fn,
             worker_device_name=worker_device_name):
           on_recovery_fn()
 
@@ -669,6 +677,8 @@ class Worker(object):
     try:
       with self._cluster.failure_handler.wait_on_failure(
           on_failure_fn=lambda: self._cluster.closure_queue.put_back(closure),
+          on_transient_failure_fn=lambda: self._cluster.closure_queue.put_back(
+              closure),
           on_recovery_fn=self._set_resources_aborted,
           worker_device_name=self.device_name):
         closure.execute_on(self)
@@ -1117,9 +1127,6 @@ class ClusterCoordinator(object):
     remote_value = coordinator.schedule(worker_fn, args=(per_worker_iter,))
     assert remote_value.fetch() == 3
     ```
-
-    NOTE: A known limitation is `tf.data.Options` is ignored in dataset created
-    by `create_per_worker_dataset`.
 
     Args:
       dataset_fn: The dataset function that returns a dataset. This is to be

@@ -236,6 +236,7 @@ py_library(
     name = "session",
     srcs = ["session.py"],
     srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:mixed_precision_global_state",
         "//tensorflow/python:platform",

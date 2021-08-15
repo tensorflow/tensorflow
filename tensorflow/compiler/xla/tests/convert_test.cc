@@ -173,7 +173,7 @@ TEST_F(ConvertTest, ConvertR1F32ToR1S32) {
 
 XLA_TEST_F(ConvertTest, ConvertR1S64ToR1F32) {
   XlaBuilder builder(TestName());
-  std::vector<int64> arg{
+  std::vector<int64_t> arg{
       -9223371216516022272,
       -2,
       -1,
@@ -202,15 +202,15 @@ XLA_TEST_F(ConvertTest, ConvertR1S64ToR1F32) {
       0x7FFFFF0000000000LL,
       0x7FFFFF8000000000LL,
       0x7FFFFFFFFFFFFF00,
-      static_cast<int64>(0xFFFFFFFFFFFFFFFF),
-      static_cast<int64>(0x0000f234e67e0001LL),
-      static_cast<int64>(0x8000000000000000),
-      static_cast<int64>(0x8000000000000000LL),
-      static_cast<int64>(0x8000000000000001LL),
-      static_cast<int64>(0x8000008000000000LL),
-      static_cast<int64>(0x8000010000000000LL),
+      static_cast<int64_t>(0xFFFFFFFFFFFFFFFF),
+      static_cast<int64_t>(0x0000f234e67e0001LL),
+      static_cast<int64_t>(0x8000000000000000),
+      static_cast<int64_t>(0x8000000000000000LL),
+      static_cast<int64_t>(0x8000000000000001LL),
+      static_cast<int64_t>(0x8000008000000000LL),
+      static_cast<int64_t>(0x8000010000000000LL),
   };
-  Literal arg_literal = LiteralUtil::CreateR1<int64>({arg});
+  Literal arg_literal = LiteralUtil::CreateR1<int64_t>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
   std::unique_ptr<GlobalData> arg_data =
       client_->TransferToServer(arg_literal).ConsumeValueOrDie();
@@ -271,11 +271,11 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1S64) {
 
   ConvertElementType(arg_param, S64);
 
-  std::vector<int64> expected(arg.size());
+  std::vector<int64_t> expected(arg.size());
   for (int64_t i = 0; i < arg.size(); ++i) {
-    expected[i] = static_cast<int64>(arg[i]);
+    expected[i] = static_cast<int64_t>(arg[i]);
   }
-  ComputeAndCompareR1<int64>(&builder, expected, {arg_data.get()});
+  ComputeAndCompareR1<int64_t>(&builder, expected, {arg_data.get()});
 }
 
 XLA_TEST_F(ConvertTest, ConvertR1S32ToR1S64) {
@@ -288,11 +288,11 @@ XLA_TEST_F(ConvertTest, ConvertR1S32ToR1S64) {
 
   ConvertElementType(arg_param, S64);
 
-  std::vector<int64> expected(arg.size());
+  std::vector<int64_t> expected(arg.size());
   for (int64_t i = 0; i < arg.size(); ++i) {
-    expected[i] = static_cast<int64>(arg[i]);
+    expected[i] = static_cast<int64_t>(arg[i]);
   }
-  ComputeAndCompareR1<int64>(&builder, expected, {arg_data.get()});
+  ComputeAndCompareR1<int64_t>(&builder, expected, {arg_data.get()});
 }
 
 XLA_TEST_F(ConvertTest, ConvertR1F32ToR1S64) {
@@ -325,11 +325,11 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1S64) {
 
   ConvertElementType(arg_param, S64);
 
-  std::vector<int64> expected(arg.size());
+  std::vector<int64_t> expected(arg.size());
   for (int64_t i = 0; i < arg.size(); ++i) {
-    expected[i] = static_cast<int64>(arg[i]);
+    expected[i] = static_cast<int64_t>(arg[i]);
   }
-  ComputeAndCompareR1<int64>(&builder, expected, {arg_data.get()});
+  ComputeAndCompareR1<int64_t>(&builder, expected, {arg_data.get()});
 }
 
 XLA_TEST_F(ConvertTest, ConvertR1U8ToR1F32) {
@@ -459,7 +459,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F16ToR1F32) {
   XlaBuilder builder(TestName());
   ConvertElementType(
       Parameter(&builder, 0,
-                ShapeUtil::MakeShape(F16, {static_cast<int64>(input.size())}),
+                ShapeUtil::MakeShape(F16, {static_cast<int64_t>(input.size())}),
                 "param"),
       F32);
 
@@ -479,7 +479,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1F16) {
   XlaBuilder builder(TestName());
   ConvertElementType(
       Parameter(&builder, 0,
-                ShapeUtil::MakeShape(F32, {static_cast<int64>(input.size())}),
+                ShapeUtil::MakeShape(F32, {static_cast<int64_t>(input.size())}),
                 "param"),
       F16);
 
@@ -495,33 +495,33 @@ XLA_TEST_F(ConvertTest, ConvertC64ToC64) {
 
 XLA_TEST_F(ConvertTest, ConvertS64S64) {
   XlaBuilder builder(TestName());
-  std::vector<int64> x = {{-42, 64}};
-  ConvertElementType(ConstantR1<int64>(&builder, x), S64);
-  ComputeAndCompareR1<int64>(&builder, x, {});
+  std::vector<int64_t> x = {{-42, 64}};
+  ConvertElementType(ConstantR1<int64_t>(&builder, x), S64);
+  ComputeAndCompareR1<int64_t>(&builder, x, {});
 }
 
 XLA_TEST_F(ConvertTest, ConvertU64U64) {
   XlaBuilder builder(TestName());
-  std::vector<uint64> x = {{42, 64}};
-  ConvertElementType(ConstantR1<uint64>(&builder, x), U64);
-  ComputeAndCompareR1<uint64>(&builder, x, {});
+  std::vector<uint64_t> x = {{42, 64}};
+  ConvertElementType(ConstantR1<uint64_t>(&builder, x), U64);
+  ComputeAndCompareR1<uint64_t>(&builder, x, {});
 }
 
 XLA_TEST_F(ConvertTest, ConvertU64S64) {
   XlaBuilder builder(TestName());
-  std::vector<uint64> unsigned_x = {{42, UINT64_MAX}};
-  ConvertElementType(ConstantR1<uint64>(&builder, unsigned_x), S64);
-  std::vector<int64> signed_x = {{42, -1}};
-  ComputeAndCompareR1<int64>(&builder, signed_x, {});
+  std::vector<uint64_t> unsigned_x = {{42, UINT64_MAX}};
+  ConvertElementType(ConstantR1<uint64_t>(&builder, unsigned_x), S64);
+  std::vector<int64_t> signed_x = {{42, -1}};
+  ComputeAndCompareR1<int64_t>(&builder, signed_x, {});
 }
 
 XLA_TEST_F(ConvertTest, ConvertS64U64) {
   XlaBuilder builder(TestName());
-  std::vector<int64> signed_x = {{42, -1, INT64_MIN}};
-  ConvertElementType(ConstantR1<int64>(&builder, signed_x), U64);
-  std::vector<uint64> unsigned_x = {
-      {42, UINT64_MAX, tensorflow::MathUtil::IPow<uint64>(2, 63)}};
-  ComputeAndCompareR1<uint64>(&builder, unsigned_x, {});
+  std::vector<int64_t> signed_x = {{42, -1, INT64_MIN}};
+  ConvertElementType(ConstantR1<int64_t>(&builder, signed_x), U64);
+  std::vector<uint64_t> unsigned_x = {
+      {42, UINT64_MAX, tensorflow::MathUtil::IPow<uint64_t>(2, 63)}};
+  ComputeAndCompareR1<uint64_t>(&builder, unsigned_x, {});
 }
 
 XLA_TEST_F(ConvertTest, ConvertBF16F32) {

@@ -17,204 +17,296 @@ limitations under the License.
 
 #include <set>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/python/lib/core/py_util.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/util.h"
 
 namespace tensorflow {
-
-using ParamInfo = PythonAPIDispatcher::ParamInfo;
-
-// List of python types to check for dispatch.  In most cases, this vector
-// will have size zero or one; and sizes greater than 3 should be rare.
-using TypeList = absl::InlinedVector<PyTypeObject*, 3>;
+namespace py_dispatch {
 
 namespace {
 
-// Returns the __tf__dispatch__ attribute of `obj`.
-Safe_PyObjectPtr GetAttr_TFDispatch(PyObject* obj) {
-#if PY_MAJOR_VERSION < 3
-  // Python 2.x:
-  static PyObject* attr = PyString_InternFromString("__tf_dispatch__");
-#else
-  // Python 3.x:
-  static PyObject* attr = PyUnicode_InternFromString("__tf_dispatch__");
-#endif
-  return Safe_PyObjectPtr(PyObject_GetAttr(obj, attr));
+std::vector<Safe_PyObjectPtr>& GetRegisteredDispatchableTypes() {
+  static std::vector<Safe_PyObjectPtr>* registered_dispatchable_types =
+      new std::vector<Safe_PyObjectPtr>();
+  if (registered_dispatchable_types->empty()) {
+    static PyObject* composite_tensor =
+        swig::GetRegisteredPyObject("CompositeTensor");
+    Py_INCREF(composite_tensor);
+    registered_dispatchable_types->push_back(
+        Safe_PyObjectPtr(composite_tensor));
+  }
+  return *registered_dispatchable_types;
 }
 
-// Searches `params` for dispatchable types, and returns a vector of borrowed
-// references to those types.  Removes consecutive duplicates (i.e., if a
-// dispatchable parameter has the same type as the previously encountered
-// dispatcahble parameter, then it's type is not added again), so the result
-// will usually have a length of zero or one; but in the general case, it may be
-// longer, and may contain (nonconsecutive) duplicates.
-//
-// Assumes that `params` is a tuple, and that all parameter indices in
-// `dispatch_params` and `dispatch_list_params` are valid.
-TypeList FindDispatchTypes(PyObject* params,
-                           const std::vector<ParamInfo>& dispatchable_params) {
-  TypeList dispatch_types;
-  for (const auto& param : dispatchable_params) {
-    DCHECK_GE(param.index, 0);
-    DCHECK_LT(param.index, PyTuple_GET_SIZE(params));
-    PyObject* value = PyTuple_GET_ITEM(params, param.index);
-    if (param.is_list) {
-      DCHECK(PyList_Check(value));
-      Py_ssize_t num_items = PyList_Size(value);
-      for (Py_ssize_t i = 0; i < num_items; ++i) {
-        PyObject* item = PyList_GET_ITEM(value, i);
-        // TODO(b/164980194) Consider changing IsDispatchable to not use a
-        // cache.  This may impact efficiency (needs to be measured), but would
-        // allow us to support monkey-patching classes to be dispatchable.
-        if (swig::IsDispatchable(item)) {
-          if (dispatch_types.empty() ||
-              value->ob_type != dispatch_types.back()) {
-            dispatch_types.push_back(item->ob_type);
-          }
-        }
-      }
-    } else {
-      if (swig::IsDispatchable(value)) {
-        if (dispatch_types.empty() || value->ob_type != dispatch_types.back()) {
-          dispatch_types.push_back(value->ob_type);
-        }
-      }
-    }
+// Returns true if `py_class` is a registered dispatchable type.
+bool IsRegisteredDispatchableType(PyObject* py_class) {
+  DCheckPyGilState();
+  for (const auto& registered_type : GetRegisteredDispatchableTypes()) {
+    int result = PyObject_IsSubclass(py_class, registered_type.get());
+    if (result > 0) return true;
+    if (result < 0) PyErr_Clear();
   }
-
-  return dispatch_types;
+  return false;
 }
 
-// Removes duplicates from `dispatch_types`, and moves any subtypes to
-// before their supertypes.  Note: this method is only called when
-// `dispatch_types.size() > 1`.
-void SortDispatchTypes(TypeList& dispatch_types) {
-  // Remove duplicates.  Note: this is O(n^2) in the number of dispatchable
-  // types, but we expect this number to be very small in almost every case
-  // (usually zero, sometimes one, and rarely larger than two).
-  for (int i = 0; i < dispatch_types.size() - 1; ++i) {
-    if (dispatch_types[i] == nullptr) continue;
-    for (int j = i + 1; j < dispatch_types.size(); ++j) {
-      if (dispatch_types[i] == dispatch_types[j]) {
-        dispatch_types[j] = nullptr;  // mark duplicate
-      }
-    }
-  }
-  dispatch_types.erase(
-      std::remove_if(dispatch_types.begin(), dispatch_types.end(),
-                     [](PyTypeObject* t) { return t == nullptr; }),
-      dispatch_types.end());
-
-  // Move subclasses before superclasses.  As above, this is O(n^2), but we
-  // expect n to be small.
-  TypeList sorted;
-  TypeList subtypes;
-  for (int i = 0; i < dispatch_types.size(); ++i) {
-    if (dispatch_types[i] == nullptr) continue;
-    subtypes.clear();
-    for (int j = i + 1; j < dispatch_types.size(); ++j) {
-      if (dispatch_types[j] == nullptr) continue;
-      if (PyType_IsSubtype(dispatch_types[j], dispatch_types[i])) {
-        subtypes.push_back(dispatch_types[j]);
-        dispatch_types[j] = nullptr;  // mark as already added.
-      }
-    }
-    if (!subtypes.empty()) {
-      std::sort(subtypes.begin(), subtypes.end(), PyType_IsSubtype);
-      sorted.insert(sorted.end(), subtypes.begin(), subtypes.end());
-    }
-    sorted.push_back(dispatch_types[i]);
-  }
-  DCHECK_EQ(dispatch_types.size(), sorted.size());
-  dispatch_types.swap(sorted);
+// Raises an exception indicating that multiple dispatch targets matched.
+Safe_PyObjectPtr RaiseDispatchConflictError(const std::string& api_name,
+                                            PyObject* selected,
+                                            PyObject* target) {
+  Safe_PyObjectPtr s1(PyObject_Str(selected));
+  Safe_PyObjectPtr s2(PyObject_Str(target));
+  PyErr_SetString(PyExc_ValueError,
+                  absl::StrCat("Multiple dispatch targets that were "
+                               "registered with tf.dispatch_for (",
+                               s1 ? PyUnicode_AsUTF8(s1.get()) : "?", " and ",
+                               s2 ? PyUnicode_AsUTF8(s2.get()) : "?",
+                               ") match the arguments to ", api_name)
+                      .c_str());
+  return nullptr;
 }
 
 }  // namespace
 
-PythonAPIDispatcher::PythonAPIDispatcher(const std::string& api_name,
-                                         PyObject* api_func, int num_params,
-                                         bool right_to_left)
-    : api_name_(PyUnicode_FromStringAndSize(api_name.c_str(), api_name.size())),
-      api_func_(api_func),
-      num_params_(num_params),
-      right_to_left_(right_to_left) {
-  Py_INCREF(api_func);
-}
-
-bool PythonAPIDispatcher::Initialize(
-    std::vector<ParamInfo> dispatchable_params) {
-  dispatchable_params_.swap(dispatchable_params);
-  std::sort(dispatchable_params_.begin(), dispatchable_params_.end(),
-            [](const ParamInfo& a, const ParamInfo& b) -> bool {
-              return a.index < b.index;
-            });
-  if (right_to_left_) {
-    std::reverse(dispatchable_params_.begin(), dispatchable_params_.end());
+bool RegisterDispatchableType(PyObject* py_class) {
+  DCheckPyGilState();
+  if (!PyType_Check(py_class)) {
+    PyErr_SetString(
+        PyExc_ValueError,
+        absl::StrCat("Expected a type object; got object with type ",
+                     py_class->ob_type->tp_name)
+            .c_str());
+    return false;
   }
-
-  for (const auto& p : dispatchable_params_) {
-    if (p.index < 0 || p.index >= num_params_) {
-      PyErr_SetString(
-          PyExc_ValueError,
-          absl::StrCat("PythonAPIDispatcher: dispatchable parameter index out ",
-                       "of range: ", p.index, " not in [0, ", num_params_, ")")
-              .c_str());
-      return false;
-    }
+  if (IsRegisteredDispatchableType(py_class)) {
+    Safe_PyObjectPtr s(PyObject_Str(py_class));
+    PyErr_SetString(PyExc_ValueError,
+                    absl::StrCat("Type ", s ? PyUnicode_AsUTF8(s.get()) : "?",
+                                 " (or one of its bases clases) has "
+                                 "already been registered")
+                        .c_str());
+    return false;
   }
+  Py_INCREF(py_class);
+  GetRegisteredDispatchableTypes().push_back(Safe_PyObjectPtr(py_class));
   return true;
 }
 
-PyObject* PythonAPIDispatcher::Dispatch(PyObject* params) const {
-  DCHECK(PyTuple_Check(params));
+PythonAPIDispatcher::PythonAPIDispatcher(const std::string& api_name,
+                                         absl::Span<const char*> arg_names,
+                                         absl::Span<PyObject*> defaults)
+    : api_name_(api_name),
+      canonicalizer_(arg_names, defaults),
+      canonicalized_args_storage_(canonicalizer_.GetArgSize()),
+      canonicalized_args_span_(canonicalized_args_storage_) {}
 
-  // TODO(b/164980194) Consider removing this check, if the caller is also
-  // checking/guaranteeing it (once dispatch has been integrated w/ the Python
-  // API handlers).
-  if (num_params_ != PyTuple_Size(params)) {
-#if PY_MAJOR_VERSION < 3
-    // Python 2.x:
-    Safe_PyObjectPtr api_name_str(PyUnicode_AsUTF8String(api_name_.get()));
-    if (!api_name_str) return nullptr;
-    const char* api_name = PyString_AsString(api_name_str.get());
-#else
-    // Python 3.x:
-    const char* api_name = PyUnicode_AsUTF8AndSize(api_name_.get(), nullptr);
-#endif
-    PyErr_SetString(
-        PyExc_TypeError,
-        absl::StrCat(api_name ? api_name : "unknown PythonAPIDispatcher",
-                     " expected ", num_params_, " parameters, but got ",
-                     PyTuple_Size(params))
-            .c_str());
+void PythonAPIDispatcher::Register(PySignatureChecker signature_checker,
+                                   PyObject* dispatch_target) {
+  DCheckPyGilState();
+  Py_INCREF(dispatch_target);
+  targets_.emplace_back(std::move(signature_checker), dispatch_target);
+}
+
+Safe_PyObjectPtr PythonAPIDispatcher::Dispatch(PyObject* args,
+                                               PyObject* kwargs) {
+  DCheckPyGilState();
+  if (kwargs == Py_None) {
+    kwargs = nullptr;
+  }
+  // Canonicalize args (so we don't need to deal with kwargs).
+  if (!canonicalizer_.Canonicalize(args, kwargs, canonicalized_args_span_)) {
     return nullptr;
   }
 
-  TypeList dispatch_types = FindDispatchTypes(params, dispatchable_params_);
-
-  if (dispatch_types.empty()) {
-    return Py_NotImplemented;
-  }
-
-  if (dispatch_types.size() > 1) {
-    SortDispatchTypes(dispatch_types);
-  }
-
-  for (PyTypeObject* dispatch_type : dispatch_types) {
-    Safe_PyObjectPtr dispatcher =
-        GetAttr_TFDispatch(reinterpret_cast<PyObject*>(dispatch_type));
-    if (!dispatcher) return nullptr;
-    PyObject* result = PyObject_CallFunctionObjArgs(
-        dispatcher.get(), api_name_.get(), api_func_.get(), params, nullptr);
-    if (result != Py_NotImplemented) {
-      return result;
+  PyObject* selected = nullptr;
+  for (auto& target : targets_) {
+    if (target.first.CheckCanonicalizedArgs(canonicalized_args_span_)) {
+      if (selected && selected != target.second.get()) {
+        return RaiseDispatchConflictError(api_name_, selected,
+                                          target.second.get());
+      }
+      selected = target.second.get();
     }
   }
-
-  return Py_NotImplemented;
+  if (selected) {
+    return Safe_PyObjectPtr(PyObject_Call(selected, args, kwargs));
+  } else {
+    Py_INCREF(Py_NotImplemented);
+    return Safe_PyObjectPtr(Py_NotImplemented);
+  }
 }
 
+// TODO(b/194903203) Raise an error if `func` is not registered.
+void PythonAPIDispatcher::Unregister(PyObject* func) {
+  DCheckPyGilState();
+  using DispatchTargetPair = std::pair<PySignatureChecker, Safe_PyObjectPtr>;
+  targets_.erase(std::remove_if(targets_.begin(), targets_.end(),
+                                [func](const DispatchTargetPair& t) {
+                                  return t.second.get() == func;
+                                }),
+                 targets_.end());
+}
+
+std::string PythonAPIDispatcher::DebugString() const {
+  DCheckPyGilState();
+  std::string out = absl::StrCat("<Disptach(", api_name_, "): ");
+
+  const char* sep = "";
+  for (const auto& target : targets_) {
+    Safe_PyObjectPtr target_str(PyObject_Str(target.second.get()));
+    absl::StrAppend(&out, sep, target.first.DebugString(), " -> ",
+                    target_str ? PyUnicode_AsUTF8(target_str.get()) : "?");
+    sep = ", ";
+  }
+  return out;
+}
+
+PySignatureChecker::PySignatureChecker(
+    std::vector<ParamChecker> parameter_checkers)
+    : positional_parameter_checkers_(std::move(parameter_checkers)) {
+  // Check less expensive parameters first.
+  std::sort(positional_parameter_checkers_.begin(),
+            positional_parameter_checkers_.end(),
+            [](ParamChecker a, ParamChecker b) {
+              return a.second->cost() < b.second->cost();
+            });
+}
+
+bool PySignatureChecker::CheckCanonicalizedArgs(
+    absl::Span<PyObject*> canon_args) const {
+  bool matched_dispatchable_type = false;
+  for (auto& c : positional_parameter_checkers_) {
+    int index = c.first;
+    auto& param_checker = c.second;
+    if (index >= canon_args.size()) {
+      return false;
+    }
+    switch (param_checker->Check(canon_args[index])) {
+      case PyTypeChecker::MatchType::NO_MATCH:
+        return false;
+      case PyTypeChecker::MatchType::MATCH_DISPATCHABLE:
+        matched_dispatchable_type = true;
+        break;
+      case PyTypeChecker::MatchType::MATCH:
+        break;
+    }
+  }
+  return matched_dispatchable_type;
+}
+
+std::string PySignatureChecker::DebugString() const {
+  return absl::StrJoin(positional_parameter_checkers_, ", ",
+                       [](std::string* out, ParamChecker p) {
+                         absl::StrAppend(out, "args[", p.first,
+                                         "]:", p.second->DebugString());
+                       });
+}
+
+PyInstanceChecker::PyInstanceChecker(PyObject* py_class) : py_class_(py_class) {
+  DCheckPyGilState();
+  Py_INCREF(py_class);
+  match_type_ = IsRegisteredDispatchableType(py_class)
+                    ? MatchType::MATCH_DISPATCHABLE
+                    : MatchType::MATCH;
+}
+
+PyInstanceChecker::~PyInstanceChecker() {
+  DCheckPyGilState();
+  for (const auto& pair : py_class_cache_) {
+    Py_DECREF(pair.first);
+  }
+}
+
+PyTypeChecker::MatchType PyInstanceChecker::Check(PyObject* value) {
+  DCheckPyGilState();
+  auto* type = Py_TYPE(value);
+  auto it = py_class_cache_.find(type);
+  if (it != py_class_cache_.end()) {
+    return it->second ? match_type_ : MatchType::NO_MATCH;
+  }
+
+  int result = PyObject_IsInstance(value, py_class_.get());
+  if (result < 0) {
+    PyErr_Clear();
+    return MatchType::NO_MATCH;
+  }
+
+  if (py_class_cache_.size() < kMaxItemsInCache) {
+    Py_INCREF(type);
+    auto insert_result = py_class_cache_.insert({type, result});
+    DCHECK(insert_result.second);
+  }
+  return result ? match_type_ : MatchType::NO_MATCH;
+}
+
+std::string PyInstanceChecker::DebugString() const {
+  DCheckPyGilState();
+  return reinterpret_cast<PyTypeObject*>(py_class_.get())->tp_name;
+}
+
+PyTypeChecker::MatchType PyListChecker::Check(PyObject* value) {
+  DCheckPyGilState();
+  Safe_PyObjectPtr seq(PySequence_Fast(value, ""));
+  if (!seq) {
+    PyErr_Clear();
+    return MatchType::NO_MATCH;  // value is not a sequence.
+  }
+
+  MatchType result = MatchType::MATCH;
+  for (int i = 0; i < PySequence_Fast_GET_SIZE(seq.get()); ++i) {
+    switch (element_type_->Check(PySequence_Fast_GET_ITEM(seq.get(), i))) {
+      case MatchType::NO_MATCH:
+        return MatchType::NO_MATCH;
+      case MatchType::MATCH_DISPATCHABLE:
+        result = MatchType::MATCH_DISPATCHABLE;
+        break;
+      case MatchType::MATCH:
+        break;
+    }
+  }
+  return result;
+}
+
+int PyListChecker::cost() { return 10 * element_type_->cost(); }
+
+std::string PyListChecker::DebugString() const {
+  return absl::StrCat("List[", element_type_->DebugString(), "]");
+}
+
+PyTypeChecker::MatchType PyUnionChecker::Check(PyObject* value) {
+  MatchType result = MatchType::NO_MATCH;
+  for (auto& type_option : options_) {
+    switch (type_option->Check(value)) {
+      case MatchType::MATCH:
+        result = MatchType::MATCH;
+        break;
+      case MatchType::MATCH_DISPATCHABLE:
+        return MatchType::MATCH_DISPATCHABLE;
+      case MatchType::NO_MATCH:
+        break;
+    }
+  }
+  return result;
+}
+
+int PyUnionChecker::cost() {
+  int cost = 1;
+  for (auto& type_option : options_) {
+    cost += type_option->cost();
+  }
+  return cost;
+}
+
+std::string PyUnionChecker::DebugString() const {
+  return absl::StrCat("Union[",
+                      absl::StrJoin(options_, ", ",
+                                    [](std::string* out, PyTypeChecker_ptr v) {
+                                      out->append(v->DebugString());
+                                    }),
+                      "]");
+}
+
+}  // namespace py_dispatch
 }  // namespace tensorflow

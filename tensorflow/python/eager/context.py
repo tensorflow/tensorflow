@@ -695,13 +695,17 @@ class Context(object):
 
   def enable_coordination_service(self, service_type):
     if self._context_handle:
-      raise RuntimeError(
-          "Coordination service must be enabled at program startup time.")
+      logging.warning("Configuring coordination service type may not be "
+                      "effective because the context is already initialized.")
     self._coordination_service = service_type
+
+  @property
+  def coordination_service(self):
+    return self._coordination_service
 
   def set_config_key_value(self, key, value):
     ensure_initialized()
-    pywrap_tfe.TFE_SetConfigKeyValue(self._context_handle, key, value)
+    pywrap_tfe.TFE_InsertConfigKeyValue(self._context_handle, key, value)
 
   def get_config_key_value(self, key):
     ensure_initialized()
@@ -713,6 +717,19 @@ class Context(object):
   def delete_config_key_value(self, key):
     ensure_initialized()
     pywrap_tfe.TFE_DeleteConfigKeyValue(self._context_handle, key)
+
+  def report_error_to_cluster(self, error_code, error_message):
+    """Report error to other members in a multi-client cluster.
+
+    Args:
+      error_code: a `tf.errors` error code.
+      error_message: a string. The error message.
+    """
+    if self._context_handle:
+      pywrap_tfe.TFE_ReportErrorToCluster(self._context_handle, error_code,
+                                          error_message)
+    else:
+      raise ValueError("Context is not initialized.")
 
   def clear_kernel_cache(self):
     """Clear kernel cache and reset all stateful kernels."""

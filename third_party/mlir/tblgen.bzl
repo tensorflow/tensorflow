@@ -1,4 +1,9 @@
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """BUILD extensions for MLIR table generation."""
+
+load("@bazel_skylib//lib:paths.bzl", "paths")
 
 TdInfo = provider(
     "Holds TableGen files and the dependencies and include paths necessary to" +
@@ -66,8 +71,8 @@ def _prefix_roots(ctx, includes):
     prefixed_includes = []
     for include in includes:
         prefixed_includes.append(include)
-        prefixed_includes.append(ctx.genfiles_dir.path + "/" + include)
-        prefixed_includes.append(ctx.bin_dir.path + "/" + include)
+        prefixed_includes.append(paths.join(ctx.genfiles_dir.path, include))
+        prefixed_includes.append(paths.join(ctx.bin_dir.path, include))
     return prefixed_includes
 
 def _resolve_includes(ctx, includes):
@@ -81,9 +86,11 @@ def _resolve_includes(ctx, includes):
     workspace_root = workspace_root if workspace_root else "."
     resolved_includes = []
     for include in includes:
-        if not include.startswith("/"):
-            include = "/" + package + "/" + include
-        include = workspace_root + include
+        if paths.is_absolute(include):
+            include = include.lstrip("/")
+        else:
+            include = paths.join(package, include)
+        include = paths.join(workspace_root, include)
         resolved_includes.extend(_prefix_roots(ctx, [include]))
     return resolved_includes
 
@@ -93,8 +100,21 @@ def _td_library_impl(ctx):
         _resolve_includes(ctx, ctx.attr.includes),
         ctx.attr.deps,
     )
+
+    # Note that we include srcs in runfiles. A td_library doesn't compile to
+    # produce an output: it's just a depset of source files and include
+    # directories. So if it is needed for execution of some rule (likely
+    # something running tblgen as a test action), the files needed are the same
+    # as the source files.
+    # Note: not using merge_all, as that is not available in Bazel 4.0
+    runfiles = ctx.runfiles(ctx.files.srcs)
+    for src in ctx.attr.srcs:
+        runfiles = runfiles.merge(src[DefaultInfo].default_runfiles)
+    for dep in ctx.attr.deps:
+        runfiles = runfiles.merge(dep[DefaultInfo].default_runfiles)
+
     return [
-        DefaultInfo(files = trans_srcs),
+        DefaultInfo(files = trans_srcs, runfiles = runfiles),
         TdInfo(
             transitive_sources = trans_srcs,
             transitive_includes = trans_includes,
@@ -127,17 +147,13 @@ def _gentbl_rule_impl(ctx):
         ctx.attr.deps,
     )
 
-    # Note that we have two types of includes here. The deprecated ones expanded
-    # only by "_prefix_roots" are already relative to the execution root, i.e.
-    # may contain an `external/<workspace_name>` prefix if the current workspace
-    # is not the main workspace (where workspace_name is something configured
-    # per-project and therefore generally not known). Note that dirname also
-    # already includes this prefix. The new style of includes have it prepended
-    # automatically by `_resolve_includes` to avoid BUILD files having to depend
-    # on project specific configurations and Bazel implementation details.
+    # Note that the td_file.dirname is already relative to the execution root,
+    # i.e. may contain an `external/<workspace_name>` prefix if the current
+    # workspace is not the main workspace. Therefore it is not included in the
+    # _resolve_includes call that prepends this prefix.
     trans_includes = _get_transitive_includes(
         _resolve_includes(ctx, ctx.attr.includes + ["/"]) +
-        _prefix_roots(ctx, ctx.attr.td_includes + [td_file.dirname]),
+        _prefix_roots(ctx, [td_file.dirname]),
         ctx.attr.deps,
     )
 
@@ -153,7 +169,7 @@ def _gentbl_rule_impl(ctx):
         inputs = trans_srcs,
         executable = ctx.executable.tblgen,
         arguments = [args],
-        mnemonic = "TdGenerate",  # Kythe extractor hook.
+        mnemonic = "TdGenerate",
     )
 
     return [DefaultInfo()]
@@ -203,13 +219,6 @@ gentbl_rule = rule(
                   " directories). The execution roots themselves and the " +
                   " directory of td_file are always added.",
         ),
-        "td_includes": attr.string_list(
-            doc = "Include paths to add to the TableGen invocation. Paths are" +
-                  " interpreted as relative to the current label's workspace" +
-                  " root and applied from all roots available in the" +
-                  " execution environment (source, genfiles, and bin" +
-                  " directories). Deprecated. Use `includes` instead.",
-        ),
     },
 )
 
@@ -217,22 +226,13 @@ gentbl_rule = rule(
 def _gentbl_test_impl(ctx):
     td_file = ctx.file.td_file
 
-    trans_srcs = _get_transitive_srcs(
-        ctx.files.td_srcs + [td_file],
-        ctx.attr.deps,
-    )
-
-    # Note that we have two types of includes here. The deprecated ones expanded
-    # only by "_prefix_roots" are already relative to the execution root, i.e.
-    # may contain an `external/<workspace_name>` prefix if the current workspace
-    # is not the main workspace (where workspace_name is something configured
-    # per-project and therefore generally not known). Note that dirname also
-    # already includes this prefix. The new style of includes have it prepended
-    # automatically by `_resolve_includes` to avoid BUILD files having to depend
-    # on project specific configurations and Bazel implementation details.
+    # Note that the td_file.dirname is already relative to the execution root,
+    # i.e. may contain an `external/<workspace_name>` prefix if the current
+    # workspace is not the main workspace. Therefore it is not included in the
+    # _resolve_includes call that prepends this prefix.
     trans_includes = _get_transitive_includes(
         _resolve_includes(ctx, ctx.attr.includes + ["/"]) +
-        _prefix_roots(ctx, ctx.attr.td_includes + [td_file.dirname]),
+        _prefix_roots(ctx, [td_file.dirname]),
         ctx.attr.deps,
     )
 
@@ -249,18 +249,26 @@ def _gentbl_test_impl(ctx):
         is_executable = True,
     )
 
+    # Note: not using merge_all, as that is not available in Bazel 4.0
+    runfiles = ctx.runfiles(
+        files = [ctx.executable.tblgen],
+        transitive_files = _get_transitive_srcs(
+            ctx.files.td_srcs + [td_file],
+            ctx.attr.deps,
+        ),
+    )
+    for src in ctx.attr.td_srcs:
+        runfiles = runfiles.merge(src[DefaultInfo].default_runfiles)
+    for dep in ctx.attr.deps:
+        runfiles = runfiles.merge(dep[DefaultInfo].default_runfiles)
+
     return [
         coverage_common.instrumented_files_info(
             ctx,
             source_attributes = ["td_file", "td_srcs"],
             dependency_attributes = ["tblgen", "deps"],
         ),
-        DefaultInfo(
-            runfiles = ctx.runfiles(
-                [ctx.executable.tblgen],
-                transitive_files = trans_srcs,
-            ),
-        ),
+        DefaultInfo(runfiles = runfiles),
     ]
 
 gentbl_test = rule(
@@ -289,7 +297,6 @@ gentbl_test = rule(
         "deps": attr.label_list(doc = "See gentbl_rule.deps"),
         "opts": attr.string_list(doc = "See gentbl_rule.opts"),
         "includes": attr.string_list(doc = "See gentbl_rule.includes"),
-        "td_includes": attr.string_list(doc = "See gentbl_rule.td_includes"),
     },
 )
 
@@ -299,7 +306,6 @@ def gentbl_filegroup(
         td_file,
         tbl_outs,
         td_srcs = [],
-        td_includes = [],
         includes = [],
         deps = [],
         test = False,
@@ -318,19 +324,12 @@ def gentbl_filegroup(
         corresponding output file produced.
       td_srcs: See gentbl_rule.td_srcs
       includes: See gentbl_rule.includes
-      td_includes: See gentbl_rule.td_includes
       deps: See gentbl_rule.deps
       test: Whether to create a shell test that invokes the tool too.
       skip_opts: Files generated using these opts in tbl_outs will be excluded
         from the generated filegroup.
       **kwargs: Extra keyword arguments to pass to all generated rules.
     """
-
-    # TODO(gcmn): Update callers to td_library and explicit includes and
-    # drop this hardcoded include.
-    hardcoded_includes = [
-        "external/llvm-project/mlir/include",
-    ]
 
     for (opts, out) in tbl_outs:
         first_opt = opts[0] if opts else ""
@@ -347,7 +346,6 @@ def gentbl_filegroup(
             td_srcs = td_srcs,
             deps = deps,
             includes = includes,
-            td_includes = td_includes + hardcoded_includes,
             out = out,
             **kwargs
         )
@@ -364,7 +362,6 @@ def gentbl_filegroup(
                 td_srcs = td_srcs,
                 deps = deps,
                 includes = includes,
-                td_includes = td_includes + hardcoded_includes,
                 # Shell files not executable on Windows.
                 # TODO(gcmn): Support windows.
                 tags = ["no_windows"],
@@ -384,9 +381,7 @@ def gentbl_cc_library(
         td_file,
         tbl_outs,
         td_srcs = [],
-        td_includes = [],
         includes = [],
-        td_relative_includes = [],
         deps = [],
         strip_include_prefix = None,
         test = False,
@@ -404,9 +399,6 @@ def gentbl_cc_library(
         corresponding output file produced.
       td_srcs: See gentbl_rule.td_srcs
       includes: See gentbl_rule.includes
-      td_includes: See gentbl_rule.td_includes
-      td_relative_includes: An alias for "includes". Deprecated. Use includes
-        instead.
       deps: See gentbl_rule.deps
       strip_include_prefix: attribute to pass through to cc_library.
       test: whether to create a shell test that invokes the tool too.
@@ -420,8 +412,7 @@ def gentbl_cc_library(
         td_file = td_file,
         tbl_outs = tbl_outs,
         td_srcs = td_srcs,
-        td_includes = td_includes,
-        includes = includes + td_relative_includes,
+        includes = includes,
         deps = deps,
         test = test,
         skip_opts = ["-gen-op-doc"],

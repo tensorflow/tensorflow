@@ -57,10 +57,10 @@ ENTRY computation {
   auto reshape = root->operand(0)->operand(0);
   EXPECT_THAT(reshape, op::Reshape());
   EXPECT_THAT(reshape->operand(0)->operand(1), op::Convolution());
-  const int64 batch_dim = reshape->operand(0)
-                              ->operand(1)
-                              ->convolution_dimension_numbers()
-                              .output_batch_dimension();
+  const int64_t batch_dim = reshape->operand(0)
+                                ->operand(1)
+                                ->convolution_dimension_numbers()
+                                .output_batch_dimension();
   // Verify that the transform has increased the batch size.
   EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 1);
 }
@@ -165,10 +165,10 @@ TEST_F(SpaceToBatchConverterTest, Batch1WithStrideAndPad) {
   auto reshape = root->operand(0)->operand(0);
   EXPECT_THAT(reshape, op::Reshape());
   EXPECT_THAT(reshape->operand(0)->operand(1), op::Convolution());
-  const int64 batch_dim = reshape->operand(0)
-                              ->operand(1)
-                              ->convolution_dimension_numbers()
-                              .output_batch_dimension();
+  const int64_t batch_dim = reshape->operand(0)
+                                ->operand(1)
+                                ->convolution_dimension_numbers()
+                                .output_batch_dimension();
 
   EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 4);
 }
@@ -200,10 +200,10 @@ ENTRY computation {
   auto reshape = root->operand(0)->operand(0);
   EXPECT_THAT(reshape, op::Reshape());
   EXPECT_THAT(reshape->operand(0)->operand(1), op::Convolution());
-  const int64 batch_dim = reshape->operand(0)
-                              ->operand(1)
-                              ->convolution_dimension_numbers()
-                              .output_batch_dimension();
+  const int64_t batch_dim = reshape->operand(0)
+                                ->operand(1)
+                                ->convolution_dimension_numbers()
+                                .output_batch_dimension();
 
   EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 4);
 }

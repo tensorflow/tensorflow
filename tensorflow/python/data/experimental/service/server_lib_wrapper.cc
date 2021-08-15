@@ -98,11 +98,11 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
 
   m.def(
       "TF_DATA_GetElementSpec",
-      [](tensorflow::int64 dataset_id, const std::string& address,
+      [](int64_t dataset_id, const std::string& address,
          const std::string& protocol) -> py::bytes {
         std::string element_spec;
         tensorflow::data::DataServiceDispatcherClient client(address, protocol);
-        tensorflow::int64 deadline_micros = tensorflow::kint64max;
+        int64_t deadline_micros = tensorflow::kint64max;
         tensorflow::Status status;
         Py_BEGIN_ALLOW_THREADS;
         status = tensorflow::data::grpc_util::Retry(

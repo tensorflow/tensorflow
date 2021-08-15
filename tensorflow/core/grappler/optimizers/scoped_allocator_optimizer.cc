@@ -350,7 +350,7 @@ void ScopedAllocatorOptimizer::ExtendNodeAttr(StringPiece name,
   if (HasNodeAttr(*node_def, name)) {
     VLOG(2) << "extending";
     AttrValue* existing = &(*node_def->mutable_attr())[string(name)];
-    for (int32 i : values) {
+    for (int32_t i : values) {
       existing->mutable_list()->add_i(i);
     }
   } else {
@@ -521,7 +521,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     sa_builder.Attr("id", sa_id);
     sa_builder.Attr("shapes", input_shapes);
     sa_builder.Attr("shape", sa_shape);
-    sa_builder.Attr("expected_call_count", static_cast<int64>(ops.size()));
+    sa_builder.Attr("expected_call_count", static_cast<int64_t>(ops.size()));
     NodeDef* sa_node = graph->add_node();
     LOG_WARNING_AND_RETURN_IF_ERROR(sa_builder.Finalize(sa_node));
     node_map->AddNode(sa_name, sa_node);
@@ -1081,7 +1081,7 @@ Status ScopedAllocatorOptimizer::ProcessGraphDef(
   // which means their names must be globally unique within a process,
   // so we include an optimizer invocation count in every generated
   // name.
-  static std::atomic<int64> invocation_counter(1);
+  static std::atomic<int64_t> invocation_counter(1);
   const int64_t invocation_count =
       invocation_counter.fetch_add(1, std::memory_order_seq_cst);
   VLOG(1) << "ProcessGraphDef " << invocation_count;
@@ -1162,8 +1162,8 @@ struct InstanceKeyLess {
   bool operator()(const NodeDef* a, const NodeDef* b) const {
     AttrSlice a_attrs = AttrSlice(*a);
     AttrSlice b_attrs = AttrSlice(*b);
-    int32 a_key = -1;
-    int32 b_key = -1;
+    int32_t a_key = -1;
+    int32_t b_key = -1;
     Status s = GetNodeAttr(a_attrs, "instance_key", &a_key);
     CHECK(s.ok());
     s = GetNodeAttr(b_attrs, "instance_key", &b_key);

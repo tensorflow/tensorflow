@@ -98,6 +98,7 @@ tf_py_test(
     tags = [
         "no_rocm",
         "no_windows",
+        "noasan",  # TODO(b/196617479): it is flaky
         "notsan",  #TODO(b/181771982): it is flaky
     ],
     deps = [

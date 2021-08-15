@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
@@ -1195,7 +1196,7 @@ FunctionDef SessionMetadataReaderOpFn() {
 TEST(DirectSessionTest, SessionMetadataAbsent) {
   Graph g(OpRegistry::Global());
   Tensor vx(DT_INT64, TensorShape({}));
-  vx.scalar<int64>()() = 17;
+  vx.scalar<int64_t>()() = 17;
   Node* x = test::graph::Constant(&g, vx);
   Node* y = test::graph::Unary(&g, "SessionMetadataReader", x);
   GraphDef def;
@@ -1216,7 +1217,7 @@ TEST(DirectSessionTest, SessionMetadataAbsentViaFunction) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
   Graph g(&flib);
   Tensor vx(DT_INT64, TensorShape({}));
-  vx.scalar<int64>()() = 17;
+  vx.scalar<int64_t>()() = 17;
   Node* x = test::graph::Constant(&g, vx);
   Node* y = test::graph::Unary(&g, "SessionMetadataReaderFn", x);
   GraphDef def;
@@ -1235,7 +1236,7 @@ TEST(DirectSessionTest, SessionMetadataAbsentViaFunction) {
 TEST(DirectSessionTest, SessionMetadataPresent) {
   Graph g(OpRegistry::Global());
   Tensor vx(DT_INT64, TensorShape({}));
-  vx.scalar<int64>()() = 17;
+  vx.scalar<int64_t>()() = 17;
   Node* x = test::graph::Constant(&g, vx);
   Node* y = test::graph::Unary(&g, "SessionMetadataReader", x);
   GraphDef def;
@@ -1265,7 +1266,7 @@ TEST(DirectSessionTest, SessionMetadataPresentViaFunction) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
   Graph g(&flib);
   Tensor vx(DT_INT64, TensorShape({}));
-  vx.scalar<int64>()() = 17;
+  vx.scalar<int64_t>()() = 17;
   Node* x = test::graph::Constant(&g, vx);
   Node* y = test::graph::Unary(&g, "SessionMetadataReaderFn", x);
   GraphDef def;
@@ -1361,8 +1362,8 @@ class ThreadIDOp : public OpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output("y", TensorShape({}), &out_tensor));
     std::hash<std::thread::id> hasher;
-    out_tensor->scalar<int64>()() =
-        static_cast<int64>(hasher(std::this_thread::get_id()));
+    out_tensor->scalar<int64_t>()() =
+        static_cast<int64_t>(hasher(std::this_thread::get_id()));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("ThreadID").Device(DEVICE_CPU), ThreadIDOp);
@@ -1370,7 +1371,7 @@ REGISTER_KERNEL_BUILDER(Name("ThreadID").Device(DEVICE_CPU), ThreadIDOp);
 TEST(DirectSessionTest, SessionSyncRun) {
   Graph g(OpRegistry::Global());
   Tensor vx(DT_INT64, TensorShape({}));
-  vx.scalar<int64>()() = 17;
+  vx.scalar<int64_t>()() = 17;
   Node* x = test::graph::Constant(&g, vx);
   Node* y = test::graph::Unary(&g, "ThreadID", x);
   GraphDef def;
@@ -1383,8 +1384,8 @@ TEST(DirectSessionTest, SessionSyncRun) {
   auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
 
   std::hash<std::thread::id> hasher;
-  EXPECT_EQ(static_cast<int64>(hasher(std::this_thread::get_id())),
-            static_cast<int64>(outputs[0].scalar<int64>()()));
+  EXPECT_EQ(static_cast<int64_t>(hasher(std::this_thread::get_id())),
+            static_cast<int64_t>(outputs[0].scalar<int64_t>()()));
 }
 
 REGISTER_OP("ExpensiveNoop").SetIsStateful();
@@ -1450,7 +1451,7 @@ TEST(DirectSessionTest, SessionSyncRun_DeepGraph) {
 TEST(DirectSessionTest, SyncSession) {
   Graph g(OpRegistry::Global());
   Tensor vx(DT_INT64, TensorShape({}));
-  vx.scalar<int64>()() = 17;
+  vx.scalar<int64_t>()() = 17;
   Node* x = test::graph::Constant(&g, vx);
   Node* y = test::graph::Unary(&g, "ThreadID", x);
   GraphDef def;
@@ -1464,8 +1465,8 @@ TEST(DirectSessionTest, SyncSession) {
   auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
 
   std::hash<std::thread::id> hasher;
-  EXPECT_EQ(static_cast<int64>(hasher(std::this_thread::get_id())),
-            static_cast<int64>(outputs[0].scalar<int64>()()));
+  EXPECT_EQ(static_cast<int64_t>(hasher(std::this_thread::get_id())),
+            static_cast<int64_t>(outputs[0].scalar<int64_t>()()));
 }
 
 REGISTER_OP("Darth").Input("x: float").Output("y: float").Doc(R"doc(
@@ -1804,48 +1805,49 @@ TEST(DirectSessionTest, CreateGraphFailsWhenAssigningAFedVar) {
 TEST(DirectSessionTest, TimeoutSession) {
   GraphDef graph;
   // Creates a graph with one FIFOQueue and one dequeue op.
-  protobuf::TextFormat::ParseFromString(R"proto(
-    node {
-      name: 'fifo_queue'
-      op: 'FIFOQueue'
-      device: '/device:CPU:0'
-      attr {
-        key: 'capacity'
-        value { i: 10 }
-      }
-      attr {
-        key: 'component_types'
-        value { list { type: DT_FLOAT } }
-      }
-      attr {
-        key: 'container'
-        value { s: '' }
-      }
-      attr {
-        key: 'shapes'
-        value { list {} }
-      }
-      attr {
-        key: 'shared_name'
-        value { s: '' }
-      }
-    }
-    node {
-      name: 'fifo_queue_Dequeue'
-      op: 'QueueDequeue'
-      input: 'fifo_queue'
-      device: '/device:CPU:0'
-      attr {
-        key: 'component_types'
-        value { list { type: DT_FLOAT } }
-      }
-      attr {
-        key: 'timeout_ms'
-        value { i: -1 }
-      }
-    }
-    versions { producer: 9 }
-  )proto", &graph);
+  protobuf::TextFormat::ParseFromString(R"pb(
+                                          node {
+                                            name: 'fifo_queue'
+                                            op: 'FIFOQueue'
+                                            device: '/device:CPU:0'
+                                            attr {
+                                              key: 'capacity'
+                                              value { i: 10 }
+                                            }
+                                            attr {
+                                              key: 'component_types'
+                                              value { list { type: DT_FLOAT } }
+                                            }
+                                            attr {
+                                              key: 'container'
+                                              value { s: '' }
+                                            }
+                                            attr {
+                                              key: 'shapes'
+                                              value { list {} }
+                                            }
+                                            attr {
+                                              key: 'shared_name'
+                                              value { s: '' }
+                                            }
+                                          }
+                                          node {
+                                            name: 'fifo_queue_Dequeue'
+                                            op: 'QueueDequeue'
+                                            input: 'fifo_queue'
+                                            device: '/device:CPU:0'
+                                            attr {
+                                              key: 'component_types'
+                                              value { list { type: DT_FLOAT } }
+                                            }
+                                            attr {
+                                              key: 'timeout_ms'
+                                              value { i: -1 }
+                                            }
+                                          }
+                                          versions { producer: 9 }
+                                        )pb",
+                                        &graph);
 
   {
     // Creates a session with operation_timeout_in_ms set to 100 milliseconds.
@@ -1902,14 +1904,15 @@ REGISTER_OP("CancellationMgrPollingOp").Doc("");
 TEST(DirectSessionTest, TestTimeoutCleanShutdown) {
   GraphDef graph;
   // Creates a graph with one FIFOQueue and one dequeue op.
-  protobuf::TextFormat::ParseFromString(R"proto(
-    node {
-      name: 'cm_polling'
-      op: 'CancellationMgrPollingOp'
-      device: '/device:CPU:0'
-    }
-    versions { producer: 9 }
-  )proto", &graph);
+  protobuf::TextFormat::ParseFromString(R"pb(
+                                          node {
+                                            name: 'cm_polling'
+                                            op: 'CancellationMgrPollingOp'
+                                            device: '/device:CPU:0'
+                                          }
+                                          versions { producer: 9 }
+                                        )pb",
+                                        &graph);
 
   // Creates a session with operation_timeout_in_ms set to 100 milliseconds.
   SessionOptions options;
@@ -2121,10 +2124,10 @@ TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
       Status s = session->Run(run_options, {} /* inputs */,
                               {x->name() + ":0"} /* output_names */, {},
                               &outputs, nullptr /* run_metadata */);
-      EXPECT_EQ(
-          strings::StrCat("Invalid argument: Invalid inter_op_thread_pool: ",
-                          pool_num),
-          s.ToString());
+      EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+      EXPECT_TRUE(absl::StrContains(
+          s.error_message(),
+          strings::StrCat("Invalid inter_op_thread_pool: ", pool_num)));
     }
   }
 
@@ -2189,11 +2192,13 @@ TEST(DirectSessionTest, TestDirectSessionRunClose) {
   // Run the read on the variable to get an error.
   Status s = session->Run({} /* inputs */, {},
                           {var_assign->name()} /* target_nodes */, nullptr);
-  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+  EXPECT_EQ(s.code(), error::CANCELLED);
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "Session has been closed."));
 
   // Run the read as a callable to verify that we get the same error.
   s = session->RunCallable(handle, {}, {}, nullptr);
-  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+  EXPECT_EQ(s.code(), error::CANCELLED);
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "Session has been closed."));
 }
 
 TEST(DirectSessionTest, TestDirectSessionPRunClose) {
@@ -2240,7 +2245,8 @@ TEST(DirectSessionTest, TestDirectSessionPRunClose) {
   // Feed first_const, fetch first_identity
   s = session->PRun(handle, {{first_const->name(), value_11}},
                     {first_identity->name() + ":0"}, &outputs);
-  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+  EXPECT_EQ(s.code(), error::CANCELLED);
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "Session has been closed."));
 }
 
 TEST(DirectSessionTest, TestDirectSessionReset) {
@@ -2280,7 +2286,8 @@ TEST(DirectSessionTest, TestDirectSessionReset) {
   // fail, since the Variable buffer is cached by var.
   Status s = session->Run({} /* inputs */, {},
                           {var_assign->name()} /* target_nodes */, nullptr);
-  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+  EXPECT_EQ(s.code(), error::CANCELLED);
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "Session has been closed."));
 }
 
 TEST(DirectSessionTest, LocalDeviceManager) {
@@ -2711,7 +2718,7 @@ class DirectSessionCollectiveTest : public ::testing::Test {
   // Creates a graph with CollectiveOps inside functions and runs it.  Returns
   // the generated collective_graph_key.
   Status RunGraphWithCollectiveFunctions(bool add_unused_function,
-                                         int64* collective_graph_key) {
+                                         int64_t* collective_graph_key) {
     GraphDef g = CreateGraph(add_unused_function);
     const Tensor t1 =
         test::AsTensor<float>({0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1});
@@ -2825,8 +2832,9 @@ class StatefulOutputRequiredOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     // The op counts the number of outputs required in the current subgraph,
     // and emits that number on each of its required outputs.
-    Tensor count_outputs_required_t(int64{0});
-    int64& count_outputs_required = count_outputs_required_t.scalar<int64>()();
+    Tensor count_outputs_required_t(int64_t{0});
+    int64_t& count_outputs_required =
+        count_outputs_required_t.scalar<int64_t>()();
     for (int i = 0; i < num_outputs(); ++i) {
       if (ctx->output_required(i)) ++count_outputs_required;
     }
@@ -2847,10 +2855,10 @@ TEST(DirectSessionTest, TestStatefulOutputRequiredOp) {
   GraphDef graph;
   // Creates a graph with a StatefulOutputRequired op with 5 outputs.
   protobuf::TextFormat::ParseFromString(
-      R"proto(
+      R"pb(
         node { name: 'n' op: 'StatefulOutputRequired' device: '/device:CPU:0' }
         versions { producer: 9 }
-      )proto",
+      )pb",
       &graph);
 
   std::unique_ptr<Session> session(NewSession(SessionOptions()));
@@ -2871,7 +2879,7 @@ TEST(DirectSessionTest, TestStatefulOutputRequiredOp) {
     TF_ASSERT_OK(session->Run({}, fetch_tensor_names, {}, &fetch_tensors));
     ASSERT_EQ(num_outputs_required, fetch_tensors.size());
     for (const Tensor& t : fetch_tensors) {
-      ASSERT_EQ(num_outputs_required, t.scalar<int64>()());
+      ASSERT_EQ(num_outputs_required, t.scalar<int64_t>()());
     }
   }
 

@@ -64,7 +64,7 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
 }
 
 /* static */ Status XlaHelpers::ReshapeLiteral(
-    const xla::Literal& input, absl::Span<const int64> dimensions,
+    const xla::Literal& input, absl::Span<const int64_t> dimensions,
     xla::Literal* output) {
   if (input.shape().IsTuple()) {
     return errors::InvalidArgument("ReshapeLiteral does not support tuples.");
@@ -90,7 +90,7 @@ Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
                           const xla::XlaOp& off_value, xla::XlaOp* one_hot) {
   // Broadcast the linspace constant across the indices along the new axis,
   // and test equality at each position.
-  std::vector<int64> broadcast_dims(indices_shape.dims());
+  std::vector<int64_t> broadcast_dims(indices_shape.dims());
   std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
   std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
 
@@ -158,10 +158,11 @@ Status RewriteLayoutWithShardedShape(
     // different layouts which will prevent input output aliasing and
     // increase memory usage. Investigate such cases.
     int64_t device = *sharding->tile_assignment().begin();
-    std::vector<int64> offset =
+    std::vector<int64_t> offset =
         sharding->TileOffsetForDevice(*xla_shape, device);
-    std::vector<int64> limit = sharding->TileLimitForDevice(*xla_shape, device);
-    std::vector<int64> dimensions(xla_shape->rank());
+    std::vector<int64_t> limit =
+        sharding->TileLimitForDevice(*xla_shape, device);
+    std::vector<int64_t> dimensions(xla_shape->rank());
     for (int64_t i = 0; i < xla_shape->rank(); ++i) {
       dimensions[i] = limit[i] - offset[i];
     }
@@ -261,11 +262,11 @@ StatusOr<absl::optional<xla::DeviceAssignment>> ResolveDeviceAssignment(
     return errors::InvalidArgument("Timeout reached");
   }
   TF_RETURN_IF_ERROR(st);
-  const std::vector<std::string>& devices = params->group.device_names;
 
-  xla::DeviceAssignment out(devices.size(), 1);
-  for (int device_idx = 0; device_idx < devices.size(); device_idx++) {
-    const std::string& device_name = devices[device_idx];
+  xla::DeviceAssignment out(params->group.group_size, 1);
+  for (int device_idx = 0; device_idx < params->group.group_size;
+       device_idx++) {
+    const std::string& device_name = params->group.devices[device_idx].name();
     Device* resolved_device = nullptr;
     TF_RETURN_IF_ERROR(ctx->function_library()->device_mgr()->LookupDevice(
         device_name, &resolved_device));

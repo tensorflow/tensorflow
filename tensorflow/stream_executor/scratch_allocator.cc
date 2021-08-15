@@ -26,7 +26,7 @@ OneTimeScratchAllocator::OneTimeScratchAllocator(Stream* stream)
     : stream_(stream) {}
 OneTimeScratchAllocator::~OneTimeScratchAllocator() {}
 
-int64 OneTimeScratchAllocator::GetMemoryLimitInBytes() { return -1; }
+int64_t OneTimeScratchAllocator::GetMemoryLimitInBytes() { return -1; }
 
 port::StatusOr<DeviceMemory<uint8>> OneTimeScratchAllocator::AllocateBytes(
     int64_t byte_size) {

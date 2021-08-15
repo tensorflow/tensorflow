@@ -67,7 +67,7 @@ class ImmediateExecutionContext : public AbstractContext {
   // Optimized scalar creation functions
   virtual AbstractTensorInterface* CreateInt64Scalar(int64_t value) = 0;
   virtual AbstractTensorInterface* CreateUint64Scalar(uint64 value) = 0;
-  virtual AbstractTensorInterface* CreateInt32Scalar(int32 value) = 0;
+  virtual AbstractTensorInterface* CreateInt32Scalar(int32_t value) = 0;
   virtual AbstractTensorInterface* CreateFloatScalar(float value) = 0;
   virtual AbstractTensorInterface* CreateDoubleScalar(double value) = 0;
   virtual AbstractTensorInterface* CreateHalfScalar(Eigen::half value) = 0;
@@ -77,7 +77,7 @@ class ImmediateExecutionContext : public AbstractContext {
 
   // Tensor creation functions
   virtual AbstractTensorInterface* CreateTensor(
-      DataType dtype, absl::Span<const int64> dim_sizes) = 0;
+      DataType dtype, absl::Span<const int64_t> dim_sizes) = 0;
 
   typedef void (*MemoryReleaser)(void* data, size_t len, void* arg);
 

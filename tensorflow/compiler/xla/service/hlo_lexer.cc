@@ -129,6 +129,7 @@ TokKind HloLexer::LexToken() {
       case '8':
       case '9':
       case '-':
+      case '?':
         if (current_char == '-' && PeekCurrentChar() == '>') {
           current_ptr_++;
           return TokKind::kArrow;
@@ -224,7 +225,7 @@ TokKind HloLexer::LexToken() {
   }
 }
 
-absl::optional<int64> HloLexer::LexNanPayload(absl::string_view& consumable) {
+absl::optional<int64_t> HloLexer::LexNanPayload(absl::string_view& consumable) {
   static LazyRE2 payload_pattern = {R"(\(0x[0-9a-fA-F]+\))"};
   if (!RE2::Consume(&consumable, *payload_pattern)) {
     return absl::nullopt;
@@ -253,7 +254,7 @@ absl::optional<int64> HloLexer::LexNanPayload(absl::string_view& consumable) {
 // name     ::= [a-zA-Z_][a-zA-Z0-9_.-]*:
 // keyword  ::= HloModule, ENTRY, ...
 // attribute_name ::= condition, body, dimensions, ...
-// dim_labels_pattern ::= [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
+// dim_labels_pattern ::= [0-9bf?]{2,}_[0-9io?]{2,}->[0-9bf?]{2,}
 // identifiers ::= other cases that match [a-zA-Z_][a-zA-Z0-9_.-]*
 TokKind HloLexer::LexIdentifier() {
   while (IsIdentifierChar(PeekCurrentChar())) {
@@ -361,7 +362,7 @@ TokKind HloLexer::LexPercent() {
 //
 // fp with exp ::= [-]?([0-9]+|[0-9]+[.][0-9]*|[0-9]*[.][0-9]+)([eE][+-]?[0-9]+)
 // fp without exp ::= [-]?([0-9]+[.][0-9]*|[0-9]*[.][0-9]+)
-// dim_labels_pattern ::= [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
+// dim_labels_pattern ::= [0-9bf?]{2,}_[0-9io?]{2,}->[0-9bf?]{2,}
 // dxd_pattern ::= [0-9]+(x[0-9]+)+
 // pad_pattern ::=
 //   [-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*
@@ -380,7 +381,7 @@ TokKind HloLexer::LexNumberOrPattern() {
   }
 
   static LazyRE2 dim_labels_pattern = {
-      R"([0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,})"};
+      R"([0-9bf?]{2,}_[0-9io?]{2,}->[0-9bf?]{2,})"};
   static LazyRE2 dxd_pattern = {R"([0-9]+(x[0-9]+)+)"};
   static LazyRE2 pad_pattern = {
       R"([-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*)"};
@@ -413,7 +414,7 @@ TokKind HloLexer::LexNumberOrPattern() {
     }
     uint64 uint64_val;
     if (absl::SimpleAtoi(slice, &uint64_val)) {
-      token_state_.int64_val = absl::bit_cast<int64>(uint64_val);
+      token_state_.int64_val = absl::bit_cast<int64_t>(uint64_val);
       return TokKind::kInt;
     }
     LOG(ERROR) << "Failed to parse int literal: " << slice;

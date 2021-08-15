@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-static const uint64 kUninitializedUint64 = -1ULL;
+static const uint64_t kUninitializedUint64 = -1ULL;
 /* static */ const char *DeviceDescription::kUndefinedString = "<undefined>";
 
 DeviceDescription::DeviceDescription()
@@ -123,8 +123,8 @@ bool DeviceDescription::rocm_amdgpu_isa_version(int *version) const {
 
 bool ThreadDimOk(const DeviceDescription &device_description,
                  const ThreadDim &thread_dim) {
-  const int64 total_threads = thread_dim.x * thread_dim.y * thread_dim.z;
-  const int64 threads_per_block_limit =
+  const int64_t total_threads = thread_dim.x * thread_dim.y * thread_dim.z;
+  const int64_t threads_per_block_limit =
       device_description.threads_per_block_limit();
   if (total_threads > threads_per_block_limit) {
     VLOG(2) << "exceeded total-thread-per-block limit: " << total_threads
@@ -142,13 +142,13 @@ bool ThreadDimOk(const DeviceDescription &device_description,
   return ok;
 }
 
-uint64 DivideCeil(uint64 x, uint64 y) {
+uint64_t DivideCeil(uint64 x, uint64 y) {
   return port::MathUtil::CeilOfRatio(x, y);
 }
 
 void CalculateDimensionality(const DeviceDescription &device_description,
-                             int64_t element_count, int64 *threads_per_block,
-                             int64 *block_count) {
+                             int64_t element_count, int64_t *threads_per_block,
+                             int64_t *block_count) {
   *threads_per_block = device_description.threads_per_block_limit();
   *block_count = port::MathUtil::CeilOfRatio(element_count, *threads_per_block);
   if (*block_count == 1) {

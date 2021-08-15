@@ -32,7 +32,7 @@ namespace cpu {
 // obvious.
 
 inline llvm::APFloat GetIeeeF32(float f) { return llvm::APFloat(f); }
-inline llvm::APFloat GetIeeeF32FromBitwiseRep(int32 bitwise_value) {
+inline llvm::APFloat GetIeeeF32FromBitwiseRep(int32_t bitwise_value) {
   return llvm::APFloat(llvm::APFloat::IEEEsingle(),
                        llvm::APInt(/*numBits=*/32, /*val=*/bitwise_value));
 }
@@ -228,12 +228,12 @@ class VectorSupportLibrary {
   llvm::Value* GetZeroScalar();
 
   llvm::IRBuilder<>* b() const { return b_; }
-  int64 vector_size() const { return vector_size_; }
+  int64_t vector_size() const { return vector_size_; }
   llvm::Type* vector_type() const { return vector_type_; }
   llvm::Type* vector_pointer_type() const { return vector_pointer_type_; }
   llvm::Type* scalar_type() const { return scalar_type_; }
   llvm::Type* scalar_pointer_type() const { return scalar_pointer_type_; }
-  int64 scalar_byte_size() const {
+  int64_t scalar_byte_size() const {
     return primitive_util::BitWidth(primitive_type_) / 8;
   }
 
@@ -283,7 +283,7 @@ class VectorSupportLibrary {
     return scalar_value;
   }
 
-  int64 vector_size_;
+  int64_t vector_size_;
   PrimitiveType primitive_type_;
   llvm::IRBuilder<>* b_;
   llvm::Type* vector_type_;

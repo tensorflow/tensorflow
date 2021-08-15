@@ -56,7 +56,7 @@ XlaCaseOp::GetPrunedBranchesAndIndex(XlaOpKernelContext* ctx) {
     return {unpruned_branches_, ctx->Input(0)};
   }
 
-  int32 branch_index = branch_index_literal.Get<int32>({});
+  int32_t branch_index = branch_index_literal.Get<int32>({});
   if (branch_index < 0 || branch_index >= unpruned_branches_.size()) {
     branch_index = unpruned_branches_.size() - 1;
   }

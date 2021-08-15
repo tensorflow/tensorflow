@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/platform/platform.h"
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_CHROMIUMOS)
 #include "tensorflow/stream_executor/platform/google/initialize.h"
 #else
 #include "tensorflow/stream_executor/platform/default/initialize.h"

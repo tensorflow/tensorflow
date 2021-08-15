@@ -292,6 +292,7 @@ REGISTER_OP("StatefulPartitionedCall")
     .Attr("config_proto: string = ''")
     .Attr("executor_type: string = ''")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn(shape_inference::UnknownShape);
 
 // This op is used as a placeholder in If branch functions. It doesn't provide a

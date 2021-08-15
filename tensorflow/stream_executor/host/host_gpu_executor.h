@@ -60,49 +60,49 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return port::UnimplementedError("Not Implemented");
   }
 
-  DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) override;
-  void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
-                     uint64 size_bytes) override;
+  DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
+  void *GetSubBuffer(DeviceMemoryBase *parent, uint64_t offset_bytes,
+                     uint64_t size_bytes) override;
   void Deallocate(DeviceMemoryBase *mem) override;
 
-  void *HostMemoryAllocate(uint64 size) override { return new char[size]; }
+  void *HostMemoryAllocate(uint64_t size) override { return new char[size]; }
   void HostMemoryDeallocate(void *mem) override {
     delete[] static_cast<char *>(mem);
   }
-  bool HostMemoryRegister(void *mem, uint64 size) override { return true; }
+  bool HostMemoryRegister(void *mem, uint64_t size) override { return true; }
   bool HostMemoryUnregister(void *mem) override { return true; }
 
   bool Memcpy(Stream *stream, void *host_dst, const DeviceMemoryBase &gpu_src,
-              uint64 size) override;
+              uint64_t size) override;
   bool Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst, const void *host_src,
-              uint64 size) override;
+              uint64_t size) override;
   bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *gpu_dst,
                             const DeviceMemoryBase &gpu_src,
-                            uint64 size) override;
+                            uint64_t size) override;
 
   port::Status MemZero(Stream *stream, DeviceMemoryBase *location,
-                       uint64 size) override;
+                       uint64_t size) override;
   port::Status Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
-                      uint64 size) override;
+                      uint64_t size) override;
   port::Status Memset32(Stream *stream, DeviceMemoryBase *location,
-                        uint32 pattern, uint64 size) override;
+                        uint32 pattern, uint64_t size) override;
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
   port::Status SynchronousMemZero(DeviceMemoryBase *location,
-                                  uint64 size) override;
+                                  uint64_t size) override;
 
   port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                 uint64 size) override;
+                                 uint64_t size) override;
 
   port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
-                                 const void *host_src, uint64 size) override;
+                                 const void *host_src, uint64_t size) override;
   port::Status SynchronousMemcpy(void *host_dst,
                                  const DeviceMemoryBase &gpu_src,
-                                 uint64 size) override;
+                                 uint64_t size) override;
   port::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *gpu_dst,
                                                const DeviceMemoryBase &gpu_src,
-                                               uint64 size) override;
+                                               uint64_t size) override;
 
   bool HostCallback(Stream *stream,
                     std::function<port::Status()> callback) override;
@@ -130,7 +130,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   int PlatformDeviceCount() override { return 1; }
 
-  bool DeviceMemoryUsage(int64 *free, int64 *total) const override;
+  bool DeviceMemoryUsage(int64_t *free, int64_t *total) const override;
 
   port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {

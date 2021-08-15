@@ -16,8 +16,7 @@
 
 set -e
 
-go get github.com/golang/protobuf/proto
-go get github.com/golang/protobuf/protoc-gen-go
+go get google.golang.org/protobuf/cmd/protoc-gen-go
 
 if [ -z "${GOPATH}" ]
 then

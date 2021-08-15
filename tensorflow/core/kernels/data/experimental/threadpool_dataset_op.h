@@ -32,7 +32,7 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
   // Executes the logic of the MaxIntraOpParallelismDatasetOp directly (as
   // opposed to through executing the MaxIntraOpParallelismDatasetOp op kernel).
   static void MakeDatasetFromOptions(OpKernelContext* ctx, DatasetBase* input,
-                                     int32 max_intra_op_parallelism,
+                                     int32_t max_intra_op_parallelism,
                                      DatasetBase** output);
 
   explicit MaxIntraOpParallelismDatasetOp(OpKernelConstruction* ctx)
@@ -54,7 +54,7 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
   // Executes the logic of the PrivateThreadpoolDatasetOp directly (as
   // opposed to through executing the PrivateThreadpoolDatasetOp op kernel).
   static void MakeDatasetFromOptions(OpKernelContext* ctx, DatasetBase* input,
-                                     int32 num_threads, DatasetBase** output);
+                                     int32_t num_threads, DatasetBase** output);
 
   explicit PrivateThreadPoolDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {}

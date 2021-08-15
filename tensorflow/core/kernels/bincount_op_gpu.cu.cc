@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
@@ -47,6 +48,10 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
     }
     if (output.size() == 0) {
       return Status::OK();
+    }
+    if (tensorflow::OpDeterminismRequired()) {
+      return errors::Unimplemented(
+          "Determinism is not yet supported for Bincount.");
     }
     // In case weight.size() == 0, use CUB
     size_t temp_storage_bytes = 0;

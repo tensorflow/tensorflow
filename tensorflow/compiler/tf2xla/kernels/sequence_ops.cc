@@ -98,7 +98,8 @@ class RangeOp : public XlaOpKernel {
         output = CreateRangeTensor<int32>(start, limit, delta, ctx->builder());
         break;
       case DT_INT64:
-        output = CreateRangeTensor<int64>(start, limit, delta, ctx->builder());
+        output =
+            CreateRangeTensor<int64_t>(start, limit, delta, ctx->builder());
         break;
       case DT_FLOAT:
         output = CreateRangeTensor<float>(start, limit, delta, ctx->builder());

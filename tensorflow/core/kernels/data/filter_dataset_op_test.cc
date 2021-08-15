@@ -84,7 +84,7 @@ class FilterDatasetOpTest : public DatasetOpsTestBase {};
 FilterDatasetParams FilterDatasetParams1() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{9, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+      {CreateTensor<int64_t>(TensorShape{9, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice_dataset");
   return FilterDatasetParams(
       std::move(tensor_slice_dataset_params),
@@ -101,7 +101,7 @@ FilterDatasetParams FilterDatasetParams1() {
 FilterDatasetParams FilterDatasetParams2() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{0}, {})},
+      {CreateTensor<int64_t>(TensorShape{0}, {})},
       /*node_name=*/"tensor_slice_dataset");
   return FilterDatasetParams(
       std::move(tensor_slice_dataset_params),
@@ -118,7 +118,7 @@ FilterDatasetParams FilterDatasetParams2() {
 FilterDatasetParams InvalidPredFuncFilterDatasetParams1() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{3, 3}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+      {CreateTensor<int64_t>(TensorShape{3, 3}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice_dataset");
   return FilterDatasetParams(
       std::move(tensor_slice_dataset_params),
@@ -137,7 +137,8 @@ FilterDatasetParams InvalidPredFuncFilterDatasetParams1() {
 FilterDatasetParams InvalidPredFuncFilterDatasetParams2() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{3, 3, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+      {CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                             {0, 0, 0, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice_dataset");
   return FilterDatasetParams(
       std::move(tensor_slice_dataset_params),
@@ -155,7 +156,7 @@ FilterDatasetParams InvalidPredFuncFilterDatasetParams2() {
 FilterDatasetParams InvalidPredFuncFilterDatasetParams3() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{9}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+      {CreateTensor<int64_t>(TensorShape{9}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice_dataset");
   return FilterDatasetParams(
       std::move(tensor_slice_dataset_params),
@@ -172,7 +173,7 @@ FilterDatasetParams InvalidPredFuncFilterDatasetParams3() {
 std::vector<GetNextTestCase<FilterDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/FilterDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({1}), {{0}, {0}, {0}})},
+           CreateTensors<int64_t>(TensorShape({1}), {{0}, {0}, {0}})},
           {/*dataset_params=*/FilterDatasetParams2(),
            /*expected_outputs=*/{}}};
 }
@@ -249,7 +250,7 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/FilterDatasetParams1(),
            /*breakpoints=*/{0, 2, 6},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({1}), {{0}, {0}, {0}})},
+           CreateTensors<int64_t>(TensorShape({1}), {{0}, {0}, {0}})},
           {/*dataset_params=*/FilterDatasetParams2(),
            /*breakpoints=*/{0, 2, 6},
            /*expected_outputs=*/{}}};

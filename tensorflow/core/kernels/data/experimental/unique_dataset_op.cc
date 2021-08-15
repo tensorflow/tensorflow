@@ -135,11 +135,11 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
       } else {
         input_impl_.reset();
       }
-      int64 num_unique_elements;
+      int64_t num_unique_elements;
       unique_elements_.clear();
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("unique_elements_size"),
                                             &num_unique_elements));
-      for (int64 i = 0; i < num_unique_elements; ++i) {
+      for (int64_t i = 0; i < num_unique_elements; ++i) {
         Tensor unique_element;
         TF_RETURN_IF_ERROR(reader->ReadTensor(
             ctx->flr(), full_name(strings::StrCat("unique_elements[", i, "]")),
@@ -163,7 +163,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
           DCHECK_EQ(DT_STRING, t.dtype());
           auto flat_t = t.flat<tstring>();
           uint64 hash = 0;
-          for (int64 i = 0; i < t.NumElements(); ++i) {
+          for (int64_t i = 0; i < t.NumElements(); ++i) {
             hash = Hash64Combine(hash, Hash64(flat_t(i)));
           }
           return static_cast<size_t>(hash);
@@ -182,7 +182,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
     do {                                                   \
       auto lhs_flat = lhs.flat<EnumToDataType<T>::Type>(); \
       auto rhs_flat = rhs.flat<EnumToDataType<T>::Type>(); \
-      for (int64 i = 0; i < lhs.NumElements(); ++i) {      \
+      for (int64_t i = 0; i < lhs.NumElements(); ++i) {    \
         if (lhs_flat(i) != rhs_flat(i)) {                  \
           return false;                                    \
         }                                                  \
@@ -190,13 +190,13 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
       return true;                                         \
     } while (0)
 
-            HANDLE_TYPE(DT_INT32);
-            HANDLE_TYPE(DT_INT64);
-            HANDLE_TYPE(DT_STRING);
-            default:
-              DCHECK(false) << "UniqueDataset unhandled data type: "
-                            << DataTypeString(lhs.dtype());
-              return false;
+          HANDLE_TYPE(DT_INT32);
+          HANDLE_TYPE(DT_INT64);
+          HANDLE_TYPE(DT_STRING);
+          default:
+            DCHECK(false) << "UniqueDataset unhandled data type: "
+                          << DataTypeString(lhs.dtype());
+            return false;
         }
       }
     };

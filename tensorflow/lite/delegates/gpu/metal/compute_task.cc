@@ -115,11 +115,21 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
       accumulatorType = @"half";
     }
   }
-  NSDictionary<NSString*, NSString*>* macros = @{
-    @"float16" : @"float4x4",
+
+  NSMutableDictionary<NSString*, NSString*>* mutableMacros =
+      [[NSMutableDictionary alloc] init];
+  if (@available(iOS 15.0, *)) {
+    // float16, float8 and half8  are already defined
+    // in metal_stdlib on iOS15.
+  } else {
+    [mutableMacros addEntriesFromDictionary:@{
+      @"float16" : @"float4x4",
+      @"float8" : @"float2x4",
+      @"half8" : @"half2x4",
+    }];
+  }
+  [mutableMacros addEntriesFromDictionary:@{
     @"half16" : @"half4x4",
-    @"float8" : @"float2x4",
-    @"half8" : @"half2x4",
     @"FLT16_0123(V)" : @"V[0]",
     @"FLT16_4567(V)" : @"V[1]",
     @"FLT16_89ab(V)" : @"V[2]",
@@ -178,7 +188,8 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
     @"\"INIT_INT4v4(v0, v1, v2, v3)\"" : @"\"int4(v0, v1, v2, v3)\"",
     @"CONVERT_TO_INT4(value)" : @"int4(value)",
     @"\"SELECT_BY_INDEX_FROM_FLT4(value, index)\"" : @"\"(value)[index]\"",
-  };
+  }];
+  NSDictionary<NSString*, NSString*>* macros = [mutableMacros copy];
 
   NSString* code =
       [NSString stringWithCString:kernel_code.c_str()

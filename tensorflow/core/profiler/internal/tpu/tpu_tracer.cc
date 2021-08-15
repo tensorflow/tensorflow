@@ -49,9 +49,6 @@ class TpuTracer : public ProfilerInterface {
 
   Status Stop() override;
 
-  // Unsupported.
-  Status CollectData(RunMetadata* run_metadata) override;
-
   Status CollectData(XSpace* space) override;
 
  private:
@@ -87,11 +84,6 @@ Status TpuTracer::Stop() {
     LOG(ERROR) << "TPU tracer failed to stop.";
     return status.status();
   }
-  return Status::OK();
-}
-
-Status TpuTracer::CollectData(RunMetadata* run_metadata) {
-  // Unsupported
   return Status::OK();
 }
 

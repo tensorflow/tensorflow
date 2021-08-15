@@ -57,7 +57,7 @@ class GenericTransferManager : public TransferManager {
 
   Status ResetDevices(absl::Span<se::StreamExecutor* const> executors) override;
 
-  int64 GetByteSizeRequirement(const Shape& shape) const override;
+  int64_t GetByteSizeRequirement(const Shape& shape) const override;
 
   Status WriteSingleTupleIndexTable(
       se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,

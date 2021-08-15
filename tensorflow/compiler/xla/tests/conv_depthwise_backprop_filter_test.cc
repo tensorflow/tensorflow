@@ -32,12 +32,12 @@ string GetFloatDataType(bool use_bfloat16) {
 }
 
 struct BatchGroupedConvolution2DSpec {
-  int64 output_batch, window, window_dilation;
-  std::vector<int64> activation_dims;
-  std::vector<int64> kernel_dims;
-  std::vector<int64> output_dims;
-  std::vector<int64> activation_and_kernel_layout;
-  std::vector<int64> output_layout;
+  int64_t output_batch, window, window_dilation;
+  std::vector<int64_t> activation_dims;
+  std::vector<int64_t> kernel_dims;
+  std::vector<int64_t> output_dims;
+  std::vector<int64_t> activation_and_kernel_layout;
+  std::vector<int64_t> output_layout;
 };
 
 class BatchGroupedConvolution2DTest
@@ -53,7 +53,7 @@ class BatchGroupedConvolution2DDepthTest
 static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases(
     bool use_depth_multiplier) {
   std::vector<BatchGroupedConvolution2DSpec> config_set;
-  std::vector<std::vector<int64>> config_options = {
+  std::vector<std::vector<int64_t>> config_options = {
       {129, 10, 3, 2}, {4, 3, 3, 258}, {8, 4, 2, 128},
       {8, 3, 2, 256},  {256, 7, 5, 4}, {128, 6, 6, 4},
       {32, 5, 2, 129}, {16, 4, 3, 2},  {16, 3, 2, 64}};
@@ -72,7 +72,7 @@ static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases(
 
     config.activation_dims = {batch, activation_size, activation_size, feature};
 
-    const int64 depthwise_multiplier = use_depth_multiplier ? counter++ : 1;
+    const int64_t depthwise_multiplier = use_depth_multiplier ? counter++ : 1;
     config.kernel_dims = {batch, kernel_size, kernel_size,
                           feature * depthwise_multiplier};
     // Don't let the counter grow too much, else the compute demand will grow.

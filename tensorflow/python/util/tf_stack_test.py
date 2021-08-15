@@ -56,6 +56,18 @@ class TFStackTest(test.TestCase):
     frame = trace.last_user_frame()
     self.assertRegex(frame.line, "# COMMENT")
 
+  def testGetUserFrames(self):
+
+    def func():
+      trace = tf_stack.extract_stack()  # COMMENT
+      frames = list(trace.get_user_frames())
+      return frames
+
+    frames = func()  # CALLSITE
+
+    self.assertRegex(frames[-1].line, "# COMMENT")
+    self.assertRegex(frames[-2].line, "# CALLSITE")
+
 
 def extract_stack(limit=None):
   # Both defined on the same line to produce identical stacks.

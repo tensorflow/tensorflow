@@ -37,7 +37,7 @@ namespace tosa {
 
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
-                   RankedTensorType output_type, Value input_val, double scale,
+                   ShapedType output_type, Value input_val, double scale,
                    int64_t input_zp, int64_t output_zp, bool double_round,
                    bool scale32);
 
@@ -48,14 +48,13 @@ Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
 
 // Creates TOSA rescale op with int32 input
 Value buildRescaleFromInt32(PatternRewriter& rewriter, Operation* op,
-                            RankedTensorType output_type, Value input_val,
+                            ShapedType output_type, Value input_val,
                             double output_scale, int64_t output_zp);
 
 // Creates a TOSA rescale op based on conv2d parameters.
 Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
-                               Value conv_val, RankedTensorType input_type,
-                               RankedTensorType weight_type,
-                               RankedTensorType output_type);
+                               Value conv_val, ShapedType input_type,
+                               ShapedType weight_type, ShapedType output_type);
 
 // Create a 8-bit TOSA TABLE constant tensor
 Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
@@ -85,15 +84,17 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
 
 // Create a vector from a 32-bit value tensor.  Returns vector size on success
 // or -1 on error.
-int getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec);
+LogicalResult getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec);
 
 // Calculates the TOSA padding values based on TF operators padded with
 // SAME/VALID.
-bool getPaddingValuesFromPadType(
-    tensorflow::Padding tf_pad, tensorflow::TensorFormat data_format_tf,
-    uint32_t first_filter_spatial_dim, RankedTensorType input_type,
-    RankedTensorType filter_type, ArrayAttr strides, ArrayAttr dilations,
-    PatternRewriter& rewriter, ArrayAttr& explicit_pad);
+bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
+                                 tensorflow::TensorFormat data_format_tf,
+                                 uint32_t first_filter_spatial_dim,
+                                 ShapedType input_type, ShapedType filter_type,
+                                 ArrayAttr strides, ArrayAttr dilations,
+                                 PatternRewriter& rewriter,
+                                 ArrayAttr& explicit_pad);
 
 // Calculates the TOSA padding values for explicit-padded TF operators.
 ArrayAttr getPaddingValuesFromExplicitPadAttr(
@@ -103,10 +104,9 @@ ArrayAttr getPaddingValuesFromExplicitPadAttr(
 // Calculates the TOSA padding values for transposeConv2d
 bool getTransposeConv2dPaddingValues(
     tensorflow::Padding tf_pad, tensorflow::TensorFormat data_format_tf,
-    uint32_t first_filter_spatial_dim, RankedTensorType input_type,
-    RankedTensorType filter_type, RankedTensorType output_type,
-    ArrayAttr strides, ArrayAttr dilations, PatternRewriter& rewriter,
-    ArrayAttr& explicit_pad);
+    uint32_t first_filter_spatial_dim, ShapedType input_type,
+    ShapedType filter_type, ShapedType output_type, ArrayAttr strides,
+    ArrayAttr dilations, PatternRewriter& rewriter, ArrayAttr& explicit_pad);
 
 // Templated function to create a constant op for given type and shape.
 // T: storage C type.

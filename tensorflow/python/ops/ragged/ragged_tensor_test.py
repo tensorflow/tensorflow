@@ -165,12 +165,11 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       RaggedTensor(values=values, row_partition=rp)
 
     with self.assertRaisesRegex(
-        TypeError,
-        r"""type\(values\) must be one of: 'Tensor, RaggedTensor.*"""):
+        TypeError, r'type\(values\) must be one of: Tensor, RaggedTensor'):
       RaggedTensor(values=range(7), row_partition=rp, internal=True)
 
-    with self.assertRaisesRegex(TypeError,
-                                'row_partition must be a RowPartition'):
+    with self.assertRaisesRegex(
+        TypeError, 'Argument `row_partition` must be a RowPartition'):
       RaggedTensor(
           values=values, row_partition=[0, 2, 2, 5, 6, 7], internal=True)
 
@@ -538,17 +537,17 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     ]
     nrows = [constant_op.constant(6, dtypes.int64)]
     with self.assertRaisesRegex(
-        ValueError, 'nested_nrows must have the same '
-        'length as nested_value_rowids'):
+        ValueError, 'Argument `nested_nrows` must have the same length as '
+        'argument `nested_value_rowids`'):
       RaggedTensor.from_nested_value_rowids(values, nested_value_rowids, nrows)
 
   def testFromNestedValueRowIdsWithNonListInput(self):
     with self.assertRaisesRegex(
-        TypeError, 'nested_value_rowids must be a list of Tensors'):
+        TypeError, 'Argument `nested_value_rowids` must be a list of Tensors'):
       RaggedTensor.from_nested_value_rowids(
           [1, 2, 3], constant_op.constant([[0, 1, 2], [0, 1, 2]], dtypes.int64))
-    with self.assertRaisesRegex(TypeError,
-                                'nested_nrows must be a list of Tensors'):
+    with self.assertRaisesRegex(
+        TypeError, 'Argument `nested_nrows` must be a list of Tensors'):
       RaggedTensor.from_nested_value_rowids([1, 2, 3], [[0, 1, 2], [0, 1, 2]],
                                             constant_op.constant([3, 3]))
 
@@ -604,8 +603,8 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         rt, [[[b'a', b'b'], []], [[b'c', b'd', b'e']], [], [[b'f'], [b'g']]])
 
   def testFromNestedRowSplitsWithNonListInput(self):
-    with self.assertRaisesRegex(TypeError,
-                                'nested_row_splits must be a list of Tensors'):
+    with self.assertRaisesRegex(
+        TypeError, '`nested_row_splits` must be a list of Tensors'):
       RaggedTensor.from_nested_row_splits(
           [1, 2], constant_op.constant([[0, 1, 2], [0, 1, 2]], dtypes.int64))
 
@@ -1452,7 +1451,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     batched_variant = rt._to_variant(batched_input=True)
     nested_batched_variant = array_ops.reshape(batched_variant, [2, 2])
     with self.assertRaisesRegex(ValueError,
-                                'output_ragged_rank must be equal to'):
+                                r'`output_ragged_rank` \(1\) must be equal to'):
       RaggedTensor._from_variant(
           nested_batched_variant,
           dtype=dtypes.int32,
@@ -1738,10 +1737,11 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
 
     with self.assertRaisesRegex(ValueError, 'Must specify ragged_rank'):
       RaggedTensorSpec()
-    with self.assertRaisesRegex(TypeError, 'ragged_rank must be an int'):
+    with self.assertRaisesRegex(TypeError, '`ragged_rank` must be an int'):
       RaggedTensorSpec(ragged_rank=constant_op.constant(1))
-    with self.assertRaisesRegex(ValueError,
-                                'ragged_rank must be less than rank'):
+    with self.assertRaisesRegex(
+        ValueError,
+        r'Argument `ragged_rank` \(2\) must be less than rank \(2\).'):
       RaggedTensorSpec(ragged_rank=2, shape=[None, None])
 
   def testValueType(self):

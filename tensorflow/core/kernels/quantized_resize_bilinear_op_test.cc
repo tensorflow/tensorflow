@@ -41,7 +41,7 @@ Tensor BuildTensor(const int batch_size, const int height, const int width,
                    const float max) {
   Tensor tensor(DataTypeToEnum<T>::value,
                 TensorShape({batch_size, height, width, channels}));
-  for (int64 i = 0; i < tensor.NumElements(); ++i) {
+  for (int64_t i = 0; i < tensor.NumElements(); ++i) {
     tensor.flat<T>()(i) =
         FloatToQuantized<T>(static_cast<float>(i) / ratio, min, max);
   }
@@ -53,27 +53,30 @@ Tensor BuildTensor<float>(const int batch_size, const int height,
                           const int width, const int channels,
                           const float ratio, const float min, const float max) {
   Tensor tensor(DT_FLOAT, TensorShape({batch_size, height, width, channels}));
-  for (int64 i = 0; i < tensor.NumElements(); ++i) {
+  for (int64_t i = 0; i < tensor.NumElements(); ++i) {
     tensor.flat<float>()(i) = static_cast<float>(i) / ratio;
   }
   return tensor;
 }
 
-float CalculateResizeScale(int64 in_size, int64 out_size, bool align_corners) {
+float CalculateResizeScale(int64_t in_size, int64_t out_size,
+                           bool align_corners) {
   return (align_corners && out_size > 1)
              ? (in_size - 1) / static_cast<float>(out_size - 1)
              : in_size / static_cast<float>(out_size);
 }
 
-inline std::tuple<int64, int64, float> GetReferenceWeight(
-    const bool half_pixel_centers, const int64 out_size, const int64 in_size,
-    const int step, const int index, const float scale) {
+inline std::tuple<int64_t, int64_t, float> GetReferenceWeight(
+    const bool half_pixel_centers, const int64_t out_size,
+    const int64_t in_size, const int step, const int index, const float scale) {
   const float in = half_pixel_centers
                        ? (static_cast<float>(index) + 0.5f) * scale - 0.5f
                        : index * scale;
   const float in_f = std::floor(in);
-  const int64 lower = std::max(static_cast<int64>(in_f), static_cast<int64>(0));
-  const int64 upper = std::min(static_cast<int64>(std::ceil(in)), in_size - 1);
+  const int64_t lower =
+      std::max(static_cast<int64_t>(in_f), static_cast<int64_t>(0));
+  const int64_t upper =
+      std::min(static_cast<int64_t>(std::ceil(in)), in_size - 1);
   return std::make_tuple(lower * step, upper * step, in - in_f);
 }
 
@@ -107,27 +110,27 @@ float ComputeLerpReference<float>(const float in_top_left,
 
 template <typename T>
 T CalcReferenceResizedVal(const T* image_data, const bool half_pixel_centers,
-                          const int batch_size, const int64 in_height,
-                          const int64 in_width, const int64 out_height,
-                          const int64 out_width, const int channels,
+                          const int batch_size, const int64_t in_height,
+                          const int64_t in_width, const int64_t out_height,
+                          const int64_t out_width, const int channels,
                           const float height_scale, const float width_scale,
                           const float min, const float max, const int b,
-                          const int64 x, const int64 y, const int c) {
-  const std::tuple<int64, int64, float> x_weight = GetReferenceWeight(
+                          const int64_t x, const int64_t y, const int c) {
+  const std::tuple<int64_t, int64_t, float> x_weight = GetReferenceWeight(
       half_pixel_centers, out_width, in_width, channels, x, width_scale);
-  const std::tuple<int64, int64, float> y_weight = GetReferenceWeight(
+  const std::tuple<int64_t, int64_t, float> y_weight = GetReferenceWeight(
       half_pixel_centers, out_height, in_height, 1, y, height_scale);
 
-  const int64 in_row_size = in_width * channels;
-  const int64 in_batch_num_values = in_height * in_row_size;
+  const int64_t in_row_size = in_width * channels;
+  const int64_t in_batch_num_values = in_height * in_row_size;
 
   const int y_lower_index =
       b * in_batch_num_values + std::get<0>(y_weight) * in_row_size;
   const int y_upper_index =
       b * in_batch_num_values + std::get<1>(y_weight) * in_row_size;
 
-  const int64 xs_lower = std::get<0>(x_weight);
-  const int64 xs_upper = std::get<1>(x_weight);
+  const int64_t xs_lower = std::get<0>(x_weight);
+  const int64_t xs_upper = std::get<1>(x_weight);
   const float xs_lerp = std::get<2>(x_weight);
   const float ys_lerp = std::get<2>(y_weight);
   const float top_left = image_data[y_lower_index + xs_lower + c];
@@ -142,21 +145,21 @@ T CalcReferenceResizedVal(const T* image_data, const bool half_pixel_centers,
 
 template <typename T>
 void CheckTensorValue(const T* in_data, const T* out_data, const int batch_size,
-                      const int64 in_height, const int64 in_width,
-                      const int64 out_height, const int64 out_width,
+                      const int64_t in_height, const int64_t in_width,
+                      const int64_t out_height, const int64_t out_width,
                       const int channels, const bool align_corners,
                       const bool half_pixel_centers, const float min,
                       const float max, const float tolerance,
                       const bool relative) {
-  const int64 out_row_size = out_width * channels;
+  const int64_t out_row_size = out_width * channels;
   const float height_scale =
       CalculateResizeScale(in_height, out_height, align_corners);
   const float width_scale =
       CalculateResizeScale(in_width, out_width, align_corners);
 
   for (int b = 0; b < batch_size; ++b) {
-    for (int64 y = 0; y < out_height; ++y) {
-      for (int64 x = 0; x < out_width; ++x) {
+    for (int64_t y = 0; y < out_height; ++y) {
+      for (int64_t x = 0; x < out_width; ++x) {
         for (int c = 0; c < channels; ++c) {
           const T ref_qval = CalcReferenceResizedVal<T>(
               in_data, half_pixel_centers, batch_size, in_height, in_width,
@@ -187,7 +190,7 @@ void CheckTensorValue(const T* in_data, const T* out_data, const int batch_size,
 
 void TestResizeBilinear(const Tensor& image_tensor, const DataType dt,
                         const Input::Initializer& new_size,
-                        const bool show_time, const int64 iterations,
+                        const bool show_time, const int64_t iterations,
                         const float min, const float max,
                         const bool half_pixel_centers,
                         std::vector<Tensor>* outputs) {
@@ -206,20 +209,20 @@ void TestResizeBilinear(const Tensor& image_tensor, const DataType dt,
 
   ClientSession session(root);
 
-  int64 total_duration = 0;
+  int64_t total_duration = 0;
   outputs->clear();
 
   for (int i = 0; i < iterations; ++i) {
-    const int64 start_time = Env::Default()->NowMicros();
+    const int64_t start_time = Env::Default()->NowMicros();
     TF_EXPECT_OK(session.Run({{placeholder, image_tensor}},
                              {qrb.resized_images, qrb.out_min, qrb.out_max},
                              outputs));
-    const int64 end_time = Env::Default()->NowMicros();
+    const int64_t end_time = Env::Default()->NowMicros();
     total_duration += end_time - start_time;
   }
-  const int64 one_run_duration = total_duration / iterations;
+  const int64_t one_run_duration = total_duration / iterations;
 
-  const int64 num_ops = outputs->at(0).NumElements();
+  const int64_t num_ops = outputs->at(0).NumElements();
 
   const double million_ops_per_second =
       (iterations * num_ops) / static_cast<double>(total_duration);
@@ -245,7 +248,7 @@ void TestResizeBilinearOneDim() {
   constexpr float SCALE = static_cast<float>(IN_WIDTH) / OUT_WIDTH;
   Tensor image_quantized_tensor(DT_QINT32, TensorShape({1, 1, IN_WIDTH, 1}));
 
-  for (int64 i = 0; i < image_quantized_tensor.NumElements(); ++i) {
+  for (int64_t i = 0; i < image_quantized_tensor.NumElements(); ++i) {
     image_quantized_tensor.flat<qint32>()(i) =
         FloatToQuantized<qint32>(static_cast<float>(i), MIN, MAX);
   }
@@ -259,7 +262,7 @@ void TestResizeBilinearOneDim() {
   ASSERT_EQ(OUT_WIDTH, outputs.at(0).shape().dim_size(2));
 
   // Manual value testing
-  for (int64 i = 0; i < outputs.at(0).NumElements(); ++i) {
+  for (int64_t i = 0; i < outputs.at(0).NumElements(); ++i) {
     const float resized_image_val =
         QuantizedToFloat<qint32>(outputs.at(0).flat<qint32>()(i), MIN, MAX);
     float expected_val = 0.0f;

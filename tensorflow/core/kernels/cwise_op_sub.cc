@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 REGISTER8(BinaryOp, CPU, "Sub", functor::sub, float, Eigen::half, double, int32,
-          int64, bfloat16, complex64, complex128);
+          int64_t, bfloat16, complex64, complex128);
 #if !defined(__ANDROID_TYPES_SLIM__)
 // Sub op for int8, uint8, int16, uint16
 REGISTER6(BinaryOp, CPU, "Sub", functor::sub, int8, uint8, int16, uint16,
@@ -33,8 +33,6 @@ REGISTER(BinaryOp, CPU, "Sub", functor::sub, int32);
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER8(BinaryOp, GPU, "Sub", functor::sub, float, Eigen::half, double, int64,
           complex64, complex128, uint32, uint64);
-#else
-REGISTER2(BinaryOp, GPU, "Sub", functor::sub, uint64, uint32);
 #endif
 
 // A special GPU kernel for int32.

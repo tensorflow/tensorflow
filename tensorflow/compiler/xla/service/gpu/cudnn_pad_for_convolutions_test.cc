@@ -259,7 +259,7 @@ TEST_F(CudnnPadForConvolutionsTest, PadInt8To32OnSm75) {
           m::Op())));
 }
 
-TEST_F(CudnnPadForConvolutionsTest, NoPadInt8To32OnSm75) {
+TEST_F(CudnnPadForConvolutionsTest, NoPadInt8To32OnSm70) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule TestModule
 
@@ -280,6 +280,21 @@ TEST_F(CudnnPadForConvolutionsTest, NoPadInt8To32OnSm75) {
               kCudnnConvForwardCallTarget, m::Parameter(0),
               m::Pad(m::Parameter(1), m::Op()).WithShape(S8, {2, 2, 40, 44})))),
           m::Op())));
+}
+
+TEST_F(CudnnPadForConvolutionsTest, NoPadToInt8x32ExcessiveBlowup) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule TestModule
+
+  ENTRY TestComputation {
+    input = s8[128,4,48,48] parameter(0)
+    filter = s8[64,4,3,3] parameter(1)
+    ROOT result = (f32[128,64,48,48], u8[0]) custom-call(input, filter),
+                  window={size=3x3}, dim_labels=bf01_io01->bf01,
+                  custom_call_target="__cudnn$convForward"
+  })")
+                    .ValueOrDie();
+  EXPECT_FALSE(CudnnPadForConvolutions({7, 5}).Run(module.get()).ValueOrDie());
 }
 
 TEST_F(CudnnPadForConvolutionsTest, PadInt8x4To32) {
@@ -349,12 +364,12 @@ TEST_F(CudnnPadForConvolutionsTest,
     HloModule Test
 
     ENTRY %Test (input: s8[1,3,3,2], filter: s8[3,3,2,5], side_input: s8[1,3,3,5], bias: s8[5]) -> f32[1,3,3,5] {
-    %input = s8[1,3,3,2]{3,2,1,0} parameter(0)
+    %input = s8[1,3,3,3]{3,2,1,0} parameter(0)
     %filter = s8[3,3,2,5]{3,2,1,0} parameter(1)
     %bias = s8[5]{0} parameter(3)
     %convert = f32[5]{0} convert(s8[5]{0} %bias)
     %side_input = f32[1,3,3,5]{3,2,1,0} parameter(2)
-    %custom-call.1 = (f32[1,3,3,5]{3,2,1,0}, u8[0]{0}) custom-call(s8[1,3,3,2]{3,2,1,0} %input, s8[3,3,2,5]{3,2,1,0} %filter, f32[5]{0} %convert, f32[1,3,3,5]{3,2,1,0} %side_input), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convBiasActivationForward", backend_config="{\"activationMode\":\"2\",\"convResultScale\":1,\"sideInputScale\":1}"
+    %custom-call.1 = (f32[1,3,3,5]{3,2,1,0}, u8[0]{0}) custom-call(s8[1,3,3,3]{3,2,1,0} %input, s8[3,3,2,5]{3,2,1,0} %filter, f32[5]{0} %convert, f32[1,3,3,5]{3,2,1,0} %side_input), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convBiasActivationForward", backend_config="{\"activationMode\":\"2\",\"convResultScale\":1,\"sideInputScale\":1}"
     ROOT %get-tuple-element.1 = f32[1,3,3,5]{3,2,1,0} get-tuple-element((f32[1,3,3,5]{3,2,1,0}, u8[0]{0}) %custom-call.1), index=0
     })")
                     .ValueOrDie();

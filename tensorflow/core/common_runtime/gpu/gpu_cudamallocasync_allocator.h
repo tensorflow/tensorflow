@@ -89,6 +89,12 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
 #endif
   }
 
+  // With the right VLOG set, it prints:
+  // - the number of ptr currently allocated per size (histogram).
+  // - each ptr value and its size.
+  // - If CUDA_VERSION >= 11030, print cudaMallocAsync statistics.
+  void PrintAllocatorStatistics();
+
  private:
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   se::StreamExecutor* stream_exec_;  // Not owned.

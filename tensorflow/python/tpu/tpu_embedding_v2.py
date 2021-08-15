@@ -324,8 +324,8 @@ class TPUEmbedding(tracking.AutoTrackable):
       if table.name is None:
         table.name = "table_{}".format(i)
       if table.name in table_names:
-        raise ValueError("Multiple tables with name {} found.".format(
-            table.name))
+        raise ValueError("Tables must have a unique name. "
+                         f"Multiple tables with name {table.name} found.")
       table_names.append(table.name)
 
     if self._using_tpu:
@@ -370,9 +370,9 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     if self._using_tpu:
       if per_replica_batch_size is None:
-        raise ValueError("You must specify a per_replica_batch_size when "
-                         "calling build if object is created under a "
-                         "TPUStrategy.")
+        raise ValueError(
+            "When calling TpuShardedVariable.build under TpuStrategy you must "
+            "specify a per_replica_batch_size argument.")
 
       self._batch_size = per_replica_batch_size
 
@@ -540,8 +540,8 @@ class TPUEmbedding(tracking.AutoTrackable):
         nest.flatten(self._feature_config)):
       if gradient is not None and not isinstance(gradient, ops.Tensor):
         raise ValueError(
-            "Found {} at path {} in gradients. Expected Tensor.".format(
-                type(gradient), path))
+            f"When computing per-table gradients, found non-tensor type: "
+            f"{type(gradient)} at path {path}.")
 
       # Expected tensor shape differs for sequence and non-sequence features.
       if feature.max_sequence_length > 0:
@@ -1628,7 +1628,8 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
             axis=0)
         outputs.append(
             array_ops.scatter_nd(
-                inp.indices, array_ops.gather(table, truncated_inp.values),
+                truncated_inp.indices,
+                array_ops.gather(table.read_value(), truncated_inp.values),
                 dense_output_shape))
       else:
         inp_rank = inp.dense_shape.get_shape()[0]
