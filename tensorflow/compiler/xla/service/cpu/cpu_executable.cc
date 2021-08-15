@@ -185,16 +185,12 @@ Status CpuExecutable::ExecuteComputeFunction(
     buffer_pointers.push_back(
         const_cast<void*>(buffer.AsDeviceMemoryBase().opaque()));
   }
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
-                      assignment_->GetUniqueTopLevelOutputSlice());
-  void* result_buffer = buffer_pointers[result_slice.index()];
   if (VLOG_IS_ON(3)) {
     VLOG(3) << "Executing compute function:";
     VLOG(3) << absl::StrFormat(
         "  func(void* result, void* params[null], void* buffer_table[%u], "
         "uint64 profile_counters[%u])",
         buffer_pointers.size(), profile_counters_size);
-    VLOG(3) << absl::StrFormat("    result = %p", result_buffer);
     auto ptr_printer = [](string* out, const void* p) {
       absl::StrAppend(out, absl::StrFormat("%p", p));
     };
@@ -205,7 +201,7 @@ Status CpuExecutable::ExecuteComputeFunction(
     VLOG(3) << absl::StrFormat("    profile_counters = %p", profile_counters);
   }
 
-  compute_function_(result_buffer, run_options, nullptr, buffer_pointers.data(),
+  compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
                     profile_counters);
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
