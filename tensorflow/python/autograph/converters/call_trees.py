@@ -110,7 +110,7 @@ class CallTreeTransformer(converter.Base):
         node.args.defaults = self.visit_block(node.args.defaults)
         for i, d in enumerate(node.args.kw_defaults):
             if d is not None:
-                node.args.kw_defaults[i] = self.visit(d)
+                node.args.kw_defaults[i] = self.visit(d)    # TODO: expected type is AST, but got expr instead
         with self.state[_Function] as fn_scope:
             # Note: if the conversion process ever creates helper functions, this
             # assumption will no longer hold.
@@ -119,7 +119,7 @@ class CallTreeTransformer(converter.Base):
             fn_scope.context_name = anno.getanno(node, 'function_context_name')
             node.body = self.visit_block(node.body)
             if node.returns:
-                node.returns = self.visit(node.returns)
+                node.returns = self.visit(node.returns)     # TODO: expected type is AST, but got expr instead
             return node
 
     def visit_With(self, node):
