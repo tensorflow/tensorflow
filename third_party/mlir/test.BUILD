@@ -415,7 +415,6 @@ cc_library(
     defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
     includes = ["lib/Dialect/Test"],
     deps = [
-        "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MathTransforms",
         "@llvm-project//mlir:Pass",
