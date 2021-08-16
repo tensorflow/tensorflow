@@ -52,6 +52,7 @@ DeviceAttributes Device::BuildDeviceAttributes(
   da.set_memory_limit(memory_limit.value());
   *da.mutable_locality() = locality;
   da.set_physical_device_desc(physical_device_desc);
+  da.set_xla_global_id(-1);  // Unknown / not set
   return da;
 }
 
