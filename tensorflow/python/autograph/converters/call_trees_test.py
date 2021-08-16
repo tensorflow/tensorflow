@@ -219,7 +219,8 @@ class CallTreesTest(converter_testing.TestCase):
     def test_class_method(self):
         class TestClass(object):
 
-            def other_method(self, x):
+            @staticmethod
+            def other_method(x):
                 return x + 20
 
             def test_method(self, a):
@@ -234,7 +235,8 @@ class CallTreesTest(converter_testing.TestCase):
     def test_object_method(self):
         class TestClass(object):
 
-            def other_method(self, x):
+            @staticmethod
+            def other_method(x):
                 return x + 20
 
             def test_method(self, a):
