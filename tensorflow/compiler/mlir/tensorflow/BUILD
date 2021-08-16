@@ -16,6 +16,7 @@ package_group(
     name = "friends",
     packages = [
         "//platforms/darwinn/tools/mlir_fuzzer/...",
+        "//third_party/auroraml/...",
         "//tensorflow/compiler/...",
         "//tensorflow/core/runtime_fallback/test/...",
         "//tensorflow/core/tfrt/saved_model/...",

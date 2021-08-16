@@ -23,6 +23,7 @@ package_group(
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/compiler/xla/...",
+        "//third_party/auroraml/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",
     ],

@@ -24,6 +24,7 @@ package_group(
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/darwinn/tools/mlir_fuzzer/...",
         "//platforms/xla/...",
+        "//third_party/auroraml/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",
         "//third_party/py/mlir/...",
