@@ -97,32 +97,6 @@ std::vector<int64_t> ColorInterferenceGraph(
   return assigned_colors;
 }
 
-// If an hlo buffer contains an entry parameter, the buffer is read-only unless
-// it is aliased with an output.
-bool HloBufferIsReadOnly(const HloBuffer& buffer) {
-  for (const HloValue* value : buffer.values()) {
-    const HloInstruction* instruction = value->instruction();
-    if (instruction->opcode() == HloOpcode::kConstant) {
-      return true;
-    }
-    const HloModule* module = instruction->parent()->parent();
-    const bool is_entry_parameter =
-        instruction->opcode() == HloOpcode::kParameter &&
-        instruction->parent() == module->entry_computation();
-
-    if (is_entry_parameter) {
-      bool parameter_has_alias =
-          module->input_output_alias_config().ParameterHasAlias(
-              instruction->parameter_number(), value->index());
-      // The parameter doesn't have an alias, it must be read-only.
-      if (!parameter_has_alias) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 }  // namespace
 
 Status GatherComputationsByAllocationType(
