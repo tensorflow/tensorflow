@@ -94,11 +94,10 @@ tf_py_test(
     size = "medium",
     srcs = ["saved_model_test.py"],
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "no_rocm",
         "no_windows",
-        "noasan",  # TODO(b/196617479): it is flaky
         "notsan",  #TODO(b/181771982): it is flaky
     ],
     deps = [
