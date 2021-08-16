@@ -192,7 +192,6 @@ filegroup(
         "graph_runner.h",
         "inline_function_utils.h",
         "lower_function_call_inline_policy.h",
-        "metrics.h",
         "process_function_library_runtime.h",
         "scoped_allocator.h",
         "scoped_allocator_mgr.h",
