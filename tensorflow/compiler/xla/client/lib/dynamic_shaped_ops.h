@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_DYNAMIC_SHAPED_OPS_H_
 
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -32,6 +33,12 @@ XlaOp DynamicConditional(XlaBuilder* builder, XlaOp predicate,
                          const XlaComputation& true_computation,
                          XlaOp false_operand,
                          const XlaComputation& false_computation);
+
+// Similar to SetDimensionSize, but automatically adjust the bound of output if
+// a tighter one can be inferred by `value_inference`.
+StatusOr<XlaOp> SetDimensionSizeWithRebound(ValueInference* value_inference,
+                                            XlaOp operand, XlaOp dimension_size,
+                                            int64_t dimension);
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_DYNAMIC_SHAPED_OPS_H_

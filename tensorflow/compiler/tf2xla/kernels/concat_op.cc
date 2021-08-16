@@ -155,7 +155,9 @@ class ConcatOffsetOp : public XlaOpKernel {
     const int32_t N = ctx->num_inputs() - 1;
     const TensorShape inp0_shape = ctx->InputShape(1);
     std::vector<int64_t> inp0_dims;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &inp0_dims));
+    OP_REQUIRES_OK(ctx,
+                   ctx->ConstantInputAsIntVector(
+                       1, &inp0_dims, xla::ValueInferenceMode::kUpperBound));
     const int64_t inp0_rank = inp0_shape.num_elements();
 
     int64_t cdim;
@@ -174,7 +176,9 @@ class ConcatOffsetOp : public XlaOpKernel {
                                           inp0_rank, " elements, but got ",
                                           inp_shape.num_elements()));
       std::vector<int64_t> inp_dims;
-      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1 + i, &inp_dims));
+      OP_REQUIRES_OK(
+          ctx, ctx->ConstantInputAsIntVector(
+                   1 + i, &inp_dims, xla::ValueInferenceMode::kUpperBound));
 
       Tensor out_constant(DT_INT32, TensorShape({inp0_rank}));
       auto out_vec = out_constant.vec<int32>();

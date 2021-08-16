@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/loops.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -44,7 +45,8 @@ class RandomUniformOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(
+                            0, &shape, xla::ValueInferenceMode::kUpperBound));
 
     const DataType dtype = output_type(0);
     xla::Shape xla_shape;
@@ -58,7 +60,18 @@ class RandomUniformOp : public XlaOpKernel {
         << name();
     xla::XlaOp result = xla::RngUniform(XlaHelpers::Zero(b, dtype),
                                         XlaHelpers::One(b, dtype), xla_shape);
-
+    std::vector<bool> dynamic_dims;
+    OP_REQUIRES_OK(ctx,
+                   ctx->ResolveInputDynamismIntoPredVector(0, &dynamic_dims));
+    for (int64_t i = 0; i < xla_shape.rank(); ++i) {
+      // If a dimension is dynamic, call set-dimension-size on the output.
+      if (dynamic_dims[i]) {
+        auto dynamic_dim_size = xla::Slice(ctx->Input(0), {i}, {i + 1}, {1});
+        dynamic_dim_size = xla::Reshape(dynamic_dim_size, {});
+        dynamic_dim_size = xla::ConvertElementType(dynamic_dim_size, xla::S32);
+        result = xla::SetDimensionSize(result, dynamic_dim_size, i);
+      }
+    }
     ctx->SetOutput(0, result);
   }
 
