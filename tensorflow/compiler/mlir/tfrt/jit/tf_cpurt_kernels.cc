@@ -264,11 +264,13 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     EnqueueWork(exec_ctx, [request_id, kernel, num_specializations,
                            compile = std::move(compile),
                            args = std::move(args)]() mutable {
+      absl::string_view name(kernel.root_symbol().data(),
+                             kernel.root_symbol().size());
       TraceMe trace_me([&] {
         return TraceMeEncode("tf_cpurt.CompileSpecialization",
                              {{"id", request_id},
                               {"kernel_id", kernel.id()},
-                              {"executable", kernel.root_symbol()},
+                              {"executable", name},
                               {"num_specializations", num_specializations}});
       });
 
@@ -290,10 +292,12 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   EnqueueWork(exec_ctx, [kernel, request_id, runner, workers = *worker_threads,
                          ptr = entry.ptr]() {
     TraceMe trace_me([&] {
+      absl::string_view name(kernel.root_symbol().data(),
+                             kernel.root_symbol().size());
       return TraceMeEncode("tf_cpurt.CompileDefault",
                            {{"id", request_id},
                             {"kernel_id", kernel.id()},
-                            {"executable", kernel.root_symbol()},
+                            {"executable", name},
                             {"src", kernel.serialized_operation()}});
     });
 
