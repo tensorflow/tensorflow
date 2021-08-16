@@ -210,6 +210,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -820,7 +821,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_description",
