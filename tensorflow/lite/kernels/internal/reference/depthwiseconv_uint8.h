@@ -71,20 +71,19 @@ inline int32_t DepthwiseConvRound(int32_t x, int32_t quantized_multiplier,
 template <>
 inline int32_t DepthwiseConvRound<DepthwiseConvOutputRounding::kAwayFromZero>(
     int32_t x, int32_t quantized_multiplier, int shift) {
-  return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
+  using gemmlowp::RoundingDivideByPOT;
+  using gemmlowp::SaturatingRoundingDoublingHighMul;
+  int left_shift = shift > 0 ? shift : 0;
+  int right_shift = shift > 0 ? 0 : -shift;
+  return RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                                 x * (1 << left_shift), quantized_multiplier),
+                             right_shift);
 }
 
 template <>
 inline int32_t DepthwiseConvRound<DepthwiseConvOutputRounding::kUpward>(
     int32_t x, int32_t quantized_multiplier, int shift) {
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-  const int left_shift = shift > 0 ? shift : 0;
-  const int right_shift = shift > 0 ? 0 : -shift;
-  const int rounding_offset = right_shift > 0 ? 1 << (right_shift - 1) : 0;
-  return (SaturatingRoundingDoublingHighMul(x * (1 << left_shift),
-                                            quantized_multiplier) +
-          rounding_offset) >>
-         right_shift;
+  return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
 }
 
 template <DepthwiseConvOutputRounding output_rounding>
@@ -284,11 +283,11 @@ inline void DepthwiseConv(
     const int32_t* bias_data, const RuntimeShape& output_shape,
     uint8_t* output_data) {
   return depthwise_conv::DepthwiseConvBasicKernel<
-      DepthwiseConvOutputRounding::kAwayFromZero>::Run(params, input_shape,
-                                                       input_data, filter_shape,
-                                                       filter_data, bias_shape,
-                                                       bias_data, output_shape,
-                                                       output_data);
+      DepthwiseConvOutputRounding::kUpward>::Run(params, input_shape,
+                                                 input_data, filter_shape,
+                                                 filter_data, bias_shape,
+                                                 bias_data, output_shape,
+                                                 output_data);
 }
 
 }  // namespace reference_ops

@@ -324,7 +324,7 @@ inline void DepthwiseConvHybridImpl(
     const float* per_channel_scales, const int32_t* input_offsets,
     int thread_start, int thread_end, int thread_dim) {
   return DepthwiseConvHybridWithRounding<
-      DepthwiseConvOutputRounding::kAwayFromZero>(
+      DepthwiseConvOutputRounding::kUpward>(
           params, input_scales, input_shape, input_data,
           filter_shape, filter_data, bias_shape, bias_data, output_shape,
           output_data, per_channel_scales, input_offsets,
