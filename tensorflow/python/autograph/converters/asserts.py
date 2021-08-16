@@ -25,28 +25,28 @@ from tensorflow.python.autograph.pyct import templates
 
 
 class AssertTransformer(converter.Base):
-  """Transforms Assert nodes to Call so they can be handled as functions."""
+    """Transforms Assert nodes to Call so they can be handled as functions."""
 
-  def visit_Assert(self, node):
-    self.generic_visit(node)
+    def visit_Assert(self, node):
+        self.generic_visit(node)
 
-    # Note: The lone tf.Assert call will be wrapped with control_dependencies
-    # by side_effect_guards.
-    template = """
+        # Note: The lone tf.Assert call will be wrapped with control_dependencies
+        # by side_effect_guards.
+        template = """
       ag__.assert_stmt(test, lambda: msg)
     """
 
-    if node.msg is None:
-      return templates.replace(
-          template,
-          test=node.test,
-          msg=gast.Constant('Assertion error', kind=None))
-    elif isinstance(node.msg, gast.Constant):
-      return templates.replace(template, test=node.test, msg=node.msg)
-    else:
-      raise NotImplementedError('can only convert string messages for now.')
+        if node.msg is None:
+            return templates.replace(
+                template,
+                test=node.test,
+                msg=gast.Constant('Assertion error', kind=None))
+        elif isinstance(node.msg, gast.Constant):
+            return templates.replace(template, test=node.test, msg=node.msg)
+        else:
+            raise NotImplementedError('can only convert string messages for now.')
 
 
 def transform(node, ctx):
-  node = AssertTransformer(ctx).visit(node)
-  return node
+    node = AssertTransformer(ctx).visit(node)
+    return node
