@@ -219,7 +219,8 @@ void FillIdentityEigenImplWithCast(const Device& d, OUT_T out, const Reducer& re
   static_assert(sizeof(id)==sizeof(cast_id), 
       "Error: FillIdentityEigenImplWithCast with incompatible types?");
   memcpy(&cast_id, &id, sizeof(cast_id)); // to avoid strict-aliasing warnings
-  out.device(d) = out.constant(cast_id);
+  MaybeWith32BitIndexing<Device>(
+      [&](auto out32) { out32.device(d) = out32.constant(cast_id); }, out);
 }
 
 template <typename Device, typename Reducer>

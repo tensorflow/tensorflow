@@ -1819,12 +1819,8 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
                       miopenRNNInputMode_t input_mode,
                       miopenRNNDirectionMode_t direction_mode,
                       miopenRNNMode_t rnn_mode, miopenDataType_t data_type,
-<<<<<<< HEAD
-                      float dropout, uint64 seed,
-                      const dnn::AlgorithmConfig& algorithm_config,
-=======
                       float dropout, uint64_t seed,
->>>>>>> google_upstream/master
+                      const dnn::AlgorithmConfig& algorithm_config,
                       ScratchAllocator* state_allocator)
       : rnn_desc_(nullptr),
         num_layers_(num_layers),
@@ -1870,14 +1866,10 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
   miopenRNNDirectionMode_t direction_mode() const { return direction_mode_; }
   miopenRNNMode_t rnn_mode() const { return rnn_mode_; }
   miopenDataType_t data_type() const { return data_type_; }
-<<<<<<< HEAD
   const dnn::AlgorithmConfig& algorithm_config() const {
     return algorithm_config_;
   }
-  int64 ParamsSizeInBytes() const override {
-=======
   int64_t ParamsSizeInBytes() const override {
->>>>>>> google_upstream/master
     return miopen_params_desc_->params_size_in_bytes();
   }
   miopenTensorDescriptor_t params_handle() const {
