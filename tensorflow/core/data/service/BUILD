@@ -70,6 +70,7 @@ cc_library(
     deps = [
         ":common",
         ":common_proto_cc",
+        ":url",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:rewrite_utils",
         "//tensorflow/core/framework:dataset_options_proto_cc",
@@ -719,6 +720,27 @@ tf_cc_test(
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "url",
+    srcs = ["url.cc"],
+    hdrs = ["url.h"],
+    deps = [
+        "//tensorflow/core/platform:regexp",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "url_test",
+    size = "small",
+    srcs = ["url_test.cc"],
+    deps = [
+        ":url",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
