@@ -433,7 +433,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
           LocalWorkers::Empty()) {
         return errors::InvalidArgument(
-            "`target_workers` is `local`, but no local worker is found.");
+            "Local reads or static sharding require local tf.data workers, "
+            "but no local worker is found. You need to run tf.data service "
+            "workers in your training workers.");
       }
       if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
           StrictRoundRobin()) {
@@ -1055,9 +1057,6 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
       ParseTargetWorkers(target_workers_str);
   OP_REQUIRES_OK(ctx, status_or_target_workers.status());
   target_workers_ = *status_or_target_workers;
-  if (target_workers_ == TARGET_WORKERS_LOCAL) {
-    data_transfer_protocol_ = kLocalTransferProtocol;
-  }
 
   auto& op_name = ctx->def().op();
   if (op_name == kDataServiceDatasetV1) {
@@ -1089,6 +1088,15 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                 errors::InvalidArgument(absl::Substitute(
                     "Failed to parse ProcessingModeDef from string: $0",
                     std::string(processing_mode_str))));
+  }
+  if (IsStaticShard(processing_mode) &&
+      target_workers_ == TARGET_WORKERS_AUTO) {
+    VLOG(1) << "Using LOCAL target workers for static sharding mode: "
+            << processing_mode.ShortDebugString();
+    target_workers_ = TARGET_WORKERS_LOCAL;
+  }
+  if (target_workers_ == TARGET_WORKERS_LOCAL) {
+    data_transfer_protocol_ = kLocalTransferProtocol;
   }
 
   tstring address;
