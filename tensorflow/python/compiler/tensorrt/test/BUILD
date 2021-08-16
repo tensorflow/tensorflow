@@ -56,7 +56,6 @@ cuda_py_tests(
     name = "tf_trt_integration_test",
     srcs = [
         "annotate_max_batch_sizes_test.py",
-        "base_test.py",
         "batch_matmul_test.py",
         "biasadd_matmul_test.py",
         "binary_tensor_weight_broadcast_test.py",
@@ -81,6 +80,26 @@ cuda_py_tests(
         "unary_test.py",
         "vgg_block_nchw_test.py",
         "vgg_block_test.py",
+    ],
+    python_version = "PY3",
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_rocm",
+        "no_windows",
+        "nomac",
+    ],
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/compiler/tensorrt:tf_trt_integration_test_base",
+    ],
+)
+
+cuda_py_tests(
+    name = "tf_trt_integration_test2",
+    srcs = [
+        "base_test.py",
     ],
     python_version = "PY3",
     tags = [
