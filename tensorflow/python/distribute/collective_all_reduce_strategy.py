@@ -42,7 +42,6 @@ from tensorflow.python.distribute.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager import context
-from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -452,11 +451,6 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       config_proto = copy.deepcopy(context.context().config)
       config_proto = self._update_config_proto(config_proto)
 
-      # If coordination service is enabled, use its internal heartbeat to detect
-      # peer failures instead of the Python-level health check.
-      if config_proto.experimental.coordination_service:
-        self._enable_check_health = False
-
       if hasattr(cluster_resolver, "port"):
         port = cluster_resolver.port
       else:
@@ -483,14 +477,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in
     # some cases.
     if isinstance(cluster_resolver, TFConfigClusterResolver):
-      num_gpus = 0
-      context.context().ensure_initialized()
-      devices = context.context().devices()
-      for d in devices:
-        device_spec = pydev.DeviceSpec.from_string(d)
-        if (device_spec.job == task_type and device_spec.task == task_id and
-            device_spec.device_type == "GPU"):
-          num_gpus += 1
+      num_gpus = context.num_gpus()
     else:
       num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
 
