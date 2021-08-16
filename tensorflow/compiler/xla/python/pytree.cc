@@ -654,7 +654,8 @@ std::string PyTreeDef::ToString() const {
         if (py::len(node.node_data) != node.arity) {
           throw std::logic_error("Number of keys and entries does not match.");
         }
-        std::string separator = "{";
+        representation = "{";
+        std::string separator;
         auto child_iter = agenda.end() - node.arity;
         for (const py::handle& key : node.node_data) {
           absl::StrAppendFormat(&representation, "%s%s: %s", separator,
