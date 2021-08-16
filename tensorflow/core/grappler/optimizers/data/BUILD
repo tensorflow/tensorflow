@@ -662,6 +662,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
     ],
 )
