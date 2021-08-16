@@ -224,8 +224,8 @@ def _get_argspec_for_partial(obj):
       idx = args.index(kw)
       all_defaults[idx] = default
     elif not keywords:
-      raise ValueError('Function does not have **kwargs parameter, but '
-                       'contains an unknown partial keyword.')
+      raise ValueError(f'{obj} does not have a **kwargs parameter, but '
+                       f'contains an unknown partial keyword {kw}.')
 
   # Find first argument with default value set.
   first_default = next(
@@ -242,9 +242,8 @@ def _get_argspec_for_partial(obj):
   ]
 
   if invalid_default_values:
-    raise ValueError('Some arguments %s do not have default value, but they '
-                     'are positioned after those with default values. This can '
-                     'not be expressed with ArgSpec.' % invalid_default_values)
+    raise ValueError(f'{obj} has some keyword-only arguments, which are not'
+                     f' supported: {invalid_default_values}.')
 
   return ArgSpec(args, varargs, keywords, tuple(all_defaults[first_default:]))
 
