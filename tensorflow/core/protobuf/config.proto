@@ -673,7 +673,12 @@ message ConfigProto {
     // will become aware of remote devices in the cluster as well.
     bool fetch_remote_devices_in_multi_client = 20;
 
-    // Next: 21
+    // Whether functional control flow op lowering should be disabled. This is
+    // useful when executing within a portable runtime where control flow op
+    // kernels may not be loaded due to selective registration.
+    bool disable_functional_ops_lowering = 21;
+
+    // Next: 22
   }
 
   Experimental experimental = 16;

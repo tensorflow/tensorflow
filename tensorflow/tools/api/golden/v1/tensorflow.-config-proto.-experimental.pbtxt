@@ -118,6 +118,12 @@ tf_proto {
       label: LABEL_OPTIONAL
       type: TYPE_BOOL
     }
+    field {
+      name: "disable_functional_ops_lowering"
+      number: 21
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
     enum_type {
       name: "MlirBridgeRollout"
       value {

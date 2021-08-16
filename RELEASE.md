@@ -136,6 +136,11 @@
         *   Added argument `alg` to `tf.random.stateless_*` functions to explicitly select the RNG algorithm.
         *   Added `tf.nn.experimental.stateless_dropout`, a stateless version of `tf.nn.dropout`.
         *   `tf.random.Generator` now can be created inside the scope of `tf.distribute.experimental.ParameterServerStrategy` and `tf.distribute.experimental.CentralStorageStrategy`.
+    * Added an experimental session config
+      `tf.experimental.disable_functional_ops_lowering` which disables
+      functional control flow op lowering optimization. This is useful when
+      executing within a portable runtime where control flow op kernels may not 
+      be loaded due to selective registration.
 *   `tf.data`:
     *   Promoting `tf.data.Options.experimental_deterministic` API to
         `tf.data.Options.deterministic` and deprecating the experimental
