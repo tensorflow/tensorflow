@@ -48,8 +48,8 @@ static const int16_t kint16min = static_cast<int16>(~0x7FFF);
 static const int16_t kint16max = static_cast<int16>(0x7FFF);
 static const int32_t kint32min = static_cast<int32>(~0x7FFFFFFF);
 static const int32_t kint32max = static_cast<int32>(0x7FFFFFFF);
-static const int64_t kint64min = static_cast<int64>(~0x7FFFFFFFFFFFFFFFll);
-static const int64_t kint64max = static_cast<int64>(0x7FFFFFFFFFFFFFFFll);
+static const int64_t kint64min = static_cast<int64_t>(~0x7FFFFFFFFFFFFFFFll);
+static const int64_t kint64max = static_cast<int64_t>(0x7FFFFFFFFFFFFFFFll);
 
 // A typedef for a uint64 used as a short fingerprint.
 typedef uint64 Fprint;

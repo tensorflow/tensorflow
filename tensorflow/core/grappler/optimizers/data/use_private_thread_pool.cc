@@ -74,7 +74,7 @@ Status UsePrivateThreadPool::OptimizeAndCollectStats(Cluster* cluster,
 
   // Add a const node with value 0 to indicate it is not set by users.
   NodeDef* num_threads_value =
-      graph_utils::AddScalarConstNode(int64{0}, &graph);
+      graph_utils::AddScalarConstNode(int64_t{0}, &graph);
 
   NodeDef insert_node;
   graph_utils::SetUniqueGraphNodeName("private_thread_pool", graph.graph(),

@@ -2,4 +2,4 @@
 
 "totally @invalid MLIR module {here} <-"
 
-// CHECK: Invalid argument: could not parse MLIR module-:1:1: error: custom op 'totally' is unknown
+// CHECK: could not parse MLIR module-:1:1: error: custom op 'totally' is unknown

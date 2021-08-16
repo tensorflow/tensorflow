@@ -40,8 +40,8 @@ class MIOpenCTCLossDescriptor;
 extern const PluginId kMIOpenPlugin;
 
 struct PoolingWorkspaceDescriptor {
-  std::vector<int64> input_dims;
-  std::vector<int64> output_dims;
+  std::vector<int64_t> input_dims;
+  std::vector<int64_t> output_dims;
   dnn::PoolingDescriptor op;
   int dtype;
   uint64_t timestamp;
@@ -86,7 +86,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
       dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-      float dropout, uint64 seed, ScratchAllocator* state_allocator,
+      float dropout, uint64_t seed, ScratchAllocator* state_allocator,
       bool use_padded_io) override;
 
   port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
@@ -411,7 +411,7 @@ class MIOpenSupport : public dnn::DnnSupport {
   bool DoActivate(Stream* stream, dnn::ActivationMode activation_mode,
                   const dnn::BatchDescriptor& dimensions,
                   const DeviceMemory<float>& input_data,
-                  DeviceMemory<float>* output_data, uint64 options) override;
+                  DeviceMemory<float>* output_data, uint64_t options) override;
 
   bool DoPoolForward(Stream* stream,
                      const dnn::PoolingDescriptor& pooling_dimensions,
@@ -495,22 +495,22 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* output_data) override;
 
   bool DoXYPad(Stream* stream, const dnn::BatchDescriptor& dimensions,
-               const DeviceMemory<float>& input_data, int64 left_pad,
-               int64 right_pad, int64 top_pad, int64 bottom_pad,
+               const DeviceMemory<float>& input_data, int64_t left_pad,
+               int64_t right_pad, int64_t top_pad, int64_t bottom_pad,
                DeviceMemory<float>* output_data) override;
 
   bool DoXYSlice(Stream* stream, const dnn::BatchDescriptor& dimensions,
-                 const DeviceMemory<float>& input_data, int64 left_trim,
-                 int64 right_trim, int64 top_trim, int64 bottom_trim,
+                 const DeviceMemory<float>& input_data, int64_t left_trim,
+                 int64_t right_trim, int64_t top_trim, int64_t bottom_trim,
                  DeviceMemory<float>* output_data) override;
 
   bool DoMemcpyD2HQuantized(Stream* stream,
                             const DeviceMemory<float>& device_unquantized_src,
                             dnn::QuantizedActivationMode mode, void* host_dst,
-                            int64 size) override;
+                            int64_t size) override;
 
   bool DoMemcpyH2DQuantized(
-      Stream* stream, const void* host_src, int64 size,
+      Stream* stream, const void* host_src, int64_t size,
       dnn::QuantizedActivationMode mode,
       DeviceMemory<float>* device_unquantized_dst) override;
 

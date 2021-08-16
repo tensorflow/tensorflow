@@ -202,7 +202,7 @@ class PermuterTest : public ::testing::Test {
         RunTest<int32>(dtype, DEVICE_##T, W, D, L, A);              \
       } break;                                                      \
       case DT_INT64: {                                              \
-        RunTest<int64>(dtype, DEVICE_##T, W, D, L, A);              \
+        RunTest<int64_t>(dtype, DEVICE_##T, W, D, L, A);            \
       } break;                                                      \
       default:                                                      \
         LOG(FATAL) << "Unimplemented";                              \

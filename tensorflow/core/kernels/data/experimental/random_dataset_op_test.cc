@@ -38,7 +38,7 @@ std::vector<Tensor> GenerateExpectedData(int64_t seed, int64_t seed2,
       random::SingleSampleAdapter<random::PhiloxRandom>(&parent_generator);
 
   for (int i = 0; i < count; ++i) {
-    ret.push_back(CreateTensor<int64>(TensorShape({}), {generator()}));
+    ret.push_back(CreateTensor<int64_t>(TensorShape({}), {generator()}));
   }
   return ret;
 }
@@ -50,8 +50,8 @@ class RandomDatasetParams : public DatasetParams {
                       string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
-        seed_(CreateTensor<int64>(TensorShape({}), {seed})),
-        seed2_(CreateTensor<int64>(TensorShape({}), {seed2})) {}
+        seed_(CreateTensor<int64_t>(TensorShape({}), {seed})),
+        seed2_(CreateTensor<int64_t>(TensorShape({}), {seed2})) {}
 
   virtual std::vector<Tensor> GetInputTensors() const override {
     return {seed_, seed2_};

@@ -87,7 +87,7 @@ class Executor {
   // "start_time_usecs" is a timestamp for the start of RunAsync()
   // execution. Used for system-wide latency metrics.
   struct Args {
-    int64 step_id = 0;
+    int64_t step_id = 0;
     RendezvousInterface* rendezvous = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
     CallFrameInterface* call_frame = nullptr;
@@ -100,7 +100,7 @@ class Executor {
     CollectiveExecutor* collective_executor = nullptr;
     thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
     CoordinationServiceAgent* coordination_service_agent = nullptr;
-    int64 start_time_usecs = 0;
+    int64_t start_time_usecs = 0;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;

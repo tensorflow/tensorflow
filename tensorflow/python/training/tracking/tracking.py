@@ -126,6 +126,9 @@ class AutoTrackable(base.Trackable):
           del self._unconditional_checkpoint_dependencies[index]
           break
 
+  def _add_trackable_child(self, name, value):
+    self.__setattr__(name, value)
+
 
 class ResourceTracker(object):
   """An object that tracks a list of resources."""

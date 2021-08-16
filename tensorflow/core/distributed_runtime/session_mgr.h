@@ -124,7 +124,7 @@ class SessionMgr {
 
   // Incarnation and WorkerSession handle associated with a master task.
   struct MasterAssociatedSession {
-    const int64 master_incarnation;
+    const int64_t master_incarnation;
     const string session_handle;
   };
   // A map from master task name to its associated worker sessions.

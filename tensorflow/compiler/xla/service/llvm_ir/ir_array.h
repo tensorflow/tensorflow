@@ -44,7 +44,7 @@ namespace llvm_ir {
 class IrArray {
  public:
   // A multidimensional index into an IrArray. All the runtime indices
-  // (multidim) and dimensions (Shape::dimensions(), absl::Span<const int64>)
+  // (multidim) and dimensions (Shape::dimensions(), absl::Span<const int64_t>)
   // are major-first.
   //
   // This may also keep a linear index and the layout and dimensions it was
@@ -90,7 +90,7 @@ class IrArray {
     // passed. The layout is assumed to be the default (descending
     // minor-to-major) layout.
     Index(absl::Span<llvm::Value* const> multidim,
-          absl::Span<int64 const> dimensions, llvm::Type* index_type);
+          absl::Span<int64_t const> dimensions, llvm::Type* index_type);
 
     // Returns an index that adds `addend` to the given `dim` of the object.
     Index AddOffsetToDim(llvm::Value* addend, int64_t dim,
@@ -103,7 +103,7 @@ class IrArray {
     }
 
     const std::vector<llvm::Value*>& multidim() const { return multidim_; }
-    const std::vector<int64>& dims() const { return dims_; }
+    const std::vector<int64_t>& dims() const { return dims_; }
     llvm::Value* linear() const { return linear_; }
 
     size_t size() const { return multidim().size(); }
@@ -138,15 +138,15 @@ class IrArray {
     // Precondition: "this" is an index into a slice whose operand shape is
     // `operand_shape`.
     Index SourceIndexOfSlice(const Shape& operand_shape,
-                             absl::Span<const int64> starts,
-                             absl::Span<const int64> strides,
+                             absl::Span<const int64_t> starts,
+                             absl::Span<const int64_t> strides,
                              llvm::IRBuilder<>* builder) const;
 
     // Given that "this" is the target index of a transpose from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
     Index SourceIndexOfTranspose(
         const Shape& shape, const Shape& operand_shape,
-        absl::Span<const int64> dimension_mapping) const;
+        absl::Span<const int64_t> dimension_mapping) const;
 
     // Given that "this" is the target index of a bitcast from `operand_shape`
     // to `shape`, returns the source index.
@@ -156,12 +156,12 @@ class IrArray {
     // Given that "this" is the target index of a broadcast from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
     Index SourceIndexOfBroadcast(const Shape& shape, const Shape& operand_shape,
-                                 absl::Span<const int64> dimension_mapping,
+                                 absl::Span<const int64_t> dimension_mapping,
                                  llvm::IRBuilder<>* builder) const;
 
     // Linearizes the index into the given shape, i.e. reshapes it to rank-1 and
     // returns the index into the sole dimension 0 of the new shape.
-    llvm::Value* Linearize(absl::Span<const int64> dimensions,
+    llvm::Value* Linearize(absl::Span<const int64_t> dimensions,
                            llvm::IRBuilder<>* builder) const;
 
     // Linearizes the index into the given dynamic dimensions.
@@ -209,7 +209,7 @@ class IrArray {
     // be null and `layout_` and `dims_` would be ignored.
     llvm::Value* linear_ = nullptr;
     Layout layout_;
-    std::vector<int64> dims_;
+    std::vector<int64_t> dims_;
 
     llvm::Type* index_type_;
   };

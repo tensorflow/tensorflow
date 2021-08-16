@@ -157,8 +157,8 @@ Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
 
   // Construct argument nodes
   NodeDef* num_shards_node =
-      graph_utils::AddScalarConstNode<int64>(num_workers, graph);
-  NodeDef* index_node = graph_utils::AddScalarConstNode<int64>(index, graph);
+      graph_utils::AddScalarConstNode<int64_t>(num_workers, graph);
+  NodeDef* index_node = graph_utils::AddScalarConstNode<int64_t>(index, graph);
 
   // Add inputs to new node
   new_node.add_input(add_before.input(0));
@@ -655,9 +655,9 @@ Status ShardByHint(const NodeDef& sink_node, int64_t num_workers, int64_t index,
   };
 
   auto* num_workers_node =
-      graph_utils::AddScalarConstNode(static_cast<int64>(num_workers), graph);
+      graph_utils::AddScalarConstNode(static_cast<int64_t>(num_workers), graph);
   auto* worker_index_node =
-      graph_utils::AddScalarConstNode(static_cast<int64>(index), graph);
+      graph_utils::AddScalarConstNode(static_cast<int64_t>(index), graph);
 
   for (const NodeDef& node : graph->graph()->node()) {
     const NodeDef* shard_node = get_shard_node(node);

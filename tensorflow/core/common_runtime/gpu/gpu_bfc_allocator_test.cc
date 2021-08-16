@@ -202,7 +202,7 @@ TEST_P(GPUBFCAllocatorTest, ExerciseCoalescing) {
     // causing fragmentation and growth.
     float* t1 = TypedAllocator::Allocate<float>(&a, 1024, {});
 
-    int64* t2 = TypedAllocator::Allocate<int64>(&a, 1048576, {});
+    int64_t* t2 = TypedAllocator::Allocate<int64_t>(&a, 1048576, {});
     double* t3 = TypedAllocator::Allocate<double>(&a, 2048, {});
     float* t4 = TypedAllocator::Allocate<float>(&a, 10485760, {});
 
@@ -212,7 +212,7 @@ TEST_P(GPUBFCAllocatorTest, ExerciseCoalescing) {
     a.DeallocateRaw(t4);
   }
   CheckStats(&a, 4097, 0,
-             1024 * sizeof(float) + 1048576 * sizeof(int64) +
+             1024 * sizeof(float) + 1048576 * sizeof(int64_t) +
                  2048 * sizeof(double) + 10485760 * sizeof(float),
              10485760 * sizeof(float));
 

@@ -238,8 +238,9 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
 // calls to 'parallel_function' (and joins threads before returning).
 Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
-    const std::vector<int64>& dimension_partition_counts, llvm::IRBuilder<>* b,
-    llvm::Function* parallel_function, const string& name) {
+    const std::vector<int64_t>& dimension_partition_counts,
+    llvm::IRBuilder<>* b, llvm::Function* parallel_function,
+    const string& name) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
 
   // Build ParallelForkJoin function type.
@@ -294,12 +295,12 @@ Status EmitCallToParallelForkJoin(
   // See comments in runtime_fork_join.cc for array layout description.
   std::vector<llvm::Constant*> partitions(partition_array_size);
   for (int32_t i = 0; i < num_partitions; ++i) {
-    std::vector<std::pair<int64, int64>> dim_partitions =
+    std::vector<std::pair<int64_t, int64_t>> dim_partitions =
         partition_iterator.GetPartition(i);
     CHECK_EQ(num_partitioned_dims, dim_partitions.size());
     const int32_t partition_index = i * array_partition_stride;
     for (int32_t j = 0; j < num_partitioned_dims; ++j) {
-      const std::pair<int64, int64>& dim_partition = dim_partitions[j];
+      const std::pair<int64_t, int64_t>& dim_partition = dim_partitions[j];
       const int32_t index = partition_index + j * dim_partition_size;
       // Store partition [dim_start, dim_limit) intervals for each dimension.
       partitions[index] = b->getInt64(dim_partition.first);

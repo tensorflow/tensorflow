@@ -223,12 +223,12 @@ absl::once_flag llvm_command_line_options_initialized;
 // recorded.
 class CollectProfileCandidates : public DfsHloVisitorWithDefault {
  public:
-  static StatusOr<std::unordered_map<const HloInstruction*, int64>>
+  static StatusOr<std::unordered_map<const HloInstruction*, int64_t>>
   GetCandidatesForComputation(
       const HloComputation& computation,
-      const std::unordered_map<const HloInstruction*, int64>&
+      const std::unordered_map<const HloInstruction*, int64_t>&
           assigned_indices) {
-    std::unordered_map<const HloInstruction*, int64> hlo_to_profile_idx;
+    std::unordered_map<const HloInstruction*, int64_t> hlo_to_profile_idx;
     CollectProfileCandidates profile_candidates_for_computation(
         &hlo_to_profile_idx, assigned_indices);
     TF_RETURN_IF_ERROR(computation.Accept(&profile_candidates_for_computation));
@@ -237,8 +237,9 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 
  private:
   CollectProfileCandidates(
-      std::unordered_map<const HloInstruction*, int64>* hlo_to_profile_idx,
-      const std::unordered_map<const HloInstruction*, int64>& assigned_indices)
+      std::unordered_map<const HloInstruction*, int64_t>* hlo_to_profile_idx,
+      const std::unordered_map<const HloInstruction*, int64_t>&
+          assigned_indices)
       : hlo_to_profile_idx_(hlo_to_profile_idx),
         assigned_indices_(assigned_indices) {}
 
@@ -293,8 +294,8 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  std::unordered_map<const HloInstruction*, int64>* hlo_to_profile_idx_;
-  const std::unordered_map<const HloInstruction*, int64>& assigned_indices_;
+  std::unordered_map<const HloInstruction*, int64_t>* hlo_to_profile_idx_;
+  const std::unordered_map<const HloInstruction*, int64_t>& assigned_indices_;
 };
 
 }  // namespace
@@ -489,7 +490,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
 namespace {
 
 // Align buffers to 16-byte boundaries.
-int64 memory_alignment(LogicalBuffer::Color) {
+int64_t memory_alignment(LogicalBuffer::Color) {
   return cpu_function_runtime::kMinAlign;
 }
 
@@ -561,9 +562,9 @@ Status VerifyLlvmModule(const llvm::Module& llvm_module) {
 
 Status CreateHloProfilingArtifacts(
     const HloModule& module,
-    std::unordered_map<const HloInstruction*, int64>*
+    std::unordered_map<const HloInstruction*, int64_t>*
         instruction_to_profile_idx,
-    std::unordered_map<const HloComputation*, int64>*
+    std::unordered_map<const HloComputation*, int64_t>*
         computation_to_profile_idx,
     std::unique_ptr<HloProfileIndexMap>* hlo_profile_index_map,
     std::unique_ptr<HloProfilePrinterData>* hlo_profile_printer_data) {
@@ -579,7 +580,7 @@ Status CreateHloProfilingArtifacts(
   auto shape_size_bytes = [](const Shape& shape) {
     // On the cpu, opaques are pointers.
     if (shape.IsOpaque()) {
-      return static_cast<int64>(sizeof(void*));
+      return static_cast<int64_t>(sizeof(void*));
     }
     return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
   };
@@ -718,8 +719,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   llvm_module->setTargetTriple((*jit)->target_triple().getTriple());
 
   HloComputation* entry_computation = module->entry_computation();
-  std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx;
-  std::unordered_map<const HloComputation*, int64> computation_to_profile_idx;
+  std::unordered_map<const HloInstruction*, int64_t> instruction_to_profile_idx;
+  std::unordered_map<const HloComputation*, int64_t> computation_to_profile_idx;
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
   std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data;
   if (module->config().hlo_profiling_enabled()) {
@@ -964,8 +965,10 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     }
     DumpHloModuleIfEnabled(*module, *assignment, "cpu_after_optimizations");
 
-    std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx;
-    std::unordered_map<const HloComputation*, int64> computation_to_profile_idx;
+    std::unordered_map<const HloInstruction*, int64_t>
+        instruction_to_profile_idx;
+    std::unordered_map<const HloComputation*, int64_t>
+        computation_to_profile_idx;
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data;
 

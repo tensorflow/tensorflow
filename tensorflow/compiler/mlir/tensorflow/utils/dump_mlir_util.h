@@ -91,8 +91,9 @@ void SetCrashReproducer(
 // Note that this function should be in a more appropriate file, but it is
 // unclear what a proper file would be as no other functions would currently be
 // in the file also.
-void applyTensorflowAndCLOptions(mlir::PassManager& pm,
-                                 llvm::StringRef dir_path = "");
+void applyTensorflowAndCLOptions(
+    mlir::PassManager& pm,
+    llvm::StringRef dir_path = kCrashReproducerCrashAnalysis);
 
 }  // namespace tensorflow
 

@@ -96,8 +96,9 @@ void UnscheduleAlarm(const SlowOperationAlarm* alarm) {
 
 }  // namespace
 
-SlowOperationAlarm::SlowOperationAlarm(absl::Duration timeout, string msg,
-                                       std::atomic<int64>* counter /*=nullptr*/)
+SlowOperationAlarm::SlowOperationAlarm(
+    absl::Duration timeout, string msg,
+    std::atomic<int64_t>* counter /*=nullptr*/)
     : deadline_(absl::Now() + timeout),
       msg_(std::move(msg)),
       counter_(counter) {
@@ -110,7 +111,7 @@ std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
     absl::string_view msg) {
   // Pass a counter to these alarms so they only log once every power-of-two
   // occurrences.
-  static auto* counter = new std::atomic<int64>(0);
+  static auto* counter = new std::atomic<int64_t>(0);
 
   const char* separator = "\n********************************";
 

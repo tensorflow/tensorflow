@@ -120,7 +120,7 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
   //       slice_sizes={1,1,2}
 
   xla::GatherDimensionNumbers dim_numbers;
-  std::vector<int64> slice_sizes;
+  std::vector<int64_t> slice_sizes;
   slice_sizes.reserve(input_shape.dims());
   for (int64_t i = 0; i < input_shape.dims(); i++) {
     int64_t window_bound;
@@ -159,7 +159,7 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
   auto indices = context->Input(1);
   auto indices_shape = context->InputShape(1);
 
-  absl::optional<int64> axis;
+  absl::optional<int64_t> axis;
   if (context->num_inputs() == 3) {
     const TensorShape axis_shape = context->InputShape(2);
     if (!TensorShapeUtils::IsScalar(axis_shape)) {

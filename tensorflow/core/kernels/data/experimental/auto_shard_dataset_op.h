@@ -42,8 +42,8 @@ class AutoShardDatasetOp : public UnaryDatasetOpKernel {
   static RewriterConfig CreateConfig(int64_t num_workers, int64_t index,
                                      int64_t auto_shard_policy,
                                      int64_t num_replicas);
-  int64 auto_shard_policy_;
-  int64 num_replicas_;
+  int64_t auto_shard_policy_;
+  int64_t num_replicas_;
 };
 
 }  // namespace experimental

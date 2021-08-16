@@ -130,7 +130,7 @@ class MeanOp : public XlaReductionOp {
   xla::XlaOp BuildFinalizer(
       xla::XlaBuilder* /*builder*/, const xla::XlaOp& input,
       const xla::XlaOp& reduce_output,
-      const std::vector<int64>& dimensions_to_reduce) override {
+      const std::vector<int64_t>& dimensions_to_reduce) override {
     if (dimensions_to_reduce.empty()) {
       return reduce_output;
     }

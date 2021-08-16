@@ -38,8 +38,8 @@ void MetricTableReport::SetEntryName(string entry_name) {
 }
 
 void MetricTableReport::SetShowAllEntries() {
-  max_entries_to_show_ = std::numeric_limits<int64>::max();
-  max_entries_per_category_to_show_ = std::numeric_limits<int64>::max();
+  max_entries_to_show_ = std::numeric_limits<int64_t>::max();
+  max_entries_per_category_to_show_ = std::numeric_limits<int64_t>::max();
   max_metric_proportion_to_show_ = 1.1;  // more than 100%
 }
 
@@ -161,8 +161,8 @@ void MetricTableReport::AppendCategoryTable() {
 
     // Show the top entries in the category.
     const char* const kIndentPrefix = "                              * ";
-    int64_t entries_to_show = std::min<int64>(max_entries_per_category_to_show_,
-                                              category.entries.size());
+    int64_t entries_to_show = std::min<int64_t>(
+        max_entries_per_category_to_show_, category.entries.size());
     const int64_t category_entries_size = category.entries.size();
     if (category_entries_size == entries_to_show + 1) {
       // May as well show the last entry on the line that would otherwise say

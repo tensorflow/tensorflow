@@ -41,9 +41,9 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
 
  private:
   class Dataset;
-  int64 slack_period_ = 0;
+  int64_t slack_period_ = 0;
   bool legacy_autotune_ = true;
-  int64 buffer_size_min_ = 0;
+  int64_t buffer_size_min_ = 0;
 };
 
 }  // namespace data

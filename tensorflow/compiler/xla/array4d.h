@@ -54,15 +54,15 @@ namespace xla {
 template <typename T>
 class Array4D : public Array<T> {
  public:
-  Array4D() : Array<T>(std::vector<int64>{0, 0, 0, 0}) {}
+  Array4D() : Array<T>(std::vector<int64_t>{0, 0, 0, 0}) {}
 
   // Creates a 4D array, uninitialized values.
   Array4D(int64_t planes, int64_t depth, int64_t height, int64_t width)
-      : Array<T>(std::vector<int64>{planes, depth, height, width}) {}
+      : Array<T>(std::vector<int64_t>{planes, depth, height, width}) {}
 
   // Creates a 4D array, initialized to value.
   Array4D(int64_t planes, int64_t depth, int64_t height, int64_t width, T value)
-      : Array<T>(std::vector<int64>{planes, depth, height, width}, value) {}
+      : Array<T>(std::vector<int64_t>{planes, depth, height, width}, value) {}
 
   // Creates a 4D array, filled with values.
   //
@@ -97,15 +97,15 @@ class Array4D : public Array<T> {
 
   // Numerically-named aliases for the various dimensions. This matches the
   // dimension names used in array3d.
-  int64 n4() const { return this->dim(3); }
-  int64 n3() const { return this->dim(2); }
-  int64 n2() const { return this->dim(1); }
-  int64 n1() const { return this->dim(0); }
+  int64_t n4() const { return this->dim(3); }
+  int64_t n3() const { return this->dim(2); }
+  int64_t n2() const { return this->dim(1); }
+  int64_t n1() const { return this->dim(0); }
 
-  int64 width() const { return this->dim(3); }
-  int64 height() const { return this->dim(2); }
-  int64 depth() const { return this->dim(1); }
-  int64 planes() const { return this->dim(0); }
+  int64_t width() const { return this->dim(3); }
+  int64_t height() const { return this->dim(2); }
+  int64_t depth() const { return this->dim(1); }
+  int64_t planes() const { return this->dim(0); }
 
   // Fills all of the {p,z} with the array provided, which specifies {y,x}.
   void FillWithYX(const Array2D<T>& value) {

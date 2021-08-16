@@ -322,10 +322,10 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
       PopulateWithRandomIntegralData<uint32>(&literal, engine, no_duplicates);
       break;
     case S64:
-      PopulateWithRandomIntegralData<int64>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<int64_t>(&literal, engine, no_duplicates);
       break;
     case U64:
-      PopulateWithRandomIntegralData<uint64>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<uint64_t>(&literal, engine, no_duplicates);
       break;
     case C64:
       PopulateWithComplexData<complex64>(&literal, engine, no_duplicates,
@@ -338,7 +338,7 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
     case PRED: {
       std::uniform_int_distribution<int> generator(0, 1);
       TF_CHECK_OK(
-          literal.Populate<bool>([&](absl::Span<const int64> /*indices*/) {
+          literal.Populate<bool>([&](absl::Span<const int64_t> /*indices*/) {
             return generator(*engine);
           }));
       break;
@@ -432,17 +432,21 @@ StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
       }
       break;
     case S64:
-      PopulateWithRandomIntegralDataWithBounds<int64>(
-          &literal, engine, static_cast<int64>(min), static_cast<int64>(max));
+      PopulateWithRandomIntegralDataWithBounds<int64_t>(
+          &literal, engine, static_cast<int64_t>(min),
+          static_cast<int64_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<int64>().begin(), literal.data<int64>().end());
+        std::sort(literal.data<int64_t>().begin(),
+                  literal.data<int64_t>().end());
       }
       break;
     case U64:
-      PopulateWithRandomIntegralDataWithBounds<uint64>(
-          &literal, engine, static_cast<uint64>(min), static_cast<uint64>(max));
+      PopulateWithRandomIntegralDataWithBounds<uint64_t>(
+          &literal, engine, static_cast<uint64_t>(min),
+          static_cast<uint64_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<uint64>().begin(), literal.data<uint64>().end());
+        std::sort(literal.data<uint64_t>().begin(),
+                  literal.data<uint64_t>().end());
       }
       break;
     default:

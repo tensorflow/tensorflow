@@ -83,9 +83,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // emit_code_for_msan: whether emitted code should be compatible with msan.
   IrEmitter(mlir::MLIRContext* mlir_context, const HloModule& hlo_module,
             const BufferAssignment& assignment, llvm::Module* llvm_module,
-            std::unordered_map<const HloInstruction*, int64>
+            std::unordered_map<const HloInstruction*, int64_t>
                 instruction_to_profile_idx,
-            std::unordered_map<const HloComputation*, int64>
+            std::unordered_map<const HloComputation*, int64_t>
                 computation_to_profile_idx,
             const TargetMachineFeatures* target_machine,
             bool emit_code_for_msan);
@@ -209,7 +209,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   template <typename T>
   llvm::Value* GetProfileCounterCommon(
       const T& hlo,
-      const std::unordered_map<const T*, int64>& profile_index_map);
+      const std::unordered_map<const T*, int64_t>& profile_index_map);
 
   // Gets the IR Value emitted previously for the given hlo.
   //
@@ -346,7 +346,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   StatusOr<bool> EmitVectorizedReduce(HloInstruction* reduce,
                                       HloInstruction* arg,
                                       HloInstruction* init_value,
-                                      absl::Span<const int64> dimensions,
+                                      absl::Span<const int64_t> dimensions,
                                       HloComputation* function,
                                       string* failure_reason);
 
@@ -398,7 +398,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       const ReductionGenerator& reduction_generator,
       const llvm_ir::IrArray::Index& output_index,
       const ShardedVectorType& accumulator_type, HloInstruction* init_value,
-      HloInstruction* arg, absl::Span<const int64> dimensions,
+      HloInstruction* arg, absl::Span<const int64_t> dimensions,
       llvm::Align element_alignment);
 
   // Tries to emit a fast concatenate operation using memcpy.  Returns true if
@@ -464,15 +464,15 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Maps the buffer allocation slices for the parameters to the computation
   // being compiled to their parameter numbers.  Only relevant for thread local
   // computations.
-  absl::flat_hash_map<BufferAllocation::Index, int64>
+  absl::flat_hash_map<BufferAllocation::Index, int64_t>
       computation_parameter_allocations_;
 
   // Maps HLO instructions to their index into the profile counter array.
-  const std::unordered_map<const HloInstruction*, int64>
+  const std::unordered_map<const HloInstruction*, int64_t>
       instruction_to_profile_idx_;
 
   // Maps HLO computations to their index into the profile counter array.
-  const std::unordered_map<const HloComputation*, int64>
+  const std::unordered_map<const HloComputation*, int64_t>
       computation_to_profile_idx_;
 
   // Maps HLOs to Values emitted for them.
@@ -482,7 +482,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // The number of root instruction outer dimensions used in parallel loop
   // emission (ParallelLoopEmitter).
-  int64 num_dynamic_loop_bounds_ = 0;
+  int64_t num_dynamic_loop_bounds_ = 0;
 
   // Returns whether the given instruction should be emitted as a parallel loop.
   bool ShouldEmitParallelLoopFor(const HloInstruction& op) const {
@@ -571,7 +571,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   int MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type);
 
   // Returns the number of bytes within the shape.
-  int64 ByteSizeOf(const Shape& shape) const;
+  int64_t ByteSizeOf(const Shape& shape) const;
 
   enum class XfeedKind {
     kInfeed,

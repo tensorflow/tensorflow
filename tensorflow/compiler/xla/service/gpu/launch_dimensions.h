@@ -31,7 +31,7 @@ namespace gpu {
 class LaunchDimensions {
  public:
   struct Dim3D {
-    int64 x, y, z;
+    int64_t x, y, z;
   };
 
   // The default constructor creates a launch dimension that indicate
@@ -52,7 +52,7 @@ class LaunchDimensions {
 
   Dim3D thread_counts_per_block() const { return thread_counts_per_block_; }
 
-  int64 launch_bound() const {
+  int64_t launch_bound() const {
     return block_counts_.x * thread_counts_per_block_.x * block_counts_.y *
            thread_counts_per_block_.y * block_counts_.z *
            thread_counts_per_block_.z;
@@ -99,9 +99,9 @@ struct LaunchDimensionsConfig {
 
 // Returns -1 if the shape doesn't allows the row vectorization code path.
 // If supported, return the number of threads to use in that case.
-int64 ThreadsPerBlockRowVectorized(const Shape& shape,
-                                   GpuDeviceInfo gpu_device_info,
-                                   LaunchDimensionsConfig dim_config);
+int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
+                                     GpuDeviceInfo gpu_device_info,
+                                     LaunchDimensionsConfig dim_config);
 
 // Calculates the launch dimensions used to invoke `hlo`.
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(

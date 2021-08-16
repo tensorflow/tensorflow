@@ -1249,7 +1249,11 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::SumReducer<T>> {
   template <typename OUT_T>
   static void FillIdentity(const GPUDevice& d, OUT_T out,
                            const Eigen::internal::SumReducer<T>& reducer) {
+<<<<<<< HEAD
     FillIdentityEigenImplWithCast<T>(d, To32Bit(out), Eigen::internal::SumReducer<TM>());
+=======
+    FillIdentityEigenImpl(d, out, reducer);
+>>>>>>> google_upstream/master
   }
 };
 
@@ -1275,7 +1279,11 @@ struct ReduceFunctor<GPUDevice, functor::EuclideanNormReducer<T>> {
   template <typename OUT_T>
   static void FillIdentity(const GPUDevice& d, OUT_T out,
                            const functor::EuclideanNormReducer<T>& reducer) {
+<<<<<<< HEAD
     FillIdentityEigenImplWithCast<T>(d, To32Bit(out), functor::EuclideanNormReducer<TM>());
+=======
+    FillIdentityEigenImpl(d, out, reducer);
+>>>>>>> google_upstream/master
   }
 };
 
@@ -1312,7 +1320,11 @@ struct ReduceFunctor<GPUDevice, functor::MeanReducer<T>> {
   template <typename OUT_T>
   static void FillIdentity(const GPUDevice& d, OUT_T out,
                            const functor::MeanReducer<T>& reducer) {
+<<<<<<< HEAD
     FillIdentityEigenImplWithCast<T>(d, To32Bit(out), functor::MeanReducer<TM>());
+=======
+    FillIdentityEigenImpl(d, out, reducer);
+>>>>>>> google_upstream/master
   }
 };
 
@@ -1355,7 +1367,7 @@ struct ReduceFunctor<GPUDevice, functor::MeanReducer<Eigen::half>> {
   template <typename OUT_T>
   static void FillIdentity(const GPUDevice& d, OUT_T out,
                            const functor::MeanReducer<Eigen::half>& reducer) {
-    FillIdentityEigenImpl(d, To32Bit(out), reducer);
+    FillIdentityEigenImpl(d, out, reducer);
   }
 };
 
@@ -1379,9 +1391,13 @@ struct ReduceFunctor<GPUDevice,
   static void FillIdentity(
       const GPUDevice& d, OUT_T out,
       const Eigen::internal::MaxReducer<T, Eigen::PropagateNaN>& reducer) {
+<<<<<<< HEAD
     FillIdentityEigenImplWithCast<T>(
         d, To32Bit(out),
         Eigen::internal::MaxReducer<TM, Eigen::PropagateNaN>());
+=======
+    FillIdentityEigenImpl(d, out, reducer);
+>>>>>>> google_upstream/master
   }
 };
 
@@ -1405,9 +1421,13 @@ struct ReduceFunctor<GPUDevice,
   static void FillIdentity(
       const GPUDevice& d, OUT_T out,
       const Eigen::internal::MinReducer<T, Eigen::PropagateNaN>& reducer) {
+<<<<<<< HEAD
     FillIdentityEigenImplWithCast<T>(
         d, To32Bit(out),
         Eigen::internal::MinReducer<TM, Eigen::PropagateNaN>());
+=======
+    FillIdentityEigenImpl(d, out, reducer);
+>>>>>>> google_upstream/master
   }
 };
 
@@ -1428,7 +1448,11 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::ProdReducer<T>> {
   template <typename OUT_T>
   static void FillIdentity(const GPUDevice& d, OUT_T out,
                            const Eigen::internal::ProdReducer<T>& reducer) {
+<<<<<<< HEAD
     FillIdentityEigenImplWithCast<T>(d, To32Bit(out), Eigen::internal::ProdReducer<TM>());
+=======
+    FillIdentityEigenImpl(d, out, reducer);
+>>>>>>> google_upstream/master
   }
 };
 
@@ -1448,7 +1472,7 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::AndReducer> {
   template <typename OUT_T>
   static void FillIdentity(const GPUDevice& d, OUT_T out,
                            const Eigen::internal::AndReducer& reducer) {
-    FillIdentityEigenImpl(d, To32Bit(out), reducer);
+    FillIdentityEigenImpl(d, out, reducer);
   }
 };
 
@@ -1467,7 +1491,7 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::OrReducer> {
   template <typename OUT_T>
   static void FillIdentity(const GPUDevice& d, OUT_T out,
                            const Eigen::internal::OrReducer& reducer) {
-    FillIdentityEigenImpl(d, To32Bit(out), reducer);
+    FillIdentityEigenImpl(d, out, reducer);
   }
 };
 

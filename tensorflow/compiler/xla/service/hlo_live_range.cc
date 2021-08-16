@@ -89,8 +89,8 @@ void HloLiveRange::NormalizeAliasedBuffers() {
 
 // FlattenSchedule walks through the computation and tracks down the ordinal
 // number of each instruction in the schedule.
-int64 HloLiveRange::FlattenSchedule(const HloComputation& computation,
-                                    int64_t start_time) {
+int64_t HloLiveRange::FlattenSchedule(const HloComputation& computation,
+                                      int64_t start_time) {
   if (!schedule_.is_computation_scheduled(&computation)) {
     total_order_scheduled_ = false;
     return start_time;
@@ -219,8 +219,8 @@ void HloLiveRange::CalculateBufferStartEndMap() {
   }
 }
 
-int64 HloLiveRange::ComputePeakMemoryMoment() const {
-  std::vector<std::tuple<int64 /*time*/, bool /*is_end*/, const HloValue*>>
+int64_t HloLiveRange::ComputePeakMemoryMoment() const {
+  std::vector<std::tuple<int64_t /*time*/, bool /*is_end*/, const HloValue*>>
       events;
   for (const HloValue* value : alias_analysis_.dataflow_analysis().values()) {
     auto it = buffer_live_ranges_.find(value);
@@ -233,7 +233,7 @@ int64 HloLiveRange::ComputePeakMemoryMoment() const {
 
   int64_t memory_usage = 0;
   int64_t peak_usage = 0;
-  absl::optional<int64> peak_time;
+  absl::optional<int64_t> peak_time;
   for (const auto& event : events) {
     int64_t time;
     bool is_end;

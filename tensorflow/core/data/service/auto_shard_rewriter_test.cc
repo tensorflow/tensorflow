@@ -42,10 +42,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+using ::tensorflow::data::testing::RangeDatasetWithShardHint;
 using ::tensorflow::data::testing::RangeSquareDataset;
-using ::tensorflow::test::AsScalar;
-using ::tensorflow::test::function::GDef;
-using ::tensorflow::test::function::NDef;
 using ::tensorflow::testing::IsOkAndHolds;
 using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
@@ -53,34 +51,6 @@ using ::testing::MakePolymorphicMatcher;
 using ::testing::MatchResultListener;
 using ::testing::PolymorphicMatcher;
 using ::testing::SizeIs;
-
-constexpr int64_t kShardHint = -1;
-
-DatasetDef RangeDatasetWithShardHint(const int64_t range) {
-  DatasetDef dataset_def;
-  *dataset_def.mutable_graph() = GDef(
-      {NDef("start", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(0)}, {"dtype", DT_INT64}}),
-       NDef("stop", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(range)}, {"dtype", DT_INT64}}),
-       NDef("step", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(1)}, {"dtype", DT_INT64}}),
-       NDef("range", "RangeDataset", /*inputs=*/{"start", "stop", "step"},
-            {{"output_shapes", gtl::ArraySlice<TensorShape>{TensorShape()}},
-             {"output_types", gtl::ArraySlice<DataType>{DT_INT64}}}),
-       NDef("num_shards", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(kShardHint)}, {"dtype", DT_INT64}}),
-       NDef("index", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(kShardHint)}, {"dtype", DT_INT64}}),
-       NDef("ShardDataset", "ShardDataset",
-            /*inputs=*/{"range", "num_shards", "index"},
-            {{"output_shapes", gtl::ArraySlice<TensorShape>{TensorShape()}},
-             {"output_types", gtl::ArraySlice<DataType>{DT_INT64}}}),
-       NDef("dataset", "_Retval", /*inputs=*/{"ShardDataset"},
-            {{"T", DT_VARIANT}, {"index", 0}})},
-      /*funcs=*/{});
-  return dataset_def;
-}
 
 StatusOr<NodeDef> GetNode(const GraphDef& graph_def, absl::string_view name) {
   for (const NodeDef& node : graph_def.node()) {
@@ -92,7 +62,7 @@ StatusOr<NodeDef> GetNode(const GraphDef& graph_def, absl::string_view name) {
                                            name, graph_def.ShortDebugString()));
 }
 
-StatusOr<int64> GetValue(const GraphDef& graph_def, absl::string_view name) {
+StatusOr<int64_t> GetValue(const GraphDef& graph_def, absl::string_view name) {
   for (const NodeDef& node : graph_def.node()) {
     if (node.name() == name) {
       return node.attr().at("value").tensor().int64_val()[0];
@@ -103,7 +73,7 @@ StatusOr<int64> GetValue(const GraphDef& graph_def, absl::string_view name) {
 }
 
 TaskDef GetTaskDef(const ProcessingModeDef::ShardingPolicy sharding_policy,
-                   const int64 num_workers, const int64 worker_index) {
+                   const int64_t num_workers, const int64_t worker_index) {
   TaskDef task_def;
   task_def.mutable_processing_mode_def()->set_sharding_policy(sharding_policy);
   task_def.set_num_workers(num_workers);

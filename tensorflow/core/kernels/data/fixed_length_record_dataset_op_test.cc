@@ -48,10 +48,10 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
     int num_files = filenames_.size();
     return {
         CreateTensor<tstring>(TensorShape({num_files}), filenames_),
-        CreateTensor<int64>(TensorShape({}), {header_bytes_}),
-        CreateTensor<int64>(TensorShape({}), {record_bytes_}),
-        CreateTensor<int64>(TensorShape({}), {footer_bytes_}),
-        CreateTensor<int64>(TensorShape({}), {buffer_size_}),
+        CreateTensor<int64_t>(TensorShape({}), {header_bytes_}),
+        CreateTensor<int64_t>(TensorShape({}), {record_bytes_}),
+        CreateTensor<int64_t>(TensorShape({}), {footer_bytes_}),
+        CreateTensor<int64_t>(TensorShape({}), {buffer_size_}),
         CreateTensor<tstring>(TensorShape({}), {ToString(compression_type_)})};
   }
 
@@ -77,10 +77,10 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
 
  private:
   std::vector<tstring> filenames_;
-  int64 header_bytes_;
-  int64 record_bytes_;
-  int64 footer_bytes_;
-  int64 buffer_size_;
+  int64_t header_bytes_;
+  int64_t record_bytes_;
+  int64_t footer_bytes_;
+  int64_t buffer_size_;
   CompressionType compression_type_;
 };
 

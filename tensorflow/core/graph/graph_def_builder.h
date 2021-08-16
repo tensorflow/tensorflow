@@ -103,7 +103,9 @@ class GraphDefBuilder {
 
     // Returns a string representation of the status associated with *this.
     // Returns the string `"OK"` if the status doesn't have any error.
-    string StatusToString() const { return status_->ToString(); }
+    string StatusToString() const {
+      return status_->ok() ? "OK" : status_->error_message();
+    }
 
     // Given the Op type name, return a name for a node of that type.
     // Uses the value set in WithName() if that has been called.  Otherwise,

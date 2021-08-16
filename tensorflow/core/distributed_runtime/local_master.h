@@ -97,7 +97,7 @@ class LocalMaster : public MasterInterface {
 
  private:
   Master* master_impl_;  // Not owned.
-  const int64 default_timeout_in_ms_;
+  const int64_t default_timeout_in_ms_;
 
   // See `LocalMaster::Lookup` for the factory function that creates
   // objects of this type.

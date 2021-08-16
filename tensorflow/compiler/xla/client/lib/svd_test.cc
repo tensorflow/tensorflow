@@ -89,7 +89,7 @@ class SVDTest : public ClientLibraryTestBase {
     }
 
     int num_dims = u_shape.rank();
-    std::vector<int64> broadcast_dims(num_dims - 1);
+    std::vector<int64_t> broadcast_dims(num_dims - 1);
     std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
     broadcast_dims[num_dims - 2] = num_dims - 1;
     return BatchDot(Mul(u, d, broadcast_dims), TransposeInMinorDims(v),

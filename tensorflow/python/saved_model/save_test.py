@@ -792,7 +792,7 @@ class VariablePolicyEnumTest(test.TestCase):
         save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES,
         save_options.VariablePolicy.from_obj("eXpAnD_dIsTrIbUtEd_VaRiAbLeS"))
     for invalid in ["not_a_valid_value", 2.0, []]:
-      with self.assertRaisesRegex(ValueError, "Invalid VariablePolicy value"):
+      with self.assertRaisesRegex(ValueError, "invalid VariablePolicy value"):
         save_options.VariablePolicy.from_obj(invalid)
 
   def testNamingConvention(self):
@@ -824,6 +824,21 @@ class SavingOptionsTest(test.TestCase):
         ValueError, "Attempted to save ops from non-whitelisted namespaces"):
       save._verify_ops(graph_def, [])
     save._verify_ops(graph_def, ["Test"])
+
+  def test_save_custom_op_with_no_whitelist_specified(self):
+    # Test that we are able to save a model that contains a custom op with a
+    # custom namespace when the user has not explicitly specified a namespace
+    # whitelist (i.e. that we default to allowing all custom ops when saving
+    # and no whitelist is specified, rather than throwing an exception).
+    graph_def = graph_pb2.GraphDef()
+    text_format.Parse("node { name: 'A' op: 'Test>CustomOp' }", graph_def)
+    save._verify_ops(graph_def, namespace_whitelist=None)
+
+    # If the user passes an empty list for the namespace whitelist rather than
+    # nothing, we should then throw an exception if a custom op is used.
+    with self.assertRaisesRegex(
+        ValueError, "Attempted to save ops from non-whitelisted namespaces"):
+      save._verify_ops(graph_def, [])
 
   def test_save_debug_info_enabled(self):
     root = tracking.AutoTrackable()
@@ -913,7 +928,7 @@ class SavingOptionsTest(test.TestCase):
         experimental_variable_policy="expand_distributed_variables")
     self.assertEqual(save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES,
                      options.experimental_variable_policy)
-    with self.assertRaisesRegex(ValueError, "Invalid VariablePolicy value"):
+    with self.assertRaisesRegex(ValueError, "invalid VariablePolicy value"):
       options = save_options.SaveOptions(
           experimental_variable_policy="not_a_valid_value")
 

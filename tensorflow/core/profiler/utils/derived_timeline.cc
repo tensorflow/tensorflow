@@ -48,7 +48,7 @@ const absl::string_view kAnnotationDelimiter = "::";
 
 XEvent CreateXEvent(const XEventMetadata& metadata, int64_t offset_ps,
                     int64_t duration_ps, int64_t group_id_stat_metadata_id,
-                    absl::optional<int64> group_id) {
+                    absl::optional<int64_t> group_id) {
   XEvent event;
   event.set_metadata_id(metadata.id());
   // TODO(b/150498419): Normalize with the line start time.
@@ -62,7 +62,7 @@ XEvent CreateXEvent(const XEventMetadata& metadata, int64_t offset_ps,
   return event;
 }
 
-int64 GroupIdOrInvalid(absl::optional<int64> group_id) {
+int64_t GroupIdOrInvalid(absl::optional<int64_t> group_id) {
   if (group_id)
     return *group_id;
   else
@@ -73,7 +73,7 @@ int64 GroupIdOrInvalid(absl::optional<int64> group_id) {
 
 void ProcessTfOpEvent(absl::string_view tf_op_full_name,
                       absl::string_view low_level_event_name, int64_t offset_ps,
-                      int64_t duration_ps, absl::optional<int64> group_id,
+                      int64_t duration_ps, absl::optional<int64_t> group_id,
                       XPlaneBuilder* plane_builder,
                       DerivedXLineBuilder* tf_name_scope_line_builder,
                       DerivedXLineBuilder* tf_op_line_builder) {
@@ -206,7 +206,7 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     absl::string_view tf_op_full_name;
     absl::string_view hlo_module_name;
     std::vector<absl::string_view> hlo_op_names;
-    absl::optional<int64> group_id;
+    absl::optional<int64_t> group_id;
     bool is_kernel = false;
     event.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kGroupId) {
@@ -289,7 +289,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
     uint64 max_launch_time_ps = 0ULL;
     uint64 total_launch_time_ps = 0ULL;
   };
-  typedef absl::flat_hash_map<int64 /*group_id*/, GroupLaunchInfo>
+  typedef absl::flat_hash_map<int64_t /*group_id*/, GroupLaunchInfo>
       DeviceLaunchInfo;
 
   int num_devices = device_traces.size();

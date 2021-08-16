@@ -37,7 +37,7 @@ TEST(RetryingUtilsTest, CallWithRetries_RetryDelays) {
   EXPECT_EQ(errors::Code::ABORTED, status.code());
   EXPECT_TRUE(absl::StrContains(
       status.error_message(),
-      "All 10 retry attempts failed. The last failure: Unavailable: Failed."))
+      "All 10 retry attempts failed. The last failure: Failed."))
       << status;
 
   EXPECT_EQ(10, requested_delays.size());

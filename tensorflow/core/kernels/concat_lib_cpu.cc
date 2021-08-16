@@ -46,7 +46,7 @@ struct MemCpyCopier<ResourceHandle> {
 };
 
 template <typename T>
-int64 EstimateBytesPerElement(
+int64_t EstimateBytesPerElement(
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
         inputs) {
   return sizeof(T);
@@ -57,7 +57,7 @@ int64 EstimateBytesPerElement(
 // reshapes all the inputs to matrices), by sampling the lengths of the actual
 // strings in the various tensors.
 template <>
-int64 EstimateBytesPerElement<tstring>(
+int64_t EstimateBytesPerElement<tstring>(
     const std::vector<
         std::unique_ptr<typename TTypes<tstring, 2>::ConstMatrix>>& inputs) {
   // randomly sample a few input strings to get a sense of the average size

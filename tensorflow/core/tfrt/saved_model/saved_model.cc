@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/threadpool_options.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
@@ -45,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"
-#include "tensorflow/core/tfrt/runtime/tf_threadpool_concurrent_work_queue.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 #include "tensorflow/core/tfrt/tpu/tpu_resources.h"
@@ -377,7 +375,7 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
   if (import_user_signatures) {
     signature_names = FindNamesForValidSignatures(meta_graph_def);
     if (signature_names.empty())
-      LOG(ERROR) << "No valid signature found for model: " << saved_model_dir;
+      LOG(WARNING) << "No valid signature found for model: " << saved_model_dir;
   }
 
   // TfrtSavedModelMLIRImportInput basically implements the graph processing
@@ -1154,20 +1152,8 @@ tensorflow::Status SavedModelImpl::RunInternal(
   }
 
   ExecutionContext exec_ctx{req_ctx.CopyRef()};
-  // We need both inter and intra op threadpools for the TfThreadPoolWorkQueue
-  if (run_options.threadpool_options.inter_op_threadpool != nullptr &&
-      run_options.threadpool_options.intra_op_threadpool != nullptr) {
-    // TODO(b/193913357): Provide a way for this configurable rather than
-    // hardcoding the work queue.
-    tensorflow::tfrt_stub::TfThreadPoolWorkQueue work_queue(
-        run_options.threadpool_options.intra_op_threadpool,
-        run_options.threadpool_options.inter_op_threadpool);
-    exec_ctx.set_work_queue(&work_queue);
-  } else if (run_options.threadpool_options.inter_op_threadpool != nullptr ||
-             run_options.threadpool_options.intra_op_threadpool != nullptr) {
-    return tensorflow::errors::Internal(
-        "Invalid to specify only one of inter_op or intra-op threadpools for "
-        "RunInternal.");
+  if (run_options.work_queue) {
+    exec_ctx.set_work_queue(run_options.work_queue);
   }
 
   llvm::SmallVector<AsyncValue*, 4> arguments;

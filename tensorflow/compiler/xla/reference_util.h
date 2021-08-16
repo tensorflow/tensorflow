@@ -70,22 +70,23 @@ class ReferenceUtil {
   // ComputationBuilder::CreateDefaultConvDimensionNumbers().
   static std::unique_ptr<Array4D<float>> ConvArray4D(
       const Array4D<float>& lhs, const Array4D<float>& rhs,
-      std::pair<int64, int64> kernel_stride, Padding padding);
+      std::pair<int64_t, int64_t> kernel_stride, Padding padding);
 
   // Returns the result of a convolution `lhs <conv> rhs`, with the given
   // convolution dimension numbers.
   static std::unique_ptr<Array4D<float>> ConvArray4DGeneralDimensions(
       const Array4D<float>& lhs, const Array4D<float>& rhs,
-      std::pair<int64, int64> kernel_stride, Padding padding,
+      std::pair<int64_t, int64_t> kernel_stride, Padding padding,
       ConvolutionDimensionNumbers dimension_numbers);
 
   // Returns the result of a convolution `lhs <conv> rhs`, with the given
   // dilation factors.
   static std::unique_ptr<Array4D<float>> ConvArray4DGeneralDimensionsDilated(
       const Array4D<float>& lhs, const Array4D<float>& rhs,
-      std::pair<int64, int64> kernel_stride, Padding padding,
-      std::pair<int64, int64> lhs_dilation,
-      std::pair<int64, int64> rhs_dilation, ConvolutionDimensionNumbers dnums);
+      std::pair<int64_t, int64_t> kernel_stride, Padding padding,
+      std::pair<int64_t, int64_t> lhs_dilation,
+      std::pair<int64_t, int64_t> rhs_dilation,
+      ConvolutionDimensionNumbers dnums);
 
   // Returns the result of a convolution `lhs <conv> rhs`, with the default
   // convolution dimension numbers returned from
@@ -108,7 +109,7 @@ class ReferenceUtil {
   static std::unique_ptr<Array4D<float>> SeparableConvArray4D(
       const Array4D<float>& input, const Array4D<float>& depthwise_weights,
       const Array4D<float>& pointwise_weights,
-      std::pair<int64, int64> kernel_stride, Padding padding);
+      std::pair<int64_t, int64_t> kernel_stride, Padding padding);
 
   // Returns the result of reducing a matrix to a column vector. init is the
   // initial value for the reduce operation, and reduce_function is the function
@@ -144,18 +145,18 @@ class ReferenceUtil {
   // Returns the result of reducing the 4D array to a vector, reducing away
   // the dimensions specified in dims.
   static std::vector<float> Reduce4DTo1D(
-      const Array4D<float>& array, float init, absl::Span<const int64> dims,
+      const Array4D<float>& array, float init, absl::Span<const int64_t> dims,
       const std::function<float(float, float)>& reduce_function);
 
   // Broadcast 1D dimension to 4D, from the dimension `broadcast_from_dim`.
   static std::unique_ptr<Array4D<float>> Broadcast1DTo4D(
-      const std::vector<float>& array, const std::vector<int64>& bounds,
+      const std::vector<float>& array, const std::vector<int64_t>& bounds,
       int64_t broadcast_from_dim);
 
   // Returns the result of reducing the 3D array to a 2D array, reducing away
   // the dimensions specified in dims.
   static std::unique_ptr<Array2D<float>> Reduce3DTo2D(
-      const Array3D<float>& array, float init, absl::Span<const int64> dims,
+      const Array3D<float>& array, float init, absl::Span<const int64_t> dims,
       const std::function<float(float, float)>& reduce_function);
 
   // Applies map_function to each element in the input (2D array) and returns
@@ -172,38 +173,40 @@ class ReferenceUtil {
 
   // Number of windows in a given dimension. Calculation taken from
   // xla::MakePadding().
-  static int64 WindowCount(int64_t unpadded_width, int64_t window_len,
-                           int64_t stride, Padding padding);
+  static int64_t WindowCount(int64_t unpadded_width, int64_t window_len,
+                             int64_t stride, Padding padding);
 
   // Windowed reductions with Add as the function to apply.
   static std::unique_ptr<std::vector<float>> ReduceWindow1DAdd(
       absl::Span<const float> operand, float init,
-      absl::Span<const int64> window, absl::Span<const int64> stride,
+      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
       Padding padding);
   static std::unique_ptr<Array3D<float>> ReduceWindow3DAdd(
-      const Array3D<float>& operand, float init, absl::Span<const int64> window,
-      absl::Span<const int64> stride, Padding padding);
+      const Array3D<float>& operand, float init,
+      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
+      Padding padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DAdd(
-      const Array4D<float>& operand, float init, absl::Span<const int64> window,
-      absl::Span<const int64> stride, Padding padding);
+      const Array4D<float>& operand, float init,
+      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
+      Padding padding);
 
   // Windowed reductions with a generic reduce function.
   static std::unique_ptr<std::vector<float>> ReduceWindow1DGeneric(
       absl::Span<const float> operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      absl::Span<const int64> window, absl::Span<const int64> stride,
-      absl::Span<const std::pair<int64, int64>> padding);
+      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
+      absl::Span<const std::pair<int64_t, int64_t>> padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      absl::Span<const int64> window, absl::Span<const int64> stride,
+      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
       Padding padding);
   // With arbitrary padding.
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      absl::Span<const int64> window, absl::Span<const int64> stride,
-      absl::Span<const std::pair<int64, int64>> padding);
+      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
+      absl::Span<const std::pair<int64_t, int64_t>> padding);
 
   // Batch normalize data.
   static std::unique_ptr<Array4D<float>> BatchNorm4D(
@@ -216,7 +219,7 @@ class ReferenceUtil {
   // TODO(b/74533103) Switch tests to evaluator and remove this implementation.
   static std::unique_ptr<Array4D<float>> SelectAndScatter4DGePlus(
       const Array4D<float>& operand, const Array4D<float>& source, float init,
-      absl::Span<const int64> window, absl::Span<const int64> stride,
+      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
       bool same_padding);
 
   // Concatenates the lhs and rhs arrays along the concatenate_dimension.
@@ -250,9 +253,9 @@ class ReferenceUtil {
                                               const Array3D<T>& rhs,
                                               int concatenate_dimension) {
     CHECK(0 <= concatenate_dimension && concatenate_dimension < 3);
-    const int64 lhs_dims[] = {lhs.n1(), lhs.n2(), lhs.n3()};
-    const int64 rhs_dims[] = {rhs.n1(), rhs.n2(), rhs.n3()};
-    int64 out_dims[] = {rhs.n1(), rhs.n2(), rhs.n3()};
+    const int64_t lhs_dims[] = {lhs.n1(), lhs.n2(), lhs.n3()};
+    const int64_t rhs_dims[] = {rhs.n1(), rhs.n2(), rhs.n3()};
+    int64_t out_dims[] = {rhs.n1(), rhs.n2(), rhs.n3()};
     for (int i = 0; i < 3; ++i) {
       if (i != concatenate_dimension) {
         out_dims[i] = lhs_dims[i];
@@ -285,9 +288,9 @@ class ReferenceUtil {
                                               const Array4D<T>& rhs,
                                               int concatenate_dimension) {
     CHECK(0 <= concatenate_dimension && concatenate_dimension < 4);
-    const int64 lhs_dims[] = {lhs.n1(), lhs.n2(), lhs.n3(), lhs.n4()};
-    const int64 rhs_dims[] = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
-    int64 out_dims[] = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
+    const int64_t lhs_dims[] = {lhs.n1(), lhs.n2(), lhs.n3(), lhs.n4()};
+    const int64_t rhs_dims[] = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
+    int64_t out_dims[] = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
     for (int i = 0; i < 4; ++i) {
       if (i != concatenate_dimension) {
         out_dims[i] = lhs_dims[i];
@@ -320,7 +323,7 @@ class ReferenceUtil {
   template <typename T>
   static std::vector<T> ClampSlice1D(absl::Span<const T> input, int64_t start,
                                      int64_t size) {
-    start = std::min<int64>(std::max<int64>(0, start), input.size() - size);
+    start = std::min<int64_t>(std::max<int64_t>(0, start), input.size() - size);
     std::vector<T> result;
     for (int64_t i = 0; i < size; ++i) {
       result.push_back(input[(start + i)]);
@@ -332,9 +335,9 @@ class ReferenceUtil {
   // in each dimension.
   template <typename T>
   static std::unique_ptr<Array2D<T>> Slice2D(const Array2D<T>& input,
-                                             std::array<int64, 2> starts,
-                                             std::array<int64, 2> limits,
-                                             std::array<int64, 2> strides) {
+                                             std::array<int64_t, 2> starts,
+                                             std::array<int64_t, 2> limits,
+                                             std::array<int64_t, 2> strides) {
     CHECK_LE(starts[0], input.n1());
     CHECK_LE(starts[1], input.n2());
     CHECK_LE(limits[0], input.n1());
@@ -355,9 +358,9 @@ class ReferenceUtil {
 
   template <typename T>
   static std::unique_ptr<Array3D<T>> Slice3D(const Array3D<T>& input,
-                                             std::array<int64, 3> starts,
-                                             std::array<int64, 3> limits,
-                                             std::array<int64, 3> strides) {
+                                             std::array<int64_t, 3> starts,
+                                             std::array<int64_t, 3> limits,
+                                             std::array<int64_t, 3> strides) {
     CHECK_LE(starts[0], input.n1());
     CHECK_LE(starts[1], input.n2());
     CHECK_LE(starts[2], input.n3());
@@ -386,9 +389,9 @@ class ReferenceUtil {
 
   template <typename T>
   static std::unique_ptr<Array4D<T>> Slice4D(const Array4D<T>& input,
-                                             std::array<int64, 4> starts,
-                                             std::array<int64, 4> limits,
-                                             std::array<int64, 4> strides) {
+                                             std::array<int64_t, 4> starts,
+                                             std::array<int64_t, 4> limits,
+                                             std::array<int64_t, 4> strides) {
     CHECK_LE(starts[0], input.n1());
     CHECK_LE(starts[1], input.n2());
     CHECK_LE(starts[2], input.n3());
@@ -540,11 +543,11 @@ class ReferenceUtil {
                                      const NativeT pad) {
     CHECK_EQ(padding.dimensions_size(), 3);
 
-    const int64 input_bounds[] = {operand.n1(), operand.n2(), operand.n3()};
-    int64 pad_low[3];
-    int64 pad_high[3];
-    int64 pad_interior[3];
-    int64 output_bounds[3];
+    const int64_t input_bounds[] = {operand.n1(), operand.n2(), operand.n3()};
+    int64_t pad_low[3];
+    int64_t pad_high[3];
+    int64_t pad_interior[3];
+    int64_t output_bounds[3];
     for (int64_t i = 0; i < 3; ++i) {
       pad_low[i] = padding.dimensions(i).edge_padding_low();
       pad_high[i] = padding.dimensions(i).edge_padding_high();
@@ -598,12 +601,12 @@ class ReferenceUtil {
                                      const NativeT pad) {
     CHECK_EQ(padding.dimensions_size(), 4);
 
-    const int64 input_bounds[] = {operand.n1(), operand.n2(), operand.n3(),
-                                  operand.n4()};
-    int64 pad_low[4];
-    int64 pad_high[4];
-    int64 pad_interior[4];
-    int64 output_bounds[4];
+    const int64_t input_bounds[] = {operand.n1(), operand.n2(), operand.n3(),
+                                    operand.n4()};
+    int64_t pad_low[4];
+    int64_t pad_high[4];
+    int64_t pad_interior[4];
+    int64_t output_bounds[4];
     for (int64_t i = 0; i < 4; ++i) {
       pad_low[i] = padding.dimensions(i).edge_padding_low();
       pad_high[i] = padding.dimensions(i).edge_padding_high();
@@ -618,7 +621,7 @@ class ReferenceUtil {
     Array4D<NativeT> result(output_bounds[0], output_bounds[1],
                             output_bounds[2], output_bounds[3]);
     result.Each(
-        [&](absl::Span<const int64> indices, NativeT* value) {
+        [&](absl::Span<const int64_t> indices, NativeT* value) {
           for (int i = 0; i < 4; ++i) {
             bool in_low_padding = indices[i] < pad_low[i];
             bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];

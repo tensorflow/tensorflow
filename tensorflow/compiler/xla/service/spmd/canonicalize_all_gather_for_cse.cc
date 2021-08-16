@@ -72,7 +72,7 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     // adding the dimension the all-gather is operating on then perform the
     // canonicalization.
     if (real_data != ag->operand(0)) {
-      std::vector<int64> new_dimensions;
+      std::vector<int64_t> new_dimensions;
       new_dimensions.reserve(real_data->shape().dimensions_size() + 1);
       new_dimensions.push_back(1);
       new_dimensions.insert(new_dimensions.end(),
@@ -85,7 +85,7 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
                                    new_dimensions),
               real_data));
       new_dimensions[0] = all_gather_participants;
-      absl::optional<int64> new_channel_id =
+      absl::optional<int64_t> new_channel_id =
           ag->channel_id() ? absl::make_optional(this->NextChannelId())
                            : absl::nullopt;
       HloInstruction* new_ag =

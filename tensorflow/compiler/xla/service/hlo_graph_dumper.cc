@@ -327,12 +327,12 @@ class HloDotDumper {
  private:
   // Returns the dot graph identifier for the given instruction.
   string InstructionId(const HloInstruction* instruction) {
-    return StrCat(reinterpret_cast<uint64>(instruction));
+    return StrCat(reinterpret_cast<uint64_t>(instruction));
   }
 
   // Returns the dot graph identifier for the given computation.
   string SubcomputationId(const HloComputation* computation) {
-    return StrCat("cluster_", reinterpret_cast<uint64>(computation));
+    return StrCat("cluster_", reinterpret_cast<uint64_t>(computation));
   }
 
   // Generates graph header/footer.  These should be called *after* dumping all
@@ -391,25 +391,25 @@ class HloDotDumper {
 
   // Each HloInstruction dumped gets a monotonically-increasing node ID.  This
   // must start at 1, because that's where graphviz's accounting starts.
-  int64 next_node_id_ = 1;
-  absl::flat_hash_map<const HloInstruction*, int64> node_ids_;
+  int64_t next_node_id_ = 1;
+  absl::flat_hash_map<const HloInstruction*, int64_t> node_ids_;
 
   // The "root" tag doesn't have an associated HloInstruction pointer, so we
   // need to store it outside the map.
-  int64 root_node_id_;
+  int64_t root_node_id_;
 
   // Each (from, to) edge gets a monotonically-increasing ID.  This is a
   // multimap because it's possible for the same edge to appear multiple times
   // in the graph (e.g. x^2 may be represented as mul(x, x)).
-  int64 next_edge_id_ = 1;
+  int64_t next_edge_id_ = 1;
   std::unordered_multimap<
-      std::pair<const HloInstruction*, const HloInstruction*>, int64,
+      std::pair<const HloInstruction*, const HloInstruction*>, int64_t,
       tensorflow::hash<std::pair<const HloInstruction*, const HloInstruction*>>>
       edge_ids_;
 
   // Each HloComputation that's emitted gets a monotonically-increasing ID.
-  int64 next_cluster_id_ = 1;
-  absl::flat_hash_map<const HloComputation*, int64> cluster_ids_;
+  int64_t next_cluster_id_ = 1;
+  absl::flat_hash_map<const HloComputation*, int64_t> cluster_ids_;
 
   // Edges to print from Footer().  Edges come at the end because graphviz is
   // unhappy if an edge from a subcomputation to a node in the outer computation
@@ -421,7 +421,7 @@ class HloDotDumper {
   // representation to color association, by round-robin the color schemes.
   absl::flat_hash_map<HloSharding, ColorScheme, HloSharding::Hasher>
       sharding_colors_;
-  int64 next_shard_color_ = 0;
+  int64_t next_shard_color_ = 0;
 };
 
 string HloDotDumper::Dump() {
@@ -839,7 +839,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     // Print the literal value of constants with <= K elements.  Note that we
     // use `constant->shape()` rather than `shape`, because if `constant` is a
     // scalar that's broadcasted into `shape`, we want to print the constant.
-    optional<int64> elem_count;
+    optional<int64_t> elem_count;
     if (shape.IsArray()) {
       elem_count = ShapeUtil::ElementsIn(constant->shape());
     }
@@ -1310,7 +1310,7 @@ NodeFilter MakeNodeRadiusAroundFilter(
   // First, find the neighborhood of nodes with distance from root <= radius.
   // These nodes are our initial set of "normal" nodes.
   absl::flat_hash_map<const HloInstruction*, NodeFilterResult> nodes;
-  std::deque<std::pair<const HloInstruction*, /*depth*/ int64>> worklist;
+  std::deque<std::pair<const HloInstruction*, /*depth*/ int64_t>> worklist;
   worklist.push_back({root, 0});
   while (!worklist.empty()) {
     const HloInstruction* instr;
@@ -1586,7 +1586,7 @@ std::function<StatusOr<string>(absl::string_view)>* url_renderer
 // dot dumps.
 tensorflow::mutex fusion_visualizer_state_mu(tensorflow::LINKER_INITIALIZED);
 static auto& fusion_visualizer_state TF_GUARDED_BY(fusion_visualizer_state_mu) =
-    *new absl::flat_hash_map<std::pair<int64, int64>,
+    *new absl::flat_hash_map<std::pair<int64_t, int64_t>,
                              std::vector<std::string>>();
 
 // Generates a key to the fusion visualizer state mapping.

@@ -119,7 +119,7 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
   return Status::OK();
 }
 
-Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
+Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
              std::vector<Tensor>* result) {
   if (tensor.dims() == 0) {
     return errors::InvalidArgument("Cannot split a zero-dimensional tensor");
@@ -228,7 +228,7 @@ bool CompressTensorContent(float min_compression_ratio,
   // Round up to the next whole number of element of type T.
   const int64_t new_num_values = last_offset / sizeof(T) + 1;
   if (new_num_values * (is_complex<T>::value ? 2 : 1) * sizeof(FieldType) >
-      static_cast<int64>(num_bytes / min_compression_ratio)) {
+      static_cast<int64_t>(num_bytes / min_compression_ratio)) {
     return false;
   }
   // Copy values to truncated repeated field.
@@ -315,7 +315,7 @@ bool CompressRepeatedField(float min_compression_ratio,
   const int64_t num_bytes_as_tensor_content = num_tensor_values * sizeof(T);
   const int64_t num_bytes_before = num_proto_values * sizeof(FieldType);
   if (std::min(num_bytes_as_field, num_bytes_as_tensor_content) >
-      static_cast<int64>(num_bytes_before / min_compression_ratio)) {
+      static_cast<int64_t>(num_bytes_before / min_compression_ratio)) {
     return false;
   }
   if (num_bytes_as_field <= num_bytes_as_tensor_content) {
@@ -404,7 +404,7 @@ Status MakeShape(const Tensor& shape, TensorShape* out) {
     auto vec = shape.flat<int32>();
     return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
   } else if (shape.dtype() == DataType::DT_INT64) {
-    auto vec = shape.flat<int64>();
+    auto vec = shape.flat<int64_t>();
     return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
   } else {
     return errors::InvalidArgument("shape must be a vector of {int32,int64}.");

@@ -64,12 +64,12 @@ class TileOp : public XlaOpKernel {
       return;
     }
 
-    std::vector<int64> multiples_bounds;
+    std::vector<int64_t> multiples_bounds;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(
                             "multiples", &multiples_bounds,
                             xla::ValueInferenceMode::kUpperBound));
 
-    std::vector<int64> output_dims(input_shape.dims());
+    std::vector<int64_t> output_dims(input_shape.dims());
     for (int64_t i = 0; i < input_shape.dims(); ++i) {
       OP_REQUIRES(ctx, multiples_bounds[i] >= 0,
                   errors::InvalidArgument("Expected multiples[", i,

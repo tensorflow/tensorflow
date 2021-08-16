@@ -85,7 +85,7 @@ class SparseConditionalAccumulator
             "Shape mismatch: expected shape rank at least ", shape_.dims(),
             ", got ", tensor_shape->NumElements());
       }
-      const auto tensor_shape_flat = tensor_shape->flat<int64>();
+      const auto tensor_shape_flat = tensor_shape->flat<int64_t>();
       for (int64_t i = 0; i < shape_.dims(); i++) {
         if (shape_.dim_size(i) != -1 &&
             shape_.dim_size(i) != tensor_shape_flat(i)) {
@@ -99,10 +99,10 @@ class SparseConditionalAccumulator
     if (shape_.dims() > 0 && shape_.dim_size(0) != -1 &&
         tensor_idx->dims() > 0) {
       for (int64_t i = 0; i < tensor_idx->dim_size(0); i++) {
-        if (tensor_idx->vec<int64>()(i) >= shape_.dim_size(0)) {
+        if (tensor_idx->vec<int64_t>()(i) >= shape_.dim_size(0)) {
           return errors::InvalidArgument(
               "Shape mismatch: index of slice ", i, " exceeded limits of shape",
-              "; index is ", tensor_idx->vec<int64>()(i), " exceeded ",
+              "; index is ", tensor_idx->vec<int64_t>()(i), " exceeded ",
               shape_.dim_size(0));
         }
       }
@@ -152,10 +152,10 @@ class SparseConditionalAccumulator
     const int64_t nnz = grad_idx->dim_size(0);
 
     // Assign indices
-    accum_idx_vec_ = std::make_unique<std::vector<int64>>();
+    accum_idx_vec_ = std::make_unique<std::vector<int64_t>>();
     accum_idx_vec_->reserve(nnz);
     for (int i = 0; i < nnz; i++) {
-      accum_idx_vec_->push_back(grad_idx->vec<int64>()(i));
+      accum_idx_vec_->push_back(grad_idx->vec<int64_t>()(i));
     }
 
     // Assign values to accum_val_tensor
@@ -228,7 +228,7 @@ class SparseConditionalAccumulator
     }
 
     // (2) Copy or sum the non-zero elements into sum_indices and sum_tensor
-    std::vector<int64>* sum_indices_vec = new std::vector<int64>();
+    std::vector<int64>* sum_indices_vec = new std::vector<int64_t>();
     sum_indices_vec->reserve(sum_nnz);
 
     std::vector<int>* sum_counts = new std::vector<int>();
@@ -273,7 +273,7 @@ class SparseConditionalAccumulator
         sum_counts->push_back(count_element_->at(idx_a) + 1);
       } else if (src == from_grad) {
         // Element comes from new gradient; make a copy of indices and values
-        sum_indices_vec->push_back(grad_idx->vec<int64>()(idx_b));
+        sum_indices_vec->push_back(grad_idx->vec<int64_t>()(idx_b));
         const T* grad_slice_ptr = &grad_flat(idx_b, 0);
         SliceConstT grad_slice(grad_slice_ptr, slice_shape);
         sum_slice = grad_slice;
@@ -385,7 +385,7 @@ class SparseConditionalAccumulator
   inline int cmp(std::vector<int64>* a_idx, const Tensor* b_idx,
                  const int64_t a_row, const int64_t b_row) {
     const int64_t a = a_idx->at(a_row);
-    const int64_t b = b_idx->vec<int64>()(b_row);
+    const int64_t b = b_idx->vec<int64_t>()(b_row);
     if (a < b) {
       return -1;
     } else if (a > b) {
@@ -400,7 +400,7 @@ class SparseConditionalAccumulator
     OP_REQUIRES_OK_BOOLEAN(ctx, ctx->allocate_output(0, {nnz}, &idx_tensor));
     // If allocate_output fails, OP_REQUIRES_OK_BOOLEAN will short-circuit
     // the remaining code and just return false
-    auto idx_tensor_vec = idx_tensor->vec<int64>();
+    auto idx_tensor_vec = idx_tensor->vec<int64_t>();
     for (int i = 0; i < nnz; ++i) {
       idx_tensor_vec(i) = accum_idx_vec_->at(i);
     }
@@ -421,10 +421,10 @@ class SparseConditionalAccumulator
     // the remaining code and just return false
 
     // First dim of shape is defined by shape_, others by accum_val_->shape
-    shape_tensor->flat<int64>()(0) =
+    shape_tensor->flat<int64_t>()(0) =
         (shape_.dims() > 0) ? shape_.dim_size(0) : -1;
     for (int64_t i = 1; i < accum_val_dims; i++) {
-      shape_tensor->flat<int64>()(i) = accum_val_->dim_size(i);
+      shape_tensor->flat<int64_t>()(i) = accum_val_->dim_size(i);
     }
     return true;
   }

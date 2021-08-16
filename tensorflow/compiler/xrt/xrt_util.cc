@@ -48,7 +48,7 @@ class ScopedHandles {
     }
   }
 
-  int64 operator[](size_t index) const { return handles_.at(index); }
+  int64_t operator[](size_t index) const { return handles_.at(index); }
 
   size_t size() const { return handles_.size(); }
 
@@ -92,7 +92,7 @@ class ScopedHandles {
 
   // Releases the handle at the given index. The destructor will not use that
   // XRTMemoryManager::Release() API on such handle.
-  int64 Release(size_t index) {
+  int64_t Release(size_t index) {
     int64_t handle = handles_.at(index);
     handles_[index] = XRTMemoryManager::InvalidKey();
     handles_release_[index] = false;
@@ -107,7 +107,7 @@ class ScopedHandles {
 
  private:
   RefPtr<XRTMemoryManager> memory_manager_;
-  std::vector<int64> handles_;
+  std::vector<int64_t> handles_;
   std::vector<bool> handles_release_;
 };
 
@@ -209,10 +209,10 @@ xla::StatusOr<std::vector<InputCoords>> GetComputationInputs(
   for (int i = 0; i < arg_list.size(); ++i) {
     const Tensor& arg = arg_list[i];
     if (TensorShapeUtils::IsScalar(arg.shape())) {
-      input_coords.emplace_back(arg.scalar<int64>()());
+      input_coords.emplace_back(arg.scalar<int64_t>()());
     } else {
       TF_RET_CHECK(TensorShapeUtils::IsVector(arg.shape()));
-      auto arg_vec = arg.vec<int64>();
+      auto arg_vec = arg.vec<int64_t>();
       const int64_t num_elts = arg.shape().dim_size(0);
       for (int i = 0; i < num_elts; ++i) {
         input_coords.emplace_back(arg_vec(i));
@@ -360,13 +360,14 @@ Status CreateExecuteOutput(OpKernelContext* context,
       TF_RETURN_IF_ERROR(XRTTupleAllocation::MakeSubBuffer(
           output_tuple.get(), {i}, &suballocation,
           /*alias_parent_allocation=*/false));
-      output_tensor->vec<int64>()(i) = memory_manager->Register(suballocation);
+      output_tensor->vec<int64_t>()(i) =
+          memory_manager->Register(suballocation);
     }
   } else {
     Tensor* output_tensor;
     TF_RETURN_IF_ERROR(
         context->allocate_output(0, TensorShape({}), &output_tensor));
-    output_tensor->scalar<int64>()() =
+    output_tensor->scalar<int64_t>()() =
         memory_manager->Register(std::move(output_tuple));
   }
   return Status::OK();
@@ -381,7 +382,7 @@ Status ExecuteChained(OpKernelContext* context,
                       se::DeviceMemoryAllocator* allocator) {
   // Create the vector which tracks the uses of the intermediate chained
   // operations outputs.
-  std::vector<int64> uses(plan.ops_size(), 0);
+  std::vector<int64_t> uses(plan.ops_size(), 0);
   for (auto& op : plan.ops()) {
     for (auto& input : op.inputs()) {
       uses[input.op_index()] += 1;
@@ -430,9 +431,9 @@ Status ExecuteChained(OpKernelContext* context,
 
   Tensor* output_tensor;
   TF_RETURN_IF_ERROR(context->allocate_output(
-      0, TensorShape({static_cast<int64>(results.size())}), &output_tensor));
+      0, TensorShape({static_cast<int64_t>(results.size())}), &output_tensor));
   for (size_t i = 0; i < results.size(); ++i) {
-    output_tensor->vec<int64>()(i) = results.Release(i);
+    output_tensor->vec<int64_t>()(i) = results.Release(i);
   }
   return Status::OK();
 }

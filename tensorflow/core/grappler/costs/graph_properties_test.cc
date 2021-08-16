@@ -105,7 +105,7 @@ class GraphPropertiesTest : public ::testing::Test {
       strings::StrAppend(&s, "[");
       for (int i = 0; i < p.shape().dim_size(); ++i) {
         strings::StrAppend(&s, i == 0 ? "" : ",",
-                           std::max<int64>(p.shape().dim(i).size(), -1));
+                           std::max<int64_t>(p.shape().dim(i).size(), -1));
       }
       strings::StrAppend(&s, "]");
     }
@@ -114,7 +114,7 @@ class GraphPropertiesTest : public ::testing::Test {
 
   // Compare values of integer (DT_INT32 or DT_INT64) tensor against expected
   // ones.
-  void ExpectTensorValues(const std::vector<int64>& expected,
+  void ExpectTensorValues(const std::vector<int64_t>& expected,
                           const TensorProto& tensor_proto_to_compare) {
     Tensor tensor;
     ASSERT_TRUE(tensor.FromProto(tensor_proto_to_compare));
@@ -128,7 +128,7 @@ class GraphPropertiesTest : public ::testing::Test {
       }
     } else {
       for (int i = 0; i < tensor.NumElements(); i++) {
-        EXPECT_EQ(expected[i], tensor.flat<int64>()(i));
+        EXPECT_EQ(expected[i], tensor.flat<int64_t>()(i));
       }
     }
   }
@@ -295,7 +295,7 @@ REGISTER_OP("DetectInputValueInShapeInferenceOp")
 class ConstTensorSkipTestCase {
  public:
   ConstTensorSkipTestCase(const DataType data_type,
-                          const std::vector<int64> shape, const double value,
+                          const std::vector<int64_t> shape, const double value,
                           const bool expected)
       : data_type_(data_type),
         shape_(shape),
@@ -309,7 +309,7 @@ class ConstTensorSkipTestCase {
               << ", expected: " << expected_;
     // Build a graph wiht Const --> Identity --> Detect.
     GrapplerItem item;
-    const gtl::ArraySlice<int64> shape_array_slice(shape_);
+    const gtl::ArraySlice<int64_t> shape_array_slice(shape_);
     Tensor const_tensor_value(data_type_, TensorShape(shape_array_slice));
     // Fille the const tensor value based on data type.
     switch (data_type_) {
@@ -317,7 +317,8 @@ class ConstTensorSkipTestCase {
         test::FillIota<int32>(&const_tensor_value, static_cast<int32>(value_));
         break;
       case DT_INT64:
-        test::FillIota<int64>(&const_tensor_value, static_cast<int64>(value_));
+        test::FillIota<int64_t>(&const_tensor_value,
+                                static_cast<int64_t>(value_));
         break;
       case DT_FLOAT:
         test::FillIota<float>(&const_tensor_value, static_cast<float>(value_));
@@ -398,7 +399,7 @@ class ConstTensorSkipTestCase {
 
  private:
   DataType data_type_;
-  std::vector<int64> shape_;
+  std::vector<int64_t> shape_;
   double value_;
   bool expected_;
 };
@@ -1134,7 +1135,7 @@ TEST_F(GraphPropertiesTest, TensorAsShapesPropagation) {
   ExpectTensorValues({99}, properties.GetOutputProperties("b")[0].value());
   ExpectTensorValues({99}, properties.GetInputProperties("b1")[0].value());
   ExpectTensorValues({99}, properties.GetOutputProperties("b1")[0].value());
-  std::vector<int64> c_values;
+  std::vector<int64_t> c_values;
   for (int i = 0; i < 4 * 4 * 4; i++) {
     c_values.push_back(1);
   }

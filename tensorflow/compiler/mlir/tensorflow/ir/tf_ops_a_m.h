@@ -38,6 +38,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_verifiers.h"
 
+// IWYU pragma: private, include "third_party/tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+
 namespace mlir {
 namespace TF {
 

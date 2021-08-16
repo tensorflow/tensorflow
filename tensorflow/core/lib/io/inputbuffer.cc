@@ -107,7 +107,7 @@ Status InputBuffer::ReadNBytes(int64_t bytes_to_read, char* result,
     }
     // Do not go over the buffer boundary.
     const int64_t bytes_to_copy =
-        std::min<int64>(limit_ - pos_, bytes_to_read - *bytes_read);
+        std::min<int64_t>(limit_ - pos_, bytes_to_read - *bytes_read);
     // Copies buffered data into the destination.
     memcpy(result + *bytes_read, pos_, bytes_to_copy);
     pos_ += bytes_to_copy;
@@ -168,7 +168,7 @@ Status InputBuffer::SkipNBytes(int64_t bytes_to_skip) {
       }
     }
     const int64_t bytes_to_advance =
-        std::min<int64>(limit_ - pos_, bytes_to_skip - bytes_skipped);
+        std::min<int64_t>(limit_ - pos_, bytes_to_skip - bytes_skipped);
     bytes_skipped += bytes_to_advance;
     pos_ += bytes_to_advance;
   }
@@ -184,7 +184,7 @@ Status InputBuffer::Seek(int64_t position) {
                                    position);
   }
   // Position of the buffer within file.
-  const int64_t bufpos = file_pos_ - static_cast<int64>(limit_ - buf_);
+  const int64_t bufpos = file_pos_ - static_cast<int64_t>(limit_ - buf_);
   if (position >= bufpos && position < file_pos_) {
     // Seeks to somewhere inside the buffer.
     pos_ = buf_ + (position - bufpos);
@@ -208,7 +208,7 @@ Status InputBuffer::Hint(int64_t bytes_to_read) {
     return Status::OK();
   }
 
-  const int64_t bytes_remain_in_buf = static_cast<int64>(limit_ - pos_);
+  const int64_t bytes_remain_in_buf = static_cast<int64_t>(limit_ - pos_);
 
   // There are enough data in the buffer. Do nothing.
   if (bytes_to_read <= bytes_remain_in_buf) {

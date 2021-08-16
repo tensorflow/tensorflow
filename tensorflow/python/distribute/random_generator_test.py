@@ -53,18 +53,20 @@ def get_num_local_replicas(strat, values=None):
 
 
 ps_strategies = [
-    strategy_combinations.parameter_server_strategy_fn(
-        "ParameterServer3Worker2PSCPUNoShard",
-        num_workers=3, num_ps=2, variable_partitioner=None),
-    strategy_combinations.parameter_server_strategy_fn(
-        "ParameterServer1Worker2PSCPUNoShard",
-        num_workers=1, num_ps=2, variable_partitioner=None),
-    strategy_combinations.parameter_server_strategy_fn(
-        "ParameterServer3Worker2PS1GPUNoShard",
-        num_workers=3, num_ps=2, required_gpus=1, variable_partitioner=None),
-    strategy_combinations.parameter_server_strategy_fn(
-        "ParameterServer1Worker2PS1GPUNoShard",
-        num_workers=1, num_ps=2, required_gpus=1, variable_partitioner=None),
+    # (TODO(b/195770530): Re-enable PS Strategy combinations after using
+    # coordinator.
+    # strategy_combinations.parameter_server_strategy_fn(
+    #     "ParameterServer3Worker2PSCPUNoShard",
+    #     num_workers=3, num_ps=2, variable_partitioner=None),
+    # strategy_combinations.parameter_server_strategy_fn(
+    #     "ParameterServer1Worker2PSCPUNoShard",
+    #     num_workers=1, num_ps=2, variable_partitioner=None),
+    # strategy_combinations.parameter_server_strategy_fn(
+    #     "ParameterServer3Worker2PS1GPUNoShard",
+    #     num_workers=3, num_ps=2, required_gpus=1, variable_partitioner=None),
+    # strategy_combinations.parameter_server_strategy_fn(
+    #     "ParameterServer1Worker2PS1GPUNoShard",
+    #     num_workers=1, num_ps=2, required_gpus=1, variable_partitioner=None),
 ]
 all_strategies = (strategy_combinations.all_strategies +
                   strategy_combinations.multiworker_strategies +

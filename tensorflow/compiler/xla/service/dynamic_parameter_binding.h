@@ -43,7 +43,7 @@ class DynamicParameterBinding {
   // has to be a scalar value.
   struct DynamicParameter {
     // The parameter number of dynamic parameter.
-    int64 parameter_num;
+    int64_t parameter_num;
     // The index of the parameter.
     ShapeIndex parameter_index;
   };
@@ -53,11 +53,11 @@ class DynamicParameterBinding {
   // DynamicParameter using `DynamicParameterBinding::Bind` method.
   struct DynamicDimension {
     // The parameter number of dynamic dimension.
-    int64 parameter_num;
+    int64_t parameter_num;
     // The subshape index of the parameter.
     ShapeIndex parameter_index;
     // The dimension number in the subshape.
-    int64 dimension;
+    int64_t dimension;
 
     // "friend" keyword are added so these functions can be found by ADL.
     template <typename H>

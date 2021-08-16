@@ -32,9 +32,9 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
-#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
@@ -203,7 +203,7 @@ Status DataServiceDispatcherImpl::Start() {
 Status DataServiceDispatcherImpl::RestoreSplitProviders(
     const Job& job, std::vector<std::unique_ptr<SplitProvider>>& restored)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  const std::vector<int64>& indices =
+  const std::vector<int64_t>& indices =
       job.distributed_epoch_state.value().indices;
   std::vector<std::unique_ptr<SplitProvider>> split_providers;
   TF_RETURN_IF_ERROR(MakeSplitProviders(job.dataset_id, split_providers));
@@ -224,10 +224,10 @@ Status DataServiceDispatcherImpl::RestoreSplitProviders(
 }
 
 Status DataServiceDispatcherImpl::FindTasksToDelete(
-    const absl::flat_hash_set<int64>& current_tasks,
+    const absl::flat_hash_set<int64_t>& current_tasks,
     const std::vector<std::shared_ptr<const Task>> assigned_tasks,
     WorkerHeartbeatResponse* response) {
-  absl::flat_hash_set<int64> assigned_ids;
+  absl::flat_hash_set<int64_t> assigned_ids;
   for (const auto& assigned : assigned_tasks) {
     assigned_ids.insert(assigned->task_id);
   }
@@ -241,12 +241,12 @@ Status DataServiceDispatcherImpl::FindTasksToDelete(
 
 Status DataServiceDispatcherImpl::FindNewTasks(
     const std::string& worker_address,
-    const absl::flat_hash_set<int64>& current_tasks,
+    const absl::flat_hash_set<int64_t>& current_tasks,
     std::vector<std::shared_ptr<const Task>>& assigned_tasks,
     WorkerHeartbeatResponse* response) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   // Check for round-robin jobs that had tasks on the worker removed. Now that
   // the worker is back, we create a new pending task for the worker.
-  absl::flat_hash_set<int64> assigned_job_ids;
+  absl::flat_hash_set<int64_t> assigned_job_ids;
   for (const auto& task : assigned_tasks) {
     assigned_job_ids.insert(task->job->job_id);
   }
@@ -294,7 +294,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     TF_RETURN_IF_ERROR(CreateTasksForWorker(worker_address));
     TF_RETURN_IF_ERROR(state_.TasksForWorker(worker_address, assigned_tasks));
   }
-  absl::flat_hash_set<int64> current_tasks;
+  absl::flat_hash_set<int64_t> current_tasks;
   current_tasks.insert(request->current_tasks().cbegin(),
                        request->current_tasks().cend());
   TF_RETURN_IF_ERROR(
@@ -451,7 +451,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
 
 Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
                                                   const DatasetDef& dataset,
-                                                  int64& dataset_id)
+                                                  int64_t& dataset_id)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   dataset_id = state_.NextAvailableDatasetId();
   Update update;
@@ -671,7 +671,7 @@ Status DataServiceDispatcherImpl::CreateTasksForWorker(
 }
 
 Status DataServiceDispatcherImpl::AcquireJobClientId(
-    const std::shared_ptr<const Job>& job, int64& job_client_id)
+    const std::shared_ptr<const Job>& job, int64_t& job_client_id)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   job_client_id = state_.NextAvailableJobClientId();
   Update update;
@@ -831,7 +831,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     ClientHeartbeatUpdate* client_heartbeat = update.mutable_client_heartbeat();
     bool apply_update = false;
     client_heartbeat->set_job_client_id(request->job_client_id());
-    absl::optional<int64> blocked_round;
+    absl::optional<int64_t> blocked_round;
     if (request->optional_blocked_round_case() ==
         ClientHeartbeatRequest::kBlockedRound) {
       blocked_round = request->blocked_round();

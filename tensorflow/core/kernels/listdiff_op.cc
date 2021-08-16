@@ -91,16 +91,16 @@ class ListDiffOp : public OpKernel {
   }
 };
 
-#define REGISTER_LISTDIFF(type)                                  \
-  REGISTER_KERNEL_BUILDER(Name("ListDiff")                       \
-                              .Device(DEVICE_CPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int32>("out_idx"), \
-                          ListDiffOp<type, int32>)               \
-  REGISTER_KERNEL_BUILDER(Name("ListDiff")                       \
-                              .Device(DEVICE_CPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("out_idx"), \
+#define REGISTER_LISTDIFF(type)                                    \
+  REGISTER_KERNEL_BUILDER(Name("ListDiff")                         \
+                              .Device(DEVICE_CPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<int32>("out_idx"),   \
+                          ListDiffOp<type, int32>)                 \
+  REGISTER_KERNEL_BUILDER(Name("ListDiff")                         \
+                              .Device(DEVICE_CPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<int64_t>("out_idx"), \
                           ListDiffOp<type, int64>)
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_LISTDIFF);

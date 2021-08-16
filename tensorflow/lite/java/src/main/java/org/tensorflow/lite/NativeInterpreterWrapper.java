@@ -86,8 +86,8 @@ class NativeInterpreterWrapper implements AutoCloseable {
       allowBufferHandleOutput(interpreterHandle, options.allowBufferHandleOutput.booleanValue());
     }
     applyDelegates(options);
-    allocateTensors(interpreterHandle, errorHandle, /*subgraphIndex=*/ 0);
-    this.memoryAllocated.put(/*subgraphIndex=*/ 0, true);
+    allocateTensors(interpreterHandle, errorHandle);
+    this.isMemoryAllocated = true;
   }
 
   /** Releases resources associated with this {@code NativeInterpreterWrapper}. */
@@ -115,7 +115,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
     modelByteBuffer = null;
     inputsIndexes = null;
     outputsIndexes = null;
-    memoryAllocated = null;
+    isMemoryAllocated = false;
     delegates.clear();
     for (AutoCloseable ownedDelegate : ownedDelegates) {
       try {
@@ -137,64 +137,53 @@ class NativeInterpreterWrapper implements AutoCloseable {
     if (outputs == null) {
       throw new IllegalArgumentException("Input error: Outputs should not be null.");
     }
-
-    int subgraphIndex = getSubgraphIndexFromSignature(interpreterHandle, signatureKey);
+    NativeSignatureRunnerWrapper signatureRunnerWrapper = getSignatureRunnerWrapper(signatureKey);
+    int subgraphIndex = signatureRunnerWrapper.getSubgraphIndex();
     if (subgraphIndex == 0) {
       // Run the primary subgraph and update the cached tensor objects.
       initTensorIndexesMaps();
       // Map inputs/output to input indexes.
-      Map<Integer, Object> inputsWithInputIndex = new TreeMap<>();
-      Map<Integer, Object> outputsWithOutputIndex = new TreeMap<>();
-      for (Map.Entry<String, Object> input : inputs.entrySet()) {
-        int tensorIndex =
-            getInputTensorIndexFromSignature(interpreterHandle, input.getKey(), signatureKey);
-        inputsWithInputIndex.put(tensorToInputsIndexes.get(tensorIndex), input.getValue());
-      }
-      for (Map.Entry<String, Object> output : outputs.entrySet()) {
-        int tensorIndex =
-            getOutputTensorIndexFromSignature(interpreterHandle, output.getKey(), signatureKey);
-        outputsWithOutputIndex.put(tensorToOutputsIndexes.get(tensorIndex), output.getValue());
-      }
       Object[] inputsList = new Object[inputs.size()];
-      int index = 0;
-      for (Map.Entry<Integer, Object> input : inputsWithInputIndex.entrySet()) {
-        inputsList[index++] = input.getValue();
+      for (Map.Entry<String, Object> input : inputs.entrySet()) {
+        inputsList[signatureRunnerWrapper.getInputIndex(input.getKey())] = input.getValue();
+      }
+      Map<Integer, Object> outputsWithOutputIndex = new TreeMap<>();
+      for (Map.Entry<String, Object> output : outputs.entrySet()) {
+        outputsWithOutputIndex.put(
+            signatureRunnerWrapper.getOutputIndex(output.getKey()), output.getValue());
       }
       run(inputsList, outputsWithOutputIndex);
       return;
     }
 
     for (Map.Entry<String, Object> input : inputs.entrySet()) {
-      Tensor tensor = getInputTensor(input.getKey(), signatureKey);
+      Tensor tensor = signatureRunnerWrapper.getInputTensor(input.getKey());
       int[] newShape = tensor.getInputShapeIfDifferent(input.getValue());
       if (newShape != null) {
-        resizeInput(interpreterHandle, errorHandle, tensor.index(), newShape, false, subgraphIndex);
+        signatureRunnerWrapper.resizeInput(input.getKey(), newShape);
       }
     }
 
-    allocateTensorsIfNeeded(subgraphIndex);
+    signatureRunnerWrapper.allocateTensorsIfNeeded();
 
     for (Map.Entry<String, Object> input : inputs.entrySet()) {
-      getInputTensor(input.getKey(), signatureKey).setTo(input.getValue());
+      signatureRunnerWrapper.getInputTensor(input.getKey()).setTo(input.getValue());
     }
 
     long inferenceStartNanos = System.nanoTime();
-    runSignature(interpreterHandle, errorHandle, subgraphIndex);
+    signatureRunnerWrapper.invoke();
     long inferenceDurationNanoseconds = System.nanoTime() - inferenceStartNanos;
 
     for (Map.Entry<String, Object> output : outputs.entrySet()) {
       // Null output placeholders are allowed and ignored.
       if (output.getValue() != null) {
-        getOutputTensor(output.getKey(), signatureKey).copyTo(output.getValue());
+        signatureRunnerWrapper.getOutputTensor(output.getKey()).copyTo(output.getValue());
       }
     }
 
     // Only set if the entire operation succeeds.
     this.inferenceDurationNanoseconds = inferenceDurationNanoseconds;
   }
-
-  private static native void runSignature(
-      long interpreterHandle, long errorHandle, int subgraphIndex);
 
   /** Sets inputs, runs model inference and returns outputs. */
   void run(Object[] inputs, Map<Integer, Object> outputs) {
@@ -217,7 +206,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
       }
     }
 
-    boolean allocatedTensors = allocateTensorsIfNeeded(/*subgraphIndex=*/ 0);
+    boolean allocatedTensors = allocateTensorsIfNeeded();
 
     for (int i = 0; i < inputs.length; ++i) {
       getInputTensor(i).setTo(inputs[i]);
@@ -253,10 +242,10 @@ class NativeInterpreterWrapper implements AutoCloseable {
 
   /** Resizes dimensions of a specific input. */
   void resizeInput(int idx, int[] dims, boolean strict) {
-    if (resizeInput(interpreterHandle, errorHandle, idx, dims, strict, /*subgraphIndex=*/ 0)) {
+    if (resizeInput(interpreterHandle, errorHandle, idx, dims, strict)) {
       // Tensor allocation is deferred until either an explicit `allocateTensors()` call or
       // `invoke()` avoiding redundant allocations if multiple tensors are simultaneosly resized.
-      memoryAllocated.put(/*subgraphIndex=*/ 0, false);
+      isMemoryAllocated = false;
       if (inputTensors[idx] != null) {
         inputTensors[idx].refreshShape();
       }
@@ -265,26 +254,22 @@ class NativeInterpreterWrapper implements AutoCloseable {
 
   /** Triggers explicit allocation of tensors. */
   void allocateTensors() {
-    allocateTensorsIfNeeded(/*subgraphIndex=*/ 0);
+    allocateTensorsIfNeeded();
   }
 
   /**
    * Allocates tensor memory space in the given subgraph and returns true when allocation happens
    */
-  private boolean allocateTensorsIfNeeded(int subgraphIndex) {
-    boolean needsAllocation =
-        !(memoryAllocated.containsKey(subgraphIndex) ? memoryAllocated.get(subgraphIndex) : false);
-    if (!needsAllocation) {
+  private boolean allocateTensorsIfNeeded() {
+    if (isMemoryAllocated) {
       return false;
     }
 
-    memoryAllocated.put(subgraphIndex, true);
-    allocateTensors(interpreterHandle, errorHandle, subgraphIndex);
-    if (subgraphIndex == 0) {
-      for (int i = 0; i < outputTensors.length; ++i) {
-        if (outputTensors[i] != null) {
-          outputTensors[i].refreshShape();
-        }
+    isMemoryAllocated = true;
+    allocateTensors(interpreterHandle, errorHandle);
+    for (int i = 0; i < outputTensors.length; ++i) {
+      if (outputTensors[i] != null) {
+        outputTensors[i].refreshShape();
       }
     }
     return true;
@@ -393,24 +378,14 @@ class NativeInterpreterWrapper implements AutoCloseable {
     if (inputName == null) {
       throw new IllegalArgumentException("Invalid input tensor name provided (null)");
     }
-    int subgraphIndex = getSubgraphIndexFromSignature(interpreterHandle, signatureKey);
-    if (subgraphIndex == -1) {
-      throw new IllegalArgumentException("Invalid input method name provided: " + signatureKey);
-    }
+    NativeSignatureRunnerWrapper signatureRunnerWrapper = getSignatureRunnerWrapper(signatureKey);
+    int subgraphIndex = signatureRunnerWrapper.getSubgraphIndex();
     if (subgraphIndex > 0) {
-      int tensorIndex =
-          getInputTensorIndexFromSignature(interpreterHandle, inputName, signatureKey);
-      return Tensor.fromSubgraphAndIndex(interpreterHandle, subgraphIndex, tensorIndex);
+      return signatureRunnerWrapper.getInputTensor(inputName);
     }
 
-    initTensorIndexesMaps();
-    int tensorIndex = getInputTensorIndexFromSignature(interpreterHandle, inputName, signatureKey);
-    if (!tensorToInputsIndexes.containsKey(tensorIndex)) {
-      throw new IllegalArgumentException(
-          String.format(
-              "Invalid input tensor name (%s) for signature (%s).", inputName, signatureKey));
-    }
-    return getInputTensor(tensorToInputsIndexes.get(tensorIndex));
+    int inputIndex = signatureRunnerWrapper.getInputIndex(inputName);
+    return getInputTensor(inputIndex);
   }
 
   /** Gets the keys of SignatureDefs available in the model, if any. */
@@ -420,17 +395,13 @@ class NativeInterpreterWrapper implements AutoCloseable {
 
   /** Gets the list of SignatureDefs inputs for method {@code signatureKey} */
   String[] getSignatureInputs(String signatureKey) {
-    return getSignatureInputs(interpreterHandle, signatureKey);
+    return getSignatureRunnerWrapper(signatureKey).inputNames();
   }
-
-  private static native String[] getSignatureInputs(long interpreterHandle, String signatureKey);
 
   /** Gets the list of SignatureDefs outputs for method {@code signatureKey} */
   String[] getSignatureOutputs(String signatureKey) {
-    return getSignatureOutputs(interpreterHandle, signatureKey);
+    return getSignatureRunnerWrapper(signatureKey).outputNames();
   }
-
-  private static native String[] getSignatureOutputs(long interpreterHandle, String signatureKey);
 
   /** Gets the number of output tensors. */
   int getOutputTensorCount() {
@@ -464,25 +435,14 @@ class NativeInterpreterWrapper implements AutoCloseable {
     if (outputName == null) {
       throw new IllegalArgumentException("Invalid output tensor name provided (null)");
     }
-    int subgraphIndex = getSubgraphIndexFromSignature(interpreterHandle, signatureKey);
-    if (subgraphIndex == -1) {
-      throw new IllegalArgumentException("Invalid input method name provided: " + signatureKey);
-    }
+    NativeSignatureRunnerWrapper signatureRunnerWrapper = getSignatureRunnerWrapper(signatureKey);
+    int subgraphIndex = signatureRunnerWrapper.getSubgraphIndex();
     if (subgraphIndex > 0) {
-      int tensorIndex =
-          getOutputTensorIndexFromSignature(interpreterHandle, outputName, signatureKey);
-      return Tensor.fromSubgraphAndIndex(interpreterHandle, subgraphIndex, tensorIndex);
+      return signatureRunnerWrapper.getOutputTensor(outputName);
     }
 
-    initTensorIndexesMaps();
-    int tensorIndex =
-        getOutputTensorIndexFromSignature(interpreterHandle, outputName, signatureKey);
-    if (!tensorToOutputsIndexes.containsKey(tensorIndex)) {
-      throw new IllegalArgumentException(
-          String.format(
-              "Invalid output tensor name (%s) for signature (%s).", outputName, signatureKey));
-    }
-    return getOutputTensor(tensorToOutputsIndexes.get(tensorIndex));
+    int outputIndex = signatureRunnerWrapper.getOutputIndex(outputName);
+    return getOutputTensor(outputIndex);
   }
 
   /** Gets the number of ops in the execution plan. */
@@ -543,6 +503,18 @@ class NativeInterpreterWrapper implements AutoCloseable {
     }
   }
 
+  private NativeSignatureRunnerWrapper getSignatureRunnerWrapper(String signatureKey) {
+    if (signatureRunnerMap == null) {
+      signatureRunnerMap = new HashMap<>();
+    }
+    if (!signatureRunnerMap.containsKey(signatureKey)) {
+      signatureRunnerMap.put(
+          signatureKey,
+          new NativeSignatureRunnerWrapper(interpreterHandle, errorHandle, signatureKey));
+    }
+    return signatureRunnerMap.get(signatureKey);
+  }
+
   private static Delegate maybeCreateFlexDelegate(List<Delegate> delegates) {
     try {
       Class<?> clazz = Class.forName("org.tensorflow.lite.flex.FlexDelegate");
@@ -580,12 +552,15 @@ class NativeInterpreterWrapper implements AutoCloseable {
   private Map<Integer, Integer> tensorToInputsIndexes;
   private Map<Integer, Integer> tensorToOutputsIndexes;
 
+  // A map from signature key to its native wrapper object.
+  private Map<String, NativeSignatureRunnerWrapper> signatureRunnerMap;
+
   // Lazily constructed and populated arrays of input and output Tensor wrappers.
   private Tensor[] inputTensors;
   private Tensor[] outputTensors;
 
   // Whether subgraph's tensor memory space is allocated.
-  private Map<Integer, Boolean> memoryAllocated = new HashMap<>();
+  private boolean isMemoryAllocated = false;
 
   // As the Java Delegate owns the native delegate instance, we keep a strong ref to any injected
   // delegates for safety.
@@ -597,15 +572,9 @@ class NativeInterpreterWrapper implements AutoCloseable {
   private static native void run(long interpreterHandle, long errorHandle);
 
   private static native boolean resizeInput(
-      long interpreterHandle,
-      long errorHandle,
-      int inputIdx,
-      int[] dims,
-      boolean strict,
-      int subgraphIndex);
+      long interpreterHandle, long errorHandle, int inputIdx, int[] dims, boolean strict);
 
-  private static native long allocateTensors(
-      long interpreterHandle, long errorHandle, int subgraphIndex);
+  private static native long allocateTensors(long interpreterHandle, long errorHandle);
 
   private static native String[] getSignatureKeys(long interpreterHandle);
 
@@ -616,16 +585,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native boolean hasUnresolvedFlexOp(long interpreterHandle);
 
-  private static native int getSubgraphIndexFromSignature(
-      long interpreterHandle, String signatureKey);
-
   private static native int getInputTensorIndex(long interpreterHandle, int inputIdx);
-
-  private static native int getInputTensorIndexFromSignature(
-      long interpreterHandle, String signatureInputName, String signatureKey);
-
-  private static native int getOutputTensorIndexFromSignature(
-      long interpreterHandle, String signatureInputName, String signatureKey);
 
   private static native int getOutputTensorIndex(long interpreterHandle, int outputIdx);
 

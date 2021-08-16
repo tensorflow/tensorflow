@@ -140,18 +140,18 @@ namespace {
 
 struct CollectivePermuteParticipantData : xla::ParticipantData {
   CollectivePermuteParticipantData(const xla::RendezvousKey& rendezvous_key_p,
-                                   xla::int64 device_ordinal_p,
+                                   int64_t device_ordinal_p,
                                    se::Stream* stream_p)
       : ParticipantData(rendezvous_key_p),
         device_ordinal(device_ordinal_p),
         stream(stream_p) {}
 
-  xla::int64 device_ordinal;
+  int64_t device_ordinal;
   se::Stream* stream;
   int replica_id;
   se::DeviceMemoryBase source_data;
   se::DeviceMemoryBase destination_data;
-  xla::int64 byte_size;
+  int64_t byte_size;
   std::vector<int> replica_ids_to_copy_to;
 
   std::string ToString() const override {
@@ -166,12 +166,12 @@ struct CollectivePermuteParticipantData : xla::ParticipantData {
 
 struct AllToAllParticipantData : xla::ParticipantData {
   AllToAllParticipantData(const xla::RendezvousKey& rendezvous_key_p,
-                          xla::int64 device_ordinal_p, se::Stream* stream_p)
+                          int64_t device_ordinal_p, se::Stream* stream_p)
       : ParticipantData(rendezvous_key_p),
         device_ordinal(device_ordinal_p),
         stream(stream_p) {}
 
-  xla::int64 device_ordinal;
+  int64_t device_ordinal;
   se::Stream* stream;
   std::vector<se::DeviceMemoryBase> source_buffers;
   std::vector<se::DeviceMemoryBase> destination_buffers;
@@ -246,7 +246,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY int __xla_cpu_runtime_PrintfToStderr(
   return result;
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY xla::int64 __xla_cpu_runtime_TracingStart(
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY int64_t __xla_cpu_runtime_TracingStart(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
     const char* name) {
   VLOG(3) << "TracingStart " << name;
@@ -254,8 +254,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY xla::int64 __xla_cpu_runtime_TracingStart(
 }
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TracingEnd(
-    const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
-    xla::int64 id) {
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr, int64_t id) {
   VLOG(3) << "TracingEnd " << id;
   tensorflow::profiler::TraceMe::ActivityEnd(id);
 }
@@ -617,7 +616,7 @@ GlobalAllToAllRendezvousMap() {
 xla::RendezvousKey GetRendezvousKey(
     const xla::ExecutableRunOptions* run_options,
     std::vector<xla::ReplicaGroup> group, xla::int32 channel_id_present,
-    xla::int64 op_id) {
+    int64_t op_id) {
   const xla::DeviceAssignment& device_assignment =
       *run_options->device_assignment();
   int device_ordinal = GetDeviceOrdinal(run_options);
@@ -639,9 +638,9 @@ xla::RendezvousKey GetRendezvousKey(
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
     const xla::ExecutableRunOptions* run_options, xla::int32 channel_id_present,
-    xla::int64 op_id, const void* replica_groups_str,
+    int64_t op_id, const void* replica_groups_str,
     xla::int32 replica_groups_str_size, xla::int32 num_buffers,
-    xla::int64 buffer_size, void** source_buffers, void** destination_buffers) {
+    int64_t buffer_size, void** source_buffers, void** destination_buffers) {
   int device_ordinal = GetDeviceOrdinal(run_options);
   xla::int32 replica_id =
       run_options->device_assignment()
@@ -681,7 +680,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
     const xla::ExecutableRunOptions* run_options,
     const void* replica_groups_str, xla::int32 replica_groups_str_size,
-    xla::int32 channel_id_present, xla::int64 op_id, xla::int32 reduction_kind,
+    xla::int32 channel_id_present, int64_t op_id, xla::int32 reduction_kind,
     const void* shape_ptr, xla::int32 shape_length, xla::int32 num_buffers,
     void** input_buffers, void** output_buffers) {
   int device_ordinal = GetDeviceOrdinal(run_options);
@@ -740,7 +739,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ReplicaId(
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
     const xla::ExecutableRunOptions* run_options, xla::int32 channel_id_present,
-    xla::int64 op_id, xla::int32 byte_size, void* input_buffer,
+    int64_t op_id, xla::int32 byte_size, void* input_buffer,
     void* output_buffer, const void* source_target_pairs,
     xla::int32 source_target_pairs_size) {
   int device_ordinal = GetDeviceOrdinal(run_options);

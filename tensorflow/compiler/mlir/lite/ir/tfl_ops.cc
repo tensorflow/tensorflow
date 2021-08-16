@@ -872,6 +872,23 @@ bool CustomTfOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
 }
 
 //===----------------------------------------------------------------------===//
+// Gather op
+//===----------------------------------------------------------------------===//
+
+LogicalResult Verify(GatherOp op) {
+  ShapedType params_type = op.params().getType().cast<ShapedType>();
+  // TFLite gather kernel supports 1D string input only.
+  if (params_type.getElementType().isa<mlir::TF::StringType>()) {
+    if (params_type.hasRank() && params_type.getRank() != 1) {
+      return op.emitOpError(
+                 "expect 1d input when the given type is string, got ")
+             << params_type;
+    }
+  }
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
 // FullyConnectedOp
 //===----------------------------------------------------------------------===//
 

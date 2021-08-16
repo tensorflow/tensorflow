@@ -128,8 +128,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   string status_payload;
   // Construct payload if compile_status is not ok and there's no payload for
   // compilation yet.
-  if (!compile_status.ok() &&
-      compile_status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
+  if (compile_status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
           .empty()) {
     tpu::CompilationResultProto proto;
     proto.set_status_code(compile_status.code());
@@ -345,7 +344,8 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
       ctx->frame_iter().frame_id, ":", ctx->frame_iter().iter_id, ":");
 
   // Return compilation status.
-  {
+  if (status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
+          .empty()) {
     Tensor output(DT_STRING, TensorShape({}));
     tpu::CompilationResultProto proto;
     proto.set_status_code(status.code());

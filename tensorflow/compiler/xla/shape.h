@@ -39,7 +39,7 @@ class Shape {
   // Construct a shape from a ShapeProto.
   explicit Shape(const ShapeProto& shape_proto);
 
-  Shape(PrimitiveType element_type, absl::Span<const int64> dimensions,
+  Shape(PrimitiveType element_type, absl::Span<const int64_t> dimensions,
         absl::Span<const bool> dynamic_dimensions,
         std::vector<Shape> tuple_shapes)
       : element_type_(element_type),
@@ -57,7 +57,7 @@ class Shape {
 
   // Returns the rank (number of dimensions) of the given shape. Shape must be
   // an array.
-  int64 rank() const {
+  int64_t rank() const {
     DCHECK(IsArray()) << "Non-arrays do not have a rank, shape: " << ToString();
     return dimensions_.size();
   }
@@ -114,7 +114,7 @@ class Shape {
 
   // Methods for accessing the dimensions array.
   int dimensions_size() const { return dimensions_.size(); }
-  int64 dimensions(int index) const { return dimensions_.at(index); }
+  int64_t dimensions(int index) const { return dimensions_.at(index); }
   void set_dimensions(int index, int64_t value) {
     dimensions_.at(index) = value;
   }
@@ -126,8 +126,10 @@ class Shape {
     dimensions_.clear();
     dynamic_dimensions_.clear();
   }
-  absl::Span<const int64> dimensions() const { return dimensions_; }
-  absl::Span<int64> mutable_dimensions() { return absl::MakeSpan(dimensions_); }
+  absl::Span<const int64_t> dimensions() const { return dimensions_; }
+  absl::Span<int64_t> mutable_dimensions() {
+    return absl::MakeSpan(dimensions_);
+  }
 
   // Methods for accessing the tuple subshapes. This field only non-empty for
   // tuple shapes.
@@ -259,7 +261,7 @@ class Shape {
   // The array bounds of the dimensions. This is nonempty only for array
   // shapes. For a dynamically-sized dimension, the respective value in this
   // vector is an inclusive upper limit of the array bound.
-  absl::InlinedVector<int64, 6> dimensions_;
+  absl::InlinedVector<int64_t, 6> dimensions_;
 
   // This vector is the same size as 'dimensions_' and indicates whether the
   // respective dimension is dynamically sized.

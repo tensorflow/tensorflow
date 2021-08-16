@@ -429,7 +429,7 @@ TEST_F(HierarchicalTreeBroadcasterInitParamsTest,
         RunTest<int32>(dtype, DEVICE_##T, W, D, L, A, F);                  \
       } break;                                                             \
       case DT_INT64: {                                                     \
-        RunTest<int64>(dtype, DEVICE_##T, W, D, L, A, F);                  \
+        RunTest<int64_t>(dtype, DEVICE_##T, W, D, L, A, F);                \
       } break;                                                             \
       default:                                                             \
         LOG(FATAL) << "Unimplemented";                                     \

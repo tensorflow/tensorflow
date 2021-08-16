@@ -28,7 +28,7 @@ StatusOr<bool> AliasPassthroughParams::Run(HloModule* module) {
     return false;
   }
   bool changed = false;
-  absl::flat_hash_set<int64> used_params;
+  absl::flat_hash_set<int64_t> used_params;
   for (int64_t i = 0; i < root->operand_count(); ++i) {
     if (root->operand(i)->opcode() == HloOpcode::kParameter &&
         used_params.count(root->operand(i)->parameter_number()) == 0) {

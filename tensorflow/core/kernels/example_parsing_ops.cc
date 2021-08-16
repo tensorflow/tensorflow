@@ -614,7 +614,7 @@ class ParseSequenceExampleOp : public OpKernel {
   static Tensor ConstructDefaultScalar(DataType dtype) {
     switch (dtype) {
       case DT_INT64:
-        return Tensor(static_cast<int64>(0));
+        return Tensor(static_cast<int64_t>(0));
       case DT_FLOAT:
         return Tensor(static_cast<float>(0.0));
       case DT_STRING:
@@ -1043,9 +1043,9 @@ class ParseSingleSequenceExampleOp : public OpKernel {
         context_sparse_values.set(d, feature_values);
         OP_REQUIRES_OK(ctx, context_sparse_shapes.allocate(d, TensorShape({1}),
                                                            &sp_shape_d));
-        auto shape_t = sp_shape_d->vec<int64>();
+        auto shape_t = sp_shape_d->vec<int64_t>();
         shape_t(0) = num_elements;
-        auto indices_t = sp_indices_d->matrix<int64>();
+        auto indices_t = sp_indices_d->matrix<int64_t>();
         std::iota(indices_t.data(), indices_t.data() + num_elements, 0);
       } else {
         TensorShape indices_shape({0, 1});
@@ -1059,7 +1059,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
             ctx, context_sparse_values.allocate(d, values_shape, &sp_values_d));
         OP_REQUIRES_OK(ctx, context_sparse_shapes.allocate(d, TensorShape({1}),
                                                            &sp_shape_d));
-        auto shape_t = sp_shape_d->vec<int64>();
+        auto shape_t = sp_shape_d->vec<int64_t>();
         shape_t(0) = 0;
       }
     }
@@ -1169,7 +1169,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
                                                               &sp_values_d));
       OP_REQUIRES_OK(ctx, feature_list_sparse_shapes.allocate(
                               d, TensorShape({2}), &sp_shape_d));
-      auto shape_t = sp_shape_d->vec<int64>();
+      auto shape_t = sp_shape_d->vec<int64_t>();
       shape_t(0) = feature_list_size;
       shape_t(1) = max_num_features;
 

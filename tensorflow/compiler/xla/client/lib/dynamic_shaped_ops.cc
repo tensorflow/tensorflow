@@ -33,7 +33,7 @@ XlaOp ReconsileBranchDifference(const Shape& left_branch_shape,
     // Recurse into sub-element.
     std::vector<XlaOp> results;
     results.reserve(left_branch_shape.tuple_shapes_size());
-    for (int64 i = 0; i < left_branch_shape.tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < left_branch_shape.tuple_shapes_size(); ++i) {
       XlaOp sub_tuple = GetTupleElement(left_root, i);
       XlaOp elem = ReconsileBranchDifference(left_branch_shape.tuple_shapes(i),
                                              right_branch_shape.tuple_shapes(i),
@@ -47,12 +47,12 @@ XlaOp ReconsileBranchDifference(const Shape& left_branch_shape,
   // compatible shapes.
   CHECK(!right_branch_shape.IsTuple());
   CHECK(left_branch_shape.rank() == right_branch_shape.rank());
-  for (int64 dim = 0; dim < left_branch_shape.rank(); ++dim) {
+  for (int64_t dim = 0; dim < left_branch_shape.rank(); ++dim) {
     XlaOp original_dim = GetDimensionSize(result, dim);
     if (left_branch_shape.dimensions(dim) <
         right_branch_shape.dimensions(dim)) {
-      int64 diff = right_branch_shape.dimensions(dim) -
-                   left_branch_shape.dimensions(dim);
+      int64_t diff = right_branch_shape.dimensions(dim) -
+                     left_branch_shape.dimensions(dim);
 
       result = PadInDim(
           result, Zero(result.builder(), left_branch_shape.element_type()), dim,

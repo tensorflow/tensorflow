@@ -1178,7 +1178,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   if (instruction->opcode() == HloOpcode::kTranspose) {
     // Pick the operand layout that makes the transpose a bitcast.
     int64_t rank = instruction->shape().rank();
-    std::vector<int64> new_minor_to_major(rank);
+    std::vector<int64_t> new_minor_to_major(rank);
     for (int64_t i = 0; i < rank; ++i) {
       int64_t output_dim = LayoutUtil::Minor(output_layout, i);
       int64_t operand_dim = instruction->dimensions(output_dim);
@@ -1239,7 +1239,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
   if (user->opcode() == HloOpcode::kTranspose) {
     // Pick the user layout that makes the transpose a bitcast.
     int64_t rank = user->shape().rank();
-    std::vector<int64> new_minor_to_major(rank);
+    std::vector<int64_t> new_minor_to_major(rank);
     auto inverse_dimensions = InversePermutation(user->dimensions());
     for (int64_t i = 0; i < rank; ++i) {
       int64_t operand_dim = LayoutUtil::Minor(operand_layout, i);
@@ -1311,11 +1311,11 @@ namespace {
 
 // Returns a vector containing all array-shaped uses (instruction and operand
 // number) of the given logical buffer or its aliases.
-std::vector<std::pair<const HloInstruction*, int64>> GetArrayUsesOfBuffer(
+std::vector<std::pair<const HloInstruction*, int64_t>> GetArrayUsesOfBuffer(
     const LogicalBuffer& buffer,
     const TuplePointsToAnalysis& points_to_analysis) {
   CHECK(buffer.IsArray());
-  std::vector<std::pair<const HloInstruction*, int64>> uses;
+  std::vector<std::pair<const HloInstruction*, int64_t>> uses;
   for (const auto& buffer_alias : points_to_analysis.GetBufferAliases(buffer)) {
     if (!buffer_alias.instruction()->shape().IsArray()) {
       continue;

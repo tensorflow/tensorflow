@@ -97,7 +97,7 @@ class DynamicDimensionInference {
     ShapeIndex index;
     // The dimension number of the dynamic dimension at given index of a given
     // instruction.
-    int64 dim;
+    int64_t dim;
 
     // Artifacts needed to make this struct able to be used as a `key` in absl
     // maps. "friend" keywords are added so these functions can be found through

@@ -691,7 +691,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
                       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                           ->GetLocalDeviceState());
 
-  absl::InlinedVector<int64, 4> tmp_strides;
+  absl::InlinedVector<int64_t, 4> tmp_strides;
   if (!byte_strides) {
     tmp_strides.resize(dims.size());
     TF_RETURN_IF_ERROR(

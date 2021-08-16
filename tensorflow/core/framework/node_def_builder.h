@@ -113,7 +113,7 @@ class NodeDefBuilder {
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<string> value);
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<tstring> value);
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<int32> value);
-  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<int64> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<int64_t> value);
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<float> value);
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<bool> value);
   NodeDefBuilder& Attr(StringPiece name, const std::vector<bool>& value);

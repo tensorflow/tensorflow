@@ -22,16 +22,19 @@ limitations under the License.
 #include "mlir/ExecutionEngine/AsyncRuntime.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_request_context.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tfrt/cpu/jit/async_runtime.h"  // from @tf_runtime
 #include "tfrt/cpu/jit/async_runtime_api.h"  // from @tf_runtime
 #include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
+#include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
@@ -46,7 +49,6 @@ limitations under the License.
 #include "tfrt/support/string_util.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_metadata.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_shape.h"  // from @tf_runtime
-#include "tfrt/tracing/tracing.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt {
@@ -61,6 +63,7 @@ using ::tfrt::AsyncValuePtr;
 using ::tfrt::AsyncValueRef;
 using ::tfrt::Chain;
 using ::tfrt::CompilationUnitAttribute;
+using ::tfrt::DType;
 using ::tfrt::EnqueueWork;
 using ::tfrt::ExecutionContext;
 using ::tfrt::IndirectAsyncValue;
@@ -75,6 +78,7 @@ using ::tfrt::RepeatedArguments;
 using ::tfrt::RequestContext;
 using ::tfrt::StrCat;
 using ::tfrt::StringAttribute;
+using ::tfrt::TaskFunction;
 
 using ::tfrt::cpu::jit::CompilationOptions;
 using ::tfrt::cpu::jit::EmitErrors;
@@ -82,10 +86,13 @@ using ::tfrt::cpu::jit::Executable;
 using ::tfrt::cpu::jit::JitExecutable;
 using ::tfrt::cpu::jit::JitExecutableCache;
 using ::tfrt::cpu::jit::MemrefDesc;
+using ::tfrt::cpu::jit::OperandConstraint;
 using ::tfrt::cpu::jit::ReturnAsyncStridedMemref;
 using ::tfrt::cpu::jit::ReturnStridedMemref;
 using ::tfrt::cpu::jit::ReturnValueConverter;
 
+using ::tensorflow::profiler::TraceMe;
+using ::tensorflow::profiler::TraceMeEncode;
 using ::tensorflow::tfd::KernelFallbackCompatRequestState;
 using ::tensorflow::tfrt_stub::FallbackTensor;
 
@@ -112,6 +119,66 @@ static Expected<Eigen::ThreadPoolInterface*> GetWorkerThreads(
 // -------------------------------------------------------------------------- //
 // Compile compilation unit attribute to an executable result.
 // -------------------------------------------------------------------------- //
+
+// Prints memref descriptor as a tensor type: tensor<NxMxf32>.
+static std::string AsTensorType(const MemrefDesc& desc) {
+  std::string str;
+  llvm::raw_string_ostream os(str);
+
+  os << "tensor<";
+  for (ssize_t size : desc.sizes) os << size << "x";
+  os << desc.dtype;
+  os << ">";
+
+  return str;
+}
+
+// Print memref descriptor content to trace value specializations.
+static std::string AsTensorContent(const MemrefDesc& desc) {
+  std::string str;
+  llvm::raw_string_ostream os(str);
+
+  auto print_0d = [&](auto type_tag) {
+    os << desc.dtype << ": " << *static_cast<decltype(type_tag)*>(desc.data);
+  };
+
+  auto print_1d = [&](auto type_tag) {
+    os << desc.dtype << ": [";
+    for (size_t i = 0; i < desc.sizes[0]; ++i) {
+      if (i != 0) os << ",";
+      os << static_cast<decltype(type_tag)*>(desc.data)[i];
+    }
+    os << "]";
+  };
+
+  auto type_dispatch = [&](auto functor) {
+    switch (desc.dtype) {
+      case DType::I32:
+        functor(int32_t{});
+        break;
+      case DType::I64:
+        functor(int64_t{});
+        break;
+      default:
+        os << "<unsupported dtype " << desc.dtype << ">";
+    }
+  };
+
+  size_t rank = desc.sizes.size();
+
+  switch (rank) {
+    case 0:
+      type_dispatch(print_0d);
+      break;
+    case 1:
+      type_dispatch(print_1d);
+      break;
+    default:
+      os << "<unsupported rank " << desc.sizes.size() << ">";
+  }
+
+  return str;
+}
 
 static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     CompilationUnitAttribute kernel, const ExecutionContext& exec_ctx) {
@@ -152,8 +219,84 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // We lost the race; some other invocation will do the compilation.
   if (!entry.allocated) return entry.ptr;
 
+  // Attributes required for tracing compilation.
+  int64_t request_id = exec_ctx.request_ctx()->id();
+
+  // Compilation (specialized executable compilation) events should be rare, so
+  // we can afford to do detailed tracing for every compilation. If compilation
+  // events happen too often, it is a much larger problem than the excessive
+  // tracing.
+
+  // Custom runner for compiling specializations that enqueues compilation task
+  // into the host context work queue and adds tracing.
+  auto runner = [kernel, request_id](size_t num_specializations,
+                                     ArrayRef<OperandConstraint> constraints,
+                                     ArrayRef<MemrefDesc> operands,
+                                     TaskFunction compile,
+                                     const ExecutionContext& exec_ctx) {
+    assert(operands.size() == constraints.size());
+
+    // Prepare arguments for the compilation tracing in the caller thread,
+    // because operands lifetime is shorter than the compilation task.
+    using SpecializationArg = std::pair<std::string, std::string>;
+    llvm::SmallVector<SpecializationArg> args;
+    args.reserve(operands.size());
+
+    // Trace types of all operands of the specialization.
+    for (size_t i = 0; i < operands.size(); ++i)
+      args.emplace_back(StrCat("%arg", i, " type"), AsTensorType(operands[i]));
+
+    // Trace content of all operands that require value specializations.
+    for (size_t i = 0; i < constraints.size(); ++i) {
+      if (constraints[i] != OperandConstraint::kValue) continue;
+      args.emplace_back(StrCat("%arg", i, " value"),
+                        AsTensorContent(operands[i]));
+    }
+
+    // TODO(ezhulenev): BEF file that owns the CompilationUnitAttribute in
+    // theory can be unloaded before the completion of the compilation task.
+    // It can't happen right now, because we require specialized compilation to
+    // finish before returning the response, however for safety tracing
+    // attributes that require the kernel attribute should be constructed in the
+    // caller thread.
+
+    // Run the actual compilation asynchronously without blocking the caller.
+    EnqueueWork(exec_ctx, [request_id, kernel, num_specializations,
+                           compile = std::move(compile),
+                           args = std::move(args)]() mutable {
+      TraceMe trace_me([&] {
+        return TraceMeEncode("tf_cpurt.CompileSpecialization",
+                             {{"id", request_id},
+                              {"kernel_id", kernel.id()},
+                              {"executable", kernel.root_symbol()},
+                              {"num_specializations", num_specializations}});
+      });
+
+      for (SpecializationArg& arg : args) {
+        trace_me.AppendMetadata([&] {
+          return TraceMeEncode({{arg.first, arg.second}});
+        });
+      }
+
+      trace_me.AppendMetadata([&] {
+        return TraceMeEncode({{"src", kernel.serialized_operation()}});
+      });
+
+      compile();
+    });
+  };
+
   // Compile kernel asynchronously in the host context thread pool.
-  EnqueueWork(exec_ctx, [kernel, workers = *worker_threads, ptr = entry.ptr]() {
+  EnqueueWork(exec_ctx, [kernel, request_id, runner, workers = *worker_threads,
+                         ptr = entry.ptr]() {
+    TraceMe trace_me([&] {
+      return TraceMeEncode("tf_cpurt.CompileDefault",
+                           {{"id", request_id},
+                            {"kernel_id", kernel.id()},
+                            {"executable", kernel.root_symbol()},
+                            {"src", kernel.serialized_operation()}});
+    });
+
     CompilationOptions opts;
     // All entry memrefs must have alignment compatible with Tensorflow.
     opts.alignment = EIGEN_MAX_ALIGN_BYTES;  // Eigen included by tensor.h
@@ -166,7 +309,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Instantiate new JitExecutable from the MLIR source.
     Expected<JitExecutable> jit_executable =
-        JitExecutable::Instantiate(module, entrypoint, opts);
+        JitExecutable::Instantiate(module, entrypoint, opts, runner);
 
     // Set the entry async value state to error or concrete.
     if (auto err = jit_executable.takeError())
@@ -266,7 +409,13 @@ static void ExecuteImpl(Executable& executable,
                         RepeatedArguments<FallbackTensor> operands,
                         RemainingResults results,
                         const ExecutionContext& exec_ctx) {
-  TFRT_TRACE_SCOPE(Default, StrCat("tf_cpurt.Execute: @", executable.name()));
+  // Bind execution trace to the request context.
+  TraceMe trace_me([&] {
+    int64_t id = exec_ctx.request_ctx()->id();
+    absl::string_view name(executable.name().data(), executable.name().size());
+    return TraceMeEncode("tf_cpurt.Execute",
+                         {{"id", id}, {"executable", name}});
+  });
 
   // Keep track of memory address to tensor mapping for result conversion.
   auto ctx = std::make_unique<TensorflowConversionContext>(operands.size());

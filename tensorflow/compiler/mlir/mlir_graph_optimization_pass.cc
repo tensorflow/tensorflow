@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session_options.h"
@@ -231,14 +232,25 @@ Status MlirFunctionOptimizationPass::Run(
     Status pass_status = Status::OK();
     auto pass_state = per_pass_state[per_pass_state_index++];
     if (pass_state == MlirOptimizationPassState::Enabled) {
+      const uint64 pass_start_us = Env::Default()->NowMicros();
       pass_status = pass_registration.pass->Run(config_proto, *module_ref,
                                                 **graph, *flib_def);
+      const uint64 pass_end_us = Env::Default()->NowMicros();
+      metrics::UpdateMlirGraphOptimizationPassTime(name.str(),
+                                                   pass_end_us - pass_start_us);
     } else if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
       // Make sure when the pass is FallbackEnabled, it only modifies the MLIR
       // module in case of no failures.
       auto module_ref_clone = module_ref->clone();
+      const uint64 pass_start_us = Env::Default()->NowMicros();
       pass_status = pass_registration.pass->Run(config_proto, module_ref_clone,
                                                 **graph, *flib_def);
+      const uint64 pass_end_us = Env::Default()->NowMicros();
+      metrics::UpdateMlirGraphOptimizationPassTime(
+          formatv("{0}{1}", name, pass_status.ok() ? "" : "_fallback_failed")
+              .str(),
+          pass_end_us - pass_start_us);
+
       if (pass_status.ok())
         module_ref = module_ref_clone;
       else

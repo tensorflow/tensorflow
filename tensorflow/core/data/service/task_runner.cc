@@ -49,7 +49,7 @@ Status StandaloneTaskIterator::GetNext(std::vector<Tensor>& element,
   return iterator_->GetNext(&element, &end_of_sequence);
 }
 
-int64 StandaloneTaskIterator::Cardinality() const {
+int64_t StandaloneTaskIterator::Cardinality() const {
   return dataset_->Get()->Cardinality();
 }
 
@@ -191,7 +191,7 @@ Status RoundRobinTaskRunner::PreparePartialRound()
 Status RoundRobinTaskRunner::PrepareRound(const GetElementRequest& req) {
   mutex_lock l(mu_);
   first_round_ = std::min(first_round_, req.round_index());
-  absl::flat_hash_map<int64, const GetElementRequest*>& round =
+  absl::flat_hash_map<int64_t, const GetElementRequest*>& round =
       requests_[req.round_index()];
   round[req.consumer_index()] = &req;
   auto cleanup = gtl::MakeCleanup([&]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {

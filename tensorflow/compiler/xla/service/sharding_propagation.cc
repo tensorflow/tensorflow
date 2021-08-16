@@ -94,7 +94,7 @@ bool MaybeImproveInstructionSharding(HloSharding sharding,
     if (instruction->shape().IsArray() &&
         !instruction->sharding().IsTileMaximal() &&
         sharding.NumTiles() == sharding_tiles) {
-      std::vector<int64> diff_dims;
+      std::vector<int64_t> diff_dims;
       for (int64_t i = 0; i < instruction->shape().rank(); ++i) {
         if (instruction->sharding().tile_assignment().dim(i) ==
             sharding.tile_assignment().dim(i)) {
@@ -357,7 +357,7 @@ bool InferDotShardingFromOperands(
     if (operand_sharding.IsTileMaximal()) {
       return operand_sharding;
     }
-    std::vector<int64> contracting_dims;
+    std::vector<int64_t> contracting_dims;
     contracting_dims.reserve(dnums.contracting_dims.size());
     for (const auto& dim : dnums.contracting_dims) {
       contracting_dims.push_back(operand_index == 0 ? dim.lhs : dim.rhs);
@@ -375,8 +375,8 @@ bool InferDotShardingFromOperands(
     auto replicate_contracting_dims =
         hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
             operand_sharding, contracting_dims);
-    std::vector<int64> out_dims_to_op_perm(instruction->shape().rank(), -1);
-    std::vector<int64> op_dims_to_output_perm(operand->shape().rank(), -1);
+    std::vector<int64_t> out_dims_to_op_perm(instruction->shape().rank(), -1);
+    std::vector<int64_t> op_dims_to_output_perm(operand->shape().rank(), -1);
     for (const auto& dim : dnums.batch_dims) {
       out_dims_to_op_perm[dim.output] = operand_index == 0 ? dim.lhs : dim.rhs;
       op_dims_to_output_perm[operand_index == 0 ? dim.lhs : dim.rhs] =
@@ -418,16 +418,17 @@ bool InferGatherParallelShardingFromOperands(
     bool may_combine_partial_sharding) {
   auto from_operand = [instruction](
                           int64_t operand_index,
-                          absl::Span<const int64> output_aligned_parallel_dims,
-                          absl::Span<const int64> output_parallel_dims) {
+                          absl::Span<const int64_t>
+                              output_aligned_parallel_dims,
+                          absl::Span<const int64_t> output_parallel_dims) {
     const HloInstruction* operand = instruction->operand(operand_index);
     const HloSharding& operand_sharding = operand->sharding();
     if (operand_sharding.IsTileMaximal()) {
       return operand_sharding;
     }
     auto dnums = instruction->gather_dimension_numbers();
-    std::vector<int64> output_tile_dims(instruction->shape().rank(), 1);
-    std::vector<int64> index_non_parallel_dims;
+    std::vector<int64_t> output_tile_dims(instruction->shape().rank(), 1);
+    std::vector<int64_t> index_non_parallel_dims;
     index_non_parallel_dims.reserve(operand->shape().rank());
     // Detect non parallel dimensions in the index.
     for (int i = 0; i < operand->shape().rank(); ++i) {
@@ -532,7 +533,7 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
   const HloInstruction* lhs = instruction->operand(0);
   auto get_tiled_sharding_based_on_lhs = [&] {
     CHECK(!lhs->sharding().IsTileMaximal());
-    std::vector<int64> output_to_lhs_indices(instruction->shape().rank());
+    std::vector<int64_t> output_to_lhs_indices(instruction->shape().rank());
     output_to_lhs_indices[dnums.output_batch_dimension()] =
         dnums.input_batch_dimension();
     output_to_lhs_indices[dnums.output_feature_dimension()] =
@@ -586,6 +587,133 @@ bool CanPropagateThroughAtAgressiveLevel(const HloInstruction& inst,
     return false;
   }
   return true;
+}
+
+// Update instruction and operand's sharding to normal sharding if
+// their sharding is subgroup manual sharding.
+StatusOr<absl::optional<hlo_sharding_util::GroupedSharding>>
+UpdateOperandManualSharding(HloInstruction* instruction,
+                            std::vector<HloSharding>* operand_shardings) {
+  operand_shardings->reserve(instruction->operand_count());
+  absl::optional<hlo_sharding_util::GroupedSharding> result;
+
+  // Update instruction's sharding.
+  if (instruction->has_sharding() &&
+      instruction->sharding().IsManualSubgroup() &&
+      !instruction->sharding().IsTuple()) {
+    result =
+        hlo_sharding_util::GetManualSubgroupSharding(instruction->sharding());
+    instruction->set_sharding(result->sharding);
+  }
+
+  for (int i = 0; i < instruction->operand_count(); i++) {
+    if (instruction->operand(i)->has_sharding()) {
+      HloSharding operand_sharding = instruction->operand(i)->sharding();
+      if (operand_sharding.IsManualSubgroup() && !operand_sharding.IsTuple()) {
+        hlo_sharding_util::GroupedSharding group_operand_sharding =
+            hlo_sharding_util::GetManualSubgroupSharding(operand_sharding);
+        if (result) {
+          TF_RET_CHECK(hlo_sharding_util::DeviceGroupsAreMatch(
+              *result, group_operand_sharding))
+              << "Expect operand shardings to have the same device groups for "
+                 "manual subgroup sharding but got one operand's sharding "
+              << hlo_sharding_util::UngroupSharding(*result).ToString()
+              << " another operand's sharding is: "
+              << operand_sharding.ToString();
+        } else {
+          result = group_operand_sharding;
+        }
+        operand_shardings->push_back(operand_sharding);
+        // Update operand's sharding.
+        instruction->mutable_operand(i)->set_sharding(
+            group_operand_sharding.sharding);
+      } else {
+        operand_shardings->push_back(HloSharding::Replicate());
+      }
+    }
+  }
+  return result;
+}
+
+// Restore operand's sharding from normal sharding to manual subgroup sharding.
+void RestoreOperandManualSubShardings(
+    HloInstruction* instruction, std::vector<HloSharding>& operand_shardings) {
+  for (int i = 0; i < instruction->operand_count(); i++) {
+    if (instruction->operand(i)->has_sharding()) {
+      instruction->mutable_operand(i)->set_sharding(operand_shardings[i]);
+    }
+  }
+}
+
+// Restore instruction's sharding from normal sharding to manual subgroup
+// sharding.
+void RestoreManualSubgroupSharding(
+    HloInstruction* instruction,
+    const hlo_sharding_util::GroupedSharding& group_sharding) {
+  hlo_sharding_util::GroupedSharding new_group_sharding = group_sharding;
+  if (instruction->sharding().IsReplicated()) {
+    new_group_sharding.group_dims.back() = instruction->shape().rank() + 1;
+  } else {
+    new_group_sharding.group_dims.back() =
+        instruction->sharding().tile_assignment().num_dimensions();
+  }
+  new_group_sharding.data_rank = instruction->shape().rank();
+  new_group_sharding.sharding = instruction->sharding();
+  instruction->set_sharding(UngroupSharding(new_group_sharding));
+}
+
+// Update instruction and user's sharding to normal sharding if
+// their sharding is subgroup manual sharding.
+StatusOr<absl::optional<hlo_sharding_util::GroupedSharding>>
+UpdateUserManualSharding(HloInstruction* instruction,
+                         std::vector<HloSharding>* user_shardings) {
+  user_shardings->reserve(instruction->user_count());
+  absl::optional<hlo_sharding_util::GroupedSharding> result;
+
+  // Update instruction's sharding.
+  if (instruction->has_sharding() &&
+      instruction->sharding().IsManualSubgroup() &&
+      !instruction->sharding().IsTuple()) {
+    result =
+        hlo_sharding_util::GetManualSubgroupSharding(instruction->sharding());
+    instruction->set_sharding(result->sharding);
+  }
+
+  for (int i = 0; i < instruction->user_count(); i++) {
+    if (instruction->users()[i]->has_sharding()) {
+      HloSharding user_sharding = instruction->users()[i]->sharding();
+      if (user_sharding.IsManualSubgroup() && !user_sharding.IsTuple()) {
+        hlo_sharding_util::GroupedSharding group_user_sharding =
+            hlo_sharding_util::GetManualSubgroupSharding(user_sharding);
+        if (result) {
+          TF_RET_CHECK(hlo_sharding_util::DeviceGroupsAreMatch(
+              *result, group_user_sharding))
+              << "Expect user shardings to have the same device groups for "
+                 "manual subgroup sharding but got one user's sharding "
+              << hlo_sharding_util::UngroupSharding(*result).ToString()
+              << " another user's sharding is: " << user_sharding.ToString();
+        } else {
+          result = group_user_sharding;
+        }
+        user_shardings->push_back(user_sharding);
+        // Update user's sharding.
+        instruction->users()[i]->set_sharding(group_user_sharding.sharding);
+      } else {
+        user_shardings->push_back(HloSharding::Replicate());
+      }
+    }
+  }
+  return result;
+}
+
+// Restore user's sharding from normal sharding to manual subgroup sharding.
+void RestoreUserManualSubShardings(HloInstruction* instruction,
+                                   std::vector<HloSharding>& user_shardings) {
+  for (int i = 0; i < instruction->user_count(); i++) {
+    if (instruction->users()[i]->has_sharding()) {
+      instruction->users()[i]->set_sharding(user_shardings[i]);
+    }
+  }
 }
 
 // Tries to update the sharding of the specified instruction based on its
@@ -763,7 +891,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
       // The output will be tiled along the broadcasted dimension the same way
       // as the input for the broadcast while the other dimensions are kept
       // non-tiled.
-      std::vector<int64> target_tile_assignment_dimensions;
+      std::vector<int64_t> target_tile_assignment_dimensions;
       const auto& dimensions = instruction->dimensions();
       for (int64_t i = 0; i < instruction->shape().rank(); ++i) {
         auto it = absl::c_find(dimensions, i);
@@ -779,7 +907,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
         target_tile_assignment_dimensions.push_back(
             op->sharding().tile_assignment().dimensions().back());
       }
-      Array<int64> new_tile_assignment = op->sharding().tile_assignment();
+      Array<int64_t> new_tile_assignment = op->sharding().tile_assignment();
       new_tile_assignment.Reshape(target_tile_assignment_dimensions);
       HloSharding new_sharding =
           op->sharding().ReplicateOnLastTileDim()
@@ -979,7 +1107,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
               instruction, *gather_parallel_dims, may_combine_partial_sharding);
         }
         if (IsSpatiallyPartitioned(instruction->operand(0))) {
-          absl::Span<const int64> operand_parallel_dims;
+          absl::Span<const int64_t> operand_parallel_dims;
           if (gather_parallel_dims) {
             operand_parallel_dims = absl::MakeConstSpan(
                 gather_parallel_dims->operand_parallel_dims);
@@ -1065,8 +1193,8 @@ HloSharding InferDotOperandSharding(
     int64_t operand_index, bool may_combine_partial_sharding) {
   auto operand = instruction->operand(operand_index);
   auto other = instruction->operand(1 - operand_index);
-  std::vector<int64> output_dims_to_replicate;
-  std::vector<int64> other_operand_dims_to_replicate;
+  std::vector<int64_t> output_dims_to_replicate;
+  std::vector<int64_t> other_operand_dims_to_replicate;
   for (const auto& dim : operand_index == 0 ? dnums.rhs_non_contracting_dims
                                             : dnums.lhs_non_contracting_dims) {
     output_dims_to_replicate.push_back(dim.output);
@@ -1092,8 +1220,8 @@ HloSharding InferDotOperandSharding(
   auto output_other_dims_replicated =
       hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
           instruction->sharding(), output_dims_to_replicate);
-  std::vector<int64> output_to_operand_dims(instruction->shape().rank(), -1);
-  std::vector<int64> operand_to_output_dims(operand->shape().rank(), -1);
+  std::vector<int64_t> output_to_operand_dims(instruction->shape().rank(), -1);
+  std::vector<int64_t> operand_to_output_dims(operand->shape().rank(), -1);
   for (const auto& dim : dnums.batch_dims) {
     output_to_operand_dims[dim.output] = operand_index == 0 ? dim.lhs : dim.rhs;
     operand_to_output_dims[operand_index == 0 ? dim.lhs : dim.rhs] = dim.output;
@@ -1110,8 +1238,8 @@ HloSharding InferDotOperandSharding(
     auto other_operand_dims_replicated =
         hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
             other->sharding(), other_operand_dims_to_replicate);
-    std::vector<int64> other_to_operand_dims(other->shape().rank(), -1);
-    std::vector<int64> operand_to_other_dims(operand->shape().rank(), -1);
+    std::vector<int64_t> other_to_operand_dims(other->shape().rank(), -1);
+    std::vector<int64_t> operand_to_other_dims(operand->shape().rank(), -1);
     for (const auto& dim : dnums.batch_dims) {
       other_to_operand_dims[operand_index == 0 ? dim.rhs : dim.lhs] =
           operand_index == 0 ? dim.lhs : dim.rhs;
@@ -1153,7 +1281,7 @@ absl::optional<HloSharding> GetShardingFromUser(
       if (user.sharding().IsReplicated()) {
         return user.sharding();
       }
-      std::vector<int64> dims_to_replicate;
+      std::vector<int64_t> dims_to_replicate;
       bool needs_replication = false;
       for (int64_t i = 0; i < user.shape().rank(); ++i) {
         if (absl::c_count(user.dimensions(), i) == 0) {
@@ -1179,7 +1307,7 @@ absl::optional<HloSharding> GetShardingFromUser(
       }
 
       const int64_t cdim = user.concatenate_dimension();
-      const Array<int64>& tile_assignment = user.sharding().tile_assignment();
+      const Array<int64_t>& tile_assignment = user.sharding().tile_assignment();
       if (tile_assignment.dim(cdim) == 1) {
         // If we are concatenating along a non-sharded dimension then the
         // operands should have the same sharding as the result.
@@ -1203,8 +1331,8 @@ absl::optional<HloSharding> GetShardingFromUser(
       }
       const int64_t tile_shape = CeilOfRatio(
           user.shape().dimensions(cdim), tile_assignment.dimensions()[cdim]);
-      std::vector<int64> start_indices(tile_assignment.num_dimensions());
-      std::vector<int64> end_indices = tile_assignment.dimensions();
+      std::vector<int64_t> start_indices(tile_assignment.num_dimensions());
+      std::vector<int64_t> end_indices = tile_assignment.dimensions();
       start_indices[cdim] = start_offset / tile_shape;
       end_indices[cdim] = CeilOfRatio(
           start_offset + instruction.shape().dimensions(cdim), tile_shape);
@@ -1280,7 +1408,7 @@ absl::optional<HloSharding> GetShardingFromUser(
       // Calculate the dimension numbers for reversing the current transpose
       // and then use TransposeSharding to convert the output sharding to an
       // input sharding.
-      std::vector<int64> reverse_dimensions(user.dimensions().size());
+      std::vector<int64_t> reverse_dimensions(user.dimensions().size());
       for (int64_t i = 0; i < user.dimensions().size(); ++i) {
         reverse_dimensions[user.dimensions(i)] = i;
       }
@@ -1337,7 +1465,7 @@ absl::optional<HloSharding> GetShardingFromUser(
       if (user_sharding.IsTileMaximal()) {
         return user_sharding;
       }
-      std::vector<int64> target_tile_assignment_dimensions(
+      std::vector<int64_t> target_tile_assignment_dimensions(
           instruction.shape().rank() +
           (user_sharding.ReplicateOnLastTileDim() ? 1 : 0));
       const auto& dimensions = user.dimensions();
@@ -1591,8 +1719,8 @@ Status CheckAndUpdateDeviceAssignmentsInWhileBody(
   HloComputation* while_body = while_instruction->while_body();
   // Maps a device number to an instruction in the while_body with that
   // device assignment.
-  std::map<int64, HloInstruction*> devices_to_instructions;
-  absl::optional<int64> unique_device = absl::nullopt;
+  std::map<int64_t, HloInstruction*> devices_to_instructions;
+  absl::optional<int64_t> unique_device = absl::nullopt;
   HloInstruction* channel_instruction = nullptr;
 
   for (HloInstruction* instruction : while_body->instructions()) {
@@ -1836,10 +1964,17 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
             continue;
           }
           already_inferred_from_operands.insert(instruction);
+          std::vector<HloSharding> operand_shardings;
+          TF_ASSIGN_OR_RETURN(
+              auto group_sharding,
+              UpdateOperandManualSharding(instruction, &operand_shardings));
           if (InferShardingFromOperands(instruction, computation_map, is_spmd_,
                                         aggressiveness)) {
             ++inferred_from_operand_counter;
             any_changed = true;
+            if (group_sharding) {
+              RestoreManualSubgroupSharding(instruction, *group_sharding);
+            }
             VLOG(2) << "Add sharding (forward-pass): "
                     << instruction->ToString();
             absl::flat_hash_set<HloInstruction*> changed_in_comp_prop;
@@ -1849,6 +1984,12 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
               clear_cache(hlo);
             }
             changed_last_iter = true;
+          } else if (group_sharding && instruction->has_sharding()) {
+            RestoreManualSubgroupSharding(instruction, *group_sharding);
+          }
+
+          if (group_sharding) {
+            RestoreOperandManualSubShardings(instruction, operand_shardings);
           }
         }
 
@@ -1860,10 +2001,16 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
             continue;
           }
           already_inferred_from_users.insert(*it);
+          std::vector<HloSharding> user_shardings;
+          TF_ASSIGN_OR_RETURN(auto group_sharding,
+                              UpdateUserManualSharding(*it, &user_shardings));
           if (InferShardingFromUsers(*it, computation_map, aggressiveness,
                                      is_spmd_)) {
             ++inferred_from_user_counter;
             any_changed = true;
+            if (group_sharding) {
+              RestoreManualSubgroupSharding(*it, *group_sharding);
+            }
             VLOG(2) << "Add sharding (backward-pass): " << (*it)->ToString();
             absl::flat_hash_set<HloInstruction*> changed_in_comp_prop;
             maybe_computation_propagation(*it, &changed_in_comp_prop);
@@ -1872,6 +2019,12 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
               clear_cache(hlo);
             }
             changed_last_iter = true;
+          } else if (group_sharding && (*it)->has_sharding()) {
+            RestoreManualSubgroupSharding(*it, *group_sharding);
+          }
+
+          if (group_sharding) {
+            RestoreUserManualSubShardings(*it, user_shardings);
           }
         }
       }
@@ -1885,9 +2038,10 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
       VLOG(1) << "  aggressiveness: " << aggressiveness;
       ++iterations;
     }
+    return Status::OK();
   };
   for (int64_t aggressiveness = 0; aggressiveness < 4; ++aggressiveness) {
-    run_to_fix_point(aggressiveness);
+    TF_RETURN_IF_ERROR(run_to_fix_point(aggressiveness));
   }
 
   VLOG(1) << "Sharding propagation completed after " << iterations

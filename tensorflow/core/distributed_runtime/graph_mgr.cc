@@ -376,7 +376,7 @@ Status GraphMgr::RecvOutputs(const int64_t step_id, NamedTensors* out) {
     // Failing to fetch the outputs should not be possible, so rewrite the error
     // status to an INTERNAL error.
     s = errors::Internal("Failed to fetch outputs for step ", step_id,
-                         ". (Original error message: ", s.ToString(), ")");
+                         ". (Original error message: ", s.error_message(), ")");
   }
   size_t output_size = 0;
   for (auto& p : *out) {

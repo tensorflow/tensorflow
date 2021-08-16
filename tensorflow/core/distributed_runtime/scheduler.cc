@@ -172,7 +172,7 @@ Microseconds SlackAnalysis::ComputeAlap(std::vector<Microseconds>* alap_times) {
   return (*alap_times)[graph_->source_node()->id()];
 }
 
-void SlackAnalysis::ComputeSlack(std::vector<int64>* slacks) {
+void SlackAnalysis::ComputeSlack(std::vector<int64_t>* slacks) {
   std::vector<Microseconds> asap_times;
   std::vector<Microseconds> alap_times;
   ComputeAsap(&asap_times);
@@ -188,7 +188,7 @@ void SlackAnalysis::ComputeSlack(std::vector<int64>* slacks) {
 
 GreedyScheduler::GreedyScheduler(const DeviceSet* devices,
                                  const CostModel* cost_model, const Graph* g,
-                                 std::vector<int64>* priority)
+                                 std::vector<int64_t>* priority)
     : devices_(devices),
       cost_model_(cost_model),
       graph_(g),
@@ -297,7 +297,7 @@ PriorityScheduler::PriorityScheduler(const DeviceSet* devices,
 
 Microseconds PriorityScheduler::ComputeSchedule(
     std::vector<Microseconds>* start_times) {
-  std::vector<int64> slacks;
+  std::vector<int64_t> slacks;
   SlackAnalysis slack(graph_, cost_model_);
   slack.ComputeSlack(&slacks);
   GreedyScheduler greedysched(devices_, cost_model_, graph_, &slacks);
@@ -305,7 +305,7 @@ Microseconds PriorityScheduler::ComputeSchedule(
 }
 
 Microseconds PriorityScheduler::AssignPriorities(
-    std::vector<int64>* priorities) {
+    std::vector<int64_t>* priorities) {
   std::vector<Microseconds> start_times;
   Microseconds makespan = ComputeSchedule(&start_times);
 

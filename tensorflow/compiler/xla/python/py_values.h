@@ -71,12 +71,12 @@ bool IsFloat0(pybind11::array arg);
 
 // Describes the abstract shape and dtype of an argument.
 struct PyArgSignature {
-  PyArgSignature(PrimitiveType dtype, absl::Span<const int64> shape,
+  PyArgSignature(PrimitiveType dtype, absl::Span<const int64_t> shape,
                  bool weak_type)
       : dtype(dtype), shape(shape.begin(), shape.end()), weak_type(weak_type) {}
   // This is the XLA dtype of the object.
   const PrimitiveType dtype;
-  const absl::InlinedVector<int64, 4> shape;
+  const absl::InlinedVector<int64_t, 4> shape;
   // JAX arguments can be of weak type, if and only if they are Python scalars
   // or `DeviceArray` values such that `aval.weak_type` is true.
   const bool weak_type;

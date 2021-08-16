@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/bef_thunk.h"
 
+#include <string>
+
 #include "tensorflow/core/platform/errors.h"
 
 #if BEF_THUNKS
@@ -30,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/tfrt/gpu/gpu_shared_context.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/device_memory.h"
@@ -89,27 +90,33 @@ struct CoreRuntimeAndWorkQueue {
 class BefThunk : public Thunk {
  public:
   BefThunk(Thunk::Kind kind, ThunkInfo thunk_info,
-           std::vector<BufferAllocation::Slice> inputs,
-           std::vector<BufferAllocation::Slice> outputs,
+           std::vector<BufferAllocation::Slice> buffers,
            tfrt::BefBuffer bef_buffer,
            tfrt::RCReference<tfrt::BEFFile> bef_file, mlir::Operation* op)
       : Thunk(kind, thunk_info),
-        inputs_(std::move(inputs)),
-        outputs_(std::move(outputs)),
+        buffers_(std::move(buffers)),
         bef_buffer_(std::move(bef_buffer)),
         bef_file_(std::move(bef_file)) {
     // TODO(hanbinyoon): Also handle other collective ops.
+    if (auto all_gather_op = mlir::dyn_cast<mlir::lmhlo::AllGatherOp>(*op)) {
+      xccl_config_ = GetNcclCollectiveConfigForMlir(
+          all_gather_op, all_gather_op.use_global_device_ids());
+    }
     if (auto all_reduce_op = mlir::dyn_cast<mlir::lmhlo::AllReduceOp>(*op)) {
       xccl_config_ = GetNcclCollectiveConfigForMlir(
           all_reduce_op, all_reduce_op.use_global_device_ids());
+    }
+    if (auto reduce_scatter_op =
+            mlir::dyn_cast<mlir::lmhlo::ReduceScatterOp>(*op)) {
+      xccl_config_ = GetNcclCollectiveConfigForMlir(
+          reduce_scatter_op, reduce_scatter_op.use_global_device_ids());
     }
   }
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  std::vector<BufferAllocation::Slice> inputs_;
-  std::vector<BufferAllocation::Slice> outputs_;
+  const std::vector<BufferAllocation::Slice> buffers_;
   tfrt::BefBuffer bef_buffer_;
   tfrt::RCReference<tfrt::BEFFile> bef_file_;
   absl::optional<NcclCollectiveConfig> xccl_config_;
@@ -169,6 +176,15 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
   if (mlir::isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(op)) {
     return Thunk::Kind::kGemm;
   }
+  if (mlir::isa<mlir::lmhlo::AllGatherOp>(op)) {
+    return Thunk::Kind::kNcclAllGather;
+  }
+  if (mlir::isa<mlir::lmhlo::AllReduceOp>(op)) {
+    return Thunk::Kind::kNcclAllReduce;
+  }
+  if (mlir::isa<mlir::lmhlo::ReduceScatterOp>(op)) {
+    return Thunk::Kind::kNcclReduceScatter;
+  }
   return tensorflow::errors::Unimplemented(
       "Operation is not supported by BefThunk.");
 }
@@ -216,8 +232,8 @@ static StatusOr<CoreRuntimeAndWorkQueue> GetCoreRuntimeAndWorkQueue() {
 
 StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
     Thunk::ThunkInfo thunk_info, mlir::Operation* op,
-    std::vector<BufferAllocation::Slice> inputs,
-    std::vector<BufferAllocation::Slice> outputs) {
+    absl::Span<const BufferAllocation::Slice> inputs,
+    absl::Span<const BufferAllocation::Slice> outputs) {
   TF_ASSIGN_OR_RETURN(auto kind, GetThunkKind(op));
   auto module = CreateModule(op);
   TF_ASSIGN_OR_RETURN(tfrt::BefBuffer bef_buffer, ConvertToBef(*module));
@@ -229,8 +245,12 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
   if (!bef_file)
     return tensorflow::errors::Internal("Failed to load BEF file.");
 
+  std::vector<BufferAllocation::Slice> arg_buffers;
+  arg_buffers.insert(arg_buffers.end(), inputs.begin(), inputs.end());
+  arg_buffers.insert(arg_buffers.end(), outputs.begin(), outputs.end());
+
   return std::unique_ptr<Thunk>(
-      new BefThunk(kind, thunk_info, std::move(inputs), std::move(outputs),
+      new BefThunk(kind, thunk_info, std::move(arg_buffers),
                    std::move(bef_buffer), std::move(bef_file), op));
 }
 
@@ -265,9 +285,38 @@ static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
       std::move(*buffer));
 }
 
-static Status CreateXcclContext(
-    const Thunk::ExecuteParams& params, const NcclCollectiveConfig& xccl_config,
-    tfrt::RequestContextBuilder* request_context_builder) {
+static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
+    std::function<Status(tfrt::RequestContextBuilder&)> build_request_context) {
+  TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
+  tfrt::RequestContextBuilder request_context_builder(
+      runtime_and_queue.core_runtime->GetHostContext(),
+      /*resource_context=*/nullptr);
+  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
+  TF_RETURN_IF_ERROR(runtime_and_queue.work_queue->InitializeRequest(
+      &request_context_builder, &intra_op_threadpool));
+
+  TF_RETURN_IF_ERROR(build_request_context(request_context_builder));
+
+  auto expected_req_ctx = std::move(request_context_builder).build();
+  if (!expected_req_ctx) {
+    auto error = expected_req_ctx.takeError();
+    return tensorflow::errors::Internal(llvm::toString(std::move(error)));
+  }
+  return std::make_unique<tfrt::ExecutionContext>(std::move(*expected_req_ctx));
+}
+
+static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
+CreateDefaultExecutionContext() {
+  return CreateExecutionContext(
+      [](tfrt::RequestContextBuilder& request_context_builder) {
+        return Status::OK();
+      });
+}
+
+static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
+CreateXcclExecutionContext(const Thunk::ExecuteParams& params,
+                           const NcclCollectiveConfig& xccl_config,
+                           StatusOr<LockedNcclClique>* locked_clique_or) {
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
   TF_ASSIGN_OR_RETURN(std::vector<GlobalDeviceId> participants,
@@ -284,42 +333,24 @@ static Status CreateXcclContext(
   TF_ASSIGN_OR_RETURN(
       std::vector<LocalParticipant> local_participants,
       GetLocalParticipants(participants, params.gpu_global_device_ids));
-  absl::flat_hash_map<tfrt::gpu::GpuSharedContext::LocalDeviceIdentifier, int>
-      local_ids_to_rank;
-  for (const auto& participant : local_participants) {
-    local_ids_to_rank[participant.device_ordinal] = participant.rank;
-  }
+  const RendezvousKey rendezvous_key(
+      params.run_id, std::move(participants), local_participants.size(),
+      xccl_config.collective_op_kind, xccl_config.op_id);
+  int device_ordinal = params.stream->parent()->device_ordinal();
+  NcclCliqueParticipantData participant(rendezvous_key, device_ordinal,
+                                        params.stream);
+  *locked_clique_or = AcquireNcclClique(participant, local_participants,
+                                        params.nccl_unique_id_callback);
 
-  std::vector<int64> gpu_global_device_ids;
-  if (params.gpu_global_device_ids != nullptr) {
-    for (const auto& global_device_id : *params.gpu_global_device_ids) {
-      gpu_global_device_ids.push_back(global_device_id.value());
-    }
+  if (!locked_clique_or->ok()) {
+    return locked_clique_or->status();
   }
-
-  tfrt::gpu::XcclUniqueIdCallback xccl_unique_id_callback;
-  if (params.nccl_unique_id_callback != nullptr) {
-    xccl_unique_id_callback = [&](const tfrt::gpu::XcclCliqueKey& kernel_key)
-        -> llvm::Expected<std::string> {
-      std::vector<GlobalDeviceId> devices;
-      for (const int64_t device : kernel_key) {
-        devices.push_back(GlobalDeviceId(device));
-      }
-      auto nccl_unique_id_or =
-          (*params.nccl_unique_id_callback)(NcclCliqueKey(devices));
-      if (!nccl_unique_id_or.ok()) {
-        return tfrt::MakeStringError(
-            nccl_unique_id_or.status().error_message());
-      }
-      return nccl_unique_id_or.ValueOrDie();
-    };
-  }
-
-  request_context_builder->context_data().emplace<tfrt::gpu::GpuSharedContext>(
-      params.run_id.ToInt(), std::move(local_ids_to_rank),
-      std::move(gpu_global_device_ids), std::move(xccl_unique_id_callback),
-      /*compiled_code=*/nullptr);
-  return Status::OK();
+  return CreateExecutionContext(
+      [&](tfrt::RequestContextBuilder& request_context_builder) {
+        request_context_builder.context_data().emplace<XcclContext>(
+            locked_clique_or->ValueOrDie().clique);
+        return Status::OK();
+      });
 }
 
 Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -333,38 +364,28 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   // Create execution context.
-  TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
-  tfrt::RequestContextBuilder request_context_builder(
-      runtime_and_queue.core_runtime->GetHostContext(),
-      /*resource_context=*/nullptr);
-  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-  TF_RETURN_IF_ERROR(runtime_and_queue.work_queue->InitializeRequest(
-      &request_context_builder, &intra_op_threadpool));
+  std::unique_ptr<tfrt::ExecutionContext> exec_ctx;
+  StatusOr<LockedNcclClique> locked_clique_or;  // Destruction = freeing lock.
   if (xccl_config_.has_value()) {
-    TF_RETURN_IF_ERROR(
-        CreateXcclContext(params, *xccl_config_, &request_context_builder));
+    TF_ASSIGN_OR_RETURN(
+        exec_ctx,
+        CreateXcclExecutionContext(params, *xccl_config_, &locked_clique_or));
+  } else {
+    TF_ASSIGN_OR_RETURN(exec_ctx, CreateDefaultExecutionContext());
   }
-  auto expected_req_ctx = std::move(request_context_builder).build();
-  if (!expected_req_ctx) {
-    auto error = expected_req_ctx.takeError();
-    return tensorflow::errors::Internal(llvm::toString(std::move(error)));
-  }
-  tfrt::ExecutionContext exec_ctx(std::move(*expected_req_ctx));
 
   // Create owning handles for arguments and add pointer to them to 'args'.
   tfrt::SmallVector<tfrt::AsyncValue*, 8> args;
   args.reserve(function->num_arguments());
-  tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain(exec_ctx.host());
+  tfrt::AsyncValueRef<tfrt::Chain> chain =
+      tfrt::GetReadyChain(exec_ctx->host());
   args.push_back(chain.GetAsyncValue());
   tfrt::gpu::BorrowedGpuStream stream = CreateGpuStream(params);
   args.push_back(static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(stream)
                      .GetAsyncValue());
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 8> buffers;
-  for (auto input : inputs_) {
-    buffers.push_back(CreateGpuBuffer(params, input));
-  }
-  for (auto output : outputs_) {
-    buffers.push_back(CreateGpuBuffer(params, output));
+  for (auto& buffer : buffers_) {
+    buffers.push_back(CreateGpuBuffer(params, buffer));
   }
   for (auto& buffer : buffers) {
     args.push_back(buffer.get());
@@ -378,10 +399,17 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
     return tensorflow::errors::Internal("Unexpected result count.");
 
   // Execute the function.
-  function->Execute(exec_ctx, args, {result});
+  function->Execute(*exec_ctx, args, {result});
 
   // Wait for async execution to complete.
-  tfrt::Await(exec_ctx, llvm::makeArrayRef(result));
+  tfrt::Await(*exec_ctx, llvm::makeArrayRef(result));
+
+  if (xccl_config_.has_value()) {
+    auto& xccl_ctx = exec_ctx->request_ctx()->GetData<XcclContext>();
+    // Release the ownership of comms lent to tfrt::gpu::GpuCclHandle.
+    xccl_ctx.ccl_handle->release();
+    xccl_ctx.ccl_handle.reset();
+  }
 
   // Report error if any.
   if (auto* error = result->GetErrorIfPresent())
@@ -398,8 +426,9 @@ namespace xla {
 bool gpu::IsBefThunkEnabled() { return false; }
 
 StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefThunk(
-    Thunk::ThunkInfo, mlir::Operation*, std::vector<BufferAllocation::Slice>,
-    std::vector<BufferAllocation::Slice>) {
+    Thunk::ThunkInfo, mlir::Operation*,
+    absl::Span<const BufferAllocation::Slice>,
+    absl::Span<const BufferAllocation::Slice>) {
   return tensorflow::errors::FailedPrecondition("BefThunks are disabled.");
 }
 

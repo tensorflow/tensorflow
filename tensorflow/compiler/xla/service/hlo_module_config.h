@@ -59,7 +59,7 @@ class HloModuleConfig {
   // invoke the main program, and finally invoke the unsharding program before
   // they are used in full-shape.
   struct ShardableValueUpdatePair {
-    int64 input_parameter_number;
+    int64_t input_parameter_number;
     ShapeIndex parameter_shape_index;
     ShapeIndex output_shape_index;
   };
@@ -127,12 +127,12 @@ class HloModuleConfig {
   void set_replica_count(int64_t replica_count) {
     replica_count_ = replica_count;
   }
-  int64 replica_count() const { return replica_count_; }
+  int64_t replica_count() const { return replica_count_; }
 
   void set_num_partitions(int64_t num_partitions) {
     num_partitions_ = num_partitions;
   }
-  int64 num_partitions() const { return num_partitions_; }
+  int64_t num_partitions() const { return num_partitions_; }
 
   const std::vector<bool> param_requires_broadcast_via_collectives() const {
     return param_requires_broadcast_via_collectives_;
@@ -177,7 +177,7 @@ class HloModuleConfig {
       const int intra_op_parallelism_threads) {
     intra_op_parallelism_threads_ = intra_op_parallelism_threads;
   }
-  int64 intra_op_parallelism_threads() const {
+  int64_t intra_op_parallelism_threads() const {
     return intra_op_parallelism_threads_;
   }
 
@@ -234,17 +234,19 @@ class HloModuleConfig {
     return &fusion_config_;
   }
 
-  const std::vector<std::vector<int64>>& dot_config() const {
+  const std::vector<std::vector<int64_t>>& dot_config() const {
     return dot_config_;
   }
 
-  std::vector<std::vector<int64>>* mutable_dot_config() { return &dot_config_; }
+  std::vector<std::vector<int64_t>>* mutable_dot_config() {
+    return &dot_config_;
+  }
 
-  const std::vector<std::vector<std::vector<int64>>>& layout_config() const {
+  const std::vector<std::vector<std::vector<int64_t>>>& layout_config() const {
     return layout_config_;
   }
 
-  std::vector<std::vector<std::vector<int64>>>* mutable_layout_config() {
+  std::vector<std::vector<std::vector<int64_t>>>* mutable_layout_config() {
     return &layout_config_;
   }
 
@@ -271,10 +273,10 @@ class HloModuleConfig {
   int32 launch_id_ = 0;
 
   // The number of replicas (data parallelism) to compile this binary for.
-  int64 replica_count_ = 1;
+  int64_t replica_count_ = 1;
 
   // The number of partitions (model parallelism) to compile this binary for.
-  int64 num_partitions_ = 1;
+  int64_t num_partitions_ = 1;
 
   // Whether to broadcast args across all replicas. One entry per arg.
   std::vector<bool> param_requires_broadcast_via_collectives_;
@@ -289,7 +291,7 @@ class HloModuleConfig {
 
   // The target maximum parallelism at which to partition HLOs for parallel
   // execution on the CPU backend.
-  int64 intra_op_parallelism_threads_ = -1;
+  int64_t intra_op_parallelism_threads_ = -1;
 
   string device_type_;
 
@@ -317,11 +319,11 @@ class HloModuleConfig {
   // Custom dot canonicalization configuration, where dot_config_[v] control
   // how to convert dot operation v (sorted topologically and by computation) to
   // convolution.
-  std::vector<std::vector<int64>> dot_config_;
+  std::vector<std::vector<int64_t>> dot_config_;
 
   // Layout configuration, where layout_config_[v][i] controls the layout
   // decision i of operation v.
-  std::vector<std::vector<std::vector<int64>>> layout_config_;
+  std::vector<std::vector<std::vector<int64_t>>> layout_config_;
 
   // Phase ordering configuration, where phase_ordering_config[v][i] controls
   // whether a specific pass with index i (e.g. 0 = DCE, 1 = CSE, etc.) is

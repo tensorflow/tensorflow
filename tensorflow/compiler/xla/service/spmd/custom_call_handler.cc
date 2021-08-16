@@ -41,11 +41,11 @@ namespace spmd {
 
 namespace {
 
-StatusOr<absl::flat_hash_map<string, int64>> ParseOpaqueAsAttributes(
+StatusOr<absl::flat_hash_map<string, int64_t>> ParseOpaqueAsAttributes(
     const HloInstruction* hlo) {
   absl::string_view opaque = Cast<HloCustomCallInstruction>(hlo)->opaque();
   HloLexer lexer(opaque);
-  absl::flat_hash_map<string, int64> result;
+  absl::flat_hash_map<string, int64_t> result;
   while (lexer.Lex() != TokKind::kEof) {
     if (lexer.GetKind() != TokKind::kAttributeName) {
       return InvalidArgument("Expects attribute name, %s", opaque);
@@ -106,7 +106,8 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
   auto replicated_sharding = HloSharding::Replicate();
   // If batch dimension is partitioned, partial replicated on sort dimension.
   if (batch_dim_partition > 1) {
-    auto sharding_grouped = GroupShardingOnDims(sharding, {batch_dim});
+    auto sharding_grouped =
+        hlo_sharding_util::GroupShardingOnDims(sharding, {batch_dim});
     partition_state = CreatePerGroupPartitioningState(
         partitioned_input.state(), sharding_grouped.device_groups,
         partitioned_input.state().b);
@@ -287,24 +288,24 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
       HloInstruction* halo = input.hlo();
       if (halo_size != shard_size) {
         halo_shape.set_dimensions(dim, halo_size);
-        std::vector<int64> slice_starts(hlo->shape().rank(), 0);
+        std::vector<int64_t> slice_starts(hlo->shape().rank(), 0);
         slice_starts[dim] = offset_in_shard;
-        std::vector<int64> slice_limits(
+        std::vector<int64_t> slice_limits(
             input.hlo()->shape().dimensions().begin(),
             input.hlo()->shape().dimensions().end());
         slice_limits[dim] = offset_in_shard + halo_size;
         halo = b_.AddInstruction(HloInstruction::CreateSlice(
             halo_shape, halo, slice_starts, slice_limits,
-            std::vector<int64>(halo_shape.rank(), 1)));
+            std::vector<int64_t>(halo_shape.rank(), 1)));
       }
       if (shard_distance != 0) {
-        std::vector<std::pair<int64, int64>> pairs;
+        std::vector<std::pair<int64_t, int64_t>> pairs;
         hlo->sharding().tile_assignment().Each(
-            [&](absl::Span<const int64> indices, int64_t device) {
+            [&](absl::Span<const int64_t> indices, int64_t device) {
               if (indices[dim] >= participating_shards) {
                 return;
               }
-              std::vector<int64> dst_idx(indices.begin(), indices.end());
+              std::vector<int64_t> dst_idx(indices.begin(), indices.end());
               dst_idx[dim] += shard_distance;
               dst_idx[dim] %= participating_shards;
               pairs.emplace_back(device,

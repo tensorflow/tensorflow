@@ -96,7 +96,7 @@ class GpuExecutable : public Executable {
   explicit GpuExecutable(Params params);
   ~GpuExecutable() override;
 
-  int64 SizeOfGeneratedCodeInBytes() const override;
+  int64_t SizeOfGeneratedCodeInBytes() const override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }

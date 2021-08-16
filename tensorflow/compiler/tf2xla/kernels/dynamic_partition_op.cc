@@ -112,7 +112,7 @@ class DynamicPartitionOp : public XlaOpKernel {
     xla::Shape partition_shape = ctx->InputXlaShape(1).ConsumeValueOrDie();
     xla::XlaOp data = ctx->Input(0);
     xla::XlaOp partitions = ctx->Input(1);
-    std::vector<int64> partitions_static;
+    std::vector<int64_t> partitions_static;
     bool partitions_are_static =
         ctx->ConstantInputReshapedToIntVector(1, &partitions_static).ok();
     // We know how to solve DynamicPartition on 1D inputs using
@@ -130,7 +130,7 @@ class DynamicPartitionOp : public XlaOpKernel {
     // shape.
     if (data_shape.rank() > partition_shape.rank()) {
       // Broadcast parititon_shape so that it can be the same as data_shape.
-      std::vector<int64> broadcasted_dims;
+      std::vector<int64_t> broadcasted_dims;
       for (int64_t i = 0; i < partition_shape.rank(); ++i) {
         broadcasted_dims.push_back(i);
       }
@@ -142,7 +142,7 @@ class DynamicPartitionOp : public XlaOpKernel {
     // [count(partitions)] + data.shape[partitions.ndim:]
     // See also the output shape calculation at
     // https://www.tensorflow.org/api_docs/python/tf/dynamic_partition
-    std::vector<int64> output_shape_bound_dims;
+    std::vector<int64_t> output_shape_bound_dims;
     output_shape_bound_dims.push_back(
         xla::ShapeUtil::ElementsIn(partition_shape));
     int64_t count_diff = 1;
@@ -182,7 +182,7 @@ class DynamicPartitionOp : public XlaOpKernel {
   }
 
  private:
-  int64 num_partitions_;
+  int64_t num_partitions_;
 };
 
 REGISTER_XLA_OP(Name("DynamicPartition"), DynamicPartitionOp);

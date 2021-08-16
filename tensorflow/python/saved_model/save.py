@@ -53,6 +53,7 @@ from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import pywrap_saved_model
+from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
@@ -138,14 +139,13 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
         # when saving) should not have naming conflicts with dependencies
         # defined by the user.
         if name != signature_serialization.SIGNATURE_ATTRIBUTE_NAME:
+          obj_identifier = obj._object_identifier  # pylint: disable=protected-access
           raise ValueError(
-              "Error when exporting object {} of with identifier={}. The object"
-              " has an attribute named {}, which is reserved. List of all "
-              "reserved attributes: {}".format(
-                  obj,
-                  obj._object_identifier,  # pylint: disable=protected-access
-                  name,
-                  extra_dependencies.keys()))
+              f"Error when exporting object {obj} with identifier "
+              f"'{obj_identifier}'. The object has an attribute named "
+              f"'{name}', which is reserved. List of all reserved attributes: "
+              f"{list(extra_dependencies.keys())}")
+
         yield base.TrackableReference(name, extra_dependencies[name])
       else:
         yield base.TrackableReference(name, dep)
@@ -369,9 +369,9 @@ class _SaveableView(object):
     for concrete_function in self.concrete_functions:
       if not concrete_function.graph.saveable:
         raise ValueError(
-            ("Unable to save function {name} for the following reason(s):\n" +
-             "\n".join(concrete_function.graph.saving_errors)).format(
-                 name=concrete_function.name))
+            (f"Unable to save function {concrete_function.name} for the "
+             "following reason(s):\n" +
+             "\n".join(concrete_function.graph.saving_errors)))
       for capture in concrete_function.captured_inputs:
         if (tensor_util.is_tf_type(capture) and
             capture.dtype not in _UNCOPIABLE_DTYPES and
@@ -387,10 +387,9 @@ class _SaveableView(object):
           capture_constant_value = tensor_util.constant_value(capture)
           if capture_constant_value is None:
             raise ValueError(
-                "Unable to save function {name} because it captures graph "
-                "tensor {capture} from a parent function which cannot be "
-                "converted to a constant with `tf.get_static_value`.".format(
-                    name=concrete_function.name, capture=capture))
+                f"Unable to save function {concrete_function.name} because it "
+                f"captures graph tensor {capture} from a parent function which "
+                "cannot be converted to a constant with `tf.get_static_value`.")
 
           if numpy.prod(capture.shape.as_list()) > 1 and numpy.all(
               capture_constant_value == capture_constant_value.flat[0]):
@@ -467,14 +466,13 @@ def _map_captures_to_created_tensors(original_captures, resource_map):
           if isinstance(secondary_referrer, base.Trackable):
             trackable_referrers.append(secondary_referrer)
       raise AssertionError(
-          ("Tried to export a function which references untracked resource {}. "
-           "TensorFlow objects (e.g. tf.Variable) captured by functions must "
-           "be tracked by assigning them to an attribute of a tracked object "
-           "or assigned to an attribute of the main object directly.\n\n"
-           "Trackable Python objects referring to this tensor "
-           "(from gc.get_referrers, limited to two hops):\n{}"
-          ).format(interior,
-                   "\n".join([repr(obj) for obj in trackable_referrers])))
+          "Tried to export a function which references 'untracked' resource "
+          f"{interior}. TensorFlow objects (e.g. tf.Variable) captured by "
+          "functions must be 'tracked' by assigning them to an attribute of a "
+          "tracked object or assigned to an attribute of the main object "
+          "directly.\n\n Trackable Python objects referring to this tensor "
+          "(from gc.get_referrers, limited to two hops):\n{}".format("\n".join(
+              [repr(obj) for obj in trackable_referrers])))
     export_captures.append(mapped_resource)
   return export_captures
 
@@ -550,15 +548,16 @@ def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
       # This should be unreachable, since concrete functions may not be
       # generated with non-unique argument names.
       raise ValueError(
-          ("Got non-flat/non-unique argument names for SavedModel "
-           "signature '{}': more than one argument to '{}' was named '{}'. "
-           "Signatures have one Tensor per named input, so to have "
-           "predictable names Python functions used to generate these "
-           "signatures should avoid *args and Tensors in nested "
-           "structures unless unique names are specified for each. Use "
-           "tf.TensorSpec(..., name=...) to provide a name for a Tensor "
-           "input.").format(signature_key, compat.as_str_any(function_name),
-                            user_input_name))
+          "Got non-flat/non-unique argument names for SavedModel signature "
+          f"'{signature_key}': more than one argument to "
+          f"'{compat.as_str_any(function_name)}' was named "
+          f"'{user_input_name}'. "
+          "Signatures have one Tensor per named input, so to have "
+          "predictable names Python functions used to generate these "
+          "signatures should avoid *args and Tensors in nested "
+          "structures unless unique names are specified for each. Use "
+          "tf.TensorSpec(..., name=...) to provide a name for a Tensor "
+          "input.")
     arg_placeholder = array_ops.placeholder(
         shape=placeholder.shape,
         dtype=placeholder.dtype,
@@ -756,11 +755,11 @@ def _trace_gradient_functions(graph, saveable_view):
         raise ValueError(
             "Error when tracing gradients for SavedModel.\n\n"
             "See the stack trace above to see the error that was raised when "
-            "converting a gradient function to tf.function. You may need to "
-            "update the custom gradient, or disable saving gradients with the "
-            "option tf.saved_model.SaveOptions(custom_gradients=False).\n"
-            "\tProblematic op name: {}\n\tGradient inputs: {}".format(
-                op.name, op.inputs)) from exc
+            "converting a gradient function to a concrete function. You may "
+            "need to update the custom gradient, or disable saving gradients "
+            "with the option tf.saved_model.SaveOptions(custom_gradients=False)"
+            f".\n\tProblematic op name: {op.name}\n\tGradient inputs: "
+            f"{op.inputs}") from exc
 
       # The gradient function will capture all intermediate values. These
       # captures be serialized so that they can be re-bound to the function when
@@ -777,8 +776,8 @@ def _trace_gradient_functions(graph, saveable_view):
             fn, capture, func_graph_map)
         if outer_fn is None or isinstance(outer_capture, ops.EagerTensor):
           if outer_capture not in saveable_view.captured_tensor_node_ids:
-            raise ValueError("Error when saving custom gradients: "
-                             "invalid capture {}".format(outer_capture))
+            raise ValueError(f"Found invalid capture {outer_capture} when "
+                             "saving custom gradients.")
           saveable_view.captured_tensor_node_ids[capture] = (
               saveable_view.captured_tensor_node_ids[outer_capture])
         elif outer_capture.graph is outer_fn.graph:
@@ -801,9 +800,9 @@ def _trace_gradient_functions(graph, saveable_view):
         grad_fn.add_to_graph(graph)
       else:
         raise ValueError(
-            "Can't save custom gradient {} called in function {} because "
-            "SavedModel is not yet able to serialize the captured inputs: {}"
-            .format(op_type, fn, bad_captures))
+            f"Cannot save custom gradient {op_type} called in function {fn} "
+            "because SavedModel is unable to serialize the captured "
+            f"inputs: {bad_captures}")
 
       saveable_view.gradient_functions.append(grad_fn)
       func_graph_map[grad_fn.graph] = grad_fn
@@ -905,7 +904,23 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
 
 
 def _verify_ops(graph_def, namespace_whitelist):
-  """Verifies that all namespaced ops in the graph are whitelisted."""
+  """Verifies that all namespaced ops in the graph are whitelisted.
+
+  Args:
+   graph_def: the GraphDef to validate.
+   namespace_whitelist: a list of namespaces to allow. If `None`, all will be
+     allowed. If an op does not have a namespace, it will be allowed.
+
+  Raises:
+   ValueError: If the graph contains ops that violate the whitelist.
+  """
+  # By default, if the user has not specified a whitelist, we want to allow
+  # everything.  We check for None directly rather than falseness, since the
+  # user may instead want to pass an empty list to disallow all custom
+  # namespaced ops.
+  if namespace_whitelist is None:
+    return
+
   invalid_ops = []
   invalid_namespaces = set()
 
@@ -921,13 +936,12 @@ def _verify_ops(graph_def, namespace_whitelist):
   if invalid_ops:
     raise ValueError(
         "Attempted to save ops from non-whitelisted namespaces to SavedModel: "
-        "{}.\nPlease verify that these ops should be saved, since they must be "
-        "available when loading the SavedModel. If loading from Python, you "
-        "must import the library defining these ops. From C++, link the custom "
-        "ops to the serving binary. Once you've confirmed this, please add the "
-        "following namespaces to the `namespace_whitelist` argument in "
-        "tf.saved_model.SaveOptions: {}.".format(invalid_ops,
-                                                 invalid_namespaces))
+        f"{invalid_ops}.\nPlease verify that these ops should be saved, since "
+        "they must be available when loading the SavedModel. If loading from "
+        "Python, you must import the library defining these ops. From C++, "
+        "link the custom ops to the serving binary. Once you've confirmed this,"
+        " add the following namespaces to the `namespace_whitelist` "
+        f"argument in tf.saved_model.SaveOptions: {invalid_namespaces}.")
 
 
 def _serialize_object_graph(saveable_view, asset_file_def_index):
@@ -985,6 +999,11 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
               producer=1, min_consumer=1, bad_consumers=[]))
       # pylint:enable=protected-access
     proto.user_object.CopyFrom(registered_type_proto)
+
+  registered_name = registration.get_registered_name(obj)
+  if registered_name:
+    proto.registered_name = registered_name
+    proto.serialized_user_proto.Pack(obj._serialize_to_proto())  # pylint: disable=protected-access
 
 
 def _export_debug_info(exported_graph, export_dir):
@@ -1255,11 +1274,10 @@ def save_and_return_nodes(obj,
       context.async_wait()  # Ensure save operations have completed.
     except errors.NotFoundError as err:
       raise FileNotFoundError(
-          str(err) + "\n If trying to save on a different device from the "
-          "computational device, consider using setting the "
-          "`experimental_io_device` option on tf.saved_model.SaveOptions "
-          "to the io_device such as '/job:localhost'."
-      )
+          f"{err}\n You may be trying to save on a different device from the "
+          "computational device. Consider setting the "
+          "`experimental_io_device` option in `tf.saved_model.SaveOptions` "
+          "to the io_device such as '/job:localhost'.")
 
   # We will slowly migrate code in this function to pywrap_saved_model.Save
   # as we build up the C++ API.
@@ -1330,12 +1348,14 @@ def _build_meta_graph_impl(obj,
   """Creates a MetaGraph containing the resources and functions of an object."""
   if ops.inside_function():
     raise AssertionError(
-        "tf.saved_model.save is not supported inside a traced @tf.function. "
+        "`tf.saved_model.save` is not supported inside a traced @tf.function. "
         "Move the call to the outer eagerly-executed context.")
   # pylint: enable=line-too-long
   if not isinstance(obj, base.Trackable):
     raise ValueError(
-        "Expected a Trackable object for export, got {}.".format(obj))
+        "Expected an object of type `Trackable`, such as `tf.Module` or a "
+        f"subclass of the `Trackable` class, for export. Got {obj} "
+        f"with type {type(obj)}.")
   meta_graph_def = meta_graph_def or meta_graph_pb2.MetaGraphDef()
 
   checkpoint_graph_view = _AugmentedGraphView(obj)

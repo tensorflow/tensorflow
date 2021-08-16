@@ -59,7 +59,7 @@ class LogMessage : public std::basic_ostringstream<char> {
   // Returns the maximum log level for VLOG statements.
   // E.g., if MaxVLogLevel() is 2, then VLOG(2) statements will produce output,
   // but VLOG(3) will not. Defaults to 0.
-  static int64 MaxVLogLevel();
+  static int64_t MaxVLogLevel();
 
   // Returns whether VLOG level lvl is activated for the file fname.
   //
@@ -186,7 +186,7 @@ class LogEveryNSecState {
  private:
   std::atomic<uint32> counter_{0};
   // Cycle count according to CycleClock that we should next log at.
-  std::atomic<int64> next_log_time_cycles_{0};
+  std::atomic<int64_t> next_log_time_cycles_{0};
 };
 
 // This macro has a lot going on!
@@ -276,7 +276,7 @@ inline int16 GetReferenceableValue(int16_t t) { return t; }
 inline uint16 GetReferenceableValue(uint16 t) { return t; }
 inline int GetReferenceableValue(int t) { return t; }
 inline unsigned int GetReferenceableValue(unsigned int t) { return t; }
-inline int64 GetReferenceableValue(int64_t t) { return t; }
+inline int64_t GetReferenceableValue(int64_t t) { return t; }
 inline uint64 GetReferenceableValue(uint64 t) { return t; }
 
 // This formats a value for a failing CHECK_XX statement.  Ordinarily,
@@ -466,9 +466,9 @@ T&& CheckNotNull(const char* file, int line, const char* exprtext, T&& t) {
   return std::forward<T>(t);
 }
 
-int64 MinLogLevelFromEnv();
+int64_t MinLogLevelFromEnv();
 
-int64 MaxVLogLevelFromEnv();
+int64_t MaxVLogLevelFromEnv();
 
 }  // namespace internal
 

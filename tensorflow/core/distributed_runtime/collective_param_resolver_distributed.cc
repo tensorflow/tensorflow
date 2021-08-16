@@ -142,7 +142,10 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
   CollectiveParams* cp = new CollectiveParams;
   {
     mutex_lock l(gr->mu);
-    if (!gr->status.ok() || gr->group.devices.size() != gr->group.group_size) {
+    if (!gr->status.ok()) {
+      done(gr->status);
+      return;
+    } else if (gr->group.devices.size() != gr->group.group_size) {
       done(errors::FailedPrecondition(
           "group ", request->group_key(),
           " failed to resolve. This normally means the server has restarted"));

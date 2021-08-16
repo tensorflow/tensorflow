@@ -219,7 +219,21 @@ cc_library(
     hdrs = ["simple_memory_arena.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        ":macros",
+        "//tensorflow/lite/c:common",
+    ],
+)
+
+cc_library(
+    name = "simple_memory_arena_debug_dump",
+    srcs = ["simple_memory_arena_debug_dump.cc"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings(),
+    deps = [
+        ":simple_memory_arena",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -890,6 +904,7 @@ cc_test(
         "testdata/multi_add.bin",
     ],
     tags = [
+        "-broken",  # TODO(b/196598744)
         "no_windows",  # No weak symbols with MSVC.
         "tflite_not_portable_android",
         "tflite_not_portable_ios",

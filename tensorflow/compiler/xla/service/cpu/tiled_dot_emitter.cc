@@ -24,7 +24,7 @@ namespace xla {
 namespace cpu {
 namespace {
 
-using tensorflow::int64;
+using ::int64_t;
 
 // Provides tiled access to an in-memory rank 2 array.
 class MemoryTile {
@@ -112,21 +112,21 @@ class GemvConfig {
     PrimitiveType scalar_type() const {
       return derived().config().scalar_type();
     }
-    int64 tile_rows() const { return derived().config().tile_rows(); }
-    int64 tile_cols() const { return derived().config().tile_cols(); }
-    int64 m() const { return derived().config().m(); }
-    int64 k() const { return derived().config().k(); }
-    int64 has_addend() const { return derived().config().has_addend(); }
+    int64_t tile_rows() const { return derived().config().tile_rows(); }
+    int64_t tile_cols() const { return derived().config().tile_cols(); }
+    int64_t m() const { return derived().config().m(); }
+    int64_t k() const { return derived().config().k(); }
+    int64_t has_addend() const { return derived().config().has_addend(); }
 
    private:
     const T& derived() const { return *static_cast<const T*>(this); }
   };
 
   PrimitiveType scalar_type() const { return scalar_type_; }
-  int64 tile_rows() const { return tile_rows_; }
-  int64 tile_cols() const { return tile_cols_; }
-  int64 m() const { return m_; }
-  int64 k() const { return k_; }
+  int64_t tile_rows() const { return tile_rows_; }
+  int64_t tile_cols() const { return tile_cols_; }
+  int64_t m() const { return m_; }
+  int64_t k() const { return k_; }
   bool has_addend() const { return has_addend_; }
 
   string GetCacheKey() const {
@@ -149,10 +149,10 @@ class GemvConfig {
  private:
   string name_;
   PrimitiveType scalar_type_;
-  int64 tile_rows_;
-  int64 tile_cols_;
-  int64 m_;
-  int64 k_;
+  int64_t tile_rows_;
+  int64_t tile_cols_;
+  int64_t m_;
+  int64_t k_;
   bool has_addend_;
 };
 
@@ -241,7 +241,7 @@ class ColumnMajorMatrixVectorProductEmitter
         b_(b),
         ksl_(b_),
         vsl_(config.scalar_type(), /*vector_size=*/config.tile_rows(), b_, "") {
-    CHECK(tile_rows() > 0 && IsPowerOfTwo(static_cast<uint64>(tile_rows())));
+    CHECK(tile_rows() > 0 && IsPowerOfTwo(static_cast<uint64_t>(tile_rows())));
     CHECK(!has_addend() || addend != nullptr);
   }
 
@@ -467,7 +467,7 @@ class RowMajorMatrixVectorProductEmitter
         b_(b),
         ksl_(b_),
         vsl_(scalar_type(), /*vector_size=*/tile_cols(), b_, "") {
-    CHECK(tile_cols() > 0 && IsPowerOfTwo(static_cast<uint64>(tile_cols())));
+    CHECK(tile_cols() > 0 && IsPowerOfTwo(static_cast<uint64_t>(tile_cols())));
     CHECK(!has_addend() || addend != nullptr);
   }
 
@@ -621,16 +621,16 @@ class TiledSmallGemmEmitter {
     explicit Dimensions(int64_t m, int64_t k, int64_t n)
         : m_(m), k_(k), n_(n) {}
 
-    int64 m() const { return m_; }
-    int64 k() const { return k_; }
-    int64 n() const { return n_; }
+    int64_t m() const { return m_; }
+    int64_t k() const { return k_; }
+    int64_t n() const { return n_; }
 
     string ToString() const { return absl::StrCat(m(), "x", k(), "x", n()); }
 
    private:
-    const int64 m_;
-    const int64 k_;
-    const int64 n_;
+    const int64_t m_;
+    const int64_t k_;
+    const int64_t n_;
   };
 
   // Represents the configuration of the emitter.  The LLVM IR emitted by the
@@ -676,21 +676,21 @@ class TiledSmallGemmEmitter {
 
     PrimitiveType scalar_type() const { return scalar_type_; }
     Dimensions dims() const { return dims_; }
-    int64 max_vectorization_width() const { return max_vectorization_width_; }
-    int64 max_vector_count() const { return max_vector_count_; }
-    int64 min_vectorization_width() const { return min_vectorization_width_; }
+    int64_t max_vectorization_width() const { return max_vectorization_width_; }
+    int64_t max_vector_count() const { return max_vector_count_; }
+    int64_t min_vectorization_width() const { return min_vectorization_width_; }
 
-    int64 tile_size_m() const { return tile_size_m_; }
-    int64 tile_size_k() const { return tile_size_k_; }
+    int64_t tile_size_m() const { return tile_size_m_; }
+    int64_t tile_size_k() const { return tile_size_k_; }
 
    private:
     PrimitiveType scalar_type_;
     Dimensions dims_;
-    int64 max_vectorization_width_;
-    int64 max_vector_count_;
-    int64 min_vectorization_width_;
-    int64 tile_size_m_;
-    int64 tile_size_k_;
+    int64_t max_vectorization_width_;
+    int64_t max_vector_count_;
+    int64_t min_vectorization_width_;
+    int64_t tile_size_m_;
+    int64_t tile_size_k_;
   };
 
   // Creates an instance of TiledSmallGemmEmitter that matrix-multiplies
@@ -705,10 +705,10 @@ class TiledSmallGemmEmitter {
         b_(b),
         ksl_(b_) {
     CHECK(max_vectorization_width() > 0 &&
-          IsPowerOfTwo(static_cast<uint64>(max_vectorization_width())));
+          IsPowerOfTwo(static_cast<uint64_t>(max_vectorization_width())));
     CHECK_GT(max_vector_count(), 0);
     CHECK(min_vectorization_width() > 0 &&
-          IsPowerOfTwo(static_cast<uint64>(min_vectorization_width())));
+          IsPowerOfTwo(static_cast<uint64_t>(min_vectorization_width())));
     CHECK_GE(max_vectorization_width(), min_vectorization_width());
     CHECK_GT(tile_size_k(), 0);
   }
@@ -741,15 +741,15 @@ class TiledSmallGemmEmitter {
   Config config() const { return config_; }
   Dimensions dims() const { return config().dims(); }
 
-  int64 max_vectorization_width() const {
+  int64_t max_vectorization_width() const {
     return config().max_vectorization_width();
   }
-  int64 max_vector_count() const { return config().max_vector_count(); }
-  int64 min_vectorization_width() const {
+  int64_t max_vector_count() const { return config().max_vector_count(); }
+  int64_t min_vectorization_width() const {
     return config().min_vectorization_width();
   }
-  int64 tile_size_m() const { return config().tile_size_m(); }
-  int64 tile_size_k() const { return config().tile_size_k(); }
+  int64_t tile_size_m() const { return config().tile_size_m(); }
+  int64_t tile_size_k() const { return config().tile_size_k(); }
   PrimitiveType scalar_type() const { return config().scalar_type(); }
 
   llvm::Value* lhs_;

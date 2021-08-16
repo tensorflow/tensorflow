@@ -608,7 +608,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ void* GpuDriver::DeviceAllocate(GpuContext* context,
-                                             uint64 bytes) {
+                                             uint64_t bytes) {
   ScopedActivateContext activated{context};
   hipDeviceptr_t result = 0;
   hipError_t res = tensorflow::wrap::hipMalloc(&result, bytes);
@@ -639,7 +639,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ void* GpuDriver::UnifiedMemoryAllocate(GpuContext* context,
-                                                    uint64 bytes) {
+                                                    uint64_t bytes) {
   ScopedActivateContext activated{context};
 
   LOG(ERROR)
@@ -653,7 +653,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
       << "Feature not supported on ROCm platform (UnifiedMemoryDeallocate)";
 }
 
-/* static */ void* GpuDriver::HostAllocate(GpuContext* context, uint64 bytes) {
+/* static */ void* GpuDriver::HostAllocate(GpuContext* context,
+                                           uint64_t bytes) {
   ScopedActivateContext activation{context};
   void* host_mem = nullptr;
   // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
@@ -677,7 +678,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ bool GpuDriver::HostRegister(GpuContext* context, void* location,
-                                          uint64 bytes) {
+                                          uint64_t bytes) {
   ScopedActivateContext activation{context};
   // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
   hipError_t res = tensorflow::wrap::hipHostRegister(location, bytes,
@@ -841,7 +842,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ port::Status GpuDriver::SynchronousMemcpyD2H(
-    GpuContext* context, void* host_dst, hipDeviceptr_t gpu_src, uint64 size) {
+    GpuContext* context, void* host_dst, hipDeviceptr_t gpu_src,
+    uint64_t size) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(
       tensorflow::wrap::hipMemcpyDtoH(host_dst, gpu_src, size),
@@ -855,7 +857,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 
 /* static */ port::Status GpuDriver::SynchronousMemcpyH2D(
     GpuContext* context, hipDeviceptr_t gpu_dst, const void* host_src,
-    uint64 size) {
+    uint64_t size) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(
       tensorflow::wrap::hipMemcpyHtoD(gpu_dst, const_cast<void*>(host_src),
@@ -870,7 +872,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 
 /* static */ port::Status GpuDriver::SynchronousMemcpyD2D(
     GpuContext* context, hipDeviceptr_t gpu_dst, hipDeviceptr_t gpu_src,
-    uint64 size) {
+    uint64_t size) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(
       tensorflow::wrap::hipMemcpyDtoD(gpu_dst, gpu_src, size),
@@ -886,7 +888,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ bool GpuDriver::AsynchronousMemcpyD2H(GpuContext* context,
                                                    void* host_dst,
                                                    hipDeviceptr_t gpu_src,
-                                                   uint64 size,
+                                                   uint64_t size,
                                                    GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   hipError_t res =
@@ -908,7 +910,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ bool GpuDriver::AsynchronousMemcpyH2D(GpuContext* context,
                                                    hipDeviceptr_t gpu_dst,
                                                    const void* host_src,
-                                                   uint64 size,
+                                                   uint64_t size,
                                                    GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   hipError_t res = tensorflow::wrap::hipMemcpyHtoDAsync(
@@ -929,7 +931,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ bool GpuDriver::AsynchronousMemcpyD2D(GpuContext* context,
                                                    hipDeviceptr_t gpu_dst,
                                                    hipDeviceptr_t gpu_src,
-                                                   uint64 size,
+                                                   uint64_t size,
                                                    GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   hipError_t result =
@@ -1150,39 +1152,39 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return GetSimpleAttribute<int>(device, hipDeviceAttributeMultiprocessorCount);
 }
 
-/* static */ port::StatusOr<int64> GpuDriver::GetMaxSharedMemoryPerCore(
+/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerCore(
     hipDevice_t device) {
-  return GetSimpleAttribute<int64>(
+  return GetSimpleAttribute<int64_t>(
       device, hipDeviceAttributeMaxSharedMemoryPerMultiprocessor);
 }
 
-/* static */ port::StatusOr<int64> GpuDriver::GetMaxSharedMemoryPerBlock(
+/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlock(
     hipDevice_t device) {
-  return GetSimpleAttribute<int64>(device,
-                                   hipDeviceAttributeMaxSharedMemoryPerBlock);
+  return GetSimpleAttribute<int64_t>(device,
+                                     hipDeviceAttributeMaxSharedMemoryPerBlock);
 }
 
-/* static */ port::StatusOr<int64> GpuDriver::GetMaxThreadsPerMultiprocessor(
+/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerMultiprocessor(
     hipDevice_t device) {
-  return GetSimpleAttribute<int64>(
+  return GetSimpleAttribute<int64_t>(
       device, hipDeviceAttributeMaxThreadsPerMultiProcessor);
 }
 
-/* static */ port::StatusOr<int64> GpuDriver::GetMaxThreadsPerBlock(
+/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerBlock(
     hipDevice_t device) {
-  return GetSimpleAttribute<int64>(device,
-                                   hipDeviceAttributeMaxThreadsPerBlock);
+  return GetSimpleAttribute<int64_t>(device,
+                                     hipDeviceAttributeMaxThreadsPerBlock);
 }
 
-/* static */ port::StatusOr<int64> GpuDriver::GetMaxRegistersPerBlock(
+/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxRegistersPerBlock(
     hipDevice_t device) {
-  return GetSimpleAttribute<int64>(device,
-                                   hipDeviceAttributeMaxRegistersPerBlock);
+  return GetSimpleAttribute<int64_t>(device,
+                                     hipDeviceAttributeMaxRegistersPerBlock);
 }
 
-/* static */ port::StatusOr<int64> GpuDriver::GetThreadsPerWarp(
+/* static */ port::StatusOr<int64_t> GpuDriver::GetThreadsPerWarp(
     hipDevice_t device) {
-  return GetSimpleAttribute<int64>(device, hipDeviceAttributeWarpSize);
+  return GetSimpleAttribute<int64_t>(device, hipDeviceAttributeWarpSize);
 }
 
 /* static */ bool GpuDriver::GetGridLimits(int* x, int* y, int* z,
@@ -1277,8 +1279,8 @@ static uint64 GetReservedMemory() {
 }
 
 /* static */ bool GpuDriver::GetDeviceMemoryInfo(GpuContext* context,
-                                                 int64* free_out,
-                                                 int64* total_out) {
+                                                 int64_t* free_out,
+                                                 int64_t* total_out) {
   ScopedActivateContext activation{context};
   size_t free = 0;
   size_t total = 0;
@@ -1297,7 +1299,7 @@ static uint64 GetReservedMemory() {
 }
 
 /* static */ bool GpuDriver::GetDeviceTotalMemory(hipDevice_t device,
-                                                  uint64* result) {
+                                                  uint64_t* result) {
   size_t value = -1;
   hipError_t res = tensorflow::wrap::hipDeviceTotalMem(&value, device);
   if (res != hipSuccess) {

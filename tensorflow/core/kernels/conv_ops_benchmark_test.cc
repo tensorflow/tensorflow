@@ -309,9 +309,9 @@ static Graph* FusedConv2DWithBatchNorm(
 // The following benchmarks are always using 'float' data type with NHWC layout.
 // -------------------------------------------------------------------------- //
 
-#define BM_SET_INFO(N, H, W, C, type, LABEL, NAME)                             \
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * (N) * (H) * \
-                          (W) * (C));                                          \
+#define BM_SET_INFO(N, H, W, C, type, LABEL, NAME)                         \
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * (N) * \
+                          (H) * (W) * (C));                                \
   state.SetLabel(LABEL);
 
 #define BM_NAME(name, type, N, H, W, C, FW, FH, FC) \

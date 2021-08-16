@@ -83,7 +83,7 @@ Status FuseShuffleV2AndRepeat(const NodeDef& shuffle_node,
   graph_utils::SetUniqueGraphNodeName(kShuffleAndRepeatDatasetV2, output,
                                       fused_node);
 
-  NodeDef zero_node = *graph_utils::AddScalarConstNode<int64>(0, graph);
+  NodeDef zero_node = *graph_utils::AddScalarConstNode<int64_t>(0, graph);
 
   // Set the `input` input argument.
   fused_node->add_input(shuffle_node.input(0));

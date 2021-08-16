@@ -273,8 +273,8 @@ FailureOr<Value> GemmOpConversionRewrite(
         xla::LayoutUtil::Minor(output_shape.layout(), row_dim);
     return MatrixDescriptor{
         replaced_value, static_cast<bool>(transpose ^ layout_mismatch),
-        shape.dimensions(row_dim + static_cast<int64>(is_row_major)),
-        shape.dimensions(row_dim + static_cast<int64>(!is_row_major))};
+        shape.dimensions(row_dim + static_cast<int64_t>(is_row_major)),
+        shape.dimensions(row_dim + static_cast<int64_t>(!is_row_major))};
   };
 
   MatrixDescriptor lhs_matrix = make_descriptor(

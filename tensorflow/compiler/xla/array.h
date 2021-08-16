@@ -97,12 +97,12 @@ class Array {
   using value_type = T;
 
   // Creates a new array with the specified dimensions and initialized elements.
-  explicit Array(absl::Span<const int64> sizes)
+  explicit Array(absl::Span<const int64_t> sizes)
       : sizes_(sizes.begin(), sizes.end()), values_(new T[num_elements()]()) {}
 
   // Creates a new array with the specified dimensions and specified value for
   // every cell.
-  Array(absl::Span<const int64> sizes, T value)
+  Array(absl::Span<const int64_t> sizes, T value)
       : sizes_(sizes.begin(), sizes.end()), values_(new T[num_elements()]) {
     Fill(value);
   }
@@ -316,16 +316,16 @@ class Array {
 
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array.
-  void Each(std::function<void(absl::Span<const int64>, T*)> f) {
-    std::vector<int64> index(sizes_.size());
+  void Each(std::function<void(absl::Span<const int64_t>, T*)> f) {
+    std::vector<int64_t> index(sizes_.size());
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       f(index, &values_[i]);
     }
   }
 
   // Invokes a callback with the (indices, value) for each cell in the array.
-  void Each(std::function<void(absl::Span<const int64>, T)> f) const {
-    std::vector<int64> index(sizes_.size());
+  void Each(std::function<void(absl::Span<const int64_t>, T)> f) const {
+    std::vector<int64_t> index(sizes_.size());
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       f(index, values_[i]);
     }
@@ -334,8 +334,8 @@ class Array {
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array. If a callback returns a non-OK status, returns that else returns
   // Status::OK().
-  Status EachStatus(std::function<Status(absl::Span<const int64>, T*)> f) {
-    std::vector<int64> index(sizes_.size());
+  Status EachStatus(std::function<Status(absl::Span<const int64_t>, T*)> f) {
+    std::vector<int64_t> index(sizes_.size());
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       Status s = f(index, &values_[i]);
       if (!s.ok()) {
@@ -348,8 +348,9 @@ class Array {
   // Invokes a callback with the (indices, value) for each cell in the array.
   // If a callback returns a non-OK status, returns that else returns
   // Status::OK().
-  Status EachStatus(std::function<Status(absl::Span<const int64>, T)> f) const {
-    std::vector<int64> index(sizes_.size());
+  Status EachStatus(
+      std::function<Status(absl::Span<const int64_t>, T)> f) const {
+    std::vector<int64_t> index(sizes_.size());
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       Status s = f(index, values_[i]);
       if (!s.ok()) {
@@ -371,7 +372,8 @@ class Array {
   operator()(Dims... dims) const {
     // We are using a std::array to avoid having to allocate memory in this
     // function for performance reasons.
-    std::array<int64, sizeof...(dims)> indexes{{static_cast<int64>(dims)...}};
+    std::array<int64_t, sizeof...(dims)> indexes{
+        {static_cast<int64_t>(dims)...}};
     return values_[calculate_index(indexes)];
   }
 
@@ -383,19 +385,20 @@ class Array {
   operator()(Dims... dims) {
     // We are using a std::array to avoid having to allocate memory in this
     // function for performance reasons.
-    std::array<int64, sizeof...(dims)> indexes{{static_cast<int64>(dims)...}};
+    std::array<int64_t, sizeof...(dims)> indexes{
+        {static_cast<int64_t>(dims)...}};
     return values_[calculate_index(indexes)];
   }
 
   // Returns the value at the cell specified by the indexes. The number of
   // arguments have to match with the number of dimensions for the array.
-  const T& operator()(absl::Span<const int64> indexes) const {
+  const T& operator()(absl::Span<const int64_t> indexes) const {
     return values_[calculate_index(indexes)];
   }
 
   // Returns the value at the cell specified by the indexes. The number of
   // arguments have to match with the number of dimensions for the array.
-  T& operator()(absl::Span<const int64> indexes) {
+  T& operator()(absl::Span<const int64_t> indexes) {
     return values_[calculate_index(indexes)];
   }
 
@@ -409,21 +412,21 @@ class Array {
   }
 
   // Returns the size of the dimension at the given index.
-  int64 dim(int64_t n) const {
+  int64_t dim(int64_t n) const {
     const int64_t sizes_size = sizes_.size();
     CHECK(n < sizes_size);
     return sizes_[n];
   }
 
   // Returns a vector containing the dimensions of the array.
-  const std::vector<int64>& dimensions() const { return sizes_; }
+  const std::vector<int64_t>& dimensions() const { return sizes_; }
 
-  int64 num_dimensions() const { return sizes_.size(); }
+  int64_t num_dimensions() const { return sizes_.size(); }
 
   // Returns the total number of elements in the array.
-  int64 num_elements() const {
+  int64_t num_elements() const {
     return std::accumulate(sizes_.begin(), sizes_.end(), 1LL,
-                           std::multiplies<int64>());
+                           std::multiplies<int64_t>());
   }
 
   const T* begin() const { return &values_[0]; }
@@ -451,18 +454,18 @@ class Array {
   bool operator!=(const Array<T>& other) const { return !(*this == other); }
 
   // Performs the equivalent of a slice operation on this array.
-  Array<T> Slice(absl::Span<const int64> starts,
-                 absl::Span<const int64> limits) const {
+  Array<T> Slice(absl::Span<const int64_t> starts,
+                 absl::Span<const int64_t> limits) const {
     CHECK_EQ(starts.size(), num_dimensions());
     CHECK_EQ(limits.size(), num_dimensions());
 
-    std::vector<int64> sizes;
+    std::vector<int64_t> sizes;
     std::transform(starts.begin(), starts.end(), limits.begin(),
                    std::back_inserter(sizes),
                    [](int64_t start, int64_t limit) { return limit - start; });
     Array<T> result(sizes);
 
-    std::vector<int64> index(sizes_.size());
+    std::vector<int64_t> index(sizes_.size());
     int64_t slice_i = 0;
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       if (array_impl::all_inside_range(index, starts, limits)) {
@@ -477,13 +480,13 @@ class Array {
 
   // Performs the equivalent of a DynamicUpdateSlice in-place on this array.
   void UpdateSlice(const Array<T>& from,
-                   absl::Span<const int64> start_indices) {
+                   absl::Span<const int64_t> start_indices) {
     CHECK_EQ(from.num_dimensions(), num_dimensions());
-    std::vector<int64> limit_indices;
+    std::vector<int64_t> limit_indices;
     std::transform(start_indices.begin(), start_indices.end(),
                    from.dimensions().begin(), std::back_inserter(limit_indices),
-                   std::plus<int64>{});
-    std::vector<int64> index(sizes_.size());
+                   std::plus<int64_t>{});
+    std::vector<int64_t> index(sizes_.size());
     int64_t from_i = 0;
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       if (array_impl::all_inside_range(index, start_indices, limit_indices)) {
@@ -497,16 +500,16 @@ class Array {
 
   // Performs an in-place reshape, modifying the dimensions but not the
   // underlying data.
-  void Reshape(absl::Span<const int64> new_dimensions) {
+  void Reshape(absl::Span<const int64_t> new_dimensions) {
     int64_t old_num_elements = num_elements();
-    sizes_ = std::vector<int64>(new_dimensions.begin(), new_dimensions.end());
+    sizes_ = std::vector<int64_t>(new_dimensions.begin(), new_dimensions.end());
     CHECK_EQ(num_elements(), old_num_elements);
   }
 
   // Returns a string representation of the array suitable for debugging.
   string ToString() const {
     std::vector<string> pieces;
-    std::vector<int64> index(sizes_.size());
+    std::vector<int64_t> index(sizes_.size());
     do {
       // Emit leading spaces and opening square brackets
       if (index.back() == 0) {
@@ -546,16 +549,16 @@ class Array {
   // the initializer list based constructors to convert the size type into int64
   // to be passed to the size based constructor.
   template <typename U>
-  static std::vector<int64> ToInt64Vector(
+  static std::vector<int64_t> ToInt64Vector(
       const std::initializer_list<U>& data) {
-    return std::vector<int64>(data.begin(), data.end());
+    return std::vector<int64_t>(data.begin(), data.end());
   }
 
   // Returns the linear index from the list of per-dimension indexes. Function
   // is templated so can be used with an std::array from operator() to avoid
   // memory allocation.
   template <typename U>
-  int64 calculate_index(const U& indexes) const {
+  int64_t calculate_index(const U& indexes) const {
     CHECK_EQ(sizes_.size(), indexes.size());
     int64_t index = 0;
     for (int64_t i = 0; i < sizes_.size(); ++i) {
@@ -568,7 +571,7 @@ class Array {
 
   // Advances the specified set of indexes and returns true if we haven't
   // wrapped around (i.e. result isn't {0, 0, ...}).
-  bool next_index(std::vector<int64>* index) const {
+  bool next_index(std::vector<int64_t>* index) const {
     CHECK_EQ(index->size(), sizes_.size());
     for (int64_t i = sizes_.size() - 1; i >= 0; --i) {
       (*index)[i]++;
@@ -580,7 +583,7 @@ class Array {
     return false;
   }
 
-  std::vector<int64> sizes_;
+  std::vector<int64_t> sizes_;
   std::unique_ptr<T[]> values_;
 };
 

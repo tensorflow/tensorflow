@@ -56,7 +56,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       // This optimization is only valid if the set of broadcasted dimensions
       // is exactly the set of batch dimensions. First, check that all newly
       // broadcast dimensions have been inserted on the left.
-      for (int64 bcast_dim : bcast->dimensions()) {
+      for (int64_t bcast_dim : bcast->dimensions()) {
         if (bcast_dim < num_bcast_dims) {
           return Status::OK();
         }

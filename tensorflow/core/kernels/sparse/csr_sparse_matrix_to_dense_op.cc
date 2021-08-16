@@ -69,7 +69,7 @@ class CSRSparseMatrixToDenseCPUOp : public OpKernel {
                 errors::InvalidArgument("sparse matrix must have rank 2 or 3; ",
                                         "but dense_shape has size ", rank));
 
-    auto dense_shape = dense_shape_t.vec<int64>();
+    auto dense_shape = dense_shape_t.vec<int64_t>();
     const int64_t num_rows = dense_shape((rank == 2) ? 0 : 1);
     const int64_t num_cols = dense_shape((rank == 2) ? 1 : 2);
 
@@ -145,7 +145,7 @@ class CSRSparseMatrixToDenseGPUOp : public OpKernel {
     const int batch_size = csr_sparse_matrix->batch_size();
     const int64_t total_nnz = csr_sparse_matrix->total_nnz();
 
-    auto dense_shape = dense_shape_t.vec<int64>();
+    auto dense_shape = dense_shape_t.vec<int64_t>();
     const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
 
     Tensor indices_t;
@@ -157,7 +157,7 @@ class CSRSparseMatrixToDenseGPUOp : public OpKernel {
                                        TensorShape({total_nnz}), &values_t));
 
     functor::CSRSparseMatrixToCOOSparseMatrix<Device> csr_to_coo;
-    auto indices = indices_t.matrix<int64>();
+    auto indices = indices_t.matrix<int64_t>();
 
     auto csr_row_ptr = csr_sparse_matrix->row_pointers().vec<int32>();
     auto coo_col_ind = csr_sparse_matrix->col_indices().vec<int32>();
@@ -196,11 +196,10 @@ class CSRSparseMatrixToDenseGPUOp : public OpKernel {
     OP_REQUIRES_OK(
         c, TensorShapeUtils::MakeShape(dense_shape.data(), dense_shape.size(),
                                        &dense_tensor_shape));
-    OP_REQUIRES_OK(
-        c,
-        functor::DoScatterNd<Device, T, int64, scatter_nd_op::UpdateOp::ASSIGN>(
-            c, indices_t, values_t, dense_tensor_shape, &dense_t,
-            true /*allocate*/));
+    OP_REQUIRES_OK(c, functor::DoScatterNd<Device, T, int64_t,
+                                           scatter_nd_op::UpdateOp::ASSIGN>(
+                          c, indices_t, values_t, dense_tensor_shape, &dense_t,
+                          true /*allocate*/));
     c->set_output(0, dense_t);
   }
 };
@@ -239,11 +238,11 @@ namespace functor {
 template <>
 struct COOSparseMatrixToSparseTensor<GPUDevice> {
   Status operator()(OpKernelContext* ctx,
-                    TTypes<int64>::ConstVec host_dense_shape,
+                    TTypes<int64_t>::ConstVec host_dense_shape,
                     TTypes<int>::ConstVec host_batch_ptrs,
                     TTypes<int>::Vec coo_row_ind,
                     TTypes<int>::ConstVec coo_col_ind,
-                    TTypes<int64>::Matrix indices);
+                    TTypes<int64_t>::Matrix indices);
 };
 extern template struct COOSparseMatrixToSparseTensor<GPUDevice>;
 

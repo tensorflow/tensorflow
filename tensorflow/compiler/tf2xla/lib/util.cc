@@ -88,7 +88,7 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
       literal = xla::LiteralUtil::CreateR0<int32>(value);
       break;
     case xla::S64:
-      literal = xla::LiteralUtil::CreateR0<int64>(value);
+      literal = xla::LiteralUtil::CreateR0<int64_t>(value);
       break;
     case xla::F32:
       literal = xla::LiteralUtil::CreateR0<float>(value);
@@ -122,9 +122,9 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
   return xla::ConstantLiteral(builder, literal);
 }
 
-std::vector<int64> ConcatVectors(absl::Span<const int64> xs,
-                                 absl::Span<const int64> ys) {
-  std::vector<int64> output(xs.size() + ys.size());
+std::vector<int64_t> ConcatVectors(absl::Span<const int64_t> xs,
+                                   absl::Span<const int64_t> ys) {
+  std::vector<int64_t> output(xs.size() + ys.size());
   std::copy(xs.begin(), xs.end(), output.begin());
   std::copy(ys.begin(), ys.end(), output.begin() + xs.size());
   return output;

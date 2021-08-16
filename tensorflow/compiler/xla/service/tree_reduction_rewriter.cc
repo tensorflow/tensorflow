@@ -50,8 +50,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       return Status::OK();
     }
     auto reduced_dimensions = hlo->dimensions();
-    std::vector<int64> window_dimensions;
-    std::vector<int64> window_strides;
+    std::vector<int64_t> window_dimensions;
+    std::vector<int64_t> window_strides;
     for (int64_t dim = 0; dim < input_shape.rank(); dim++) {
       if (!absl::c_linear_search(hlo->dimensions(), dim)) {
         window_dimensions.push_back(1);
@@ -68,7 +68,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       window_strides.push_back(reduce_window_size_);
     }
 
-    std::vector<std::pair<int64, int64>> padding =
+    std::vector<std::pair<int64_t, int64_t>> padding =
         MakePadding(AsInt64Slice(input_shape.dimensions()), window_dimensions,
                     window_strides, Padding::kSame);
 
@@ -93,7 +93,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  int64 reduce_window_size_;
+  int64_t reduce_window_size_;
 };
 
 StatusOr<bool> TreeReductionRewriter::Run(HloModule *module) {

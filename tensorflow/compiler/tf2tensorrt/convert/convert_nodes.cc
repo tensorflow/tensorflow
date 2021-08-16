@@ -6931,8 +6931,10 @@ Status ConvertGraphDefToEngine(
 Status ConvertSegmentToGraphDef(
     const Graph* graph, const grappler::GraphProperties& graph_properties,
     const std::vector<const Node*>& subgraph_nodes,  // In topological order
-    std::vector<EngineConnection>* connections, GraphDef* segment_def,
-    string* scope_name) {
+    EngineInfo* engine_info) {
+  std::vector<EngineConnection>* connections = &engine_info->connections;
+  GraphDef* segment_def = &engine_info->segment_graph_def;
+  bool has_int32_input = false;
   std::set<string> marker_nodes;
   // Update connection shapes/data types and add corresponding input/output
   // nodes in the segment graphdef.
@@ -6963,6 +6965,10 @@ Status ConvertSegmentToGraphDef(
 
     // Add dummy input/output nodes to the segment graphdef.
     if (connection.is_input_edge) {
+      if (dtype == DT_INT32 && !has_int32_input) {
+        has_int32_input = true;
+      }
+
       const string node_name =
           StrCat(IONamePrefixes::kInputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
@@ -7091,7 +7097,8 @@ Status ConvertSegmentToGraphDef(
       snode->mutable_input()->RemoveLast();
     }
   }
-  *scope_name = local_scope;
+  engine_info->engine_name = StrCat(local_scope, engine_info->engine_name);
+  engine_info->has_int32_input = has_int32_input;
   return Status::OK();
 }
 

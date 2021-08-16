@@ -169,7 +169,7 @@ Status RecordReader::GetMetadata(Metadata* md) {
 
 Status RecordReader::PositionInputStream(uint64 offset) {
   int64_t curr_pos = input_stream_->Tell();
-  int64_t desired_pos = static_cast<int64>(offset);
+  int64_t desired_pos = static_cast<int64_t>(offset);
   if (curr_pos > desired_pos || curr_pos < 0 /* EOF */ ||
       (curr_pos == desired_pos && last_read_failed_)) {
     last_read_failed_ = false;

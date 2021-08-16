@@ -54,7 +54,7 @@ class NameUniquer {
     // Tries to register id as used identifier. If id is not already used, the
     // id itself will be returned. Otherwise a new one will be generated, and
     // returned.
-    int64 RegisterId(int64_t id) {
+    int64_t RegisterId(int64_t id) {
       if (used_.insert(id).second) {
         return id;
       }
@@ -66,10 +66,10 @@ class NameUniquer {
 
    private:
     // The next identifier to be tried.
-    int64 next_ = 0;
+    int64_t next_ = 0;
 
     // Set of all the identifiers which has been used.
-    absl::flat_hash_set<int64> used_;
+    absl::flat_hash_set<int64_t> used_;
   };
 
   // The string to use to separate the prefix of the name from the uniquing

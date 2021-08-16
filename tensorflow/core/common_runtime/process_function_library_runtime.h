@@ -119,7 +119,7 @@ class ProcessFunctionLibraryRuntime {
 
   // Returns the device incarnation for the given device_name.
   Status GetDeviceIncarnation(const string& device_name,
-                              int64* incarnation) const;
+                              int64_t* incarnation) const;
 
   // For a given canonicalized key signature of the function instantiated
   // on device `device_name` and a `local_handle`, creates a handle and returns

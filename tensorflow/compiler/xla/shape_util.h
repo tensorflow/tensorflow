@@ -68,7 +68,7 @@ class ShapeIndexView;
 class ShapeIndex {
  public:
   ShapeIndex() = default;
-  ShapeIndex(std::initializer_list<int64> init) : indices_(init) {}
+  ShapeIndex(std::initializer_list<int64_t> init) : indices_(init) {}
   template <typename InputIt>
   ShapeIndex(InputIt start, InputIt end) : indices_(start, end) {}
 
@@ -83,23 +83,23 @@ class ShapeIndex {
   void push_front(int64_t value) { indices_.insert(indices_.begin(), value); }
   void pop_front() { indices_.erase(indices_.begin()); }
 
-  using container_type = absl::InlinedVector<int64, 2>;
+  using container_type = absl::InlinedVector<int64_t, 2>;
 
   container_type::const_iterator begin() const { return indices_.begin(); }
   container_type::const_iterator end() const { return indices_.end(); }
   container_type::iterator begin() { return indices_.begin(); }
   container_type::iterator end() { return indices_.end(); }
 
-  const int64* data() const { return indices_.data(); }
+  const int64_t* data() const { return indices_.data(); }
 
-  int64 back() const { return indices_.back(); }
-  int64& back() { return indices_.back(); }
+  int64_t back() const { return indices_.back(); }
+  int64_t& back() { return indices_.back(); }
 
-  int64 front() const { return indices_.front(); }
-  int64& front() { return indices_.front(); }
+  int64_t front() const { return indices_.front(); }
+  int64_t& front() { return indices_.front(); }
 
-  const int64& operator[](size_t i) const { return indices_[i]; }
-  int64& operator[](size_t i) { return indices_[i]; }
+  const int64_t& operator[](size_t i) const { return indices_[i]; }
+  int64_t& operator[](size_t i) { return indices_[i]; }
 
   bool operator==(const ShapeIndex& other) const {
     return indices_ == other.indices_;
@@ -133,20 +133,20 @@ class ShapeIndexView {
       : indices_(shape_index.data() + offset, shape_index.size() - offset) {
     CHECK_LE(offset, shape_index.size());
   }
-  ShapeIndexView(std::initializer_list<int64> indices) : indices_(indices) {}
+  ShapeIndexView(std::initializer_list<int64_t> indices) : indices_(indices) {}
   ShapeIndexView(const ShapeIndexView& other) = default;
 
-  using iterator = const int64*;
+  using iterator = const int64_t*;
 
   iterator begin() const { return indices_.begin(); }
   iterator end() const { return indices_.end(); }
-  int64 size() const { return indices_.size(); }
+  int64_t size() const { return indices_.size(); }
   bool empty() const { return indices_.empty(); }
-  int64 front() const {
+  int64_t front() const {
     CHECK(!empty());
     return indices_.front();
   }
-  int64 back() const {
+  int64_t back() const {
     CHECK(!empty());
     return indices_.back();
   }
@@ -171,7 +171,7 @@ class ShapeIndexView {
   bool StartsWith(ShapeIndexView prefix) const;
 
  private:
-  absl::Span<const int64> indices_;
+  absl::Span<const int64_t> indices_;
 };
 
 inline ShapeIndex::ShapeIndex(ShapeIndexView v)
@@ -199,10 +199,10 @@ class ShapeUtil {
   // Returns the number of elements are contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
   // Precondition: shape.IsArray()
-  static int64 ElementsIn(const Shape& shape);
+  static int64_t ElementsIn(const Shape& shape);
 
   // As ElementsIn(), but recurses through tuples.
-  static int64 ElementsInRecursive(const Shape& shape);
+  static int64_t ElementsInRecursive(const Shape& shape);
 
   // Returns true if shape has the primitive type, recurses through tuples.
   static bool HasPrimitiveType(const Shape& shape,
@@ -216,25 +216,25 @@ class ShapeUtil {
   // shapes. This includes only the size of the top-level buffer. For example, a
   // tuple is stored as an array of pointers to other buffers. In this case,
   // this method only returns the size of the pointer array.
-  static int64 ByteSizeOf(const Shape& shape, int64_t pointer_size = -1);
+  static int64_t ByteSizeOf(const Shape& shape, int64_t pointer_size = -1);
 
   // Returns the number of bytes used to store the primitive_type.
   //
   // Precondition: shape.IsArray()
-  static int64 ByteSizeOfPrimitiveType(PrimitiveType primitive_type);
+  static int64_t ByteSizeOfPrimitiveType(PrimitiveType primitive_type);
 
   // Returns the number of bytes required to store the tuple member pointers for
   // a allocation of shape. The `shape` must be a TUPLE shape, and
   // `pointer_size` must be larger than zero.
-  static int64 ByteSizeOfTupleIndexTable(const Shape& shape,
-                                         int64_t pointer_size);
+  static int64_t ByteSizeOfTupleIndexTable(const Shape& shape,
+                                           int64_t pointer_size);
 
   // Returns the number of bytes required for the elements in an allocation of
   // `shape`, which must be an array shape. Shapes use a separate
   // memory location for each element, and so for these shapes,
   // `ByteSizeOf(shape) == ByteSizeOfElements(shape)`. This
   // size also includes padding if present in the layout.
-  static int64 ByteSizeOfElements(const Shape& shape);
+  static int64_t ByteSizeOfElements(const Shape& shape);
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
@@ -322,7 +322,7 @@ class ShapeUtil {
   // 1. e.g., f32[2x1x1] has a true rank of 1D, the other dimensions are just
   // fluff. Note that zero dimensions are included in the true rank, e.g.,
   // f32[3,0,1] has a true rank of 2D.
-  static int64 TrueRank(const Shape& shape);
+  static int64_t TrueRank(const Shape& shape);
 
   static ProgramShape MakeProgramShape(std::initializer_list<Shape> parameters,
                                        Shape result);
@@ -343,7 +343,7 @@ class ShapeUtil {
 
   // Extracts the size of the shape's dimension at dimension number
   // GetDimensionNumber(dimension_number).
-  static int64 GetDimension(const Shape& shape, int64_t dimension_number);
+  static int64_t GetDimension(const Shape& shape, int64_t dimension_number);
 
   // Resolves a dimension number, supporting negative indexing.
   //
@@ -353,7 +353,8 @@ class ShapeUtil {
   //
   // This function always returns a positive dimension number for any given
   // dimension_number (which itself can be negative).
-  static int64 GetDimensionNumber(const Shape& shape, int64_t dimension_number);
+  static int64_t GetDimensionNumber(const Shape& shape,
+                                    int64_t dimension_number);
 
   // Returns a shape with the same dimensions as the original, but with the
   // element type changed to type.
@@ -401,7 +402,7 @@ class ShapeUtil {
   // Constructs a new shape with the given element type and sequence of
   // dimensions.
   static Shape MakeShape(PrimitiveType element_type,
-                         absl::Span<const int64> dimensions);
+                         absl::Span<const int64_t> dimensions);
 
   // Make a scalar shape with given primitive type.
   static Shape MakeScalarShape(PrimitiveType element_type);
@@ -413,22 +414,22 @@ class ShapeUtil {
   // bound on the dimension size. 'dimensions' and 'dynamic_dimensions' must be
   // the same size.
   static Shape MakeShape(PrimitiveType element_type,
-                         absl::Span<const int64> dimensions,
+                         absl::Span<const int64_t> dimensions,
                          const std::vector<bool>& dynamic_dimensions);
 
   // Constructs a new shape with the given element type and sequence of
   // dimensions. Method checks if the element type is valid and the shape's
-  // size fits in std::numeric_limits<int64>::max().
-  static StatusOr<Shape> MakeValidatedShape(PrimitiveType element_type,
-                                            absl::Span<const int64> dimensions);
+  // size fits in std::numeric_limits<int64_t>::max().
   static StatusOr<Shape> MakeValidatedShape(
-      PrimitiveType element_type, absl::Span<const int64> dimensions,
+      PrimitiveType element_type, absl::Span<const int64_t> dimensions);
+  static StatusOr<Shape> MakeValidatedShape(
+      PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       const std::vector<bool>& dynamic_dimensions);
 
   // Creates a Shape with element type corresponding to T and the given
   // dimensions
   template <typename T>
-  static Shape MakeShapeWithType(absl::Span<const int64> dimensions) {
+  static Shape MakeShapeWithType(absl::Span<const int64_t> dimensions) {
     return ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<T>(),
                                 dimensions);
   }
@@ -436,8 +437,8 @@ class ShapeUtil {
   // Constructs a new shape with the given minor_to_major order in its Layout.
   // Returns a value shape such that shape.has_layout().
   static Shape MakeShapeWithLayout(PrimitiveType element_type,
-                                   absl::Span<const int64> dimensions,
-                                   absl::Span<const int64> minor_to_major,
+                                   absl::Span<const int64_t> dimensions,
+                                   absl::Span<const int64_t> minor_to_major,
                                    absl::Span<const Tile> tiles = {},
                                    int64_t element_size_in_bits = 0,
                                    int64_t memory_space = 0);
@@ -453,7 +454,7 @@ class ShapeUtil {
 
   // Constructs a new shape with major-first layout (i.e. {n, n-1, ..., 0}).
   static Shape MakeShapeWithDescendingLayout(
-      PrimitiveType element_type, absl::Span<const int64> dimensions);
+      PrimitiveType element_type, absl::Span<const int64_t> dimensions);
 
   // Returns a new Shape based on the given Shape with low-dimension-major
   // layout (i.e. {n, n-1, ..., 0}, like Fortran), and with the dimensions
@@ -465,7 +466,8 @@ class ShapeUtil {
 
   // As MakeShape, but the object to write to is passed in.
   static Status PopulateShape(PrimitiveType element_type,
-                              absl::Span<const int64> dimensions, Shape* shape);
+                              absl::Span<const int64_t> dimensions,
+                              Shape* shape);
 
   // Validates that the provided shape satisfies invariants.
   static Status ValidateShape(const Shape& shape);
@@ -511,14 +513,14 @@ class ShapeUtil {
 
   // Returns the number of elements in the given tuple shape.
   // Precondition: IsTuple(shape)
-  static int64 TupleElementCount(const Shape& shape);
+  static int64_t TupleElementCount(const Shape& shape);
 
   // Returns the tuple element shape at given index.
   // Precondition: IsTuple(shape) && TupleElementCount(shape) > index
   static const Shape& GetTupleElementShape(const Shape& shape, int64_t index);
 
   // Returns the number of elements, recursively, in the given shape.
-  static int64 SubshapeCount(const Shape& shape);
+  static int64_t SubshapeCount(const Shape& shape);
 
   // Slices tuple elements in the range [start, limit) and returns a new tuple
   // shape. E.g. a tuple like (f32, s32, u32) would slice via 1,3 to (s32, u32).
@@ -544,7 +546,7 @@ class ShapeUtil {
   static bool IsLeafIndex(const Shape& shape, const ShapeIndex& index);
 
   // Returns the number of leaves in the shape.
-  static int64 GetLeafCount(const Shape& shape);
+  static int64_t GetLeafCount(const Shape& shape);
 
   // Retrieves all the leaf shapes and their indexes, in the order walked by
   // the ForEachSubshape() API.
@@ -587,7 +589,7 @@ class ShapeUtil {
   //   !HasLayout(shape) ||
   //   TransposeIsBitcast(shape, PermuteDimensions(permutation, shape),
   //                      permutation).
-  static Shape PermuteDimensions(absl::Span<const int64> permutation,
+  static Shape PermuteDimensions(absl::Span<const int64_t> permutation,
                                  const Shape& shape);
 
   // If we can go from `shape_pre` to `shape_post` by merely inserting or
@@ -600,7 +602,7 @@ class ShapeUtil {
   // `j` and `a_(k-s) = b_(k-t)` where `s` and `t` are the number of `i`s and
   // `j`s less than `k` for all other `k`, we return the `i`s and `j`s.
   // For another example, if `shape_pre = shape_post = {}`, we return `{}`.
-  static std::tuple<bool, std::vector<int64>, std::vector<int64>>
+  static std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
   InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
                                     const Shape& shape_post);
 
@@ -620,7 +622,7 @@ class ShapeUtil {
   //
   //   The two pairs represent the input and output dimension of size x and
   //   those of size y.
-  static std::vector<std::pair<int64, int64>> DimensionsUnmodifiedByReshape(
+  static std::vector<std::pair<int64_t, int64_t>> DimensionsUnmodifiedByReshape(
       const Shape& input_shape, const Shape& output_shape);
 
   // Return whether the given reshape instruction leaves the dimensions at the
@@ -633,9 +635,9 @@ class ShapeUtil {
   //   return value = {1, 3}
   //
   // Precondition: input_dim_indices is sorted.
-  static absl::optional<std::vector<int64>> ReshapeLeavesDimensionsUnmodified(
+  static absl::optional<std::vector<int64_t>> ReshapeLeavesDimensionsUnmodified(
       const Shape& from_shape, const Shape& to_shape,
-      absl::Span<const int64> input_dim_indices);
+      absl::Span<const int64_t> input_dim_indices);
 
   // Returns whether a transpose from input_shape to output_shape with dimension
   // mapping "dimension_mapping" produces a result which is bit-wise identical
@@ -644,7 +646,7 @@ class ShapeUtil {
   // Precondition: Both input_shape and output_shape have explicit layouts.
   static bool TransposeIsBitcast(const Shape& input_shape,
                                  const Shape& output_shape,
-                                 absl::Span<const int64> dimension_mapping);
+                                 absl::Span<const int64_t> dimension_mapping);
 
   // Returns whether a reshape from "input_shape" to "output_shape" is a
   // bitcast.
@@ -691,21 +693,21 @@ class ShapeUtil {
   // return true if it wants to continue, or false otherwise.
   //
   // visitor_function must be a callable of type
-  // StatusOr<bool>(absl::Span<int64>) or compatible.
+  // StatusOr<bool>(absl::Span<int64_t>) or compatible.
   template <typename FnType>
   static Status ForEachIndexWithStatus(const Shape& shape,
-                                       absl::Span<const int64> base,
-                                       absl::Span<const int64> count,
-                                       absl::Span<const int64> incr,
+                                       absl::Span<const int64_t> base,
+                                       absl::Span<const int64_t> count,
+                                       absl::Span<const int64_t> incr,
                                        const FnType& visitor_function) {
     return ForEachIndexInternal(shape, base, count, incr, visitor_function);
   }
 
   // Simple ergonomic wrapper around ShapeUtil::ForEachIndexWithStatus.
   struct IndexIterationSpace {
-    std::vector<int64> index_base;
-    std::vector<int64> index_count;
-    std::vector<int64> index_incr;
+    std::vector<int64_t> index_base;
+    std::vector<int64_t> index_count;
+    std::vector<int64_t> index_incr;
   };
 
   template <typename FnTy>
@@ -718,12 +720,12 @@ class ShapeUtil {
   }
 
   template <typename FnType>
-  static void ForEachIndex(const Shape& shape, absl::Span<const int64> base,
-                           absl::Span<const int64> count,
-                           absl::Span<const int64> incr,
+  static void ForEachIndex(const Shape& shape, absl::Span<const int64_t> base,
+                           absl::Span<const int64_t> count,
+                           absl::Span<const int64_t> incr,
                            const FnType& visitor_function) {
     ForEachIndexWithStatus(shape, base, count, incr,
-                           [&](absl::Span<const int64> indices) {
+                           [&](absl::Span<const int64_t> indices) {
                              return StatusOr<bool>(visitor_function(indices));
                            })
         .IgnoreError();
@@ -735,8 +737,8 @@ class ShapeUtil {
   template <typename FnType>
   static Status ForEachIndexWithStatus(const Shape& shape,
                                        const FnType& visitor_function) {
-    std::vector<int64> base(shape.dimensions_size());
-    std::vector<int64> incr(shape.dimensions_size(), 1);
+    std::vector<int64_t> base(shape.dimensions_size());
+    std::vector<int64_t> incr(shape.dimensions_size(), 1);
     return ForEachIndexWithStatus(shape, base,
                                   /*count=*/AsInt64Slice(shape.dimensions()),
                                   incr, visitor_function);
@@ -744,7 +746,7 @@ class ShapeUtil {
 
   template <typename FnType>
   static void ForEachIndex(const Shape& shape, const FnType& visitor_function) {
-    ForEachIndexWithStatus(shape, [&](absl::Span<const int64> indices) {
+    ForEachIndexWithStatus(shape, [&](absl::Span<const int64_t> indices) {
       return StatusOr<bool>(visitor_function(indices));
     }).IgnoreError();
   }
@@ -754,18 +756,18 @@ class ShapeUtil {
   // matter.
   //
   // visitor_function must be a callable of type
-  // void(Span<int64>) or compatible.
+  // void(Span<int64_t>) or compatible.
   template <typename FnType>
   static void ForEachIndexParallel(const Shape& shape,
-                                   absl::Span<const int64> base,
-                                   absl::Span<const int64> count,
-                                   absl::Span<const int64> incr,
+                                   absl::Span<const int64_t> base,
+                                   absl::Span<const int64_t> count,
+                                   absl::Span<const int64_t> incr,
                                    const FnType& visitor_function) {
     // The parallel version of ForEachIndexInternal can never fail.
     CHECK(ForEachIndexInternal(
               shape, base, count, incr,
               [&visitor_function](
-                  absl::Span<const int64> indexes) -> StatusOr<bool> {
+                  absl::Span<const int64_t> indexes) -> StatusOr<bool> {
                 visitor_function(indexes);
                 return true;
               },
@@ -788,8 +790,8 @@ class ShapeUtil {
   //
   // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
   // normalized shape of `b` or the 0-2-1 shape.
-  static absl::optional<std::vector<int64>> FindTranspose021(const Shape& a,
-                                                             const Shape& b);
+  static absl::optional<std::vector<int64_t>> FindTranspose021(const Shape& a,
+                                                               const Shape& b);
 
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.
@@ -808,10 +810,10 @@ class ShapeUtil {
   // Fills *shape. Returns true on success.
   // REQUIRES: *shape is empty.
   static bool FillNewShape(PrimitiveType element_type,
-                           absl::Span<const int64> dimensions, Shape* shape);
+                           absl::Span<const int64_t> dimensions, Shape* shape);
 
   // Validates the shape size is sane. This makes sure it's safe to do
-  // calculations in int64 without overflowing.
+  // calculations in int64_t without overflowing.
   static Status ValidateShapeSize(const Shape& shape);
 
   // Validates all of the non-layout properties of the shape -- this is a helper
@@ -820,9 +822,9 @@ class ShapeUtil {
 
   template <typename FnType>
   static Status ForEachIndexInternal(const Shape& shape,
-                                     absl::Span<const int64> base,
-                                     absl::Span<const int64> count,
-                                     absl::Span<const int64> incr,
+                                     absl::Span<const int64_t> base,
+                                     absl::Span<const int64_t> count,
+                                     absl::Span<const int64_t> incr,
                                      const FnType& visitor_function,
                                      bool parallel = false) {
     if (ShapeUtil::IsZeroElementArray(shape)) {
@@ -835,7 +837,7 @@ class ShapeUtil {
     // Allows handling R0 arrays, such that the visitor function will be called
     // once with the proper empty indexes.
     int64_t n = -1;
-    std::vector<int64> indexes(base.begin(), base.end());
+    std::vector<int64_t> indexes(base.begin(), base.end());
     const int kNumThreads = tensorflow::port::MaxParallelism();
     absl::optional<tensorflow::thread::ThreadPool> pool;
     if (parallel) {

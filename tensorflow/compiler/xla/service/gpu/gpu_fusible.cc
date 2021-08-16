@@ -67,17 +67,17 @@ bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   return false;
 }
 
-std::vector<int64> ExtractRelativeOrderOfNontrivialDims(const Shape& shape) {
-  std::vector<int64> relative_order;
+std::vector<int64_t> ExtractRelativeOrderOfNontrivialDims(const Shape& shape) {
+  std::vector<int64_t> relative_order;
   for (int64_t dim : LayoutUtil::MinorToMajor(shape)) {
     if (shape.dimensions(dim) > 1) {
       relative_order.push_back(dim);
     }
   }
   // Now normalize the dimensions to values between 0 and true rank - 1.
-  std::vector<int64> sorted_dims = relative_order;
+  std::vector<int64_t> sorted_dims = relative_order;
   std::sort(sorted_dims.begin(), sorted_dims.end());
-  for (int64& dim : relative_order) {
+  for (int64_t& dim : relative_order) {
     int64_t sorted_index = std::distance(
         sorted_dims.begin(),
         std::lower_bound(sorted_dims.begin(), sorted_dims.end(), dim));
@@ -94,7 +94,7 @@ bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
   AppendParams(producer, &params);
   AppendParams(reduce, &params);
   int64_t max_true_rank = -1;
-  std::vector<int64> max_rank_order;
+  std::vector<int64_t> max_rank_order;
   for (HloInstruction* param : params) {
     if (param->shape().IsArray() &&
         ShapeUtil::TrueRank(param->shape()) > max_true_rank) {
@@ -316,10 +316,9 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
 }
 
 // Returns shared memory usage for a given instruction in bytes.
-static int64 SharedMemoryUsage(const HloInstruction& instr) {
+static int64_t SharedMemoryUsage(const HloInstruction& instr) {
   // For now we are only fusing reductions.
-  if (instr.opcode() == HloOpcode::kReduce &&
-      IsReductionFromOrToContiguousDimensions(instr)) {
+  if (IsReductionFromOrToContiguousDimensions(instr)) {
     ReductionDimensions reduction_info =
         GetReductionKindAndContiguousComponents(instr);
     int64_t primitive_size =
@@ -341,6 +340,26 @@ static int64 SharedMemoryUsage(const HloInstruction& instr) {
     return sum;
   }
   // Other fused expressions for now don't need the shared memory budget.
+  return 0;
+}
+
+// Codegen'ing unnested reductions requires a lot of registers, so a MOF
+// combining many of those runs a high risk of spilling.
+constexpr int64_t kMaxUnnestedReductionOutputsPerFusion = 8;
+
+// Returns the number of unnested reductions in the instruction output.
+static int64_t NumUnnestedReductions(const HloInstruction& instr) {
+  if (IsReductionFromOrToContiguousDimensions(instr)) {
+    return 1;
+  }
+  if (instr.opcode() == HloOpcode::kFusion) {
+    int64_t sum = 0;
+    for (const HloInstruction* hlo :
+         instr.fused_instructions_computation()->MakeInstructionPostOrder()) {
+      sum += NumUnnestedReductions(*hlo);
+    }
+    return sum;
+  }
   return 0;
 }
 
@@ -375,6 +394,13 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
     VLOG(5) << "Shared memory usage of fusion of " << instr1.ToString()
             << " and " << instr2.ToString() << " would be over the budget of "
             << kSharedMemoryBudgetInBytes << "B";
+    return true;
+  }
+
+  if (NumUnnestedReductions(instr1) + NumUnnestedReductions(instr2) >
+      kMaxUnnestedReductionOutputsPerFusion) {
+    VLOG(5) << "Not fusing over " << kMaxUnnestedReductionOutputsPerFusion
+            << " unnested reductions in fusion";
     return true;
   }
 

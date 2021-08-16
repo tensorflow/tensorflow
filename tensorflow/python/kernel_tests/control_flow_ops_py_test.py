@@ -2104,10 +2104,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       b = lambda i, j: [i + 1, array_ops.concat([j, j], 0)]
       with self.assertRaisesRegex(
           ValueError,
-          r"Input tensor 'ones:0' enters the loop with shape \(2, 2\), but has "
-          r"shape \(4, 2\) after one iteration. To allow the shape to vary "
-          r"across iterations, use the `shape_invariants` argument of "
-          r"tf.while_loop to specify a less-specific shape."):
+          r".*\(2, 2\).*\(4, 2\) after one iteration\. To allow the shape to "
+          r"vary across iterations, use the `shape_invariants` argument of "
+          r"tf.while_loop to specify a less-specific shape\."):
         control_flow_ops.while_loop(c, b, [i, m])
 
   def testWhileShapeInferenceSparseTensor(self):

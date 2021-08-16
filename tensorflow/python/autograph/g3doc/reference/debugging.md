@@ -77,7 +77,7 @@ f(1)
 ### Using `print` and `tf.print`
 
 The `print` function is not converted by AutoGraph, and can be used to inspect
-the values of variables as graph construction time.
+the values of variables at graph construction time.
 
 Mixing `print` with `tf.print` can be confusing at first because they run at
 different stages. In general:

@@ -64,12 +64,12 @@ ReferenceUtil::ConvArray3DGeneralDimensionsDilated(
   // array by adding a fourth dummy dimension of size 1 without stride, padding
   // and dilation.
   Array4D<float> a4dlhs(lhs.n1(), lhs.n2(), lhs.n3(), 1);
-  a4dlhs.Each([&](absl::Span<const int64> indices, float* value_ptr) {
+  a4dlhs.Each([&](absl::Span<const int64_t> indices, float* value_ptr) {
     CHECK_EQ(indices[3], 0);
     *value_ptr = lhs.operator()(indices[0], indices[1], indices[2]);
   });
   Array4D<float> a4drhs(rhs.n1(), rhs.n2(), rhs.n3(), 1);
-  a4drhs.Each([&](absl::Span<const int64> indices, float* value_ptr) {
+  a4drhs.Each([&](absl::Span<const int64_t> indices, float* value_ptr) {
     CHECK_EQ(indices[3], 0);
     *value_ptr = rhs.operator()(indices[0], indices[1], indices[2]);
   });
@@ -84,7 +84,7 @@ ReferenceUtil::ConvArray3DGeneralDimensionsDilated(
 
   auto convr3 = absl::make_unique<Array3D<float>>(
       convr4->planes(), convr4->depth(), convr4->height());
-  convr4->Each([&](absl::Span<const int64> indices, float* value_ptr) {
+  convr4->Each([&](absl::Span<const int64_t> indices, float* value_ptr) {
     CHECK_EQ(indices[3], 0);
     convr3->operator()(indices[0], indices[1], indices[2]) = *value_ptr;
   });
@@ -93,7 +93,7 @@ ReferenceUtil::ConvArray3DGeneralDimensionsDilated(
 
 /* static */ std::unique_ptr<Array4D<float>> ReferenceUtil::ConvArray4D(
     const Array4D<float>& lhs, const Array4D<float>& rhs,
-    std::pair<int64, int64> kernel_stride, Padding padding) {
+    std::pair<int64_t, int64_t> kernel_stride, Padding padding) {
   return ConvArray4DGeneralDimensions(
       lhs, rhs, kernel_stride, padding,
       XlaBuilder::CreateDefaultConvDimensionNumbers());
@@ -103,7 +103,7 @@ ReferenceUtil::ConvArray3DGeneralDimensionsDilated(
 ReferenceUtil::SeparableConvArray4D(const Array4D<float>& input,
                                     const Array4D<float>& depthwise_weights,
                                     const Array4D<float>& pointwise_weights,
-                                    std::pair<int64, int64> kernel_stride,
+                                    std::pair<int64_t, int64_t> kernel_stride,
                                     Padding padding) {
   const int64_t depth_multiplier = depthwise_weights.planes();
   CHECK_EQ(pointwise_weights.depth(), input.depth() * depth_multiplier);
@@ -131,9 +131,10 @@ ReferenceUtil::SeparableConvArray4D(const Array4D<float>& input,
   return ConvArray4D(input, weights, kernel_stride, padding);
 }
 
-/* static */ int64 ReferenceUtil::WindowCount(int64_t unpadded_width,
-                                              int64_t window_len,
-                                              int64_t stride, Padding padding) {
+/* static */ int64_t ReferenceUtil::WindowCount(int64_t unpadded_width,
+                                                int64_t window_len,
+                                                int64_t stride,
+                                                Padding padding) {
   if (padding == Padding::kValid) {
     return window_util::StridedBound(unpadded_width, window_len, stride);
   }
@@ -144,8 +145,8 @@ ReferenceUtil::SeparableConvArray4D(const Array4D<float>& input,
 ReferenceUtil::ReduceWindow1DGeneric(
     absl::Span<const float> operand, float init,
     const std::function<float(float, float)>& reduce_func,
-    absl::Span<const int64> window, absl::Span<const int64> stride,
-    absl::Span<const std::pair<int64, int64>> padding) {
+    absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
+    absl::Span<const std::pair<int64_t, int64_t>> padding) {
   CHECK_EQ(window.size(), 1);
   CHECK_EQ(stride.size(), 1);
   CHECK_EQ(padding.size(), 1);
@@ -174,24 +175,24 @@ ReferenceUtil::ReduceWindow1DGeneric(
 
 /* static  */ std::unique_ptr<std::vector<float>>
 ReferenceUtil::ReduceWindow1DAdd(absl::Span<const float> operand, float init,
-                                 absl::Span<const int64> window,
-                                 absl::Span<const int64> stride,
+                                 absl::Span<const int64_t> window,
+                                 absl::Span<const int64_t> stride,
                                  Padding padding) {
   const auto add_reduce = [](float arg1, float arg2) { return arg1 + arg2; };
-  std::vector<int64> dim_lengths{static_cast<int64>(operand.size())};
+  std::vector<int64_t> dim_lengths{static_cast<int64_t>(operand.size())};
   return ReduceWindow1DGeneric(
       operand, init, add_reduce, window, stride,
       xla::MakePadding(dim_lengths, window, stride, padding));
 }
 
 /* static  */ std::unique_ptr<Array3D<float>> ReferenceUtil::ReduceWindow3DAdd(
-    const Array3D<float>& operand, float init, absl::Span<const int64> window,
-    absl::Span<const int64> stride, Padding padding) {
-  std::vector<int64> dim_lengths{operand.n1(), operand.n2(), operand.n3()};
+    const Array3D<float>& operand, float init, absl::Span<const int64_t> window,
+    absl::Span<const int64_t> stride, Padding padding) {
+  std::vector<int64_t> dim_lengths{operand.n1(), operand.n2(), operand.n3()};
   auto padding_both = xla::MakePadding(dim_lengths, window, stride, padding);
 
-  std::vector<int64> window_counts(window.size(), 0);
-  std::vector<int64> pad_low(window.size(), 0);
+  std::vector<int64_t> window_counts(window.size(), 0);
+  std::vector<int64_t> pad_low(window.size(), 0);
   for (int64_t i = 0; i < window.size(); ++i) {
     window_counts[i] =
         WindowCount(dim_lengths[i], window[i], stride[i], padding);
@@ -232,10 +233,10 @@ ReferenceUtil::ReduceWindow1DAdd(absl::Span<const float> operand, float init,
 ReferenceUtil::ReduceWindow4DGeneric(
     const Array4D<float>& operand, float init,
     const std::function<float(float, float)>& reduce_func,
-    absl::Span<const int64> window, absl::Span<const int64> stride,
+    absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
     Padding padding) {
-  std::vector<int64> dim_lengths{operand.n1(), operand.n2(), operand.n3(),
-                                 operand.n4()};
+  std::vector<int64_t> dim_lengths{operand.n1(), operand.n2(), operand.n3(),
+                                   operand.n4()};
   return ReduceWindow4DGeneric(
       operand, init, reduce_func, window, stride,
       xla::MakePadding(dim_lengths, window, stride, padding));
@@ -245,13 +246,13 @@ ReferenceUtil::ReduceWindow4DGeneric(
 ReferenceUtil::ReduceWindow4DGeneric(
     const Array4D<float>& operand, float init,
     const std::function<float(float, float)>& reduce_func,
-    absl::Span<const int64> window, absl::Span<const int64> stride,
-    absl::Span<const std::pair<int64, int64>> padding) {
-  std::vector<int64> dim_lengths{operand.n1(), operand.n2(), operand.n3(),
-                                 operand.n4()};
+    absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
+    absl::Span<const std::pair<int64_t, int64_t>> padding) {
+  std::vector<int64_t> dim_lengths{operand.n1(), operand.n2(), operand.n3(),
+                                   operand.n4()};
 
-  std::vector<int64> window_counts(window.size(), 0);
-  std::vector<int64> pad_low(window.size(), 0);
+  std::vector<int64_t> window_counts(window.size(), 0);
+  std::vector<int64_t> pad_low(window.size(), 0);
   for (int64_t i = 0; i < window.size(); ++i) {
     int64_t padded_width =
         padding[i].first + dim_lengths[i] + padding[i].second;
@@ -299,8 +300,8 @@ ReferenceUtil::ReduceWindow4DGeneric(
 }
 
 /* static  */ std::unique_ptr<Array4D<float>> ReferenceUtil::ReduceWindow4DAdd(
-    const Array4D<float>& operand, float init, absl::Span<const int64> window,
-    absl::Span<const int64> stride, Padding padding) {
+    const Array4D<float>& operand, float init, absl::Span<const int64_t> window,
+    absl::Span<const int64_t> stride, Padding padding) {
   const auto add_reduce = [](float arg1, float arg2) { return arg1 + arg2; };
   return ReduceWindow4DGeneric(operand, init, add_reduce, window, stride,
                                padding);
@@ -324,20 +325,20 @@ ReferenceUtil::ReduceWindow4DGeneric(
 ReferenceUtil::SelectAndScatter4DGePlus(const Array4D<float>& operand,
                                         const Array4D<float>& source,
                                         float init,
-                                        absl::Span<const int64> window,
-                                        absl::Span<const int64> stride,
+                                        absl::Span<const int64_t> window,
+                                        absl::Span<const int64_t> stride,
                                         bool same_padding) {
   Padding padding = same_padding ? Padding::kSame : Padding::kValid;
   auto result = absl::make_unique<Array4D<float>>(operand.n1(), operand.n2(),
                                                   operand.n3(), operand.n4());
-  std::vector<int64> dim_lengths{operand.n1(), operand.n2(), operand.n3(),
-                                 operand.n4()};
+  std::vector<int64_t> dim_lengths{operand.n1(), operand.n2(), operand.n3(),
+                                   operand.n4()};
   auto padding_both = xla::MakePadding(dim_lengths, window, stride, padding);
   // Fill the output, with the initial value.
   result->Fill(init);
 
-  std::vector<int64> window_counts(window.size(), 0);
-  std::vector<int64> pad_low(window.size(), 0);
+  std::vector<int64_t> window_counts(window.size(), 0);
+  std::vector<int64_t> pad_low(window.size(), 0);
   for (int64_t i = 0; i < window.size(); ++i) {
     window_counts[i] =
         WindowCount(dim_lengths[i], window[i], stride[i], padding);
@@ -399,7 +400,7 @@ ReferenceUtil::SelectAndScatter4DGePlus(const Array4D<float>& operand,
 /* static */ std::unique_ptr<Array4D<float>>
 ReferenceUtil::ConvArray4DGeneralDimensions(
     const Array4D<float>& lhs, const Array4D<float>& rhs,
-    std::pair<int64, int64> kernel_stride, Padding padding,
+    std::pair<int64_t, int64_t> kernel_stride, Padding padding,
     ConvolutionDimensionNumbers dimension_numbers) {
   return ConvArray4DGeneralDimensionsDilated(lhs, rhs, kernel_stride, padding,
                                              {1, 1}, {1, 1},
@@ -409,16 +410,17 @@ ReferenceUtil::ConvArray4DGeneralDimensions(
 /* static */ std::unique_ptr<Array4D<float>>
 ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
     const Array4D<float>& lhs, const Array4D<float>& rhs,
-    std::pair<int64, int64> kernel_stride, Padding padding,
-    std::pair<int64, int64> lhs_dilation, std::pair<int64, int64> rhs_dilation,
+    std::pair<int64_t, int64_t> kernel_stride, Padding padding,
+    std::pair<int64_t, int64_t> lhs_dilation,
+    std::pair<int64_t, int64_t> rhs_dilation,
     ConvolutionDimensionNumbers dnums) {
   HloComputation::Builder b("ConvArray4DGeneralDimensionDilated");
   auto lhs_literal = LiteralUtil::CreateR4FromArray4D<float>(lhs);
   auto rhs_literal = LiteralUtil::CreateR4FromArray4D<float>(rhs);
 
-  std::array<int64, 2> ordered_kernel_strides;
-  std::array<int64, 2> ordered_input_dimensions;
-  std::array<int64, 2> ordered_kernel_dimensions;
+  std::array<int64_t, 2> ordered_kernel_strides;
+  std::array<int64_t, 2> ordered_input_dimensions;
+  std::array<int64_t, 2> ordered_kernel_dimensions;
   if (dnums.kernel_spatial_dimensions(0) > dnums.kernel_spatial_dimensions(1)) {
     ordered_kernel_strides[0] = kernel_stride.second;
     ordered_kernel_strides[1] = kernel_stride.first;
@@ -436,7 +438,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   ordered_kernel_dimensions[1] =
       rhs_literal.shape().dimensions(dnums.kernel_spatial_dimensions(1));
 
-  std::vector<std::pair<int64, int64>> paddings =
+  std::vector<std::pair<int64_t, int64_t>> paddings =
       MakePadding(ordered_input_dimensions, ordered_kernel_dimensions,
                   ordered_kernel_strides, padding);
   CHECK_EQ(paddings.size(), 2);
@@ -496,7 +498,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
                                         result_literal.shape().dimensions(2),
                                         result_literal.shape().dimensions(3));
 
-  result->Each([&](absl::Span<const int64> indices, float* value) {
+  result->Each([&](absl::Span<const int64_t> indices, float* value) {
     *value = result_literal.Get<float>(indices);
   });
 
@@ -538,11 +540,11 @@ ReferenceUtil::ReduceToRowArray2D(
 }
 
 /*static*/ std::vector<float> ReferenceUtil::Reduce4DTo1D(
-    const Array4D<float>& array, float init, absl::Span<const int64> dims,
+    const Array4D<float>& array, float init, absl::Span<const int64_t> dims,
     const std::function<float(float, float)>& reduce_function) {
   std::vector<float> result;
   CHECK_EQ(dims.size(), 3);
-  const absl::flat_hash_set<int64> dim_set(dims.begin(), dims.end());
+  const absl::flat_hash_set<int64_t> dim_set(dims.begin(), dims.end());
   CHECK_EQ(dim_set.size(), 3);
   for (int64_t a0 = 0; a0 == 0 || (!dim_set.contains(0) && a0 < array.n1());
        ++a0) {
@@ -581,7 +583,7 @@ ReferenceUtil::ReduceToRowArray2D(
 }
 
 /* static */ std::unique_ptr<Array4D<float>> ReferenceUtil::Broadcast1DTo4D(
-    const std::vector<float>& array, const std::vector<int64>& bounds,
+    const std::vector<float>& array, const std::vector<int64_t>& bounds,
     int64_t broadcast_from_dim) {
   auto result = absl::make_unique<Array4D<float>>(bounds[0], bounds[1],
                                                   bounds[2], bounds[3]);
@@ -613,7 +615,7 @@ ReferenceUtil::ReduceToRowArray2D(
 }
 
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::Reduce3DTo2D(
-    const Array3D<float>& array, float init, absl::Span<const int64> dims,
+    const Array3D<float>& array, float init, absl::Span<const int64_t> dims,
     const std::function<float(float, float)>& reduce_function) {
   CHECK_EQ(dims.size(), 1);
   int64_t rows = dims[0] == 0 ? array.n2() : array.n1();

@@ -79,7 +79,7 @@ struct ConcatGroup {
 
   Shape GetConcatShape() const {
     if (inserted_concat_dim) {
-      std::vector<int64> dims;
+      std::vector<int64_t> dims;
       const Shape& element_shape = elements.back()->shape();
       dims.reserve(element_shape.rank() + 1);
       for (int64_t i = 0; i < element_shape.rank(); ++i) {
@@ -107,17 +107,18 @@ struct ConcatGroup {
                               HloComputation* comp) const {
     Shape shape = full_data->shape();
     shape.set_dimensions(concat_dim, element_sizes[element_index]);
-    std::vector<int64> starts(shape.rank(), 0);
-    std::vector<int64> limits(shape.dimensions().begin(),
-                              shape.dimensions().end());
+    std::vector<int64_t> starts(shape.rank(), 0);
+    std::vector<int64_t> limits(shape.dimensions().begin(),
+                                shape.dimensions().end());
     starts[concat_dim] = element_offsets[element_index];
     limits[concat_dim] += starts[concat_dim];
-    auto slice = comp->AddInstruction(HloInstruction::CreateSlice(
-        shape, full_data, starts, limits, std::vector<int64>(shape.rank(), 1)));
+    auto slice = comp->AddInstruction(
+        HloInstruction::CreateSlice(shape, full_data, starts, limits,
+                                    std::vector<int64_t>(shape.rank(), 1)));
     if (!inserted_concat_dim) {
       return slice;
     }
-    std::vector<int64> element_shape;
+    std::vector<int64_t> element_shape;
     element_shape.reserve(shape.rank());
     for (int64_t i = 0; i < shape.rank(); ++i) {
       if (i != concat_dim) {
@@ -132,7 +133,7 @@ struct ConcatGroup {
                                HloComputation* comp) const {
     if (inserted_concat_dim) {
       for (int64_t i = 0; i < input_elements.size(); ++i) {
-        std::vector<int64> element_shape;
+        std::vector<int64_t> element_shape;
         element_shape.reserve(input_elements[i]->shape().rank());
         for (int64_t j = 0; j < input_elements[i]->shape().rank(); ++j) {
           if (j == concat_dim) {
@@ -155,9 +156,9 @@ struct ConcatGroup {
   }
 
   std::vector<HloInstruction*> elements;
-  std::vector<int64> element_sizes;
-  std::vector<int64> element_offsets;
-  int64 concat_dim;
+  std::vector<int64_t> element_sizes;
+  std::vector<int64_t> element_offsets;
+  int64_t concat_dim;
   // Whether the concat dim is an inserted new dimension.
   bool inserted_concat_dim;
 };
@@ -168,7 +169,7 @@ class ConcatGroups {
  public:
   // Returns the group index and element index in group for an HLO, if it
   // belongs to a group.
-  absl::optional<std::pair<int64, int64>> GetGroupIndex(
+  absl::optional<std::pair<int64_t, int64_t>> GetGroupIndex(
       const HloInstruction* hlo) const {
     auto it = element_to_group_.find(hlo);
     if (it == element_to_group_.end()) {
@@ -184,7 +185,7 @@ class ConcatGroups {
   // existing group but shared some of the elements, returns -1 as the index.
   // It also returns whether a new group is created. So the return value is a
   // pair of {whether created, group index}.
-  std::pair<bool, int64> MaybeCreateNewGroup(ConcatGroup group) {
+  std::pair<bool, int64_t> MaybeCreateNewGroup(ConcatGroup group) {
     int64_t group_id = -1;
     absl::flat_hash_set<HloInstruction*> elements_dedup;
     for (int64_t i = 0; i < group.elements.size(); ++i) {
@@ -195,7 +196,7 @@ class ConcatGroups {
       if (concat_disallowed_.contains(group.elements[i])) {
         VLOG(2) << "Failed creating group. Grouping disallowed on "
                 << group.elements[i]->ToString();
-        return std::pair<bool, int64>(false, -1);
+        return std::pair<bool, int64_t>(false, -1);
       }
       auto existing = GetGroupIndex(group.elements[i]);
       if (existing.has_value() &&
@@ -206,7 +207,7 @@ class ConcatGroups {
         VLOG(2)
             << "Failed creating group. Different than existing group. Element: "
             << group.elements[i]->ToString();
-        return std::pair<bool, int64>(false, -1);
+        return std::pair<bool, int64_t>(false, -1);
       }
       if (i == 0 && existing.has_value()) {
         group_id = existing->first;
@@ -216,36 +217,37 @@ class ConcatGroups {
           VLOG(2) << "Failed creating group. Different than existing group. "
                      "Element: "
                   << group.elements[i]->ToString();
-          return std::pair<bool, int64>(false, -1);
+          return std::pair<bool, int64_t>(false, -1);
         }
         if (!existing.has_value() && group_id >= 0) {
           VLOG(2) << "Failed creating group. Different than existing group. "
                      "Element: "
                   << group.elements[i]->ToString();
-          return std::pair<bool, int64>(false, -1);
+          return std::pair<bool, int64_t>(false, -1);
         }
       }
     }
     if (group_id >= 0) {
       VLOG(2) << "Group already exists at " << group_id << " for "
               << group.elements[0]->ToString();
-      return std::pair<bool, int64>(false, group_id);
+      return std::pair<bool, int64_t>(false, group_id);
     }
     int64_t index = groups_.size();
     for (int64_t i = 0; i < group.elements.size(); ++i) {
-      element_to_group_[group.elements[i]] = std::pair<int64, int64>(index, i);
+      element_to_group_[group.elements[i]] =
+          std::pair<int64_t, int64_t>(index, i);
     }
     VLOG(2) << "Created new group at " << index << " for "
             << group.elements[0]->ToString()
             << ", concat_dim: " << group.concat_dim
             << ", inserted: " << group.inserted_concat_dim;
     groups_.push_back(std::move(group));
-    return std::pair<bool, int64>(true, index);
+    return std::pair<bool, int64_t>(true, index);
   }
 
   const std::vector<ConcatGroup>& Groups() const { return groups_; }
 
-  int64 NextGroupIndex() const { return groups_.size(); }
+  int64_t NextGroupIndex() const { return groups_.size(); }
 
   void RemoveTailingGroups(int64_t start_index) {
     while (groups_.size() > start_index) {
@@ -263,7 +265,7 @@ class ConcatGroups {
 
  private:
   // element -> {group index in groups_, element index in group}.
-  absl::flat_hash_map<const HloInstruction*, std::pair<int64, int64>>
+  absl::flat_hash_map<const HloInstruction*, std::pair<int64_t, int64_t>>
       element_to_group_;
   std::vector<ConcatGroup> groups_;
   absl::flat_hash_set<const HloInstruction*> concat_disallowed_;
@@ -275,12 +277,12 @@ class ConcatGroups {
 //
 // If the operand is already transformed to the combined shape, specify its
 // group in combined_operand_group. (Only required for kReshape.)
-absl::optional<std::pair<int64, bool>> GetOperandConcatDim(
+absl::optional<std::pair<int64_t, bool>> GetOperandConcatDim(
     const HloInstruction* hlo, int64_t operand_index, int64_t hlo_concat_dim,
     bool hlo_inserted_concat_dim,
     const ConcatGroup* combined_operand_group = nullptr) {
   if (hlo->IsElementwise() || hlo->opcode() == HloOpcode::kAllReduce) {
-    return std::pair<int64, bool>(hlo_concat_dim, hlo_inserted_concat_dim);
+    return std::pair<int64_t, bool>(hlo_concat_dim, hlo_inserted_concat_dim);
   }
   int64_t operand_concat_dim = -1;
   bool operand_inserted_concat_dim = false;
@@ -317,7 +319,7 @@ absl::optional<std::pair<int64, bool>> GetOperandConcatDim(
     }
     operand_concat_dim = hlo_concat_dim;
     operand_inserted_concat_dim = hlo_inserted_concat_dim;
-    std::set<int64> sorted_reduce_dims;
+    std::set<int64_t> sorted_reduce_dims;
     for (int64_t dim : hlo->dimensions()) {
       sorted_reduce_dims.insert(dim);
     }
@@ -368,8 +370,8 @@ absl::optional<std::pair<int64, bool>> GetOperandConcatDim(
     return absl::nullopt;
   }
   CHECK_GE(operand_concat_dim, 0);
-  return std::pair<int64, bool>(operand_concat_dim,
-                                operand_inserted_concat_dim);
+  return std::pair<int64_t, bool>(operand_concat_dim,
+                                  operand_inserted_concat_dim);
 }
 
 void ModifyHloPropertiesForConcatShape(const ConcatGroup& group,
@@ -390,7 +392,7 @@ void ModifyHloPropertiesForConcatShape(const ConcatGroup& group,
     } else {
       CHECK_EQ(hlo->operand(0)->shape().rank(), hlo->dimensions().size());
     }
-    std::vector<int64> dims;
+    std::vector<int64_t> dims;
     for (int64_t i = 0; i < hlo->operand(0)->shape().rank(); ++i) {
       if (i == operand_concat_dim && operand_inserted_concat_dim) {
         dims.push_back(group.concat_dim);
@@ -426,20 +428,20 @@ void ModifyHloPropertiesForConcatShape(const ConcatGroup& group,
 // Main method to assign groups to HLOs, based on a concat.
 bool GroupHlosForConcat(
     HloComputation* body, HloInstruction* concat,
-    absl::flat_hash_map<const HloInstruction*, int64> topological_order,
+    absl::flat_hash_map<const HloInstruction*, int64_t> topological_order,
     ConcatGroups* groups) {
   const int64_t group_size = concat->operand_count();
-  absl::flat_hash_set<int64> used_groups;
+  absl::flat_hash_set<int64_t> used_groups;
   auto root_tuple = body->root_instruction();
   CHECK_EQ(root_tuple->opcode(), HloOpcode::kTuple);
-  absl::flat_hash_map<HloInstruction*, int64> root_tuple_element_use_count;
+  absl::flat_hash_map<HloInstruction*, int64_t> root_tuple_element_use_count;
   for (auto operand : root_tuple->operands()) {
     root_tuple_element_use_count.emplace(operand, 0).first->second++;
   }
   // Priority Queue sorted by topological order. Users come before operands, so
   // it uses -topological_order[element0] as the key. We start with the concat
   // operands.
-  std::multimap<int64, ConcatGroup> pq;
+  std::multimap<int64_t, ConcatGroup> pq;
   const int64_t first_group_id_to_create = groups->NextGroupIndex();
   auto fail_and_cleanup = [&] {
     VLOG(1) << "Failed to get the subcomputation to optimize for "
@@ -449,7 +451,7 @@ bool GroupHlosForConcat(
     return false;
   };
   struct GroupUse {
-    int64 group_id;
+    int64_t group_id;
     bool newly_created;
     bool already_used_by_subcomp;
   };
@@ -710,7 +712,7 @@ Status RewriteLoopWithConcatGroups(HloInstruction* loop,
   // shape, and leave the other elements unchagned. Non-grouped users will be
   // have slices of the expanded first element as the new input. Later
   // simplification and DCE passes can remove the other elements.
-  absl::flat_hash_set<int64> processed_groups;
+  absl::flat_hash_set<int64_t> processed_groups;
   auto body = loop->while_body();
   auto param = body->parameter_instruction(0);
   auto cond_param = loop->while_condition()->parameter_instruction(0);
@@ -825,7 +827,7 @@ Status RewriteLoopWithConcatGroups(HloInstruction* loop,
               operand_group->inserted_concat_dim) {
             // The operand's actual inserted_concat_dim doesn't match the
             // expected operand_inserted_concat_dim. Need a reshape.
-            std::vector<int64> new_dims;
+            std::vector<int64_t> new_dims;
             int64_t d = 0;
             for (; d < operand_concat_dim; ++d) {
               new_dims.push_back(hlo->operand(i)->shape().dimensions(d));
@@ -865,8 +867,8 @@ Status RewriteLoopWithConcatGroups(HloInstruction* loop,
         VLOG(2) << "Broadcasting shared operand "
                 << hlo->operand(i)->ToString();
         Shape data_shape = hlo->operand(i)->shape();
-        std::vector<int64> broadcast_dims;
-        std::vector<int64> broadcast_shape;
+        std::vector<int64_t> broadcast_dims;
+        std::vector<int64_t> broadcast_shape;
         for (int64_t j = 0; j < data_shape.rank(); ++j) {
           if (j < operand_concat_dim) {
             broadcast_dims.push_back(j);
@@ -968,7 +970,7 @@ StatusOr<bool> RunOnLoop(HloInstruction* loop,
   }
   std::vector<HloInstruction*> concats;
   auto body_instructions = body->MakeInstructionPostOrder();
-  absl::flat_hash_map<const HloInstruction*, int64> topological_order;
+  absl::flat_hash_map<const HloInstruction*, int64_t> topological_order;
   for (int64_t i = 0; i < body_instructions.size(); ++i) {
     auto hlo = body_instructions[i];
     topological_order[hlo] = i;

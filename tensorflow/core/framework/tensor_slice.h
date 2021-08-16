@@ -45,7 +45,8 @@ class TensorSlice {
   TensorSlice() {}
   explicit TensorSlice(int dim);
   explicit TensorSlice(const TensorSliceProto& proto);
-  explicit TensorSlice(std::initializer_list<std::pair<int64, int64>> extents);
+  explicit TensorSlice(
+      std::initializer_list<std::pair<int64_t, int64_t>> extents);
 
   static Status Parse(const string& str, TensorSlice* output);
   static TensorSlice ParseOrDie(const string& str) {
@@ -62,19 +63,19 @@ class TensorSlice {
   // Accessors
   int dims() const { return starts_.size(); }
 
-  int64 start(int d) const {
+  int64_t start(int d) const {
     DCHECK_GE(d, 0);
     DCHECK_LT(d, dims());
     return starts_[d];
   }
 
-  int64 length(int d) const {
+  int64_t length(int d) const {
     DCHECK_GE(d, 0);
     DCHECK_LT(d, dims());
     return lengths_[d];
   }
 
-  int64 end(int d) const {
+  int64_t end(int d) const {
     DCHECK_GE(d, 0);
     DCHECK_LT(d, dims());
     return start(d) + length(d);
@@ -182,7 +183,7 @@ class TensorSlice {
 
   // Returns the value of the length field in an Extent, or -1 if it
   // is not present.
-  static int64 GetExtentLength(const TensorSliceProto::Extent& extent);
+  static int64_t GetExtentLength(const TensorSliceProto::Extent& extent);
 
  private:
   // a length value of kFullExtent (-1) means we have a full slice at this
@@ -191,8 +192,8 @@ class TensorSlice {
 
   // TODO(yangke): switch to Eigen once it supports variable size arrays.
   // A value of
-  gtl::InlinedVector<int64, 4> starts_;
-  gtl::InlinedVector<int64, 4> lengths_;
+  gtl::InlinedVector<int64_t, 4> starts_;
+  gtl::InlinedVector<int64_t, 4> lengths_;
 };
 
 template <int NDIMS>

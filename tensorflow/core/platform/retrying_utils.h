@@ -36,10 +36,10 @@ struct RetryConfig {
   int max_retries;
 
   // Initial backoff time
-  int64 init_delay_time_us;
+  int64_t init_delay_time_us;
 
   // Maximum backoff time in microseconds.
-  int64 max_delay_time_us;
+  int64_t max_delay_time_us;
 };
 
 class RetryingUtils {

@@ -40,7 +40,7 @@ class HumanReadableProfileBuilder {
     CHECK_GE(clock_rate_ghz, 1e-9);
   }
 
-  int64 total_cycles() const { return total_cycles_; }
+  int64_t total_cycles() const { return total_cycles_; }
 
   // Adds an operation to the profile.  If you don't know the number of
   // floating-point ops or bytes touched by the op, or if you don't know how
@@ -62,10 +62,10 @@ class HumanReadableProfileBuilder {
     string name;
     string short_name;
     string category;
-    int64 cycles;
-    int64 flop_count;  // -1 if unknown
-    int64 transcendental_count;
-    int64 bytes_accessed;   // -1 if unknown
+    int64_t cycles;
+    int64_t flop_count;  // -1 if unknown
+    int64_t transcendental_count;
+    int64_t bytes_accessed;  // -1 if unknown
     float optimal_seconds;  // -1 if unknown
   };
 
@@ -78,7 +78,7 @@ class HumanReadableProfileBuilder {
 
   string computation_name_;
   bool is_entry_computation_;
-  int64 total_cycles_;
+  int64_t total_cycles_;
   double clock_rate_ghz_;
   std::vector<OpInfo> op_infos_;
 };

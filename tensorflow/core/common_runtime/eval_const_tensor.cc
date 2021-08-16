@@ -68,7 +68,7 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
           flat(i) = static_cast<int32>(dimension);
         }
       } else if (node->output_type(0) == DT_INT64) {
-        auto flat = t.flat<int64>();
+        auto flat = t.flat<int64_t>();
         for (int i = 0; i < input_rank; i++) {
           flat(i) = c->Value(c->Dim(c->input(0), i));
         }
@@ -105,7 +105,7 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
         }
         t.flat<int32>()(0) = static_cast<int32>(size);
       } else if (node->output_type(0) == DT_INT64) {
-        t.flat<int64>()(0) = size;
+        t.flat<int64_t>()(0) = size;
       } else {
         return errors::FailedPrecondition(
             "Size has output type that is not int32 or int64");

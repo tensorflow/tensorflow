@@ -92,7 +92,7 @@ XLA_TEST_F(WhileTest, WhileWithScalarS64Result) {
   {
     XlaBuilder builder("condition");
     auto prev = Parameter(&builder, 0, result_shape, "prev");
-    Gt(ConstantR0<int64>(&builder, 5), prev);
+    Gt(ConstantR0<int64_t>(&builder, 5), prev);
     condition = builder.Build().ConsumeValueOrDie();
   }
 
@@ -101,17 +101,17 @@ XLA_TEST_F(WhileTest, WhileWithScalarS64Result) {
   {
     XlaBuilder builder("body");
     auto prev = Parameter(&builder, 0, result_shape, "prev");
-    auto input = ConstantR0<int64>(&builder, 1);
+    auto input = ConstantR0<int64_t>(&builder, 1);
     Add(input, prev);
     body = builder.Build().ConsumeValueOrDie();
   }
 
   // Create a While node with computations for the condition and the body.
   XlaBuilder builder(TestName());
-  auto init = ConstantR0<int64>(&builder, 0);
+  auto init = ConstantR0<int64_t>(&builder, 0);
   While(condition, body, init);
 
-  ComputeAndCompareR0<int64>(&builder, 5, {});
+  ComputeAndCompareR0<int64_t>(&builder, 5, {});
 }
 
 XLA_TEST_F(WhileTest, WhileWithScalarResultNonConstInit) {

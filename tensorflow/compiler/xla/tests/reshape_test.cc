@@ -563,11 +563,11 @@ XLA_TEST_P(ReshapeTest, FullyConnectedCollapseDesugared) {
 XLA_TEST_P(ReshapeTest, ToScalar) {
   for (int rank = 0; rank < 8; ++rank) {
     XlaBuilder b(TestName());
-    std::vector<int64> ones(rank, 1);  // this is {1, ..., 1}.
-    std::vector<int64> dimensions(rank);
+    std::vector<int64_t> ones(rank, 1);  // this is {1, ..., 1}.
+    std::vector<int64_t> dimensions(rank);
     std::iota(dimensions.begin(), dimensions.end(), 0);
     Literal input_literal(ShapeUtil::MakeShape(F32, ones));
-    std::vector<int64> zeros(rank, 0);  // this is {0, ..., 0}.
+    std::vector<int64_t> zeros(rank, 0);  // this is {0, ..., 0}.
     input_literal.Set<float>(zeros, 83.0f);
 
     XlaOp parameter;
@@ -724,7 +724,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_2x1x1x1_To_2x1) {
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
   Array4D<float> input(2, 1, 1, 1);
-  input.Each([&rng, &distribution](absl::Span<const int64> /* indices */,
+  input.Each([&rng, &distribution](absl::Span<const int64_t> /* indices */,
                                    float* cell) { *cell = distribution(rng); });
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
@@ -744,7 +744,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_2x1x4x1_To_4x2) {
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
   Array4D<float> input(2, 1, 4, 1);
-  input.Each([&rng, &distribution](absl::Span<const int64> /* indices */,
+  input.Each([&rng, &distribution](absl::Span<const int64_t> /* indices */,
                                    float* cell) { *cell = distribution(rng); });
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
@@ -765,7 +765,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_5x10x2x3_To_5x60_Dimensions_0213) {
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
   Array4D<float> input(5, 10, 2, 3);
-  input.Each([&rng, &distribution](absl::Span<const int64> /* indices */,
+  input.Each([&rng, &distribution](absl::Span<const int64_t> /* indices */,
                                    float* cell) { *cell = distribution(rng); });
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
@@ -777,7 +777,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_5x10x2x3_To_5x60_Dimensions_0213) {
           /*new_sizes=*/{5, 60});
 
   Array2D<float> expected_array(5, 60);
-  input.Each([&](absl::Span<const int64> indices, float* cell) {
+  input.Each([&](absl::Span<const int64_t> indices, float* cell) {
     expected_array(indices[0], indices[2] * 30 + indices[1] * 3 + indices[3]) =
         *cell;
   });
@@ -792,7 +792,7 @@ XLA_TEST_P(ReshapeTest, NoopReshape) {
   std::uniform_real_distribution<float> distribution;
   Array4D<float> input_array(2, 3, 5, 7);
   input_array.Each(
-      [&rng, &distribution](absl::Span<const int64> /* indices */,
+      [&rng, &distribution](absl::Span<const int64_t> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input_array, LayoutUtil::MakeLayout({1, 2, 3, 0}));
@@ -872,10 +872,11 @@ XLA_TEST_P(ReshapeTest, R4ToR4Reshape) {
 XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeSimple) {
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
-  std::vector<int64> bounds = {2, 2, 2, 2};
-  std::vector<int64> new_bounds = {bounds[0], bounds[1], bounds[3], bounds[2]};
+  std::vector<int64_t> bounds = {2, 2, 2, 2};
+  std::vector<int64_t> new_bounds = {bounds[0], bounds[1], bounds[3],
+                                     bounds[2]};
   Array4D<float> input(bounds[0], bounds[1], bounds[2], bounds[3]);
-  input.Each([&rng, &distribution](absl::Span<const int64> /* indices */,
+  input.Each([&rng, &distribution](absl::Span<const int64_t> /* indices */,
                                    float* cell) { *cell = distribution(rng); });
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
@@ -900,10 +901,11 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeSimple) {
 XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstEffectiveR2) {
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
-  std::vector<int64> bounds = {1, 1, 250, 300};
-  std::vector<int64> new_bounds = {bounds[0], bounds[1], bounds[3], bounds[2]};
+  std::vector<int64_t> bounds = {1, 1, 250, 300};
+  std::vector<int64_t> new_bounds = {bounds[0], bounds[1], bounds[3],
+                                     bounds[2]};
   Array4D<float> input(bounds[0], bounds[1], bounds[2], bounds[3]);
-  input.Each([&rng, &distribution](absl::Span<const int64> /* indices */,
+  input.Each([&rng, &distribution](absl::Span<const int64_t> /* indices */,
                                    float* cell) { *cell = distribution(rng); });
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
@@ -928,10 +930,11 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstEffectiveR2) {
 XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1) {
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
-  std::vector<int64> bounds = {5, 5, 1, 10};
-  std::vector<int64> new_bounds = {bounds[0], bounds[1], bounds[3], bounds[2]};
+  std::vector<int64_t> bounds = {5, 5, 1, 10};
+  std::vector<int64_t> new_bounds = {bounds[0], bounds[1], bounds[3],
+                                     bounds[2]};
   Array4D<float> input(bounds[0], bounds[1], bounds[2], bounds[3]);
-  input.Each([&rng, &distribution](absl::Span<const int64> /* indices */,
+  input.Each([&rng, &distribution](absl::Span<const int64_t> /* indices */,
                                    float* cell) { *cell = distribution(rng); });
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
@@ -957,10 +960,11 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1InR2) {
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
   // This happens in NN-Builder MNIST.
-  std::vector<int64> bounds = {5, 5, 10, 1};
-  std::vector<int64> new_bounds = {bounds[0], bounds[1], bounds[3], bounds[2]};
+  std::vector<int64_t> bounds = {5, 5, 10, 1};
+  std::vector<int64_t> new_bounds = {bounds[0], bounds[1], bounds[3],
+                                     bounds[2]};
   Array4D<float> input(bounds[0], bounds[1], bounds[2], bounds[3]);
-  input.Each([&rng, &distribution](absl::Span<const int64> /* indices */,
+  input.Each([&rng, &distribution](absl::Span<const int64_t> /* indices */,
                                    float* cell) { *cell = distribution(rng); });
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
@@ -985,10 +989,11 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1InR2) {
 XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
-  std::vector<int64> bounds = {3, 3, 1, 3};
-  std::vector<int64> new_bounds = {bounds[1], bounds[0], bounds[2], bounds[3]};
+  std::vector<int64_t> bounds = {3, 3, 1, 3};
+  std::vector<int64_t> new_bounds = {bounds[1], bounds[0], bounds[2],
+                                     bounds[3]};
   Array4D<float> input(bounds[0], bounds[1], bounds[2], bounds[3]);
-  input.Each([&rng, &distribution](absl::Span<const int64> /* indices */,
+  input.Each([&rng, &distribution](absl::Span<const int64_t> /* indices */,
                                    float* cell) { *cell = distribution(rng); });
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input, LayoutUtil::MakeLayout({0, 1, 2, 3}));

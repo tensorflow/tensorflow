@@ -300,6 +300,57 @@ func @cluster_func(%arg0: tensor<*xf32>) {
 
 // -----
 
+// Tests that device variable sharding defaults to xla.OpSharding
+// { type : MAXIMAL
+//   tile_assignment_dimensions: [ 1 ]
+//   tile_assignment_devices   : [ 0 ]
+// }
+
+// CHECK-LABEL: func @maximal_device_variable
+func @maximal_device_variable(%arg0: tensor<*x!tf_type.resource<tensor<*xf32>>>) {
+   tf_device.replicate(%arg0 as %arg1: tensor<*x!tf_type.resource<tensor<*xf32>>>)
+     {_mirrored_variable_indices = [0], _replicated_input_indices = [-1], n = 2 : i32} {
+     %0 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<*xf32>>>) -> tensor<*xf32>
+     // CHECK:      tf_device.cluster_func
+     // CHECK-SAME: input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]
+     "tf_device.cluster_func"(%0) {func = @cluster_func, use_spmd_for_xla_partitioning = true} : (tensor<*xf32>) -> ()
+     tf_device.return
+  }
+  return
+}
+
+// CHECK-LABEL: func @cluster_func
+// CHECK-SAME: ({{.+}}: tensor<*xf32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"})
+func @cluster_func(%arg0: tensor<*xf32>) {
+  return
+}
+
+// -----
+
+// Tests that device variable sharding for an implicitly capture device variable
+// defaults to REPLICATE.
+
+// CHECK-LABEL: func @replicated_device_variable
+func @replicated_device_variable(%arg0: tensor<*x!tf_type.resource<tensor<*xf32>>>) {
+   %0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<*xf32>>>) -> tensor<*xf32>
+   tf_device.replicate()
+     {n = 2 : i32} {
+     // CHECK:      tf_device.cluster_func
+     // CHECK-SAME: input_sharding_configuration = [""]
+     "tf_device.cluster_func"(%0) {func = @cluster_func, use_spmd_for_xla_partitioning = true} : (tensor<*xf32>) -> ()
+     tf_device.return
+  }
+  return
+}
+
+// CHECK-LABEL: func @cluster_func
+// CHECK-SAME: ({{.+}}: tensor<*xf32> {mhlo.sharding = ""})
+func @cluster_func(%arg0: tensor<*xf32>) {
+  return
+}
+
+// -----
+
 // Tests partitioned inputs/outputs with no sharding (via XLA SPMD) defaults to
 // replicate sharding ("").
 

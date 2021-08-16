@@ -99,10 +99,10 @@ void Master::GC() {
     }
     std::vector<string> handles;
     const int64_t num_micros =
-        static_cast<int64>(session_gc_seconds_ * 1000000);
+        static_cast<int64_t>(session_gc_seconds_ * 1000000);
     for (const auto& entry : sessions_) {
       int64_t lat = entry.second->last_access_time_usec();
-      if (static_cast<int64>(env->NowMicros()) - lat > num_micros) {
+      if (static_cast<int64_t>(env->NowMicros()) - lat > num_micros) {
         handles.push_back(entry.first);
         auto* sess = entry.second;
         SchedClosure([this, sess]() {

@@ -73,7 +73,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
     mutable mutex mu;
     CollGroupParams group TF_GUARDED_BY(mu);
     Status status TF_GUARDED_BY(mu);
-    std::unordered_map<string, int64> incarnations_by_device_name
+    std::unordered_map<string, int64_t> incarnations_by_device_name
         TF_GUARDED_BY(mu);
     std::vector<CollGroupParams*> pending_params TF_GUARDED_BY(mu);
     std::vector<StatusCallback> pending_done TF_GUARDED_BY(mu);

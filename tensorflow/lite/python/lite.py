@@ -231,7 +231,7 @@ class QuantizationMode(object):
   """QuantizationMode determines the quantization type from user options."""
 
   def __init__(self, optimizations, target_spec, representative_dataset,
-               graph_def):
+               graph_def, disable_per_channel=False):
     self._optimizations = optimizations
     for deprecated_optimization in [
         Optimize.OPTIMIZE_FOR_SIZE, Optimize.OPTIMIZE_FOR_LATENCY
@@ -246,6 +246,7 @@ class QuantizationMode(object):
     self._graph_def = graph_def
 
     self._validate_int8_required()
+    self._disable_per_channel = disable_per_channel
 
   # TODO(b/162537905): Refactor the following quantization functions -
   # re-organize and refactor for better readability.
@@ -343,7 +344,9 @@ class QuantizationMode(object):
           "inference_type": _dtypes.float32,
           "inference_input_type": _dtypes.float32,
           "post_training_quantize": True,  # enable dynamic range quantization
-          "quantize_to_float16": False  # disable float16 quantization
+          "quantize_to_float16": False,  # disable float16 quantization
+          # experimental: disable per-channel (per-axis) quantization.
+          "disable_per_channel_quantization": self._disable_per_channel
       }
     elif self.post_training_fp16():
       return {
@@ -463,7 +466,10 @@ class TFLiteConverterBase(object):
     self._collected_converter_params = {}
     self._experimental_disable_batchmatmul_unfold = False
     self._experimental_lower_tensor_list_ops = True
+    self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
+    # TODO(b/195611245): Use tf.lite.TargetSpec.supported_backends instead.
+    self._experimental_supported_backends = []
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -555,12 +561,16 @@ class TFLiteConverterBase(object):
             self.experimental_new_converter,
         "select_user_tf_ops":
             self.target_spec.experimental_select_user_tf_ops,
+        "supported_backends":
+            self._experimental_supported_backends,
         "unfold_batchmatmul":
             not self._experimental_disable_batchmatmul_unfold,
         "lower_tensor_list_ops":
             self._experimental_lower_tensor_list_ops,
         "unfold_large_splat_constant":
             self._experimental_unfold_large_splat_constant,
+        "default_to_single_batch_in_tensor_list_ops":
+            self._experimental_default_to_single_batch_in_tensor_list_ops,
     }
 
     if self.saved_model_dir:
@@ -639,7 +649,8 @@ class TFLiteConverterBase(object):
 
     # Optimization parameters.
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, graph_def)
+                                  self.representative_dataset, graph_def,
+                                  self._experimental_disable_per_channel)
     converter_kwargs.update({
         "optimization_default":
             quant_mode.any_optimization_enabled(),
@@ -830,7 +841,8 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     # Update conversion params with graph_def.
     self._save_conversion_params_metric(graph_def)
     self._quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                        self.representative_dataset, graph_def)
+                                        self.representative_dataset, graph_def,
+                                        self._experimental_disable_per_channel)
     self._validate_inference_input_output_types(self._quant_mode)
     self._validate_experimental_new_quantizer_flag()
 
@@ -1003,7 +1015,8 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     self._save_conversion_params_metric(graph_def)
     # Get quantization options and do some sanity checks.
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, graph_def)
+                                  self.representative_dataset, graph_def,
+                                  self._experimental_disable_per_channel)
     self._validate_inference_input_output_types(quant_mode)
 
     converter_kwargs = {
@@ -1689,7 +1702,8 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     self._validate_inputs(self._input_tensors, self.quantized_input_stats)
 
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, self._graph_def)
+                                  self.representative_dataset, self._graph_def,
+                                  self._experimental_disable_per_channel)
 
     optimized_graph = self._optimize_tf_model(self._graph_def,
                                               self._input_tensors,

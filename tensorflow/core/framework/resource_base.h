@@ -36,7 +36,7 @@ class ResourceBase : public core::RefCounted {
   virtual std::string DebugString() const = 0;
 
   // Returns memory used by this resource.
-  virtual int64 MemoryUsed() const { return 0; }
+  virtual int64_t MemoryUsed() const { return 0; }
 
   // Writes a representation of this resource into `builder`, so that executing
   // `*out` will recreate this resource.

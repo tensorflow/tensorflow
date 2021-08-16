@@ -60,7 +60,7 @@ class XlaDevice : public LocalDevice {
    public:
     Metadata(int device_ordinal, se::Platform* platform,
              const DeviceType& device_type,
-             XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+             XlaHelpers::ShapeRepresentationFn shape_representation_fn,
              PaddedShapeFn padded_shape_fn, bool use_multiple_streams);
 
     // The index of the device on this host.
@@ -69,7 +69,7 @@ class XlaDevice : public LocalDevice {
     se::Platform* platform() const;
     xla::LocalClient* client() const;
     const DeviceType& jit_device_type() const;
-    const XlaCompiler::ShapeRepresentationFn& shape_representation_fn() const {
+    const XlaHelpers::ShapeRepresentationFn& shape_representation_fn() const {
       return shape_representation_fn_;
     }
     const PaddedShapeFn& padded_shape_fn() const { return padded_shape_fn_; }
@@ -80,7 +80,7 @@ class XlaDevice : public LocalDevice {
     const int device_ordinal_;
     const DeviceType device_type_;
     se::Platform* platform_;  // Not owned.
-    XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
+    XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
     PaddedShapeFn padded_shape_fn_;
     const bool use_multiple_streams_;
 
@@ -130,7 +130,7 @@ class XlaDevice : public LocalDevice {
     // should be represented in XLA. Parameters/return values will be shaped
     // according to this function, and reshaped back to/from their declared
     // shapes for computations. Must be non-null.
-    XlaCompiler::ShapeRepresentationFn shape_representation_fn;
+    XlaHelpers::ShapeRepresentationFn shape_representation_fn;
 
     // If padded_shape_fn is empty, a default implementation that returns
     // the logical on-device shape without padding is used.
@@ -246,7 +246,7 @@ class XlaDevice : public LocalDevice {
   std::vector<std::shared_ptr<se::Stream>> device_to_device_streams_
       TF_GUARDED_BY(mu_);
 
-  const XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
+  const XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
 
   // The device context accessed by all users of the XlaDevice, set by calls to
   // EnsureDeviceContextOk. If gpu_device_info_ is non-null, this pointer is

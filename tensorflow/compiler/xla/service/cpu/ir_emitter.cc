@@ -88,13 +88,16 @@ using llvm_ir::SetToFirstInsertPoint;
 
 namespace cpu {
 
-IrEmitter::IrEmitter(
-    mlir::MLIRContext* mlir_context, const HloModule& hlo_module,
-    const BufferAssignment& assignment, llvm::Module* llvm_module,
-    std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx,
-    std::unordered_map<const HloComputation*, int64> computation_to_profile_idx,
-    const TargetMachineFeatures* target_machine_features,
-    bool emit_code_for_msan)
+IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
+                     const HloModule& hlo_module,
+                     const BufferAssignment& assignment,
+                     llvm::Module* llvm_module,
+                     std::unordered_map<const HloInstruction*, int64_t>
+                         instruction_to_profile_idx,
+                     std::unordered_map<const HloComputation*, int64_t>
+                         computation_to_profile_idx,
+                     const TargetMachineFeatures* target_machine_features,
+                     bool emit_code_for_msan)
     : assignment_(assignment),
       module_(llvm_module),
       arch_type_(llvm::Triple(llvm_module->getTargetTriple()).getArch()),
@@ -304,10 +307,10 @@ int IrEmitter::MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
   DCHECK_LE(byte_size, 16);
 
   // Allocations may be 8-byte aligned if part of a small block.
-  return std::min(int64{8}, byte_size);
+  return std::min(int64_t{8}, byte_size);
 }
 
-int64 IrEmitter::ByteSizeOf(const Shape& shape) const {
+int64_t IrEmitter::ByteSizeOf(const Shape& shape) const {
   return llvm_ir::ByteSizeOf(shape, module_->getDataLayout());
 }
 
@@ -727,7 +730,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
 
   // Create the inner loop to iterate over the window.
   llvm_ir::ForLoopNest window_loops(IrName(select_and_scatter, "window"), &b_);
-  std::vector<int64> window_size;
+  std::vector<int64_t> window_size;
   for (const auto& dim : window.dimensions()) {
     window_size.push_back(dim.size());
   }
@@ -1033,7 +1036,7 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   llvm::Value* operand_address = GetEmittedValueFor(operand);
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fft));
 
-  const std::vector<int64>& fft_length = fft->fft_length();
+  const std::vector<int64_t>& fft_length = fft->fft_length();
   int64_t input_batch = 1;
   for (int i = 0; i < fft->shape().dimensions_size() - fft_length.size(); i++) {
     input_batch *= fft->shape().dimensions(i);
@@ -1329,10 +1332,10 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
   //
   // So if we reduce f32[A,B,C,D] on dimensions 1 and 2, this map contains
   // [0->0, 3->1].
-  absl::flat_hash_map<int64, int64> unreduced_dim_map;
+  absl::flat_hash_map<int64_t, int64_t> unreduced_dim_map;
 
-  absl::flat_hash_set<int64> reduced_dims(reduce.dimensions().begin(),
-                                          reduce.dimensions().end());
+  absl::flat_hash_set<int64_t> reduced_dims(reduce.dimensions().begin(),
+                                            reduce.dimensions().end());
 
   const Shape& operand_shape = reduce.operand(0)->shape();
   const Shape& result_shape = reduce.shape();
@@ -1536,7 +1539,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
     const ReductionGenerator& reduction_generator,
     const llvm_ir::IrArray::Index& output_index,
     const ShardedVectorType& accumulator_type, HloInstruction* init_value,
-    HloInstruction* arg, absl::Span<const int64> dimensions,
+    HloInstruction* arg, absl::Span<const int64_t> dimensions,
     llvm::Align element_alignment) {
   ShardedVector accumulator;
   accumulator.reserve(accumulator_type.size());
@@ -1633,7 +1636,7 @@ void IrEmitter::EmitShardedVectorStore(
 
 StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
-    absl::Span<const int64> dimensions, HloComputation* function,
+    absl::Span<const int64_t> dimensions, HloComputation* function,
     string* failure_reason) {
   if (!reduce->shape().IsArray()) {
     *failure_reason = "vectorization of variadic reduce not implemented";
@@ -1799,7 +1802,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   auto arg = reduce->mutable_operand(0);
   auto init_value = reduce->mutable_operand(1);
-  absl::Span<const int64> dimensions(reduce->dimensions());
+  absl::Span<const int64_t> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
   if (!options::VectorizedReduceDisabled(hlo_module_config_)) {
     string vectorization_failure_reason;
@@ -1869,7 +1872,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   //
   // * Implement the memcpy within the innermost loop.
 
-  absl::flat_hash_set<int64> inner_dims;
+  absl::flat_hash_set<int64_t> inner_dims;
   for (int64_t dim : LayoutUtil::MinorToMajor(layout)) {
     if (operand->shape().dimensions(dim) != slice->shape().dimensions(dim)) {
       break;
@@ -1909,7 +1912,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
           : 1;
 
   // Determine the dimensions that get lowered as loops.
-  std::vector<int64> outer_dims;
+  std::vector<int64_t> outer_dims;
   for (int64_t i = 0; i < num_dims - inner_dims.size() - 1; ++i) {
     outer_dims.push_back(LayoutUtil::Major(layout, i));
   }
@@ -2491,9 +2494,10 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   auto output_min2maj = LayoutUtil::MinorToMajor(output_layout);
   auto concat_dim_layout_itr = absl::c_find(output_min2maj, concat_dim);
 
-  std::vector<int64> inner_dims(output_min2maj.begin(), concat_dim_layout_itr);
-  std::vector<int64> outer_dims(std::next(concat_dim_layout_itr),
-                                output_min2maj.end());
+  std::vector<int64_t> inner_dims(output_min2maj.begin(),
+                                  concat_dim_layout_itr);
+  std::vector<int64_t> outer_dims(std::next(concat_dim_layout_itr),
+                                  output_min2maj.end());
 
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
 
@@ -2844,7 +2848,7 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
 template <typename T>
 llvm::Value* IrEmitter::GetProfileCounterCommon(
     const T& hlo,
-    const std::unordered_map<const T*, int64>& profile_index_map) {
+    const std::unordered_map<const T*, int64_t>& profile_index_map) {
   auto it = profile_index_map.find(&hlo);
   if (it == profile_index_map.end()) {
     return nullptr;

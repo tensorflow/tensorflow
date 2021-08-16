@@ -476,6 +476,19 @@ func @biasAdd_dynamic(%arg0: tensor<?x?x?x?xi32>, %arg1: tensor<?xi32>) -> tenso
   return %0 : tensor<?x?x?x?xi32>
 }
 
+// CHECK-LABEL: func @biasAdd_partial_dynamic
+func @biasAdd_partial_dynamic(%arg0: tensor<?x?x?x?xi32>, %arg1: tensor<512xi32>) -> tensor<?x?x?x512xi32> {
+  // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
+  // CHECK: %[[ARG0_EXTENTS:.+]] = shape.to_extent_tensor %[[ARG0_SHAPE]]
+  // CHECK: %[[ARG1_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_EXTENTS]])
+  // CHECK-SAME:   {broadcast_dimensions = dense<3> : tensor<1xi64>}
+  // CHECK: %[[RESULT:.+]] = mhlo.add %arg0, %[[ARG1_BCAST]]
+  // CHECK: %[[CAST:.+]] = tensor.cast %[[RESULT]] : tensor<?x?x?x?xi32> to tensor<?x?x?x512xi32>
+  // CHECK: return %[[CAST]] : tensor<?x?x?x512xi32>
+  %0 = "tf.BiasAdd"(%arg0, %arg1) {data_format = "NHWC"} : (tensor<?x?x?x?xi32>, tensor<512xi32>) -> tensor<?x?x?x512xi32>
+  return %0 : tensor<?x?x?x512xi32>
+}
+
 
 //===----------------------------------------------------------------------===//
 // ClipByValue
@@ -4524,7 +4537,7 @@ func @random_shuffle_1D_16(%input: tensor<16xf32>) -> tensor<16xf32> {
   // CHECK: [[SORT:%.*]]:2 = "mhlo.sort"([[RNG]], [[INPUT]]) ( {
   // CHECK: ^{{.*}}([[ARG1:%.*]]: tensor<i32>, [[ARG2:%.*]]: tensor<i32>, {{.*}}: tensor<f32>, {{.*}}: tensor<f32>):
   // CHECK:   "mhlo.compare"([[ARG1]], [[ARG2]]) {comparison_direction = "LT"}
-  // CHECK: }) {dimension = -1 : i64, is_stable = true} : (tensor<16xi32>, tensor<16xf32>) -> (tensor<16xi32>, tensor<16xf32>)
+  // CHECK: }) {dimension = -1 : i64, is_stable = {{.*}}} : (tensor<16xi32>, tensor<16xf32>) -> (tensor<16xi32>, tensor<16xf32>)
   // CHECK: return [[SORT]]#1
   %0 = "tf.RandomShuffle"(%input) : (tensor<16xf32>) -> (tensor<16xf32>)
   return %0: tensor<16xf32>
@@ -5390,4 +5403,15 @@ func @simple_print() -> (tensor<*xi32>) {
   %const = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<*xi32>
   %print = "tf.Print"(%const) { message = "bla" } : (tensor<*xi32>) -> (tensor<*xi32>)
   return %print: tensor<*xi32>
+}
+
+//===----------------------------------------------------------------------===//
+// tf.NextAfter legalization
+//===----------------------------------------------------------------------===//
+// CHECK-LABEL: func @nextafter
+func @nextafter(%arg0: tensor<2xf32>, %arg1 : tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK-NEXT:  %0 = chlo.broadcast_next_after %arg0, %arg1 : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK-NEXT:  return %0 : tensor<2xf32>
+  %0 = "tf.NextAfter"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %0: tensor<2xf32>
 }

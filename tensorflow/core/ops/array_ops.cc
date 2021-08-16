@@ -52,7 +52,7 @@ Status GetAxisForPackAndUnpack(InferenceContext* c, int32_t rank_after_pack,
 
 template <typename T>
 std::vector<int64> AsInt64(const Tensor* tensor, int64_t num_elements) {
-  std::vector<int64> ret(num_elements);
+  std::vector<int64_t> ret(num_elements);
   auto data = tensor->vec<T>();
   for (int64_t i = 0; i < num_elements; ++i) {
     ret[i] = data(i);
@@ -114,7 +114,7 @@ Status PadShapeFn(InferenceContext* c) {
   if (paddings_t->dtype() == DT_INT32) {
     return PadKnown<int32>(c, input, paddings_t, num_dims);
   } else {
-    return PadKnown<int64>(c, input, paddings_t, num_dims);
+    return PadKnown<int64_t>(c, input, paddings_t, num_dims);
   }
 }
 
@@ -159,11 +159,11 @@ Status TransposeShapeFn(InferenceContext* c) {
   // all shape information, otherwise we can only return rank information,
   // but no information for the dimensions.
   if (perm != nullptr) {
-    std::vector<int64> data;
+    std::vector<int64_t> data;
     if (perm->dtype() == DT_INT32) {
       data = AsInt64<int32>(perm, rank);
     } else {
-      data = AsInt64<int64>(perm, rank);
+      data = AsInt64<int64_t>(perm, rank);
     }
 
     for (int32_t i = 0; i < rank; ++i) {
@@ -1477,9 +1477,9 @@ Status UniqueIdxShapeFn(InferenceContext* c) {
   } else if (n == 1) {
     int64_t axis;
     if (axis_t->dtype() == DT_INT32) {
-      axis = static_cast<int64>(axis_t->flat<int32>()(0));
+      axis = static_cast<int64_t>(axis_t->flat<int32>()(0));
     } else {
-      axis = axis_t->flat<int64>()(0);
+      axis = axis_t->flat<int64_t>()(0);
     }
 
     int64_t input_rank = c->Rank(input);
@@ -1977,8 +1977,8 @@ Status MirrorPadKnown(InferenceContext* c, ShapeHandle input,
   auto paddings_data = paddings_t->matrix<T>();
   std::vector<DimensionHandle> dims(input_rank);
   for (int64_t i = 0; i < input_rank; ++i) {
-    const int64_t pad0 = static_cast<int64>(paddings_data(i, 0));
-    const int64_t pad1 = static_cast<int64>(paddings_data(i, 1));
+    const int64_t pad0 = static_cast<int64_t>(paddings_data(i, 0));
+    const int64_t pad1 = static_cast<int64_t>(paddings_data(i, 1));
     if (pad0 < 0 || pad1 < 0) {
       return errors::InvalidArgument("Paddings must be non-negative");
     }
@@ -2226,7 +2226,7 @@ namespace {
 // Converts Tensor to flat std::vector<int64>.
 template <typename InputType>
 std::vector<int64> GetFlatInt64(const Tensor& t) {
-  std::vector<int64> output(t.shape().num_elements());
+  std::vector<int64_t> output(t.shape().num_elements());
   if (t.shape().num_elements() > 0) {
     auto eigen_vec = t.flat<InputType>();
     std::copy_n(&eigen_vec(0), output.size(), output.begin());
@@ -2235,11 +2235,11 @@ std::vector<int64> GetFlatInt64(const Tensor& t) {
 }
 
 // Converts int32 or int64 Tensor to flat std::vector<int64>.
-std::vector<int64> GetFlatInt64(const Tensor& t) {
+std::vector<int64_t> GetFlatInt64(const Tensor& t) {
   if (t.dtype() == DT_INT32) {
     return GetFlatInt64<int32>(t);
   } else {
-    return GetFlatInt64<int64>(t);
+    return GetFlatInt64<int64_t>(t);
   }
 }
 
@@ -2266,7 +2266,7 @@ Status SpaceToBatchShapeHelper(InferenceContext* c, ShapeHandle input_shape,
       c->Merge(paddings_shape, c->Matrix(num_block_dims, 2), &paddings_shape));
 
   DimensionHandle batch_size = c->Dim(input_shape, 0);
-  std::vector<int64> block_shape_vec;
+  std::vector<int64_t> block_shape_vec;
   if (block_shape_t && (block_shape_t->NumElements() > 0)) {
     block_shape_vec = GetFlatInt64(*block_shape_t);
     for (int64_t dim = 0; dim < num_block_dims; ++dim) {
@@ -2289,7 +2289,7 @@ Status SpaceToBatchShapeHelper(InferenceContext* c, ShapeHandle input_shape,
   output_dims.resize(num_block_dims + 1, c->UnknownDim());
 
   if (paddings_t && (paddings_t->NumElements() > 0)) {
-    const std::vector<int64> paddings_vec = GetFlatInt64(*paddings_t);
+    const std::vector<int64_t> paddings_vec = GetFlatInt64(*paddings_t);
     for (int64_t dim = 0; dim < num_block_dims; ++dim) {
       const int64_t pad_start = paddings_vec[dim * 2],
                     pad_end = paddings_vec[dim * 2 + 1];
@@ -2341,7 +2341,7 @@ Status BatchToSpaceShapeHelper(InferenceContext* c, ShapeHandle input_shape,
       c->Merge(crops_shape, c->Matrix(num_block_dims, 2), &crops_shape));
 
   DimensionHandle batch_size = c->Dim(input_shape, 0);
-  std::vector<int64> block_shape_vec;
+  std::vector<int64_t> block_shape_vec;
   if (block_shape_t) {
     block_shape_vec = GetFlatInt64(*block_shape_t);
     for (int64_t dim = 0; dim < num_block_dims; ++dim) {
@@ -2364,7 +2364,7 @@ Status BatchToSpaceShapeHelper(InferenceContext* c, ShapeHandle input_shape,
   output_dims.resize(num_block_dims + 1, c->UnknownDim());
 
   if (crops_t) {
-    const std::vector<int64> crops_vec = GetFlatInt64(*crops_t);
+    const std::vector<int64_t> crops_vec = GetFlatInt64(*crops_t);
     for (int64_t dim = 0; dim < num_block_dims; ++dim) {
       const int64_t crop_start = crops_vec[dim * 2],
                     crop_end = crops_vec[dim * 2 + 1];

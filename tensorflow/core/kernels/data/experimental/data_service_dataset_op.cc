@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -103,9 +103,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           const ProcessingModeDef& processing_mode, const std::string& address,
           const std::string& protocol,
           const std::string& data_transfer_protocol,
-          const std::string& job_name, absl::optional<int64> consumer_index,
-          absl::optional<int64> num_consumers, int64_t max_outstanding_requests,
-          int64_t task_refresh_interval_ms, const TargetWorkers target_workers,
+          const std::string& job_name, absl::optional<int64_t> consumer_index,
+          absl::optional<int64_t> num_consumers,
+          int64_t max_outstanding_requests, int64_t task_refresh_interval_ms,
+          const TargetWorkers target_workers,
           IterationCounter* iteration_counter, bool owns_resource,
           ResourceHandle iteration_counter_handle,
           const DataTypeVector& output_types,
@@ -403,7 +404,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // Client for fetching task elements from the tf.data service worker.
       const std::unique_ptr<DataServiceWorkerClient> worker;
       // The next round to read from the task.
-      int64 round = 0;
+      int64_t round = 0;
       // Whether the task has been removed. The task will eventually be
       // deleted from `tasks_` on the next dispatcher heartbeat.
       bool removed = false;
@@ -421,9 +422,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> element TF_GUARDED_BY(&Iterator::mu_);
       // The element's index within the tf.data worker it came from. Used for
       // debugging.
-      int64 element_index TF_GUARDED_BY(&Iterator::mu_) = -1;
+      int64_t element_index TF_GUARDED_BY(&Iterator::mu_) = -1;
       // The id of the task that generated the result.
-      int64 task_id TF_GUARDED_BY(&Iterator::mu_) = -1;
+      int64_t task_id TF_GUARDED_BY(&Iterator::mu_) = -1;
       bool end_of_sequence TF_GUARDED_BY(&Iterator::mu_) = false;
       bool skip TF_GUARDED_BY(&Iterator::mu_) = false;
     };
@@ -608,7 +609,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     void UpdateTasks(const ClientHeartbeatResponse& resp)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      absl::flat_hash_map<int64, TaskInfo> task_id_to_task;
+      absl::flat_hash_map<int64_t, TaskInfo> task_id_to_task;
       for (auto& task : resp.task_info()) {
         task_id_to_task[task.task_id()] = task;
       }
@@ -703,7 +704,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (StrictRoundRobin() &&
             (task->in_use ||
              current_round_ >= round_robin_round_limit_.value_or(
-                                   std::numeric_limits<int64>::max()))) {
+                                   std::numeric_limits<int64_t>::max()))) {
           VLOG(4) << "No round robin task found. in_use: " << task->in_use
                   << ". current_round: " << current_round_
                   << ". round_robin_round_limit: "
@@ -798,7 +799,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       GetElementRequest req;
       req.set_task_id(task.info.task_id());
       req.set_skipped_previous_round(task.skipped_previous_round);
-      absl::optional<int64> round_index;
+      absl::optional<int64_t> round_index;
       if (StrictRoundRobin()) {
         round_index = task.round;
         req.set_consumer_index(dataset()->consumer_index_.value());
@@ -950,7 +951,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return dataset()->num_consumers_.has_value();
     }
 
-    const int64 iterator_index_;
+    const int64_t iterator_index_;
 
     mutable mutex mu_;
     condition_variable get_next_cv_ TF_GUARDED_BY(mu_);
@@ -960,33 +961,33 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // Method for deregistering the cancellation callback.
     std::function<void()> deregister_fn_;
 
-    int64 outstanding_requests_ TF_GUARDED_BY(mu_) = 0;
+    int64_t outstanding_requests_ TF_GUARDED_BY(mu_) = 0;
     // max_outstanding_requests controls how many elements may be held in memory
     // at the same time. This count includes both in-progress requests for
     // elements as well as completed requests which haven't yet been produced.
-    int64 max_outstanding_requests_ TF_GUARDED_BY(mu_);
+    int64_t max_outstanding_requests_ TF_GUARDED_BY(mu_);
 
     // The number of threads in `worker_threads_` which are still running.
-    int64 num_running_worker_threads_ TF_GUARDED_BY(mu_) = 0;
+    int64_t num_running_worker_threads_ TF_GUARDED_BY(mu_) = 0;
 
     // The index of the next task in `tasks_` to read from.
-    int64 next_task_index_ TF_GUARDED_BY(mu_) = 0;
+    int64_t next_task_index_ TF_GUARDED_BY(mu_) = 0;
 
     // The number tasks in the `tasks_` list that have reached end_of_sequence.
-    int64 finished_tasks_ TF_GUARDED_BY(mu_) = 0;
+    int64_t finished_tasks_ TF_GUARDED_BY(mu_) = 0;
 
     // List of tasks to read from.
     std::vector<std::shared_ptr<Task>> tasks_ TF_GUARDED_BY(mu_);
 
     // The current round robin round we are engaged in. A round involves reading
     // from each task once.
-    int64 current_round_ TF_GUARDED_BY(mu_) = 0;
+    int64_t current_round_ TF_GUARDED_BY(mu_) = 0;
 
     // Maximum round robin round to read up to before blocking, not inclusive.
     // INVARIANT: current_round_ <= round_robin_round_limit_.
     //            If current_round_ == round_robin_round_limit_,
     //            next_task_index_ must be 0.
-    absl::optional<int64> round_robin_round_limit_ TF_GUARDED_BY(mu_);
+    absl::optional<int64_t> round_robin_round_limit_ TF_GUARDED_BY(mu_);
 
     // A status to be returned from the next call to `GetNext`. This is set by
     // asynchronous threads when they encounter errors.
@@ -1000,9 +1001,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     bool initialized_ = false;
     // Set once in Initialize().
-    int64 job_client_id_;
+    int64_t job_client_id_;
     std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
-    int64 get_next_index_ TF_GUARDED_BY(mu_) = 0;
+    int64_t get_next_index_ TF_GUARDED_BY(mu_) = 0;
 
     bool job_finished_ = false;
     std::vector<std::unique_ptr<Thread>> worker_threads_ TF_GUARDED_BY(mu_);
@@ -1010,16 +1011,16 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   };
 
   const int op_version_;
-  const int64 dataset_id_;
+  const int64_t dataset_id_;
   const ProcessingModeDef processing_mode_;
   const tstring address_;
   const tstring protocol_;
   const tstring data_transfer_protocol_;
   const tstring job_name_;
-  const absl::optional<int64> consumer_index_;
-  const absl::optional<int64> num_consumers_;
-  const int64 max_outstanding_requests_;
-  const int64 task_refresh_interval_ms_;
+  const absl::optional<int64_t> consumer_index_;
+  const absl::optional<int64_t> num_consumers_;
+  const int64_t max_outstanding_requests_;
+  const int64_t task_refresh_interval_ms_;
   const TargetWorkers target_workers_;
   IterationCounter* const iteration_counter_;  // Owned
   const bool owns_resource_;
@@ -1103,8 +1104,8 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   tstring job_name;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kJobName, &job_name));
 
-  absl::optional<int64> consumer_index;
-  absl::optional<int64> num_consumers;
+  absl::optional<int64_t> consumer_index;
+  absl::optional<int64_t> num_consumers;
   if (op_version_ >= 2) {
     int64_t consumer_index_int;
     OP_REQUIRES_OK(
@@ -1135,7 +1136,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   bool owns_resource = false;
   if (errors::IsNotFound(s)) {
     owns_resource = true;
-    static std::atomic<int64> resource_id_counter(0);
+    static std::atomic<int64_t> resource_id_counter(0);
     const std::string& container = ctx->resource_manager()->default_container();
     std::string name =
         strings::StrCat(ctx->op_kernel().name(), "/", kIterationCounter, "_",

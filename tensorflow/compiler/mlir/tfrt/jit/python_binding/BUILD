@@ -37,7 +37,7 @@ pybind_extension(
     module_name = "_tf_cpurt_executor",
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_passes",
+        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_pipeline",
         "//tensorflow/core/platform:dynamic_annotations",
         "//third_party/python_runtime:headers",  # build_cleaner: keep
         "@llvm-project//llvm:Support",

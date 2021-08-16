@@ -755,7 +755,7 @@ llvm::Expected<tfrt::Chain> KernelFallbackCreateOp(
     auto status =
         SetUpAttrValueMap(op_attr_array, op_func_attr_array, attr_value_map);
 
-    if (!status.ok()) return tfrt::MakeStringError(status.ToString());
+    if (!status.ok()) return tfrt::MakeStringError(status.error_message());
     return llvm::Error::success();
   };
 
@@ -765,7 +765,7 @@ llvm::Expected<tfrt::Chain> KernelFallbackCreateOp(
       op_name, ToAbslStringView(device.GetValue()), num_args.GetValue(),
       attr_builder, *fallback_request_state);
   if (!statusor_runner.ok())
-    return tfrt::MakeStringError(statusor_runner.status().ToString());
+    return tfrt::MakeStatusError(statusor_runner.status());
 
   if (!runner_table->Insert(op_key.GetValue(),
                             std::move(statusor_runner).ValueOrDie())) {

@@ -119,7 +119,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   AbstractTensorInterface* CreateBoolScalar(bool value) override;
 
   AbstractTensorInterface* CreateTensor(
-      DataType dtype, absl::Span<const int64> dim_sizes) override;
+      DataType dtype, absl::Span<const int64_t> dim_sizes) override;
   AbstractTensorInterface* CreateTensor(DataType dtype, const int64_t* dims,
                                         int num_dims, void* data, size_t len,
                                         MemoryReleaser memory_releaser,
@@ -672,7 +672,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   const bool log_memory_;
 
   // Whether to use same rendezvous instance across function/eager executions.
-  bool reuse_rendezvous_for_functions_ = false;
+  std::atomic<bool> reuse_rendezvous_for_functions_{false};
   mutable mutex global_rendezvous_mu_;
   core::RefCountPtr<Rendezvous> global_rendezvous_for_functions_
       TF_GUARDED_BY(global_rendezvous_mu_);

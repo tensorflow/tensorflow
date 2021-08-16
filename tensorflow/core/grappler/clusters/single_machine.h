@@ -72,7 +72,7 @@ class SingleMachine : public Cluster {
   mutex last_graph_mu_;
   const GraphDef* last_graph_ TF_GUARDED_BY(last_graph_mu_) = nullptr;
   std::vector<string> init_ops_;
-  int64 expected_init_time_s_;
+  int64_t expected_init_time_s_;
   std::unique_ptr<Coordinator> coordinator_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   std::unique_ptr<DeviceSet> device_set_;

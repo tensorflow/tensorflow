@@ -25,11 +25,10 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 using tensorflow::int32;
-using tensorflow::int64;
 using tensorflow::uint64;
 
 using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
-                                     int64*, uint64*);
+                                     int64_t*, uint64_t*);
 
 // Dispatches 'num_partitions - 1' calls to 'function_ptr' in parallel.
 // Calls 'function_ptr' for first partition inline.
@@ -61,8 +60,8 @@ using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
 //
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
     void* result_ptr, const void* run_options_ptr, const void** params,
-    void** buffer_table, uint64* prof_counters, int32_t num_partitions,
-    int64* partitions, int32_t num_partitioned_dims, void* function_ptr) {
+    void** buffer_table, uint64_t* prof_counters, int32_t num_partitions,
+    int64_t* partitions, int32_t num_partitioned_dims, void* function_ptr) {
   VLOG(2) << "ParallelForkJoin ENTRY"
           << " num_partitions: " << num_partitions
           << " num_partitioned_dims: " << num_partitioned_dims;

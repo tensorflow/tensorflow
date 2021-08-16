@@ -39,8 +39,8 @@ namespace xla {
 namespace gpu {
 
 // Returns the square root of the input rounded up to the nearest square.
-static int64 SqrtOfRoundUpToNearestSquare(int64_t input) {
-  return static_cast<int64>(std::ceil(std::sqrt(input)));
+static int64_t SqrtOfRoundUpToNearestSquare(int64_t input) {
+  return static_cast<int64_t>(std::ceil(std::sqrt(input)));
 }
 
 class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
@@ -65,7 +65,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   Status RewriteReduction(HloInstruction *hlo) {
     ReductionDimensions reduction_dimensions =
         GetReductionKindAndContiguousComponents(*hlo);
-    std::array<int64, 3> reduction_tiling = GetReductionTiling(
+    std::array<int64_t, 3> reduction_tiling = GetReductionTiling(
         reduction_dimensions,
         primitive_util::BitWidth(hlo->shape().element_type()),
         cuda_compute_capability_);
@@ -79,7 +79,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     bool reduce_batch_dimension = hlo->dimensions().size() > 1;
     VLOG(3) << "reduce_batch_dimension = " << reduce_batch_dimension;
 
-    std::vector<int64> reduced_dimensions = hlo->dimensions();
+    std::vector<int64_t> reduced_dimensions = hlo->dimensions();
     absl::c_sort(reduced_dimensions);
     CHECK_LE(reduced_dimensions.size(), 2);
     int64_t reduced_input_dimension =
@@ -121,8 +121,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       PaddingConfig padding_config = MakeNoPaddingConfig(input_shape.rank());
       padding_config.mutable_dimensions(reduced_input_dimension)
           ->set_edge_padding_high(padded_num_elements - reduced_dim_size);
-      std::vector<int64> padded_dimensions(input_shape.dimensions().begin(),
-                                           input_shape.dimensions().end());
+      std::vector<int64_t> padded_dimensions(input_shape.dimensions().begin(),
+                                             input_shape.dimensions().end());
       padded_dimensions[reduced_input_dimension] = padded_num_elements;
       Shape padded_shape =
           ShapeUtil::MakeShape(input_shape.element_type(), padded_dimensions);
@@ -132,7 +132,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     }();
 
     VLOG(2) << "Generated padding: " << padded->ToString();
-    std::vector<int64> reshaped_dimensions;
+    std::vector<int64_t> reshaped_dimensions;
     for (int64_t dim_idx = 0; dim_idx < padded->shape().dimensions_size();
          dim_idx++) {
       if (dim_idx == reduced_input_dimension) {
@@ -149,7 +149,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
         HloInstruction::CreateBitcast(reshaped_shape, padded));
     VLOG(2) << "Generated reshape: " << reshaped_padded_input->ToString();
 
-    std::vector<int64> inner_reduce_dimensions = reshaped_dimensions;
+    std::vector<int64_t> inner_reduce_dimensions = reshaped_dimensions;
     int64_t inner_reduced_dimension = is_row_reduction
                                           ? inner_reduce_dimensions.size() - 1
                                           : reduced_input_dimension;
@@ -161,7 +161,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     }
     Shape inner_reduce_shape = ShapeUtil::MakeShape(input_shape.element_type(),
                                                     inner_reduce_dimensions);
-    std::vector<int64> dims_to_reduce = {inner_reduced_dimension};
+    std::vector<int64_t> dims_to_reduce = {inner_reduced_dimension};
     if (reduce_batch_dimension) {
       dims_to_reduce.push_back(0);
       inner_reduced_dimension -= 1;
@@ -172,7 +172,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
             inner_reduce_shape, reshaped_padded_input, initial_value,
             dims_to_reduce, hlo->to_apply()));
     VLOG(1) << "Generated inner reduction: " << inner_reduce->ToString();
-    std::vector<int64> outer_reduce_dimensions = inner_reduce_dimensions;
+    std::vector<int64_t> outer_reduce_dimensions = inner_reduce_dimensions;
     VLOG(3) << "outer_reduce_dimensions = "
             << absl::StrJoin(outer_reduce_dimensions, ", ");
     int64_t outer_reduced_dimension = is_row_reduction

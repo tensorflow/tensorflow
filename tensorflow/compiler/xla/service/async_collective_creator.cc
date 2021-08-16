@@ -15,14 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
 
+#include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
 namespace xla {
 
 StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
   bool changed = false;
+  struct ReplacedAsync {
+    HloInstruction* start;
+    HloInstruction* done;
+  };
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     // Find all all-reduce ops first as we can't modify the instructions while
     // iterating through them.
@@ -31,11 +38,20 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
       if ((convert_all_reduce_ &&
            instruction->opcode() == HloOpcode::kAllReduce) ||
           (convert_all_gather_ &&
-           instruction->opcode() == HloOpcode::kAllGather)) {
+           instruction->opcode() == HloOpcode::kAllGather) ||
+          (convert_collective_permute_ &&
+           instruction->opcode() == HloOpcode::kCollectivePermute)) {
         supported_collectives.push_back(instruction);
       }
     }
+    if (supported_collectives.empty()) {
+      continue;
+    }
 
+    absl::flat_hash_map<HloInstruction*, ReplacedAsync> replaced_pairs;
+    bool should_update_schedule =
+        module->has_schedule() &&
+        module->schedule().is_computation_scheduled(computation);
     for (HloInstruction* instruction : supported_collectives) {
       if (HloAllReduceInstruction* ar =
               DynCast<HloAllReduceInstruction>(instruction)) {
@@ -45,10 +61,15 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
                 shape, ar->operands(), ar->to_apply(), ar->replica_groups(),
                 ar->constrain_layout(), ar->channel_id(),
                 ar->use_global_device_ids()));
+        std::unique_ptr<HloInstruction> done = HloInstruction::CreateUnary(
+            ar->shape(), HloOpcode::kAllReduceDone, start);
+        start->set_metadata(ar->metadata());
+        start->set_raw_backend_config_string(ar->raw_backend_config_string());
+        if (should_update_schedule) {
+          replaced_pairs[ar] = ReplacedAsync{start, done.get()};
+        }
         TF_RETURN_WITH_CONTEXT_IF_ERROR(
-            computation->ReplaceWithNewInstruction(
-                ar, HloInstruction::CreateUnary(
-                        ar->shape(), HloOpcode::kAllReduceDone, start)),
+            computation->ReplaceWithNewInstruction(ar, std::move(done)),
             "replacing ", ar->ToShortString());
         changed = true;
         continue;
@@ -69,14 +90,79 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
                 shape, ag->operands(), ag->all_gather_dimension(),
                 ag->replica_groups(), ag->constrain_layout(), ag->channel_id(),
                 ag->use_global_device_ids()));
+        std::unique_ptr<HloInstruction> done = HloInstruction::CreateUnary(
+            ag->shape(), HloOpcode::kAllGatherDone, start);
+        start->set_metadata(ag->metadata());
+        start->set_raw_backend_config_string(ag->raw_backend_config_string());
+        if (should_update_schedule) {
+          replaced_pairs[ag] = ReplacedAsync{start, done.get()};
+        }
         TF_RETURN_WITH_CONTEXT_IF_ERROR(
-            computation->ReplaceWithNewInstruction(
-                ag, HloInstruction::CreateUnary(
-                        ag->shape(), HloOpcode::kAllGatherDone, start)),
+            computation->ReplaceWithNewInstruction(ag, std::move(done)),
             "replacing ", ag->ToShortString());
         changed = true;
         continue;
       }
+      if (HloCollectivePermuteInstruction* cp =
+              DynCast<HloCollectivePermuteInstruction>(instruction)) {
+        HloInstruction* collective_permute_start;
+        HloInstruction* operand = cp->mutable_operand(0);
+        if (cp->operand_count() == 1) {
+          collective_permute_start = computation->AddInstruction(
+              HloInstruction::CreateCollectivePermuteStart(
+                  ShapeUtil::MakeTupleShape(
+                      {operand->shape(), cp->shape(),
+                       ShapeUtil::MakeShape(U32, {}, {}),
+                       ShapeUtil::MakeShape(U32, {}, {})}),
+                  operand, cp->source_target_pairs(), cp->channel_id()));
+        } else {
+          CHECK_EQ(cp->operand_count(), 4);
+          std::vector<const Shape*> operand_shapes;
+          absl::c_transform(cp->operands(), std::back_inserter(operand_shapes),
+                            [](const HloInstruction* operand) {
+                              return &(operand->shape());
+                            });
+          collective_permute_start = computation->AddInstruction(
+              HloInstruction::CreateCollectivePermuteStart(
+                  ShapeInference::InferCollectivePermuteStartShape(
+                      operand_shapes)
+                      .ValueOrDie(),
+                  operand, cp->mutable_operand(1), cp->mutable_operand(2),
+                  cp->mutable_operand(3), cp->source_target_pairs(),
+                  cp->dynamic_slice_sizes_list(), cp->channel_id()));
+        }
+        collective_permute_start->set_metadata(cp->metadata());
+        collective_permute_start->set_raw_backend_config_string(
+            cp->raw_backend_config_string());
+        HloInstruction* collective_permute_done =
+            computation->AddInstruction(HloInstruction::CreateUnary(
+                cp->shape(), HloOpcode::kCollectivePermuteDone,
+                collective_permute_start));
+        if (should_update_schedule) {
+          replaced_pairs[cp] =
+              ReplacedAsync{collective_permute_start, collective_permute_done};
+        }
+        TF_RETURN_IF_ERROR(
+            computation->ReplaceInstruction(cp, collective_permute_done));
+        changed = true;
+        continue;
+      }
+    }
+    if (should_update_schedule) {
+      std::vector<HloInstruction*> new_sequence;
+      const HloInstructionSequence& sequence =
+          module->schedule().sequence(computation);
+      new_sequence.reserve(sequence.size() + replaced_pairs.size());
+      for (HloInstruction* instr : sequence.instructions()) {
+        auto it = replaced_pairs.find(instr);
+        if (it != replaced_pairs.end()) {
+          new_sequence.push_back(it->second.start);
+          new_sequence.push_back(it->second.done);
+          continue;
+        }
+        new_sequence.push_back(instr);
+      }
+      module->schedule().set_sequence(computation, new_sequence);
     }
   }
   return changed;

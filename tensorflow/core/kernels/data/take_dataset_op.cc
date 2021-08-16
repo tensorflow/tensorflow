@@ -60,7 +60,7 @@ string TakeDataset::DebugString() const {
   return name_utils::DatasetDebugString(TakeDatasetOp::kDatasetType);
 }
 
-int64 TakeDataset::Cardinality() const {
+int64_t TakeDataset::Cardinality() const {
   int64_t n = input_->Cardinality();
   if (n == kUnknownCardinality) {
     return kUnknownCardinality;
@@ -175,7 +175,7 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
 
  private:
   mutex mu_;
-  int64 i_ TF_GUARDED_BY(mu_);
+  int64_t i_ TF_GUARDED_BY(mu_);
   std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
 };
 
@@ -210,7 +210,7 @@ void TakeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                 DatasetBase** output) {
   // Create a new TakeDatasetOp::Dataset, and return it as the output.
   int64_t count;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kCount, &count));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kCount, &count));
   *output = new TakeDataset(ctx, count, input);
 }
 

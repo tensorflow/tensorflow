@@ -39,7 +39,7 @@ def at(dataset, index):
   return structure.from_tensor_list(
       dataset.element_spec,
       gen_experimental_dataset_ops.get_element_at_index(
-          dataset,
+          dataset._variant_tensor,
           index,
-          output_types=dataset._flat_types,
-          output_shapes=dataset._flat_shapes))
+          output_types=structure.get_flat_tensor_types(dataset.element_spec),
+          output_shapes=structure.get_flat_tensor_shapes(dataset.element_spec)))

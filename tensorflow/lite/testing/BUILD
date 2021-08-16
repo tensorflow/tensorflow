@@ -122,8 +122,11 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":zip_test_utils",
-        "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
+        "//tensorflow:tensorflow_py",
+        # copybara:uncomment_begin(b/186563810)
+        # "//third_party/py/tensorflow_addons",
+        # copybara:uncomment_end
     ],
 )
 

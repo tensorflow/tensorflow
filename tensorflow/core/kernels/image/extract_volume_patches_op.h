@@ -31,23 +31,16 @@ struct ExtractVolumePatchesForward {
                   /* int rate_planes, int rate_rows, int rate_cols, */
                   const Eigen::PaddingType& padding,
                   typename TTypes<T, 5>::Tensor output) {
-    const int64_t N = std::max(input.size(), output.size());
-    if (N <= std::numeric_limits<Index32>::max()) {
-      auto output_32bit = To32Bit(output);
-      output_32bit.device(d) =
-          To32Bit(input)
-              .extract_volume_patches(patch_cols, patch_rows, patch_planes,
-                                      stride_cols, stride_rows, stride_planes,
-                                      padding)
-              .reshape(output_32bit.dimensions());
-    } else {
-      output.device(d) =
-          input
-              .extract_volume_patches(patch_cols, patch_rows, patch_planes,
-                                      stride_cols, stride_rows, stride_planes,
-                                      padding)
-              .reshape(output.dimensions());
-    }
+    MaybeWith32BitIndexing<Device>(
+        [&](auto input32, auto output32) {
+          output32.device(d) =
+              input32
+                  .extract_volume_patches(patch_cols, patch_rows, patch_planes,
+                                          stride_cols, stride_rows,
+                                          stride_planes, padding)
+                  .reshape(output32.dimensions());
+        },
+        input, output);
   }
 };
 

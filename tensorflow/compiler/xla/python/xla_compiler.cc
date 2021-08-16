@@ -124,7 +124,7 @@ StatusOr<std::string> GetComputationHloDotGraph(
 }
 
 // Hashes the HLO module.
-StatusOr<uint64> HashComputation(const XlaComputation& computation) {
+StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                       GetHloModule(computation));
   return hlo_module->Hash();
@@ -132,8 +132,8 @@ StatusOr<uint64> HashComputation(const XlaComputation& computation) {
 // Safe version of ShapeUtil::MakeShapeWithLayout that fails gracefully on
 // invalid input.
 StatusOr<Shape> MakeShapeWithLayout(
-    PrimitiveType element_type, absl::Span<const int64> dims,
-    absl::optional<absl::Span<const int64>> minor_to_major,
+    PrimitiveType element_type, absl::Span<const int64_t> dims,
+    absl::optional<absl::Span<const int64_t>> minor_to_major,
     absl::optional<const std::vector<bool>> dynamic_dimensions) {
   Shape shape;
   if (dynamic_dimensions) {
@@ -196,9 +196,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
              absl::optional<py::object> layout_seq,
              absl::optional<std::vector<bool>> dynamic_dimensions)
               -> StatusOr<Shape> {
-            std::vector<int64> dims = SequenceToVector<int64>(dims_seq);
+            std::vector<int64_t> dims = SequenceToVector<int64_t>(dims_seq);
             if (layout_seq) {
-              std::vector<int64> layout = SequenceToVector<int64>(*layout_seq);
+              std::vector<int64_t> layout =
+                  SequenceToVector<int64_t>(*layout_seq);
               return MakeShapeWithLayout(type, dims, layout,
                                          dynamic_dimensions);
             } else {
@@ -216,9 +217,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
              absl::optional<std::vector<bool>> dynamic_dimensions)
               -> StatusOr<Shape> {
             PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
-            std::vector<int64> dims = SequenceToVector<int64>(dims_seq);
+            std::vector<int64_t> dims = SequenceToVector<int64_t>(dims_seq);
             if (layout_seq) {
-              std::vector<int64> layout = SequenceToVector<int64>(*layout_seq);
+              std::vector<int64_t> layout =
+                  SequenceToVector<int64_t>(*layout_seq);
               return MakeShapeWithLayout(type, dims, layout,
                                          dynamic_dimensions);
             } else {
@@ -321,7 +323,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("__repr__", &ProgramShape::ToString);
 
   py::class_<ShapeIndex>(m, "ShapeIndex")
-      .def(py::init([](const std::vector<int64>& v) {
+      .def(py::init([](const std::vector<int64_t>& v) {
         return std::make_unique<ShapeIndex>(v.begin(), v.end());
       }))
       .def("__repr__", &ShapeIndex::ToString)
@@ -471,8 +473,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("set_sharding", &XlaBuilder::SetSharding)
       .def("clear_sharding", &XlaBuilder::ClearSharding)
       .def("setup_alias",
-           [](XlaBuilder& builder, const std::vector<int64>& output_index,
-              int64_t param_number, const std::vector<int64>& param_index) {
+           [](XlaBuilder& builder, const std::vector<int64_t>& output_index,
+              int64_t param_number, const std::vector<int64_t>& param_index) {
              builder.SetUpAlias(
                  ShapeIndex(output_index.begin(), output_index.end()),
                  param_number,

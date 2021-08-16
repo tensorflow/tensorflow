@@ -302,7 +302,7 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
 
   int64_t buffer_size = -1;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
+                 ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(ctx, buffer_size >= 0,
               errors::InvalidArgument(
                   "`buffer_size` must be >= 0 (0 == no buffering)"));

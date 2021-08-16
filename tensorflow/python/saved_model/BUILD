@@ -32,6 +32,7 @@ py_strict_library(
         ":loader",
         ":main_op",
         ":method_name_updater",
+        ":registration",
         ":save",
         ":signature_constants",
         ":signature_def_utils",
@@ -337,6 +338,7 @@ py_strict_library(
         ":function_serialization",
         ":nested_structure_coder",
         ":pywrap_saved_model",
+        ":registration",
         ":revived_types",
         ":save_context",
         ":save_options",
@@ -407,6 +409,7 @@ py_library(
         ":loader",
         ":nested_structure_coder",
         ":pywrap_saved_model",
+        ":registration",
         ":revived_types",
         ":utils",
         "//tensorflow/core:protos_all_py",
@@ -515,6 +518,28 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/training/tracking",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_strict_library(
+    name = "registration",
+    srcs = [
+        "registration.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/util",
+    ],
+)
+
+tf_py_test(
+    name = "registration_test",
+    srcs = ["registration_test.py"],
+    deps = [
+        ":registration",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/training/tracking:base",
         "@absl_py//absl/testing:parameterized",
     ],
 )

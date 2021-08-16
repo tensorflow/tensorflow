@@ -113,7 +113,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
   const BuildGraphOptions& build_graph_options() { return bg_opts_; }
 
-  int64 collective_graph_key() { return collective_graph_key_; }
+  int64_t collective_graph_key() { return collective_graph_key_; }
 
   std::unique_ptr<ProfileHandler> GetProfileHandler(uint64 step,
                                                     int64_t execution_count,
@@ -121,7 +121,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     return stats_publisher_->GetProfileHandler(step, execution_count, ropts);
   }
 
-  int64 get_and_increment_execution_count() {
+  int64_t get_and_increment_execution_count() {
     return execution_count_.fetch_add(1);
   }
 
@@ -246,8 +246,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   std::unordered_map<string, NodeDetails> name_to_node_details_;
 
   const bool should_deregister_;
-  const int64 collective_graph_key_;
-  std::atomic<int64> execution_count_ = {0};
+  const int64_t collective_graph_key_;
+  std::atomic<int64_t> execution_count_ = {0};
 
   // Graph partitioned into per-location subgraphs.
   struct Part {
@@ -406,7 +406,7 @@ void MasterSession::ReffedClientGraph::TrackFeedsAndFetches(
         uint64 send_device_incarnation;
         TF_CHECK_OK(
             GetNodeAttr(ndef, "send_device_incarnation",
-                        reinterpret_cast<int64*>(&send_device_incarnation)));
+                        reinterpret_cast<int64_t*>(&send_device_incarnation)));
         const string& key =
             Rendezvous::CreateKey(send_device, send_device_incarnation,
                                   recv_device, name, FrameAndIter(0, 0));
@@ -1515,7 +1515,8 @@ WorkerCacheInterface* MasterSession::get_worker_cache() const {
 }
 
 Status MasterSession::StartStep(const BuildGraphOptions& opts, bool is_partial,
-                                ReffedClientGraph** out_rcg, int64* out_count) {
+                                ReffedClientGraph** out_rcg,
+                                int64_t* out_count) {
   const uint64 hash = HashBuildGraphOptions(opts);
   {
     mutex_lock l(mu_);
@@ -1568,7 +1569,7 @@ uint64 MasterSession::NewStepId(int64_t graph_key) {
   } else {
     uint64 step_id = env_->collective_executor_mgr->NextStepId(graph_key);
     int32_t retry_count = 0;
-    while (static_cast<int64>(step_id) == CollectiveExecutor::kInvalidId) {
+    while (static_cast<int64_t>(step_id) == CollectiveExecutor::kInvalidId) {
       Notification note;
       Status status;
       env_->collective_executor_mgr->RefreshStepIdSequenceAsync(

@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for legalizing HLO to TensorFlow.
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -37,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -684,6 +686,137 @@ struct DimensionVector {
 
   llvm::SmallVector<int64_t, 4> axes;
   llvm::SmallVector<int64_t, 4> sizes;
+};
+
+// Create a single const integer.
+Value BuildIntConstOp(ImplicitLocOpBuilder &builder,
+                      ConversionPatternRewriter &rewriter, int64_t const_value,
+                      Type type) {
+  Value result_const =
+      builder.create<ConstOp>(rewriter.getIntegerAttr(type, const_value));
+  return result_const;
+}
+// Create a const integer vector tensor (1-dim).
+Value BuildIntArrayConstOp(ImplicitLocOpBuilder &builder,
+                           ConversionPatternRewriter &rewriter,
+                           ArrayRef<int64_t> const_value, Type type) {
+  DenseIntElementsAttr const_value_raw;
+  if (type == rewriter.getI64Type()) {
+    const_value_raw = rewriter.getI64TensorAttr(const_value);
+  } else {
+    // Convert I64 const array to I32.
+    llvm::SmallVector<int32_t> const_i32_vec;
+    for (auto element : const_value) {
+      const_i32_vec.push_back(static_cast<int32_t>(element));
+    }
+    const_value_raw = rewriter.getI32TensorAttr(const_i32_vec);
+  }
+  Value result_const = builder.create<ConstOp>(const_value_raw);
+  return result_const;
+}
+
+// Create a tensor that is reshaped from input.
+Value BuildReshapeOp(ImplicitLocOpBuilder &builder,
+                     ConversionPatternRewriter &rewriter, Value input,
+                     ArrayRef<int64_t> shape, Type idx_type,
+                     Type element_type) {
+  Value shape_cst = BuildIntArrayConstOp(builder, rewriter, shape, idx_type);
+  Value reshaped_input = builder.create<ReshapeOp>(
+      RankedTensorType::get(shape, element_type), input, shape_cst);
+  return reshaped_input;
+}
+
+// Create a tensor which is equal to input[begin: begin + size].
+Value BuildSliceOp(ImplicitLocOpBuilder &builder,
+                   ConversionPatternRewriter &rewriter, Value input,
+                   Value begin, ArrayRef<int64_t> shape, Type idx_type,
+                   Type element_type) {
+  Value shape_cst = BuildIntArrayConstOp(builder, rewriter, shape, idx_type);
+  Value slice_result = builder.create<SliceOp>(
+      RankedTensorType::get(shape, element_type), input, begin, shape_cst);
+  return slice_result;
+}
+
+class ConvertDynamicUpdateSliceOp
+    : public OpConversionPattern<mhlo::DynamicUpdateSliceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicUpdateSliceOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    ShapedType operand_type = op.operand().getType().cast<ShapedType>();
+    ShapedType update_type =
+        op.update().getType().dyn_cast_or_null<ShapedType>();
+    ShapedType start_indices_type =
+        op.start_indices().front().getType().dyn_cast_or_null<ShapedType>();
+    if (update_type == nullptr || start_indices_type == nullptr)
+      return rewriter.notifyMatchFailure(
+          op, "update and start_indices should have ShapedType");
+    if (!operand_type.hasStaticShape() || !update_type.hasStaticShape())
+      return rewriter.notifyMatchFailure(
+          op, "shape of operand and update should be static");
+
+    Type idx_type = start_indices_type.getElementType();
+    int64_t shape_dim = operand_type.getRank();
+    auto operand_shape = operand_type.getShape();
+    auto update_shape = update_type.getShape();
+
+    ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
+    Value zero_cst = BuildIntConstOp(builder, rewriter, 0, idx_type);
+    Value one_cst = BuildIntConstOp(builder, rewriter, 1, idx_type);
+    // Clamp start indices in [0, operand_size - update_size].
+    llvm::SmallVector<Value> start_indices_vector;
+    Append(start_indices_vector, op.start_indices());
+    auto shape_tensor_type = RankedTensorType::get({shape_dim}, idx_type);
+    Value start_indices_tensor =
+        builder.create<PackOp>(shape_tensor_type, start_indices_vector);
+    Value operand_shape_cst =
+        BuildIntArrayConstOp(builder, rewriter, operand_shape, idx_type);
+    Value update_shape_cst =
+        BuildIntArrayConstOp(builder, rewriter, update_shape, idx_type);
+    Value max_start_indices =
+        builder.create<SubOp>(operand_shape_cst, update_shape_cst);
+    Value start_indices_clip_max =
+        builder.create<MinimumOp>(start_indices_tensor, max_start_indices);
+    Value clamped_start_indices =
+        builder.create<MaximumOp>(start_indices_clip_max, zero_cst);
+
+    // Do dynamic_upate_slice on flattened operand and update with the aid of
+    // tf.TensorScatterUpdate op. It takes in 3 parameters: flat_operand,
+    // indices and flat_update. The indices are computed as follows:
+    // 1. Construct a range (0, n_operand). It arranges a id number to each
+    //    element position in operand.
+    // 2. Reshape the range to the shape of operand.
+    // 3. Compute the id numbers of update positions by choose a slice form
+    //    clamped_start_indices to clamped_start_indices + update_size.
+    // 4. Flatten the update id numbers and the indices is obtained.
+    int64_t n_operand = operand_type.getNumElements();
+    Value n_operand_cst =
+        BuildIntConstOp(builder, rewriter, n_operand, idx_type);
+    Value range_flat =
+        builder.create<RangeOp>(zero_cst, n_operand_cst, one_cst);
+    Value range = BuildReshapeOp(builder, rewriter, range_flat, operand_shape,
+                                 idx_type, idx_type);
+    Value update_indices_raw =
+        BuildSliceOp(builder, rewriter, range, clamped_start_indices,
+                     update_shape, idx_type, idx_type);
+    int64_t n_update = update_type.getNumElements();
+    Type element_type = operand_type.getElementType();
+    Value update_indices = BuildReshapeOp(builder, rewriter, update_indices_raw,
+                                          {n_update, 1}, idx_type, idx_type);
+    Value operand_flat = BuildReshapeOp(builder, rewriter, op.operand(),
+                                        {n_operand}, idx_type, element_type);
+    Value update_flat = BuildReshapeOp(builder, rewriter, op.update(),
+                                       {n_update}, idx_type, element_type);
+    Value flat_result = builder.create<TensorScatterUpdateOp>(
+        operand_flat, update_indices, update_flat);
+
+    // Reshape back before return.
+    rewriter.replaceOpWithNewOp<ReshapeOp>(op, operand_type, flat_result,
+                                           operand_shape_cst);
+    return success();
+  };
 };
 
 // A struct to hold information about dimensions of dot_general operands.
@@ -1925,14 +2058,15 @@ static PassRegistration<LegalizeHloToTf> pass;
 
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
-  patterns->insert<ConvertWhileOp, ConvertAvgPoolOp, ConvertConvOp,
-                   ConvertConvBackpropInputOp, ConvertDynamicSliceOp,
-                   ConvertGatherOp, ConvertMaxPoolOp, ConvertScatterAddOp,
-                   ConvertScatterMaxOp, ConvertScatterMinOp,
-                   ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
-                   ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
-                   ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-                   ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
+  patterns
+      ->insert<ConvertWhileOp, ConvertAvgPoolOp, ConvertConvOp,
+               ConvertConvBackpropInputOp, ConvertDynamicSliceOp,
+               ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
+               ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
+               ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
+               ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
+               ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
+               ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
   populateWithGenerated(*patterns);
 }
 

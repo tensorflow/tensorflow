@@ -336,8 +336,8 @@ TEST_F(TestKernelAttr, IntList) {
   };
 
   AttrValue v;
-  int64 attr_in[] = {1, 2, 3, 4};
-  SetAttrValue(gtl::ArraySlice<int64>(attr_in, 4), &v);
+  int64_t attr_in[] = {1, 2, 3, 4};
+  SetAttrValue(gtl::ArraySlice<int64_t>(attr_in, 4), &v);
   CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrIntList", v);
 }
 

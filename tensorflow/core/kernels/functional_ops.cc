@@ -73,7 +73,7 @@ Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
       CASE(uint8);
       CASE(int16);
       CASE(int8);
-      CASE(int64);
+      CASE(int64_t);
 #undef CASE
       case DT_BOOL:
         *v = t[0].scalar<bool>()();

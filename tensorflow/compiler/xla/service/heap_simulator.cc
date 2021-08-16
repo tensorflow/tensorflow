@@ -39,7 +39,7 @@ bool HeapSimulator::Chunk::OverlapsWith(Chunk other_chunk) const {
 }
 
 /*static*/
-StatusOr<int64> HeapSimulator::MinimumMemoryForModule(
+StatusOr<int64_t> HeapSimulator::MinimumMemoryForModule(
     const HloSchedule& schedule,
     const LogicalBuffer::SizeFunction& size_function) {
   if (schedule.empty()) {
@@ -64,11 +64,11 @@ StatusOr<int64> HeapSimulator::MinimumMemoryForModule(
 }
 
 /*static*/
-StatusOr<int64> HeapSimulator::MinimumMemoryForComputation(
+StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
     const HloComputation& computation, const HloInstructionSequence& sequence,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const absl::flat_hash_map<const HloComputation*, int64>*
+    const absl::flat_hash_map<const HloComputation*, int64_t>*
         memory_by_computation) {
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
@@ -79,7 +79,7 @@ StatusOr<int64> HeapSimulator::MinimumMemoryForComputation(
   return result.heap_size;
 }
 
-StatusOr<int64> HeapSimulator::MinimumMemoryForComputation(
+StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
     const HloComputation& computation, const HloInstructionSequence& sequence,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
@@ -118,7 +118,7 @@ StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     const HloInstructionSequence& instruction_sequence,
     const HloAliasAnalysis& alias_analysis,
     const BufferValue::SizeFunction& size_fn, const Options& options,
-    const absl::flat_hash_map<const HloComputation*, int64>*
+    const absl::flat_hash_map<const HloComputation*, int64_t>*
         memory_by_computation) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
                      /*schedule=*/nullptr, memory_by_computation);
@@ -335,7 +335,7 @@ HeapSimulator::HeapSimulator(
     std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
     const BufferValue::SizeFunction& size_fn, const Options& options,
     const HloSchedule* schedule,
-    const absl::flat_hash_map<const HloComputation*, int64>*
+    const absl::flat_hash_map<const HloComputation*, int64_t>*
         memory_by_computation)
     : no_fragmentation_stats_(
           absl::make_unique<NoFragmentationStatsHeap<HloValue>>()),
@@ -461,7 +461,7 @@ void NoFragmentationStatsHeap<BufferType>::Alloc(const BufferType* buffer,
 template <typename BufferType>
 void NoFragmentationStatsHeap<BufferType>::AccountForSubcomputationMemory(
     const HloInstruction* instruction, int64_t alloc_size_by_instruction,
-    const absl::flat_hash_map<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64_t>&
         memory_by_computation) {
   // We only count the memory usage of the largest subcomputation, instead of
   // adding them all, because subcomputations won't execute in parallel.

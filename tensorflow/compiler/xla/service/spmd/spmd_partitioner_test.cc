@@ -8011,7 +8011,7 @@ bool IsTrivialCollectivePermute(HloInstruction* hlo) {
     return true;
   }
   return absl::c_all_of(hlo->source_target_pairs(),
-                        [](const std::pair<int64, int64>& pair) {
+                        [](const std::pair<int64_t, int64_t>& pair) {
                           return pair.first == pair.second;
                         });
 }

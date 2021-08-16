@@ -73,7 +73,7 @@ limitations under the License.
 #define DCOMMENT_OP(OP, MSG) \
   LLVM_DEBUG(OP->print(llvm::dbgs() << MSG << " "); llvm::dbgs() << "\n")
 
-using ::tensorflow::int64;
+using ::int64_t;
 using tensorflow::shape_inference::DimensionHandle;
 using tensorflow::shape_inference::InferenceContext;
 using tensorflow::shape_inference::ShapeHandle;
@@ -391,6 +391,18 @@ bool CanInferTensorListElementType(Value tensorlist,
   }
   return true;
 }
+
+// Returns the tensor type created from the `shape_attr` and `type_attr`
+// attributes.
+Type GetType(Attribute shape_attr, Attribute type_attr) {
+  auto shape = shape_attr.cast<tf_type::ShapeAttr>();
+  auto type = type_attr.cast<TypeAttr>();
+  if (shape.hasRank())
+    return RankedTensorType::get(shape.getShape(), type.getValue());
+  else
+    return UnrankedTensorType::get(type.getValue());
+}
+
 }  // namespace
 
 // Returns whether type can be further refined.
@@ -592,7 +604,7 @@ class ShapeInference {
   // A tf.Cast() is inserted for any uses that isn't in the TensorFlow dialect.
   // `graph_version` indicates the current GraphDef compatibility versions
   // (the versions field in graph.proto).
-  bool InferShapeForSingleOperation(Operation* op);
+  bool InferShapeForSingleOperation(Operation* op, int64_t max_iterations);
 
   // Infers shape on the provided region, including nested ones, iterate until
   // fix point with a limit of max_iteration.
@@ -615,7 +627,7 @@ class ShapeInference {
   FailureOr<bool> PropagateShapeToFunctions(ModuleOp module,
                                             TypeRange input_types,
                                             ArrayRef<FuncOp> functions,
-                                            int64_t max_iteration);
+                                            int64_t max_iterations);
 
   // Propagates shapes to regions given the shapes of the inputs of the regions.
   // All regions provided in `regions` are assumed to have inputs of type
@@ -624,13 +636,13 @@ class ShapeInference {
   // reached convergence, false otherwise.
   FailureOr<bool> PropagateShapeToRegions(TypeRange input_types,
                                           ArrayRef<Region*> regions,
-                                          int64_t max_iteration);
+                                          int64_t max_iterations);
 
   // Shape propagation for call/control flow ops.
   // Returns a failure() on error, otherwise returns true to indicate that it
   // reached convergence, false otherwise.
   FailureOr<bool> PropagateShapeIntoAttachedFunctions(Operation* op,
-                                                      int64_t max_iteration);
+                                                      int64_t max_iterations);
 
   // Shape propagation for region based control flow.
   // Returns a failure() on error, otherwise returns true to indicate that it
@@ -734,7 +746,11 @@ class ShapeInference {
 
   // Infers the shape for MapDatasetOp and its associated function. Returns
   // whether either op or function type was changed.
-  bool InferShapeForMapDataset(MapDatasetOp op);
+  bool InferShapeForMapDataset(MapDatasetOp op, int64_t max_iterations);
+
+  // Infers the shape for ReduceDatasetOp and its associated reduce function.
+  // Returns whether either op or function type was changed.
+  bool InferShapeForReduceDataset(ReduceDatasetOp op, int64_t max_iterations);
 
   // Infers the shape of ops that create TensorList. Specifically,
   // TensorListReserveOp, EmptyTensorListOp and TensorListFromTensor ops. It
@@ -934,9 +950,10 @@ bool ShapeInference::InferShapeForXlaHostComputeMlir(
   return changed;
 }
 
-bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op) {
+bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
+                                             int64_t max_iterations) {
   // MapDatasetOp's relationship with its associated function is as
-  // follows: first M function params are dictated by the the set
+  // follows: first M function params are dictated by the set
   // output shapes and types, the next N are the last Ninputs from MapDataset
   // op. The MapDataset op always has N+1 inputs.
   // TODO(jpienaar): Avoid this lookup.
@@ -957,31 +974,129 @@ bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op) {
   auto it = input_types.begin();
   // First set first M argument shapes & types.
   for (int i = 0; i < M; ++i) {
-    auto shape = op.output_shapes()[i].cast<tf_type::ShapeAttr>();
-    auto type = op.output_types()[i].cast<TypeAttr>();
-    Type t;
-    if (shape.hasRank())
-      t = RankedTensorType::get(shape.getShape(), type.getValue());
-    else
-      t = UnrankedTensorType::get(type.getValue());
+    Type t = GetType(op.output_shapes()[i], op.output_types()[i]);
     t = TypeMeet(*it, t);
     changed = changed || (t != *it);
-    ++it;
+    *it++ = t;
   }
   // Now the remaining N from operand types.
   for (auto t : llvm::drop_begin(op.getOperandTypes())) {
     auto meet = TypeMeet(*it, t);
     changed = changed || (meet != *it);
-    *it = meet;
-    ++it;
+    *it++ = meet;
   }
   if (!changed) return false;
 
-  // TODO(jpienaar): Pipe the max_iteration value through.
   FailureOr<bool> res =
-      PropagateShapeToFunctions(module, input_types, {f}, /*max_iteration=*/10);
+      PropagateShapeToFunctions(module, input_types, {f}, max_iterations);
   if (failed(res)) {
-    LOG(ERROR) << "Propagating shapes for MapDataset failed";
+    op->emitOpError("propagating shapes for MapDataset failed");
+    return false;
+  }
+  return *res;
+}
+
+bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
+                                                int64_t max_iterations) {
+  // ReduceDatasetOp's relationship with its associated reduce function is
+  // described as follows: The reduce function will in general have (X + Y + Z)
+  // arguments, where X is the number of tensor components that represent the
+  // state, Y is the number of tensor components that represent the input
+  // elements, and Z is the number of tensor components that represent any
+  // captured arguments. Y is determined by the output_shapes of an op that
+  // defines the first operand of `op`.
+
+  // TODO(haoliang): add a parent op for DatasetOp to avoid the following
+  // enumeration.
+  if (op.getOperand(0).getDefiningOp() == nullptr ||
+      !isa<RepeatDatasetOp, MapDatasetOp, BatchDatasetV2Op, TakeDatasetOp>(
+          op.getOperand(0).getDefiningOp())) {
+    return false;
+  }
+
+  // TODO(jpienaar): Avoid this lookup.
+  auto module = op->getParentOfType<ModuleOp>();
+  auto f = module.lookupSymbol<FuncOp>(op.f());
+
+  // Skip if function is not found or it has more than one caller.
+  if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
+
+  auto input_elements_op = op.getOperand(0).getDefiningOp();
+  ArrayAttr input_elements_shapes;
+  ArrayAttr input_elements_types;
+
+  // TODO(haoliang): add a parent op for DatasetOp to avoid the following
+  // enumeration.
+  if (auto repeatdataset_op = dyn_cast<RepeatDatasetOp>(input_elements_op)) {
+    input_elements_shapes = repeatdataset_op.output_shapes();
+    input_elements_types = repeatdataset_op.output_types();
+  } else if (auto mapdataset_op = dyn_cast<MapDatasetOp>(input_elements_op)) {
+    input_elements_shapes = mapdataset_op.output_shapes();
+    input_elements_types = mapdataset_op.output_types();
+  } else if (auto batchdataset_op =
+                 dyn_cast<BatchDatasetV2Op>(input_elements_op)) {
+    input_elements_shapes = batchdataset_op.output_shapes();
+    input_elements_types = batchdataset_op.output_types();
+  } else if (auto takedataset_op = dyn_cast<TakeDatasetOp>(input_elements_op)) {
+    input_elements_shapes = takedataset_op.output_shapes();
+    input_elements_types = takedataset_op.output_types();
+  } else {
+    op->emitOpError("unexpected DatasetOp");
+    return false;
+  }
+
+  const int num_states = op.output_shapes().size();
+  const int num_input_elements = input_elements_shapes.size();
+  const int num_captured_arguments = op.getNumOperands() - 1 - num_states;
+  DCOMMENT_OP(op,
+              "Inferring shape for ReduceDataset with #states = "
+                  << num_states << " , #input_elements = " << num_input_elements
+                  << " , and #captured_arguments = " << num_captured_arguments);
+  if (num_states + num_input_elements + num_captured_arguments !=
+      f.getNumArguments()) {
+    op->emitOpError(
+        "propagating shapes for ReduceDataset failed due to inconsistent "
+        "number of arguments");
+    return false;
+  }
+
+  // Initialize with function input types.
+  SmallVector<Type> input_types(f.getArgumentTypes());
+
+  // Track if changed to skip enqueueing.
+  bool changed = false;
+  auto it = input_types.begin();
+
+  // Set the first num_states arguments shapes & types from the state.
+  for (int i = 0; i < num_states; ++i) {
+    Type t = GetType(op.output_shapes()[i], op.output_types()[i]);
+    t = TypeMeet(*it, t);
+    changed = changed || (t != *it);
+    *it++ = t;
+  }
+
+  // Second set the following num_input_elements arguments from
+  // repeat_dataset_op.
+  for (int i = 0; i < num_input_elements; ++i) {
+    Type t = GetType(input_elements_shapes[i], input_elements_types[i]);
+    t = TypeMeet(*it, t);
+    changed = changed || (t != *it);
+    *it++ = t;
+  }
+
+  // Last set the remaining num_captured_arguments from op.
+  for (auto t : llvm::drop_begin(op.getOperandTypes(), 1 + num_states)) {
+    auto meet = TypeMeet(*it, t);
+    changed = changed || (meet != *it);
+    *it++ = meet;
+  }
+
+  if (!changed) return false;
+
+  FailureOr<bool> res =
+      PropagateShapeToFunctions(module, input_types, {f}, max_iterations);
+  if (failed(res)) {
+    op->emitOpError("Propagating shapes for ReduceDataset failed");
     return false;
   }
   return *res;
@@ -1239,7 +1354,8 @@ bool ShapeInference::InferShapeForWhile(WhileOpTy op,
   return changed;
 }
 
-bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
+bool ShapeInference::InferShapeForSingleOperation(Operation* op,
+                                                  int64_t max_iterations) {
   LLVM_DEBUG(op->print(llvm::dbgs() << "InferShapeForSingleOperation for ");
              llvm::dbgs() << "\n");
   assert(tf_dialect_ == op->getDialect());
@@ -1294,8 +1410,16 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
     return InferShapeForXlaHostComputeMlir(host_compute_op);
   }
 
-  if (auto map_dataset_op = dyn_cast<MapDatasetOp>(op))
-    return InferShapeForMapDataset(map_dataset_op);
+  // TODO(jpienaar): Extract function input arg constraint interface.
+  if (auto map_dataset_op = dyn_cast<MapDatasetOp>(op)) {
+    // TODO(jpienaar): The output type of these ops need to be refined.
+    return InferShapeForMapDataset(map_dataset_op, max_iterations);
+  }
+
+  if (auto reduce_dataset_op = dyn_cast<ReduceDatasetOp>(op)) {
+    // TODO(jpienaar): The output type of these ops need to be refined.
+    return InferShapeForReduceDataset(reduce_dataset_op, max_iterations);
+  }
 
   // Handle TensorList init operations by inferring shape from TensorList write
   // operations. If we are unable to refine element shape here, proceed to use
@@ -1358,7 +1482,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
 
 FailureOr<bool> ShapeInference::PropagateShapeToFunctions(
     ModuleOp module, TypeRange input_types, ArrayRef<FuncOp> functions,
-    int64_t max_iteration) {
+    int64_t max_iterations) {
   bool any_failure = false;
   bool any_nonconvergence = false;
   // If shape propagation fails for one function, return failure, but do not
@@ -1392,7 +1516,7 @@ FailureOr<bool> ShapeInference::PropagateShapeToFunctions(
                                    func_type.getResults()));
 
     FailureOr<bool> failure_or_converged =
-        PropagateShapeToRegions(input_types, {&func.getBody()}, max_iteration);
+        PropagateShapeToRegions(input_types, {&func.getBody()}, max_iterations);
     if (failed(failure_or_converged)) {
       any_failure = true;
       continue;
@@ -1405,7 +1529,7 @@ FailureOr<bool> ShapeInference::PropagateShapeToFunctions(
 }
 
 FailureOr<bool> ShapeInference::PropagateShapeToRegions(
-    TypeRange input_types, ArrayRef<Region*> regions, int64_t max_iteration) {
+    TypeRange input_types, ArrayRef<Region*> regions, int64_t max_iterations) {
   DCOMMENT("\tPropagating shapes to regions");
   bool any_failure = false;
   bool any_nonconvergence = false;
@@ -1424,7 +1548,7 @@ FailureOr<bool> ShapeInference::PropagateShapeToRegions(
 
     // Propagate shapes into the region.
     FailureOr<bool> failure_or_converged =
-        InferShapeUntilFixPoint(region, max_iteration);
+        InferShapeUntilFixPoint(region, max_iterations);
     if (failed(failure_or_converged))
       any_failure = true;
     else if (!failure_or_converged.getValue())
@@ -1547,18 +1671,18 @@ llvm::SmallVector<Type, 4> GetWhileCompatibleTypes(
 }
 
 FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
-    Operation* op, int64_t max_iteration) {
+    Operation* op, int64_t max_iterations) {
   ModuleOp module = op->getParentOfType<ModuleOp>();
   if (auto if_op = dyn_cast<TF::IfOp>(op)) {
     DCOMMENT("Propagating shapes into If");
     return PropagateShapeToFunctions(
         module, if_op.input().getTypes(),
-        {if_op.then_function(), if_op.else_function()}, max_iteration);
+        {if_op.then_function(), if_op.else_function()}, max_iterations);
   } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
     SmallVector<FuncOp, 4> branches;
     case_op.get_branch_functions(branches);
     return PropagateShapeToFunctions(module, case_op.input().getTypes(),
-                                     branches, max_iteration);
+                                     branches, max_iterations);
   } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
     // If `shape_invariant` is set, operand shapes cannot be simply propagated
     // to result shapes as the op may have different intermediate shapes (such
@@ -1570,16 +1694,16 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
           while_op.body_function().getType().getInputs());
       return PropagateShapeToFunctions(
           module, compatible_types,
-          {while_op.cond_function(), while_op.body_function()}, max_iteration);
+          {while_op.cond_function(), while_op.body_function()}, max_iterations);
     }
     return PropagateShapeToFunctions(
         module, while_op.input().getTypes(),
-        {while_op.cond_function(), while_op.body_function()}, max_iteration);
+        {while_op.cond_function(), while_op.body_function()}, max_iterations);
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
     if (auto func = dyn_cast<FuncOp>(call_op.resolveCallable())) {
       PropagateConstantToCallee(call_op, func, module);
       FailureOr<bool> failure_or_converged = PropagateShapeToFunctions(
-          module, call_op.getArgOperands().getTypes(), {func}, max_iteration);
+          module, call_op.getArgOperands().getTypes(), {func}, max_iterations);
       if (failed(failure_or_converged)) return failure();
       PropagateConstantFromCallee(call_op, func, module);
       return failure_or_converged;
@@ -1592,7 +1716,7 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
 }
 
 FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedRegions(
-    Operation* op, int64_t max_iteration) {
+    Operation* op, int64_t max_iterations) {
   if (auto while_op = dyn_cast<TF::WhileRegionOp>(op)) {
     // If `shape_invariant` is set, operand shapes cannot be simply propagated
     // to result shapes as the op may have different intermediate shapes (such
@@ -1604,11 +1728,11 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedRegions(
           while_op.body().getArgumentTypes());
       return PropagateShapeToRegions(compatible_types,
                                      {&while_op.cond(), &while_op.body()},
-                                     max_iteration);
+                                     max_iterations);
     }
     return PropagateShapeToRegions(while_op.input().getTypes(),
                                    {&while_op.cond(), &while_op.body()},
-                                   max_iteration);
+                                   max_iterations);
   }
   return true;
 }
@@ -1742,15 +1866,15 @@ LogicalResult ShapeInference::InferShapeForFunctionReturnType(FuncOp func) {
   return success();
 }
 
-FailureOr<bool> ShapeInference::InferShapeUntilFixPoint(Region* region,
-                                                        int64_t max_iteration) {
+FailureOr<bool> ShapeInference::InferShapeUntilFixPoint(
+    Region* region, int64_t max_iterations) {
   bool changed = true;
 
   // TODO(aminim): we could have a more efficient traversal by guiding the
   // traversal with a worklist and reconsider only the nodes for which an
   // operand type was inferred. This would need to be careful if working on a
   // region that would not be isolated.
-  for (int iteration = 0; iteration < max_iteration && changed; ++iteration) {
+  for (int iteration = 0; iteration < max_iterations && changed; ++iteration) {
     changed = false;
     LLVM_DEBUG(llvm::dbgs()
                << "Shape inference, iteration " << iteration << "\n");
@@ -1779,19 +1903,19 @@ FailureOr<bool> ShapeInference::InferShapeUntilFixPoint(Region* region,
       // Best-effort shape inference in attached functions. Do not return
       // failure even if it doesn't get to fixed point, but propagate "real"
       // failure.
-      if (failed(PropagateShapeIntoAttachedFunctions(op, max_iteration))) {
+      if (failed(PropagateShapeIntoAttachedFunctions(op, max_iterations))) {
         op->emitWarning() << "unable to refine shape of attached function "
                              "arguments and bodies";
         return WalkResult::interrupt();
       }
 
-      if (failed(PropagateShapeIntoAttachedRegions(op, max_iteration))) {
+      if (failed(PropagateShapeIntoAttachedRegions(op, max_iterations))) {
         op->emitWarning() << "unable to refine shape of attached region "
                              "arguments and bodies";
         return WalkResult::interrupt();
       }
 
-      changed |= InferShapeForSingleOperation(op);
+      changed |= InferShapeForSingleOperation(op, max_iterations);
       return WalkResult::advance();
     });
     if (res.wasInterrupted()) return failure();
@@ -1799,7 +1923,7 @@ FailureOr<bool> ShapeInference::InferShapeUntilFixPoint(Region* region,
 
   if (changed) {
     region->getParentOp()->emitWarning()
-        << "shape inference did not reach stable state after " << max_iteration
+        << "shape inference did not reach stable state after " << max_iterations
         << " iterations";
   }
   return !changed;

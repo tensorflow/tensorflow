@@ -49,7 +49,8 @@ constexpr int64_t kInvalidStepId = -1;
 
 // Index of the time-sorted memory_profile_snapshots list, and the
 // MemoryActivityMetadata proto it contains.
-using IndexMetaPair = std::pair<int64 /*index*/, const MemoryActivityMetadata*>;
+using IndexMetaPair =
+    std::pair<int64_t /*index*/, const MemoryActivityMetadata*>;
 
 bool IsMemoryAllocation(int64_t event_type) {
   return event_type == HostEventType::kMemoryAllocation;
@@ -230,8 +231,8 @@ void UpdateDeallocation(PerAllocatorMemoryProfile* memory_profile) {
 }
 
 // Return the step id for the peak memory usage data point.
-int64 GetPeakMemoryStep(int64_t peak_bytes_profile,
-                        const PerAllocatorMemoryProfile* memory_profile) {
+int64_t GetPeakMemoryStep(int64_t peak_bytes_profile,
+                          const PerAllocatorMemoryProfile* memory_profile) {
   int64_t peak_bytes_profile_step_id = 0;
   for (const auto& snapshot : memory_profile->memory_profile_snapshots()) {
     // Get the step id of the peak memory usage.
@@ -326,7 +327,7 @@ void ProcessActiveAllocations(int64_t peak_bytes_profile_step_id,
   int64_t unmapped_allocation_bytes =
       memory_profile->profile_summary().peak_stats().heap_allocated_bytes();
   int64_t unmapped_deallocation_bytes = 0;
-  absl::flat_hash_map<int64 /*address*/, IndexMetaPair> active_alloc_map;
+  absl::flat_hash_map<int64_t /*address*/, IndexMetaPair> active_alloc_map;
   // Only account for the memory activities in the step that includes peak
   // memory usage.
   for (int i = 0; i < memory_profile->memory_profile_snapshots_size(); i++) {
@@ -395,7 +396,7 @@ void ProcessActiveAllocations(int64_t peak_bytes_profile_step_id,
 }
 
 struct Sample {
-  int64 orig_index;  // original index to the snapshot.
+  int64_t orig_index;  // original index to the snapshot.
   MemoryProfileSnapshot* snapshot;
 };
 
@@ -414,7 +415,7 @@ void SampleSnapshots(
   std::vector<Sample> samples;
 
   // First, puts the snapshots referenced by active_allocations in samples[].
-  absl::flat_hash_set<int64> allocation_snapshot_indices;
+  absl::flat_hash_set<int64_t> allocation_snapshot_indices;
   for (const auto& allocation : *active_allocations) {
     auto orig_index = allocation.snapshot_index();
     if (orig_index < 0) continue;
@@ -453,7 +454,7 @@ void SampleSnapshots(
   });
 
   // Fourth, constructs a map from the original snapshot index to samples index.
-  absl::flat_hash_map</*original=*/int64, /*new=*/int64> index_map;
+  absl::flat_hash_map</*original=*/int64_t, /*new=*/int64_t> index_map;
   for (int64_t i = 0; i < samples.size(); i++) {
     index_map[samples[i].orig_index] = i;
   }

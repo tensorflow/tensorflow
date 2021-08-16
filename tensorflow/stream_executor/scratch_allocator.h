@@ -41,7 +41,7 @@ class ScratchAllocator {
   // bytes. This information may be used to help select an algorithm.
   //
   // Returns values < 0 to indicate that there is no recommended limit.
-  virtual int64 GetMemoryLimitInBytes() = 0;
+  virtual int64_t GetMemoryLimitInBytes() = 0;
 
   // Returns an allocation on byte_size bytes for use in an operation on stream.
   //
@@ -62,7 +62,7 @@ class OneTimeScratchAllocator : public ScratchAllocator {
  public:
   explicit OneTimeScratchAllocator(Stream* stream);
   ~OneTimeScratchAllocator() override;
-  int64 GetMemoryLimitInBytes() override;
+  int64_t GetMemoryLimitInBytes() override;
   port::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
 
  private:

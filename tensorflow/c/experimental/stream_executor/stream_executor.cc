@@ -592,9 +592,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     return false;
   }
 
-  bool DeviceMemoryUsage(int64* free, int64* total) const override {
-    static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
-                  "64-bit int types should match in size");
+  bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override {
     return stream_executor_->device_memory_usage(
         &device_, reinterpret_cast<int64_t*>(free),
         reinterpret_cast<int64_t*>(total));

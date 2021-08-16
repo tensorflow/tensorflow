@@ -110,12 +110,12 @@ class ComputeBatchSizeOp : public OpKernel {
     int64_t batch_size = GetBatchSize(*node, graph_view);
     Tensor* result;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
-    result->scalar<int64>()() = batch_size;
+    result->scalar<int64_t>()() = batch_size;
   }
 
  private:
-  int64 GetBatchSizeFromBatchNode(const NodeDef& node,
-                                  const grappler::GraphView& graph) {
+  int64_t GetBatchSizeFromBatchNode(const NodeDef& node,
+                                    const grappler::GraphView& graph) {
     int64_t arg_index;
     if (node.op() == kMapAndBatchOp ||
         node.op() == kExperimentalMapAndBatchOp) {
@@ -152,7 +152,7 @@ class ComputeBatchSizeOp : public OpKernel {
   // 4. All other ops: Fail, returning -1 for unknown.
   // TODO(rachelim): For FlatMap type mapping dataset ops, recurse into the
   // function definition.
-  int64 GetBatchSize(const NodeDef& node, const grappler::GraphView& graph) {
+  int64_t GetBatchSize(const NodeDef& node, const grappler::GraphView& graph) {
     if (IsDatasetNodeOfType(node, kBatchDatasetOps)) {
       return GetBatchSizeFromBatchNode(node, graph);
     }

@@ -151,6 +151,15 @@ bool IsAttrs(PyObject* o);
 //   True if the object is a tensor.
 bool IsTensor(PyObject* o);
 
+// Returns true if its input is a tf.TensorSpec.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is a TensorSpec.
+bool IsTensorSpec(PyObject* o);
+
 // Returns a true if its input is an eager.EagerTensor.
 //
 // Args:

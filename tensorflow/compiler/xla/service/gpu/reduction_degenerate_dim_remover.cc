@@ -51,8 +51,8 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
     Shape canonical_reduce_shape =
         ShapeUtil::DropDegenerateDimensions(reduce_shape);
 
-    const std::vector<int64> &reduced_dimensions = instr->dimensions();
-    std::vector<int64> updated_reduced_dimensions;
+    const std::vector<int64_t> &reduced_dimensions = instr->dimensions();
+    std::vector<int64_t> updated_reduced_dimensions;
     int64_t shift = 0;
 
     for (int dim = 0; dim < input_shape.rank(); dim++) {

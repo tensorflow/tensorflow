@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 namespace sharding_builder {
 // A shaped array used to describe the assignment of tiles to devices.
-using TileAssignment = Array<int64>;
+using TileAssignment = Array<int64_t>;
 
 // Creates a replicated sharding - replicate a tensor on every device.
 OpSharding Replicate();

@@ -292,10 +292,9 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
     }
   }
   // Ensure that batch shapes are broadcastable.
-  tensorflow::MatMulBCast bcast(absl::InlinedVector<tensorflow::int64, 4>(
-                                    lhs_shape.begin(), lhs_shape.end()),
-                                absl::InlinedVector<tensorflow::int64, 4>(
-                                    rhs_shape.begin(), rhs_shape.end()));
+  tensorflow::MatMulBCast bcast(
+      absl::InlinedVector<int64_t, 4>(lhs_shape.begin(), lhs_shape.end()),
+      absl::InlinedVector<int64_t, 4>(rhs_shape.begin(), rhs_shape.end()));
 
   if (!bcast.IsValid()) {
     // Input batch dimensions must be broadcastable

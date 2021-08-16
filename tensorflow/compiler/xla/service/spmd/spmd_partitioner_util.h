@@ -90,7 +90,7 @@ Shape MakePartitionedShape(const Shape& shape, const HloSharding& sharding);
 
 // Similar to ShapeUtil::ByteSizeOf(), but does not check it has dense layout
 // since this can be before layout assignment.
-int64 ShapeSizeInBytes(const Shape& shape);
+int64_t ShapeSizeInBytes(const Shape& shape);
 
 // Returns the shard shape for a partition without padding due to uneven
 // sharding.
@@ -105,7 +105,7 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
 std::vector<HloInstruction*> MakePartitionOffsets(
     const Shape& shape, const HloSharding& sharding,
     HloInstruction* partition_id, SpmdBuilder* b,
-    absl::Span<const int64> dims = {});
+    absl::Span<const int64_t> dims = {});
 
 // Returns the offsets of the partition in the tile assignment.
 std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
@@ -128,7 +128,7 @@ HloInstruction* PadBaseShapeBeforeUnevenTiledSharding(
 
 // Returns the index of the unique tile dimension. Returns absl::nullopt if the
 // given sharding is not tiled or tiled along multiple dimensions.
-absl::optional<int64> UniqueTiledDim(const HloSharding& sharding);
+absl::optional<int64_t> UniqueTiledDim(const HloSharding& sharding);
 
 // Utilities for symbolic offset calculation and halo exchange.
 class OffsetCalculation;
@@ -152,18 +152,18 @@ class MultiplyAddDivideOffsetCalculation {
 
   bool IsConstant() const { return multiplier_ == 0; }
   void Simplify();
-  int64 Calculate(int64_t shard_ordinal) const;
+  int64_t Calculate(int64_t shard_ordinal) const;
   HloInstruction* Calculate(HloInstruction* shard_ordinal,
                             SpmdBuilder* b) const;
 
   // Returns the maximum result for shard ordinals in the range
   // [start_ordinal, limit_ordinal).
-  int64 MaxInRange(int64_t start_ordinal, int64_t limit_ordinal) const;
+  int64_t MaxInRange(int64_t start_ordinal, int64_t limit_ordinal) const;
 
  private:
-  int64 multiplier_;
-  int64 offset_;
-  int64 divisor_;
+  int64_t multiplier_;
+  int64_t offset_;
+  int64_t divisor_;
 };
 
 // Represents a calculation over integers based on results of other calculations
@@ -196,13 +196,13 @@ class OffsetCalculation {
 
   OffsetCalculation operator-(const OffsetCalculation& other) const;
   bool operator==(const OffsetCalculation& other) const;
-  int64 Calculate(int64_t shard_ordinal) const;
+  int64_t Calculate(int64_t shard_ordinal) const;
   HloInstruction* Calculate(HloInstruction* shard_ordinal,
                             SpmdBuilder* b) const;
 
   // Returns the maximum result for shard ordinals in the range
   // [start_ordinal, limit_ordinal).
-  int64 MaxInRange(int64_t start_ordinal, int64_t limit_ordinal) const;
+  int64_t MaxInRange(int64_t start_ordinal, int64_t limit_ordinal) const;
 
  private:
   HloOpcode opcode_;
@@ -219,7 +219,7 @@ absl::optional<HloInstruction*> ExchangeHalo(
     const OffsetCalculation& right_halo_size_function, int64_t dim,
     const HloSharding& target,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
-    int64* next_channel_id, SpmdBuilder* b);
+    int64_t* next_channel_id, SpmdBuilder* b);
 
 // Exchange halo on all dimensions of the HLO. Returns nullopt if any one of the
 // dimensions fails to exchange halo (halo is beyond the neighbor shard).
@@ -229,7 +229,7 @@ absl::optional<HloInstruction*> ExchangeHalo(
     std::vector<OffsetCalculation> right_halo_size_functions,
     const HloSharding& target,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
-    int64* next_channel_id, SpmdBuilder* b);
+    int64_t* next_channel_id, SpmdBuilder* b);
 
 // Exchanges halos and performs pad/dynamic-slice on the concatenated data such
 // that the result starts with the first needed element on each shard. It also
@@ -258,32 +258,33 @@ absl::optional<HloInstruction*> ExchangeHaloAndGetValidData(
     HloInstruction* offset_on_padded_shape, HloInstruction* pad_value,
     HloInstruction* partition_ordinal,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
-    int64* next_channel_id, SpmdBuilder* b, bool mask_invalid_region = true);
+    int64_t* next_channel_id, SpmdBuilder* b, bool mask_invalid_region = true);
 
 // Uses halo exchange to change from right-padding to left-padding for uneven
 // tiled sharding on the given dimensions. Tiled sharding always pads uneven
 // partitioned data on the right, but we need to swap it to the left for
 // kReverse or kConvolution with window reversal.
 HloInstruction* HaloExchangeToPadOnLeft(PartitionedHlo& original,
-                                        absl::Span<const int64> dims);
+                                        absl::Span<const int64_t> dims);
 
 // Check if the computation is GT comparison and safe for NaNs.
 bool IsNanSafeGt(HloComputation* computation);
 
 // Return k in TopK when input value is parttioned in the sort dimension.
-absl::optional<int64> GetKValueInTopKWhenPartitionSortDim(HloInstruction* hlo);
+absl::optional<int64_t> GetKValueInTopKWhenPartitionSortDim(
+    HloInstruction* hlo);
 
 // Slices the first k elements at slice dimension.
 HloInstruction* SliceFirstK(HloInstruction* hlo, SpmdBuilder* builder,
                             int64_t slice_dim, int64_t k);
 
 // Check if a dimension is sharded.
-int64 ShardCountAtDim(const HloSharding& sharding, int64_t dim);
+int64_t ShardCountAtDim(const HloSharding& sharding, int64_t dim);
 
 // Returns the list of source-target pairs of dimensions to swap during
 // resharding via all-to-all. Reshard can be done by swapping each pair at a
 // time.
-absl::optional<std::vector<std::pair<int64, int64>>>
+absl::optional<std::vector<std::pair<int64_t, int64_t>>>
 GetReshardAllToAllSourceTargetDims(const HloSharding& source,
                                    const HloSharding& target);
 
@@ -291,69 +292,39 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
 bool CanReshardWithCollectivePermute(const HloSharding& source,
                                      const HloSharding& target);
 
-// Represents grouping devices in a tiled sharding along certain dimensions.
-// Elements in group dimensions define different device groups, and the sharding
-// represents the in-group sharding.
-struct GroupedSharding {
-  GroupedSharding(std::vector<std::vector<int64>> device_groups,
-                  std::vector<int64> group_dims,
-                  std::vector<int64> group_dim_sizes, int64_t data_rank,
-                  HloSharding grouped_sharding)
-      : device_groups(std::move(device_groups)),
-        group_dims(std::move(group_dims)),
-        group_dim_sizes(std::move(group_dim_sizes)),
-        data_rank(data_rank),
-        sharding(std::move(grouped_sharding)) {}
-  std::vector<std::vector<int64>> device_groups;
-  std::vector<int64> group_dims;
-  std::vector<int64> group_dim_sizes;
-  int64 data_rank;
-  HloSharding sharding;
-};
-
-// Creates a GroupedSharding for a tiled sharding with group dim shard sizes.
-GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
-                                    absl::Span<const int64> group_dims,
-                                    absl::Span<const int64> group_dim_shards);
-
-// Creates a GroupedSharding for a tiled sharding.
-GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
-                                    absl::Span<const int64> group_dims);
-
-// Reconstructs the ungrouped sharding from a GroupedSharding.
-HloSharding UngroupSharding(const GroupedSharding& grouped_sharding);
-
 // Returns a new GroupedSharding that has the same group definition of
 // `reference`.
-GroupedSharding AlignGroupsWith(GroupedSharding grouped_sharding,
-                                const GroupedSharding& reference,
-                                bool ignore_group_order = false);
+hlo_sharding_util::GroupedSharding AlignGroupsWith(
+    hlo_sharding_util::GroupedSharding grouped_sharding,
+    const hlo_sharding_util::GroupedSharding& reference,
+    bool ignore_group_order = false);
 
 // Align device groups between the two ahrdings. Equivalent in calling
 // GroupShardingOnDims on the two sharding AlignGroupsWith and then
 // UngroupSharding
 HloSharding AlignShardingOnDims(const HloSharding& sharding,
-                                absl::Span<const int64> sharding_dims,
+                                absl::Span<const int64_t> sharding_dims,
                                 const HloSharding& reference,
-                                absl::Span<const int64> reference_dims);
+                                absl::Span<const int64_t> reference_dims);
 
 // Returns the per-group base shape, i.e., before applying the in-group
 // sharding.
-Shape GetPerGroupBaseShape(const GroupedSharding& grouped_sharding,
-                           const Shape& original_base_shape);
+Shape GetPerGroupBaseShape(
+    const hlo_sharding_util::GroupedSharding& grouped_sharding,
+    const Shape& original_base_shape);
 
 // Creates the nested partitioner state for in-group patitioning.
 PartitionedHlo::PartitioningState CreatePerGroupPartitioningState(
     const PartitionedHlo::PartitioningState& state,
-    const std::vector<std::vector<int64>>& device_groups, SpmdBuilder* b);
+    const std::vector<std::vector<int64_t>>& device_groups, SpmdBuilder* b);
 
 // Partially shards a replicated HLO into groups along the group dimensions, and
 // within each group data is still replicated.
 HloInstruction* PerGroupSliceFromReplicated(
     HloInstruction* replicated, HloInstruction* partition_id,
-    const std::vector<std::vector<int64>>& device_groups,
-    absl::Span<const int64> group_dims, absl::Span<const int64> group_dim_sizes,
-    SpmdBuilder* b);
+    const std::vector<std::vector<int64_t>>& device_groups,
+    absl::Span<const int64_t> group_dims,
+    absl::Span<const int64_t> group_dim_sizes, SpmdBuilder* b);
 
 // Returns the opcode if `reduction_comp` represents a simple binary elementwise
 // computation on the two operands.
@@ -366,9 +337,9 @@ absl::optional<HloOpcode> ParseReductionComputation(
 absl::optional<HloInstruction*> PadFromPartialReplicateShape(
     HloInstruction* hlo, const Shape& base_shape,
     const HloSharding& src_sharding, const HloSharding& dst_sharding,
-    const std::vector<int64>& expand_tile_dims,
+    const std::vector<int64_t>& expand_tile_dims,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
-    int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b);
+    int64_t* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b);
 
 // Get the compatible sharding from a partial replicate sharding to a desired
 // target tiled sharding.
@@ -389,15 +360,15 @@ absl::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
 absl::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
     HloInstruction* hlo, const Shape& base_shape,
     const HloSharding& src_sharding, const HloSharding& dst_sharding,
-    const std::vector<int64>& replicate_dims,
+    const std::vector<int64_t>& replicate_dims,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
-    int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b);
+    int64_t* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b);
 
 // Finds a list of dimensions that can be grouped on such that it will have the
 // specified device groups. Group order and dimension order are ignored.
-absl::optional<std::vector<int64>> FindMatchingPartitionedDimsForGrouping(
+absl::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
     const HloSharding& sharding,
-    const std::vector<std::vector<int64>>& device_groups);
+    const std::vector<std::vector<int64_t>>& device_groups);
 
 // Create a sharding that matches the provided source sharding on the
 // specified dimensions. 'target_dims' and 'source_dims' represent the
@@ -407,8 +378,8 @@ absl::optional<std::vector<int64>> FindMatchingPartitionedDimsForGrouping(
 // is employed to make sure the number of devices for the two sharding match.
 HloSharding CreateMatchingShardingOnDims(const Shape& target_shape,
                                          const HloSharding& source_sharding,
-                                         absl::Span<const int64> target_dims,
-                                         absl::Span<const int64> source_dims);
+                                         absl::Span<const int64_t> target_dims,
+                                         absl::Span<const int64_t> source_dims);
 
 // Returns if the sharding across operand and indices of a gather is across
 // parallel dimensions and matches what SPMD partitioner supports.
@@ -423,14 +394,14 @@ GatherOperandsShardedAcrossParallelDims(
 // elements along the concat dimension to the right by rotate_amount, where the
 // input of rotation is the shard operand of lhs and rhs. Returns -1 if the
 // pattern is not found.
-int64 FindRotateRightPattern(const HloInstruction* concat,
-                             const HloInstruction* lhs,
-                             const HloInstruction* rhs);
+int64_t FindRotateRightPattern(const HloInstruction* concat,
+                               const HloInstruction* lhs,
+                               const HloInstruction* rhs);
 
 // Describes the pad with wrap pattern.
 struct PadWithWrapPattern {
-  int64 lhs_slice_start;
-  int64 rhs_slice_start;
+  int64_t lhs_slice_start;
+  int64_t rhs_slice_start;
   std::vector<const HloInstruction*> lhs_modifiers;
   std::vector<const HloInstruction*> rhs_modifiers;
 };
@@ -441,9 +412,6 @@ struct PadWithWrapPattern {
 absl::optional<PadWithWrapPattern> FindPadWithWrapPattern(
     const HloInstruction* concat, const HloInstruction* lhs,
     const HloInstruction* mid, const HloInstruction* rhs);
-
-// Get group sharding for each manual subgroup.
-GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding);
 
 }  // namespace spmd
 }  // namespace xla

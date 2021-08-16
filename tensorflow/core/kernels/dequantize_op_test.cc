@@ -78,7 +78,7 @@ class DequantizeOpTest : public OpsTestBase {
          i < std::numeric_limits<T>::max(); ++i) {
       input.push_back(static_cast<T>(i));
     }
-    TensorShape shape({static_cast<int64>(input.size())});
+    TensorShape shape({static_cast<int64_t>(input.size())});
     AddInputFromArray<T>(shape, input);
     AddInputFromArray<float>(TensorShape({}), {min_range});
     AddInputFromArray<float>(TensorShape({}), {max_range});
@@ -108,7 +108,7 @@ class DequantizeOpTest : public OpsTestBase {
          i < std::numeric_limits<T>::max(); ++i) {
       input.push_back(static_cast<T>(i));
     }
-    TensorShape shape({static_cast<int64>(input.size())});
+    TensorShape shape({static_cast<int64_t>(input.size())});
     AddInputFromArray<T>(shape, input);
     AddInputFromArray<float>(TensorShape({}), {min_range});
     AddInputFromArray<float>(TensorShape({}), {max_range});
@@ -126,7 +126,7 @@ class DequantizeOpTest : public OpsTestBase {
   // Creates a tensor with the specified dims, using values chosen from data,
   // multiplied by (1 + index) along the axis dimension.
   template <typename T>
-  std::vector<T> ScalePerSliceAlongAxis(std::vector<int64> dims, int axis,
+  std::vector<T> ScalePerSliceAlongAxis(std::vector<int64_t> dims, int axis,
                                         const std::vector<T>& data) {
     uint32 seed = 123;
     std::minstd_rand rng(seed);
@@ -152,7 +152,7 @@ class DequantizeOpTest : public OpsTestBase {
   void RunDequantizeScaledTest(float min_range, float max_range, int axis,
                                const std::vector<T>& values,
                                const std::vector<float>& expected) {
-    const std::vector<int64> dims = {2, 3, 4, 5};
+    const std::vector<int64_t> dims = {2, 3, 4, 5};
     int num_slices = (axis == -1) ? 1 : dims[axis];
     TF_ASSERT_OK(NodeDefBuilder("dequantize_op", "Dequantize")
                      .Input(FakeInput(DataTypeToEnum<T>::v()))

@@ -485,7 +485,7 @@ TEST_F(ShapeRefinerTest, PropagateShapeAcrossTensorContentInt64) {
 
   // Create variable 2x4 tensor.
   auto input = ops::Variable(
-      root, {2, 4, static_cast<int64>(std::numeric_limits<int32>::max()) * 2},
+      root, {2, 4, static_cast<int64_t>(std::numeric_limits<int32>::max()) * 2},
       DT_INT64);
 
   // Shape is a vector of 2 elements (2,4)
@@ -519,7 +519,7 @@ TEST_F(ShapeRefinerTest, PropagateShapeAcrossTensorContentInt32Overflow) {
 
   // Create variable 2x4 tensor.
   auto input = ops::Variable(
-      root, {2, 4, static_cast<int64>(std::numeric_limits<int32>::max()) * 2},
+      root, {2, 4, static_cast<int64_t>(std::numeric_limits<int32>::max()) * 2},
       DT_INT32);
 
   // Shape is a vector of 2 elements (2,4)
@@ -602,11 +602,11 @@ TEST_F(ShapeRefinerTest, PropagateSizeAcrossTensorContentInt64) {
   Scope root = Scope::NewRootScope();
 
   // Create variable.
-  auto input =
-      ops::Variable(root,
-                    {1, 2, 3, 4, 5,
-                     static_cast<int64>(std::numeric_limits<int32>::max()) * 2},
-                    DT_INT64);
+  auto input = ops::Variable(
+      root,
+      {1, 2, 3, 4, 5,
+       static_cast<int64_t>(std::numeric_limits<int32>::max()) * 2},
+      DT_INT64);
 
   // 5! * int32_max_value * 2.
   auto attrs = ops::Size::OutType(DT_INT64);
@@ -633,11 +633,11 @@ TEST_F(ShapeRefinerTest, PropagateSizeAcrossTensorContentInt32Overflow) {
   Scope root = Scope::NewRootScope();
 
   // Create variable.
-  auto input =
-      ops::Variable(root,
-                    {1, 2, 3, 4, 5,
-                     static_cast<int64>(std::numeric_limits<int32>::max()) * 2},
-                    DT_INT32);
+  auto input = ops::Variable(
+      root,
+      {1, 2, 3, 4, 5,
+       static_cast<int64_t>(std::numeric_limits<int32>::max()) * 2},
+      DT_INT32);
 
   // 5!.
   auto size = ops::Size(root, input);
@@ -980,10 +980,10 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInt64) {
 
   InputList inputs{
       // clang-format off
-      Input(ops::Const<int64>(root, int64{10})),
-      Input(ops::Const<int64>(root, int64{20})),
+      Input(ops::Const<int64_t>(root, int64_t{10})),
+      Input(ops::Const<int64_t>(root, int64_t{20})),
       Input(Output(scalar_non_const)),
-      Input(ops::Const<int64>(root, int64{1} << 40)),
+      Input(ops::Const<int64_t>(root, int64_t{1} << 40)),
   };  // clang-format on
   auto pack = ops::Stack(root, inputs);
   TF_ASSERT_OK(root.status());
@@ -1008,8 +1008,8 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackUnknownDim) {
   Scope root = Scope::NewRootScope();
 
   InputList inputs{
-      Input(ops::Const<int64>(root, int64{10})),
-      Input(ops::Const<int64>(root, int64{-1})),
+      Input(ops::Const<int64_t>(root, int64_t{10})),
+      Input(ops::Const<int64_t>(root, int64_t{-1})),
   };
   auto pack = ops::Stack(root, inputs);
   TF_ASSERT_OK(root.status());
@@ -1035,8 +1035,8 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
 
   // Inputs are length 2 vectors instead of scalars.
   InputList inputs{
-      Input(ops::Const<int64>(root, {int64{10}, int64{20}})),
-      Input(ops::Const<int64>(root, {int64{10}, int64{21}})),
+      Input(ops::Const<int64_t>(root, {int64_t{10}, int64_t{20}})),
+      Input(ops::Const<int64_t>(root, {int64_t{10}, int64_t{21}})),
   };
   auto pack = ops::Stack(root, inputs);
   TF_ASSERT_OK(root.status());

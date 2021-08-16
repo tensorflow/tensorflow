@@ -24,7 +24,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include <fp16.h>
+#include "fp16.h"  // from @FP16
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/lite/c/builtin_op_data.h"

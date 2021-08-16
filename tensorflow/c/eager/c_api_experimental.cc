@@ -632,9 +632,9 @@ void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
 TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx, TF_DataType dtype,
                                   const int64_t* dims, int num_dims,
                                   TF_Status* status) {
-  std::vector<tensorflow::int64> dimvec(num_dims);
+  std::vector<int64_t> dimvec(num_dims);
   for (int i = 0; i < num_dims; ++i) {
-    dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
+    dimvec[i] = static_cast<int64_t>(dims[i]);
   }
 
   if (ctx == nullptr) {
@@ -816,4 +816,20 @@ void TFE_DeleteConfigKeyValue(TFE_Context* ctx, const char* key,
     return;
   }
   status->status = coord_agent->DeleteKeyValue(key);
+}
+
+void TFE_ReportErrorToCluster(TFE_Context* ctx, int error_code,
+                              const char* error_message, TF_Status* status) {
+  tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
+      tensorflow::unwrap(ctx)->GetDistributedManager();
+  tensorflow::CoordinationServiceAgent* coord_agent =
+      dist_mgr->GetCoordinationServiceAgent();
+  if (coord_agent == nullptr) {
+    status->status = tensorflow::errors::FailedPrecondition(
+        "Coordination service is not enabled.");
+    return;
+  }
+  tensorflow::Status s(static_cast<tensorflow::error::Code>(error_code),
+                       error_message);
+  status->status = coord_agent->ReportError(s);
 }

@@ -182,7 +182,7 @@ void SetTensorProto(TensorProto* tensor_proto) {
 
 void BuildOperation(
     Operation* operation, int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
+    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device) {
   operation->set_id(id);
@@ -195,7 +195,7 @@ void BuildOperation(
           absl::get<TensorProto>(input);
     } else {
       const auto& tensor_handle_pair =
-          absl::get<std::pair<int64, int32>>(input);
+          absl::get<std::pair<int64_t, int32>>(input);
       auto* input = operation->add_op_inputs()->mutable_remote_handle();
       input->set_op_id(tensor_handle_pair.first);
       input->set_output_num(tensor_handle_pair.second);
@@ -211,7 +211,7 @@ void BuildOperation(
 
 void AddOperationToEnqueueRequest(
     int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
+    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
     EnqueueRequest* request) {
@@ -221,7 +221,7 @@ void AddOperationToEnqueueRequest(
 
 void AddOperationToRunComponentFunctionRequest(
     int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
+    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
     const int output_num, RunComponentFunctionRequest* request) {

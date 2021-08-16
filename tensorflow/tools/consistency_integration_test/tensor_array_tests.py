@@ -81,21 +81,17 @@ class TensorArrayConsistencyTests(ConsistencyTestBase):
       tf.config.run_functions_eagerly(False)
 
   def testArrayReturnedFromTfFunction(self):
-    """Tests bad error message with tf.TensorArray returned from tf.function.
+    """Tests bad handling of tf.TensorArray returned from tf.function.
 
     Bugs:   b/147450234
     Status: Broken
     Issue:  `tf.TensorArray` returned from tf.function is a `tf.variant` tensor
-            (i.e. `tf.Tensor(<unprintable>, shape=(), dtype=variant)`) and fails
-            to operate on basic functionality such as `print()` since it is a
-            tensor dtype that is "unprintable".
-            The issue was reported on getting unintelligible error message when
-            the user tried to print `tf.TensorArray` returned from tf.function.
+            (i.e. `tf.Tensor(<unprintable>, shape=(), dtype=variant)`). Calling
+            `stack()` on it causes an AttributeError.
 
     Error message:
-      "Tensorflow type 21 not convertible to numpy dtype."
-
-    Improve error message? Needed. (b/187852031)
+      "AttributeError: 'tensorflow.python.framework.ops.EagerTensor' object has"
+      " no attribute 'stack'"
 
     Notes:
     * Note that XLA fails with a different error that is equally confusing:

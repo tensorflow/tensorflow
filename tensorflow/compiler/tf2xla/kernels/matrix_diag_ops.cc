@@ -52,7 +52,7 @@ void ReadAlignment(OpKernelConstruction* context,
 
 // Reads or infers lower_diag_index and upper_diag_index from kernel's input
 // parameter "k". Also validates their values.
-std::pair<int64, int64> ProcessDiagIndex(XlaOpKernelContext* context) {
+std::pair<int64_t, int64_t> ProcessDiagIndex(XlaOpKernelContext* context) {
   int64_t lower_diag_index = 0;
   int64_t upper_diag_index = 0;
   TensorShape diag_index_shape = context->InputShape("k");
@@ -157,7 +157,7 @@ xla::XlaOp SetMatrixDiag(const xla::XlaOp input, const xla::XlaOp diag,
   //              [0, 0, 0, 1],                 [x, x, x, 3],
   //              [0, 0, 0, 0]]                 [x, x, x, x]],
   //    where x denotes the existing input contents.
-  std::vector<int64> broadcast_dimensions(input_rank - 1);
+  std::vector<int64_t> broadcast_dimensions(input_rank - 1);
   absl::c_iota(broadcast_dimensions, 0);
   auto output = input;
   for (int64_t diag_index = lower_diag_index; diag_index <= upper_diag_index;
@@ -282,9 +282,9 @@ class MatrixDiagOp : public XlaOpKernel {
             "The number of diagonals provided in the input does not "
             "match the lower_diag_index and upper_diag_index range."));
     const int64_t min_num_rows =
-        max_diag_len - std::min(upper_diag_index, int64{0});
+        max_diag_len - std::min(upper_diag_index, int64_t{0});
     const int64_t min_num_cols =
-        max_diag_len + std::max(lower_diag_index, int64{0});
+        max_diag_len + std::max(lower_diag_index, int64_t{0});
     OP_REQUIRES(context, num_rows == -1 || num_rows >= min_num_rows,
                 errors::InvalidArgument("The number of rows is too small."));
     OP_REQUIRES(context, num_cols == -1 || num_cols >= min_num_cols,
@@ -392,8 +392,8 @@ class MatrixDiagPartOp : public XlaOpKernel {
     const int num_diags = upper_diag_index - lower_diag_index + 1;
     if (num_diags > 1) output_shape.AddDim(num_diags);
     const int32_t max_diag_len =
-        std::min(num_rows + std::min(upper_diag_index, int64{0}),
-                 num_cols - std::max(lower_diag_index, int64{0}));
+        std::min(num_rows + std::min(upper_diag_index, int64_t{0}),
+                 num_cols - std::max(lower_diag_index, int64_t{0}));
     output_shape.AddDim(max_diag_len);
 
     // Computes output.
@@ -507,8 +507,8 @@ class MatrixSetDiagOp : public XlaOpKernel {
     expected_diag_shape.RemoveLastDims(2);
     if (num_diags > 1) expected_diag_shape.AddDim(num_diags);
     const int32_t max_diag_len =
-        std::min(num_rows + std::min(upper_diag_index, int64{0}),
-                 num_cols - std::max(lower_diag_index, int64{0}));
+        std::min(num_rows + std::min(upper_diag_index, int64_t{0}),
+                 num_cols - std::max(lower_diag_index, int64_t{0}));
     expected_diag_shape.AddDim(max_diag_len);
     OP_REQUIRES(
         context, expected_diag_shape == diag_shape,

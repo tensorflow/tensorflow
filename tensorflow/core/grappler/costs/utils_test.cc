@@ -28,7 +28,7 @@ namespace grappler {
 
 namespace {
 
-void CreateConstOp(const string& name, std::initializer_list<int64> dims,
+void CreateConstOp(const string& name, std::initializer_list<int64_t> dims,
                    NodeDef* node) {
   Tensor tensor(DT_FLOAT, TensorShape(dims));
   for (int64_t i = 0; i < tensor.NumElements(); ++i)

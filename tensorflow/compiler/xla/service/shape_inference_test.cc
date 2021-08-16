@@ -60,9 +60,9 @@ class ReduceShapeInferenceTest : public ShapeInferenceTest {
   // Helper that runs reduce shape inference with the input 'arg' and given
   // dimensions to reduce, and checks the inferred shape is as expected. The
   // element type here is hard-coded to F32.
-  void ExpectInferredReduceShape(const Shape& expected_inferred_shape,
-                                 const Shape& arg,
-                                 absl::Span<const int64> dimensions_to_reduce) {
+  void ExpectInferredReduceShape(
+      const Shape& expected_inferred_shape, const Shape& arg,
+      absl::Span<const int64_t> dimensions_to_reduce) {
     ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_, f32_}, f32_);
     auto inferred_status = ShapeInference::InferReduceShape(
         {&arg, &f32_}, dimensions_to_reduce, to_apply);
@@ -264,7 +264,7 @@ TEST_F(ShapeInferenceTest, ClampBadShapes) {
 
 TEST_F(ShapeInferenceTest, Complex) {
   auto complex_shape = [&](const Shape& lhs, const Shape& rhs,
-                           absl::Span<const int64> bcast) {
+                           absl::Span<const int64_t> bcast) {
     return ShapeInference::InferBinaryOpShape(HloOpcode::kComplex, lhs, rhs,
                                               bcast);
   };
@@ -829,7 +829,8 @@ static const char* innermost_dimension_matches =
     "innermost dimension matches fft_length/2+1";
 
 static void Pass(const Shape& shape, FftType type,
-                 absl::Span<const int64> length, const Shape& expected_shape) {
+                 absl::Span<const int64_t> length,
+                 const Shape& expected_shape) {
   auto inferred_status = ShapeInference::InferFftShape(shape, type, length);
   ASSERT_IS_OK(inferred_status.status());
   Shape inferred_shape = inferred_status.ValueOrDie();
@@ -837,7 +838,7 @@ static void Pass(const Shape& shape, FftType type,
 }
 
 static void Fail(const Shape& shape, FftType type,
-                 absl::Span<const int64> length, absl::string_view message) {
+                 absl::Span<const int64_t> length, absl::string_view message) {
   auto inferred_status = ShapeInference::InferFftShape(shape, type, length);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
@@ -1127,9 +1128,9 @@ TEST_F(ReduceShapeInferenceTest, ReduceWindowMultiOutput) {
   std::vector<const Shape*> inits = {&f32_, &s32_};
   ProgramShape to_apply = ShapeUtil::MakeProgramShape(
       {f32_, s32_, f32_, s32_}, ShapeUtil::MakeTupleShape({f32_, s32_}));
-  std::vector<int64> window_dimensions = {1, 2, 4};
-  std::vector<int64> window_strides = {1, 1, 1};
-  std::vector<std::pair<int64, int64>> padding_values =
+  std::vector<int64_t> window_dimensions = {1, 2, 4};
+  std::vector<int64_t> window_strides = {1, 1, 1};
+  std::vector<std::pair<int64_t, int64_t>> padding_values =
       MakePadding(AsInt64Slice(f32_arg_shape.dimensions()), window_dimensions,
                   window_strides, Padding::kValid);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1189,9 +1190,9 @@ TEST_F(ReduceShapeInferenceTest, ErrorBadReduceWindowInput) {
   std::vector<const Shape*> inits = {&f32_, &s32_};
   ProgramShape to_apply = ShapeUtil::MakeProgramShape(
       {f32_, f32_, f32_, f32_}, ShapeUtil::MakeTupleShape({f32_, s32_}));
-  std::vector<int64> window_dimensions = {1, 2, 4};
-  std::vector<int64> window_strides = {1, 1, 1};
-  std::vector<std::pair<int64, int64>> padding_values =
+  std::vector<int64_t> window_dimensions = {1, 2, 4};
+  std::vector<int64_t> window_strides = {1, 1, 1};
+  std::vector<std::pair<int64_t, int64_t>> padding_values =
       MakePadding(AsInt64Slice(f32_arg_shape.dimensions()), window_dimensions,
                   window_strides, Padding::kValid);
   TF_ASSERT_OK_AND_ASSIGN(

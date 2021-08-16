@@ -93,8 +93,8 @@ TEST(ArrayTest, IndexingReadWrite) {
 TEST(ArrayTest, DynamicIndexingReadWrite) {
   Array<int> arr({2, 3});
 
-  std::vector<int64> index1 = {1, 1};
-  std::vector<int64> index2 = {1, 2};
+  std::vector<int64_t> index1 = {1, 1};
+  std::vector<int64_t> index2 = {1, 2};
   EXPECT_EQ(arr(index1), 0);
   EXPECT_EQ(arr(index2), 0);
   arr(index1) = 51;
@@ -136,19 +136,19 @@ TEST(ArrayTest, DataPointer) {
 }
 
 TEST(ArrayTest, Stringification1D) {
-  Array<int64> arr({2}, 1);
+  Array<int64_t> arr({2}, 1);
   const string expected = R"([1, 1])";
   EXPECT_EQ(expected, arr.ToString());
 }
 
 TEST(ArrayTest, Stringification2D) {
-  Array<int64> arr({2, 3}, 7);
+  Array<int64_t> arr({2, 3}, 7);
   const string expected = "[[7, 7, 7],\n [7, 7, 7]]";
   EXPECT_EQ(expected, arr.ToString());
 }
 
 TEST(ArrayTest, Stringification3D) {
-  Array<int64> arr({2, 3, 4}, 5);
+  Array<int64_t> arr({2, 3, 4}, 5);
   const string expected = R"([[[5, 5, 5, 5],
   [5, 5, 5, 5],
   [5, 5, 5, 5]],
@@ -159,11 +159,11 @@ TEST(ArrayTest, Stringification3D) {
 }
 
 TEST(ArrayTest, Each) {
-  Array<int64> arr({2, 3, 4});
+  Array<int64_t> arr({2, 3, 4});
   arr.FillWithMultiples(1);
 
   int64_t each_count = 0, each_sum = 0;
-  arr.Each([&](absl::Span<const int64> idx, int cell) {
+  arr.Each([&](absl::Span<const int64_t> idx, int cell) {
     int64_t lin_idx = idx[0] * 12 + idx[1] * 4 + idx[2];
     EXPECT_EQ(lin_idx, cell);
     each_count++;
@@ -174,27 +174,27 @@ TEST(ArrayTest, Each) {
 }
 
 TEST(ArrayTest, Slice) {
-  Array<int64> arr({2, 4});
+  Array<int64_t> arr({2, 4});
   arr.FillWithMultiples(1);
 
-  Array<int64> identity_slice = arr.Slice({0, 0}, {2, 4});
+  Array<int64_t> identity_slice = arr.Slice({0, 0}, {2, 4});
   EXPECT_EQ(identity_slice.dimensions(), arr.dimensions());
   for (auto it1 = arr.begin(), it2 = identity_slice.begin(), e = arr.end();
        it1 != e; ++it1, ++it2) {
     EXPECT_EQ(*it1, *it2);
   }
 
-  Array<int64> sub_slice = arr.Slice({1, 0}, {2, 2});
-  EXPECT_EQ(sub_slice.dimensions(), (std::vector<int64>{1, 2}));
+  Array<int64_t> sub_slice = arr.Slice({1, 0}, {2, 2});
+  EXPECT_EQ(sub_slice.dimensions(), (std::vector<int64_t>{1, 2}));
   const string expected = R"([[4, 5]])";
   EXPECT_EQ(expected, sub_slice.ToString());
 }
 
 TEST(ArrayTest, UpdateSlice) {
-  Array<int64> arr({3, 4});
+  Array<int64_t> arr({3, 4});
   arr.FillWithMultiples(1);
 
-  Array<int64> sub_arr({2, 2});
+  Array<int64_t> sub_arr({2, 2});
   sub_arr.FillWithMultiples(3);
 
   arr.UpdateSlice(sub_arr, {1, 1});

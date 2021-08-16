@@ -216,7 +216,7 @@ TEST(SparseOpsTest, SparseTensorDenseMatMul_ShapeFn) {
 
   // first output comes from a, depending on adjoint_a value.
   // When input tensor is known, its values determine output shape.
-  Tensor a_shape_t = test::AsTensor<int64>(std::vector<int64>{3, 1});
+  Tensor a_shape_t = test::AsTensor<int64_t>(std::vector<int64_t>{3, 1});
   op.input_tensors.resize(4);
   op.input_tensors[2] = &a_shape_t;
 
@@ -230,7 +230,7 @@ TEST(SparseOpsTest, SparseTensorDenseMatMul_ShapeFn) {
   INFER_ERROR("must be equal", op, "?;?;[2];[1,2]");  // adjoint_a, !adjoint_b.
 
   // Try with shape tensor describing shape of rank 3.
-  a_shape_t = test::AsTensor<int64>(std::vector<int64>{3, 1, 2});
+  a_shape_t = test::AsTensor<int64_t>(std::vector<int64_t>{3, 1, 2});
   INFER_ERROR("must be rank 2 but is rank 3", op, "?;?;[3];[1,2]");
 }
 

@@ -124,8 +124,8 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   tensorflow::DataType DataType() const override;
   Status Shape(tensorflow::PartialTensorShape* shape) const override;
   Status NumDims(int* num_dims) const override;
-  Status NumElements(int64* num_elements) const override;
-  Status Dim(int dim_index, int64* dim) const override;
+  Status NumElements(int64_t* num_elements) const override;
+  Status Dim(int dim_index, int64_t* dim) const override;
 
   const char* DeviceName(Status* status) const override;
   const char* BackingDeviceName(Status* status) const override;
@@ -134,6 +134,12 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   AbstractTensorInterface* Resolve(Status* status) override;
 
   ImmediateExecutionTensorHandle* Copy() override;
+
+  // Subclasses may return True to instruct the string formatter
+  // to use SummarizeValue instead of the NumPy formatter.
+  bool PreferCustomSummarizer() const override {
+    return dtype == DT_VARIANT || dtype == DT_RESOURCE;
+  }
 
   // Return the Tensor from the default device.
   Status Tensor(const tensorflow::Tensor** t) const;
@@ -150,7 +156,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   Device* device() const { return device_; }
   Device* op_device() const { return op_device_; }
   Device* resource_device() const { return resource_device_; }
-  int64 resource_remote_device_incarnation() const {
+  int64_t resource_remote_device_incarnation() const {
     return resource_remote_device_incarnation_;
   }
 
@@ -188,7 +194,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // If wait_until_ready is true, block until the remote tensor is ready on the
   // given remote worker.
   Status RemoteAddress(const Device* d, const bool wait_until_ready,
-                       int64* op_id, int32* output_num) const;
+                       int64_t* op_id, int32* output_num) const;
 
   // Called on an async remote tensor once it's shape has been determined. This
   // transitions the tensor handle from a non-ready to a ready state by
@@ -294,7 +300,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   tensorflow::Device* resource_device_;
   // Incarnation ID of the resource device if it locates on a remote device, or
   // 0 if it locates on a local device.
-  int64 resource_remote_device_incarnation_;
+  int64_t resource_remote_device_incarnation_;
 
   // If true, the handle refers to a remote tensor which is created without
   // known devices. The actual devices are set by SetRemoteShape. The devices
@@ -351,8 +357,8 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
 
     Status Shape(TensorShape* shape) const;
     Status NumDims(int* num_dims) const;
-    Status Dim(int dim_index, int64* dim) const;
-    Status NumElements(int64* num_elements) const;
+    Status Dim(int dim_index, int64_t* dim) const;
+    Status NumElements(int64_t* num_elements) const;
     Status Unprotect();
     bool IsReady() const;
     Status WaitReady(const char* caller) const;

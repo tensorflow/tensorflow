@@ -38,10 +38,10 @@ class ReduceWindowOp : public XlaOpKernel {
     const TensorShape input_shape = context->InputShape(0);
     const DataType dtype = context->input_type(0);
 
-    std::vector<int64> window_dimensions;
-    std::vector<int64> window_strides;
-    std::vector<int64> base_dilations;
-    std::vector<int64> window_dilations;
+    std::vector<int64_t> window_dimensions;
+    std::vector<int64_t> window_strides;
+    std::vector<int64_t> base_dilations;
+    std::vector<int64_t> window_dilations;
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector(
                                 "window_dimensions", &window_dimensions));
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("window_strides",
@@ -109,10 +109,10 @@ class ReduceWindowOp : public XlaOpKernel {
     xla::Literal padding_literal;
     OP_REQUIRES_OK(context, context->ConstantInputAsInt64Literal(
                                 "padding", &padding_literal));
-    std::vector<std::pair<int64, int64>> padding(padding_shape.dim_size(0));
+    std::vector<std::pair<int64_t, int64_t>> padding(padding_shape.dim_size(0));
     for (int i = 0; i < padding.size(); ++i) {
-      padding[i] = {padding_literal.Get<int64>({i, 0}),
-                    padding_literal.Get<int64>({i, 1})};
+      padding[i] = {padding_literal.Get<int64_t>({i, 0}),
+                    padding_literal.Get<int64_t>({i, 1})};
     }
 
     xla::XlaOp output = xla::ReduceWindowWithGeneralPadding(

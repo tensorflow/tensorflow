@@ -39,7 +39,7 @@ class OptionalLiteral {
       : value_(std::move(value)), mask_(std::move(mask)) {}
 
   template <typename NativeT>
-  absl::optional<NativeT> Get(absl::Span<const int64> element_index,
+  absl::optional<NativeT> Get(absl::Span<const int64_t> element_index,
                               ShapeIndex shape_index = {}) const {
     if (mask_.Get<bool>(element_index, shape_index)) {
       return absl::nullopt;
@@ -90,17 +90,17 @@ class ValueInference {
 
  private:
   // Given an op handle, returns a simplified version of the handle inside a
-  // int64 Literal. If the a -1 value for the handle means invalid
+  // int64_t Literal. If the a -1 value for the handle means invalid
   // simplification and the result shouldn't be used.
   StatusOr<Literal> SimplifyOp(int64_t handle);
 
   // Perform CSE on a given handle, and return an equivalent handle if seen
   // before. Otherwise, returns nullopt.
-  absl::optional<int64> CseOpHandle(int64_t handle);
+  absl::optional<int64_t> CseOpHandle(int64_t handle);
   XlaBuilder* builder_;
   HloEvaluator evaluator_;
   // A map from instruction_hash to handle that helps perform CSE.
-  absl::flat_hash_map<int64, int64> cse_map_;
+  absl::flat_hash_map<int64_t, int64_t> cse_map_;
 };
 }  // namespace xla
 

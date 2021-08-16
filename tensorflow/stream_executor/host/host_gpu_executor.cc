@@ -59,14 +59,14 @@ port::Status HostExecutor::Init(int device_ordinal,
   return port::Status::OK();
 }
 
-bool HostExecutor::DeviceMemoryUsage(int64 *free, int64 *total) const {
+bool HostExecutor::DeviceMemoryUsage(int64_t *free, int64_t *total) const {
   tensorflow::port::MemoryInfo mem_info = tensorflow::port::GetMemoryInfo();
   *free = (mem_info.free != INT64_MAX) ? mem_info.free : -1;
   *total = (mem_info.total != INT64_MAX) ? mem_info.total : -1;
   return true;
 }
 
-DeviceMemoryBase HostExecutor::Allocate(uint64 size, int64_t memory_space) {
+DeviceMemoryBase HostExecutor::Allocate(uint64_t size, int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
   // Use a minimum alignment of 64 bytes to be friendly to AVX512 code.
   // This should probably be kept in sync with
@@ -75,8 +75,8 @@ DeviceMemoryBase HostExecutor::Allocate(uint64 size, int64_t memory_space) {
       tensorflow::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
 }
 
-void *HostExecutor::GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
-                                 uint64 size_bytes) {
+void *HostExecutor::GetSubBuffer(DeviceMemoryBase *parent,
+                                 uint64_t offset_bytes, uint64_t size_bytes) {
   return reinterpret_cast<char *>(parent->opaque()) + offset_bytes;
 }
 
@@ -85,19 +85,19 @@ void HostExecutor::Deallocate(DeviceMemoryBase *mem) {
 }
 
 port::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase *location,
-                                              uint64 size) {
+                                              uint64_t size) {
   memset(location->opaque(), 0, size);
   return port::Status::OK();
 }
 
 port::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase *location,
-                                             int value, uint64 size) {
+                                             int value, uint64_t size) {
   memset(location->opaque(), value, size);
   return port::Status::OK();
 }
 
 bool HostExecutor::Memcpy(Stream *stream, void *host_dst,
-                          const DeviceMemoryBase &gpu_src, uint64 size) {
+                          const DeviceMemoryBase &gpu_src, uint64_t size) {
   // Enqueue the [asynchronous] memcpy on the stream (HostStream) associated
   // with the HostExecutor.
   void *src_mem = const_cast<void *>(gpu_src.opaque());
@@ -107,7 +107,7 @@ bool HostExecutor::Memcpy(Stream *stream, void *host_dst,
 }
 
 bool HostExecutor::Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst,
-                          const void *host_src, uint64 size) {
+                          const void *host_src, uint64_t size) {
   void *dst_mem = gpu_dst->opaque();
   // Enqueue the [asynchronous] memcpy on the stream (HostStream) associated
   // with the HostExecutor.
@@ -119,7 +119,7 @@ bool HostExecutor::Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst,
 bool HostExecutor::MemcpyDeviceToDevice(Stream *stream,
                                         DeviceMemoryBase *gpu_dst,
                                         const DeviceMemoryBase &gpu_src,
-                                        uint64 size) {
+                                        uint64_t size) {
   void *dst_mem = gpu_dst->opaque();
   void *src_mem = const_cast<void *>(gpu_src.opaque());
   // Enqueue this [asynchronous] "device-to-device" (i.e., host-to-host, given
@@ -131,7 +131,7 @@ bool HostExecutor::MemcpyDeviceToDevice(Stream *stream,
 }
 
 port::Status HostExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
-                                   uint64 size) {
+                                   uint64_t size) {
   void *gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
@@ -141,7 +141,7 @@ port::Status HostExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
 }
 
 port::Status HostExecutor::Memset(Stream *stream, DeviceMemoryBase *location,
-                                  uint8 pattern, uint64 size) {
+                                  uint8 pattern, uint64_t size) {
   void *gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
@@ -151,7 +151,7 @@ port::Status HostExecutor::Memset(Stream *stream, DeviceMemoryBase *location,
 }
 
 port::Status HostExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
-                                    uint32 pattern, uint64 size) {
+                                    uint32 pattern, uint64_t size) {
   void *gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
@@ -162,20 +162,20 @@ port::Status HostExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
 
 port::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
                                              const void *host_src,
-                                             uint64 size) {
+                                             uint64_t size) {
   memcpy(gpu_dst->opaque(), host_src, size);
   return port::Status::OK();
 }
 
 port::Status HostExecutor::SynchronousMemcpy(void *host_dst,
                                              const DeviceMemoryBase &gpu_src,
-                                             uint64 size) {
+                                             uint64_t size) {
   memcpy(host_dst, gpu_src.opaque(), size);
   return port::Status::OK();
 }
 
 port::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
-    DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src, uint64 size) {
+    DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src, uint64_t size) {
   memcpy(gpu_dst->opaque(), gpu_src.opaque(), size);
   return port::Status::OK();
 }
@@ -281,7 +281,7 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
 
   // TODO(rspringer): How to report a value that's based in reality but that
   // doesn't result in thrashing or other badness? 4GiB chosen arbitrarily.
-  builder.set_device_memory_size(static_cast<uint64>(4) * 1024 * 1024 * 1024);
+  builder.set_device_memory_size(static_cast<uint64_t>(4) * 1024 * 1024 * 1024);
 
   float cycle_counter_frequency = static_cast<float>(
       tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency());

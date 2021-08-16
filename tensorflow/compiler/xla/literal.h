@@ -81,7 +81,7 @@ class LiteralBase {
   // array at the given shape index. CHECKs if the subshape of the literal at
   // the given ShapeIndex is not array.
   const void* untyped_data(const ShapeIndex& shape_index = {}) const;
-  int64 size_bytes(const ShapeIndex& shape_index = {}) const;
+  int64_t size_bytes(const ShapeIndex& shape_index = {}) const;
 
   // Returns this literal's data as a string. This literal must be a rank-1 U8
   // array.
@@ -117,12 +117,12 @@ class LiteralBase {
   // Gets an element in the literal at the given index. The multi_index is
   // CHECKed against the dimension sizes.
   template <typename NativeT>
-  NativeT Get(absl::Span<const int64> multi_index,
+  NativeT Get(absl::Span<const int64_t> multi_index,
               const ShapeIndex& shape_index) const;
   // Overloads of Get for array literals. CHECKs if the literal is not
   // array-shaped and dense.
   template <typename NativeT>
-  NativeT Get(absl::Span<const int64> multi_index) const;
+  NativeT Get(absl::Span<const int64_t> multi_index) const;
 
   // Get the dynamic size on dim_index in the literal at the given shape_index.
   int32 GetDynamicSize(int64_t dim_index, const ShapeIndex& shape_index) const;
@@ -134,11 +134,11 @@ class LiteralBase {
   NativeT GetFirstElement() const;
 
   // As above but returns any integer type casted to an int64.
-  absl::optional<int64> GetFirstInteger() const;
+  absl::optional<int64_t> GetFirstInteger() const;
 
   // As Get(), but determines the correct type and converts the value
   // into text.
-  string GetAsString(absl::Span<const int64> multi_index,
+  string GetAsString(absl::Span<const int64_t> multi_index,
                      const ShapeIndex& shape_index = {}) const;
 
   // Return whether the value at the specified index is equal to the provided
@@ -150,7 +150,7 @@ class LiteralBase {
                            std::is_same<T, Eigen::half>::value ||
                            std::is_same<T, bfloat16>::value),
                           bool>::type
-  IsEqualAt(absl::Span<const int64> multi_index, T value) const {
+  IsEqualAt(absl::Span<const int64_t> multi_index, T value) const {
     if (auto as_s64 = GetIntegralAsS64(multi_index)) {
       return *as_s64 == value;
     }
@@ -158,7 +158,8 @@ class LiteralBase {
     return as_complex128.imag() == 0 && as_complex128.real() == value;
   }
 
-  bool IsEqualAt(absl::Span<const int64> multi_index, complex128 value) const {
+  bool IsEqualAt(absl::Span<const int64_t> multi_index,
+                 complex128 value) const {
     if (auto as_s64 = GetIntegralAsS64(multi_index)) {
       return *as_s64 == value.real() && value.imag() == 0;
     }
@@ -168,19 +169,20 @@ class LiteralBase {
 
   // As Get(), but determines the correct type and converts the value into
   // int64.  This literal must be an array.
-  absl::optional<int64> GetIntegralAsS64(
-      absl::Span<const int64> multi_index) const;
+  absl::optional<int64_t> GetIntegralAsS64(
+      absl::Span<const int64_t> multi_index) const;
 
   // As Get(), but determines the correct type, and converts the value into
   // double. This literal must be an array.
-  absl::optional<double> GetAsDouble(absl::Span<const int64> multi_index) const;
+  absl::optional<double> GetAsDouble(
+      absl::Span<const int64_t> multi_index) const;
 
   // As Get(), but determines the correct type, and converts the value into
   // complex128. All floating point types can be converted into complex128.
   //
   // This literal must be an array.
   absl::optional<complex128> GetAsComplex128(
-      absl::Span<const int64> multi_index) const;
+      absl::Span<const int64_t> multi_index) const;
 
   // Invokes the "per cell" callback for each element in the provided
   // literal with the element's indices and a string representation of
@@ -192,11 +194,11 @@ class LiteralBase {
   //
   // This literal must have a dense layout.
   void EachCellAsString(
-      const std::function<void(absl::Span<const int64> indices,
+      const std::function<void(absl::Span<const int64_t> indices,
                                const string& value)>& per_cell) const;
   template <typename NativeT>
   void EachCell(
-      std::function<void(absl::Span<const int64> indices, NativeT value)>
+      std::function<void(absl::Span<const int64_t> indices, NativeT value)>
           per_cell) const;
 
   // Returns whether every element in this literal is equal to value.
@@ -241,15 +243,15 @@ class LiteralBase {
   bool IsR1Iota() const;
 
   // Returns the stride if the literal is a strided iota.
-  absl::optional<int64> IsR1StridedIota() const;
+  absl::optional<int64_t> IsR1StridedIota() const;
 
   // Returns whether this literal is zero at the specified index. This literal
   // must be an array with a dense layout.
-  bool IsZero(absl::Span<const int64> indices) const;
+  bool IsZero(absl::Span<const int64_t> indices) const;
 
   // Returns the count of the elements in the array at the given shape index in
   // this literal.
-  int64 element_count(const ShapeIndex& index = {}) const {
+  int64_t element_count(const ShapeIndex& index = {}) const {
     if (index.empty()) {
       // Common case, avoid GetSubshape().
       return ShapeUtil::ElementsIn(shape());
@@ -316,12 +318,12 @@ class LiteralBase {
   // dimensions. The total number of elements must not change; The
   // implementation currently only supports monotonic dim0-major layouts.
   // This literal must be an array.
-  StatusOr<Literal> Reshape(absl::Span<const int64> dimensions) const;
+  StatusOr<Literal> Reshape(absl::Span<const int64_t> dimensions) const;
 
   // Creates a new literal by broadcasting this literal with `dimensions` to
   // yield a literal of shape `result_shape`.
   StatusOr<Literal> Broadcast(const Shape& result_shape,
-                              absl::Span<const int64> dimensions) const;
+                              absl::Span<const int64_t> dimensions) const;
 
   // Creates a new literal by reordering the dimensions of this literal.
   // The given `permutation` must be a permutation of the dimension numbers
@@ -330,7 +332,7 @@ class LiteralBase {
   // For example, a transpose call on a literal of shape [3 x 8 x 4] and
   // `permutation` = {2, 0, 1} returns a new literal of shape [4 x 3 x 8].
   // This literal must be an array.
-  Literal Transpose(absl::Span<const int64> permutation) const;
+  Literal Transpose(absl::Span<const int64_t> permutation) const;
 
   // Creates a sub-array from this literal by extracting the indices
   // [start_index, limit_index) of each dimension. The result literal has the
@@ -338,8 +340,8 @@ class LiteralBase {
   // start_indices and limit_indices must be the rank of the literal, and the
   // indices follow the order of the dimensions.
   // This literal must be an array.
-  Literal Slice(absl::Span<const int64> start_indices,
-                absl::Span<const int64> limit_indices) const;
+  Literal Slice(absl::Span<const int64_t> start_indices,
+                absl::Span<const int64_t> limit_indices) const;
 
   // Creates a literal with a prepended dimension with bound "times"; e.g. a
   // f32[3x2] with times=4 will produce a f32[4x3x2] with the 3x2 from this
@@ -381,9 +383,9 @@ class LiteralBase {
     // is CHECKed against the dimension sizes of the array.  This piece must be
     // array-shaped.
     template <typename NativeT>
-    NativeT Get(absl::Span<const int64> index) const;
+    NativeT Get(absl::Span<const int64_t> index) const;
     template <typename NativeT>
-    void Set(absl::Span<const int64> index, NativeT value);
+    void Set(absl::Span<const int64_t> index, NativeT value);
 
     int32 GetDynamicSize(int64_t dim_index) const;
     void SetDynamicSize(int64_t dim_index, int32_t size);
@@ -397,7 +399,7 @@ class LiteralBase {
       dynamic_size_buffer_ = dynamic_size_buffer;
     }
 
-    int64 dynamic_size_buffer_bytes() const {
+    int64_t dynamic_size_buffer_bytes() const {
       return subshape().dimensions_size() * sizeof(int32);
     }
 
@@ -407,10 +409,10 @@ class LiteralBase {
     void set_subshape(const Shape* subshape) { subshape_ = subshape; }
 
     // Returns the size in bytes of the buffer holding the array data.
-    int64 size_bytes() const { return ShapeUtil::ByteSizeOf(subshape()); }
+    int64_t size_bytes() const { return ShapeUtil::ByteSizeOf(subshape()); }
 
     // Returns the number of elements in this piece's array.
-    int64 element_count() const { return ShapeUtil::ElementsIn(subshape()); }
+    int64_t element_count() const { return ShapeUtil::ElementsIn(subshape()); }
 
     // Returns the child piece at 'index' of this piece.
     Piece& child(int64_t index) { return children_[index]; }
@@ -421,7 +423,7 @@ class LiteralBase {
     }
 
     // Returns the size of children pieces of this piece.
-    int64 children_size() { return children_.size(); }
+    int64_t children_size() { return children_.size(); }
 
     // Visitor functions that recursively traverses the piece and calls the
     // given function at each child piece. The function has the type:
@@ -544,7 +546,7 @@ class LiteralBase {
     // Recursive helper for EqualElements.
     template <typename NativeT>
     bool EqualElementsInternal(const Piece& other,
-                               std::vector<int64>* multi_index) const;
+                               std::vector<int64_t>* multi_index) const;
 
     // Internal helper to copy elements from another given piece
     template <typename NativeT>
@@ -584,7 +586,7 @@ class LiteralBase {
  private:
   template <typename NativeT>
   Literal SliceInternal(const Shape& result_shape,
-                        absl::Span<const int64> start_indices) const;
+                        absl::Span<const int64_t> start_indices) const;
 };
 
 // Abstract base class representing a mutable literal in XLA.
@@ -619,7 +621,7 @@ class MutableLiteralBase : public LiteralBase {
 
   template <typename NativeT>
   void MutableEachCell(
-      std::function<NativeT(absl::Span<const int64> indices, NativeT value)>
+      std::function<NativeT(absl::Span<const int64_t> indices, NativeT value)>
           per_cell);
 
   // Copy values from 'src_literal' rooted at 'src_shape_index' into this
@@ -643,32 +645,32 @@ class MutableLiteralBase : public LiteralBase {
   // corresponding base indices being 0.
   // This literal and 'src_literal' must be arrays.
   Status CopySliceFrom(const LiteralSlice& src_literal,
-                       absl::Span<const int64> src_base,
-                       absl::Span<const int64> dest_base,
-                       absl::Span<const int64> copy_size);
+                       absl::Span<const int64_t> src_base,
+                       absl::Span<const int64_t> dest_base,
+                       absl::Span<const int64_t> copy_size);
 
   // Copies one element from src_literal[src_index] to (*this)[dest_index].
   Status CopyElementFrom(const LiteralSlice& src_literal,
-                         absl::Span<const int64> src_index,
-                         absl::Span<const int64> dest_index);
+                         absl::Span<const int64_t> src_index,
+                         absl::Span<const int64_t> dest_index);
 
   // Sets an element in the literal at the given index. The multi_index is
   // CHECKed against the dimension sizes.
   template <typename NativeT>
-  void Set(absl::Span<const int64> multi_index, const ShapeIndex& shape_index,
+  void Set(absl::Span<const int64_t> multi_index, const ShapeIndex& shape_index,
            NativeT value);
   // Overloads of Set for array literals. CHECKs if the literal is not
   // array-shaped and dense.
   template <typename NativeT>
-  void Set(absl::Span<const int64> multi_index, NativeT value);
+  void Set(absl::Span<const int64_t> multi_index, NativeT value);
 
   // As Set(), but truncates `value` to the literal element type before storing.
   // This literal must be an array.
-  Status SetIntegralAsS64(absl::Span<const int64> multi_index, int64_t value);
+  Status SetIntegralAsS64(absl::Span<const int64_t> multi_index, int64_t value);
 
   // As Set(), but truncates `value` to the literal element type before storing.
   // This literal must be an array.
-  Status SetFromDouble(absl::Span<const int64> multi_index, double value);
+  Status SetFromDouble(absl::Span<const int64_t> multi_index, double value);
 
   // Populate this literal with the given values. Examples:
   //
@@ -700,7 +702,7 @@ class MutableLiteralBase : public LiteralBase {
   // in this literal object.
   //
   // generator must be a callable of the type
-  // NativeT(absl::Span<int64> indexes) or compatible.
+  // NativeT(absl::Span<int64_t> indexes) or compatible.
   //
   // This literal must have a dense layout.
   template <typename NativeT, typename FnType>
@@ -738,31 +740,31 @@ class MutableLiteralBase : public LiteralBase {
   // arguments one by one.
   template <typename NativeT>
   Status CopySliceFromInternal(const LiteralBase& src_literal,
-                               absl::Span<const int64> src_base,
-                               absl::Span<const int64> dest_base,
-                               absl::Span<const int64> copy_size);
+                               absl::Span<const int64_t> src_base,
+                               absl::Span<const int64_t> dest_base,
+                               absl::Span<const int64_t> copy_size);
 
   // Utility structure which is used to create the optimal configuration for
   // a ShapeUtil::ForEachIndex() scan across two literals.
   struct StrideConfig {
     StrideConfig(const Shape& source_shape, const Shape& dest_shape,
-                 absl::Span<const int64> dimensions);
+                 absl::Span<const int64_t> dimensions);
 
     // The dimensions of the stride operation. Essentially every dimension
     // will be iterated from base[i] to base[i]+dimensions[i], in step[i]
     // steps.
-    absl::Span<const int64> dimensions;
+    absl::Span<const int64_t> dimensions;
     DimensionVector base;
     DimensionVector step;
-    int64 minor_dimension = 0;
+    int64_t minor_dimension = 0;
     // The size of the strides for source and destination. One of the two
     // (the one looping through its most minor dimension) will be 1, while
     // the other will be the stride size at the dimension matching the other
     // shape most minor dimension being scanned.
-    int64 dest_stride = 1;
-    int64 source_stride = 1;
+    int64_t dest_stride = 1;
+    int64_t source_stride = 1;
     // The size of the inner loop on the most minor dimension.
-    int64 minor_loop_size = 1;
+    int64_t minor_loop_size = 1;
   };
 
   // Literal class always owns the shape. The parent class borrows this shape.
@@ -933,14 +935,14 @@ absl::Span<NativeT> LiteralBase::Piece::data() {
 }
 
 template <typename NativeT>
-NativeT LiteralBase::Piece::Get(absl::Span<const int64> multi_index) const {
+NativeT LiteralBase::Piece::Get(absl::Span<const int64_t> multi_index) const {
   CHECK(LayoutUtil::IsDenseArray(subshape())) << subshape();
   return data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
       subshape(), multi_index)];
 }
 
 template <typename NativeT>
-void LiteralBase::Piece::Set(absl::Span<const int64> multi_index,
+void LiteralBase::Piece::Set(absl::Span<const int64_t> multi_index,
                              NativeT value) {
   CHECK(LayoutUtil::IsDenseArray(subshape()));
   data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
@@ -959,25 +961,25 @@ absl::Span<NativeT> MutableLiteralBase::data(const ShapeIndex& shape_index) {
 }
 
 template <typename NativeT>
-inline NativeT LiteralBase::Get(absl::Span<const int64> multi_index,
+inline NativeT LiteralBase::Get(absl::Span<const int64_t> multi_index,
                                 const ShapeIndex& shape_index) const {
   return piece(shape_index).Get<NativeT>(multi_index);
 }
 
 template <typename NativeT>
-inline NativeT LiteralBase::Get(absl::Span<const int64> multi_index) const {
+inline NativeT LiteralBase::Get(absl::Span<const int64_t> multi_index) const {
   return root_piece().Get<NativeT>(multi_index);
 }
 
 template <typename NativeT>
-inline void MutableLiteralBase::Set(absl::Span<const int64> multi_index,
+inline void MutableLiteralBase::Set(absl::Span<const int64_t> multi_index,
                                     const ShapeIndex& shape_index,
                                     NativeT value) {
   return piece(shape_index).Set<NativeT>(multi_index, value);
 }
 
 template <typename NativeT>
-inline void MutableLiteralBase::Set(absl::Span<const int64> multi_index,
+inline void MutableLiteralBase::Set(absl::Span<const int64_t> multi_index,
                                     NativeT value) {
   return root_piece().Set<NativeT>(multi_index, value);
 }
@@ -989,12 +991,12 @@ NativeT LiteralBase::GetFirstElement() const {
 
 template <typename NativeT>
 void LiteralBase::EachCell(
-    std::function<void(absl::Span<const int64> indices, NativeT value)>
+    std::function<void(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) const {
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
-  std::vector<int64> indices(shape().rank(), 0);
+  std::vector<int64_t> indices(shape().rank(), 0);
 
   Shape shape_dynamic = shape();
   for (int64_t i = 0; i < shape_dynamic.rank(); ++i) {
@@ -1007,12 +1009,12 @@ void LiteralBase::EachCell(
 
 template <typename NativeT>
 void MutableLiteralBase::MutableEachCell(
-    std::function<NativeT(absl::Span<const int64> indices, NativeT value)>
+    std::function<NativeT(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) {
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
-  std::vector<int64> indices(shape().rank(), 0);
+  std::vector<int64_t> indices(shape().rank(), 0);
 
   Shape shape_dynamic = shape();
   for (int64_t i = 0; i < shape_dynamic.rank(); ++i) {
@@ -1068,7 +1070,7 @@ void MutableLiteralBase::PopulateFromArray(const Array<NativeT>& values) {
   for (int dim = 0; dim < values.num_dimensions(); ++dim) {
     CHECK_EQ(values.dim(dim), shape().dimensions(dim));
   }
-  values.Each([this](absl::Span<const int64> indices, NativeT value) {
+  values.Each([this](absl::Span<const int64_t> indices, NativeT value) {
     this->Set(indices, value);
   });
 }
@@ -1103,7 +1105,7 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
     int64_t minor_dimension_size =
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
-    auto init_function = [&](absl::Span<const int64> indexes) {
+    auto init_function = [&](absl::Span<const int64_t> indexes) {
       DimensionVector minor_scan_indexes(rank, 0);
       const int64_t index =
           IndexUtil::MultidimensionalIndexToLinearIndex(shape(), indexes);
@@ -1121,7 +1123,7 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
       ShapeUtil::ForEachIndex(
           this_shape, stride_config.base, stride_config.dimensions,
           stride_config.step,
-          [&init_function](absl::Span<const int64> indexes) {
+          [&init_function](absl::Span<const int64_t> indexes) {
             init_function(indexes);
             return true;
           });
@@ -1166,7 +1168,7 @@ Literal LiteralBase::Replicate(int64_t times) const {
   }
 
   DimensionVector output_indices(bounds.size(), 0);
-  absl::Span<const int64> input_indices = output_indices;
+  absl::Span<const int64_t> input_indices = output_indices;
   input_indices.remove_prefix(1);
 
   bool done = false;

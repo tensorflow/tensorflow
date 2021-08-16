@@ -24,6 +24,7 @@ from tensorflow.python.distribute import distribution_strategy_context as ds_con
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -376,6 +377,9 @@ class Generator(tracking.AutoTrackable):
     Returns:
       The new generator.
     """
+    if config.deterministic_ops_enabled():
+      raise RuntimeError('"from_non_deterministic_state" cannot be called when '  # pylint: disable=g-doc-exception
+                         "determinism is enabled.")
     if alg is None:
       # TODO(b/170668986): more sophisticated algorithm selection
       alg = DEFAULT_ALGORITHM
@@ -981,6 +985,11 @@ def get_global_generator():
   """
   global global_generator
   if global_generator is None:
+    if config.deterministic_ops_enabled():
+      raise RuntimeError('"get_global_generator" cannot be called if '  # pylint: disable=g-doc-exception
+                         "determinism is enabled, unless "
+                         '"set_global_generator" has already been called. '
+                         'Please call "set_global_generator" first.')
     with ops.init_scope():
       global_generator = Generator.from_non_deterministic_state()
   return global_generator

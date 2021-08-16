@@ -89,8 +89,9 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
-  CreateXEvent(&host_plane_builder, &main_thread, "train", 0, 100,
-               {{StatType::kStepNum, kStepNum}, {StatType::kIsRoot, int64{1}}});
+  CreateXEvent(
+      &host_plane_builder, &main_thread, "train", 0, 100,
+      {{StatType::kStepNum, kStepNum}, {StatType::kIsRoot, int64_t{1}}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
                10, 90, {{StatType::kStepId, kStepId}});
 
@@ -592,7 +593,7 @@ TEST(GroupEventsTest, WorkerTest) {
 TEST(GroupEventsTest, BatchingSessionTest) {
   constexpr absl::string_view kSchedule = "Schedule";
   constexpr int64_t kBatchContextType =
-      static_cast<int64>(ContextType::kSharedBatchScheduler);
+      static_cast<int64_t>(ContextType::kSharedBatchScheduler);
   constexpr int64_t kBatchContextId = 123;
   constexpr int64_t kBatchingSessionRunRootLevel = 1;
   constexpr int64_t kProcessBatchRootLevel = 2;

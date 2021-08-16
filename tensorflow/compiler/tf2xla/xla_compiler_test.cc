@@ -1829,7 +1829,7 @@ TEST_F(XlaCompilerTest, SetShardingForReturnedTuple) {
   auto node_name_index = graph->BuildNodeNameIndex();
   Node* ret_node = node_name_index["B"];
   ASSERT_NE(ret_node, nullptr);
-  xla::Array<int64> tile_assignment({2});
+  xla::Array<int64_t> tile_assignment({2});
   tile_assignment.FillIota(0);
   xla::HloSharding sharding = xla::HloSharding::Tile(tile_assignment);
   ret_node->AddAttr("_XlaSharding", sharding.ToProto().SerializeAsString());

@@ -122,7 +122,7 @@ class AllocationTracker {
 
   // The next handle to assign to an allocation, guarded by the same mutex as
   // the mapping as they'll be mutated at the same time.
-  int64 next_handle_ TF_GUARDED_BY(mutex_);
+  int64_t next_handle_ TF_GUARDED_BY(mutex_);
 
   // A map from device ordinal to AllocationMap.
   absl::flat_hash_map<int, AllocationMap> opaque_to_allocation_map_
@@ -145,7 +145,7 @@ class AllocationTracker {
   // non-owning "view" into a tuple's sub-buffers.  The sub-buffers are then
   // free'd when both the view *and* the original tuple are Unregistered.  This
   // refcounting is managed in opaque_to_allocation_map_.
-  absl::flat_hash_map<int64, std::vector<std::unique_ptr<ShapedBuffer>>>
+  absl::flat_hash_map<int64_t, std::vector<std::unique_ptr<ShapedBuffer>>>
       handle_to_shaped_buffers_ TF_GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(AllocationTracker);

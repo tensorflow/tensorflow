@@ -87,10 +87,11 @@ class KernelMappingScheme {
     StridedLinearIndexingX
   };
 
-  KernelMappingScheme(absl::Span<const int64> dims_in_elems,
-                      absl::Span<const int64> tile_sizes, int64_t num_threads_y,
-                      int64_t num_threads_x, IndexingOrder indexing_order,
-                      int vector_size, bool is_row_contiguous = false)
+  KernelMappingScheme(absl::Span<const int64_t> dims_in_elems,
+                      absl::Span<const int64_t> tile_sizes,
+                      int64_t num_threads_y, int64_t num_threads_x,
+                      IndexingOrder indexing_order, int vector_size,
+                      bool is_row_contiguous = false)
       : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
         tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
         num_threads_x_(num_threads_x),
@@ -110,9 +111,9 @@ class KernelMappingScheme {
   }
 
   // Number of elements in each dimension (Z/Y/X respectively).
-  absl::Span<const int64> GetDimsInElems() const { return dims_in_elems_; }
+  absl::Span<const int64_t> GetDimsInElems() const { return dims_in_elems_; }
 
-  int64 GetNumberOfBlocks() const {
+  int64_t GetNumberOfBlocks() const {
     return CeilOfRatio(dims_in_elems_[0], GetTileSizeZ()) *
            CeilOfRatio(dims_in_elems_[1], GetTileSizeY()) *
            CeilOfRatio(dims_in_elems_[2], GetTileSizeX());
@@ -120,16 +121,16 @@ class KernelMappingScheme {
 
   // Tile size for a given dimensions. Tiles are assigned per thread block,
   // and are processed by all threads in the block.
-  int64 GetTileSizeFor(int d) const { return tile_sizes_.at(d); }
+  int64_t GetTileSizeFor(int d) const { return tile_sizes_.at(d); }
 
-  int64 GetTileSizeZ() const { return GetTileSizeFor(DimZ); }
-  int64 GetTileSizeX() const { return GetTileSizeFor(DimX); }
-  int64 GetTileSizeY() const { return GetTileSizeFor(DimY); }
+  int64_t GetTileSizeZ() const { return GetTileSizeFor(DimZ); }
+  int64_t GetTileSizeX() const { return GetTileSizeFor(DimX); }
+  int64_t GetTileSizeY() const { return GetTileSizeFor(DimY); }
 
-  int64 GetNumThreadsX() const { return num_threads_x_; }
-  int64 GetNumThreadsY() const { return num_threads_y_; }
+  int64_t GetNumThreadsX() const { return num_threads_x_; }
+  int64_t GetNumThreadsY() const { return num_threads_y_; }
 
-  int64 GetThreadsPerBlock() const {
+  int64_t GetThreadsPerBlock() const {
     return GetNumThreadsX() * GetNumThreadsY();
   }
 
@@ -139,16 +140,16 @@ class KernelMappingScheme {
 
  private:
   // The number of elements in each dimension.
-  const std::array<int64, 3> dims_in_elems_;
+  const std::array<int64_t, 3> dims_in_elems_;
 
   // The number of elements for each dimension of a tile.
-  const std::array<int64, 3> tile_sizes_;
+  const std::array<int64_t, 3> tile_sizes_;
 
   // Number of threads used to process elements in the X direction of a tile.
-  const int64 num_threads_x_;
+  const int64_t num_threads_x_;
 
   // Number of threads used to process elements in the Y direction of a tile.
-  const int64 num_threads_y_;
+  const int64_t num_threads_y_;
 
   // When num_threads_x threads process a total of tile_size_x
   // elements in the X dimension of a tile, each threads process

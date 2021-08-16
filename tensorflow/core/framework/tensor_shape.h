@@ -68,7 +68,7 @@ class TensorShapeRep {
   /// We use `int64` and not `size_t` to be compatible with `Eigen::Tensor`
   /// which uses `ptrdiff_t`.  For PartialTensorShape, -1 means not fully
   /// defined.
-  int64 num_elements() const { return num_elements_; }
+  int64_t num_elements() const { return num_elements_; }
 
   /// For error messages.
   std::string DebugString() const;
@@ -98,7 +98,7 @@ class TensorShapeRep {
     uint32 dims_[3];
   };
   struct Rep64 {
-    gtl::InlinedVector<int64, 4>* dims_;
+    gtl::InlinedVector<int64_t, 4>* dims_;
   };
 
   // We use the max value of uint16 or uint32 to represent unknown shapes, so
@@ -155,7 +155,7 @@ class TensorShapeRep {
     // Force data to be aligned enough for a pointer.
     Rep64* unused_aligner;
   } u_;
-  int64 num_elements_;
+  int64_t num_elements_;
 };
 
 /// Base class for TensorShape and PartialTensorShape.
@@ -167,9 +167,9 @@ class TensorShapeBase : public TensorShapeRep {
  public:
   /// \brief Construct a `TensorShapeBase` from the provided sizes.
   /// REQUIRES: `dim_sizes[i] >= 0` (or >= -1 for PartialTensorShape)
-  explicit TensorShapeBase(gtl::ArraySlice<int64> dim_sizes);
-  TensorShapeBase(std::initializer_list<int64> dim_sizes)
-      : TensorShapeBase(gtl::ArraySlice<int64>(dim_sizes)) {}
+  explicit TensorShapeBase(gtl::ArraySlice<int64_t> dim_sizes);
+  TensorShapeBase(std::initializer_list<int64_t> dim_sizes)
+      : TensorShapeBase(gtl::ArraySlice<int64_t>(dim_sizes)) {}
 
   /// Construct an empty TensorShape, or an unknown rank PartialTensorShape
   TensorShapeBase();
@@ -181,11 +181,11 @@ class TensorShapeBase : public TensorShapeRep {
   // an array of sizes if calling code cannot validate that the sizes specify a
   // valid `TensorShape`.
   // The value in `*out` is valid iff the returned value is `Status::OK`.
-  static Status BuildTensorShapeBase(gtl::ArraySlice<int64> dim_sizes,
+  static Status BuildTensorShapeBase(gtl::ArraySlice<int64_t> dim_sizes,
                                      TensorShapeBase* out);
-  static Status BuildTensorShapeBase(std::initializer_list<int64> dim_sizes,
+  static Status BuildTensorShapeBase(std::initializer_list<int64_t> dim_sizes,
                                      TensorShapeBase* out) {
-    return BuildTensorShapeBase(gtl::ArraySlice<int64>(dim_sizes), out);
+    return BuildTensorShapeBase(gtl::ArraySlice<int64_t>(dim_sizes), out);
   }
   static Status BuildTensorShapeBase(const TensorShapeProto& proto,
                                      TensorShapeBase* out);
@@ -298,7 +298,7 @@ class TensorShapeBase : public TensorShapeRep {
   /// REQUIRES: `0 <= d < dims()`
   // TODO(touts): Rename to `dimension()` to match
   // `Eigen::Tensor::dimension()`?
-  int64 dim_size(int d) const;
+  int64_t dim_size(int d) const;
 
   /// Returns sizes of all dimensions.
   // Returns an empty list for unknown rank PartialTensorShape.
@@ -324,7 +324,7 @@ class TensorShapeBase : public TensorShapeRep {
 
  private:
   Status RecomputeNumElements();
-  Status InitDims(gtl::ArraySlice<int64> dim_sizes);
+  Status InitDims(gtl::ArraySlice<int64_t> dim_sizes);
 
   // True for PartialTensorShape, false for TensorShape
   static constexpr bool kIsPartial =
@@ -427,7 +427,7 @@ inline std::ostream& operator<<(std::ostream& os, const TensorShape& ts) {
 /// Represents the value of one dimension in a TensorShape.
 struct TensorShapeDim {
   explicit TensorShapeDim(int64_t s) : size(s) {}
-  int64 size;
+  int64_t size;
 };
 
 // START_SKIP_DOXYGEN
@@ -477,16 +477,16 @@ class TensorShapeUtils {
   /// \brief Returns a `TensorShape` whose dimensions are
   /// `dims[0]`, `dims[1]`, ..., `dims[n-1]`.
   static Status MakeShape(const int32* dims, int64_t n, TensorShape* out);
-  static Status MakeShape(const int64* dims, int64_t n, TensorShape* out);
+  static Status MakeShape(const int64_t* dims, int64_t n, TensorShape* out);
   static Status MakeShape(gtl::ArraySlice<int32> shape, TensorShape* out);
-  static Status MakeShape(gtl::ArraySlice<int64> shape, TensorShape* out);
+  static Status MakeShape(gtl::ArraySlice<int64_t> shape, TensorShape* out);
   static Status MakeShape(const int32* dims, int64_t n,
                           PartialTensorShape* out);
-  static Status MakeShape(const int64* dims, int64_t n,
+  static Status MakeShape(const int64_t* dims, int64_t n,
                           PartialTensorShape* out);
   static Status MakeShape(gtl::ArraySlice<int32> shape,
                           PartialTensorShape* out);
-  static Status MakeShape(gtl::ArraySlice<int64> shape,
+  static Status MakeShape(gtl::ArraySlice<int64_t> shape,
                           PartialTensorShape* out);
 
   static std::string ShapeListString(
@@ -501,7 +501,8 @@ class TensorShapeUtils {
   /// \brief Returns the product of values in an int64 array,
   /// or a failing Status if the array represents a value larger than
   /// a `TensorShape` can hold.
-  static Status NumElements(gtl::ArraySlice<int64> shape, int64* num_elements);
+  static Status NumElements(gtl::ArraySlice<int64_t> shape,
+                            int64_t* num_elements);
 };
 
 /// Manages the partially known dimensions of a Tensor and their sizes.

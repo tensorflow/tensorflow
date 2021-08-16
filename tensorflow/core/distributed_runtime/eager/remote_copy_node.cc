@@ -134,7 +134,7 @@ void RemoteCopyNode::StartSend() {
   op.MutableAttrs()->Set("send_device", send_device_->name());
   op.MutableAttrs()->Set(
       "send_device_incarnation",
-      static_cast<int64>(send_device_->attributes().incarnation()));
+      static_cast<int64_t>(send_device_->attributes().incarnation()));
   op.MutableAttrs()->Set("recv_device", recv_device_->name());
   op.MutableAttrs()->Set("client_terminated", false);
 
@@ -290,7 +290,7 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
   op.MutableAttrs()->Set("send_device", send_device_->name());
   op.MutableAttrs()->Set(
       "send_device_incarnation",
-      static_cast<int64>(send_device_->attributes().incarnation()));
+      static_cast<int64_t>(send_device_->attributes().incarnation()));
   op.MutableAttrs()->Set("recv_device", recv_device_->name());
   op.MutableAttrs()->Set("client_terminated", false);
 

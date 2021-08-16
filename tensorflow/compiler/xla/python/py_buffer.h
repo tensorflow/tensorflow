@@ -110,7 +110,7 @@ class PyBuffer {
   const std::shared_ptr<Traceback>& traceback() const { return traceback_; }
 
   // Returns the size (i.e. number of elements) of the (host) numpy array.
-  StatusOr<int64> size();
+  StatusOr<int64_t> size();
 
   // Returns the number of dimensions of the (host) numpy array.
   int ndim() const { return buffer()->on_device_shape().dimensions_size(); }

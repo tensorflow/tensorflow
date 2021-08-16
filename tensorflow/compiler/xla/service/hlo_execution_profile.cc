@@ -69,15 +69,15 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
   // deterministic computation_and_profile_idx_list so that we end up with a
   // deterministic HloProfilePrinterData protobuf.
 
-  std::vector<std::pair<const HloComputation*, int64>>
+  std::vector<std::pair<const HloComputation*, int64_t>>
       computation_and_profile_idx_list(computation_to_profile_idx_map.begin(),
                                        computation_to_profile_idx_map.end());
 
   // The profile indices were computed deterministically in
   // HloProfileIndexMap::HloProfileIndexMap.
   absl::c_sort(computation_and_profile_idx_list,
-               [](const std::pair<const HloComputation*, int64>& left,
-                  const std::pair<const HloComputation*, int64>& right) {
+               [](const std::pair<const HloComputation*, int64_t>& left,
+                  const std::pair<const HloComputation*, int64_t>& right) {
                  return left.second < right.second;
                });
 

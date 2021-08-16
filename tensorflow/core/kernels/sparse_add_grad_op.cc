@@ -69,9 +69,9 @@ class SparseAddGradOp : public OpKernel {
     const int64_t b_nnz = b_indices->dim_size(0);
     const int64_t sum_nnz = backprop_val_grad->NumElements();
 
-    const auto a_indices_mat = a_indices->matrix<int64>();
-    const auto b_indices_mat = b_indices->matrix<int64>();
-    const auto sum_indices_mat = sum_indices->matrix<int64>();
+    const auto a_indices_mat = a_indices->matrix<int64_t>();
+    const auto b_indices_mat = b_indices->matrix<int64_t>();
+    const auto sum_indices_mat = sum_indices->matrix<int64_t>();
 
     Tensor *a_val_grad, *b_val_grad;
     OP_REQUIRES_OK(ctx,
@@ -136,7 +136,7 @@ class SparseAddGradOp : public OpKernel {
 // This op should work for any T that SparseAdd is registered with.
 REGISTER_KERNELS(float);
 REGISTER_KERNELS(double);
-REGISTER_KERNELS(int64);
+REGISTER_KERNELS(int64_t);
 REGISTER_KERNELS(int32);
 REGISTER_KERNELS(int16);
 REGISTER_KERNELS(int8);

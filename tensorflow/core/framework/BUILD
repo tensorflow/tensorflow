@@ -762,7 +762,10 @@ cc_library(
     name = "tensor_types",
     hdrs = ["tensor_types.h"],
     visibility = ["//visibility:private"],
-    deps = ["//third_party/eigen3"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(

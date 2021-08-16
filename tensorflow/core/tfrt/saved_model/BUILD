@@ -54,7 +54,6 @@ cc_library(
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
-        "//tensorflow/core/tfrt/runtime:tf_threadpool_concurrent_work_queue",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/tpu:tpu_resources",
         "//tensorflow/core/tfrt/utils",

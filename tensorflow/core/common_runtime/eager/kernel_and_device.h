@@ -54,9 +54,9 @@ class ProcessFunctionLibraryRuntime;
 class FunctionLibraryRuntime;
 
 struct EagerRemoteFunctionParams {
-  int64 op_id;
+  int64_t op_id;
   // Set when this function is a component function.
-  absl::optional<int64> step_id = absl::nullopt;
+  absl::optional<int64_t> step_id = absl::nullopt;
 };
 
 class EagerKernelArgs : public FunctionArgsInterface {
@@ -273,7 +273,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       Device* host_cpu_device, const string& name,
       const bool outputs_on_op_device,
       std::function<Rendezvous*(const int64_t)> rendezvous_creator,
-      std::function<int64()> get_op_id)
+      std::function<int64_t()> get_op_id)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
         pflr_(pflr),
@@ -362,7 +362,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   string name_;
 
   std::function<Rendezvous*(const int64_t)> rendezvous_creator_;
-  std::function<int64()> get_op_id_;
+  std::function<int64_t()> get_op_id_;
 };
 
 }  // namespace tensorflow
