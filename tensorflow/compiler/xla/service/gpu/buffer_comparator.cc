@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/strings/str_replace.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
-#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -629,9 +629,9 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
 
   absl::Span<const uint8> compiled_ptx = {};
   StatusOr<absl::Span<const uint8>> compiled_ptx_or =
-      se::CompileGpuAsmOrGetCached(executor->device_ordinal(),
-                                   buffer_compare_ptx,
-                                   PtxOptsFromConfig(config));
+      se::CompileGpuAsmOrGetCached(
+          executor->device_ordinal(), buffer_compare_ptx,
+          PtxOptsFromDebugOptions(config.debug_options()));
   if (compiled_ptx_or.ok()) {
     compiled_ptx = compiled_ptx_or.ConsumeValueOrDie();
   } else {

@@ -899,6 +899,7 @@ cc_library(
         ":backend_configs_cc",
         ":buffer_comparator",
         ":gemm_thunk",
+        ":gpu_asm_opts_util",
         ":gpu_conv_runner",
         ":ir_emission_utils",
         ":stream_executor_util",
@@ -925,6 +926,7 @@ cc_library(
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
+        ":gpu_asm_opts_util",
         ":gpu_autotuning_proto_cc",
         ":gpu_conv_runner",
         ":gpu_executable",
@@ -1622,12 +1624,12 @@ cc_library(
         ":cudnn_vectorize_convolutions",
         ":cusolver_rewriter",
         ":gemm_algorithm_picker",
+        ":gpu_asm_opts_util",
         ":gpu_compiler",
         ":gpu_conv_padding_legalization",
         ":gpu_conv_rewriter",
         ":gpu_layout_assignment",
         ":ir_emission_utils",
-        ":stream_executor_util",
         ":target_constants",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:node_hash_map",
@@ -1904,10 +1906,21 @@ cc_library(
         "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:kernel_spec",
-        "//tensorflow/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "gpu_asm_opts_util",
+    srcs = ["gpu_asm_opts_util.cc"],
+    hdrs = ["gpu_asm_opts_util.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1917,7 +1930,7 @@ cc_library(
     hdrs = if_cuda_is_configured(["buffer_comparator.h"]),
     deps = if_cuda_is_configured([
         ":launch_dimensions",
-        ":stream_executor_util",
+        ":gpu_asm_opts_util",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla:shape_util",
