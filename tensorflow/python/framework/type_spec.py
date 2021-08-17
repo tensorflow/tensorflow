@@ -328,7 +328,7 @@ class TypeSpec(object):
     return hash(self.__get_cmp_key())
 
   def __reduce__(self):
-    return type(self), self._serialize()
+    return type(self)._deserialize, (self._serialize(),)
 
   def __repr__(self):
     return "%s%r" % (type(self).__name__, self._serialize())
