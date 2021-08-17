@@ -18,10 +18,10 @@ for machine learning. It has a comprehensive, flexible ecosystem of
 researchers push the state-of-the-art in ML and developers easily build and
 deploy ML-powered applications.
 
-TensorFlow was originally developed by researchers and engineers working on the
-Google Brain team within Google's Machine Intelligence Research organization to
-conduct machine learning and deep neural networks research. The system is
-general enough to be applicable in a wide variety of other domains, as well.
+TensorFlow ஆராய்ச்சியாளர்கள் மற்றும் பொறியியலாளர்களால் முதலில் உருவாக்கப்பட்டது
+கூகிளின் இயந்திர நுண்ணறிவு ஆராய்ச்சி நிறுவனத்திற்குள் கூகுள் மூளை குழு
+இயந்திர கற்றல் மற்றும் ஆழமான நரம்பியல் நெட்வொர்க் ஆராய்ச்சி நடத்துதல். அமைப்பு ஆகும்
+பலவிதமான பிற களங்களிலும் பொருந்தும் அளவுக்கு பொதுவானது.
 
 TensorFlow provides stable [Python](https://www.tensorflow.org/api_docs/python)
 and [C++](https://www.tensorflow.org/api_docs/cc) APIs, as well as
@@ -82,19 +82,19 @@ For more examples, see the
 
 ## Contribution guidelines
 
-**If you want to contribute to TensorFlow, be sure to review the
-[contribution guidelines](CONTRIBUTING.md). This project adheres to TensorFlow's
-[code of conduct](CODE_OF_CONDUCT.md). By participating, you are expected to
-uphold this code.**
+**நீங்கள் டென்சர்ஃப்ளோவில் பங்களிக்க விரும்பினால், அதை மறுபரிசீலனை செய்யுங்கள்
+[contribution guidelines](CONTRIBUTING.md). இந்த திட்டம் டென்சர்ஃப்ளோவுடன் இணைகிறது
+[code of conduct](CODE_OF_CONDUCT.md). பங்கேற்பதன் மூலம், நீங்கள் எதிர்பார்க்கப்படுகிறீர்கள்
+இந்த குறியீட்டை ஆதரிக்கவும்.**
 
-**We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
-tracking requests and bugs, please see
+**நாம் பயன்படுத்த [GitHub issues](https://github.com/tensorflow/tensorflow/issues) க்கான
+கண்காணிப்பு கோரிக்கைகள் மற்றும் பிழைகள், தயவுசெய்து பார்க்கவும்
 [TensorFlow Discuss](https://groups.google.com/a/tensorflow.org/forum/#!forum/discuss)
-for general questions and discussion, and please direct specific questions to
+பொதுவான கேள்விகள் மற்றும் கலந்துரையாடலுக்கு, தயவுசெய்து குறிப்பிட்ட கேள்விகளை நேரடியாக அனுப்பவும்
 [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).**
 
-The TensorFlow project strives to abide by generally accepted best practices in
-open-source software development:
+டென்சர்ஃப்ளோ திட்டம் பொதுவாக ஏற்றுக்கொள்ளப்பட்ட சிறந்த நடைமுறைகளைக் கடைப்பிடிக்க முயற்சிக்கிறது
+திறந்த மூல மென்பொருள் மேம்பாடு:
 
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/1486/badge)](https://bestpractices.coreinfrastructure.org/projects/1486)
