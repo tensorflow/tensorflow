@@ -19,6 +19,9 @@ alias_with_tflite(
 # but only the framework code, no ops.
 cc_library_with_tflite(
     name = "native_experimental_framework_only",
+    srcs = [
+        "nativeinterpreterwrapperexperimental_jni.cc",
+    ],
     hdrs = ["jni_utils.h"],
     tflite_deps = [
         ":native_stable_framework_only",
@@ -27,6 +30,7 @@ cc_library_with_tflite(
     deps = [
         "//tensorflow/lite/java/jni",
     ],
+    alwayslink = 1,
 )
 
 # Native code needed for TF Lite Java API, excluding experimental APIs;
@@ -34,9 +38,9 @@ cc_library_with_tflite(
 cc_library_with_tflite(
     name = "native_stable_framework_only",
     srcs = [
-        "default/jni_utils.cc",
         "jni_utils.cc",
         "nativeinterpreterwrapper_jni.cc",
+        "nativesignaturerunner_jni.cc",
         "tensor_jni.cc",
         "tensorflow_lite_jni.cc",
     ],
@@ -48,8 +52,10 @@ cc_library_with_tflite(
     ],
     tflite_deps = [
         "//tensorflow/lite/core/shims:common",
+        "//tensorflow/lite/core/shims:create_op_resolver_header",
         "//tensorflow/lite/core/shims:framework_stable",
         "//tensorflow/lite/core/shims:jni_initialization",
+        "//tensorflow/lite/core/shims:jni_utils",
     ],
     deps = [
         "//tensorflow/lite:minimal_logging",
@@ -73,10 +79,17 @@ alias_with_tflite(
 # tflite_custom_cc_library or tflite_custom_android_library rules.
 cc_library_with_tflite(
     name = "native_experimental",
+    copts = tflite_copts(),
     tflite_deps = [
-        ":native_stable",
-        "//tensorflow/lite/core/shims:framework_experimental",
+        ":native_experimental_framework_only",
+        "//tensorflow/lite/core/shims:builtin_ops",
+        "//tensorflow/lite/core/shims:create_op_resolver_with_builtin_ops",
+        "//tensorflow/lite/core/shims:framework",
     ],
+    deps = [
+        "//tensorflow/lite/core/api",
+    ],
+    alwayslink = 1,
 )
 
 # Native code and ops needed for the TF Lite Java API, excluding experimental
@@ -88,10 +101,10 @@ cc_library_with_tflite(
     tflite_deps = [
         ":native_framework_only",
         "//tensorflow/lite/core/shims:builtin_ops",
+        "//tensorflow/lite/core/shims:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite/core/shims:framework_stable",
     ],
     deps = [
-        "//tensorflow/lite:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:deprecated_backends",
     ],

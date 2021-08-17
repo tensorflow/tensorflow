@@ -490,6 +490,14 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     stream->ThenRecordEvent(definition_event.get());
   }
 
+  for (const XlaOutputDescription& descr : compilation_result->outputs) {
+    if (descr.type == DT_VARIANT) {
+      return errors::Unimplemented(
+          "Support for TensorList crossing the XLA/TF boundary "
+          "is not implemented");
+    }
+  }
+
   std::vector<TensorShape> output_tensor_shapes;
   output_tensor_shapes.reserve(ctx->num_outputs());
   if (output.on_host_shape().is_dynamic()) {
@@ -530,11 +538,6 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     const DataType& type = compilation_result->outputs[i].type;
     VLOG(2) << "Populating output for retval " << i << " shape "
             << shape.DebugString() << " type " << DataTypeString(type);
-    if (type == DT_VARIANT) {
-      return errors::Unimplemented(
-          "Support for TensorList crossing the XLA/TF boundary "
-          "is not implemented");
-    }
 
     if (compilation_result->outputs[i].is_constant) {
       TF_RETURN_IF_ERROR(
@@ -635,7 +638,7 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
     variable_info_lookup.emplace(info.index(), &info);
   }
 
-  for (int64 input_num = 0; input_num < inputs.size(); ++input_num) {
+  for (int64_t input_num = 0; input_num < inputs.size(); ++input_num) {
     const Tensor* input = inputs[input_num];
 
     XlaCompiler::Argument& arg = out[input_num];

@@ -300,6 +300,7 @@ distribute_py_test(
     main = "custom_training_loop_optimizer_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":strategy_combinations",
@@ -506,6 +507,7 @@ distribute_py_test(
     main = "keras_metrics_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         "//tensorflow/python:framework_ops",
@@ -739,6 +741,7 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  #TODO(b/195563283)
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
     ],
     deps = [
@@ -922,10 +925,12 @@ distribute_py_test(
     main = "dataset_creator_model_fit_test.py",
     shard_count = 50,
     tags = [
+        "broken",  # TODO(b/196485739)
         "multi_gpu",
         "no_oss",  # TODO(b/183640564): Reenable
         "no_rocm",
-        "notsan",  # TODO(b/184542721)
+        "noasan",  # TODO(b/196485739)
+        "notsan",  # TODO(b/184542721),
     ],
     deps = [
         ":dataset_creator_model_fit_test_base",
@@ -943,7 +948,6 @@ distribute_py_test(
 
 distribute_py_test(
     name = "dataset_creator_model_fit_ps_only_test",
-    size = "small",
     srcs = ["dataset_creator_model_fit_ps_only_test.py"],
     disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,

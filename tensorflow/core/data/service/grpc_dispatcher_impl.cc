@@ -51,6 +51,7 @@ HANDLER(MaybeRemoveTask);
 HANDLER(GetOrCreateJob);
 HANDLER(ClientHeartbeat);
 HANDLER(GetWorkers);
+HANDLER(GetElementSpec);
 #undef HANDLER
 
 }  // namespace data

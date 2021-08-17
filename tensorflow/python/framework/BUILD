@@ -18,6 +18,7 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additi
 
 visibility = [
     "//tensorflow:__subpackages__",
+    "//third_party/py/tensorflow_numerics:__subpackages__",
 ]
 
 package(
@@ -325,7 +326,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":c_api_util",
-        ":error_interpolation",
         "//tensorflow/python:_pywrap_py_exception_registry",
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python/util",
@@ -753,16 +753,19 @@ cc_library(
     srcs = ["python_api_dispatcher.cc"],
     hdrs = ["python_api_dispatcher.h"],
     deps = [
+        "//tensorflow/core:framework_lite",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/python/lib/core:py_util",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
+        "//tensorflow/python/util:function_parameter_canonicalizer",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
     ],
 )
 
-# Note: this target is only used by python_api_dispatcher_test.
 tf_python_pybind_extension(
     name = "_pywrap_python_api_dispatcher",
     srcs = ["python_api_dispatcher_wrapper.cc"],
@@ -770,7 +773,9 @@ tf_python_pybind_extension(
     module_name = "_pywrap_python_api_dispatcher",
     deps = [
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
+        "//tensorflow/python/util:function_parameter_canonicalizer_hdrs",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/container:flat_hash_map",
         "@pybind11",
     ],
 )
@@ -1000,6 +1005,7 @@ py_library(
     srcs = ["config.py"],
     srcs_version = "PY3",
     deps = [
+        ":errors",
         ":ops",
         "//tensorflow/python/util",
     ],
@@ -1025,6 +1031,7 @@ tpu_py_test(
     name = "config_test_tpu",
     size = "small",
     srcs = ["config_test.py"],
+    disable_tfrt = True,  # TODO(tfrt-devs): Update this test to call initialize_tpu_system
     main = "config_test.py",
     python_version = "PY3",
     tags = ["no_pip"],  # test_ops are not available in pip.
@@ -1043,6 +1050,7 @@ py_library(
     srcs = ["random_seed.py"],
     srcs_version = "PY3",
     deps = [
+        ":config",
         ":ops",
     ],
 )
@@ -1130,6 +1138,7 @@ py_library(
     name = "extension_type",
     srcs = ["extension_type.py"],
     srcs_version = "PY3",
+    visibility = visibility,
     deps = [
         ":dtypes",
         ":extension_type_field",
@@ -1138,6 +1147,7 @@ py_library(
         ":tensor_shape",
         ":tensor_spec",
         ":type_spec",
+        "//tensorflow/python:composite_tensor_ops",
     ],
 )
 
@@ -1601,7 +1611,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ],
+    ] + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
     alwayslink = 1,
 )
 

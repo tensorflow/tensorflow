@@ -36,8 +36,8 @@ class LocalTensorHandleData {
   Status TensorValue(tensorflow::TensorValue* t);
   Status Shape(TensorShape* shape) const;
   Status NumDims(int* num_dims) const;
-  Status Dim(int dim_index, int64* dim) const;
-  Status NumElements(int64* num_elements) const;
+  Status Dim(int dim_index, int64_t* dim) const;
+  Status NumElements(int64_t* num_elements) const;
   Status Unprotect();
 
   bool IsReady() const {

@@ -87,7 +87,7 @@ class DataFormatDimMapOp : public OpKernel {
         errors::InvalidArgument(
             "Destination and source format must determine a permutation, got ",
             src_format, " and ", dst_format));
-    dst_idx_ = Tensor(DT_INT32, {static_cast<int64>(src_format.size())});
+    dst_idx_ = Tensor(DT_INT32, {static_cast<int64_t>(src_format.size())});
     for (int i = 0; i < src_format.size(); ++i) {
       for (int j = 0; j < dst_format.size(); ++j) {
         if (dst_format[j] == src_format[i]) {

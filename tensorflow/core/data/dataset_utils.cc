@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -56,9 +57,9 @@ static mutex* get_dataset_experiment_registry_lock() {
   return &dataset_experiment_registry_lock;
 }
 
-static absl::flat_hash_map<string, int64>* get_dataset_experiments() {
-  static absl::flat_hash_map<string, int64>* experiments =
-      new absl::flat_hash_map<string, int64>;
+static absl::flat_hash_map<string, int64_t>* get_dataset_experiments() {
+  static absl::flat_hash_map<string, int64_t>* experiments =
+      new absl::flat_hash_map<string, int64_t>;
   return experiments;
 }
 
@@ -172,20 +173,6 @@ void DefaultOptimizationGraphRewrites(
       optimization_disabled->insert(kShuffleAndRepeatFusionOpt);
     }
   }
-  const bool has_autotune = optimization_options.optional_autotune_case() ==
-                            OptimizationOptions::kAutotune;
-  const bool has_autotune_buffers =
-      optimization_options.optional_autotune_buffers_case() ==
-      OptimizationOptions::kAutotuneBuffers;
-  if (!(has_autotune && !optimization_options.autotune()) &&
-      (has_autotune_buffers && optimization_options.autotune_buffers())) {
-    optimization_enabled->insert(kAutotuneBufferSizesOpt);
-    optimization_enabled->insert(kDisablePrefetchLegacyAutotuneOpt);
-  }
-  if (has_autotune && !optimization_options.autotune()) {
-    optimization_disabled->insert(kAutotuneBufferSizesOpt);
-    optimization_disabled->insert(kDisablePrefetchLegacyAutotuneOpt);
-  }
 }
 
 // Returns whether an op has been allowlisted as stateless. Uses a heuristic to
@@ -202,7 +189,8 @@ bool IsOpAllowlisted(const OpDef* op_def) {
 
 }  // namespace
 
-std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds) {
+std::pair<int64_t, int64_t> MaybeOverrideSeeds(
+    std::pair<int64_t, int64_t> seeds) {
   if (seeds.first == 0 && seeds.second == 0) {
     return {random::New64(), random::New64()};
   }
@@ -466,7 +454,7 @@ absl::flat_hash_set<string> GetExperiments(
   }
 
   // Identify opted out experiments.
-  absl::flat_hash_map<string, int64> live_experiments =
+  absl::flat_hash_map<string, int64_t> live_experiments =
       DatasetExperimentRegistry::Experiments();
   absl::flat_hash_set<string> opt_outs;
   if (opt_outs_raw == "all") {
@@ -567,6 +555,15 @@ absl::flat_hash_set<tstring> SelectOptimizations(
   return optimizations;
 }
 
+Tensor MaybeCopySubSlice(const Tensor& tensor, int64 index) {
+  Tensor slice = tensor.SubSlice(index);
+  if (slice.IsAligned()) {
+    return slice;
+  } else {
+    return tensorflow::tensor::DeepCopy(slice);
+  }
+}
+
 void StripDevicePlacement(FunctionDefLibrary* library) {
   for (auto& function : (*library->mutable_function())) {
     for (auto& node : (*function.mutable_node_def())) {
@@ -577,7 +574,7 @@ void StripDevicePlacement(FunctionDefLibrary* library) {
   }
 }
 
-Status CopyPartialBatch(int64 num_elements, const Tensor& value,
+Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
                         Tensor* output) {
   switch (value.dtype()) {
 #define HANDLE_TYPE(type)                                         \
@@ -599,9 +596,9 @@ Status CopyPartialBatch(int64 num_elements, const Tensor& value,
 }
 
 Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
-                 int64 batch_size, const string& iterator_prefix,
+                 int64_t batch_size, const string& iterator_prefix,
                  const string& batch_prefix, std::vector<Tensor>* batch) {
-  int64 output_size;
+  int64_t output_size;
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix,
                strings::StrCat(batch_prefix, "_", kOutputSize)),
@@ -609,11 +606,9 @@ Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
   batch->reserve(output_size);
   for (int i = 0; i < output_size; i++) {
     Tensor t;
-    TF_RETURN_IF_ERROR(reader->ReadTensor(
-        ctx->flr(),
-        FullName(iterator_prefix,
-                 strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
-        &t));
+    TF_RETURN_IF_ERROR(
+        reader->ReadTensor(ctx->flr(), FullName(iterator_prefix, batch_prefix),
+                           strings::StrCat(kOutput, "_", i), &t));
     // If the batch was not full, we may have stored only the relevant slice.
     // Since tensors in `BatchResult.output` are expected to have the leading
     // dimension of size batch_size, we build a larger tensor and copy the slice
@@ -633,7 +628,7 @@ Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
   return Status::OK();
 }
 
-Status WriteBatch(int64 batch_size, int64 num_elements,
+Status WriteBatch(int64_t batch_size, int64_t num_elements,
                   const string& iterator_prefix, const string& batch_prefix,
                   IteratorStateWriter* writer, std::vector<Tensor>* batch) {
   TF_RETURN_IF_ERROR(writer->WriteScalar(
@@ -645,15 +640,14 @@ Status WriteBatch(int64 batch_size, int64 num_elements,
     // The rest of the batch tensor is *uninitialized* and accessing that will
     // raise msan errors.
     if (num_elements < batch_size) {
-      TF_RETURN_IF_ERROR(writer->WriteTensor(
-          FullName(iterator_prefix,
-                   strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
-          (*batch)[i].Slice(0, num_elements)));
+      TF_RETURN_IF_ERROR(
+          writer->WriteTensor(FullName(iterator_prefix, batch_prefix),
+                              strings::StrCat(kOutput, "_", i),
+                              (*batch)[i].Slice(0, num_elements)));
     } else {
-      TF_RETURN_IF_ERROR(writer->WriteTensor(
-          FullName(iterator_prefix,
-                   strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
-          (*batch)[i]));
+      TF_RETURN_IF_ERROR(
+          writer->WriteTensor(FullName(iterator_prefix, batch_prefix),
+                              strings::StrCat(kOutput, "_", i), (*batch)[i]));
     }
   }
   return Status::OK();
@@ -661,7 +655,7 @@ Status WriteBatch(int64 batch_size, int64 num_elements,
 
 Status ReadStatus(const string& iterator_prefix, const string& prefix,
                   IteratorStateReader* reader, Status* status) {
-  int64 code_int;
+  int64_t code_int;
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
       &code_int));
@@ -683,7 +677,7 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
                    const Status& status, IteratorStateWriter* writer) {
   TF_RETURN_IF_ERROR(writer->WriteScalar(
       FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
-      static_cast<int64>(status.code())));
+      static_cast<int64_t>(status.code())));
   if (!status.ok()) {
     TF_RETURN_IF_ERROR(writer->WriteScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
@@ -692,10 +686,10 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
   return Status::OK();
 }
 
-Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
-                    const Status& status, IteratorContext* ctx,
-                    std::vector<Tensor>* output, bool* end_of_sequence,
-                    std::vector<Tensor>* batch) {
+Status ProcessBatch(int64_t batch_size, int64_t num_elements,
+                    bool drop_remainder, const Status& status,
+                    IteratorContext* ctx, std::vector<Tensor>* output,
+                    bool* end_of_sequence, std::vector<Tensor>* batch) {
   if (num_elements == 0) {
     if (status.ok() || errors::IsOutOfRange(status)) {
       *end_of_sequence = true;
@@ -735,22 +729,21 @@ Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
   return Status::OK();
 }
 
-Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
+Status CopyBatch(IteratorContext* ctx,
                  const std::vector<std::vector<Tensor>>& batch_elements,
+                 bool parallel_copy,
+                 std::function<Status()> allocation_callback,
                  std::vector<Tensor>* out_tensors) {
   static bool in_experiment =
       GetExperiments().contains("parallelize_batch_copy");
   const size_t num_tuple_components = batch_elements.at(0).size();
   out_tensors->reserve(num_tuple_components);
-  const int64 num_batch_elements = batch_elements.size();
+  const int64_t num_batch_elements = batch_elements.size();
   for (size_t component_index = 0; component_index < num_tuple_components;
        ++component_index) {
     const Tensor& first_element = batch_elements.at(0)[component_index];
-    TensorShape batch_component_shape({num_batch_elements});
-    // NOTE(mrry): Copy the shape of the first element here, because
-    // `first_element.shape()` will become undefined after the 0th batch element
-    // is moved into the output batch.
     TensorShape first_element_shape(first_element.shape());
+    TensorShape batch_component_shape({num_batch_elements});
     batch_component_shape.AppendShape(first_element_shape);
     out_tensors->emplace_back(ctx->allocator({}), first_element.dtype(),
                               batch_component_shape);
@@ -759,7 +752,15 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
           "Failed to allocate memory for the batch of component ",
           component_index);
     }
-    Tensor& batch_component = out_tensors->back();
+  }
+  if (allocation_callback) {
+    TF_RETURN_IF_ERROR(allocation_callback());
+  }
+  for (size_t component_index = 0; component_index < num_tuple_components;
+       ++component_index) {
+    Tensor& batch_component = out_tensors->at(component_index);
+    const Tensor& first_element = batch_elements.at(0)[component_index];
+    TensorShape first_element_shape(first_element.shape());
     // Build the output tuple component by copying one slice from each input
     // element in the batch.
     auto copy_element_fn = [component_index, &batch_elements, &batch_component,
@@ -785,9 +786,9 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
       BlockingCounter counter(num_batch_elements);
       const auto num_threads = ctx->runner_threadpool_size();
       const auto slice_size = num_batch_elements / num_threads;
-      int64 offset = 0;
+      int64_t offset = 0;
       for (size_t i = 0; i < num_threads; ++i) {
-        int64 length = slice_size;
+        int64_t length = slice_size;
         // When the number of threads does not divide the number of elements
         // evenly, the size of some slices is incremented to guarantee their
         // sizes add up to the total number of elements.
@@ -818,15 +819,14 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
 
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
-  const auto& optimization_options = options.optimization_options();
+  const auto& autotune_options = options.autotune_options();
   std::vector<tstring> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt, kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt, kEnableGradientDescentOpt,
       kMapParallelizationOpt};
 
-  if (optimization_options.optional_autotune_case() ==
-          OptimizationOptions::kAutotune &&
-      !optimization_options.autotune()) {
+  if (autotune_options.optional_enabled_case() == AutotuneOptions::kEnabled &&
+      !autotune_options.enabled()) {
     for (const auto& optimization : autotune_only_optimizations) {
       configs.insert(
           absl::StrCat(optimization.data(), ":", kAutotuneOpt, ":false"));
@@ -860,9 +860,9 @@ bool ShouldUsePrivateThreadPool(const Options& options) {
 }
 
 bool ShouldUseAutotuning(const Options& options) {
-  return options.optimization_options().optional_autotune_case() !=
-             OptimizationOptions::kAutotune ||
-         options.optimization_options().autotune();
+  return options.autotune_options().optional_enabled_case() !=
+             AutotuneOptions::kEnabled ||
+         options.autotune_options().enabled();
 }
 
 bool ShouldApplyOptimizations(
@@ -878,13 +878,13 @@ bool ShouldApplyOptimizations(
 
 // static
 void DatasetExperimentRegistry::Register(const string& experiment,
-                                         int64 rollout_pct) {
+                                         int64_t rollout_pct) {
   mutex_lock l(*get_dataset_experiment_registry_lock());
   get_dataset_experiments()->insert(std::make_pair(experiment, rollout_pct));
 }
 
 // static
-absl::flat_hash_map<string, int64> DatasetExperimentRegistry::Experiments() {
+absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
   mutex_lock l(*get_dataset_experiment_registry_lock());
   return *get_dataset_experiments();
 }
@@ -892,7 +892,9 @@ absl::flat_hash_map<string, int64> DatasetExperimentRegistry::Experiments() {
 namespace {
 
 REGISTER_DATASET_EXPERIMENT("enable_gradient_descent", 0);
-REGISTER_DATASET_EXPERIMENT("parallelize_batch_copy", 50);
-}
+REGISTER_DATASET_EXPERIMENT("parallelize_batch_copy", 100);
+REGISTER_DATASET_EXPERIMENT("max_parallelism", 50);
+REGISTER_DATASET_EXPERIMENT("tune_cpu_budget", 0);
+}  // namespace
 }  // namespace data
 }  // namespace tensorflow

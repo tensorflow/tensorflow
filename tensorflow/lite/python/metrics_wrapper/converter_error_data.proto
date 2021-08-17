@@ -26,6 +26,13 @@ message ConverterErrorData {
     ERROR_NEEDS_FLEX_OPS = 1;
     ERROR_NEEDS_CUSTOM_OPS = 2;
     ERROR_UNSUPPORTED_CONTROL_FLOW_V1 = 3;
+
+    // 200- 209 error codes are reserved for backend(delegate) compatibility.
+    // Backend compatibility is checked at MlirToFlatBufferTranslateFunction()
+    // with the converted flatbuffer model. If some nodes are incompatibile with
+    // the given backends in TocoFlags.supported_backends, the error will be
+    // raised.
+    ERROR_GPU_NOT_COMPATIBLE = 200;
   }
 
   // Information about the op where the error occurs.

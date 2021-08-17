@@ -21,9 +21,9 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.experimental.ops import cardinality
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import writers
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import readers
 from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import collective_all_reduce_strategy
@@ -1634,9 +1634,9 @@ class TestDistributionStrategyWithDatasetsFile(test.TestCase,
 
     dataset = dataset.filter(dummy_op).batch(8, drop_remainder=True)
 
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.auto_shard_policy = \
-        distribute_options.AutoShardPolicy.FILE
+        options_lib.AutoShardPolicy.FILE
     dataset = dataset.with_options(options)
 
     model.predict(dataset, steps=1)

@@ -26,6 +26,8 @@ from six.moves import zip
 
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
@@ -68,22 +70,22 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         interpreter.get_tensor(details['index']) for details in output_details
     ]
 
-  def _evaluateTFLiteModelUsingSignatureDef(self, tflite_model, method_name,
+  def _evaluateTFLiteModelUsingSignatureDef(self, tflite_model, signature_key,
                                             inputs):
     """Evaluates the model on the `inputs`.
 
     Args:
       tflite_model: TensorFlow Lite model.
-      method_name: Exported Method name of the SavedModel.
+      signature_key: Signature key.
       inputs: Map from input tensor names in the SignatureDef to tensor value.
 
     Returns:
       Dictionary of outputs.
-      Key is the output name in the SignatureDef 'method_name'
+      Key is the output name in the SignatureDef 'signature_key'
       Value is the output value
     """
     interpreter = Interpreter(model_content=tflite_model)
-    signature_runner = interpreter.get_signature_runner(method_name)
+    signature_runner = interpreter.get_signature_runner(signature_key)
     return signature_runner(**inputs)
 
   def _getSimpleVariableModel(self):
@@ -137,6 +139,30 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         return x * self.z + y
 
     return BasicModel()
+
+  def _getMultiFunctionModelWithSharedWeight(self):
+
+    class BasicModelWithSharedWeight(tracking.AutoTrackable):
+      """Model with multiple functions and a shared weight."""
+
+      def __init__(self):
+        self.weight = constant_op.constant([1.0],
+                                           shape=(1, 512, 512, 1),
+                                           dtype=dtypes.float32)
+
+      @def_function.function
+      def add(self, x):
+        return x + self.weight
+
+      @def_function.function
+      def sub(self, x):
+        return x - self.weight
+
+      @def_function.function
+      def mul(self, x):
+        return x * self.weight
+
+    return BasicModelWithSharedWeight()
 
   def _assertValidDebugInfo(self, debug_info):
     """Verify the DebugInfo is valid."""

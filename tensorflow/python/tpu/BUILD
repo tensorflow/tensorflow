@@ -15,6 +15,7 @@ package(
         "//learning/serving:__subpackages__",
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
+        "//waymo/ml/deploy/sync_test/tools:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -459,6 +460,14 @@ pytype_library(
 pytype_library(
     name = "tpu_strategy_util",
     srcs = ["tpu_strategy_util.py"],
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//learning/deepmind:__subpackages__",
+        "//learning/serving:__subpackages__",
+        "//research/graph:__subpackages__",
+        "//tensorflow:__subpackages__",
+        "//third_party/py/tensorflow_numerics/extensions:__pkg__",
+    ],
     deps = [
         ":tpu_lib",
         "//tensorflow/python:dtypes",
@@ -592,6 +601,7 @@ tpu_py_test(
     ],
     disable_experimental = True,
     disable_mlir_bridge = False,
+    disable_tfrt = True,  # TODO(b/192605977)
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",
@@ -624,6 +634,7 @@ tpu_py_test(
     ],
     disable_experimental = True,
     disable_mlir_bridge = False,
+    disable_tfrt = True,  # TODO(b/192605977)
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",

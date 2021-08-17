@@ -72,6 +72,8 @@ tf_cuda_cc_test(
         "nomac",
     ],
     deps = [
+        ":trt_logging",
+        ":utils",
         "//tensorflow/core/common_runtime/gpu:gpu_init",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor",
@@ -310,6 +312,7 @@ tf_cuda_library(
         "utils/trt_int8_calibrator.h",
         "utils/trt_lru_cache.h",
         "utils/trt_shape_optimization_profiles.h",
+        "utils/trt_tensor_proxy.h",
     ],
     deps = [
         ":common_utils",
@@ -593,7 +596,11 @@ tf_cuda_library(
 cc_library(
     name = "utils",
     srcs = ["convert/utils.cc"],
-    hdrs = ["convert/utils.h"],
+    hdrs = [
+        "common/utils.h",
+        "convert/utils.h",
+        "utils/trt_tensor_proxy.h",
+    ],
     copts = tf_copts(),
     deps = [
         "@com_google_absl//absl/algorithm:container",

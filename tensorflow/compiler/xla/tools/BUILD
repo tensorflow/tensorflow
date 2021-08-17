@@ -8,6 +8,11 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
+load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
 package(
     default_visibility = ["//tensorflow/compiler/xla:internal"],
@@ -298,6 +303,23 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "run_hlo_module_proto",
+    srcs = ["run_hlo_module.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+xla_py_proto_library(
+    name = "run_hlo_module_pb2",
+    api_version = 2,
+    visibility = ["//visibility:public"],
+    deps = [":run_hlo_module_proto"],
+)
+
 cc_library(
     name = "run_hlo_module_lib",
     testonly = True,
@@ -307,10 +329,13 @@ cc_library(
         ":hlo_control_flow_flattening",
         ":hlo_module_loader",
         ":prepare_reference_module",
+        ":run_hlo_module_proto_cc",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_comparison",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client/lib:testing",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_runner",

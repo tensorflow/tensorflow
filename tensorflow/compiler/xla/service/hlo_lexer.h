@@ -63,10 +63,8 @@ enum class TokKind {
   kw_replicated,
   kw_manual,
   kw_last_tile_dim_replicate,
-  kw_nan,
   kw_inf,
 
-  kNegNan,  // -nan
   kNegInf,  // -inf
 
   // Typed tokens.
@@ -111,8 +109,8 @@ class HloLexer {
         LOG(FATAL) << "This token does not have string value";
     }
   }
-  int64 GetInt64Val() const {
-    CHECK(GetKind() == TokKind::kInt);
+  int64_t GetInt64Val() const {
+    CHECK(GetKind() == TokKind::kInt) << TokKindToString(GetKind());
     return token_state_.int64_val;
   }
   double GetDecimalVal() const {
@@ -164,6 +162,8 @@ class HloLexer {
   TokKind LexNumberOrPattern();
   TokKind LexString();
 
+  absl::optional<int64_t> LexNanPayload(absl::string_view& consumable);
+
   const absl::string_view buf_;
   const char* current_ptr_;
 
@@ -172,7 +172,7 @@ class HloLexer {
     const char* token_start = nullptr;
     TokKind current_kind;
     string str_val;
-    int64 int64_val;
+    int64_t int64_val;
     double decimal_val;
     PrimitiveType primitive_type_val;
   };

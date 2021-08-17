@@ -36,8 +36,8 @@ namespace {
 
 namespace m = match;
 
-int64 CountControlEdges(const HloComputation& computation) {
-  int64 count = 0;
+int64_t CountControlEdges(const HloComputation& computation) {
+  int64_t count = 0;
   for (const auto& instruction : computation.instructions()) {
     count += instruction->control_successors().size();
   }

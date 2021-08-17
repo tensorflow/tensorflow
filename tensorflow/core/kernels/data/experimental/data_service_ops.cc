@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -26,21 +27,28 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace data {
 
 namespace {
-const int64 kRetryTimeoutMicros = 1000LL * 1000 * 60 * 60;  // 60 minutes.
+const int64_t kRetryTimeoutMicros = 1000LL * 1000 * 60 * 60;  // 60 minutes.
 }
 
 RegisterDatasetOp::RegisterDatasetOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {
-  int64 external_state_policy_int;
+  int64_t external_state_policy_int;
   OP_REQUIRES_OK(
       ctx, ctx->GetAttr(kExternalStatePolicy, &external_state_policy_int));
   external_state_policy_ =
       SerializationContext::ExternalStatePolicy(external_state_policy_int);
+
+  if (ctx->HasAttr(kElementSpec)) {
+    tstring element_spec;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kElementSpec, &element_spec));
+    element_spec_.emplace(element_spec);
+  }
 }
 
 void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
@@ -60,8 +68,9 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   SerializationContext::Params params(ctx);
   params.external_state_policy = external_state_policy_;
   SerializationContext serialization_ctx(params);
-  GraphDef graph_def;
-  Status s = AsGraphDef(ctx, dataset, std::move(serialization_ctx), &graph_def);
+  DatasetDef dataset_def;
+  Status s = AsGraphDef(ctx, dataset, std::move(serialization_ctx),
+                        dataset_def.mutable_graph());
   if (!s.ok()) {
     OP_REQUIRES_OK(
         ctx,
@@ -78,18 +87,21 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   }
 
   DataServiceDispatcherClient client(address, protocol);
-  int64 dataset_id;
-  int64 deadline_micros = EnvTime::NowMicros() + kRetryTimeoutMicros;
+  int64_t dataset_id;
+  int64_t deadline_micros = EnvTime::NowMicros() + kRetryTimeoutMicros;
   OP_REQUIRES_OK(
       ctx, grpc_util::Retry(
-               [&]() { return client.RegisterDataset(graph_def, dataset_id); },
+               [&]() {
+                 return client.RegisterDataset(dataset_def, element_spec_,
+                                               dataset_id);
+               },
                /*description=*/
                strings::StrCat("register dataset with dispatcher at ", address),
                deadline_micros));
 
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &output));
-  auto output_dataset_id = output->tensor<int64, 0>();
+  auto output_dataset_id = output->tensor<int64_t, 0>();
   output_dataset_id() = dataset_id;
 }
 

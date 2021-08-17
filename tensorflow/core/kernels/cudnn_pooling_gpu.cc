@@ -33,16 +33,16 @@ namespace tensorflow {
 template <typename T>
 void DnnPooling3dOp<T>::Compute(OpKernelContext* context,
                                 se::dnn::PoolingMode pooling_mode,
-                                const std::array<int64, 3>& window,
-                                const std::array<int64, 3>& stride,
-                                const std::array<int64, 3>& padding,
+                                const std::array<int64_t, 3>& window,
+                                const std::array<int64_t, 3>& stride,
+                                const std::array<int64_t, 3>& padding,
                                 TensorFormat data_format,
                                 const Tensor& tensor_in, Tensor* output) {
   const auto in_shape = tensor_in.shape();
   const auto out_shape = output->shape();
 
-  const int64 in_batch = GetTensorDim(tensor_in, data_format, 'N');
-  const int64 in_features = GetTensorDim(tensor_in, data_format, 'C');
+  const int64_t in_batch = GetTensorDim(tensor_in, data_format, 'N');
+  const int64_t in_features = GetTensorDim(tensor_in, data_format, 'C');
 
   Tensor transformed_input;
   if (data_format == FORMAT_NHWC) {
@@ -132,9 +132,9 @@ void DnnPooling3dOp<T>::Compute(OpKernelContext* context,
 template <typename T>
 void DnnPooling3dGradOp<T>::Compute(
     OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
-    const std::array<int64, 3>& window, const std::array<int64, 3>& stride,
-    const std::array<int64, 3>& padding,
-    const std::array<int64, 3>& output_size, TensorFormat data_format,
+    const std::array<int64_t, 3>& window, const std::array<int64_t, 3>& stride,
+    const std::array<int64_t, 3>& padding,
+    const std::array<int64_t, 3>& output_size, TensorFormat data_format,
     const Tensor& out_backprop, const TensorShape& tensor_in_shape,
     const Tensor* tensor_in, const Tensor* tensor_out, Tensor* input_backprop) {
   CHECK((pooling_mode != se::dnn::PoolingMode::kMaximum) ||
@@ -142,8 +142,8 @@ void DnnPooling3dGradOp<T>::Compute(
       << "For MaxPoolGrad, both tensor_in and tensor_out needs to be "
          "specified";
 
-  const int64 in_batch = GetTensorDim(tensor_in_shape, data_format, 'N');
-  const int64 in_features = GetTensorDim(tensor_in_shape, data_format, 'C');
+  const int64_t in_batch = GetTensorDim(tensor_in_shape, data_format, 'N');
+  const int64_t in_features = GetTensorDim(tensor_in_shape, data_format, 'C');
 
   Tensor transformed_input;
   TensorShape transformed_input_shape;

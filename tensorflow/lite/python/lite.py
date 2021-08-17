@@ -39,6 +39,7 @@ from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
+from tensorflow.lite.python.convert import deduplicate_readonly_buffers as _deduplicate_readonly_buffers
 from tensorflow.lite.python.convert import mlir_quantize as _mlir_quantize
 from tensorflow.lite.python.convert import mlir_sparsify as _mlir_sparsify
 from tensorflow.lite.python.convert import OpsSet
@@ -71,6 +72,7 @@ from tensorflow.lite.python.util import modify_model_io_type as _modify_model_io
 from tensorflow.lite.python.util import run_graph_optimizations as _run_graph_optimizations
 from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
 from tensorflow.lite.python.util import trace_model_call as _trace_model_call
+from tensorflow.python import saved_model as _saved_model
 from tensorflow.python.client import session as _session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function as _def_function
@@ -82,6 +84,7 @@ from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundEr
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader_impl as _loader_impl
+from tensorflow.python.saved_model import save_options as _save_options
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
 from tensorflow.python.saved_model.load import load as _load
@@ -228,7 +231,7 @@ class QuantizationMode(object):
   """QuantizationMode determines the quantization type from user options."""
 
   def __init__(self, optimizations, target_spec, representative_dataset,
-               graph_def):
+               graph_def, disable_per_channel=False):
     self._optimizations = optimizations
     for deprecated_optimization in [
         Optimize.OPTIMIZE_FOR_SIZE, Optimize.OPTIMIZE_FOR_LATENCY
@@ -243,6 +246,7 @@ class QuantizationMode(object):
     self._graph_def = graph_def
 
     self._validate_int8_required()
+    self._disable_per_channel = disable_per_channel
 
   # TODO(b/162537905): Refactor the following quantization functions -
   # re-organize and refactor for better readability.
@@ -340,7 +344,9 @@ class QuantizationMode(object):
           "inference_type": _dtypes.float32,
           "inference_input_type": _dtypes.float32,
           "post_training_quantize": True,  # enable dynamic range quantization
-          "quantize_to_float16": False  # disable float16 quantization
+          "quantize_to_float16": False,  # disable float16 quantization
+          # experimental: disable per-channel (per-axis) quantization.
+          "disable_per_channel_quantization": self._disable_per_channel
       }
     elif self.post_training_fp16():
       return {
@@ -460,6 +466,10 @@ class TFLiteConverterBase(object):
     self._collected_converter_params = {}
     self._experimental_disable_batchmatmul_unfold = False
     self._experimental_lower_tensor_list_ops = True
+    self._experimental_default_to_single_batch_in_tensor_list_ops = False
+    self._experimental_unfold_large_splat_constant = False
+    # TODO(b/195611245): Use tf.lite.TargetSpec.supported_backends instead.
+    self._experimental_supported_backends = []
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -539,14 +549,28 @@ class TFLiteConverterBase(object):
       {key str: val}
     """
     args = {
-        "input_format": constants.TENSORFLOW_GRAPHDEF,
-        "allow_custom_ops": self.allow_custom_ops,
-        "debug_info": self._debug_info,
-        "target_ops": self.target_spec.supported_ops,
-        "enable_mlir_converter": self.experimental_new_converter,
-        "select_user_tf_ops": self.target_spec.experimental_select_user_tf_ops,
-        "unfold_batchmatmul": not self._experimental_disable_batchmatmul_unfold,
-        "lower_tensor_list_ops": self._experimental_lower_tensor_list_ops,
+        "input_format":
+            constants.TENSORFLOW_GRAPHDEF,
+        "allow_custom_ops":
+            self.allow_custom_ops,
+        "debug_info":
+            self._debug_info,
+        "target_ops":
+            self.target_spec.supported_ops,
+        "enable_mlir_converter":
+            self.experimental_new_converter,
+        "select_user_tf_ops":
+            self.target_spec.experimental_select_user_tf_ops,
+        "supported_backends":
+            self._experimental_supported_backends,
+        "unfold_batchmatmul":
+            not self._experimental_disable_batchmatmul_unfold,
+        "lower_tensor_list_ops":
+            self._experimental_lower_tensor_list_ops,
+        "unfold_large_splat_constant":
+            self._experimental_unfold_large_splat_constant,
+        "default_to_single_batch_in_tensor_list_ops":
+            self._experimental_default_to_single_batch_in_tensor_list_ops,
     }
 
     if self.saved_model_dir:
@@ -625,7 +649,8 @@ class TFLiteConverterBase(object):
 
     # Optimization parameters.
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, graph_def)
+                                  self.representative_dataset, graph_def,
+                                  self._experimental_disable_per_channel)
     converter_kwargs.update({
         "optimization_default":
             quant_mode.any_optimization_enabled(),
@@ -695,6 +720,15 @@ class TFLiteConverterBase(object):
 
     if self._sparsify_model():
       model = _mlir_sparsify(model)
+
+    try:
+      model = _deduplicate_readonly_buffers(model)
+    except Exception:  # pylint: disable=broad-except
+      # Skip buffer deduplication when flatbuffer library is not ready to be
+      # utilized.
+      logging.warning(
+          "Buffer deduplication procedure will be skipped when flatbuffer "
+          "library is not properly loaded")
 
     return model
 
@@ -807,7 +841,8 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     # Update conversion params with graph_def.
     self._save_conversion_params_metric(graph_def)
     self._quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                        self.representative_dataset, graph_def)
+                                        self.representative_dataset, graph_def,
+                                        self._experimental_disable_per_channel)
     self._validate_inference_input_output_types(self._quant_mode)
     self._validate_experimental_new_quantizer_flag()
 
@@ -827,7 +862,8 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
           shape[0] = 1
           tensor.set_shape(shape)
 
-    if self._trackable_obj is None:
+    if (self._trackable_obj is None or
+        not hasattr(self._trackable_obj, "graph_debug_info")):
       self._debug_info = _get_debug_info(
           _build_debug_info_func(self._funcs[0].graph), graph_def)
     else:
@@ -937,7 +973,6 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     self._saved_model_exported_names = saved_model_exported_names
     self._trackable_obj = trackable_obj
     self._parse_saved_model_args(always_enable_saved_model_import=True)
-    self._enable_tflite_resource_variables = False
 
   @_export_metrics
   def convert(self):
@@ -980,13 +1015,13 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     self._save_conversion_params_metric(graph_def)
     # Get quantization options and do some sanity checks.
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, graph_def)
+                                  self.representative_dataset, graph_def,
+                                  self._experimental_disable_per_channel)
     self._validate_inference_input_output_types(quant_mode)
 
     converter_kwargs = {
         "enable_tflite_resource_variables":
-            (self._enable_tflite_resource_variables or
-             self.experimental_enable_resource_variables)
+            self.experimental_enable_resource_variables
     }
     converter_kwargs.update(self._get_base_converter_args())
     converter_kwargs.update(quant_mode.converter_flags())
@@ -1014,6 +1049,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     super(TFLiteKerasModelConverterV2, self).__init__()
     self._keras_model = keras_model
     self._trackable_obj = trackable_obj
+    self.experimental_lower_to_saved_model = True
 
   @convert_phase(Component.PREPARE_TF_MODEL,
                  SubComponent.CONVERT_KERAS_TO_SAVED_MODEL)
@@ -1029,7 +1065,10 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
       output_tensors: List of output tensors.
     """
     try:
-      self._keras_model.save(output_dir, save_format="tf")
+      _saved_model.save(
+          self._keras_model,
+          output_dir,
+          options=_save_options.SaveOptions(save_debug_info=True))
     except Exception:  # pylint: disable=broad-except
       # When storing the given keras model to a saved model is failed, let's
       # use original keras model conversion pipeline.
@@ -1039,7 +1078,8 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     self._saved_model_exported_names = [
         _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     ]
-    self._parse_saved_model_args()
+    self._parse_saved_model_args(
+        always_enable_saved_model_import=self.experimental_lower_to_saved_model)
     if self.saved_model_dir:
       graph_def, input_tensors, output_tensors = self._load_saved_model(
           self.saved_model_dir, self._saved_model_tags)
@@ -1147,6 +1187,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     super(TFLiteFrozenGraphConverterV2, self).__init__()
     self._funcs = funcs
     self._trackable_obj = trackable_obj
+    self.experimental_lower_to_saved_model = True
 
   @convert_phase(Component.PREPARE_TF_MODEL,
                  SubComponent.FREEZE_CONCRETE_FUNCTION)
@@ -1183,6 +1224,82 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     output_tensors = frozen_func.outputs
     return graph_def, input_tensors, output_tensors, frozen_func
 
+  @convert_phase(Component.PREPARE_TF_MODEL,
+                 SubComponent.CONVERT_CONCRETE_FUNCTIONS_TO_SAVED_MODEL)
+  def _convert_concrete_functions_to_saved_model(self, output_dir):
+    """Save concrete functions to the SavedModel format.
+
+    Args:
+      output_dir: The output directory to save the SavedModel.
+
+    Returns:
+      graph_def: The frozen GraphDef.
+      input_tensors: List of input tensors.
+      output_tensors: List of output tensors.
+    """
+    if len(self._funcs) == 0:  # pylint: disable=g-explicit-length-test
+      raise ValueError("No ConcreteFunction is specified.")
+
+    if not self.experimental_lower_to_saved_model:
+      return None, None, None
+
+    # Without the provided trackable obj, it is not able to serialize the given
+    # concrete functions as a saved model format.
+    if not self._trackable_obj:
+      return None, None, None
+
+    signatures = {}
+    signature_keys = []
+    try:
+      if len(self._funcs) == 1:
+        signatures[_signature_constants
+                   .DEFAULT_SERVING_SIGNATURE_DEF_KEY] = self._funcs[0]
+        signature_keys = [
+            _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+        ]
+      else:
+        for func in self._funcs:
+          signatures[func.graph.name] = func
+          signature_keys.append(func.graph.name)
+
+      _saved_model.save(
+          self._trackable_obj,
+          output_dir,
+          signatures=signatures,
+          options=_save_options.SaveOptions(save_debug_info=True))
+    except Exception:  # pylint: disable=broad-except
+      # When storing the given concrete function to a saved model is failed,
+      # let's use original concrete function conversion pipeline.
+      return None, None, None
+
+    self.saved_model_dir = output_dir
+    self._saved_model_tags = set([_tag_constants.SERVING])
+    self._saved_model_exported_names = signature_keys
+    self._parse_saved_model_args(always_enable_saved_model_import=True)
+    if self.saved_model_dir:
+      graph_def, input_tensors, output_tensors = self._load_saved_model(
+          self.saved_model_dir, self._saved_model_tags)
+      self._trackable_obj = _load(self.saved_model_dir, self._saved_model_tags)
+      return graph_def, input_tensors, output_tensors
+    return None, None, None
+
+  def _convert_as_saved_model(self):
+    """Converts the given concrete functions as a saved model format.
+
+    Returns:
+      The converted data in serialized format.
+    """
+    temp_dir = tempfile.mkdtemp()
+    try:
+      graph_def, input_tensors, output_tensors = (
+          self._convert_concrete_functions_to_saved_model(temp_dir))
+      if self.saved_model_dir:
+        return super(TFLiteFrozenGraphConverterV2,
+                     self).convert(graph_def, input_tensors, output_tensors)
+    finally:
+      shutil.rmtree(temp_dir, True)
+    return None
+
   @_export_metrics
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
@@ -1197,6 +1314,11 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
         Input shape is not specified.
         Invalid quantization parameters.
     """
+    if self.experimental_lower_to_saved_model:
+      saved_model_convert_result = self._convert_as_saved_model()
+      if saved_model_convert_result:
+        return saved_model_convert_result
+
     graph_def, input_tensors, output_tensors, frozen_func = (
         self._freeze_concrete_function())
 
@@ -1261,7 +1383,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     tflite_model = converter.convert()
 
     # Converting ConcreteFunctions to a TensorFlow Lite model.
-    converter = tf.lite.TFLiteConverter.from_concrete_functions([func])
+    converter = tf.lite.TFLiteConverter.from_concrete_functions([func], model)
     tflite_model = converter.convert()
     ```
   """
@@ -1282,13 +1404,17 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     super(TFLiteConverterV2, self).__init__(funcs, trackable_obj)
 
   @classmethod
-  def from_concrete_functions(cls, funcs):
+  def from_concrete_functions(cls, funcs, trackable_obj=None):
     """Creates a TFLiteConverter object from ConcreteFunctions.
 
     Args:
       funcs: List of TensorFlow ConcreteFunctions. The list should not contain
         duplicate elements. Currently converter can only convert a single
         ConcreteFunction. Converting multiple functions is under development.
+      trackable_obj:   An `AutoTrackable` object (typically `tf.module`)
+        associated with `funcs`. A reference to this object needs to be
+        maintained so that Variables do not get garbage collected since
+        functions have a weak reference to Variables.
 
     Returns:
       TFLiteConverter object.
@@ -1296,6 +1422,12 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     Raises:
       Invalid input type.
     """
+    if trackable_obj is None:
+      logging.warning(
+          "Please consider providing the trackable_obj argument in the "
+          "from_concrete_functions. Providing without the trackable_obj "
+          "argument is deprecated and it will use the deprecated conversion "
+          "path.")
     for func in funcs:
       if not isinstance(func, _function.ConcreteFunction):
         message = "This function takes in a list of ConcreteFunction."
@@ -1303,7 +1435,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
           message += (" To get the ConcreteFunction from a Function,"
                       " call get_concrete_function.")
         raise ValueError(message)
-    return cls(funcs)
+    return cls(funcs, trackable_obj)
 
   @classmethod
   def from_saved_model(cls, saved_model_dir, signature_keys=None, tags=None):
@@ -1570,7 +1702,8 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     self._validate_inputs(self._input_tensors, self.quantized_input_stats)
 
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, self._graph_def)
+                                  self.representative_dataset, self._graph_def,
+                                  self._experimental_disable_per_channel)
 
     optimized_graph = self._optimize_tf_model(self._graph_def,
                                               self._input_tensors,

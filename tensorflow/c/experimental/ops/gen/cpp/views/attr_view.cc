@@ -17,6 +17,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/c/experimental/ops/gen/common/case_format.h"
 #include "tensorflow/c/experimental/ops/gen/common/view_util.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -29,6 +30,15 @@ string AttrView::VariableType() const {
   if (attr_.full_type() == "string") {
     return "const char*";
   }
+  if (attr_.full_type() == "type") {
+    return "DataType";
+  }
+  if (attr_.full_type() == "shape") {
+    return "const PartialTensorShape";
+  }
+  if (attr_.full_type() == "list(string)") {
+    return "absl::Span<string const>";
+  }
   return attr_.full_type();
 }
 
@@ -38,10 +48,9 @@ string AttrView::DefaultValue() const {
   const AttrValue &attr_value = attr_.default_value();
   switch (attr_value.value_case()) {
     case AttrValue::VALUE_NOT_SET:
-      return "/* no default value */";
+      return "";
     case AttrValue::kType:
-      LOG(WARNING) << "Unimplemented: default value of Type attribute.";
-      return "/* UNIMPLEMENTED */";
+      return DataType_Name(attr_value.type());
     case AttrValue::kS:
       return "\"" + attr_value.s() + "\"";
     case AttrValue::kI:
@@ -51,6 +60,10 @@ string AttrView::DefaultValue() const {
     case AttrValue::kB:
       return attr_value.b() ? "true" : "false";
     case AttrValue::kList:
+      if (attr_.full_type() == "list(string)" &&
+          attr_value.list().s_size() == 0) {
+        return "{}";
+      }
       LOG(WARNING) << "Unimplemented: default value of list-typed attribute.";
       return "/* UNIMPLEMENTED */";
     case AttrValue::kShape:
@@ -76,7 +89,11 @@ string AttrView::InputArg(bool with_default_value) const {
 }
 
 string AttrView::SetterMethod() const {
-  return absl::StrCat("SetAttr", toUpperCamel(attr_.full_type()));
+  if (!attr_.is_list()) {
+    return absl::StrCat("SetAttr", toUpperCamel(attr_.full_type()));
+  } else {
+    return absl::StrCat("SetAttr", toUpperCamel(attr_.base_type()), "List");
+  }
 }
 
 std::vector<string> AttrView::SetterArgs() const {

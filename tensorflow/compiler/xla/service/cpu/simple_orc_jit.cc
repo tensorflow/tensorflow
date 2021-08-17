@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
+#include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Operator.h"
@@ -85,7 +86,7 @@ SimpleOrcJIT::InferTargetMachineForJIT(
 }
 
 SimpleOrcJIT::SimpleOrcJIT(
-    std::unique_ptr<llvm::orc::TargetProcessControl> target_process_control,
+    std::unique_ptr<llvm::orc::ExecutorProcessControl> target_process_control,
     std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
     const llvm::TargetOptions& target_options,
     llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
@@ -166,12 +167,13 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
     std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook) {
   auto SSP = std::make_shared<llvm::orc::SymbolStringPool>();
   auto target_process_control =
-      llvm::orc::SelfTargetProcessControl::Create(std::move(SSP));
+      llvm::orc::SelfExecutorProcessControl::Create(std::move(SSP));
   if (!target_process_control) {
     return target_process_control.takeError();
   }
 
-  auto execution_session = std::make_unique<llvm::orc::ExecutionSession>();
+  auto execution_session = std::make_unique<llvm::orc::ExecutionSession>(
+      std::make_unique<llvm::orc::UnsupportedExecutorProcessControl>());
   return std::make_unique<SimpleOrcJIT>(
       std::move(*target_process_control), std::move(execution_session),
       target_options, opt_level, optimize_for_size, disable_expensive_passes,

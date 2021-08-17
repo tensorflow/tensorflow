@@ -537,6 +537,11 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
       return failure();
     }
 
+    // This op should not clobber def, if more than one requant of this value.
+    if (!pre_quantized.hasOneUse()) {
+      return failure();
+    }
+
     op.emitWarning("Remove trivial `rescale` op. Please fix the source graph.");
 
     llvm::SmallVector<Type, 4> new_output_types;

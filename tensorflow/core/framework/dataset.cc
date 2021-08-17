@@ -389,8 +389,8 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
   return Status::OK();
 }
 
-int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
-  int64 allocated_bytes = 0;
+int64_t GetAllocatedBytes(const std::vector<Tensor>& element) {
+  int64_t allocated_bytes = 0;
   DatasetBase* dataset;
   for (auto& tensor : element) {
     if (tensor.dtype() == DT_VARIANT &&
@@ -403,8 +403,8 @@ int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
   return allocated_bytes;
 }
 
-int64 GetTotalBytes(const std::vector<Tensor>& element) {
-  int64 total_bytes = 0;
+int64_t GetTotalBytes(const std::vector<Tensor>& element) {
+  int64_t total_bytes = 0;
   DatasetBase* dataset;
   for (auto& tensor : element) {
     if (tensor.dtype() == DT_VARIANT &&
@@ -546,6 +546,52 @@ void MergeOptions(const protobuf::MessageLite& source,
 
 }  // namespace internal
 
+void DatasetBase::Initialize() {
+  Status s = ComputeNumSources();
+  if (!s.ok()) {
+    LOG(ERROR) << s;
+  }
+  s = MergeOptionsFromInputs();
+  if (!s.ok()) {
+    LOG(ERROR) << s;
+  }
+}
+
+Status DatasetBase::ComputeNumSources() {
+  std::vector<const DatasetBase*> inputs;
+  Status s = InputDatasets(&inputs);
+  if (errors::IsUnimplemented(s)) {
+    return errors::Unimplemented(
+        "Cannot compute input sources for dataset of type ", type_string(),
+        ", because the dataset does not implement `InputDatasets`.");
+  }
+  if (num_sources_ >= 0) {
+    // Already computed.
+    return Status::OK();
+  }
+  num_sources_ = 0;
+  if (inputs.empty()) {
+    num_sources_ = 1;
+    return Status::OK();
+  }
+  for (const auto& input : inputs) {
+    if (input->num_sources() < 0) {
+      return errors::FailedPrecondition(
+          "Cannot compute input sources for dataset of type ", type_string(),
+          ", because sources could not be computed for input dataset of type ",
+          input->type_string());
+    }
+    num_sources_ += input->num_sources();
+  }
+  return Status::OK();
+}
+
+Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
+                        std::vector<Tensor>* out_tensors) {
+  return errors::Unimplemented(
+      "Random access is not implemented for this dataset.");
+}
+
 Status DatasetBase::MergeOptionsFromInputs() {
   std::vector<const DatasetBase*> inputs;
   Status s = InputDatasets(&inputs);
@@ -597,23 +643,24 @@ Status DatasetBase::MakeIterator(
   return s;
 }
 
-Status DatasetBase::MakeSplitProvider(
-    std::unique_ptr<SplitProvider>* split_provider) const {
+Status DatasetBase::MakeSplitProviders(
+    std::vector<std::unique_ptr<SplitProvider>>* split_providers) const {
   std::vector<const DatasetBase*> inputs;
   Status s = InputDatasets(&inputs);
   if (errors::IsUnimplemented(s)) {
     return errors::Unimplemented(
-        "Cannot create a split provider for dataset of type ", type_string(),
+        "Cannot create split providers for dataset of type ", type_string(),
         ", because the dataset implements neither `InputDatasets` nor "
         "`MakeSplitProvider`.");
   }
   if (inputs.size() != 1) {
     return errors::Unimplemented(
-        "Cannot create a split provider for dataset of type ", type_string(),
-        ", because the dataset is not unary (having arity ", inputs.size(),
+        "Cannot create split providers for dataset of type ", type_string(),
+        ", because the dataset is not unary (instead having arity ",
+        inputs.size(),
         "), and no custom implementation of `MakeSplitProvider` is defined.");
   }
-  return inputs[0]->MakeSplitProvider(split_provider);
+  return inputs[0]->MakeSplitProviders(split_providers);
 }
 
 Status DatasetBase::InputDatasets(
@@ -755,20 +802,25 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   DVLOG(3) << prefix() << " GetNext enter";
   auto model = ctx->model();
   if (model && model->collect_resource_usage() && node_) {
-    int64 now_nanos = EnvTime::NowNanos();
+    int64_t now_nanos = EnvTime::NowNanos();
     auto output = node_->output();
     if (output) {
       output->record_stop(now_nanos);
     }
     node_->record_start(now_nanos);
   }
+  out_tensors->clear();
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-  if (TF_PREDICT_TRUE(s.ok() && !*end_of_sequence)) {
-    DCHECK_EQ(out_tensors->size(), dataset()->output_dtypes().size());
-    RecordElement(ctx, out_tensors);
+  if (TF_PREDICT_TRUE(s.ok())) {
+    if (TF_PREDICT_TRUE(!*end_of_sequence)) {
+      DCHECK_EQ(out_tensors->size(), dataset()->output_dtypes().size());
+      RecordElement(ctx, out_tensors);
+    } else {
+      out_tensors->clear();
+    }
   }
   if (model && model->collect_resource_usage() && node_) {
-    int64 now_nanos = EnvTime::NowNanos();
+    int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
     auto output = node_->output();
     if (output) {
@@ -794,7 +846,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
   DVLOG(3) << prefix() << " Skip enter";
   auto model = ctx->model();
   if (model && model->collect_resource_usage() && node_) {
-    int64 now_nanos = EnvTime::NowNanos();
+    int64_t now_nanos = EnvTime::NowNanos();
     auto output = node_->output();
     if (output) {
       output->record_stop(now_nanos);
@@ -803,7 +855,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
   }
   Status s = SkipInternal(ctx, num_to_skip, end_of_sequence, num_skipped);
   if (model && model->collect_resource_usage() && node_) {
-    int64 now_nanos = EnvTime::NowNanos();
+    int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
     auto output = node_->output();
     if (output) {
@@ -852,10 +904,7 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES_OK(ctx, StoreDatasetInVariantTensor(dataset, output));
-    auto status = dataset->MergeOptionsFromInputs();
-    if (!status.ok()) {
-      LOG(ERROR) << status;
-    }
+    dataset->Initialize();
   }
 }
 

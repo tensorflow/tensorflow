@@ -40,6 +40,8 @@ upper_tabs:
       - title: "Train a mobile object detector"
         path: https://blog.tensorflow.org/2018/07/training-and-serving-realtime-mobile-object-detector-cloud-tpus.html
         status: external
+      - title: "Classify custom body poses"
+        path: /lite/tutorials/pose_classification
 
       - heading: "Text"
       - title: "Text classification with Model Maker"
@@ -103,6 +105,9 @@ upper_tabs:
       - heading: "Run Inference"
       - title: "Overview"
         path: /lite/guide/inference
+      - title: "Signatures"
+        path: /lite/guide/signatures
+        status: nightly
       - title: "Operator compatibility"
         path: /lite/guide/ops_compatibility
       - title: "Select operators"
@@ -196,7 +201,6 @@ upper_tabs:
           path: /lite/guide/build_cmake_arm
       - title: "Build Python Wheel"
         path: /lite/guide/build_cmake_pip
-        status: experimental
       - title: "Reduce binary size"
         path: /lite/guide/reduce_binary_size
         status: experimental
@@ -241,6 +245,8 @@ upper_tabs:
       - heading: "Others"
       - title: "Recommendation"
         path: /lite/examples/recommendation/overview
+      - title: "Reinforcement learning"
+        path: /lite/examples/reinforcement_learning/overview
 
     - name: "API"
       skip_translation: true

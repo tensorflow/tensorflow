@@ -114,13 +114,16 @@ Status LowerFunctionalOpsPass::Run(
   // control output source, and it's currently not expressed in a graph.
   bool keep_lowered_nodes_fetchable = !HasArgsOrRetvals(*g);
 
-  // We disable lowering control flow to switch/merge variants for the
-  // single-threaded executor and TFRT runtime, which does not support it.
+  // We disable lowering control flow to switch/merge variants when requested,
+  // and for the single-threaded executor and TFRT runtime, which does not
+  // support it.
   const bool functional_control_flow =
       options.session_options &&
       (options.session_options->config.experimental().executor_type() ==
            "SINGLE_THREADED_EXECUTOR" ||
-       options.session_options->config.experimental().use_tfrt());
+       options.session_options->config.experimental().use_tfrt() ||
+       options.session_options->config.experimental()
+           .disable_functional_ops_lowering());
 
   // Returns true if `node` will be used for XLA compilation.
   const auto used_by_xla = [](Node* node) -> bool {

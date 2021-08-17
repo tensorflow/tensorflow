@@ -202,8 +202,8 @@ class Service : public ServiceInterface {
 
   // Prepare the executors for executing parallel.
   StatusOr<std::vector<se::StreamExecutor*>> GetExecutors(
-      const ExecutionOptions& execution_options, int64 requests_size,
-      int64 request_index) const;
+      const ExecutionOptions& execution_options, int64_t requests_size,
+      int64_t request_index) const;
 
   // Prepare the arguments for executing parallel.
   StatusOr<std::vector<std::vector<const ShapedBuffer*>>> GetArguments(

@@ -68,13 +68,13 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
     // and MapAndBatchDataset is different (int32 and int64 respectively)
     // so we cannot reuse the same Const node and thus create a new one.
     NodeDef* v = graph->GetNode(map_node.input(map_node.input_size() - 1));
-    NodeDef* tmp = graph_utils::AddScalarConstNode<int64>(
+    NodeDef* tmp = graph_utils::AddScalarConstNode<int64_t>(
         v->attr().at("value").tensor().int_val(0), graph);
     new_node.add_input(tmp->name());
   } else if (map_node.op() == kParallelMapV2) {
     new_node.add_input(map_node.input(map_node.input_size() - 1));
   } else {
-    NodeDef* tmp = graph_utils::AddScalarConstNode<int64>(1, graph);
+    NodeDef* tmp = graph_utils::AddScalarConstNode<int64_t>(1, graph);
     new_node.add_input(tmp->name());
   }
 

@@ -39,6 +39,7 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import multi_process_lib
 from tensorflow.python.eager import context
+from tensorflow.python.framework import test_util
 from tensorflow.python.util.tf_export import tf_export
 
 multiprocessing = multi_process_lib.multiprocessing
@@ -191,7 +192,11 @@ class MultiProcessRunner(object):
     Raises:
       RuntimeError: if `multi_process_runner.test_main()` is not called.
       ValueError: if there are more than one chief in the `cluster_spec`.
+      SkipTest: if thread sanitizer is enabled (which is incompatible with MPR).
     """
+    if test_util.is_tsan_enabled():
+      raise unittest.SkipTest(
+          'ThreadSanitizer is not compatible with MultiProcessRunner.')
 
     assert cluster_spec is not None
     if 'chief' in cluster_spec and len(cluster_spec['chief']) > 1:

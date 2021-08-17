@@ -30,7 +30,7 @@ def _serialize_function_spec(function_spec, coder):
   """Serialize a FunctionSpec object into its proto representation."""
   if function_spec.is_method and not function_spec.fullargspec.args:
     raise NotImplementedError(
-        "Missing support to serialize a method function without a named "
+        "Cannot serialize a method function without a named "
         "'self' argument.")
   proto = saved_object_graph_pb2.FunctionSpec()
 
@@ -65,13 +65,12 @@ def serialize_concrete_function(concrete_function, node_ids, coder):
       bound_inputs.append(node_ids[capture])
   except KeyError:
     raise KeyError(
-        "Failed to add concrete function %s to object based saved model as it "
-        "captures tensor %s which is unsupported or not reachable from root. "
+        f"Failed to add concrete function '{concrete_function.name}' to object-"
+        f"based SavedModel as it captures tensor {capture!r} which is unsupported"
+        " or not reachable from root. "
         "One reason could be that a stateful object or a variable that the "
         "function depends on is not assigned to an attribute of the serialized "
-        "trackable object "
-        "(see SaveTest.test_captures_unreachable_variable)."
-        % (concrete_function.name, capture))
+        "trackable object (see SaveTest.test_captures_unreachable_variable).")
   concrete_function_proto = saved_object_graph_pb2.SavedConcreteFunction()
   structured_outputs = func_graph_module.convert_structure_to_signature(
       concrete_function.structured_outputs)

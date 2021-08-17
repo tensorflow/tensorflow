@@ -42,6 +42,11 @@ class HasRankAtMost<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
           "$0.getType().cast<ShapedType>().getRank() <= " # n>>;
 
+// Checks if the value has rank 'n'.
+class HasRank<int n> : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+          "$0.getType().cast<ShapedType>().getRank() == " # n>>;
+
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
@@ -119,6 +124,7 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
       $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w,
       $multiplier),
     [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
+     (HasRank<1> $value),
      (HasOneUse $output)]>;
    def FuseBinaryOpWithTransposeConv#binaryOp : Pat<
     (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
@@ -178,6 +184,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
       $h_factor, $w_factor, $act_fn, $padding, $stride_h,
       $stride_w, $multiplier),
     [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
+     (HasRank<1> $value),
      (HasOneUse $output)]>;
   def FuseMulOrDivWithConv#BinaryOp : Pat<
     (BinaryOp (TFL_Conv2DOp:$conv_output $input,
@@ -242,13 +249,6 @@ def eliminate_dq_q_pairs : Pat<
   (TFL_QuantizeOp (TFL_DequantizeOp $in), $qt),
   (replaceWithValue $in),
   [(NotFromQuantOpOrSameQuantType $in, $qt)]>;
-
-
-
-
-// Checks if the operand has rank == n
-class OperandHasRank<int n> : Constraint<
-  CPred<"$0.getType().cast<ShapedType>().getRank() == " # n>>;
 
 // Matching HardSwish
 def MatchHardSwishPattern1 : Pat<
@@ -902,6 +902,9 @@ def ReshapeEqualOpToOneHotOp : Pat<
 def F32ElementsVal : Constraint<CPred<
   "$0.getType().cast<TensorType>().getElementType().isF32()">,
   "32 bit float tensor">;
+def I32ElementsVal : Constraint<CPred<
+  "$0.getType().cast<TensorType>().getElementType().isInteger(32)">,
+  "32 bit integer tensor">;
 
 def ConvertSingleElementAttrToFloatAttr :
   NativeCodeCall<"ConvertSingleElementAttrToFloatAttr($0)">;
@@ -922,3 +925,45 @@ def FuseOneHotAndCastToFloat : Pat<
                 (ConstantOp (ConvertSingleElementAttrToFloatAttr $off_val)),
                 $axis),
   [(F32ElementsVal $output)]>;
+
+// Replace
+//   OneHot(index, depth, on=1.0f, off=0.0f, axis=-1) * filter
+// With
+//   EmbeddingLookup(index, Transpose(filter))
+//
+// OneHot with on=1 off=0 axis=-1, where `index` is a single element tensor,
+// creates a tensor of size depth, and all values are 0, except for the element
+// at `index`, which is 1. Multiplying such a tensor with a 2D filter esentially
+// returns the single column in filter as a 1D tensor. If the input has multiple
+// elements, repeat this for every entry, forming the higher dimensions in the
+// result tensor. For instance, if:
+//   input = [1, 2]
+//   depth = 4
+//   filter = [[5, 7, 11, 13], [17, 19, 23, 29]]
+// then:
+//   onehot = [[0, 1, 0, 0], [0, 0, 1, 0]]
+//   result = [[ 7, 19],   # == 1st column in filter
+//             [11, 23]]   # == 2nd column in filter
+// This is exactly what the EmbeddedLookup operator is doing, on the transposed
+// matrix, without doing any arithmetic but only memcpy.
+def ReplaceOneHotFullyConnectedWithLookup : Pat<
+  (TFL_FullyConnectedOp
+    (TFL_OneHotOp
+      $indices,
+      (ConstantOp $depth),
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.0f">),
+      ConstantAttr<I32Attr, "-1">),
+    $filter,
+    $bias,
+    TFL_AF_None,
+    TFL_FCWO_Default,
+    ConstBoolAttrFalse),
+  (TFL_EmbeddingLookupOp
+    $indices,
+    (TFL_TransposeOp
+      $filter,
+      (ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}"> ))),
+  [(I32ElementsVal $indices),     // lookup is not implemented for i64
+   (HasRank<1> $indices),  // lookup isn't implemented for any other rank
+   (IsNoneType $bias)]>;          // Maybe folded into the lookup matrix later

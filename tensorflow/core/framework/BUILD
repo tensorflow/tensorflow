@@ -218,6 +218,7 @@ filegroup(
         "register_types.h",
         "register_types_traits.h",
         "rendezvous.h",
+        "resource_base.h",
         "resource_handle.h",
         "resource_mgr.h",
         "resource_op_kernel.h",
@@ -279,6 +280,7 @@ filegroup(
         "ops_util.cc",
         "rendezvous.cc",
         "resource_mgr.cc",
+        "resource_var.cc",
         "run_handler.cc",
         "run_handler_util.cc",
         "tensor_slice.cc",
@@ -308,6 +310,7 @@ filegroup(
         "ops_util.cc",
         "ops_util.h",
         "register_types.h",
+        "resource_base.h",
         "resource_handle.cc",
         "resource_handle.h",
         "tensor.cc",
@@ -411,6 +414,7 @@ filegroup(
         "resource_mgr.cc",
         "resource_mgr.h",
         "resource_op_kernel.h",
+        "resource_var.cc",
         "resource_var.h",
         "rng_alg.h",
         "run_handler.cc",
@@ -697,20 +701,50 @@ cc_library(
 )
 
 cc_library(
+    name = "resource_base",
+    hdrs = ["resource_base.h"],
+    deps = [
+        "//tensorflow/core/lib/core:refcount",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
+cc_library(
     name = "resource_handle",
     srcs = ["resource_handle.cc"],
     hdrs = ["resource_handle.h"],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
+        "//tensorflow/core:__pkg__",
+    ],
     deps = [
+        ":resource_base",
         ":resource_handle_proto_cc",
         ":tensor_shape",
+        ":type_index",
         ":types_proto_cc",
+        "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/strings:strcat",
+        "//tensorflow/core/platform:casts",
+        "//tensorflow/core/platform:intrusive_ptr",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/util:managed_stack_trace",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "resource_handle_test",
+    size = "small",
+    srcs = ["resource_handle_test.cc"],
+    deps = [
+        ":resource_handle",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 cc_library(
@@ -728,7 +762,10 @@ cc_library(
     name = "tensor_types",
     hdrs = ["tensor_types.h"],
     visibility = ["//visibility:private"],
-    deps = ["//third_party/eigen3"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -765,6 +802,7 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt/utils:__subpackages__",
         "//tensorflow/core/util:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
@@ -1053,6 +1091,7 @@ exports_files(
         "op_gen_lib.h",
         "reader_base.h",
         "register_types.h",
+        "resource_base.h",
         "resource_handle.h",
         "shape_inference_testutil.h",
         "tensor.h",
@@ -1507,6 +1546,11 @@ tf_proto_library(
         ":tensor_shape_proto",
         ":types_proto",
     ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/security/fuzzing:__subpackages__",
+    ],
 )
 
 tf_proto_library(
@@ -1519,6 +1563,11 @@ tf_proto_library(
         ":tensor_proto",
         ":tensor_shape_proto",
         ":types_proto",
+    ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/security/fuzzing:__subpackages__",
     ],
 )
 

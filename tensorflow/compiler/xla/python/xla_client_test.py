@@ -126,8 +126,8 @@ def TestFactory(xla_backend,
     return np.array(*args, dtype=np.int32, **kwargs)
 
   def NumpyArrayBool(*args, **kwargs):
-    """Convenience wrapper to create Numpy arrays with a np.bool dtype."""
-    return np.array(*args, dtype=np.bool, **kwargs)
+    """Convenience wrapper to create Numpy arrays with a np.bool_ dtype."""
+    return np.array(*args, dtype=np.bool_, **kwargs)
 
   class ComputationPrinting(absltest.TestCase):
 
@@ -731,7 +731,7 @@ def TestFactory(xla_backend,
         "src_dtype": src_dtype,
         "dst_dtype": dst_dtype,
     } for src_dtype, dst_dtype in itertools.permutations(
-        [np.bool, np.int32, np.int64, np.float32, np.float64], 2))
+        [np.bool_, np.int32, np.int64, np.float32, np.float64], 2))
     # pyformat: enable
     def testConvertElementType(self, src_dtype, dst_dtype):
       if ((src_dtype in [np.int64, np.float64] or
@@ -1599,8 +1599,10 @@ def TestFactory(xla_backend,
       """Computation (A) -> B that returns a constant 1 for any input."""
       c = self._NewComputation("constant_{}_{}_one".format(
           in_dtype.__name__, out_dtype.__name__))
-      ops.Parameter(c, 0,
-                    xla_client.shape_from_pyval(np.array(0, dtype=in_dtype)))
+      ops.Parameter(
+          c, 0,
+          xla_client.shape_from_pyval(np.array(
+              0, dtype=in_dtype)).with_major_to_minor_layout_if_absent())
       ops.Constant(c, out_dtype(1))
       return c.build()
 
@@ -2325,7 +2327,7 @@ def TestFactory(xla_backend,
 
   tests.append(TracebackTest)
 
-  class ClientTest(parameterized.TestCase):
+  class ClientTest(ComputationTest):
 
     def setUp(self):
       super(ClientTest, self).setUp()
@@ -2333,6 +2335,7 @@ def TestFactory(xla_backend,
 
     def testPlatformVersion(self):
       version = self.backend.platform_version
+      logging.info("platform_version:\n%s", version)
       if self.backend.platform == "cpu":
         self.assertEqual(version, "<unknown>")
       elif self.backend.platform == "gpu":
@@ -2343,6 +2346,34 @@ def TestFactory(xla_backend,
               msg=f"Expected CUDA version string; got {repr(version)}")
         else:
           self.assertEqual(version, "<unknown>")
+      elif self.backend.platform == "tpu" and not cloud_tpu:
+        self.assertIn("tpu", version.lower())
+        self.assertIn("cl/", version)
+
+    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
+    def testExecutableSerialization(self):
+      if self.backend.platform != "tpu":
+        self.skipTest("Test requires tpu platform")
+
+      c = self._NewComputation()
+      ops.Add(
+          ops.Constant(c, NumpyArrayS32([1, 2])),
+          ops.Constant(c, NumpyArrayS32([3, 4])))
+
+      options = xla_client.CompileOptions()
+      executable = self.backend.compile(c.build(), options)
+      self.assertLen(executable.hlo_modules(), 1)
+
+      serialized = self.backend.serialize_executable(executable)
+      deserialized = self.backend.deserialize_executable(
+          serialized,
+          executable.hlo_modules()[0], options)
+
+      expected, = xla_client.execute_with_python_values(executable, (),
+                                                        self.backend)
+      actual, = xla_client.execute_with_python_values(deserialized, (),
+                                                      self.backend)
+      self.assertTrue(np.all(actual == expected))
 
   tests.append(ClientTest)
 

@@ -60,6 +60,7 @@ genrule(
     name = "install_eigen_headers",
     srcs = [
         "@eigen_archive//:eigen_header_files",
+        "@eigen_archive//:eigen_source_files",
         ":eigen_third_party_header_files",
     ],
     outs = ["include"],

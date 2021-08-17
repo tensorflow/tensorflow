@@ -91,7 +91,6 @@ class Validator {
   std::string model_path_;
   int model_fd_ = -1;
   size_t model_offset_, model_size_;
-  std::vector<uint8_t> model_bytes_;
   const ComputeSettings* compute_settings_;
   std::unique_ptr<Interpreter> interpreter_;
   ::tflite::ops::builtin::BuiltinOpResolver resolver_;

@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import contextlib
 import copy
+import gc
 import os
 import random
 import threading
@@ -448,6 +449,7 @@ class Context(object):
     self._collective_scoped_allocator_enabled_ops = None
     self._collective_use_nccl_communication = None
     self._collective_device_filters = None
+    self._coordination_service = None
 
     self._device_lock = threading.Lock()
     self._physical_devices = None
@@ -688,6 +690,44 @@ class Context(object):
     """
     if self._context_handle:
       pywrap_tfe.TFE_ContextClearExecutors(self._context_handle)
+    else:
+      raise ValueError("Context is not initialized.")
+
+  def enable_coordination_service(self, service_type):
+    if self._context_handle:
+      logging.warning("Configuring coordination service type may not be "
+                      "effective because the context is already initialized.")
+    self._coordination_service = service_type
+
+  @property
+  def coordination_service(self):
+    return self._coordination_service
+
+  def set_config_key_value(self, key, value):
+    ensure_initialized()
+    pywrap_tfe.TFE_InsertConfigKeyValue(self._context_handle, key, value)
+
+  def get_config_key_value(self, key):
+    ensure_initialized()
+    with c_api_util.tf_buffer() as buffer_:
+      pywrap_tfe.TFE_GetConfigKeyValue(self._context_handle, key, buffer_)
+      value = pywrap_tf_session.TF_GetBuffer(buffer_).decode("utf-8")
+    return value
+
+  def delete_config_key_value(self, key):
+    ensure_initialized()
+    pywrap_tfe.TFE_DeleteConfigKeyValue(self._context_handle, key)
+
+  def report_error_to_cluster(self, error_code, error_message):
+    """Report error to other members in a multi-client cluster.
+
+    Args:
+      error_code: a `tf.errors` error code.
+      error_message: a string. The error message.
+    """
+    if self._context_handle:
+      pywrap_tfe.TFE_ReportErrorToCluster(self._context_handle, error_code,
+                                          error_message)
     else:
       raise ValueError("Context is not initialized.")
 
@@ -1063,6 +1103,10 @@ class Context(object):
       del config.device_filters[:]
       for f in self._collective_device_filters:
         config.device_filters.append(f)
+
+    # Configure coordination service
+    if self._coordination_service:
+      config.experimental.coordination_service = self._coordination_service
 
     return config
 
@@ -1908,13 +1952,17 @@ def _reset_context():
   """
   global _context
   global _device_parsing_cache
+
+  # Garbage collect and clear scalar cache to avoid Tensor from current context
+  # polluting next context.
+  gc.collect()
+  pywrap_tfe.TFE_ClearScalarCache()
   with _context_lock:
     if _context is not None:
       _context._clear_caches()
       _context = None
   _create_context()
   _device_parsing_cache = {}
-  pywrap_tfe.TFE_ClearScalarCache()
 
 
 def context():
@@ -2477,9 +2525,10 @@ def async_wait():
   actual execution. Calling this method creates a synchronization barrier for
   all async op and function execution. It only returns when all pending nodes
   are finished, potentially raising exceptions if async execution results in
-  an error state.
+  an error state. It is a no-op if the context is not initialized.
   """
-  context().sync_executors()
+  if context()._context_handle is not None:  # pylint: disable=protected-access
+    context().sync_executors()
 
 
 @tf_export("experimental.async_clear_error")

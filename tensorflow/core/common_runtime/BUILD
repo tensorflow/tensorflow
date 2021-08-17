@@ -7,6 +7,7 @@ load(
     "tf_copts",
     "tf_cuda_library",
     "tf_openmp_copts",
+    "tf_openmp_lopts",
 )
 
 # buildifier: disable=same-origin-load
@@ -191,7 +192,6 @@ filegroup(
         "graph_runner.h",
         "inline_function_utils.h",
         "lower_function_call_inline_policy.h",
-        "metrics.h",
         "process_function_library_runtime.h",
         "scoped_allocator.h",
         "scoped_allocator_mgr.h",
@@ -251,6 +251,7 @@ filegroup(
         "costmodel_manager.h",
         "placer_inspection_required_ops_utils.h",
         "debugger_state_interface.h",
+        "all_to_all.h",
         "device_resolver_local.h",
         "dma_helper.h",
         "executor.h",
@@ -304,6 +305,27 @@ cc_library(
     deps = [
         ":optimization_registry",
         "//tensorflow/core:graph",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "all_to_all",
+    srcs = ["all_to_all.cc"],
+    hdrs = ["all_to_all.h"],
+    copts = tf_copts(),
+    deps = [
+        ":base_collective_executor",
+        ":collective_rma_local",
+        ":collective_util",
+        ":copy_tensor",
+        ":device",
+        ":device_mgr",
+        ":dma_helper",
+        ":process_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )
@@ -596,7 +618,6 @@ cc_library(
         ":graph_view",
         ":immutable_executor_state",
         ":local_executor_params",
-        ":metric_util",
         ":pending_counts",
         ":propagator_state",
         ":renamed_device",
@@ -625,20 +646,6 @@ cc_library(
     deps = [
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "metric_util",
-    srcs = ["metric_util.cc"],
-    hdrs = ["metric_util.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tflite_portable_logging",
-        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -1332,6 +1339,7 @@ cc_library(
     srcs = ["process_util.cc"],
     hdrs = ["process_util.h"],
     copts = tf_copts() + tf_openmp_copts(),
+    linkopts = tf_openmp_lopts(),
     deps = [
         ":session_options",
         "//tensorflow/core:framework",
@@ -1656,6 +1664,7 @@ cc_library(
     srcs = ["threadpool_device.cc"],
     hdrs = ["threadpool_device.h"],
     copts = tf_copts() + tf_openmp_copts(),
+    linkopts = tf_openmp_lopts(),
     deps = [
         ":device_factory",
         ":local_device",
@@ -1694,6 +1703,7 @@ tf_cuda_library(
     copts = tf_copts(),
     deps = [
         ":accumulate_n_optimizer",
+        ":all_to_all",
         ":base_collective_executor",
         ":bfc_allocator",
         ":buf_rendezvous",
@@ -1876,6 +1886,54 @@ filegroup(
     ],
 )
 
+cc_library(
+    name = "cost_measurement",
+    hdrs = ["cost_measurement.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
+    name = "cost_measurement_registry",
+    srcs = ["cost_measurement_registry.cc"],
+    hdrs = ["cost_measurement_registry.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cost_measurement",
+        "//tensorflow/core:tflite_portable_logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "no_op_cost_measurement",
+    srcs = ["no_op_cost_measurement.cc"],
+    hdrs = ["no_op_cost_measurement.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cost_measurement_registry",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "request_cost",
+    srcs = ["request_cost.cc"],
+    hdrs = ["request_cost.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Tests
 
@@ -1919,6 +1977,25 @@ tf_cc_test(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "all_to_all_test",
+    srcs = ["all_to_all_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
+    deps = [
+        ":collective_test_util",
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":process_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:blocking_counter",
     ],
 )
 
@@ -2860,5 +2937,36 @@ tf_cc_test(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/util:protos_test_cc",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "cost_measurement_registry_test",
+    srcs = ["cost_measurement_registry_test.cc"],
+    deps = [
+        ":cost_measurement_registry",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "no_op_cost_measurement_test",
+    srcs = ["no_op_cost_measurement_test.cc"],
+    deps = [
+        ":no_op_cost_measurement",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "request_cost_test",
+    srcs = ["request_cost_test.cc"],
+    deps = [
+        ":request_cost",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/time",
     ],
 )

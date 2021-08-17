@@ -65,13 +65,13 @@ class SparseAddGradOp : public OpKernel {
                                 sum_indices->dim_size(0)));
 
     const int num_dims = a_indices->dim_size(1);
-    const int64 a_nnz = a_indices->dim_size(0);
-    const int64 b_nnz = b_indices->dim_size(0);
-    const int64 sum_nnz = backprop_val_grad->NumElements();
+    const int64_t a_nnz = a_indices->dim_size(0);
+    const int64_t b_nnz = b_indices->dim_size(0);
+    const int64_t sum_nnz = backprop_val_grad->NumElements();
 
-    const auto a_indices_mat = a_indices->matrix<int64>();
-    const auto b_indices_mat = b_indices->matrix<int64>();
-    const auto sum_indices_mat = sum_indices->matrix<int64>();
+    const auto a_indices_mat = a_indices->matrix<int64_t>();
+    const auto b_indices_mat = b_indices->matrix<int64_t>();
+    const auto sum_indices_mat = sum_indices->matrix<int64_t>();
 
     Tensor *a_val_grad, *b_val_grad;
     OP_REQUIRES_OK(ctx,
@@ -102,7 +102,7 @@ class SparseAddGradOp : public OpKernel {
 
     // Set-intersect the indices; fill in grads for positions in the
     // intersection.
-    int64 i = 0, j = 0, k = 0;
+    int64_t i = 0, j = 0, k = 0;
     bool a_idx_geq, b_idx_geq;
     while (i < a_nnz && j < b_nnz && k < sum_nnz) {
       a_idx_geq = b_idx_geq = true;
@@ -136,7 +136,7 @@ class SparseAddGradOp : public OpKernel {
 // This op should work for any T that SparseAdd is registered with.
 REGISTER_KERNELS(float);
 REGISTER_KERNELS(double);
-REGISTER_KERNELS(int64);
+REGISTER_KERNELS(int64_t);
 REGISTER_KERNELS(int32);
 REGISTER_KERNELS(int16);
 REGISTER_KERNELS(int8);

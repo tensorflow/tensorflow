@@ -43,7 +43,7 @@ class StackOpTest(test.TestCase):
 
   def randn(self, shape, dtype):
     data = np.random.randn(*shape)
-    if dtype == np.bool:
+    if dtype == np.bool_:
       return data < 0  # Naive casting yields True with P(1)!
     else:
       return data.astype(dtype)
@@ -53,7 +53,7 @@ class StackOpTest(test.TestCase):
     for shape in (2,), (3,), (2, 3), (3, 2), (8, 2, 10):
       rank = len(shape)
       for axis in range(-rank, rank):
-        for dtype in [np.bool, np.float32, np.int32, np.int64]:
+        for dtype in [np.bool_, np.float32, np.int32, np.int64]:
           data = self.randn(shape, dtype)
           xs = np_split_squeeze(data, axis)
           # Stack back into a single tensorflow tensor
@@ -94,7 +94,7 @@ class StackOpTest(test.TestCase):
 
       # Check on a variety of shapes and types
       for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (8, 2, 10):
-        for dtype in [np.bool, np.float32, np.int16, np.int32, np.int64]:
+        for dtype in [np.bool_, np.float32, np.int16, np.int32, np.int64]:
           with self.subTest(shape=shape, dtype=dtype):
             data = self.randn(shape, dtype)
             # Stack back into a single tensorflow tensor directly using np array
@@ -235,7 +235,7 @@ class StackOpTest(test.TestCase):
     for shape in (3,), (2, 2, 3), (4, 1, 2, 2), (8, 2, 10):
       rank = len(shape)
       expected = self.randn(shape, np.float32)
-      for dtype in [np.bool, np.float32, np.int32, np.int64]:
+      for dtype in [np.bool_, np.float32, np.int32, np.int64]:
         # For all the possible axis to split it, including negative indices.
         for axis in range(-rank, rank):
           test_arrays = np_split_squeeze(expected, axis)

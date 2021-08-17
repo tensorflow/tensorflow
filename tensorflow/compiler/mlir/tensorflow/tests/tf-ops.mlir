@@ -18,10 +18,10 @@ func @opaquetensorattr() -> () {
   "tf.opaqueIntTensor"(){bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4xi32>} : () -> ()
 // CHECK: "tf.opaqueFloatTensor"() {bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4xf32>} : () -> ()
   "tf.opaqueFloatTensor"(){bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4xf32>} : () -> ()
-// CHECK: "tf.opaqueStringTensor"() {bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf.string>} : () -> ()
-  "tf.opaqueStringTensor"(){bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf.string>} : () -> ()
-// CHECK: "tf.opaqueResourceTensor"() {bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf.resource>} : () -> ()
-  "tf.opaqueResourceTensor"(){bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf.resource>} : () -> ()
+// CHECK: "tf.opaqueStringTensor"() {bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf_type.string>} : () -> ()
+  "tf.opaqueStringTensor"(){bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf_type.string>} : () -> ()
+// CHECK: "tf.opaqueResourceTensor"() {bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf_type.resource>} : () -> ()
+  "tf.opaqueResourceTensor"(){bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf_type.resource>} : () -> ()
   return
 }
 
@@ -31,8 +31,8 @@ func @opaquetensorattr() -> () {
 
 // CHECK-LABEL: func @placeholderattr
 func @placeholderattr() -> ()
-// CHECK:    attributes {some_placeholder = #tf.placeholder<"foo">} {
-    attributes {some_placeholder = #tf.placeholder<"foo">} {
+// CHECK:    attributes {some_placeholder = #tf_type.placeholder<"foo">} {
+    attributes {some_placeholder = #tf_type.placeholder<"foo">} {
   return
 }
 //===--------------------------------------------------------------------===//
@@ -42,17 +42,17 @@ func @placeholderattr() -> ()
 // -----
 
 // CHECK-LABEL: func @testIdentity
-func @testIdentity(%arg0: tensor<4x?x!tf.stringref>) -> tensor<4x2x!tf.string> {
-  %0 = "tf.Identity"(%arg0) : (tensor<4x?x!tf.stringref>) -> tensor<4x2x!tf.string>
-  return %0 : tensor<4x2x!tf.string>
+func @testIdentity(%arg0: tensor<4x?x!tf_type.stringref>) -> tensor<4x2x!tf_type.string> {
+  %0 = "tf.Identity"(%arg0) : (tensor<4x?x!tf_type.stringref>) -> tensor<4x2x!tf_type.string>
+  return %0 : tensor<4x2x!tf_type.string>
 }
 
 // -----
 
 // CHECK-LABEL: func @testBitcast
-func @testBitcast(%arg0: tensor<3x4xui16>) -> tensor<3x4x!tf.quint16> {
-  %0 = "tf.Bitcast"(%arg0) : (tensor<3x4xui16>) -> tensor<3x4x!tf.quint16>
-  return %0 : tensor<3x4x!tf.quint16>
+func @testBitcast(%arg0: tensor<3x4xui16>) -> tensor<3x4x!tf_type.quint16> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x4xui16>) -> tensor<3x4x!tf_type.quint16>
+  return %0 : tensor<3x4x!tf_type.quint16>
 }
 
 // -----
@@ -65,10 +65,10 @@ func @testReverseV2(%arg0: tensor<2x4x3xui8>, %arg1: tensor<1xi32>) -> tensor<2x
 
 // -----
 
-func @testIdentityWrongType(%arg0: tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref> {
+func @testIdentityWrongType(%arg0: tensor<4x2x!tf_type.string>) -> tensor<4x2x!tf_type.stringref> {
   // expected-error @+1 {{all operands and results to have compatible element}}
-  %0 = "tf.Identity"(%arg0) : (tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref>
-  return %0 : tensor<4x2x!tf.stringref>
+  %0 = "tf.Identity"(%arg0) : (tensor<4x2x!tf_type.string>) -> tensor<4x2x!tf_type.stringref>
+  return %0 : tensor<4x2x!tf_type.stringref>
 }
 
 // -----
@@ -77,9 +77,9 @@ func @testIdentityWrongType(%arg0: tensor<4x2x!tf.string>) -> tensor<4x2x!tf.str
 
 // Check that broadcastable trait accepts TF specific element type
 // CHECK-LABEL: func @testAdd
-func @testAdd(%arg0: tensor<4x2x!tf.string>, %arg1: tensor<2x!tf.string>) -> tensor<4x2x!tf.string> {
-  %0 = "tf.Add"(%arg0, %arg1) : (tensor<4x2x!tf.string>, tensor<2x!tf.string>) -> tensor<4x2x!tf.string>
-  return %0 : tensor<4x2x!tf.string>
+func @testAdd(%arg0: tensor<4x2x!tf_type.string>, %arg1: tensor<2x!tf_type.string>) -> tensor<4x2x!tf_type.string> {
+  %0 = "tf.Add"(%arg0, %arg1) : (tensor<4x2x!tf_type.string>, tensor<2x!tf_type.string>) -> tensor<4x2x!tf_type.string>
+  return %0 : tensor<4x2x!tf_type.string>
 }
 
 // -----
@@ -1949,58 +1949,58 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
 
 // -----
 
-func private @testWhileCond(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<i1>)
-func private @testWhileBody(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<16xf32>>>)
+func private @testWhileCond(tensor<*x!tf_type.resource<tensor<32xf32>>>) -> (tensor<i1>)
+func private @testWhileBody(tensor<*x!tf_type.resource<tensor<32xf32>>>) -> (tensor<!tf_type.resource<tensor<16xf32>>>)
 
 // Test invalid 'While' operation verifier that detects incompatible tf.resource
 // subtypes.
-func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<16xf32>>>) {
-^bb0(%arg0: tensor<*x!tf.resource<tensor<32xf32>>>):
-  // expected-error @+1 {{'tf.While' op input type tensor<*x!tf.resource<tensor<32xf32>>> is incompatible with result type tensor<!tf.resource<tensor<16xf32>>> at index 0}}
+func @testWhileResult(tensor<*x!tf_type.resource<tensor<32xf32>>>) -> (tensor<!tf_type.resource<tensor<16xf32>>>) {
+^bb0(%arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>):
+  // expected-error @+1 {{'tf.While' op input type tensor<*x!tf_type.resource<tensor<32xf32>>> is incompatible with result type tensor<!tf_type.resource<tensor<16xf32>>> at index 0}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
     body = @testWhileBody,
     is_stateless = false
-  } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<16xf32>>>)
+  } : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> (tensor<!tf_type.resource<tensor<16xf32>>>)
 
-  return %1 : tensor<!tf.resource<tensor<16xf32>>>
+  return %1 : tensor<!tf_type.resource<tensor<16xf32>>>
 }
 
 // -----
 
-func private @testWhileCond(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<i1>)
-func private @testWhileBody(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<*xf32>>>)
+func private @testWhileCond(tensor<*x!tf_type.resource<tensor<32xf32>>>) -> (tensor<i1>)
+func private @testWhileBody(tensor<*x!tf_type.resource<tensor<32xf32>>>) -> (tensor<!tf_type.resource<tensor<*xf32>>>)
 
 // Test 'While' operation verifier allows compatible tf.resource subtypes.
 // CHECK-LABEL: func @testWhileResult
-func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<*xf32>>>) {
-^bb0(%arg0: tensor<*x!tf.resource<tensor<32xf32>>>):
+func @testWhileResult(tensor<*x!tf_type.resource<tensor<32xf32>>>) -> (tensor<!tf_type.resource<tensor<*xf32>>>) {
+^bb0(%arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>):
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
     body = @testWhileBody,
     is_stateless = false
-  } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<*xf32>>>)
+  } : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> (tensor<!tf_type.resource<tensor<*xf32>>>)
 
-  return %1 : tensor<!tf.resource<tensor<*xf32>>>
+  return %1 : tensor<!tf_type.resource<tensor<*xf32>>>
 }
 
 // -----
 
-func private @testWhileCond(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<i1>)
-func private @testWhileBody(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>)
+func private @testWhileCond(tensor<*x!tf_type.resource<tensor<32xf32>>>) -> (tensor<i1>)
+func private @testWhileBody(tensor<*x!tf_type.resource<tensor<32xf32>>>) -> (tensor<!tf_type.resource>)
 
 // Test 'While' operation verifier treats tf.resource with subtype and without
 // subtype as compatible types.
 // CHECK-LABEL: func @testWhileResult
-func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>) {
-^bb0(%arg0: tensor<*x!tf.resource<tensor<32xf32>>>):
+func @testWhileResult(tensor<*x!tf_type.resource<tensor<32xf32>>>) -> (tensor<!tf_type.resource>) {
+^bb0(%arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>):
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
     body = @testWhileBody,
     is_stateless = false
-  } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>)
+  } : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> (tensor<!tf_type.resource>)
 
-  return %1 : tensor<!tf.resource>
+  return %1 : tensor<!tf_type.resource>
 }
 
 // -----
@@ -2409,57 +2409,57 @@ func @testShapeNWrongNumResults(tensor<*xf32>) {
 // -----
 
 // CHECK-LABEL: func @testValidVariableShape
-func @testValidVariableShape(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>, %arg1: tensor<*x!tf.resource>) -> (tensor<4xi32>, tensor<?xi32>) {
-  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xi32>
-  %1 = "tf.VariableShape"(%arg1) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource>) -> tensor<?xi32>
+func @testValidVariableShape(%arg0: tensor<*x!tf_type.resource<tensor<1x32x32x16xf32>>>, %arg1: tensor<*x!tf_type.resource>) -> (tensor<4xi32>, tensor<?xi32>) {
+  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf_type.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xi32>
+  %1 = "tf.VariableShape"(%arg1) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf_type.resource>) -> tensor<?xi32>
   return %0, %1 : tensor<4xi32>, tensor<?xi32>
 }
 
 // -----
 
-func @testVariableShapeMultipleSubtypes(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>>>) {
+func @testVariableShapeMultipleSubtypes(%arg0: tensor<*x!tf_type.resource<tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>>>) {
   // expected-error @+1 {{requires resource input type to have at most 1 subtype}}
-  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>>>) -> tensor<4xi32>
+  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf_type.resource<tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>>>) -> tensor<4xi32>
   return
 }
 
 // -----
 
-func @testVariableShapeWrongResultElemType(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<?xf32> {
+func @testVariableShapeWrongResultElemType(%arg0: tensor<*x!tf_type.resource<tensor<1x32x32x16xf32>>>) -> tensor<?xf32> {
   // expected-error @+1 {{result #0 must be tensor of 32/64-bit signed integer values}}
-  %0 = "tf.VariableShape"(%arg0) : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xf32>
+  %0 = "tf.VariableShape"(%arg0) : (tensor<*x!tf_type.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
 
 // -----
 
-func @testVariableShapeWrongResultDim(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<2x3xi32> {
+func @testVariableShapeWrongResultDim(%arg0: tensor<*x!tf_type.resource<tensor<1x32x32x16xf32>>>) -> tensor<2x3xi32> {
   // expected-error @+1 {{requires 1D type for result}}
-  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<2x3xi32>
+  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf_type.resource<tensor<1x32x32x16xf32>>>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
 }
 
 // -----
 
-func @testVariableShapeMismatchDim(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<2xi32> {
+func @testVariableShapeMismatchDim(%arg0: tensor<*x!tf_type.resource<tensor<1x32x32x16xf32>>>) -> tensor<2xi32> {
   // expected-error @+1 {{requires dimension size of result to match rank of operand}}
-  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<2xi32>
+  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf_type.resource<tensor<1x32x32x16xf32>>>) -> tensor<2xi32>
   return %0 : tensor<2xi32>
 }
 
 // -----
 
-func @testVariableShapeWrongResultDimDynamic(%arg0: tensor<*x!tf.resource<tensor<*xf32>>>) -> tensor<2xi32> {
+func @testVariableShapeWrongResultDimDynamic(%arg0: tensor<*x!tf_type.resource<tensor<*xf32>>>) -> tensor<2xi32> {
   // expected-warning @+1 {{has static shape result for unranked operand}}
-  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<*xf32>>>) -> tensor<2xi32>
+  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf_type.resource<tensor<*xf32>>>) -> tensor<2xi32>
   return %0 : tensor<2xi32>
 }
 
 // -----
 
-func @testVariableShapeWrongNumResources(%arg0: tensor<1x2x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xi32> {
+func @testVariableShapeWrongNumResources(%arg0: tensor<1x2x!tf_type.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xi32> {
   // expected-error @+1 {{requires input to have one resource}}
-  %0 = "tf.VariableShape"(%arg0)  : (tensor<1x2x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xi32>
+  %0 = "tf.VariableShape"(%arg0)  : (tensor<1x2x!tf_type.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xi32>
   return %0 : tensor<4xi32>
 }
 
@@ -2476,7 +2476,7 @@ func @testConst() -> tensor<f32> {
 
 // Test invalid tf.ToBool
 func @testInvalidToBool(%arg0: tensor<i32>) -> tensor<1xi1> {
-  // expected-error @+1 {{op result #0 must be 0D tensor of 1-bit signless integer values, but got 'tensor<1xi1>'}}
+  // expected-error @+1 {{op inferred type(s) 'tensor<i1>' are incompatible with return type(s) of operation 'tensor<1xi1>'}}
   %0 = "tf.ToBool"(%arg0) : (tensor<i32>) -> tensor<1xi1>
   return %0 : tensor<1xi1>
 }
@@ -2819,6 +2819,14 @@ func @testSlice_wrong_output_size(%arg0: tensor<4xi32>) -> tensor<1xi32> {
   // expected-error @+1 {{requires output size to have the same size of slice, got slice size 2 and output size 1}}
   %0 = "tf.Slice"(%arg0, %begins, %sizes) : (tensor<4xi32>, tensor<1xi64>, tensor<1xi64>) -> tensor<1xi32>
   return %0 : tensor<1xi32>
+}
+
+// -----
+
+func @testSlice_wrong_type(%arg0: tensor<28x1x100xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>) -> tensor<1x1x100xi32> {
+  // expected-error @+1 {{failed to verify that input and output must have same element type}}
+  %0 = "tf.Slice"(%arg0, %arg1, %arg2) : (tensor<28x1x100xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x100xi32>
+  return %0 : tensor<1x1x100xi32>
 }
 
 // -----
@@ -3529,72 +3537,72 @@ func @tensor_scatter_update(%tensor: tensor<4xf32>, %indices: tensor<4x2xi32>, %
 // -----
 
 // CHECK-LABEL: func @testParseExampleV2DenseOnlyValid
-func @testParseExampleV2DenseOnlyValid(%serialized: tensor<32x!tf.string>, %names : tensor<32x!tf.string>, %dense_keys : tensor<2x!tf.string>, %dense_default_0 : tensor<?xf32>, %dense_default_1 : tensor<?xf32>) -> (tensor<32xf32>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf.string>} : () -> tensor<0x!tf.string>
-  %result:2 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %dense_keys, %empty_str_vector, %dense_default_0, %dense_default_1) {dense_shapes = [#tf.shape<>, #tf.shape<>], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 2, 0, 0]> : vector<6xi32>} : (tensor<32x!tf.string>, tensor<32x!tf.string>, tensor<0x!tf.string>, tensor<2x!tf.string>, tensor<0x!tf.string>, tensor<?xf32>, tensor<?xf32>) -> (tensor<32xf32>, tensor<32xf32>)
+func @testParseExampleV2DenseOnlyValid(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %dense_keys : tensor<2x!tf_type.string>, %dense_default_0 : tensor<?xf32>, %dense_default_1 : tensor<?xf32>) -> (tensor<32xf32>) {
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
+  %result:2 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %dense_keys, %empty_str_vector, %dense_default_0, %dense_default_1) {dense_shapes = [#tf_type.shape<>, #tf_type.shape<>], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 2, 0, 0]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<0x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<?xf32>, tensor<?xf32>) -> (tensor<32xf32>, tensor<32xf32>)
   return %result#0 : tensor<32xf32>
 }
 
 // -----
 
-func @testParseExampleV2DenseMismatchedInputOutput(%serialized: tensor<32x!tf.string>, %names : tensor<32x!tf.string>, %dense_keys : tensor<2x!tf.string>, %dense_default_0 : tensor<?xf32>, %dense_default_1 : tensor<?xf32>) -> (tensor<32xf32>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf.string>} : () -> tensor<0x!tf.string>
+func @testParseExampleV2DenseMismatchedInputOutput(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %dense_keys : tensor<2x!tf_type.string>, %dense_default_0 : tensor<?xf32>, %dense_default_1 : tensor<?xf32>) -> (tensor<32xf32>) {
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
   // expected-error @+1 {{output 'dense_values' should have same length as attribute 'Tdense'}}
-  %result:3 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %dense_keys, %empty_str_vector, %dense_default_0, %dense_default_1) {dense_shapes = [#tf.shape<>, #tf.shape<>], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 3, 0, 0]> : vector<6xi32>} : (tensor<32x!tf.string>, tensor<32x!tf.string>, tensor<0x!tf.string>, tensor<2x!tf.string>, tensor<0x!tf.string>, tensor<?xf32>, tensor<?xf32>) -> (tensor<32xf32>, tensor<32xf32>, tensor<32xi64>)
+  %result:3 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %dense_keys, %empty_str_vector, %dense_default_0, %dense_default_1) {dense_shapes = [#tf_type.shape<>, #tf_type.shape<>], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 3, 0, 0]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<0x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<?xf32>, tensor<?xf32>) -> (tensor<32xf32>, tensor<32xf32>, tensor<32xi64>)
   return %result#0 : tensor<32xf32>
 }
 
 // -----
 
 // CHECK-LABEL: func @testParseExampleV2SparseOnlyValid
-func @testParseExampleV2SparseOnlyValid(%serialized: tensor<32x!tf.string>, %names : tensor<32x!tf.string>, %sparse_keys : tensor<2x!tf.string>) -> (tensor<?x2xi64>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf.string>} : () -> tensor<0x!tf.string>
-  %result:6 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %empty_str_vector, %empty_str_vector) {dense_shapes = [], num_sparse = 2 : i64, result_segment_sizes = dense<[2, 2, 2, 0, 0, 0]> : vector<6xi32>} : (tensor<32x!tf.string>, tensor<32x!tf.string>, tensor<2x!tf.string>, tensor<0x!tf.string>, tensor<0x!tf.string>) -> (tensor<?x2xi64>, tensor<?x2xi64>, tensor<?x!tf.string>, tensor<?xi64>, tensor<2xi64>, tensor<2xi64>)
+func @testParseExampleV2SparseOnlyValid(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %sparse_keys : tensor<2x!tf_type.string>) -> (tensor<?x2xi64>) {
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
+  %result:6 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %empty_str_vector, %empty_str_vector) {dense_shapes = [], num_sparse = 2 : i64, result_segment_sizes = dense<[2, 2, 2, 0, 0, 0]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>) -> (tensor<?x2xi64>, tensor<?x2xi64>, tensor<?x!tf_type.string>, tensor<?xi64>, tensor<2xi64>, tensor<2xi64>)
   return %result#0 : tensor<?x2xi64>
 }
 
 // -----
 
-func @testParseExampleV2SparseInvalidNumSparse(%serialized: tensor<32x!tf.string>, %names : tensor<32x!tf.string>, %sparse_keys : tensor<2x!tf.string>) -> (tensor<?x2xi64>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf.string>} : () -> tensor<0x!tf.string>
+func @testParseExampleV2SparseInvalidNumSparse(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %sparse_keys : tensor<2x!tf_type.string>) -> (tensor<?x2xi64>) {
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
   // expected-error @+1 {{attribute 'num_sparse' should be the same as the length of attribute 'sparse_types'}}
-  %result:6 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %empty_str_vector, %empty_str_vector) {dense_shapes = [], num_sparse = 3 : i64, result_segment_sizes = dense<[2, 2, 2, 0, 0, 0]> : vector<6xi32>} : (tensor<32x!tf.string>, tensor<32x!tf.string>, tensor<2x!tf.string>, tensor<0x!tf.string>, tensor<0x!tf.string>) -> (tensor<?x2xi64>, tensor<?x2xi64>, tensor<?x!tf.string>, tensor<?xi64>, tensor<2xi64>, tensor<2xi64>)
+  %result:6 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %empty_str_vector, %empty_str_vector) {dense_shapes = [], num_sparse = 3 : i64, result_segment_sizes = dense<[2, 2, 2, 0, 0, 0]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>) -> (tensor<?x2xi64>, tensor<?x2xi64>, tensor<?x!tf_type.string>, tensor<?xi64>, tensor<2xi64>, tensor<2xi64>)
   return %result#0 : tensor<?x2xi64>
 }
 
 // -----
 
-func @testParseExampleV2SparseInvalidSparseIndicesOutput(%serialized: tensor<32x!tf.string>, %names : tensor<32x!tf.string>, %sparse_keys : tensor<2x!tf.string>) -> (tensor<?x2xi64>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf.string>} : () -> tensor<0x!tf.string>
+func @testParseExampleV2SparseInvalidSparseIndicesOutput(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %sparse_keys : tensor<2x!tf_type.string>) -> (tensor<?x2xi64>) {
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
   // expected-error @+1 {{output 'sparse_indices' should have same length as attribute 'sparse_types'}}
-  %result:5 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %empty_str_vector, %empty_str_vector) {dense_shapes = [], num_sparse = 2 : i64, result_segment_sizes = dense<[1, 2, 2, 0, 0, 0]> : vector<6xi32>} : (tensor<32x!tf.string>, tensor<32x!tf.string>, tensor<2x!tf.string>, tensor<0x!tf.string>, tensor<0x!tf.string>) -> (tensor<?x2xi64>, tensor<?x!tf.string>, tensor<?xi64>, tensor<2xi64>, tensor<2xi64>)
+  %result:5 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %empty_str_vector, %empty_str_vector) {dense_shapes = [], num_sparse = 2 : i64, result_segment_sizes = dense<[1, 2, 2, 0, 0, 0]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>) -> (tensor<?x2xi64>, tensor<?x!tf_type.string>, tensor<?xi64>, tensor<2xi64>, tensor<2xi64>)
   return %result#0 : tensor<?x2xi64>
 }
 
 // -----
 
-func @testParseExampleV2SparseOnlyValid(%serialized: tensor<32x!tf.string>, %names : tensor<32x!tf.string>, %sparse_keys : tensor<2x!tf.string>) -> (tensor<?x2xi64>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf.string>} : () -> tensor<0x!tf.string>
+func @testParseExampleV2SparseOnlyValid(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %sparse_keys : tensor<2x!tf_type.string>) -> (tensor<?x2xi64>) {
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
   // expected-error @+1 {{output 'sparse_shapes' should have same length as attribute 'sparse_types'}}
-  %result:5 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %empty_str_vector, %empty_str_vector) {dense_shapes = [], num_sparse = 2 : i64, result_segment_sizes = dense<[2, 2, 1, 0, 0, 0]> : vector<6xi32>} : (tensor<32x!tf.string>, tensor<32x!tf.string>, tensor<2x!tf.string>, tensor<0x!tf.string>, tensor<0x!tf.string>) -> (tensor<?x2xi64>, tensor<?x2xi64>, tensor<?x!tf.string>, tensor<?xi64>, tensor<2xi64>)
+  %result:5 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %empty_str_vector, %empty_str_vector) {dense_shapes = [], num_sparse = 2 : i64, result_segment_sizes = dense<[2, 2, 1, 0, 0, 0]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>) -> (tensor<?x2xi64>, tensor<?x2xi64>, tensor<?x!tf_type.string>, tensor<?xi64>, tensor<2xi64>)
   return %result#0 : tensor<?x2xi64>
 }
 
 // -----
 
 // CHECK-LABEL: func @testParseExampleV2RaggedOnlyValid
-func @testParseExampleV2RaggedOnlyValid(%serialized: tensor<32x!tf.string>, %names : tensor<32x!tf.string>, %ragged_keys : tensor<2x!tf.string>) -> (tensor<?xf32>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf.string>} : () -> tensor<0x!tf.string>
-  %result:4 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %empty_str_vector, %ragged_keys) {dense_shapes = [], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 0, 2, 2]> : vector<6xi32>} : (tensor<32x!tf.string>, tensor<32x!tf.string>, tensor<0x!tf.string>, tensor<0x!tf.string>, tensor<2x!tf.string>) -> (tensor<?xf32>, tensor<?x!tf.string>, tensor<?xi32>, tensor<?xi64>)
+func @testParseExampleV2RaggedOnlyValid(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %ragged_keys : tensor<2x!tf_type.string>) -> (tensor<?xf32>) {
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
+  %result:4 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %empty_str_vector, %ragged_keys) {dense_shapes = [], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 0, 2, 2]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>, tensor<2x!tf_type.string>) -> (tensor<?xf32>, tensor<?x!tf_type.string>, tensor<?xi32>, tensor<?xi64>)
   return %result#0 : tensor<?xf32>
 }
 
 // -----
 
-func @testParseExampleV2RaggedMismatchedOutputLengths(%serialized: tensor<32x!tf.string>, %names : tensor<32x!tf.string>, %ragged_keys : tensor<2x!tf.string>) -> (tensor<?xf32>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf.string>} : () -> tensor<0x!tf.string>
+func @testParseExampleV2RaggedMismatchedOutputLengths(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %ragged_keys : tensor<2x!tf_type.string>) -> (tensor<?xf32>) {
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
   // expected-error @+1 {{attribute 'ragged_value_types' should have same length as attribute 'ragged_split_types'}}
-  %result:3 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %empty_str_vector, %ragged_keys) {dense_shapes = [], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 0, 2, 1]> : vector<6xi32>} : (tensor<32x!tf.string>, tensor<32x!tf.string>, tensor<0x!tf.string>, tensor<0x!tf.string>, tensor<2x!tf.string>) -> (tensor<?xf32>, tensor<?x!tf.string>, tensor<?xi32>)
+  %result:3 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %empty_str_vector, %ragged_keys) {dense_shapes = [], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 0, 2, 1]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>, tensor<2x!tf_type.string>) -> (tensor<?xf32>, tensor<?x!tf_type.string>, tensor<?xi32>)
   return %result#0 : tensor<?xf32>
 }
 
@@ -4108,69 +4116,69 @@ func @testTileInvalidOutputShape(%arg0: tensor<2x3xf32>) {
 // Test reference variable support for some ops (no errors expected)
 
 // CHECK-LABEL: @testMaximumWithRef
-func @testMaximumWithRef(%arg0: tensor<!tf.f32ref>, %arg1: tensor<f32>) -> tensor<f32> {
+func @testMaximumWithRef(%arg0: tensor<!tf_type.f32ref>, %arg1: tensor<f32>) -> tensor<f32> {
   // CHECK: tf.Maximum
-  %0 = "tf.Maximum"(%arg0, %arg1) : (tensor<!tf.f32ref>, tensor<f32>) -> tensor<f32>
+  %0 = "tf.Maximum"(%arg0, %arg1) : (tensor<!tf_type.f32ref>, tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: @testAddV2WithRef
-func @testAddV2WithRef(%arg0: tensor<!tf.int16ref>, %arg1: tensor<i16>) -> tensor<i16> {
+func @testAddV2WithRef(%arg0: tensor<!tf_type.int16ref>, %arg1: tensor<i16>) -> tensor<i16> {
   // CHECK: tf.AddV2
-  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<!tf.int16ref>, tensor<i16>) -> tensor<i16>
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<!tf_type.int16ref>, tensor<i16>) -> tensor<i16>
   return %0 : tensor<i16>
 }
 
 // CHECK-LABEL: @testRealDivWithRef
-func @testRealDivWithRef(%arg0: tensor<f64>, %arg1: tensor<!tf.f64ref>) -> tensor<f64> {
+func @testRealDivWithRef(%arg0: tensor<f64>, %arg1: tensor<!tf_type.f64ref>) -> tensor<f64> {
   // CHECK: tf.RealDivOp
-  %0 = "tf.RealDivOp"(%arg0, %arg1) : (tensor<f64>, tensor<!tf.f64ref>) -> tensor<f64>
+  %0 = "tf.RealDivOp"(%arg0, %arg1) : (tensor<f64>, tensor<!tf_type.f64ref>) -> tensor<f64>
   return %0 : tensor<f64>
 }
 
 // CHECK-LABEL: @testDivNoNanWithRef
-func @testDivNoNanWithRef(%arg0: tensor<f32>, %arg1: tensor<!tf.f32ref>) -> tensor<f32> {
+func @testDivNoNanWithRef(%arg0: tensor<f32>, %arg1: tensor<!tf_type.f32ref>) -> tensor<f32> {
   // CHECK: tf.DivNoNanOp
-  %0 = "tf.DivNoNanOp"(%arg0, %arg1) : (tensor<f32>, tensor<!tf.f32ref>) -> tensor<f32>
+  %0 = "tf.DivNoNanOp"(%arg0, %arg1) : (tensor<f32>, tensor<!tf_type.f32ref>) -> tensor<f32>
   return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: @testAddWithRef
-func @testAddWithRef(%arg0: tensor<!tf.f64ref>, %arg1: tensor<f64>) -> tensor<f64> {
+func @testAddWithRef(%arg0: tensor<!tf_type.f64ref>, %arg1: tensor<f64>) -> tensor<f64> {
   // CHECK: tf.Add
-  %0 = "tf.Add"(%arg0, %arg1) : (tensor<!tf.f64ref>, tensor<f64>) -> tensor<f64>
+  %0 = "tf.Add"(%arg0, %arg1) : (tensor<!tf_type.f64ref>, tensor<f64>) -> tensor<f64>
   return %0 : tensor<f64>
 }
 
 // -----
 
-func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<3x!tf.string>) {
+func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf_type.resource<tensor<i32>>>, %arg1: tensor<3x!tf_type.string>) {
   // expected-error@below {{requires 'device_var_reads_indices' to be the same size as number of resource handles in 'args' (1), but got 2}}
-  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [0, 1], device_var_updates_indices = [0]} : (tensor<!tf.resource<tensor<i32>>>, tensor<3x!tf.string>) -> ()
+  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [0, 1], device_var_updates_indices = [0]} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<3x!tf_type.string>) -> ()
   return
 }
 
 // -----
 
-func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<3x!tf.string>) {
+func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf_type.resource<tensor<i32>>>, %arg1: tensor<3x!tf_type.string>) {
   // expected-error@below {{requires 'device_var_updates_indices' to be the same size as number of resource handles in 'args' (1), but got 2}}
-  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [0], device_var_updates_indices = [0, 1]} : (tensor<!tf.resource<tensor<i32>>>, tensor<3x!tf.string>) -> ()
+  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [0], device_var_updates_indices = [0, 1]} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<3x!tf_type.string>) -> ()
   return
 }
 
 // -----
 
-func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<3x!tf.string>) {
+func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf_type.resource<tensor<i32>>>, %arg1: tensor<3x!tf_type.string>) {
   // expected-error@below {{requires 'device_var_reads_indices' to contain values of at least 0, but got -1 at index 0}}
-  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [-1], device_var_updates_indices = [0]} : (tensor<!tf.resource<tensor<i32>>>, tensor<3x!tf.string>) -> ()
+  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [-1], device_var_updates_indices = [0]} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<3x!tf_type.string>) -> ()
   return
 }
 
 // -----
 
-func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<3x!tf.string>) {
+func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf_type.resource<tensor<i32>>>, %arg1: tensor<3x!tf_type.string>) {
   // expected-error@below {{requires 'device_var_updates_indices' to contain values of at least -1, but got -2 at index 0}}
-  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [0], device_var_updates_indices = [-2]} : (tensor<!tf.resource<tensor<i32>>>, tensor<3x!tf.string>) -> ()
+  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [0], device_var_updates_indices = [-2]} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<3x!tf_type.string>) -> ()
   return
 }
 
@@ -4178,24 +4186,24 @@ func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<
 
 // Valid VarHandleOp operation.
 // CHECK-LABEL: func @testVarHandleOp
-func @testVarHandleOp() -> tensor<!tf.resource<tensor<*xf32>>> {
+func @testVarHandleOp() -> tensor<!tf_type.resource<tensor<*xf32>>> {
   %0 = "tf.VarHandleOp"() {
     container = "",
     shared_name = "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
-  } : () -> tensor<!tf.resource<tensor<*xf32>>>
-  return %0 : tensor<!tf.resource<tensor<*xf32>>>
+  } : () -> tensor<!tf_type.resource<tensor<*xf32>>>
+  return %0 : tensor<!tf_type.resource<tensor<*xf32>>>
 }
 
 // -----
 
 // VarHandleOp operation missing the required resource subtype.
-func @testVarHandleOp() -> tensor<*x!tf.resource> {
+func @testVarHandleOp() -> tensor<*x!tf_type.resource> {
   // expected-error @+1 {{must have exactly one subtype in the result resource type}}
   %0 = "tf.VarHandleOp"() {
     container = "",
     shared_name = "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
-  } : () -> tensor<*x!tf.resource>
-  return %0 : tensor<*x!tf.resource>
+  } : () -> tensor<*x!tf_type.resource>
+  return %0 : tensor<*x!tf_type.resource>
 }
 
 // -----

@@ -53,7 +53,7 @@ class Slack : public TFDataOptimizerBase {
                                  OptimizationStats* stats) override;
 
  private:
-  int64 slack_period_ = -1;
+  int64_t slack_period_ = -1;
 
   Status RecursivelyHandleOp(const MutableGraphView& graph,
                              NodeDef* dataset_node);

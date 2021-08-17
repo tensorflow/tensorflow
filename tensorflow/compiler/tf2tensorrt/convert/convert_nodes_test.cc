@@ -67,8 +67,7 @@ namespace tensorrt {
 // TensorRT modes for testing. We define the following three modes:
 // 1. Implicit batch mode: The tensors have static (known) input shape and the
 //    the batch dimension (first dim) is removed from the TRT tensor shape. In
-//    a loose notation: trt_shape = tf_shape[1:]. This is the standard mode of
-//    a TensorRT network definition  before TensorRT 6.
+//    a loose notation: trt_shape = tf_shape[1:].
 // 2. Explicit batch mode: static (known) input shape, but the batch dimension
 //    is part of the trt tensor shape. (trt_shape = tf_shape)
 // 3. Dynamic shape mode allows unknown input shapes, and requires explicit
@@ -110,14 +109,9 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::Matcher;
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 constexpr std::array<TrtTestMode, 3> ValidTrtModes = {
     TrtTestMode::kImplicitBatch, TrtTestMode::kExplicitBatch,
     TrtTestMode::kDynamicShape};
-#else
-constexpr std::array<TrtTestMode, 1> ValidTrtModes = {
-    TrtTestMode::kImplicitBatch};
-#endif
 
 // TODO(laigd): put this into some test utils file.
 void ExpectStatus(Status status, error::Code code = error::OK,
@@ -323,79 +317,6 @@ std::vector<OutCType> CastTestVector(
   return res;
 }
 
-// Fake ITensor implementation for testing purposes.
-class FakeITensor : public nvinfer1::ITensor {
- public:
-  FakeITensor() : dynamic_range_(0.0f) {}
-
-  FakeITensor(const nvinfer1::Dims& dims) : dims_(dims), dynamic_range_(0.0f) {}
-
-  FakeITensor(const std::vector<int>& dims)
-      : dims_(GetTestDims(dims)), dynamic_range_(0.0f) {}
-
-  void setName(const char* name) override { name_ = name; }
-
-  const char* getName() const override { return name_.c_str(); }
-
-  void setDimensions(nvinfer1::Dims dimensions) override { dims_ = dimensions; }
-
-  nvinfer1::Dims getDimensions() const override { return dims_; }
-
-  void setType(nvinfer1::DataType type) override { type_ = type; }
-
-  nvinfer1::DataType getType() const override { return type_; }
-
-  bool isNetworkInput() const override { return false; }
-
-  bool isNetworkOutput() const override { return false; }
-
-  void setBroadcastAcrossBatch(bool broadcastAcrossBatch) override {}
-
-  bool getBroadcastAcrossBatch() const override { return false; }
-
-  nvinfer1::TensorLocation getLocation() const override { return location_; }
-
-  void setLocation(nvinfer1::TensorLocation location) override {
-    location_ = location;
-  }
-
-#if IS_TRT_VERSION_GE(5, 0, 0, 0)
-  bool setDynamicRange(float min, float max) override {
-    dynamic_range_ = std::max(std::abs(min), std::abs(max));
-    return true;
-  }
-
-  float getDynamicRange() const override { return dynamic_range_; }
-#endif
-
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
-  bool dynamicRangeIsSet() const override { return true; }
-
-  void resetDynamicRange() override {}
-
-  float getDynamicRangeMin() const override { return 0.f; }
-
-  float getDynamicRangeMax() const override { return 0.f; }
-#endif
-
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  void setAllowedFormats(nvinfer1::TensorFormats formats) override {}
-
-  nvinfer1::TensorFormats getAllowedFormats() const override { return 1; }
-
-  bool isShapeTensor() const override { return false; }
-  bool isExecutionTensor() const override { return true; }
-
-#endif
-
- private:
-  string name_;
-  nvinfer1::Dims dims_;
-  nvinfer1::DataType type_;
-  nvinfer1::TensorLocation location_;
-  float dynamic_range_;
-};
-
 TEST(TRT_ShapedWeights_Test, Basic) {
   // Test constructor with no arguments.
   {
@@ -467,9 +388,9 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
     nvinfer1::Dims dims;
     dims.nbDims = 1;
     dims.d[0] = 1;
-    FakeITensor itensor(dims);
-    TRT_TensorOrWeights tw(&itensor);
-    TRT_TensorOrWeights tw1(&itensor, /*batch_size=*/1);
+    ITensorProxyPtr itensor(dims);
+    TRT_TensorOrWeights tw(itensor);
+    TRT_TensorOrWeights tw1(itensor, /*batch_size=*/1);
 
     for (auto original_ptr : {&tw, &tw1}) {
       TRT_TensorOrWeights copy(*original_ptr);
@@ -484,7 +405,7 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
         } else {
           EXPECT_EQ(1, ptr->batch_size());
         }
-        EXPECT_EQ(&itensor, ptr->tensor());
+        EXPECT_EQ(itensor->simple_tensor(), ptr->tensor()->simple_tensor());
         ExpectTrtDimsEqualsArray({1}, ptr->GetTrtDims());
       }
     }
@@ -503,7 +424,7 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
       ASSERT_TRUE(ptr->is_tensor());
       EXPECT_EQ(false, ptr->is_weights());
       EXPECT_EQ(1, ptr->batch_size());
-      EXPECT_NE(nullptr, ptr->tensor());
+      EXPECT_NE(nullptr, ptr->tensor()->simple_tensor());
       ExpectTrtDimsEqualsArray({1}, ptr->GetTrtDims());
     }
   }
@@ -608,7 +529,7 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
         convert_to_tensor_or_weights({batch_size, non_batch_dim}, &output));
     ASSERT_TRUE(output.is_tensor());
     EXPECT_EQ(batch_size, output.batch_size());
-    EXPECT_NE(nullptr, output.tensor());
+    EXPECT_NE(nullptr, output.tensor()->simple_tensor());
     ExpectTrtDimsEqualsArray({non_batch_dim}, output.GetTrtDims());
   }
 }
@@ -771,18 +692,18 @@ class ConverterTest : public ::testing::Test {
     return converter_->GetWeightRange(weights, out_min, out_max);
   }
 
-  void PropagateQuantizationRanges() {
-    converter_->PropagateQuantizationRanges();
-  }
-
   int batch_size() const { return converter_->batch_size_; }
+
+  std::unordered_map<ITensorProxyPtr*, float>& quantization_ranges_proxy() {
+    return converter_->quantization_ranges_proxy_;
+  }
 
   std::unordered_map<nvinfer1::ITensor*, float>& quantization_ranges() {
     return converter_->quantization_ranges_;
   }
 
  private:
-  Logger logger_;
+  Logger& logger_ = *Logger::GetLogger();
 
  protected:
   std::unique_ptr<Converter> converter_;
@@ -790,13 +711,13 @@ class ConverterTest : public ::testing::Test {
 };
 
 TEST_F(ConverterTest, ConvertNode) {
-  FakeITensor output_tensors[2];
+  ITensorProxyPtr output_tensors[2];
   auto op_converter = [&output_tensors](OpConverterParams* params) -> Status {
     nvinfer1::Dims dims = params->inputs[0].tensor()->getDimensions();
     for (int i = 0; i < 2; ++i) {
       dims.d[0] += 1;
-      output_tensors[i].setDimensions(dims);
-      params->outputs->push_back(TRT_TensorOrWeights(&output_tensors[i]));
+      output_tensors[i]->setDimensions(dims);
+      params->outputs->push_back(TRT_TensorOrWeights(output_tensors[i]));
     }
     return Status::OK();
   };
@@ -814,12 +735,14 @@ TEST_F(ConverterTest, ConvertNode) {
 
   TRT_TensorOrWeights actual_output_1;
   TF_EXPECT_OK(GetTensorOrWeights("my_op", &actual_output_1));
-  EXPECT_EQ(&output_tensors[0], actual_output_1.tensor());
+  EXPECT_EQ(output_tensors[0]->simple_tensor(),
+            actual_output_1.tensor()->simple_tensor());
   EXPECT_EQ(124, actual_output_1.tensor()->getDimensions().d[0]);
 
   TRT_TensorOrWeights actual_output_2;
   TF_EXPECT_OK(GetTensorOrWeights("my_op:1", &actual_output_2));
-  EXPECT_EQ(&output_tensors[1], actual_output_2.tensor());
+  EXPECT_EQ(output_tensors[1]->simple_tensor(),
+            actual_output_2.tensor()->simple_tensor());
   EXPECT_EQ(125, actual_output_2.tensor()->getDimensions().d[0]);
 
   VerifyTrtLayerNameNotEmpty(converter_->network());
@@ -844,7 +767,8 @@ TEST_F(ConverterTest, AddAndGetInputs) {
   TF_EXPECT_OK(GetInputs(node_def, &inputs));
 
   EXPECT_EQ(4, inputs.size());
-  EXPECT_EQ(inputs[0].tensor(), inputs[1].tensor());
+  EXPECT_EQ(inputs[0].tensor()->simple_tensor(),
+            inputs[1].tensor()->simple_tensor());
 
   EXPECT_EQ(nvinfer1::DataType::kFLOAT, inputs[0].tensor()->getType());
   EXPECT_EQ(nvinfer1::DataType::kINT32, inputs[2].tensor()->getType());
@@ -862,17 +786,17 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
 
   // Register a custom converter which shuffles the input. We use it to build a
   // TRT network whose output will be later marked.
-  std::vector<nvinfer1::ITensor*> output_tensors;
+  std::vector<ITensorProxyPtr> output_tensors;
   auto op_converter = [&output_tensors](OpConverterParams* params) -> Status {
     nvinfer1::Permutation perm;
     perm.order[0] = 1;
     perm.order[1] = 0;
     for (int i = 0; i < 2; ++i) {
-      nvinfer1::ITensor* input_tensor = params->inputs[0].tensor();
+      ITensorProxyPtr input_tensor = params->inputs[0].tensor();
       nvinfer1::IShuffleLayer* layer =
-          params->converter->network()->addShuffle(*input_tensor);
+          params->converter->network()->addShuffle(*input_tensor->trt_tensor());
       layer->setFirstTranspose(perm);
-      nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+      ITensorProxyPtr output_tensor = layer->getOutput(0);
       params->outputs->emplace_back(output_tensor);
       output_tensors.push_back(output_tensor);
     }
@@ -907,9 +831,9 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
 }
 
 TEST_F(ConverterTest, TransposeTensor) {
-  nvinfer1::ITensor* input_tensor = converter_->network()->addInput(
+  ITensorProxyPtr input_tensor = converter_->network()->addInput(
       "", nvinfer1::DataType::kFLOAT, GetTestDims({2, 3, 5}));
-  nvinfer1::ITensor* output_tensor = nullptr;
+  ITensorProxyPtr output_tensor = nullptr;
   NodeDef dummy_node_def = MakeNodeDef("dummy_op", "DummyOp", {});
   // Rank doesn't match.
   ExpectStatus(
@@ -946,7 +870,7 @@ void TestPrepareTensorForShape(
     input = TRT_TensorOrWeights(weight_store->GetTempWeights(
         nvinfer1::DataType::kFLOAT, GetTestDims(input_dims)));
   }
-  nvinfer1::ITensor* output_tensor = nullptr;
+  ITensorProxyPtr output_tensor = nullptr;
 
   NodeDef dummy_node_def = MakeNodeDef("dummy_op", "DummyOp", {});
   for (bool validation_only : {false, true}) {
@@ -956,7 +880,7 @@ void TestPrepareTensorForShape(
     if (expected_code == error::OK) {
       TF_EXPECT_OK(status);
       if (validation_only) {
-        EXPECT_EQ(nullptr, output_tensor);
+        EXPECT_EQ(nullptr, *output_tensor);
       } else {
         ExpectTrtDimsEqualsArray(expected_tensor_dims,
                                  output_tensor->getDimensions());
@@ -1031,8 +955,8 @@ TEST_F(ConverterTest, MaybeUpdateBatchSize) {
 
 TEST_F(ConverterTest, AddAndGetTensorOrWeights) {
   // Add a tensor.
-  FakeITensor fake_tensor;
-  TRT_TensorOrWeights tensor(&fake_tensor);
+  ITensorProxyPtr simple_tensor;
+  TRT_TensorOrWeights tensor(simple_tensor);
   EXPECT_EQ(-1, tensor.batch_size());
   TF_EXPECT_OK(MaybeUpdateBatchSize(123));
   TF_EXPECT_OK(AddTensorOrWeights("my_tensor", tensor));
@@ -1070,28 +994,27 @@ TEST_F(ConverterTest, GetWeightRange) {
 }
 
 TEST_F(ConverterTest, ProvideQuantizationRange) {
-  FakeITensor fake_tensor;
+  ITensorProxyPtr simple_tensor;
   // Asymmetric range
-  converter_->ProvideQuantizationRange(&fake_tensor, 0.0f, 6.0f);
-  EXPECT_EQ(6.0f, quantization_ranges()[&fake_tensor]);
-  converter_->ProvideQuantizationRange(&fake_tensor, 1.0f, 6.0f);
-  EXPECT_EQ(6.0f, quantization_ranges()[&fake_tensor]);
-  converter_->ProvideQuantizationRange(&fake_tensor, -8.0f, 6.0f);
-  EXPECT_EQ(8.0f, quantization_ranges()[&fake_tensor]);
-  converter_->ProvideQuantizationRange(&fake_tensor, -8.123f, -6.123f);
-  EXPECT_EQ(8.123f, quantization_ranges()[&fake_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, 0.0f, 6.0f);
+  EXPECT_EQ(6.0f, quantization_ranges_proxy()[&simple_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, 1.0f, 6.0f);
+  EXPECT_EQ(6.0f, quantization_ranges_proxy()[&simple_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, -8.0f, 6.0f);
+  EXPECT_EQ(8.0f, quantization_ranges_proxy()[&simple_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, -8.123f, -6.123f);
+  EXPECT_EQ(8.123f, quantization_ranges_proxy()[&simple_tensor]);
   // Symmetric range
-  converter_->ProvideQuantizationRange(&fake_tensor, -6.123f, 6.123f);
-  EXPECT_EQ(6.123f, quantization_ranges()[&fake_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, -6.123f, 6.123f);
+  EXPECT_EQ(6.123f, quantization_ranges_proxy()[&simple_tensor]);
 
   VerifyTrtLayerNameNotEmpty(converter_->network());
 }
 
 TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
-  // input -> infer1 -> infer2 -> infer3
-  FakeITensor input, infer_1, infer_2, infer_3;
-  FakeITensor not_infer;
-  Logger logger;
+  ITensorProxyPtr input;
+  ITensorProxyPtr not_infer;
+  Logger& logger = *Logger::GetLogger();
   auto int8_converter = Converter::Create(TrtPrecisionMode::INT8,
                                           /*use_calibration=*/true, &logger,
                                           /*use_implicit_batch=*/true,
@@ -1099,45 +1022,12 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
                             .ValueOrDie();
   int8_converter->ProvideQuantizationRange(&input, -5.0f, 5.0f);
   int8_converter->ProvideQuantizationRange(&not_infer, -100.0f, 100.0f);
-  int8_converter->MarkQuantizationRangesAsInferrable(&input, &infer_1);
-  int8_converter->MarkQuantizationRangesAsInferrable(&infer_1, &infer_2);
-  int8_converter->MarkQuantizationRangesAsInferrable(&infer_2, &infer_3);
 
-  // Input range should be inferred along the chain and applied to tensors.
   int8_converter->MaybeApplyQuantizationRanges();
-#if IS_TRT_VERSION_GE(5, 0, 0, 0)
-  EXPECT_EQ(input.getDynamicRange(), 5.0f);
-  EXPECT_EQ(infer_1.getDynamicRange(), 5.0f);
-  EXPECT_EQ(infer_2.getDynamicRange(), 5.0f);
-  EXPECT_EQ(infer_3.getDynamicRange(), 5.0f);
-  EXPECT_EQ(not_infer.getDynamicRange(), 100.0f);
-#endif
+  EXPECT_EQ(input->getDynamicRangeMax(), 5.0f);
+  EXPECT_EQ(not_infer->getDynamicRangeMax(), 100.0f);
 
   VerifyTrtLayerNameNotEmpty(int8_converter->network());
-}
-
-TEST_F(ConverterTest, PropagateQuantizationRanges) {
-  // infer0 <-> infer1 <-> infer2 <-> infer3
-  //              |
-  //            infer4 <-> infer5
-  FakeITensor infer[6];
-  FakeITensor not_infer;
-  converter_->ProvideQuantizationRange(&infer[4], -5.0f, 5.0f);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[0], &infer[1]);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[1], &infer[2]);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[3], &infer[2]);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[4], &infer[1]);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[4], &infer[5]);
-
-  // Input range should be inferred along the chain.
-  PropagateQuantizationRanges();
-  auto ranges = quantization_ranges();
-  for (int i = 0; i < 6; ++i) {
-    EXPECT_EQ(5.0f, ranges[&infer[i]]);
-  }
-  EXPECT_EQ(ranges.count(&not_infer), 0);
-
-  VerifyTrtLayerNameNotEmpty(converter_->network());
 }
 
 TEST_F(ConverterTest, GetTrtBroadcastShape) {
@@ -1249,9 +1139,9 @@ TEST_F(ConverterTest, CreateConstantLayer) {
   for (auto dtype : {nvinfer1::DataType::kFLOAT, nvinfer1::DataType::kINT32}) {
     TRT_ShapedWeights weights =
         weight_store_->GetTempWeights(dtype, GetTestDims({2, 3, 5}));
-    nvinfer1::ITensor* tensor =
+    ITensorProxyPtr tensor =
         converter_->CreateConstantLayer(weights, GetTestDims({3, 10}));
-    ASSERT_NE(nullptr, tensor);
+    ASSERT_NE(nullptr, tensor->trt_tensor());
     EXPECT_EQ(dtype, tensor->getType())
         << "Expected " << DebugString(dtype) << " vs. actual "
         << DebugString(tensor->getType());
@@ -1297,7 +1187,7 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
 
  private:
-  Logger logger_;
+  Logger& logger_ = *Logger::GetLogger();
 };
 
 TEST_F(ConvertGraphDefToEngineTest, IdentityGraph) {
@@ -1359,7 +1249,9 @@ class OpConverterTest : public ::testing::Test {
     Reset();
   }
 
-  ~OpConverterTest() override { QCHECK_EQ(0, cudaStreamDestroy(stream_)); }
+  ~OpConverterTest() noexcept override {
+    QCHECK_EQ(0, cudaStreamDestroy(stream_));
+  }
 
   Status GetTensorOrWeights(const string& name, TRT_TensorOrWeights* output) {
     return converter_->GetTensorOrWeights(name, output);
@@ -1715,17 +1607,19 @@ class OpConverterTest : public ::testing::Test {
   }
 
   // Expose quantization_ranges_ for tests
+  std::unordered_map<ITensorProxyPtr*, float>& quantization_ranges_proxy() {
+    return converter_->quantization_ranges_proxy_;
+  }
+
+  // Expose quantization_ranges_ for tests
   std::unordered_map<nvinfer1::ITensor*, float>& quantization_ranges() {
     return converter_->quantization_ranges_;
   }
 
-  void PropagateQuantizationRanges() {
-    converter_->PropagateQuantizationRanges();
-  }
   std::unique_ptr<Converter> converter_;
 
  private:
-  Logger logger_;
+  Logger& logger_ = *Logger::GetLogger();
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   cudaStream_t stream_;
   std::unique_ptr<Allocator> tensor_buffer_allocator_;
@@ -2085,10 +1979,8 @@ void TestConvertConst(OpConverterTest* test) {
   {
     Tensor t = test::AsScalar<InputCType>(12);
     std::vector<int> expected_dims{1};
-    if (IS_TRT_VERSION_GE(6, 0, 0, 0)) {
-      // Scalars are represented as rank 0 tensors in TRT6 or later
-      expected_dims.clear();
-    }
+    // Scalars are represented as rank 0 tensors.
+    expected_dims.clear();
     reset_and_test(t, false, expected_dims, {12});
     reset_and_test(t, true, expected_dims, {12});
   }
@@ -2851,6 +2743,22 @@ TEST_P(OpConverter_FP32_Test, ConvertBatchMatMul) {
                    return p;
                  });
 
+  // 4D tensor where the second "batch dim" is not 1
+  params.push_back(MatMulTestParams{
+      {1, 2, 4, 5},
+      {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13,
+       14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+       28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39},
+      false,  // A
+      {1, 2, 3, 5},
+      {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+       16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30},
+      true,  // B
+      {1, 2, 4, 3},
+      {40,   90,   140,  115,  290,  465,  190,  490,
+       790,  265,  690,  1115, 1990, 2540, 3090, 2440,
+       3115, 3790, 2890, 3690, 4490, 3340, 4265, 5190}});  // result
+
   TestMatMulHelper(this, get_batch_matmul_nodedef, params);
 }
 
@@ -2906,135 +2814,118 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
   std::vector<TestParams> params{
       // Dot product.
       TestParams{"i,i->", {2}, {2, 3}, {2}, {1, 2}, {1}, {8}, unimplemented_eq},
-      // Outer product.
-      TestParams{"i,k->ik",
-                 {2},
-                 {1, 2},
-                 {3},
-                 {1, 2, 3},
-                 {2, 3},
-                 {1, 2, 3, 2, 4, 6},
-                 unimplemented_eq},
-      // Transpose.
-      TestParams{"ik->ki",
-                 {2, 3},
-                 {0, 1, 2, 3, 4, 5},
-                 {},
-                 {},
-                 {3, 2},
-                 {0, 3, 1, 4, 2, 5},
-                 unimplemented_eq},
-      // Diag.
-      TestParams{"ii->i",
-                 {3, 3},
-                 {0, 1, 2, 3, 4, 5, 6, 7, 8},
-                 {},
-                 {},
-                 {3},
-                 {0, 4, 8},
-                 unimplemented_eq},
-      // Trace.
-      TestParams{"ii",
-                 {3, 3},
-                 {0, 1, 2, 3, 4, 5, 6, 7, 8},
-                 {},
-                 {},
-                 {},
-                 {12},
-                 unimplemented_eq},
-      // MatMul with reduction.
-      TestParams{"abbc,dc->ad",
-                 {1, 2, 2, 3},
-                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-                 {2, 3},
-                 {1, 2, 3, 4, 5, 6},
-                 {2, 3},
-                 {1, 2, 3, 2, 4, 6},
-                 unimplemented_eq},
-      // Ellipsis with broadcast.
-      TestParams{"...ik,...jk->...ij",
-                 {1, 3, 1, 4},
-                 {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
-                 {2, 1, 1, 4},
-                 {1, 2, 3, 4, 5, 6, 7, 8},
-                 {2, 3, 1, 1},
-                 {20, 60, 100, 44, 148, 252},
-                 unimplemented_eq},
-      // MatMul and Batched MatMul.
-      TestParams{"ab,bc->ac",
-                 {2, 3},
-                 {0, 1, 2, 3, 4, 5},
-                 {3, 2},
-                 {1, 2, 3, 4, 5, 6},
-                 {2, 2},
-                 {13, 16, 40, 52}},
-      TestParams{"abc,cde->abde",
-                 {1, 2, 3},
-                 {0, 1, 2, 3, 4, 5},
-                 {3, 2, 2},
-                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-                 {1, 2, 2, 2},
-                 {23, 26, 29, 32, 68, 80, 92, 104}},
-      TestParams{"abcd,cde->abe",
-                 {1, 2, 2, 3},
-                 {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
-                 {2, 3, 2},
-                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-                 {1, 2, 2},
-                 {125, 140, 341, 392}},
-      TestParams{"abc,cd->abd",
-                 {1, 2, 3},
-                 {0, 1, 2, 3, 4, 5},
-                 {3, 2},
-                 {1, 2, 3, 4, 5, 6},
-                 {1, 2, 2},
-                 {13, 16, 40, 52}},
-      TestParams{"acbe,aecd->abcd",
-                 {1, 2, 3, 4},
-                 {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-                  12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
-                 {1, 4, 2, 3},
-                 {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
-                  13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24},
-                 {1, 3, 2, 3},
-                 {90, 96, 102, 732, 786, 840, 250, 272, 294, 940, 1010, 1080,
-                  410, 448, 486, 1148, 1234, 1320}},
-      TestParams{"aecd,abcd->acbe",
-                 {1, 2, 3, 4},
-                 {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-                  12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
-                 {1, 2, 3, 4},
-                 {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
-                  13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24},
-                 {1, 3, 2, 2},
-                 {20, 140, 92, 788, 148, 460, 412, 1300, 404, 908, 860, 1940}},
-      TestParams{"acd,dce->ae",
-                 {1, 2, 3},
-                 {0, 1, 2, 3, 4, 5},
-                 {3, 2, 2},
-                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-                 {1, 2},
-                 {115, 130}},
-      TestParams{"abcd,bace->bade",
-                 {2, 3, 2, 1},
-                 {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
-                 {3, 2, 2, 1},
-                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-                 {3, 2, 1, 1},
-                 {2, 46, 28, 128, 86, 242}},
-      TestParams{
-          "cebfad,fageb->abcdg",
-          {1, 1, 3, 3, 2, 2},
-          {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-           12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-           24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35},
-          {3, 2, 2, 1, 3},
-          {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
-           13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-           25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36},
-          {2, 3, 1, 2, 2},
-          {252, 288, 291, 336, 768,  912,  810,  963,  1356, 1608, 1401, 1662,
-           438, 492, 495, 558, 1176, 1338, 1236, 1407, 1986, 2256, 2049, 2328}},
+          // Outer product.
+          TestParams{"i,k->ik",
+                     {2},
+                     {1, 2},
+                     {3},
+                     {1, 2, 3},
+                     {2, 3},
+                     {1, 2, 3, 2, 4, 6},
+                     unimplemented_eq},
+          // Transpose.
+          TestParams{"ik->ki", {2, 3}, {0, 1, 2, 3, 4, 5}, {},
+                     {},       {3, 2}, {0, 3, 1, 4, 2, 5}, unimplemented_eq},
+          // Diag.
+          TestParams{"ii->i",
+                     {3, 3},
+                     {0, 1, 2, 3, 4, 5, 6, 7, 8},
+                     {},
+                     {},
+                     {3},
+                     {0, 4, 8},
+                     unimplemented_eq},
+          // Trace.
+          TestParams{
+              "ii", {3, 3},          {0, 1, 2, 3, 4, 5, 6, 7, 8}, {}, {}, {},
+              {12}, unimplemented_eq},
+          // MatMul with reduction.
+          TestParams{"abbc,dc->ad",
+                     {1, 2, 2, 3},
+                     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                     {2, 3},
+                     {1, 2, 3, 4, 5, 6},
+                     {2, 3},
+                     {1, 2, 3, 2, 4, 6},
+                     unimplemented_eq},
+          // Ellipsis with broadcast.
+          TestParams{"...ik,...jk->...ij",
+                     {1, 3, 1, 4},
+                     {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                     {2, 1, 1, 4},
+                     {1, 2, 3, 4, 5, 6, 7, 8},
+                     {2, 3, 1, 1},
+                     {20, 60, 100, 44, 148, 252},
+                     unimplemented_eq},
+          // MatMul and Batched MatMul.
+          TestParams{"ab,bc->ac",        {2, 3}, {0, 1, 2, 3, 4, 5}, {3, 2},
+                     {1, 2, 3, 4, 5, 6}, {2, 2}, {13, 16, 40, 52}},
+          TestParams{"abc,cde->abde",
+                     {1, 2, 3},
+                     {0, 1, 2, 3, 4, 5},
+                     {3, 2, 2},
+                     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                     {1, 2, 2, 2},
+                     {23, 26, 29, 32, 68, 80, 92, 104}},
+          TestParams{"abcd,cde->abe",
+                     {1, 2, 2, 3},
+                     {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                     {2, 3, 2},
+                     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                     {1, 2, 2},
+                     {125, 140, 341, 392}},
+          TestParams{"abc,cd->abd",      {1, 2, 3}, {0, 1, 2, 3, 4, 5}, {3, 2},
+                     {1, 2, 3, 4, 5, 6}, {1, 2, 2}, {13, 16, 40, 52}},
+          TestParams{"acbe,aecd->abcd",
+                     {1, 2, 3, 4},
+                     {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                      12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
+                     {1, 4, 2, 3},
+                     {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                      13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24},
+                     {1, 3, 2, 3},
+                     {90, 96, 102, 732, 786, 840, 250, 272, 294, 940, 1010,
+                      1080, 410, 448, 486, 1148, 1234, 1320}},
+          TestParams{
+              "aecd,abcd->acbe",
+              {1, 2, 3, 4},
+              {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+               12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
+              {1, 2, 3, 4},
+              {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+               13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24},
+              {1, 3, 2, 2},
+              {20, 140, 92, 788, 148, 460, 412, 1300, 404, 908, 860, 1940}},
+          TestParams{"acd,dce->ae",
+                     {1, 2, 3},
+                     {0, 1, 2, 3, 4, 5},
+                     {3, 2, 2},
+                     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                     {1, 2},
+                     {115, 130}},
+          TestParams{"abcd,bace->bade",
+                     {2, 3, 2, 1},
+                     {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                     {3, 2, 2, 1},
+                     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                     {3, 2, 1, 1},
+                     {2, 46, 28, 128, 86, 242}},
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
+          // Deactivating buggy test case for TRT8 per nvbug 3322485.
+          TestParams{"cebfad,fageb->abcdg",
+                     {1, 1, 3, 3, 2, 2},
+                     {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                      12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+                      24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35},
+                     {3, 2, 2, 1, 3},
+                     {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                      13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+                      25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36},
+                     {2, 3, 1, 2, 2},
+                     {252,  288,  291,  336,  768,  912,  810,  963,
+                      1356, 1608, 1401, 1662, 438,  492,  495,  558,
+                      1176, 1338, 1236, 1407, 1986, 2256, 2049, 2328}},
+#endif
   };
 
   for (auto p : params) {
@@ -3365,8 +3256,8 @@ TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
     ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
-    EXPECT_EQ(1, ranges.count(output.tensor()));
-    EXPECT_EQ(6.0f, ranges[output.tensor()]);
+    EXPECT_EQ(1, ranges.count(output.tensor()->trt_tensor()));
+    EXPECT_EQ(6.0f, ranges[output.tensor()->trt_tensor()]);
   }
   {
     // FakeQuantWithMinMaxVars ranges set via inputs, ok.
@@ -3386,8 +3277,8 @@ TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
     ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
-    EXPECT_EQ(1, ranges.count(output.tensor()));
-    EXPECT_EQ(6.0f, ranges[output.tensor()]);
+    EXPECT_EQ(1, ranges.count(output.tensor()->trt_tensor()));
+    EXPECT_EQ(6.0f, ranges[output.tensor()->trt_tensor()]);
   }
   {
     // QuantizeAndDequantizeV2 ranges set via inputs, ok.
@@ -3407,8 +3298,8 @@ TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
     ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
-    EXPECT_EQ(1, ranges.count(output.tensor()));
-    EXPECT_EQ(6.0f, ranges[output.tensor()]);
+    EXPECT_EQ(1, ranges.count(output.tensor()->trt_tensor()));
+    EXPECT_EQ(6.0f, ranges[output.tensor()->trt_tensor()]);
   }
   {
     // QuantizeAndDequantizeV2 Range inputs are tensors, should fail.
@@ -3448,8 +3339,8 @@ TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
     ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
-    EXPECT_EQ(1, ranges.count(output.tensor()));
-    EXPECT_EQ(6.0f, ranges[output.tensor()]);
+    EXPECT_EQ(1, ranges.count(output.tensor()->trt_tensor()));
+    EXPECT_EQ(6.0f, ranges[output.tensor()->trt_tensor()]);
   }
 }
 
@@ -3782,20 +3673,20 @@ TEST_P(OpConverter_FP32_Test, ConvertActivation) {
     std::vector<float> output_values;
     std::transform(input.begin(), input.end(),
                    std::back_inserter(output_values), op_map[op_name].second);
+
     TestOpConverter("my_unary", node_def, p.expected_output_dims, Status::OK(),
-                    Status::OK(), ArrayFloatNear(output_values, 0, false));
+                    Status::OK(),
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+                    // NVBug # 3322482 - Known bug with TRT 8.0 on specific GPU
+                    // architectures
+                    ArrayFloatNear(output_values, 1e-4, false)
+#else
+                    ArrayFloatNear(output_values, 0, false)
+#endif
+    );
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_unary", &output));
-
-    // Certain activations should set quantization range automatically.
-    auto ranges = quantization_ranges();
-    if (op_name == "Relu6") {
-      EXPECT_EQ(ranges[output.tensor()], 6.0f);
-    } else if (op_name == "Sigmoid" || op_name == "Tanh" ||
-               op_name == "Softsign") {
-      EXPECT_EQ(ranges[output.tensor()], 1.0f);
-    }
   }
 }
 
@@ -5215,7 +5106,6 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
   }
 }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 // Get the NodeDef for Pack.
 NodeDef GetConv3DNodeDef(std::vector<int> strides = {1, 1, 1, 1, 1},
                          string padding = "SAME", string data_format = "NCDHW",
@@ -5586,7 +5476,6 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     TestConv3D(this, p);
   }
 }
-#endif
 
 template <typename T>
 NodeDef CreatePoolOp(DataType tf_type, std::vector<int> ksize,
@@ -5636,11 +5525,7 @@ TEST_P(OpConverter_FP32_Test, ConvertPool) {
     }
   };
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   std::vector<int> test_nDims{2, 3};
-#else
-  std::vector<int> test_nDims{2};
-#endif
 
   for (int nDim : test_nDims) {
     // Input is weights, should fail.
@@ -6271,11 +6156,7 @@ auto get_concat_nodedef = [](DataType dtype, int num_inputs) -> NodeDef {
   return concat.operation.node()->def();
 };
 
-#if IS_TRT_VERSION_GE(7, 0, 0, 0)
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
-#else
-TEST_P(OpConverter_FP32_FP16_Test, ConvertConcat) {
-#endif
   {
     // Axis is a tensor, should fail.
     Reset();
@@ -6586,9 +6467,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
 
   TestConvertSplit<DT_FLOAT>(this);
   TestConvertSplit<DT_HALF>(this);
-#if IS_TRT_VERSION_GE(5, 1, 3, 1)
   TestConvertSplit<DT_INT32>(this);
-#endif
 }
 
 // Get the NodeDef for Unpack (Unstack in TF API).
@@ -6639,11 +6518,7 @@ void TestConvertUnpack(ParameterizedOpConverterTestBase* test,
 }
 
 // TODO: Reactivate when INT32 Segfault fixed
-#if IS_TRT_VERSION_GE(5, 1, 3, 1)
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
-#else
-TEST_P(OpConverter_FP32_FP16_Test, ConvertUnpack) {
-#endif
   // We need to skip error testing for Dynamic Shape mode, as it is impossible
   // to convert Unpack in Dynamic Shape Mode.
   if (trt_mode_ != TrtTestMode::kDynamicShape) {
@@ -6785,11 +6660,7 @@ NodeDef GetPackNodeDef(DataType dtype, int num_inputs, int axis) {
   return pack.operation.node()->def();
 }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
-#else
-TEST_P(OpConverter_FP32_FP16_Test, ConvertPack) {
-#endif
   struct TestParams {
     std::vector<std::vector<int>> input_shapes;
     std::vector<std::vector<int>> partial_input_shapes;
@@ -7144,12 +7015,6 @@ void TestConvertDepthSpaceShuffle(
     const std::vector<DepthSpaceShuffleTestParams>& params) {
   Status status = Status::OK();
 
-#if !IS_TRT_VERSION_GE(6, 0, 0, 0)
-  if (test->get_trt_mode() == TrtTestMode::kDynamicShape) {
-    status = errors::InvalidArgument("Dynamic input requires TRT6");
-  }
-#endif
-
   {
     // Input is a weight, should fail.
     test->Reset();
@@ -7318,7 +7183,6 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSpaceToDepth) {
   TestConvertDepthSpaceShuffle<ops::SpaceToDepth>(this, params);
 }
 
-#if IS_TRT_VERSION_GE(5, 1, 2, 0)
 TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
   Scope s = Scope::NewRootScope();
   auto t = ops::Placeholder(s.WithOpName("t"), tf_type_);
@@ -7429,7 +7293,6 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
                     /*matcher=*/ElementsAreArray(p.expected_output));
   }
 }
-#endif  // IS_TRT_VERSION_GE(5, 1, 2, 0)
 
 // Get the NodeDef for SquaredDifference.
 NodeDef GetSquaredDifferenceNodeDef(DataType dtype) {
@@ -7507,7 +7370,6 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquaredDifference) {
   }
 }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 template <typename OpType>
 NodeDef MakeResizeNodeDef(DataType dtype, bool align_corners) {
   Scope s = Scope::NewRootScope();
@@ -7630,7 +7492,6 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertResize) {
     TestConvertResize<ops::ResizeBilinear>(this, p);
   }
 }
-#endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
 NodeDef MakePadNodeDef(std::string name, DataType dtype) {
   Scope s = Scope::NewRootScope();
@@ -7682,12 +7543,10 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPad) {
     RunValidationAndConversion(node_def);
     TF_EXPECT_OK(GetTensorOrWeights("input", &input));
     TF_EXPECT_OK(GetTensorOrWeights("my_pad", &output));
-    converter_->ProvideQuantizationRange(input.tensor(), -5.0f, 5.0f);
-    // Input range should be inferred across pad.
-    PropagateQuantizationRanges();
+    ITensorProxyPtr input_tensor = input.tensor();
+    converter_->ProvideQuantizationRange(&input_tensor, -5.0f, 5.0f);
     auto ranges = quantization_ranges();
-    EXPECT_EQ(5.0f, ranges[input.tensor()]);
-    EXPECT_EQ(5.0f, ranges[output.tensor()]);
+    EXPECT_EQ(5.0f, ranges[input.tensor()->trt_tensor()]);
   }
 
   std::vector<PadTestParams> params{

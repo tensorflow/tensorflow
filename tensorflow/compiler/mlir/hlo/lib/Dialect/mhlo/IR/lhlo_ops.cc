@@ -104,13 +104,13 @@ static LogicalResult Verify(AllToAllOp op) {
 static LogicalResult Verify(AllReduceOp op) { return VerifyAllReduce(op); }
 
 //===----------------------------------------------------------------------===//
-// AllReduceScatterOp
+// ReduceScatterOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(AllReduceScatterOp op) {
+static LogicalResult Verify(ReduceScatterOp op) {
   if (failed(VerifyReplicaGroups(op, /*is_uniform_sized=*/true)))
     return failure();
-  if (failed(mlir::hlo::VerifyAllReduceScatter(
+  if (failed(mlir::hlo::VerifyReduceScatter(
           op, /*operand_types=*/op.operands().getTypes(),
           /*result_types=*/op.results().getTypes(),
           /*scatter_dimension=*/op.scatter_dimension())))

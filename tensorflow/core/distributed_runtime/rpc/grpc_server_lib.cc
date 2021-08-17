@@ -287,7 +287,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
     }
   } else {
     worker_env_.collective_executor_mgr = CreateProdRpcCollectiveExecutorMgr(
-        config, worker_env_.device_mgr, MaybeCreateNcclCommunicator(),
+        config, worker_env_.device_mgr, MaybeCreateNcclCommunicator(config),
         worker_cache, default_worker_name);
   }
 
@@ -466,11 +466,20 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
   }
   worker_env_.collective_executor_mgr = CreateProdRpcCollectiveExecutorMgr(
       server_def_.default_session_config(), worker_env_.device_mgr,
-      MaybeCreateNcclCommunicator(), worker_cache, default_worker_name);
+      MaybeCreateNcclCommunicator(server_def_.default_session_config()),
+      worker_cache, default_worker_name);
 
   master_env_.worker_cache = worker_cache;
   master_env_.collective_executor_mgr =
       worker_env_.collective_executor_mgr.get();
+  return Status::OK();
+}
+
+// TODO(haoyuzhang): Remove this method once we have a mechanism to directly set
+// field inside the RPC coordination service handler.
+Status GrpcServer::SetCoordinationServiceAgentInstance(
+    CoordinationServiceAgent* agent) {
+  // No op, coordination service is not implemented in open source.
   return Status::OK();
 }
 

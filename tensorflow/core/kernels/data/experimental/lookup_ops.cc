@@ -90,8 +90,8 @@ class DatasetIterator
 
   Status status() const override { return status_; }
 
-  int64 total_size() const override {
-    int64 size = dataset_->Cardinality();
+  int64_t total_size() const override {
+    int64_t size = dataset_->Cardinality();
     if (size < 0) {
       return 0;
     }

@@ -51,7 +51,8 @@ struct CanonicalDebugOptions {
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
         dump_module_metadata(opts.xla_dump_module_metadata()),
-        dump_compress_protos(opts.xla_dump_compress_protos()) {
+        dump_compress_protos(opts.xla_dump_compress_protos()),
+        dump_hlo_metadata(!opts.xla_dump_disable_metadata()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -116,6 +117,18 @@ struct CanonicalDebugOptions {
       should_dump_pass = [](string_view) { return false; };
     }
 
+    // Initialize should_dump_pipeline. If the option was not specified, dump
+    // all pipelines. Otherwise dump only those pipelines that user asked for
+    // explicitly.
+    if (!opts.xla_dump_hlo_pipeline_re().empty()) {
+      string pattern = opts.xla_dump_hlo_pipeline_re();
+      should_dump_pipeline = [pattern](string_view pipeline_name) {
+        return RE2::PartialMatch(pipeline_name, pattern);
+      };
+    } else {
+      should_dump_pipeline = [](string_view) { return true; };
+    }
+
     // Output dirs "sponge" and "test_undeclared_outputs_dir" (case-insensitive)
     // have a special meaning: Dump into the directory specified by the
     // environment variable TEST_UNDECLARED_OUTPUTS_DIR.
@@ -128,6 +141,7 @@ struct CanonicalDebugOptions {
                       "is not set, so cannot dump anywhere.";
         should_dump_module = [](string_view) { return false; };
         should_dump_pass = [](string_view) { return false; };
+        should_dump_pipeline = [](string_view) { return false; };
       }
     }
   }
@@ -137,6 +151,7 @@ struct CanonicalDebugOptions {
   string dump_to;
   std::function<bool(string_view module_name)> should_dump_module;
   std::function<bool(string_view pass_name)> should_dump_pass;
+  std::function<bool(string_view pipeline_name)> should_dump_pipeline;
 
   // dump_ir isn't present here because this file is mostly concerned with
   // dumping HLO.
@@ -148,9 +163,10 @@ struct CanonicalDebugOptions {
   bool dump_fusion_visualization;
   bool dump_snapshots;
   bool dump_include_timestamp;
-  int64 dump_max_hlo_modules;
+  int64_t dump_max_hlo_modules;
   bool dump_module_metadata;
   bool dump_compress_protos;
+  bool dump_hlo_metadata;
 };
 
 Status WriteStringToFile(tensorflow::Env* env, const string& fname,
@@ -209,15 +225,15 @@ absl::optional<std::string> DumpToFileInDirImpl(
                  << ": " << status;
     }
     static const LazyRE2 module_id_regex = {R"(.*module_(\d+)\..*)"};
-    absl::flat_hash_set<int64> dumped_module_ids;
+    absl::flat_hash_set<int64_t> dumped_module_ids;
     for (const string& match : matches) {
-      int64 dumped_module_id;
+      int64_t dumped_module_id;
       if (RE2::FullMatch(match, *module_id_regex, &dumped_module_id)) {
         dumped_module_ids.insert(dumped_module_id);
       }
     }
     if (dumped_module_ids.size() >= opts.dump_max_hlo_modules) {
-      int64 module_id;
+      int64_t module_id;
       if (RE2::FullMatch(filename, *module_id_regex, &module_id) &&
           !dumped_module_ids.contains(module_id)) {
         LOG(ERROR) << "Have already dumped " << dumped_module_ids.size()
@@ -265,10 +281,11 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
   std::vector<absl::optional<std::string>> file_paths;
 
   if (opts.dump_as_text) {
+    HloPrintOptions print_options;
+    print_options.set_print_backend_config(true);
+    print_options.set_print_metadata(opts.dump_hlo_metadata);
     file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-        StrCat(filename, ".txt"),
-        module.ToString(HloPrintOptions().set_print_backend_config(true)),
-        opts));
+        StrCat(filename, ".txt"), module.ToString(print_options), opts));
     if (buffer_assn) {
       file_paths.push_back(DumpToFileInDirOrStdoutImpl(
           StrCat(filename, "-buffer-assignment.txt"),
@@ -353,7 +370,7 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
 
 void DumpHloModuleMetadata(const HloModuleMetadataProto& metadata,
                            const CanonicalDebugOptions& opts,
-                           absl::flat_hash_set<int64>* dumped_module_ids) {
+                           absl::flat_hash_set<int64_t>* dumped_module_ids) {
   // Return if metadata for this module has already been dumped.
   if (!dumped_module_ids->insert(metadata.canonical_module_id()).second) {
     return;
@@ -379,7 +396,7 @@ static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
 static auto& module_id_to_step_number TF_GUARDED_BY(mu) =
-    *new absl::flat_hash_map<int64, int64>();
+    *new absl::flat_hash_map<int64_t, int64_t>();
 
 // Maps a module's unique ID to a timestamp indicating when we've first dumped
 // this module during the compilation pipeline and when we first started
@@ -390,9 +407,9 @@ static auto& module_id_to_step_number TF_GUARDED_BY(mu) =
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
 static auto& module_id_to_timestamp TF_GUARDED_BY(mu) =
-    *new absl::flat_hash_map<int64, uint64>();
+    *new absl::flat_hash_map<int64_t, uint64_t>();
 
-int64 StepNumberForModule(const HloModule& module) {
+int64_t StepNumberForModule(const HloModule& module) {
   tensorflow::mutex_lock lock(mu);
   return module_id_to_step_number[module.unique_id()]++;
 }
@@ -535,7 +552,11 @@ std::vector<std::string> DumpHloModuleBetweenPassesIfEnabled(
     return {};
   }
 
-  int64 step_number = StepNumberForModule(module);
+  if (!opts.should_dump_pipeline(pipeline_name)) {
+    return {};
+  }
+
+  int64_t step_number = StepNumberForModule(module);
   std::string timestamp = TimestampFor(module);
 
   string filename_suffix =
@@ -554,7 +575,7 @@ void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
     return;
   }
 
-  int64 step_number = StepNumberForModule(module);
+  int64_t step_number = StepNumberForModule(module);
   std::string timestamp = TimestampFor(module);
 
   string filename_suffix =
@@ -569,11 +590,11 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
   if (!opts.should_dump_module(module.name()) || !opts.dump_snapshots) {
     return;
   }
-  int64 execution_count;
+  int64_t execution_count;
   uint64 timestamp;
   {
     static auto& module_id_to_execution_count TF_GUARDED_BY(mu) =
-        *new absl::flat_hash_map<int64, int64>();
+        *new absl::flat_hash_map<int64_t, int64_t>();
     tensorflow::mutex_lock lock(mu);
     execution_count = module_id_to_execution_count[module.unique_id()]++;
     auto timestamp_emplace = module_id_to_timestamp.try_emplace(
@@ -607,10 +628,10 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
 
   // We don't have a unique id for an HloSnapshot, so in this overload we just
   // have to use its name.
-  int64 execution_count;
+  int64_t execution_count;
   {
     static auto& module_name_to_execution_count TF_GUARDED_BY(mu) =
-        *new absl::flat_hash_map<string, int64>();
+        *new absl::flat_hash_map<string, int64_t>();
     tensorflow::mutex_lock lock(mu);
     execution_count = module_name_to_execution_count[name]++;
   }
@@ -629,7 +650,7 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
 }
 
 void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules) {
-  absl::flat_hash_set<int64> dumped_module_ids;
+  absl::flat_hash_set<int64_t> dumped_module_ids;
   for (const HloModule* module : modules) {
     CanonicalDebugOptions opts(module->config().debug_options());
     if (!opts.dump_module_metadata) {

@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -48,9 +49,9 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // `tasks_to_delete`.
   Status WorkerHeartbeat(const std::string& worker_address,
                          const std::string& transfer_address,
-                         const std::vector<int64>& current_tasks,
+                         const std::vector<int64_t>& current_tasks,
                          std::vector<TaskDef>& new_tasks,
-                         std::vector<int64>& tasks_to_delete);
+                         std::vector<int64_t>& tasks_to_delete);
 
   // Updates the dispatcher with information about the worker's state.
   Status WorkerUpdate(const std::string& worker_address,
@@ -58,31 +59,36 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
 
   // Gets a dataset definition for the given dataset id, and stores the
   // definition in `dataset_def`.
-  Status GetDatasetDef(int64 dataset_id, DatasetDef& dataset_def);
+  Status GetDatasetDef(int64_t dataset_id, DatasetDef& dataset_def);
 
-  // Gets the next split for the specified job id and repetition.
-  Status GetSplit(int64 job_id, int64 repetition, Tensor& split,
+  // Gets the next split for the specified job id, repetition, and split
+  // provider index.
+  Status GetSplit(int64_t job_id, int64_t repetition,
+                  int64_t split_provider_index, Tensor& split,
                   bool& end_of_splits);
 
   // Registers a dataset with the tf.data service, and stores the generated
   // dataset id in `dataset_id`.
-  Status RegisterDataset(const GraphDef& dataset, int64& dataset_id);
+  Status RegisterDataset(const DatasetDef& dataset,
+                         const absl::optional<std::string>& element_spec,
+                         int64_t& dataset_id);
 
   // If `job_key` is set, looks up a job matching `job_key`. If `job_key` is
   // absent or no matching job is found, creates a new job. The resulting job
   // id is stored in `job_client_id`.
-  Status GetOrCreateJob(int64 dataset_id, ProcessingMode processing_mode,
+  Status GetOrCreateJob(int64_t dataset_id,
+                        const ProcessingModeDef& processing_mode,
                         const absl::optional<JobKey>& job_key,
-                        absl::optional<int64> num_consumers,
-                        int64& job_client_id);
+                        absl::optional<int64_t> num_consumers,
+                        int64_t& job_client_id, TargetWorkers target_workers);
 
   // Releases a job client id, indicating that the id will no longer be used to
   // read from the job.
-  Status ReleaseJobClient(int64 job_client_id);
+  Status ReleaseJobClient(int64_t job_client_id);
 
   // Attempts to remove a task. The task is removed if all consumers try to
   // remove the task in the same round.
-  Status MaybeRemoveTask(int64 task_id, int64 consumer_index, int64 round,
+  Status MaybeRemoveTask(int64_t task_id, int64_t consumer_index, int64_t round,
                          bool& removed);
 
   // Heartbeats to the dispatcher, getting back the tasks that should be
@@ -93,6 +99,9 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // Queries the dispatcher for its registered workers. The worker info will be
   // stored in `workers`.
   Status GetWorkers(std::vector<WorkerInfo>& workers);
+
+  // Returns element spec for the registered dataset.
+  Status GetElementSpec(int64_t dataset_id, std::string& element_spec);
 
  protected:
   Status EnsureInitialized() override;

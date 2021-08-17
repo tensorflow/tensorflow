@@ -61,10 +61,6 @@ void ConvertLaunchFuncToTFCallPass::runOnOperation() {
   });
 }
 
-PassRegistration<ConvertLaunchFuncToTFCallPass> pass(
-    "tf-device-convert-launch-func-to-tf-call",
-    "Converts tf_device::LaunchFuncOp into TF::PartitionedCallOp");
-
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateConvertLaunchFuncToTFCallPass() {

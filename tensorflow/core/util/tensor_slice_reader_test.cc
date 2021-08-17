@@ -304,7 +304,7 @@ void SimpleIntXHelper(
   }
 
 TEST_SIMPLE_INT(int32, int32)
-TEST_SIMPLE_INT(int64, int64)
+TEST_SIMPLE_INT(int64_t, int64_t)
 TEST_SIMPLE_INT(int16, int32)
 TEST_SIMPLE_INT(int8, int32)
 TEST_SIMPLE_INT(uint8, int32)
@@ -415,7 +415,7 @@ static void VersionTest(const VersionDef& versions, const string& error) {
     TensorSliceWriter::Builder* builder;
     TF_ASSERT_OK(CreateTableTensorSliceBuilder(path, &builder));
     builder->Add(kSavedTensorSlicesKey, contents);
-    int64 file_size;
+    int64_t file_size;
     TF_EXPECT_OK(builder->Finish(&file_size));
     delete builder;
   }

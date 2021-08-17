@@ -235,7 +235,7 @@ class Relu6Test(test.TestCase):
   def testNumbersGPU(self):
     if not test.is_gpu_available():
       self.skipTest("No GPU available")
-    for t in [np.float16, np.float, np.double]:
+    for t in [np.float16, np.float64, np.double]:
       self._testRelu6(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
 

@@ -771,14 +771,13 @@ __device__ inline double GpuAtomicSub(double* ptr, double value) {
   return GpuAtomicAdd(ptr, -value);
 }
 
-__device__ inline tensorflow::int64 GpuAtomicSub(tensorflow::int64* ptr,
-                                                 tensorflow::int64 value) {
+__device__ inline int64_t GpuAtomicSub(int64_t* ptr, int64_t value) {
   return GpuAtomicAdd(ptr, -value);
 }
 
 __device__ inline tensorflow::uint64 GpuAtomicSub(tensorflow::uint64* ptr,
                                                   tensorflow::uint64 value) {
-  return GpuAtomicAdd(ptr, -static_cast<tensorflow::int64>(value));
+  return GpuAtomicAdd(ptr, -static_cast<int64_t>(value));
 }
 
 __device__ inline Eigen::half GpuAtomicSub(Eigen::half* ptr,
@@ -847,9 +846,10 @@ __device__ inline tensorflow::uint64 GpuAtomicMax(tensorflow::uint64* ptr,
       [value](tensorflow::uint64 a) { return max(a, value); });
 }
 
-__device__ inline int64 GpuAtomicMax(int64* ptr, int64 value) {
-  return detail::GpuAtomicCasHelper(detail::ToCudaSupportedPtr(ptr),
-                                    [value](int64 a) { return max(a, value); });
+__device__ inline int64_t GpuAtomicMax(int64_t* ptr, int64_t value) {
+  return detail::GpuAtomicCasHelper(
+      detail::ToCudaSupportedPtr(ptr),
+      [value](int64_t a) { return max(a, value); });
 }
 #endif
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMax, CudaAtomicMax);
@@ -913,9 +913,10 @@ __device__ inline tensorflow::uint64 GpuAtomicMin(tensorflow::uint64* ptr,
       [value](tensorflow::uint64 a) { return min(a, value); });
 }
 
-__device__ inline int64 GpuAtomicMin(int64* ptr, int64 value) {
-  return detail::GpuAtomicCasHelper(detail::ToCudaSupportedPtr(ptr),
-                                    [value](int64 a) { return min(a, value); });
+__device__ inline int64_t GpuAtomicMin(int64_t* ptr, int64_t value) {
+  return detail::GpuAtomicCasHelper(
+      detail::ToCudaSupportedPtr(ptr),
+      [value](int64_t a) { return min(a, value); });
 }
 #endif
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMin, CudaAtomicMin);

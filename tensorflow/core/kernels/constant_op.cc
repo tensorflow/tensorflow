@@ -114,7 +114,7 @@ REGISTER_KERNEL(GPU, qint16);
 REGISTER_KERNEL(GPU, quint16);
 REGISTER_KERNEL(GPU, uint32);
 REGISTER_KERNEL(GPU, qint32);
-REGISTER_KERNEL(GPU, int64);
+REGISTER_KERNEL(GPU, int64_t);
 REGISTER_KERNEL(GPU, uint64);
 REGISTER_KERNEL(GPU, complex64);
 REGISTER_KERNEL(GPU, complex128);
@@ -175,18 +175,18 @@ class FillOp : public OpKernel {
   }
 };
 
-#define REGISTER_KERNEL(D, TYPE)                                   \
-  REGISTER_KERNEL_BUILDER(Name("Fill")                             \
-                              .Device(DEVICE_##D)                  \
-                              .TypeConstraint<TYPE>("T")           \
-                              .TypeConstraint<int32>("index_type") \
-                              .HostMemory("dims"),                 \
-                          FillOp<D##Device, TYPE, int32>);         \
-  REGISTER_KERNEL_BUILDER(Name("Fill")                             \
-                              .Device(DEVICE_##D)                  \
-                              .TypeConstraint<TYPE>("T")           \
-                              .TypeConstraint<int64>("index_type") \
-                              .HostMemory("dims"),                 \
+#define REGISTER_KERNEL(D, TYPE)                                     \
+  REGISTER_KERNEL_BUILDER(Name("Fill")                               \
+                              .Device(DEVICE_##D)                    \
+                              .TypeConstraint<TYPE>("T")             \
+                              .TypeConstraint<int32>("index_type")   \
+                              .HostMemory("dims"),                   \
+                          FillOp<D##Device, TYPE, int32>);           \
+  REGISTER_KERNEL_BUILDER(Name("Fill")                               \
+                              .Device(DEVICE_##D)                    \
+                              .TypeConstraint<TYPE>("T")             \
+                              .TypeConstraint<int64_t>("index_type") \
+                              .HostMemory("dims"),                   \
                           FillOp<D##Device, TYPE, int64>);
 
 #define REGISTER_CPU_KERNEL(TYPE) REGISTER_KERNEL(CPU, TYPE)
@@ -212,7 +212,7 @@ REGISTER_KERNEL(GPU, uint8);
 REGISTER_KERNEL(GPU, int8);
 REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
-REGISTER_KERNEL(GPU, int64);
+REGISTER_KERNEL(GPU, int64_t);
 REGISTER_KERNEL(GPU, bool);
 // Currently we do not support filling strings on GPU
 
@@ -275,14 +275,18 @@ REGISTER_CPU(Variant);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER_KERNEL(bool, GPU);
 REGISTER_KERNEL(Eigen::half, GPU);
-REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
+REGISTER_KERNEL(int64_t, GPU);
+#endif
+
+REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
-REGISTER_KERNEL(int64, GPU);
 REGISTER_KERNEL(Variant, GPU);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_GPU)
@@ -319,14 +323,17 @@ TF_CALL_POD_TYPES(REGISTER_CPU);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER_KERNEL(bool, GPU);
 REGISTER_KERNEL(Eigen::half, GPU);
-REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
+REGISTER_KERNEL(int64_t, GPU);
+#endif
+REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
-REGISTER_KERNEL(int64, GPU);
 REGISTER_KERNEL_BUILDER(Name("OnesLike")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")

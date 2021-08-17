@@ -176,6 +176,10 @@ class TpuCompileOpKernelCommon {
   // Persistent cache for compiled TPU program for inference.
   std::unique_ptr<TpuPersistentCompilationCacheInterface> persistent_cache_;
 
+  Status RegisterXLAFingerprints(const std::vector<TensorShape>& arg_shapes,
+                                 TpuProgramGroupInterface* tpu_program_group,
+                                 uint64 fingerprint);
+
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(TpuCompileOpKernelCommon);
 };

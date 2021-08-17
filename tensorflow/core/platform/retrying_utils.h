@@ -24,8 +24,8 @@ namespace tensorflow {
 
 // Default time before reporting failure: ~100 seconds.
 struct RetryConfig {
-  RetryConfig(int64 init_delay_time_us = 100 * 1000,
-              int64 max_delay_time_us = 32 * 1000 * 1000,
+  RetryConfig(int64_t init_delay_time_us = 100 * 1000,
+              int64_t max_delay_time_us = 32 * 1000 * 1000,
               int max_retries = 10) {
     this->init_delay_time_us = init_delay_time_us;
     this->max_delay_time_us = max_delay_time_us;
@@ -36,10 +36,10 @@ struct RetryConfig {
   int max_retries;
 
   // Initial backoff time
-  int64 init_delay_time_us;
+  int64_t init_delay_time_us;
 
   // Maximum backoff time in microseconds.
-  int64 max_delay_time_us;
+  int64_t max_delay_time_us;
 };
 
 class RetryingUtils {
@@ -56,7 +56,7 @@ class RetryingUtils {
 
   /// sleep_usec is a function that sleeps for the given number of microseconds.
   static Status CallWithRetries(const std::function<Status()>& f,
-                                const std::function<void(int64)>& sleep_usec,
+                                const std::function<void(int64_t)>& sleep_usec,
                                 const RetryConfig& config);
   /// \brief A retrying wrapper for a function that deletes a resource.
   ///

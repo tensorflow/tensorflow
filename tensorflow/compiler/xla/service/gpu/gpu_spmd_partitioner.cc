@@ -47,9 +47,9 @@ Status GpuSpmdPartitioningVisitor::HandleRngGetAndUpdateState(
 
 std::unique_ptr<spmd::SpmdPartitioningVisitor>
 GpuSpmdPartitioner::CreateVisitor(
-    HloComputation* computation, int64 num_partitions, int64 num_replicas,
+    HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
     const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
-    int64* next_channel_id, spmd::SpmdLogger* logger,
+    int64_t* next_channel_id, spmd::SpmdLogger* logger,
     spmd::SpmdPartitionerOptions options) {
   return absl::make_unique<GpuSpmdPartitioningVisitor>(
       computation, num_partitions, num_replicas, collective_ops_creator,

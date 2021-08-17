@@ -62,7 +62,7 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors,
 //           appropriately memory-aligned.
 //
 // Split() and Concat() are inverse operations.
-Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
+Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
              std::vector<Tensor>* result) TF_MUST_USE_RESULT;
 
 namespace internal {
@@ -101,7 +101,7 @@ DEFINE_PROTO_FIELD_HELPER(int16, int);
 DEFINE_PROTO_FIELD_HELPER(uint16, int);
 DEFINE_PROTO_FIELD_HELPER(int32, int);
 DEFINE_PROTO_FIELD_HELPER(uint32, uint32);
-DEFINE_PROTO_FIELD_HELPER(int64, int64);
+DEFINE_PROTO_FIELD_HELPER(int64_t, int64);
 DEFINE_PROTO_FIELD_HELPER(uint64, uint64);
 DEFINE_PROTO_FIELD_HELPER(bool, bool);
 DEFINE_PROTO_FIELD_HELPER(qint8, int);
@@ -311,12 +311,12 @@ CreateTensorProto(const std::vector<Type>& values,
 // most the size of the original tensor proto divided by min_compression_ratio.
 //
 // Returns true if the tensor was compressed.
-bool CompressTensorProtoInPlace(int64 min_num_elements,
+bool CompressTensorProtoInPlace(int64_t min_num_elements,
                                 float min_compression_ratio,
                                 TensorProto* tensor);
 
 inline bool CompressTensorProtoInPlace(TensorProto* tensor) {
-  static const int64 kDefaultMinNumElements = 64;
+  static const int64_t kDefaultMinNumElements = 64;
   static const float kDefaultMinCompressionRatio = 2.0f;
   return CompressTensorProtoInPlace(kDefaultMinNumElements,
                                     kDefaultMinCompressionRatio, tensor);

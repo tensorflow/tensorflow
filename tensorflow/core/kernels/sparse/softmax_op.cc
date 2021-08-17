@@ -148,10 +148,10 @@ class CSRSoftmaxGradOp : public OpKernel {
 
     Tensor dense_shape_t = softmax_matrix->dense_shape();
     auto host_dense_shape =
-        static_cast<const Tensor>(dense_shape_t).vec<int64>();
+        static_cast<const Tensor>(dense_shape_t).vec<int64_t>();
 
     auto host_grad_dense_shape =
-        grad_softmax_matrix->dense_shape().vec<int64>();
+        grad_softmax_matrix->dense_shape().vec<int64_t>();
 
     for (int i = 0; i < host_dense_shape.size(); ++i) {
       OP_REQUIRES(ctx, host_dense_shape(i) == host_grad_dense_shape(i),

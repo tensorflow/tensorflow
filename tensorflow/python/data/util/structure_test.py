@@ -45,7 +45,6 @@ from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import test
 from tensorflow.python.util.compat import collections_abc
 
-
 # NOTE(mrry): Arguments of parameterized tests are lifted into lambdas to make
 # sure they are not executed before the (eager- or graph-mode) test environment
 # has been set up.
@@ -493,6 +492,7 @@ def _test_to_batched_tensor_list_combinations():
 
   return functools.reduce(reduce_fn, cases, [])
 
+
 # TODO(jsimsa): Add tests for OptionalStructure and DatasetStructure.
 class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
 
@@ -701,13 +701,19 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
         ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_nest, value_sparse_tensor)
 
-    with self.assertRaisesRegex(ValueError, r"Incompatible input:"):
+    with self.assertRaisesRegex(
+        ValueError, "Cannot create a tensor from the input list because item 0 "
+        ".*tf.Tensor.* is incompatible with the expected type spec "
+        ".*TensorSpec.*"):
       structure.from_tensor_list(s_tensor, flat_sparse_tensor)
 
     with self.assertRaisesRegex(ValueError, "Expected 1 tensors but got 2."):
       structure.from_tensor_list(s_tensor, flat_nest)
 
-    with self.assertRaisesRegex(ValueError, "Incompatible input: "):
+    with self.assertRaisesRegex(
+        ValueError, "Cannot create a tensor from the input list because item 0 "
+        ".*tf.Tensor.* is incompatible with the expected type spec "
+        ".*TensorSpec.*"):
       structure.from_tensor_list(s_sparse_tensor, flat_tensor)
 
     with self.assertRaisesRegex(ValueError, "Expected 1 tensors but got 2."):
@@ -788,22 +794,24 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
         ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_2, value_1)
 
-    with self.assertRaisesRegex(ValueError, r"Incompatible input:"):
+    with self.assertRaisesRegex(ValueError,
+                                r"Cannot create a tensor from the input list"):
       structure.from_tensor_list(s_0, flat_s_1)
 
-    with self.assertRaisesRegex(ValueError, "Expected 2 tensors but got 3."):
+    with self.assertRaisesRegex(ValueError, "Expected 2 tensors but got 3"):
       structure.from_tensor_list(s_0, flat_s_2)
 
-    with self.assertRaisesRegex(ValueError, "Incompatible input: "):
+    with self.assertRaisesRegex(ValueError,
+                                "Cannot create a tensor from the input list"):
       structure.from_tensor_list(s_1, flat_s_0)
 
-    with self.assertRaisesRegex(ValueError, "Expected 2 tensors but got 3."):
+    with self.assertRaisesRegex(ValueError, "Expected 2 tensors but got 3"):
       structure.from_tensor_list(s_1, flat_s_2)
 
-    with self.assertRaisesRegex(ValueError, "Expected 3 tensors but got 2."):
+    with self.assertRaisesRegex(ValueError, "Expected 3 tensors but got 2"):
       structure.from_tensor_list(s_2, flat_s_0)
 
-    with self.assertRaisesRegex(ValueError, "Expected 3 tensors but got 2."):
+    with self.assertRaisesRegex(ValueError, "Expected 3 tensors but got 2"):
       structure.from_tensor_list(s_2, flat_s_1)
 
   @combinations.generate(
@@ -915,8 +923,8 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
     nt_type = collections.namedtuple("A", ["x", "y"])
     proxied = wrapt.ObjectProxy(nt_type(1, 2))
     proxied_spec = structure.type_spec_from_value(proxied)
-    self.assertEqual(structure.type_spec_from_value(nt_type(1, 2)),
-                     proxied_spec)
+    self.assertEqual(
+        structure.type_spec_from_value(nt_type(1, 2)), proxied_spec)
 
 
 class CustomMap(collections_abc.Mapping):

@@ -152,6 +152,18 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<std::shared_ptr<PyExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options);
 
+  StatusOr<pybind11::bytes> SerializeExecutable(
+      const PyExecutable& executable) const;
+  StatusOr<std::shared_ptr<PyExecutable>> DeserializeExecutable(
+      const std::string& serialized, CompileOptions options);
+
+  // TODO(skyewm): remove when jax stop providing hlo_module
+  StatusOr<std::shared_ptr<PyExecutable>> DeserializeExecutable(
+      const std::string& serialized, std::shared_ptr<HloModule> hlo_module,
+      CompileOptions options) {
+    return DeserializeExecutable(serialized, options);
+  }
+
   StatusOr<pybind11::bytes> HeapProfile();
 
   // Adds code to `builder` to call Python host function `callable` with
@@ -170,8 +182,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<std::pair<XlaOp, pybind11::object>> EmitPythonCallback(
       pybind11::function callable, XlaBuilder& builder,
       absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
-      absl::optional<std::vector<Shape const>> operand_layouts,
-      bool has_side_effect);
+      absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect);
 
  private:
   friend class PyBuffer;

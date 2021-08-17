@@ -2001,6 +2001,61 @@ TEST_F(QuantizeWhereModelTest, QuantizeWhere) {
   EXPECT_EQ(model_.operator_codes[0]->version, 1);
 }
 
+class QuantizeCallOnceModelTest : public QuantizeModelTest {
+ protected:
+  QuantizeCallOnceModelTest() {
+    input_model_ = ReadModel(internal::kConvModelWith0Plus10Weights);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_, nullptr);
+    AddCallOnce(&model_);
+  }
+
+  void AddCallOnce(ModelT* model) {
+    std::unique_ptr<SubGraphT> subgraph(new SubGraphT);
+    subgraph->name = "NoOp";
+    std::unique_ptr<OperatorCodeT> op_code(new OperatorCodeT);
+    op_code->builtin_code = BuiltinOperator_VAR_HANDLE;
+    model->operator_codes.push_back(std::move(op_code));
+    const int opcode_idx = model->operator_codes.size() - 1;
+    std::unique_ptr<OperatorT> op(new OperatorT);
+    op->opcode_index = opcode_idx;
+    op->builtin_options.type = BuiltinOptions_VarHandleOptions;
+    op->builtin_options.value = new VarHandleOptionsT();
+    op->builtin_options.AsVarHandleOptions()->shared_name = "Variable";
+    std::unique_ptr<TensorT> tensor(new TensorT);
+    tensor->name = "Variable1";
+    tensor->shape.push_back(1);
+    tensor->type = tflite::TensorType_FLOAT32;
+    subgraph->tensors.push_back(std::move(tensor));
+    int tensor_id = subgraph->tensors.size() - 1;
+    op->outputs.push_back(tensor_id);
+    subgraph->operators.push_back(std::move(op));
+    model->subgraphs.push_back(std::move(subgraph));
+    const int subgraph_id = model->subgraphs.size() - 1;
+    std::unique_ptr<OperatorCodeT> call_once_opcode(new OperatorCodeT);
+    call_once_opcode->builtin_code = BuiltinOperator_CALL_ONCE;
+    model->operator_codes.push_back(std::move(call_once_opcode));
+    const int call_once_opcode_idx = model->operator_codes.size() - 1;
+    std::unique_ptr<OperatorT> call_once_op(new OperatorT);
+    call_once_op->opcode_index = call_once_opcode_idx;
+    call_once_op->builtin_options.type = BuiltinOptions_CallOnceOptions;
+    call_once_op->builtin_options.value = new CallOnceOptionsT();
+    call_once_op->builtin_options.AsCallOnceOptions()->init_subgraph_index =
+        subgraph_id;
+    auto& primary_subgraph = model->subgraphs.front();
+    primary_subgraph->operators.push_back(std::move(call_once_op));
+  }
+};
+
+TEST_F(QuantizeCallOnceModelTest, QuantizeCallOnce) {
+  auto status = QuantizeModel(
+      &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
+      /*allow_float=*/true, {}, TensorType_FLOAT32, &error_reporter_);
+  EXPECT_EQ(status, kTfLiteOk);
+  const uint8_t* buffer = builder_.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+  ASSERT_TRUE(output_model);
+}
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite

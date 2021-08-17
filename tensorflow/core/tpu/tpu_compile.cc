@@ -225,7 +225,7 @@ Status AssignReturnValueToCore(
       (*retval_core_mapping)[i].indices.push_back(
           per_core_retval_counts[core]++);
     } else if (proto_retval.sharding().type() == xla::OpSharding::OTHER) {
-      for (int64 core : proto_retval.sharding().tile_assignment_devices()) {
+      for (int64_t core : proto_retval.sharding().tile_assignment_devices()) {
         (*retval_core_mapping)[i].indices.push_back(
             per_core_retval_counts[core]++);
       }
@@ -252,6 +252,12 @@ Status BuildComputationArgumentDescriptions(
     std::vector<XlaCompiler::Argument>* args,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes) {
+  arg_core_mapping->clear();
+  arg_core_mapping->resize(metadata.args_size());
+
+  per_core_arg_shapes->clear();
+  per_core_arg_shapes->resize(metadata.num_cores_per_replica());
+
   // Builds a description of the computation's arguments.
   int constant_count = 0;
   size_t guaranteed_constants_size = 0;
@@ -360,7 +366,7 @@ Status RunShapeInferenceOnComputation(
 
 Status CompileTFFunctionToHlo(
     const FunctionLibraryDefinition& flib_def, int graph_def_version,
-    const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     const std::vector<TensorShape>& arg_shapes,
     const GuaranteedConsts& guaranteed_constants, const NameAttrList& function,
     const tpu::TPUCompileMetadataProto& metadata,
@@ -370,9 +376,10 @@ Status CompileTFFunctionToHlo(
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     XlaCompiler::CompilationResult* compilation_result) {
   XlaCompiler::Options compiler_options;
+  FunctionLibraryDefinition flib_definition(flib_def);
   compiler_options.device_type = DeviceType(DEVICE_TPU_XLA_JIT);
   compiler_options.client = client;
-  compiler_options.flib_def = &flib_def;
+  compiler_options.flib_def = &flib_definition;
   compiler_options.allow_cpu_custom_calls = false;
   compiler_options.populate_resource_manager = &populate_resource_manager_fn;
   compiler_options.graph_def_version = graph_def_version;
@@ -398,7 +405,7 @@ Status CompileTFFunctionToHlo(
   const string function_id =
       Canonicalize(function.name(), AttrSlice(&function.attr()));
 
-  std::unique_ptr<Graph> graph(new Graph(&flib_def));
+  std::unique_ptr<Graph> graph(new Graph(&flib_definition));
   CopyGraph(*fbody->graph, graph.get());
 
   VLOG(2) << "metadata: " << metadata.DebugString();
@@ -407,14 +414,14 @@ Status CompileTFFunctionToHlo(
     args[i].node_name = fbody->arg_nodes[i]->name();
   }
 
-  std::vector<gtl::InlinedVector<int64, 4>> arg_shape_dims;
+  std::vector<gtl::InlinedVector<int64_t, 4>> arg_shape_dims;
   arg_shape_dims.reserve(arg_shapes.size());
   std::vector<PartialTensorShape> partial_arg_shapes(arg_shapes.size());
   for (const TensorShape& shape : arg_shapes) {
     arg_shape_dims.push_back(shape.dim_sizes());
   }
 
-  for (int64 i = 0; i < arg_shape_dims.size(); ++i) {
+  for (int64_t i = 0; i < arg_shape_dims.size(); ++i) {
     auto& dims = arg_shape_dims[i];
     TF_RETURN_IF_ERROR(PartialTensorShape::MakePartialShape(
         dims.data(), dims.size(), &partial_arg_shapes[i]));
@@ -426,7 +433,6 @@ Status CompileTFFunctionToHlo(
       graph.get()));
 
   VLOG(1) << "Optimizing TensorFlow graph";
-  FunctionLibraryDefinition flib_definition(flib_def);
   TF_RETURN_IF_ERROR(OptimizeGraph(metadata, partial_arg_shapes, &graph,
                                    compiler->flib_runtime(), &flib_definition));
 
@@ -443,7 +449,7 @@ Status CompileTFFunctionToHlo(
 Status GetShardingInfo(
     const tpu::TPUCompileMetadataProto& metadata,
     absl::Span<const TensorShape> arg_shapes,
-    const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes) {
   arg_core_mapping->clear();

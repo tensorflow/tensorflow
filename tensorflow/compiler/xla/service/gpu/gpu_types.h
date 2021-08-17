@@ -30,14 +30,11 @@ namespace gpu {
 //
 // On Cuda platform, it comprises of se::CudaComputeCapability.
 //
-// On ROCm platform, it comprises of an <int, string> pair
-// the int has the contents of the hipDeviceProp_t::gcnArchValue field.
-// the string has the contents of the hipDeviceProp_t::gcnArchName field.
+// On ROCm platform, the string has the contents of the
+// hipDeviceProp_t::gcnArchName field.
 // The string contains all the information needed to create an exact LLVM
-// AMDGPUTarget corresopnding the AMDGPU device it represents, the int value
-// by itself is not sufficient for this purpose
-using GpuVersion =
-    absl::variant<se::CudaComputeCapability, std::pair<int, std::string>>;
+// AMDGPUTarget corresponding the AMDGPU device it represents.
+using GpuVersion = absl::variant<se::CudaComputeCapability, std::string>;
 }  // namespace gpu
 }  // namespace xla
 

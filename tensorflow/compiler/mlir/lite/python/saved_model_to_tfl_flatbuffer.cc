@@ -186,6 +186,8 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   if (toco_flags.inference_type() == toco::IODataType::QUANTIZED_INT16) {
     pass_config.unfold_batch_matmul = false;
   }
+  pass_config.unfold_large_splat_constant =
+      toco_flags.unfold_large_splat_constant();
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(

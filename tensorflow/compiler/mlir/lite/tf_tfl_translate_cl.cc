@@ -131,3 +131,35 @@ opt<bool> unfold_batchmatmul(
     llvm::cl::desc(
         "Whether to unfold TF BatchMatMul to a set of TFL FullyConnected ops."),
     llvm::cl::init(true));
+
+// NOLINTNEXTLINE
+opt<bool> unfold_large_splat_constant(
+    "unfold-large-splat-constant",
+    llvm::cl::desc("Whether to unfold large splat constant tensors to reduce "
+                   "the generated model size."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> guarantee_all_funcs_one_use(
+    "guarantee-all-funcs-one-use",
+    llvm::cl::desc(
+        "Whether to clone functions to ensure each function has a single use."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> import_hlo("import-hlo",
+                     llvm::cl::desc("Whether the input file is hlo file."),
+                     llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<HloImportType> hlo_import_type(
+    "hlo-import-type", llvm::cl::desc("The file type of the hlo."),
+    llvm::cl::values(clEnumVal(proto, "Import hlo in proto binary format"),
+                     clEnumVal(hlotxt, "Import hlo in hlotxt format"),
+                     clEnumVal(mlir_text, "Import hlo in mlir_text format")));
+
+// NOLINTNEXTLINE
+opt<bool> enable_hlo_to_tf_conversion(
+    "enable-hlo-to-tf-conversion",
+    llvm::cl::desc("Whether to enable the hlo to tf ops conversion."),
+    llvm::cl::init(false));

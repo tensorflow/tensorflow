@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_local_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_lookup.h"
+#include "tensorflow/core/tpu/kernels/tpu_fingerprint_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_pod_state.h"
@@ -35,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
+#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 namespace tensorflow {
@@ -47,6 +51,20 @@ Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
     return errors::FailedPrecondition(
         "The TPU system has not been initialized.");
   }
+  return Status::OK();
+}
+
+Status CreateTpuFingerprintLookup(ResourceMgr* rmgr) {
+  VLOG(1) << "CreateTpuFingerprintLookup";
+  tpu::TpuFingerprintLookup* fingerprint_lookup;
+  TF_RETURN_IF_ERROR(rmgr->LookupOrCreate<tpu::TpuFingerprintLookup>(
+      rmgr->default_container(), tpu::kFingerprintLookupResourceName,
+      &fingerprint_lookup, [&](tpu::TpuFingerprintLookup** new_lookup) {
+        *new_lookup = tpu::TpuFingerprintLookup::Create();
+        return Status::OK();
+      }));
+
+  core::ScopedUnref fingerprint_lookup_ref(fingerprint_lookup);
   return Status::OK();
 }
 
@@ -139,6 +157,7 @@ void ConfigureDistributedTpuOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &ctx_output));
   ctx_output->scalar<tstring>()() = std::move(host_config_output);
 
+  OP_REQUIRES_OK(ctx, CreateTpuFingerprintLookup(rmgr));
   VLOG(1) << "ConfigureDistributedTpuOp done";
 }
 
@@ -363,7 +382,41 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   for (size_t i = 0; i < device_id_output_size; ++i) {
     ctx_output->flat<int32>()(i) = device_id_output[i];
   }
-
+  if (ctx->function_library() != nullptr &&
+      ctx->function_library()->device_mgr() != nullptr) {
+    // If a DeviceMgr is available, set global IDs for TPU devices from the
+    // topology.
+    DeviceBase* tpu_system_device = ctx->device();
+    const DeviceNameUtils::ParsedName& tpu_system_name =
+        tpu_system_device->parsed_name();
+    for (DeviceBase* device :
+         ctx->function_library()->device_mgr()->ListDevices()) {
+      const DeviceNameUtils::ParsedName& device_parsed_name =
+          device->parsed_name();
+      if (device_parsed_name.type == "TPU" &&
+          DeviceNameUtils::IsSameAddressSpace(tpu_system_name,
+                                              device_parsed_name)) {
+        const DeviceBase::GpuDeviceInfo* gpu_device_info =
+            device->tensorflow_gpu_device_info();
+        if (gpu_device_info && gpu_device_info->stream) {
+          int device_ordinal =
+              gpu_device_info->stream->parent()->device_ordinal();
+          if (device_ordinal >= device_id_output_size) {
+            OP_REQUIRES_OK(ctx,
+                           errors::Internal(absl::StrCat(
+                               "TPU core with ordinal ", device_ordinal,
+                               " out of range for device ", device->name(),
+                               ". Expected ordinals in range [0, ",
+                               device_id_output_size, ") from topology.")));
+          }
+          int64_t global_id = device_id_output[device_ordinal];
+          VLOG(1) << "Setting global/physical id for " << device->name()
+                  << " to " << global_id;
+          device->set_xla_global_id(global_id);
+        }
+      }
+    }
+  }
   VLOG(1) << "InitializeHostForDistributedTpuOp done";
 }
 

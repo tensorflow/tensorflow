@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/stream_executor/platform.h"
 
@@ -45,7 +46,9 @@ struct RunHloModuleOptions {
         rel_error_bound(0.1),
         input_format("hlo"),
         input_module(""),
-        iterations(1) {}
+        iterations(1),
+        output_literals_file(""),
+        input_literals_file("") {}
   std::string platform;
   std::string reference_platform;
   bool print_literals;
@@ -58,6 +61,8 @@ struct RunHloModuleOptions {
   std::string input_format;
   std::string input_module;
   int iterations;
+  std::string output_literals_file;
+  std::string input_literals_file;
 };
 
 // Reads a HloModule from 'hlo_filename', runs it on the platform with the name
@@ -70,6 +75,7 @@ Status RunAndCompare(
     const std::string& hlo_filename, const std::string& test_platform_name,
     const std::string& reference_platform_name, std::minstd_rand0* engine,
     const RunHloModuleOptions& options,
+    xla::RunHloModuleIterationLiterals* iteration_literals_proto = nullptr,
     std::function<Status(const HloModule&,
                          const ::stream_executor::Platform::Id&, HloModule*)>
         reference_module_modifier_hook = {},

@@ -384,6 +384,7 @@ py_library(
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/toco/python:toco_from_protos",
+        "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",
@@ -585,7 +586,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
-        "//tensorflow/lite/tools:visualize",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -595,10 +596,12 @@ py_test(
     data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/conv_huge_im2col.bin",
+        "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     python_version = "PY3",
     deps = [
         ":analyzer",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],

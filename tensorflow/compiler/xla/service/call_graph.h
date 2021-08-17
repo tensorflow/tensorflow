@@ -30,17 +30,14 @@ namespace xla {
 
 // The context in which a computation is called by another computation.
 enum class CallContext {
-  // In a parallel context the computation is applied to each element of the
-  // array argument(s). kMap and kReduce instructions call computations in
-  // parallel context.
-  kParallel,
+  // In an embedded call context, the body of the function cannot allocate
+  // buffers.
+  kEmbedded,
 
-  // In a sequential context the computation is applied to the entire argument
-  // shape(s). kCall and kWhile (body and condition) call computations in
-  // sequential context.
-  kSequential,
+  // A control flow call context can allocate buffers.
+  kControlFlow,
 
-  // A computation is called from both a parallel and sequential context.
+  // A computation is called from both an embedded and control flow context.
   kBoth,
 
   // During call graph construction kNone is used to indicate that the context
@@ -165,7 +162,7 @@ class CallGraphNode {
 
   // The map from instruction to index in callsites_ for looking up the callsite
   // (if any) associated with a particular instruction in this computation.
-  absl::flat_hash_map<const HloInstruction*, int64> callsite_instructions_;
+  absl::flat_hash_map<const HloInstruction*, int64_t> callsite_instructions_;
 
   // The call sites in other computations which call this computation.
   std::vector<CallSite> caller_callsites_;
@@ -289,7 +286,7 @@ class CallGraph {
 
   // Map from HLO computation to the index of the corresponding call graph node
   // in nodes_.
-  absl::flat_hash_map<const HloComputation*, int64> node_indices_;
+  absl::flat_hash_map<const HloComputation*, int64_t> node_indices_;
 };
 
 }  // namespace xla

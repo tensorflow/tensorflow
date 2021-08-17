@@ -27,7 +27,7 @@ namespace {
 
 TEST(RetryingUtilsTest, CallWithRetries_RetryDelays) {
   std::vector<double> requested_delays;  // requested delays in seconds
-  std::function<void(int64)> sleep = [&requested_delays](int64 delay) {
+  std::function<void(int64_t)> sleep = [&requested_delays](int64_t delay) {
     requested_delays.emplace_back(delay / 1000000.0);
   };
   std::function<Status()> f = []() { return errors::Unavailable("Failed."); };
@@ -37,7 +37,7 @@ TEST(RetryingUtilsTest, CallWithRetries_RetryDelays) {
   EXPECT_EQ(errors::Code::ABORTED, status.code());
   EXPECT_TRUE(absl::StrContains(
       status.error_message(),
-      "All 10 retry attempts failed. The last failure: Unavailable: Failed."))
+      "All 10 retry attempts failed. The last failure: Failed."))
       << status;
 
   EXPECT_EQ(10, requested_delays.size());
@@ -71,7 +71,7 @@ TEST(RetryingUtilsTest, CallWithRetries_NotFoundIsNotRetried) {
 
 TEST(RetryingUtilsTest, CallWithRetries_ImmediateSuccess) {
   std::vector<Status> results({Status::OK()});
-  std::function<void(int64)> sleep = [](int64 delay) {
+  std::function<void(int64_t)> sleep = [](int64_t delay) {
     ADD_FAILURE() << "Unexpected call to sleep.";
   };
   std::function<Status()> f = [&results]() {

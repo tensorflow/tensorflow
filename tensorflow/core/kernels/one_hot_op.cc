@@ -76,7 +76,7 @@ class OneHotOp : public OpKernel {
     const int axis = (axis_ == -1) ? indices_dims : axis_;
 
     // The one-hot dimension.
-    const int32 depth_v = depth.scalar<int32>()();
+    const int32_t depth_v = depth.scalar<int32>()();
     OP_REQUIRES(
         ctx, depth_v >= 0,
         errors::InvalidArgument("depth must be non-negative, got: ", depth_v));
@@ -100,11 +100,11 @@ class OneHotOp : public OpKernel {
       // prefix_dim_size == # of elements before the axis
       // depth_v == # of elements per axis
       // suffix_dim_size == # of elements after the axis
-      int64 prefix_dim_size = 1;
+      int64_t prefix_dim_size = 1;
       for (int i = 0; i < axis; ++i) {
         prefix_dim_size *= indices_shape.dim_size(i);
       }
-      int64 suffix_dim_size = indices_shape.num_elements() / prefix_dim_size;
+      int64_t suffix_dim_size = indices_shape.num_elements() / prefix_dim_size;
 
       // Split indices into matrix of size prefix_dim_size x suffix_dim_size
       auto indices_t =
@@ -137,7 +137,7 @@ class OneHotOp : public OpKernel {
 #define REGISTER_ONE_HOT(type)         \
   REGISTER_ONE_HOT_INDEX(type, uint8); \
   REGISTER_ONE_HOT_INDEX(type, int32); \
-  REGISTER_ONE_HOT_INDEX(type, int64)
+  REGISTER_ONE_HOT_INDEX(type, int64_t)
 
 TF_CALL_ALL_TYPES(REGISTER_ONE_HOT);
 
@@ -158,7 +158,7 @@ namespace functor {
 #define DECLARE_GPU_SPEC(T)         \
   DECLARE_GPU_SPEC_INDEX(T, uint8); \
   DECLARE_GPU_SPEC_INDEX(T, int32); \
-  DECLARE_GPU_SPEC_INDEX(T, int64);
+  DECLARE_GPU_SPEC_INDEX(T, int64_t);
 
 TF_CALL_int32(DECLARE_GPU_SPEC);
 TF_CALL_int64(DECLARE_GPU_SPEC);
@@ -181,7 +181,7 @@ TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
 #define REGISTER_ONE_HOT_GPU(type)         \
   REGISTER_ONE_HOT_GPU_INDEX(type, uint8); \
   REGISTER_ONE_HOT_GPU_INDEX(type, int32); \
-  REGISTER_ONE_HOT_GPU_INDEX(type, int64);
+  REGISTER_ONE_HOT_GPU_INDEX(type, int64_t);
 
 TF_CALL_int32(REGISTER_ONE_HOT_GPU);
 TF_CALL_int64(REGISTER_ONE_HOT_GPU);

@@ -123,7 +123,7 @@ static Graph* Conv2DBackpropFilter(int batch, int height, int width,
                                             PADDING, FORMAT_##FMT),            \
                     /*old_benchmark_api*/ false)                               \
         .Run(state);                                                           \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * (N) *     \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * (N) *   \
                             (H) * (W) * (C));                                  \
   }                                                                            \
   BENCHMARK(BM_NAME(BM_Conv2DBackpropFilter, type, T, FMT, N, H, W, C, FH, FW, \

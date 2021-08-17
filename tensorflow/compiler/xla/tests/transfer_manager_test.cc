@@ -65,7 +65,7 @@ class TransferManagerTest : public LocalClientTestBase {
   se::Stream* stream_;
 
  private:
-  std::function<int64(const Shape&)> shape_size_fn_;
+  std::function<int64_t(const Shape&)> shape_size_fn_;
 };
 
 XLA_TEST_F(TransferManagerTest, TransferR0U32) {
@@ -310,7 +310,7 @@ XLA_TEST_F(TransferManagerTest, TransferTokenFromDevice) {
 }
 
 XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
-  const int64 kIterationCount = 5000;
+  const int64_t kIterationCount = 5000;
   Literal literal1 = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR0<float>(123.0f),
        LiteralUtil::MakeTupleFromSlices(

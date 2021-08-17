@@ -78,6 +78,16 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
 struct OptimizeOpOrderPass
     : public PassWrapper<OptimizeOpOrderPass, FunctionPass> {
   void runOnFunction() override;
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-optimize-op-order";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Optimize the execution order of the ops.";
+  }
 };
 
 void OptimizeOpOrderPass::runOnFunction() {
@@ -96,8 +106,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateOptimizeOpOrderPass() {
   return std::make_unique<OptimizeOpOrderPass>();
 }
 
-static PassRegistration<OptimizeOpOrderPass> pass(
-    "tfl-optimize-op-order", "Optimize the execution order of the ops.");
+static PassRegistration<OptimizeOpOrderPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

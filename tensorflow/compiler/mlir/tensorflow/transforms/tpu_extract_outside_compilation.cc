@@ -444,7 +444,8 @@ void ReplaceExternalOperandUsage(
     Operation* recv_at_host, Operation* insertion_point,
     Block* original_op_block) {
   auto replace_operand_usage = [&](OpOperand& operand) {
-    if (TF::CanBeRefined(operand.get().getType())) {
+    if (TF::CanBeRefined(operand.get().getType()) ||
+        HasDynamicOutputs(operand.getOwner())) {
       return insertion_point->getParentRegion()->isAncestor(
           operand.getOwner()->getParentRegion());
     }

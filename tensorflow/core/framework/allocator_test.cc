@@ -25,8 +25,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-static void CheckStats(Allocator* a, int64 num_allocs, int64 bytes_in_use,
-                       int64 peak_bytes_in_use, int64 largest_alloc_size) {
+static void CheckStats(Allocator* a, int64_t num_allocs, int64_t bytes_in_use,
+                       int64_t peak_bytes_in_use, int64_t largest_alloc_size) {
   absl::optional<AllocatorStats> stats = a->GetStats();
   EXPECT_TRUE(stats);
   if (!stats) {

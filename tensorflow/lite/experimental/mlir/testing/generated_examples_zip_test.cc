@@ -18,15 +18,16 @@ limitations under the License.
 #include <fstream>
 #include <map>
 #include <sstream>
+
 #include <gtest/gtest.h>
 #include "re2/re2.h"
-#include "tensorflow/lite/testing/parse_testdata.h"
-#include "tensorflow/lite/testing/tflite_driver.h"
-#include "tensorflow/lite/testing/util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/lite/testing/parse_testdata.h"
+#include "tensorflow/lite/testing/tflite_driver.h"
+#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace testing {
@@ -58,24 +59,29 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // Key is a substring of the test name and value is a bug number.
 // TODO(ahentz): make sure we clean this list up frequently.
 const std::map<string, string>& GetKnownBrokenTests() {
-  static const std::map<string, string>* const kBrokenTests =
-      new std::map<string, string>({
+  static const std::map<string, string>* const kBrokenTests = new std::map<
+      string, string>({
 
-          // SpaceToBatchND only supports 4D tensors.
-          {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
+      // SpaceToBatchND only supports 4D tensors.
+      {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
 
-          // BatchToSpaceND only supports 4D tensors.
-          {R"(^\/batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\])", "70848787"},
+      // BatchToSpaceND only supports 4D tensors.
+      {R"(^\/batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\])", "70848787"},
 
-          // ResizeBilinear looks completely incompatible with Tensorflow
-          {R"(^\/resize_bilinear.*dtype=tf.int32)", "72401107"},
+      // ResizeBilinear looks completely incompatible with Tensorflow
+      {R"(^\/resize_bilinear.*dtype=tf.int32)", "72401107"},
 
-          // Select kernel doesn't support broadcasting yet.
-          {R"(^\/where.*1,2,3,1)", "134692786"},
+      // Select kernel doesn't support broadcasting yet.
+      {R"(^\/where.*1,2,3,1)", "134692786"},
 
-          {R"(^\/div.*dtype=tf\.int64)", "119126484"},
-          {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
-      });
+      {R"(^\/div.*dtype=tf\.int64)", "119126484"},
+      {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
+      // TODO(b/194364155): TF and TFLite have different behaviors when output
+      // nan values in LocalResponseNorm ops.
+      {R"(^\/local_response_norm.*alpha=-3.*beta=2)", "194364155"},
+      {R"(^\/local_response_norm.*alpha=(None|2).*beta=2.*bias=-0\.1.*depth_radius=(0|1).*input_shape=\[3,15,14,3\])",
+       "194364155"},
+  });
   return *kBrokenTests;
 }
 
@@ -135,7 +141,7 @@ class ArchiveEnvironment : public ::testing::Environment {
   // Delete all temporary directories on teardown.
   void TearDown() override {
     for (const auto& dir : temporary_directories_) {
-      tensorflow::int64 undeleted_dirs, undeleted_files;
+      int64_t undeleted_dirs, undeleted_files;
       TF_CHECK_OK(
           env->DeleteRecursively(dir, &undeleted_dirs, &undeleted_files));
     }

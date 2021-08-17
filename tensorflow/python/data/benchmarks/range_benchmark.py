@@ -19,14 +19,15 @@ from __future__ import print_function
 
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 
 
 class RangeBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for `tf.data.Dataset.range()`."""
 
   def _benchmark_range(self, num_elements, autotune, benchmark_id):
-    options = dataset_ops.Options()
-    options.experimental_optimization.autotune = autotune
+    options = options_lib.Options()
+    options.autotune.enabled = autotune
     dataset = dataset_ops.Dataset.range(num_elements)
     dataset = dataset.with_options(options)
 

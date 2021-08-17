@@ -88,9 +88,10 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
   std::vector<string> output_names = {y->name() + ":0"};
   std::vector<string> target_nodes = {y_neg->name()};
   std::vector<Tensor> outputs;
-  const int64 start_micros = Env::Default()->NowMicros();
+  const int64_t start_micros = Env::Default()->NowMicros();
   Status s = session->Run(inputs, output_names, target_nodes, &outputs);
-  const int64 run_duration_micros = Env::Default()->NowMicros() - start_micros;
+  const int64_t run_duration_micros =
+      Env::Default()->NowMicros() - start_micros;
   TF_ASSERT_OK(s);
 
   DirectSession* ds = static_cast<DirectSession*>(session.get());
@@ -199,7 +200,7 @@ static void TestHWAccelerator(bool enableHWTrace) {
   std::vector<string> output_names = {y->name() + ":0"};
   std::vector<string> target_nodes = {y_neg->name()};
   std::vector<Tensor> outputs;
-  const int64 start_micros = Env::Default()->NowMicros();
+  const int64_t start_micros = Env::Default()->NowMicros();
 
   RunOptions run_options;
   if (enableHWTrace) {
@@ -208,7 +209,8 @@ static void TestHWAccelerator(bool enableHWTrace) {
   RunMetadata run_metadata;
   Status s = session->Run(run_options, inputs, output_names, target_nodes,
                           &outputs, &run_metadata);
-  const int64 run_duration_micros = Env::Default()->NowMicros() - start_micros;
+  const int64_t run_duration_micros =
+      Env::Default()->NowMicros() - start_micros;
   TF_ASSERT_OK(s);
 
   DirectSession* ds = static_cast<DirectSession*>(session.get());
@@ -284,10 +286,11 @@ TEST(DirectSessionWithTrackingAllocTest, CostGraph) {
   std::vector<string> target_nodes = {y_neg->name()};
   std::vector<Tensor> outputs;
   RunMetadata run_metadata;
-  const int64 start_micros = Env::Default()->NowMicros();
+  const int64_t start_micros = Env::Default()->NowMicros();
   Status s = session->Run(run_options, inputs, output_names, target_nodes,
                           &outputs, &run_metadata);
-  const int64 run_duration_micros = Env::Default()->NowMicros() - start_micros;
+  const int64_t run_duration_micros =
+      Env::Default()->NowMicros() - start_micros;
   TF_ASSERT_OK(s);
 
   EXPECT_LE(2, run_metadata.cost_graph().node_size());

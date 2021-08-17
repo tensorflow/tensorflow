@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -32,6 +33,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session.h"
@@ -80,7 +83,7 @@ class DataServiceWorkerImpl {
     TaskDef task_def;
     mutex mu;
     bool initialized TF_GUARDED_BY(mu) = false;
-    int64 outstanding_requests TF_GUARDED_BY(&DataServiceWorkerImpl::mu_) = 0;
+    int64_t outstanding_requests TF_GUARDED_BY(&DataServiceWorkerImpl::mu_) = 0;
     std::unique_ptr<TaskRunner> task_runner;
   };
 
@@ -99,6 +102,14 @@ class DataServiceWorkerImpl {
   void HeartbeatThread() TF_LOCKS_EXCLUDED(mu_);
   // Performs a heartbeat to the dispatcher.
   Status Heartbeat() TF_LOCKS_EXCLUDED(mu_);
+  // Gets the DatasetDef for `task_def`.
+  StatusOr<DatasetDef> GetDatasetDef(const TaskDef& task_def) const;
+  // Creates a dataset from `dataset_def`.
+  StatusOr<std::unique_ptr<standalone::Dataset>> MakeDataset(
+      const DatasetDef& dataset_def, const TaskDef& task_def) const;
+  // Creates an iterator for `dataset`.
+  StatusOr<std::unique_ptr<standalone::Iterator>> MakeDatasetIterator(
+      standalone::Dataset& dataset, const TaskDef& task_def) const;
 
   const experimental::WorkerConfig config_;
   // The worker's own address.
@@ -110,11 +121,11 @@ class DataServiceWorkerImpl {
   condition_variable cv_;
   // Information about tasks, keyed by task ids. The tasks are updated based on
   // the heartbeat responses from the dispatcher.
-  absl::flat_hash_map<int64, std::shared_ptr<Task>> tasks_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<int64_t, std::shared_ptr<Task>> tasks_ TF_GUARDED_BY(mu_);
   // Ids of tasks that have finished.
-  absl::flat_hash_set<int64> finished_tasks_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_set<int64_t> finished_tasks_ TF_GUARDED_BY(mu_);
   // Completed tasks which haven't yet been communicated to the dispatcher.
-  absl::flat_hash_set<int64> pending_completed_tasks_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_set<int64_t> pending_completed_tasks_ TF_GUARDED_BY(mu_);
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
   // Whether the worker has registered with the dispatcher yet.
   bool registered_ TF_GUARDED_BY(mu_) = false;
@@ -124,7 +135,7 @@ class DataServiceWorkerImpl {
   // A thread for performing regular heartbeats to the dispatcher.
   std::unique_ptr<Thread> heartbeat_thread_;
   condition_variable heartbeat_cv_ TF_GUARDED_BY(mu_);
-  int64 outstanding_requests_ TF_GUARDED_BY(mu_) = 0;
+  int64_t outstanding_requests_ TF_GUARDED_BY(mu_) = 0;
   CancellationManager cancellation_manager_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceWorkerImpl);

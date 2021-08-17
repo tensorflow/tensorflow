@@ -1,5 +1,6 @@
-// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file | mlir-hlo-opt
-/// | FileCheck %s
+// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file \
+// RUN:   | mlir-hlo-opt \
+// RUN:   | FileCheck %s
 
 // CHECK-LABEL: func @batch_norm_grad_memrefs
 func @batch_norm_grad_memrefs(%arg0: memref<8x8x8x8xf32>, %arg1: memref<8xf32>, %arg2: memref<8xf32>,
@@ -185,6 +186,8 @@ func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>
        alpha_real = 0.5,
        alpha_imag = 0.0,
        batch_size = 1,
+       lhs_stride = 20,
+       rhs_stride = 20,
        algorithm = 0}
     : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>) -> ()
   return
@@ -203,6 +206,8 @@ func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
        alpha_imag = 0.0,
        beta = 1.0,
        batch_size = 1,
+       lhs_stride = 20,
+       rhs_stride = 20,
        algorithm = 0}
     : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>, memref<5x5xf32>) -> ()
   return

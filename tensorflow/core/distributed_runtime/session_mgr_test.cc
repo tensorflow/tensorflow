@@ -163,8 +163,8 @@ TEST_F(SessionMgrTest, CreateSessionWithMasterName) {
   protobuf::RepeatedPtrField<DeviceAttributes> cluster_device_attributes;
 
   const string master_name = "/job:master/replica:0/task:1";
-  const int64 old_incarnation = random::New64();
-  const int64 new_incarnation = random::New64();
+  const int64_t old_incarnation = random::New64();
+  const int64_t new_incarnation = random::New64();
 
   // Allow multiple worker sessions to be created by the same master
   string sess_handle1 = "test_session_handle_1";

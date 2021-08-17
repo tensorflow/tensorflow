@@ -43,6 +43,7 @@ TfLiteRegistration* Register_BATCH_TO_SPACE_ND();
 TfLiteRegistration* Register_BATCH_MATMUL();
 TfLiteRegistration* Register_BIDIRECTIONAL_SEQUENCE_LSTM();
 TfLiteRegistration* Register_BIDIRECTIONAL_SEQUENCE_RNN();
+TfLiteRegistration* Register_BROADCAST_ARGS();
 TfLiteRegistration* Register_BROADCAST_TO();
 TfLiteRegistration* Register_CALL_ONCE();
 TfLiteRegistration* Register_CAST();

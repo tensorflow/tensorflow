@@ -632,8 +632,17 @@ def _GradientsHelper(ys,
               grad_fn = func_call.python_grad_func
             else:
               raise LookupError(
-                  "No gradient defined for operation '%s' (op type: %s)" %
-                  (op.name, op.type))
+                  "No gradient defined for operation" +
+                  "'%s' (op type: %s). " %(op.name, op.type) +
+                  "In general every operation must have an associated " +
+                  "`@tf.RegisterGradient` for correct autodiff, which this " +
+                  "op is lacking. If you want to pretend this " +
+                  "operation is a constant in your program, you may insert " +
+                  "`tf.stop_gradient`. This can be useful to silence the " +
+                  "error in cases where you know gradients are not needed, " +
+                  "e.g. the forward pass of tf.custom_gradient. " +
+                  "Please see more details in " +
+                  "https://www.tensorflow.org/api_docs/python/tf/custom_gradient.")  # pylint: disable=line-too-long
         if loop_state:
           loop_state.EnterGradWhileContext(op, before=False)
 

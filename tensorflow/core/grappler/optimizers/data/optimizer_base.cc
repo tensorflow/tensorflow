@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
-#include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/framework/metrics.h"
 
 namespace tensorflow {
 namespace grappler {

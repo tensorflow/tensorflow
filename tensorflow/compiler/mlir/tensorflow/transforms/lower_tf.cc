@@ -1699,13 +1699,22 @@ class LowerSoftmaxOp : public OpRewritePattern<OpTy> {
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
-  patterns->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
-                   LowerDynamicStitchOp<DynamicStitchOp>,
-                   LowerDynamicStitchOp<ParallelDynamicStitchOp>,
-                   LowerInvertPermutationOp, LowerLgammaOp, LowerPackOp,
-                   LowerBatchToSpaceND, LowerSpaceToBatchNDOp,
-                   LowerResizeNearestNeighbor, LowerSparseMatMulOp,
-                   Lower_UnaryOpsComposition, LowerRollOp>(context);
+  // clang-format off
+  patterns->insert<
+      LowerAddNOp,
+      ConvertFakeQuantWithMinMaxVarsOp,
+      LowerDynamicStitchOp<DynamicStitchOp>,
+      LowerDynamicStitchOp<ParallelDynamicStitchOp>,
+      LowerInvertPermutationOp,
+      LowerLgammaOp,
+      LowerPackOp,
+      LowerBatchToSpaceND,
+      LowerSpaceToBatchNDOp,
+      LowerResizeNearestNeighbor,
+      LowerSparseMatMulOp,
+      Lower_UnaryOpsComposition,
+      LowerRollOp>(context);
+  // clang-format on
   populateWithGenerated(*patterns);
 }
 
@@ -1740,7 +1749,6 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerIsNanOp,
       LowerL2LossOp,
       LowerMulNoNanOp,
-      LowerOnesLikeOp,
       LowerPadOp,
       LowerReciprocal,
       LowerRintOp,
@@ -1748,6 +1756,8 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerRoundOpOnIntTensor,
       LowerRsqrtGradOp,
       LowerScatterNdOp,
+      LowerSeluOp,
+      LowerSeluGradOp,
       LowerSizeOp,
       LowerSoftmaxCrossEntropyWithLogitsOp,
       LowerSparseSoftmaxCrossEntropyWithLogitsOp,
@@ -1758,8 +1768,7 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerTanhGradOp,
       LowerXdivyOp,
       LowerXlog1pyOp,
-      LowerXlogyOp,
-      LowerZerosLikeOp>(context);
+      LowerXlogyOp>(context);
   // clang-format on
 }
 

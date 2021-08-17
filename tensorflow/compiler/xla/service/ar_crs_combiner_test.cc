@@ -383,11 +383,11 @@ void CompareReplicaGroups(absl::Span<const ReplicaGroup> groups_before,
     // Somewhat verbose way to compare the replica_ids, because EqualsProto
     // is not available in the open-source build.
     auto group_before = groups_before[i];
-    std::vector<int64> ids_before(group_before.replica_ids().begin(),
-                                  group_before.replica_ids().end());
+    std::vector<int64_t> ids_before(group_before.replica_ids().begin(),
+                                    group_before.replica_ids().end());
     auto group_after = groups_after[i];
-    std::vector<int64> ids_after(group_after.replica_ids().begin(),
-                                 group_after.replica_ids().end());
+    std::vector<int64_t> ids_after(group_after.replica_ids().begin(),
+                                   group_after.replica_ids().end());
     EXPECT_EQ(ids_before, ids_after);
   }
 }
@@ -562,7 +562,7 @@ ENTRY %entrycomp (p: f32[2,1]) -> (f32[2], f32[2]) {
       to_apply=%sum.2,
       sharding={maximal device=1}
 
-  ROOT %tuple = (f32[], f32[])
+  ROOT %tuple = (f32[2], f32[2])
       tuple(%all-reduce.1, %all-reduce.2),
       sharding={{maximal device=0}, {maximal device=1}}
 }

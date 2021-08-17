@@ -233,7 +233,7 @@ class TransferManager {
   // Determines the byte size requirement for the given shape on the underlying
   // architecture. This will be used to allocate an appropriately sized memory
   // region for a host-to-device transfer.
-  virtual int64 GetByteSizeRequirement(const Shape& shape) const = 0;
+  virtual int64_t GetByteSizeRequirement(const Shape& shape) const = 0;
 
   // Chooses a compact layout for 'shape', ignoring any existing layout on
   // 'shape'. What "reasonable" means is left up to the backend. The
@@ -313,13 +313,13 @@ class TransferManager {
   // size is the size to transfer to destination in bytes.
   virtual Status TransferBufferFromDevice(se::Stream* stream,
                                           const se::DeviceMemoryBase& source,
-                                          int64 size, void* destination);
+                                          int64_t size, void* destination);
 
   // Transfer a memory block of the given size from 'source' buffer to the given
   // destination of the device.
   //
   // size is the size to transfer from source in bytes.
-  virtual Status TransferBufferToDevice(se::Stream* stream, int64 size,
+  virtual Status TransferBufferToDevice(se::Stream* stream, int64_t size,
                                         const void* source,
                                         se::DeviceMemoryBase* destination);
 

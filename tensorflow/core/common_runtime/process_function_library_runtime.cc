@@ -116,7 +116,7 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
 /* static */
 Status ProcessFunctionLibraryRuntime::SendTensors(
     const string& source_device, const string& target_device,
-    const string& key_prefix, int64 src_incarnation,
+    const string& key_prefix, int64_t src_incarnation,
     gtl::ArraySlice<Tensor> tensors_to_send, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
     RendezvousInterface* rendezvous) {
@@ -135,13 +135,13 @@ Status ProcessFunctionLibraryRuntime::SendTensors(
 /* static */
 void ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
     const string& source_device, const string& target_device,
-    const string& key_prefix, int64 src_incarnation, int64 num_tensors,
+    const string& key_prefix, int64_t src_incarnation, int64_t num_tensors,
     DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
     RendezvousInterface* rendezvous, std::vector<Tensor>* received_tensors,
     StatusCallback done) {
   std::vector<string> keys;
-  for (int64 i = 0; i < num_tensors; ++i) {
+  for (int64_t i = 0; i < num_tensors; ++i) {
     string name = strings::StrCat(key_prefix, i);
     string key = Rendezvous::CreateKey(source_device, src_incarnation,
                                        target_device, name, FrameAndIter(0, 0));
@@ -173,7 +173,7 @@ Status ProcessFunctionLibraryRuntime::GetRetTypes(
 }
 
 Status ProcessFunctionLibraryRuntime::GetDeviceIncarnation(
-    const string& device_name, int64* incarnation) const {
+    const string& device_name, int64_t* incarnation) const {
   FunctionLibraryRuntime* flr = GetFLR(device_name);
   if (flr == nullptr) {
     return errors::InvalidArgument("Device name: ", device_name, " not found.");
@@ -364,10 +364,9 @@ const string* AssignedOrRequestedDeviceName(const Node& node) {
   return &node.requested_device();
 }
 
-Status SetArgShape(
-    const std::unordered_map<int, DtypeAndPartialTensorShape>&
-        input_resource_dtypes_and_shapes,
-    const std::vector<Node*>& arg_nodes) {
+Status SetArgShape(const std::unordered_map<int, DtypeAndPartialTensorShape>&
+                       input_resource_dtypes_and_shapes,
+                   const std::vector<Node*>& arg_nodes) {
   for (Node* n : arg_nodes) {
     int index;
     TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
@@ -432,7 +431,7 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
   for (Node* node : arg_nodes) {
     const AttrValue* attr_value;
     TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
-    int64 index = attr_value->i();
+    int64_t index = attr_value->i();
     node->set_assigned_device_name(input_devices[index]);
   }
 
@@ -518,20 +517,21 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
             }
             // Compare with default_device if it has a narrower scope matching
             // requested device.
-            int colocated_on_default_device = 0;
-            for (int i = 0; i < matching_devices.size(); ++i) {
-              if (DeviceNameUtils::IsSameAddressSpace(
-                      default_device->parsed_name(),
-                      matching_devices.at(i)->parsed_name())) {
-                colocated_on_default_device++;
+            if (default_device != nullptr) {
+              int colocated_on_default_device = 0;
+              for (int i = 0; i < matching_devices.size(); ++i) {
+                if (DeviceNameUtils::IsSameAddressSpace(
+                        default_device->parsed_name(),
+                        matching_devices.at(i)->parsed_name())) {
+                  colocated_on_default_device++;
+                }
+              }
+              // Continue to raise error if multiple colocated devices are
+              // found.
+              if (colocated_on_default_device == 1) {
+                continue;
               }
             }
-            // Continue to raise error if multiple colocated devices are
-            // found.
-            if (colocated_on_default_device == 1) {
-              continue;
-            }
-
             // Convert a vector of devices to a string.
             // Using absl::StrJoin did not work in Android builds.
             string devices = "[";
@@ -563,7 +563,7 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
     } else {
       const AttrValue* attr_value;
       TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
-      int64 index = attr_value->i();
+      int64_t index = attr_value->i();
       // output_devices size is checked in InstantiateMultiDevice
       DCHECK_GT(output_devices.size(), index);
       VLOG(3) << "Setting output device to " << output_devices[index]
@@ -718,11 +718,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       function_name, attrs, fdef, lib_def, &graph, &arg_nodes, &ret_nodes,
       &ret_node_names, &ret_types, &control_ret_node_names));
 
+  GraphDef graph_def;
+  graph->ToGraphDef(&graph_def);
+  FunctionLibraryDefinition reachable_lib_def =
+      lib_def->ReachableDefinitions(graph_def);
+  *graph_def.mutable_library() = reachable_lib_def.ToProto();
   if (options.graph_collector != nullptr) {
-    GraphDef def;
-    graph->ToGraphDef(&def);
-    *def.mutable_library() = lib_def->ReachableDefinitions(def).ToProto();
-    options.graph_collector->CollectRawGraph(def);
+    options.graph_collector->CollectRawGraph(graph_def);
   }
 
   Device* default_device = nullptr;
@@ -749,7 +751,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   auto data = absl::make_unique<MultiDeviceFunctionData>(
       function_name, function_key, ret_node_names.size(),
-      lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
+      std::move(reachable_lib_def), std::move(ret_types));
 
   // The runtime shouldn't depend on duplication between the function library
   // owned by the graph and the one owned by the runtime. To ensure this, for
@@ -1188,7 +1190,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
       // When target device has private thread pool, use the target device
       // runner
       thread::ThreadPool* pool = flr->device()->tensorflow_device_thread_pool();
-      opts_copy.runner = (pool == nullptr) ? opts_copy.runner : flr->runner();
+      opts_copy.runner = (pool == nullptr) ? opts.runner : flr->runner();
 
       VLOG(1) << "Running component function on device " << target << " from "
               << data->function_name_ << " with handle " << handle;
@@ -1367,27 +1369,26 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
 FunctionLibraryRuntime::DoneCallback
 ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
     std::vector<std::unique_ptr<CleanUpItem>>* items,
-    FunctionLibraryRuntime::DoneCallback done, const int64 step_id,
+    FunctionLibraryRuntime::DoneCallback done, const int64_t step_id,
     const Rendezvous* created_rendezvous) const {
-  return
-      [this, items, done = std::move(done), step_id,
-       created_rendezvous](const Status& status) {
-        if (created_rendezvous) {
-          DCHECK(rendezvous_factory_);
-          created_rendezvous->Unref();
-          Status s = rendezvous_factory_.CleanUp(step_id);
-          if (!s.ok()) {
-            LOG(ERROR) << s;
-          }
-        }
-        auto* local_status = new Status(status);
-        CleanUp(items, [local_status, done](const Status& cleanup_status) {
-          local_status->Update(cleanup_status);
-          done(*local_status);
-          delete local_status;
-        });
-        delete items;
-      };
+  return [this, items, done = std::move(done), step_id,
+          created_rendezvous](const Status& status) {
+    if (created_rendezvous) {
+      DCHECK(rendezvous_factory_);
+      created_rendezvous->Unref();
+      Status s = rendezvous_factory_.CleanUp(step_id);
+      if (!s.ok()) {
+        LOG(ERROR) << s;
+      }
+    }
+    auto* local_status = new Status(status);
+    CleanUp(items, [local_status, done](const Status& cleanup_status) {
+      local_status->Update(cleanup_status);
+      done(*local_status);
+      delete local_status;
+    });
+    delete items;
+  };
 }
 
 Status ProcessFunctionLibraryRuntime::CreateRendezvous(
@@ -1524,7 +1525,7 @@ void ProcessFunctionLibraryRuntime::RunInternal(
       done(s);
       return;
     }
-    int64 src_incarnation, target_incarnation;
+    int64_t src_incarnation, target_incarnation;
     s = GetDeviceIncarnation(source_device, &src_incarnation);
     s.Update(GetDeviceIncarnation(target_device, &target_incarnation));
     if (!s.ok()) {
@@ -1554,7 +1555,7 @@ void ProcessFunctionLibraryRuntime::RunInternal(
                  done(status);
                  return;
                }
-               int64 num_returns = remote_rets->size();
+               int64_t num_returns = remote_rets->size();
                delete remote_rets;
                // Now receive the return values from the target.
                std::vector<Tensor>* recv_tensors = new std::vector<Tensor>;

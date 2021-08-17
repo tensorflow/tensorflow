@@ -102,11 +102,13 @@ Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
 //   shape(t) ==> [2, 2, 3]
 //   ```
 Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
-             AbstractTensorHandle** output, const char* name) {
+             AbstractTensorHandle** output, DataType out_type,
+             const char* name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Shape", /*raw_device_name=*/nullptr));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(input));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrType("out_type", out_type));
   int num_retvals = 1;
   return op_ptr->Execute(absl::MakeSpan(output, 1), &num_retvals);
 }

@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
+NodeBuilder::NodeOut::NodeOut(Node* n, int32_t i)  // NOLINT(runtime/explicit)
     : node(n),
       error(false),
       name(node != nullptr ? node->name() : (error = true, "")),
@@ -38,7 +38,7 @@ NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
 
 NodeBuilder::NodeOut::NodeOut(OutputTensor t) : NodeOut(t.node, t.index) {}
 
-NodeBuilder::NodeOut::NodeOut(StringPiece n, int32 i, DataType t)
+NodeBuilder::NodeOut::NodeOut(StringPiece n, int32_t i, DataType t)
     : node(nullptr), error(false), name(n), index(i), dt(t) {}
 
 NodeBuilder::NodeOut::NodeOut()

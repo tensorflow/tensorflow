@@ -154,6 +154,18 @@ void TF_DeleteBuffer(TF_Buffer* buffer) {
 
 TF_Buffer TF_GetBuffer(TF_Buffer* buffer) { return *buffer; }
 
+void TF_TensorFromProto(const TF_Buffer* from, TF_Tensor* to,
+                        TF_Status* status) {
+  TF_SetStatus(status, TF_OK, "");
+  tensorflow::TensorProto from_tensor_proto;
+  status->status = BufferToMessage(from, &from_tensor_proto);
+  if (!status->status.ok()) {
+    return;
+  }
+  status->status =
+      tensorflow::down_cast<tensorflow::TensorInterface*>(to->tensor)
+          ->FromProto(from_tensor_proto);
+}
 // --------------------------------------------------------------------------
 
 TF_DeprecatedSession* TF_NewDeprecatedSession(const TF_SessionOptions* opt,
@@ -401,15 +413,13 @@ static bool TF_Run_Inputs(TF_Tensor* const* c_inputs,
 static TF_Tensor* EmptyTensor(TF_DataType dtype,
                               const tensorflow::TensorShape& shape) {
   static char empty;
-  tensorflow::int64 nelems = 1;
-  std::vector<tensorflow::int64> dims;
+  int64_t nelems = 1;
+  std::vector<int64_t> dims;
   for (int i = 0; i < shape.dims(); ++i) {
     dims.push_back(shape.dim_size(i));
     nelems *= shape.dim_size(i);
   }
   CHECK_EQ(nelems, 0);
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
-                "64-bit int types should match in size");
   return TF_NewTensor(
       dtype, reinterpret_cast<const int64_t*>(dims.data()), shape.dims(),
       reinterpret_cast<void*>(&empty), 0, [](void*, size_t, void*) {}, nullptr);
@@ -770,7 +780,7 @@ void TF_GraphGetTensorShape(TF_Graph* graph, TF_Output output, int64_t* dims,
   // -1 for unknown values.
   for (int i = 0; i < num_dims; ++i) {
     auto dim = ic->Dim(shape, i);
-    tensorflow::int64 value = -1;
+    int64_t value = -1;
     if (ic->ValueKnown(dim)) {
       value = ic->Value(dim);
     }
@@ -782,9 +792,9 @@ void TF_GraphGetTensorShape(TF_Graph* graph, TF_Output output, int64_t* dims,
 
 extern "C" {
 
-static TF_OperationDescription* TF_NewOperationLocked(TF_Graph* graph,
-                                                      const char* op_type,
-                                                      const char* oper_name)
+TF_OperationDescription* TF_NewOperationLocked(TF_Graph* graph,
+                                               const char* op_type,
+                                               const char* oper_name)
     TF_EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
   return new TF_OperationDescription(graph, op_type, oper_name);
 }
@@ -849,19 +859,14 @@ void TF_SetAttrStringList(TF_OperationDescription* desc, const char* attr_name,
 
 void TF_SetAttrInt(TF_OperationDescription* desc, const char* attr_name,
                    int64_t value) {
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
-                "64-bit int types should match in size");
-  desc->node_builder.Attr(attr_name, static_cast<tensorflow::int64>(value));
+  desc->node_builder.Attr(attr_name, static_cast<int64_t>(value));
 }
 
 void TF_SetAttrIntList(TF_OperationDescription* desc, const char* attr_name,
                        const int64_t* values, int num_values) {
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
-                "64-bit int types should match in size");
   desc->node_builder.Attr(
-      attr_name,
-      ArraySlice<const tensorflow::int64>(
-          reinterpret_cast<const tensorflow::int64*>(values), num_values));
+      attr_name, ArraySlice<const int64_t>(
+                     reinterpret_cast<const int64_t*>(values), num_values));
 }
 
 void TF_SetAttrFloat(TF_OperationDescription* desc, const char* attr_name,
@@ -920,10 +925,8 @@ void TF_SetAttrShape(TF_OperationDescription* desc, const char* attr_name,
                      const int64_t* dims, int num_dims) {
   PartialTensorShape shape;
   if (num_dims >= 0) {
-    static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
-                  "64-bit int types should match in size");
-    shape = PartialTensorShape(ArraySlice<tensorflow::int64>(
-        reinterpret_cast<const tensorflow::int64*>(dims), num_dims));
+    shape = PartialTensorShape(
+        ArraySlice<int64_t>(reinterpret_cast<const int64_t*>(dims), num_dims));
   }
   desc->node_builder.Attr(attr_name, shape);
 }
@@ -937,10 +940,8 @@ void TF_SetAttrShapeList(TF_OperationDescription* desc, const char* attr_name,
     if (num_dims[i] < 0) {
       shapes.emplace_back();
     } else {
-      static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
-                    "64-bit int types should match in size");
-      shapes.emplace_back(ArraySlice<tensorflow::int64>(
-          reinterpret_cast<const tensorflow::int64*>(dims[i]), num_dims[i]));
+      shapes.emplace_back(ArraySlice<int64_t>(
+          reinterpret_cast<const int64_t*>(dims[i]), num_dims[i]));
     }
   }
   desc->node_builder.Attr(attr_name, shapes);
@@ -1041,8 +1042,8 @@ void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
   status->status = Status::OK();
 }
 
-static TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
-                                              TF_Status* status)
+TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
+                                       TF_Status* status)
     TF_EXCLUSIVE_LOCKS_REQUIRED(desc->graph->mu) {
   Node* ret = nullptr;
 
@@ -1412,7 +1413,7 @@ void TF_OperationGetAttrStringList(TF_Operation* oper, const char* attr_name,
       values[i] = static_cast<c_type>(attr->list().list_field(i));           \
     }                                                                        \
   }
-DEFINE_GETATTR(TF_OperationGetAttrInt, int64_t, tensorflow::int64, i);
+DEFINE_GETATTR(TF_OperationGetAttrInt, int64_t, int64_t, i);
 DEFINE_GETATTR(TF_OperationGetAttrFloat, float, float, f);
 DEFINE_GETATTR(TF_OperationGetAttrBool, unsigned char, bool, b);
 DEFINE_GETATTR(TF_OperationGetAttrType, TF_DataType, DataType, type);

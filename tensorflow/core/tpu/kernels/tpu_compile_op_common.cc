@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_metrics.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_options.h"
+#include "tensorflow/core/tpu/kernels/tpu_fingerprint_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_util.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
@@ -127,8 +128,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   string status_payload;
   // Construct payload if compile_status is not ok and there's no payload for
   // compilation yet.
-  if (!compile_status.ok() &&
-      compile_status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
+  if (compile_status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
           .empty()) {
     tpu::CompilationResultProto proto;
     proto.set_status_code(compile_status.code());
@@ -241,7 +241,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
           }));
   core::ScopedUnref ref_holder_unref(ref_holder);
 
-  int64 uid;
+  int64_t uid;
   std::vector<std::string> proto_key;
   std::vector<std::string> sharding_key;
   std::vector<bool> may_modify_variables;
@@ -313,7 +313,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     unloader->AddCacheEntryUid(uid);
   }
 
-  int64 num_cores_with_compiled_programs = proto_key.size();
+  int64_t num_cores_with_compiled_programs = proto_key.size();
   if (proto_key.size() == 1) {
     // SPMD produces 1 program for all cores.
     num_cores_with_compiled_programs = metadata_.num_cores_per_replica();
@@ -344,7 +344,8 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
       ctx->frame_iter().frame_id, ":", ctx->frame_iter().iter_id, ":");
 
   // Return compilation status.
-  {
+  if (status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
+          .empty()) {
     Tensor output(DT_STRING, TensorShape({}));
     tpu::CompilationResultProto proto;
     proto.set_status_code(status.code());
@@ -417,6 +418,33 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     }
   }
   return status;
+}
+
+Status TpuCompileOpKernelCommon::RegisterXLAFingerprints(
+    const std::vector<TensorShape>& arg_shapes,
+    TpuProgramGroupInterface* tpu_program_group, uint64 fingerprint) {
+  // TODO(chiachenc): Support only one program for now.
+  if (tpu_program_group->program_count() != 1) {
+    LOG(INFO) << "Found " << tpu_program_group->program_count()
+              << " programs. Skip fingerprint registration.";
+  } else {
+    ResourceMgr* rm = GetTPUConfigResourceMgr();
+    tpu::TpuFingerprintLookup* fingerprint_lookup;
+    TF_RETURN_IF_ERROR(rm->LookupOrCreate<tpu::TpuFingerprintLookup>(
+        rm->default_container(), tpu::kFingerprintLookupResourceName,
+        &fingerprint_lookup, [&](tpu::TpuFingerprintLookup** new_lookup) {
+          *new_lookup = tpu::TpuFingerprintLookup::Create();
+          return Status::OK();
+        }));
+    uint64 tf_fingerprint =
+        tpu::CreateFingerprintWithNameAndShapes(fingerprint, arg_shapes);
+    std::string xla_fingerprint = tpu_program_group->fingerprint(0);
+    VLOG(1) << "Registering TF fingerprint: " << tf_fingerprint
+            << " with XLA fingerprint: " << xla_fingerprint;
+    fingerprint_lookup->RegisterIntermediateAndValuePair(
+        tf_fingerprint, std::move(xla_fingerprint));
+  }
+  return Status::OK();
 }
 }  // namespace tpu
 }  // namespace tensorflow

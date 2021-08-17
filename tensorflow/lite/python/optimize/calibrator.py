@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.lite.python.convert_phase import Component
 from tensorflow.lite.python.convert_phase import convert_phase
 from tensorflow.lite.python.convert_phase import SubComponent
+from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python.framework import dtypes
 from tensorflow.python.util.lazy_loader import LazyLoader
 
@@ -72,10 +73,41 @@ class Calibrator(object):
           _calibration_wrapper.CalibrationWrapper(
               model_content, custom_op_registerers_by_name,
               custom_op_registerers_by_func))
+      self._model_content = model_content
     except Exception as e:
       raise ValueError("Failed to parse the model: %s." % e)
     if not self._calibrator:
       raise ValueError("Failed to parse the model.")
+
+  def _feed_tensors(self, dataset_gen, resize_input):
+    """Feed tensors to the calibrator."""
+    initialized = False
+    for sample in dataset_gen():
+      if isinstance(sample, dict):
+        # Convert signature based inputs to the tensor index based data.
+        if not hasattr(self, "_interpreter"):
+          self._interpreter = Interpreter(model_content=self._model_content)
+        input_array = [None] * len(sample)
+        signature_runner = self._interpreter.get_signature_runner()
+        for input_name, value in sample.items():
+          tensor_index = signature_runner._inputs[input_name]  # pylint: disable=protected-access
+          input_array[tensor_index] = value
+      elif isinstance(sample, list):
+        input_array = sample
+      else:
+        raise ValueError("You need to provide either a dictionary with input "
+                         "names or values and an array with input values in "
+                         "the order of input tensors of the graph in the "
+                         "representative_dataset function. Unsupported value "
+                         "from dataset: {}.".format(sample))
+
+      if not initialized:
+        initialized = True
+        if resize_input:
+          self._calibrator.Prepare([list(s.shape) for s in input_array])
+        else:
+          self._calibrator.Prepare()
+      self._calibrator.FeedTensor(input_array)
 
   @convert_phase(Component.OPTIMIZE_TFLITE_MODEL,
                  SubComponent.QUANTIZE_USING_DEPRECATED_QUANTIZER)
@@ -110,15 +142,7 @@ class Calibrator(object):
       disable_per_channel: A boolean. True if disabling per-channel
                    quantization.
     """
-    initialized = False
-    for sample in dataset_gen():
-      if not initialized:
-        initialized = True
-        if resize_input:
-          self._calibrator.Prepare([list(s.shape) for s in sample])
-        else:
-          self._calibrator.Prepare()
-      self._calibrator.FeedTensor(sample)
+    self._feed_tensors(dataset_gen, resize_input)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
         np.dtype(output_type.as_numpy_dtype()).num, allow_float,
@@ -154,15 +178,7 @@ class Calibrator(object):
       resize_input: A boolean. True if the shape of the sample data is different
         from the input.
     """
-    initialized = False
-    for sample in dataset_gen():
-      if not initialized:
-        initialized = True
-        if resize_input:
-          self._calibrator.Prepare([list(s.shape) for s in sample])
-        else:
-          self._calibrator.Prepare()
-      self._calibrator.FeedTensor(sample)
+    self._feed_tensors(dataset_gen, resize_input)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
         np.dtype(output_type.as_numpy_dtype()).num, allow_float, op_output_name)
@@ -177,10 +193,5 @@ class Calibrator(object):
     Args:
       dataset_gen: A generator that generates calibration samples.
     """
-    initialized = False
-    for sample in dataset_gen():
-      if not initialized:
-        initialized = True
-        self._calibrator.Prepare([list(s.shape) for s in sample])
-      self._calibrator.FeedTensor(sample)
+    self._feed_tensors(dataset_gen, resize_input=True)
     return self._calibrator.Calibrate()

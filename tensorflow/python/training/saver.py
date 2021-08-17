@@ -25,6 +25,7 @@ from __future__ import print_function
 
 import collections
 import os.path
+import threading
 import time
 
 import numpy as np
@@ -46,6 +47,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import training_util
@@ -64,6 +66,22 @@ latest_checkpoint = checkpoint_management.latest_checkpoint
 checkpoint_exists = checkpoint_management.checkpoint_exists
 get_checkpoint_mtimes = checkpoint_management.get_checkpoint_mtimes
 remove_checkpoint = checkpoint_management.remove_checkpoint
+
+
+# Captures the timestamp of the first Saver object instantiation or end of a
+# save operation. Can be accessed by multiple Saver instances.
+_END_TIME_OF_LAST_WRITE = None
+_END_TIME_OF_LAST_WRITE_LOCK = threading.Lock()
+
+# API label for cell name used in checkpoint metrics.
+_SAVER_LABEL = "saver_v1"
+
+
+def _get_duration_microseconds(start_time_seconds, end_time_seconds):
+  if end_time_seconds < start_time_seconds:
+    # Avoid returning negative value in case of clock skew.
+    return 0
+  return round((end_time_seconds - start_time_seconds) * 1000000)
 
 
 class BaseSaverBuilder(object):
@@ -612,7 +630,70 @@ def _get_saver_or_default():
 
 @tf_export(v1=["train.Saver"])
 class Saver(object):
+  # pylint: disable=line-too-long
   """Saves and restores variables.
+
+  @compatibility(TF2)
+  `tf.compat.v1.train.Saver` is not supported for saving and restoring
+  checkpoints in TF2. Please switch to `tf.train.Checkpoint` or
+  `tf.keras.Model.save_weights`, which perform a more robust [object-based
+  saving](https://www.tensorflow.org/guide/checkpoint#loading_mechanics).
+
+  ### How to Rewrite Checkpoints
+
+  Please rewrite your checkpoints immediately using the object-based checkpoint
+  APIs.
+
+  You can load a name-based checkpoint written by `tf.compat.v1.train.Saver`
+  using `tf.train.Checkpoint.restore` or `tf.keras.Model.load_weights`. However,
+  you may have to change the names of the variables in your model to match the
+  variable names in the name-based checkpoint, which can be viewed with
+  `tf.train.list_variables(path)`.
+
+  Another option is to create an `assignment_map` that maps the name of the
+  variables in the name-based checkpoint to the variables in your model, eg:
+  ```
+  {
+      'sequential/dense/bias': model.variables[0],
+      'sequential/dense/kernel': model.variables[1]
+  }
+  ```
+  and use `tf.compat.v1.train.init_from_checkpoint(path, assignment_map)` to
+  restore the name-based checkpoint.
+
+  After restoring, re-encode your checkpoint
+  using `tf.train.Checkpoint.save` or `tf.keras.Model.save_weights`.
+
+  See the [Checkpoint compatibility](
+  https://www.tensorflow.org/guide/migrate#checkpoint_compatibility)
+  section of the migration guide for more details.
+
+
+  ### Checkpoint Management in TF2
+
+  Use `tf.train.CheckpointManager` to manage checkpoints in TF2.
+  `tf.train.CheckpointManager` offers equivalent `keep_checkpoint_every_n_hours`
+  and `max_to_keep` parameters.
+
+  To recover the latest checkpoint,
+
+  ```
+  checkpoint = tf.train.Checkpoint(model)
+  manager = tf.train.CheckpointManager(checkpoint)
+  status = checkpoint.restore(manager.latest_checkpoint)
+  ```
+
+  `tf.train.CheckpointManager` also writes a [`CheckpointState` proto]
+  (https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/training/checkpoint_state.proto)
+  which contains the timestamp when each checkpoint was created.
+
+  ### Writing `MetaGraphDef`s in TF2
+
+  To replace, `tf.compat.v1.train.Saver.save(write_meta_graph=True)`, use
+  `tf.saved_model.save` to write the `MetaGraphDef` (which is contained in
+  `saved_model.pb`).
+
+  @end_compatibility
 
   See [Variables](https://tensorflow.org/guide/variables)
   for an overview of variables, saving and restoring.
@@ -685,6 +766,7 @@ class Saver(object):
   If you create several savers, you can specify a different filename for the
   protocol buffer file in the call to `save()`.
   """
+  # pylint: enable=line-too-long
 
   def __init__(self,
                var_list=None,
@@ -797,6 +879,11 @@ class Saver(object):
     saving. These APIs will load checkpoints written by `Saver`.
     @end_compatibility
     """
+    global _END_TIME_OF_LAST_WRITE
+    with _END_TIME_OF_LAST_WRITE_LOCK:
+      if _END_TIME_OF_LAST_WRITE is None:
+        _END_TIME_OF_LAST_WRITE = time.time()
+
     if defer_build and var_list:
       raise ValueError(
           "If `var_list` is provided then build cannot be deferred. "
@@ -1141,6 +1228,7 @@ class Saver(object):
       RuntimeError: If save and restore ops weren't built.
     """
     # pylint: enable=line-too-long
+    start_time = time.time()
     if not self._is_built and not context.executing_eagerly():
       raise RuntimeError(
           "`build()` should be called before save if defer_build==True")
@@ -1205,6 +1293,18 @@ class Saver(object):
               "Parent directory of {} doesn't exist, can't save.".format(
                   save_path))
         raise exc
+
+    end_time = time.time()
+    metrics.AddCheckpointWriteDuration(
+        api_label=_SAVER_LABEL,
+        microseconds=_get_duration_microseconds(start_time, end_time))
+    global _END_TIME_OF_LAST_WRITE
+    with _END_TIME_OF_LAST_WRITE_LOCK:
+      metrics.AddTrainingTimeSaved(
+          api_label=_SAVER_LABEL,
+          microseconds=_get_duration_microseconds(_END_TIME_OF_LAST_WRITE,
+                                                  end_time))
+      _END_TIME_OF_LAST_WRITE = end_time
 
     if write_meta_graph:
       meta_graph_filename = checkpoint_management.meta_graph_filename(
@@ -1285,6 +1385,7 @@ class Saver(object):
     Raises:
       ValueError: If save_path is None or not a valid checkpoint.
     """
+    start_time = time.time()
     if self._is_empty:
       return
     if save_path is None:
@@ -1338,6 +1439,9 @@ class Saver(object):
       # We add a more reasonable error message here to help users (b/110263146)
       raise _wrap_restore_error_with_msg(
           err, "a mismatch between the current graph and the graph")
+    metrics.AddCheckpointReadDuration(
+        api_label=_SAVER_LABEL,
+        microseconds=_get_duration_microseconds(start_time, time.time()))
 
   @staticmethod
   def _add_collection_def(meta_graph_def, key, export_scope=None):

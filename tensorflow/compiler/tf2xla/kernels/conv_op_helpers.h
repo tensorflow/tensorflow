@@ -51,7 +51,7 @@ struct ConvOpAttrs {
   std::vector<int32> dilations;
   std::vector<int32> strides;
   Padding padding;
-  std::vector<int64> explicit_paddings;
+  std::vector<int64_t> explicit_paddings;
   TensorFormat data_format;
 };
 

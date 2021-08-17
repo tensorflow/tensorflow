@@ -414,6 +414,14 @@ REGISTER_OP("GroupByWindowDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("GetElementAtIndex")
+    .Input("dataset: variant")
+    .Input("index: int64")
+    .Output("components: output_types")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
+
 REGISTER_OP("ExperimentalGroupByWindowDataset")
     .Input("input_dataset: variant")
     .Input("key_func_other_arguments: Tkey_func_other_arguments")
@@ -989,6 +997,25 @@ REGISTER_OP("SaveDataset")
       return Status::OK();
     });
 
+REGISTER_OP("SaveDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("path: string")
+    .Input("shard_func_other_args: Tshard_func_args")
+    .Output("handle: variant")
+    .Attr("compression: string = ''")
+    .Attr("shard_func: func")
+    .Attr("use_shard_func: bool = true")
+    .Attr("Tshard_func_args: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `path` should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("LoadDataset")
     .Input("path: string")
     .Input("reader_func_other_args: Treader_func_args")
@@ -1231,6 +1258,7 @@ REGISTER_OP("RegisterDataset")
     .Input("protocol: string")
     .Output("dataset_id: int64")
     .Attr("external_state_policy: int")
+    .Attr("element_spec: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("InitializeTableFromDataset")

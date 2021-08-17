@@ -463,7 +463,9 @@ class _MirroredReplicaContext(distribute_lib.ReplicaContext):
           " please avoid nested `tf.function`s or control flow statements that"
           " may potentially cross a synchronization boundary, for example,"
           " wrap the `fn` passed to `strategy.run` or the entire `strategy.run`"
-          " inside a `tf.function` or move the control flow out of `fn`")
+          " inside a `tf.function` or move the control flow out of `fn`. If"
+          " you are subclassing a `tf.keras.Model`, please avoid decorating"
+          " overridden methods `test_step` and `train_step` in `tf.function`.")
 
     t.has_paused.set()
     t.should_run.wait()

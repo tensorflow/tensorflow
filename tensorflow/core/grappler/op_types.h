@@ -166,6 +166,7 @@ bool IsSend(const NodeDef& node);
 bool IsShape(const NodeDef& node);
 bool IsShapeN(const NodeDef& node);
 bool IsShuffle(const NodeDef& node);
+bool IsSigmoid(const NodeDef& node);
 bool IsSigmoidGrad(const NodeDef& node);
 bool IsSize(const NodeDef& node);
 bool IsSlice(const NodeDef& node);

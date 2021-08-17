@@ -25,23 +25,10 @@ from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.python import _pywrap_py_exception_registry
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.framework import c_api_util
-from tensorflow.python.framework import error_interpolation
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
-
-
-def _compact_stack_trace(op):
-  """Returns a traceback for `op` with common file prefixes stripped."""
-  compact_traces = []
-  common_prefix = error_interpolation.traceback_files_common_prefix([[op]])
-  # TODO(slebedev): switch to .filename etc once 2.X support is dropped.
-  for filename, lineno, name, line in op.traceback:
-    if filename.startswith(common_prefix):
-      filename = filename[len(common_prefix):]
-    compact_traces.append((filename, lineno, name, line))
-  return compact_traces
 
 
 class InaccessibleTensorError(ValueError):
@@ -141,8 +128,7 @@ class OpError(Exception):
               self._op.name,
           )
       ]
-      curr_traceback_list = traceback.format_list(
-          _compact_stack_trace(self._op))
+      curr_traceback_list = traceback.format_list(self._op.traceback)
       output.extend(curr_traceback_list)
       # pylint: disable=protected-access
       original_op = self._op._original_op
@@ -152,8 +138,7 @@ class OpError(Exception):
             "\n...which was originally created as op %r, defined at:\n" %
             (original_op.name,))
         prev_traceback_list = curr_traceback_list
-        curr_traceback_list = traceback.format_list(
-            _compact_stack_trace(original_op))
+        curr_traceback_list = traceback.format_list(original_op.traceback)
 
         # Attempt to elide large common subsequences of the subsequent
         # stack traces.

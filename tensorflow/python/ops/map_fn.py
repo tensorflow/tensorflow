@@ -357,7 +357,8 @@ def map_fn(fn,
     fn_output_signature = dtype
 
   if not callable(fn):
-    raise TypeError("fn must be callable.")
+    raise TypeError(f"The provided function {fn.__name__} is not callable."
+                    "fn must be callable.")
 
   in_graph_mode = not context.executing_eagerly()
   # Set the default number of parallel_iterations depending on graph/eager mode.
@@ -422,12 +423,8 @@ def map_fn(fn,
     first_elem = elems_flat[0]
     elems_static_shape = first_elem.shape
     if elems_static_shape.ndims is not None and elems_static_shape.ndims < 1:
-      if len(elems_flat) == 1:
-        raise ValueError("elems must be a 1+ dimensional Tensor, not a scalar")
-      else:
-        raise ValueError(
-            "elements in elems must be 1+ dimensional Tensors, not scalars"
-        )
+      raise ValueError(
+          "Elements in elems must be 1+ dimensional Tensors, not scalars")
 
     # Box any composite tensors into tensor lists.
     elems_batchable = _elems_flat_to_batchable(elems_flat)

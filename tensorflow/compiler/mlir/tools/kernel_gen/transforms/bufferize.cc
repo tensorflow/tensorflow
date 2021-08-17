@@ -27,12 +27,15 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
 
 namespace mlir {
 namespace kernel_gen {
 namespace transforms {
 namespace {
+
+using linalg::TiledLoopOp;
 
 class BufferizeConstantOp : public OpConversionPattern<ConstantOp> {
  public:
@@ -77,15 +80,126 @@ class BufferizeConstantOp : public OpConversionPattern<ConstantOp> {
   }
 };
 
-class BufferizeDimOp : public OpConversionPattern<memref::DimOp> {
+class BufferizeDimOp : public OpConversionPattern<tensor::DimOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      memref::DimOp op, ArrayRef<Value> operands,
+      tensor::DimOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    memref::DimOp::Adaptor adaptor(operands);
-    rewriter.replaceOpWithNewOp<memref::DimOp>(op, adaptor.memrefOrTensor(),
+    tensor::DimOp::Adaptor adaptor(operands);
+    rewriter.replaceOpWithNewOp<memref::DimOp>(op, adaptor.source(),
                                                adaptor.index());
+    return success();
+  }
+};
+
+bool IsBlockArgOfTiledLoop(Value tensor) {
+  if (auto block_arg = tensor.dyn_cast<BlockArgument>())
+    return isa<TiledLoopOp>(block_arg.getOwner()->getParentOp());
+  return false;
+}
+
+SmallVector<Value, 3> ConvertOperands(ValueRange operands,
+                                      BlockAndValueMapping &bvm) {
+  SmallVector<Value, 3> new_operands;
+  new_operands.reserve(operands.size());
+  for (auto operand : operands)
+    new_operands.push_back(bvm.lookupOrDefault(operand));
+  return new_operands;
+}
+
+class BufferizeTiledLoopOp : public OpConversionPattern<TiledLoopOp> {
+ public:
+  using OpConversionPattern<TiledLoopOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      TiledLoopOp loop, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const final {
+    TiledLoopOp::Adaptor adaptor(operands, loop->getAttrDictionary());
+    if (loop.getNumResults() == 0) return failure();
+
+    auto new_loop = rewriter.create<TiledLoopOp>(
+        loop.getLoc(), adaptor.lowerBound(), adaptor.upperBound(),
+        adaptor.step(), adaptor.inputs(), adaptor.outputs(),
+        adaptor.iterator_types(), adaptor.distribution_types());
+
+    // Clone the region.
+    BlockAndValueMapping bvm;
+    bvm.map(loop.getInductionVars(), new_loop.getInductionVars());
+    bvm.map(loop.getRegionInputArgs(), new_loop.getRegionInputArgs());
+    bvm.map(loop.getRegionOutputArgs(), new_loop.getRegionOutputArgs());
+
+    OpBuilder inner_builder =
+        OpBuilder::atBlockEnd(new_loop.getBody(), rewriter.getListener());
+
+    for (auto &op : loop.getBody()->getOperations()) {
+      Location loc = op.getLoc();
+      if (auto extract_slice = dyn_cast<tensor::ExtractSliceOp>(op)) {
+        if (IsBlockArgOfTiledLoop(extract_slice.source())) {
+          auto new_operands = ConvertOperands(extract_slice.getOperands(), bvm);
+          auto src_memref_type =
+              bvm.lookup(extract_slice.source()).getType().cast<MemRefType>();
+          auto dst_memref_type =
+              memref::SubViewOp::inferResultType(
+                  src_memref_type,
+                  extractFromI64ArrayAttr(extract_slice.static_offsets()),
+                  extractFromI64ArrayAttr(extract_slice.static_sizes()),
+                  extractFromI64ArrayAttr(extract_slice.static_strides()))
+                  .cast<MemRefType>();
+
+          Value subview = inner_builder.create<memref::SubViewOp>(
+              loc, TypeRange{dst_memref_type}, new_operands,
+              extract_slice->getAttrs());
+          bvm.map(extract_slice.getResult(), subview);
+          continue;
+        }
+      }
+      if (auto insert_slice = dyn_cast<tensor::InsertSliceOp>(op)) {
+        if (IsBlockArgOfTiledLoop(insert_slice.dest())) {
+          continue;
+        }
+      }
+      if (auto yield = dyn_cast<linalg::YieldOp>(op)) {
+        Location loc = yield.getLoc();
+        for (OpOperand &operand : yield->getOpOperands()) {
+          if (auto insert =
+                  operand.get().getDefiningOp<tensor::InsertSliceOp>()) {
+            auto dst_memref_type = memref::SubViewOp::inferResultType(
+                getTypeConverter()
+                    ->convertType(insert.source().getType())
+                    .cast<MemRefType>(),
+                extractFromI64ArrayAttr(insert.static_offsets()),
+                extractFromI64ArrayAttr(insert.static_sizes()),
+                extractFromI64ArrayAttr(insert.static_strides()));
+
+            Value subview = inner_builder.create<memref::SubViewOp>(
+                loc, dst_memref_type, bvm.lookup(insert.dest()),
+                ConvertOperands(insert.offsets(), bvm),
+                ConvertOperands(insert.sizes(), bvm),
+                ConvertOperands(insert.strides(), bvm), insert.static_offsets(),
+                insert.static_sizes(), insert.static_strides());
+
+            Value cast = inner_builder.create<memref::BufferCastOp>(
+                loc,
+                getTypeConverter()
+                    ->convertType(insert.source().getType())
+                    .cast<MemRefType>(),
+                bvm.lookup(insert.source()));
+
+            inner_builder.create<linalg::CopyOp>(loc, cast, subview);
+            continue;
+          }
+          auto dst = new_loop.getRegionOutputArgs()[operand.getOperandNumber()];
+          Value cast = inner_builder.create<memref::BufferCastOp>(
+              loc, dst.getType(), bvm.lookup(operand.get()));
+          inner_builder.create<linalg::CopyOp>(loc, cast, dst);
+        }
+        continue;
+      }
+      inner_builder.clone(op, bvm);
+    }
+    inner_builder.create<linalg::YieldOp>(loop.getLoc());
+    rewriter.replaceOp(loop, new_loop.outputs());
     return success();
   }
 };
@@ -376,11 +490,12 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
     Value new_rank = lb.create<SubIOp>(rank, leading_ones);
     auto result_type =
         MemRefType::get({ShapedType::kDynamicSize}, lb.getIndexType());
-    // Ideally we would use SubView here to return a MemRef with 'leading_ones'
-    // as offset, but several things related to MemRef with offsets are
-    // currently broken, so instead we just allocate another buffer of the
-    // desired size and copy the elements over. We assume the buffer will be
-    // small, so we allocate it on the stack.
+    // We cannot use SubView here to return a MemRef with 'leading_ones' as
+    // offset, because that also changes the size, so the result type would need
+    // to have an affine map to change the layout. This is incompatible to our
+    // other MemRef types without affine map. So instead we just allocate
+    // another buffer of the desired size and copy the elements over. We assume
+    // the buffer will be small, so we allocate it on the stack.
     // TODO(b/181654096): Replace AllocaOp with AllocOp.
     Value result = lb.create<memref::AllocaOp>(result_type, new_rank);
     Value zero = lb.create<ConstantIndexOp>(0);
@@ -398,6 +513,24 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
   }
 };
 
+struct BufferizeJITExecuteOp
+    : public OpConversionPattern<tf_framework::JITExecuteOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      tf_framework::JITExecuteOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    SmallVector<Type, 2> result_types;
+    if (failed(getTypeConverter()->convertTypes(op.getResultTypes(),
+                                                result_types))) {
+      return failure();
+    }
+    rewriter.replaceOpWithNewOp<tf_framework::JITExecuteOp>(
+        op, result_types, operands, op->getAttrs());
+    return success();
+  }
+};
+
 class BufferizeRankOp : public OpConversionPattern<RankOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -412,12 +545,23 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
 
 }  // namespace
 
-void populateExtraStdBufferizePattern(MLIRContext *context,
-                                      BufferizeTypeConverter *converter,
-                                      RewritePatternSet *patterns) {
-  patterns->insert<BufferizeAndConvertMinimumBroadcastShapesOp,
-                   BufferizeConstantOp, BufferizeDimOp, BufferizeRankOp>(
-      *converter, context);
+void populateTiledLoopBufferizePattern(MLIRContext *context,
+                                       BufferizeTypeConverter *converter,
+                                       RewritePatternSet *patterns) {
+  patterns->insert<BufferizeTiledLoopOp>(*converter, context);
+}
+
+void populateExtraBufferizePatterns(MLIRContext *context,
+                                    BufferizeTypeConverter *converter,
+                                    RewritePatternSet *patterns) {
+  // clang-format off
+  patterns->insert<
+      BufferizeAndConvertMinimumBroadcastShapesOp,
+      BufferizeConstantOp,
+      BufferizeDimOp,
+      BufferizeJITExecuteOp,
+      BufferizeRankOp>(*converter, context);
+  // clang-format on
 }
 
 }  // namespace transforms

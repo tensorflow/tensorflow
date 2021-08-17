@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/stats_utils.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
@@ -62,7 +62,7 @@ namespace experimental {
 
 namespace {
 
-constexpr int64 kMaxBatchResults = 16;
+constexpr int64_t kMaxBatchResults = 16;
 constexpr char kParallelism[] = "parallelism";
 constexpr char kCallCounter[] = "call_counter";
 constexpr char kBatchResultsSize[] = "batch_results_size";
@@ -75,14 +75,14 @@ constexpr char kOutputAllocated[] = "output_allocated";
 constexpr char kStatus[] = "status";
 
 // Computes ceil(x / y).
-inline int64 CeilDiv(int64 x, int64 y) { return (x + y - 1) / y; }
+inline int64_t CeilDiv(int64_t x, int64_t y) { return (x + y - 1) / y; }
 
 }  // namespace
 
 class MapAndBatchDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 batch_size,
-          int64 num_parallel_calls, bool drop_remainder,
+  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64_t batch_size,
+          int64_t num_parallel_calls, bool drop_remainder,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes,
           std::unique_ptr<CapturedFunction> captured_func,
@@ -123,11 +123,11 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override {
+  int64_t Cardinality() const override {
     if (!preserve_cardinality_) {
       return kUnknownCardinality;
     }
-    int64 n = input_->Cardinality();
+    int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -203,7 +203,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       max_batch_results_ = std::min(
           kMaxBatchResults,
           CeilDiv(params.dataset->num_parallel_calls_ == model::kAutotune
-                      ? port::NumSchedulableCPUs()  // maximum parallelism
+                      ? GetCpuBudget()  // maximum parallelism
                       : params.dataset->num_parallel_calls_,
                   params.dataset->batch_size_));
     }
@@ -305,7 +305,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(full_name(kCallCounter), &call_counter_));
-      int64 batch_results_size;
+      int64_t batch_results_size;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kBatchResultsSize),
                                             &batch_results_size));
       DCHECK(batch_results_.empty());
@@ -316,8 +316,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
-      int64 parallelism = -1;
-      int64 max_batch_results = -1;
+      int64_t parallelism = -1;
+      int64_t max_batch_results = -1;
       // NOTE: We only set the parallelism value if the lock can be acquired
       // right away to avoid introducing tracing overhead.
       if (mu_->try_lock()) {
@@ -341,7 +341,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // BatchResult encapsulates the output batch, as well as ancillary
     // metadata required to execute the fused map-and-batch operation.
     struct BatchResult {
-      explicit BatchResult(int64 batch_size)
+      explicit BatchResult(int64_t batch_size)
           : end_of_input(false),
             num_elements(0),
             output_allocated(false),
@@ -356,7 +356,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       // (required to make the behavior is observably identical to a
       // sequential execution of map followed by batch), we must also keep
       // track of the offset into the batch that produced `s`.
-      void UpdateStatus(const Status& s, int64 offset) {
+      void UpdateStatus(const Status& s, int64_t offset) {
         if (TF_PREDICT_FALSE(!s.ok())) {
           mutex_lock l(mu);
           if (status.ok() || offset < status_offset) {
@@ -368,13 +368,13 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
       mutex mu;
       bool end_of_input TF_GUARDED_BY(mu);
-      int64 num_elements TF_GUARDED_BY(mu);
+      int64_t num_elements TF_GUARDED_BY(mu);
       std::vector<Tensor> output;
       bool output_allocated TF_GUARDED_BY(mu);
       Status status TF_GUARDED_BY(mu);
-      int64 status_offset TF_GUARDED_BY(mu);
+      int64_t status_offset TF_GUARDED_BY(mu);
       // Counts the number of outstanding calls for this batch.
-      int64 num_calls TF_GUARDED_BY(&Iterator::mu_);
+      int64_t num_calls TF_GUARDED_BY(&Iterator::mu_);
       const uint64 uid = -1;
     };
 
@@ -396,8 +396,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     }
 
     void CallFunction(std::shared_ptr<IteratorContext> ctx,
-                      const std::shared_ptr<BatchResult>& result, int64 offset)
-        TF_LOCKS_EXCLUDED(*mu_) {
+                      const std::shared_ptr<BatchResult>& result,
+                      int64_t offset) TF_LOCKS_EXCLUDED(*mu_) {
       profiler::TraceMe traceme([&] {
         return profiler::TraceMeEncode("MapAndBatchProduce",
                                        {{"element_id", result->uid}});
@@ -530,7 +530,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
     void RunnerThread(const std::shared_ptr<IteratorContext>& ctx)
         TF_LOCKS_EXCLUDED(*mu_) {
-      std::vector<std::pair<std::shared_ptr<BatchResult>, int64>> new_calls;
+      std::vector<std::pair<std::shared_ptr<BatchResult>, int64_t>> new_calls;
       RecordStart(ctx.get());
       auto stop_cleanup =
           gtl::MakeCleanup([this, &ctx]() { RecordStop(ctx.get()); });
@@ -539,7 +539,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         new_calls.reserve(num_parallel_calls_->value);
       }
       auto busy = [this]() TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
-        int64 num_parallel_calls = num_parallel_calls_->value;
+        int64_t num_parallel_calls = num_parallel_calls_->value;
         return num_calls_ >= num_parallel_calls ||
                (batch_results_.size() > max_batch_results_ ||
                 (batch_results_.size() == max_batch_results_ &&
@@ -572,7 +572,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
               batch_results_.push_back(
                   std::make_shared<BatchResult>(dataset()->batch_size_));
             }
-            int64 offset = call_counter_++ % dataset()->batch_size_;
+            int64_t offset = call_counter_++ % dataset()->batch_size_;
             new_calls.emplace_back(batch_results_.back(), offset);
             num_calls_++;
           }
@@ -616,7 +616,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ReadStatus(prefix(),
                                     strings::StrCat(batch_prefix, "_", kStatus),
                                     reader, &result->status));
-      RecordBufferEnqueue(ctx, result->output);
+      if (result->output_allocated) {
+        RecordBufferEnqueue(ctx, result->output);
+      }
       return Status::OK();
     }
 
@@ -666,20 +668,23 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // `input_impl_` so that `input_impl_` is destroyed first.
     std::unique_ptr<CancellationManager> cancellation_manager_;
     // Counts the number of outstanding calls for this batch.
-    int64 num_calls_ TF_GUARDED_BY(*mu_) = 0;
+    int64_t num_calls_ TF_GUARDED_BY(*mu_) = 0;
     // Counts the total number of calls.
-    int64 call_counter_ TF_GUARDED_BY(*mu_) = 0;
+    int64_t call_counter_ TF_GUARDED_BY(*mu_) = 0;
     std::unique_ptr<IteratorBase> input_impl_;
-    // Buffer for storing the (intermediate) batch results.
+    // Buffer for storing the (intermediate) batch results. Whenever an
+    // output-allocated batch result is added to or removed from
+    // `batch_results_`, call `RecordBufferEnqueue` or `RecordBufferDequeue`
+    // respectively.
     std::deque<std::shared_ptr<BatchResult>> batch_results_ TF_GUARDED_BY(*mu_);
     // Background thread used for coordinating input processing.
     std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
     // Determines whether the transformation has been cancelled.
     bool cancelled_ TF_GUARDED_BY(*mu_) = false;
     // Identifies the number of callers currently waiting for a batch result.
-    int64 waiting_ TF_GUARDED_BY(*mu_) = 0;
+    int64_t waiting_ TF_GUARDED_BY(*mu_) = 0;
     // Identifies the maximum number of batch results to store.
-    int64 max_batch_results_ TF_GUARDED_BY(*mu_);
+    int64_t max_batch_results_ TF_GUARDED_BY(*mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
 
     // Method for deregistering the cancellation callback.
@@ -687,8 +692,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
   };
 
   const DatasetBase* const input_;
-  const int64 batch_size_;
-  const int64 num_parallel_calls_;
+  const int64_t batch_size_;
+  const int64_t num_parallel_calls_;
   const bool drop_remainder_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
@@ -709,12 +714,12 @@ MapAndBatchDatasetOp::MapAndBatchDatasetOp(OpKernelConstruction* ctx)
 
 void MapAndBatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                        DatasetBase** output) {
-  int64 batch_size = 0;
+  int64_t batch_size = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBatchSize, &batch_size));
   OP_REQUIRES(ctx, batch_size > 0,
               errors::InvalidArgument("batch_size must be greater than zero."));
 
-  int64 num_parallel_calls = 0;
+  int64_t num_parallel_calls = 0;
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument(ctx, kNumParallelCalls, &num_parallel_calls));
   OP_REQUIRES(

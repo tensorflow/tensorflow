@@ -96,7 +96,7 @@ void RecordPassEndMetadata(HloModuleGroup& module_group,
 }
 
 void SetInstructionMetadata(HloModule& module) {
-  StatusOr<int64> pass_id = module.metadata()->current_pass_id();
+  StatusOr<int64_t> pass_id = module.metadata()->current_pass_id();
   if (!pass_id.ok()) {
     LOG(FATAL) << pass_id.status();
   }

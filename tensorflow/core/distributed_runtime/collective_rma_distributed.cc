@@ -37,8 +37,8 @@ namespace {
 
 class RecvBufCall : public CancellableCall {
  public:
-  RecvBufCall(int64 step_id, const string& peer_device, const string& peer_task,
-              const string& key, Device* to_device,
+  RecvBufCall(int64_t step_id, const string& peer_device,
+              const string& peer_task, const string& key, Device* to_device,
               DeviceContext* to_device_ctx,
               const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
               const DeviceLocality& client_locality,
@@ -50,7 +50,7 @@ class RecvBufCall : public CancellableCall {
     *req_.mutable_client_locality() = client_locality;
     *req_.mutable_server_locality() = server_attributes.locality();
     req_.set_num_bytes(to_tensor->TotalBytes());
-    req_.set_buf_ptr(reinterpret_cast<int64>(DMAHelper::base(to_tensor)));
+    req_.set_buf_ptr(reinterpret_cast<int64_t>(DMAHelper::base(to_tensor)));
     req_.set_src_device(peer_device);
     req_.set_src_incarnation(server_attributes.incarnation());
     req_.set_dst_device(to_device->name());
@@ -85,8 +85,8 @@ Status PopulateTensorFromResponse(const RecvBufResponse& response,
   // copied into request.buf_ptr.
   if (!has_transport_options) return Status::OK();
 
-  const int64 total_bytes = cpu_tensor->TotalBytes();
-  int64 num_bytes = 0;
+  const int64_t total_bytes = cpu_tensor->TotalBytes();
+  int64_t num_bytes = 0;
   RecvBufRespExtra extra;
   response.transport_options().UnpackTo(&extra);
   for (const auto& chunk : extra.tensor_content()) {
@@ -229,7 +229,8 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
 }
 
 void CollectiveRemoteAccessDistributed::CheckPeerHealth(
-    const string& peer_task, int64 timeout_in_ms, const StatusCallback& done) {
+    const string& peer_task, int64_t timeout_in_ms,
+    const StatusCallback& done) {
   if (peer_task == task_name_) {
     // Fast path if the peer is the worker itself.
     done(Status::OK());

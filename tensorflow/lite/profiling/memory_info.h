@@ -23,7 +23,7 @@ namespace profiling {
 namespace memory {
 
 struct MemoryUsage {
-  static const int kValueNotSet;
+  static const size_t kValueNotSet;
 
   // Indicates whether obtaining memory usage is supported on the platform, thus
   // indicating whether the values defined in this struct make sense or not.
@@ -41,11 +41,11 @@ struct MemoryUsage {
 
   // Total non-mmapped space allocated from system in bytes. This is an alias to
   // mallinfo::arena.
-  int total_allocated_bytes;
+  size_t total_allocated_bytes;
 
   // Total allocated (including mmapped) bytes that's in use (i.e. excluding
   // those are freed). This is an alias to mallinfo::uordblks.
-  int in_use_allocated_bytes;
+  size_t in_use_allocated_bytes;
 
   MemoryUsage operator+(MemoryUsage const& obj) const {
     MemoryUsage res;

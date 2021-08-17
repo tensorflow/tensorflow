@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/split_provider.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -37,7 +38,8 @@ Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   }
   return grpc_util::Retry(
       [this, split, end_of_splits] {
-        return dispatcher_->GetSplit(job_id_, repetition_, *split,
+        return dispatcher_->GetSplit(job_id_, repetition_,
+                                     split_provider_index_, *split,
                                      *end_of_splits);
       },
       "get next split",

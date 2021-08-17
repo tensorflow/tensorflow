@@ -1,4 +1,4 @@
-From 7bbdd3663cfb6a74541e95fe4b9dd5fe16659963 Mon Sep 17 00:00:00 2001
+From 12c0db4e4d7d36137536885142ac226b526794a8 Mon Sep 17 00:00:00 2001
 From: Kaixi Hou <kaixih@nvidia.com>
 Date: Tue, 4 May 2021 15:21:11 -0700
 Subject: [PATCH] Update headers path
@@ -34,7 +34,7 @@ index b07b336..3fb06a7 100644
  namespace cudnn_frontend {
  
 diff --git a/include/cudnn_frontend_ConvDesc.h b/include/cudnn_frontend_ConvDesc.h
-index d8706d4..6cabf6e 100644
+index 2bcf0bc..fa26dc7 100644
 --- a/include/cudnn_frontend_ConvDesc.h
 +++ b/include/cudnn_frontend_ConvDesc.h
 @@ -29,8 +29,8 @@
@@ -92,7 +92,7 @@ index e7d918b..7298ef3 100644
  
  namespace cudnn_frontend {
 diff --git a/include/cudnn_frontend_ExecutionPlan.h b/include/cudnn_frontend_ExecutionPlan.h
-index 8ceb03a..048713c 100644
+index 858e067..b10ee88 100644
 --- a/include/cudnn_frontend_ExecutionPlan.h
 +++ b/include/cudnn_frontend_ExecutionPlan.h
 @@ -29,8 +29,8 @@
@@ -120,7 +120,7 @@ index b244766..3e9273b 100644
  namespace cudnn_frontend {
  
 diff --git a/include/cudnn_frontend_Heuristics.h b/include/cudnn_frontend_Heuristics.h
-index 446f932..b15f472 100644
+index 3f61156..ce040b7 100644
 --- a/include/cudnn_frontend_Heuristics.h
 +++ b/include/cudnn_frontend_Heuristics.h
 @@ -24,8 +24,8 @@
@@ -133,7 +133,7 @@ index 446f932..b15f472 100644
 +#include "third_party/gpus/cudnn/cudnn_backend.h"
  
  #include "cudnn_frontend_OperationGraph.h"
- #include "cudnn_frontend_utils.h"
+ #include "cudnn_frontend_EngineConfig.h"
 diff --git a/include/cudnn_frontend_MatMulDesc.h b/include/cudnn_frontend_MatMulDesc.h
 index e416002..da2deb1 100644
 --- a/include/cudnn_frontend_MatMulDesc.h
@@ -150,7 +150,7 @@ index e416002..da2deb1 100644
  #include "cudnn_frontend_utils.h"
  
 diff --git a/include/cudnn_frontend_Operation.h b/include/cudnn_frontend_Operation.h
-index dd3633d..a533a30 100644
+index 15f9b7c..c4a4cbb 100644
 --- a/include/cudnn_frontend_Operation.h
 +++ b/include/cudnn_frontend_Operation.h
 @@ -29,8 +29,8 @@

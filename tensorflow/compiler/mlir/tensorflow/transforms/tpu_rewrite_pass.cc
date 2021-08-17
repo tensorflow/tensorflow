@@ -52,8 +52,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
-#include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
@@ -67,7 +67,6 @@ static llvm::cl::opt<bool> tpu_compile_metadata_debug(
 
 constexpr char kNumReplicasAttr[] = "num_replicas";
 constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
-constexpr char kPaddingMapAttr[] = "padding_map";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kDevicesAttr[] = "devices";
 constexpr char kVersionsAttr[] = "tf.versions";
@@ -167,33 +166,6 @@ LogicalResult SetMetadataProtoStepMarkerLocation(
                                         step_marker_location.getValue()));
 
   metadata->set_step_marker_location(location);
-
-  return success();
-}
-
-// Populates a TPUCompileMetadataProto with PaddingMap from a
-// `tf_device::ClusterFuncOp`.
-LogicalResult SetMetadataProtoPaddingMap(
-    tf_device::ClusterFuncOp op,
-    tensorflow::tpu::TPUCompileMetadataProto* metadata) {
-  auto padding_map = op->getAttrOfType<ArrayAttr>(kPaddingMapAttr);
-  if (!padding_map)
-    return op.emitOpError(CreateMissingAttributeMsg(kPaddingMapAttr));
-
-  for (const auto& padding_and_idx : llvm::enumerate(padding_map)) {
-    auto& padding_attr = padding_and_idx.value();
-    auto padding_attr_str = padding_attr.dyn_cast<StringAttr>();
-    if (!padding_attr_str)
-      return op.emitOpError(llvm::formatv(
-          kBadStringArrayElementMsg, kPaddingMapAttr, padding_and_idx.index()));
-
-    tensorflow::tpu::PaddingMap* padding =
-        metadata->mutable_padding_maps()->Add();
-    if (!padding->ParseFromString(std::string(padding_attr_str.getValue())))
-      return op.emitOpError(llvm::formatv(
-          kBadArrayElementMsg, kPaddingMapAttr, padding_and_idx.index(),
-          padding_attr_str.getValue(), "tpu::PaddingMap"));
-  }
 
   return success();
 }
@@ -319,8 +291,6 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
   if (failed(SetMetadataProtoStepMarkerLocation(op, metadata)))
     return failure();
 
-  if (failed(SetMetadataProtoPaddingMap(op, metadata))) return failure();
-
   if (xla_device_assignment.hasValue())
     *metadata->mutable_device_assignment() =
         std::move(xla_device_assignment.getValue());
@@ -368,11 +338,6 @@ Operation* BuildCompileOp(
           std::move(xla_device_assignment), &metadata)))
     return nullptr;
 
-  std::string txt_metadata;
-  if (tpu_compile_metadata_debug)
-    txt_metadata = metadata.DebugString();
-  else
-    metadata.SerializeToString(&txt_metadata);
 
   // Build a shape op for each input to cluster_func.
   // TODO(b/139377366): When shape inference is ready, we can use compile time
@@ -405,6 +370,16 @@ Operation* BuildCompileOp(
       RankedTensorType::get({}, builder->getType<TF::StringType>());
   auto program_type =
       RankedTensorType::get({3}, builder->getType<TF::StringType>());
+
+  // Add MLIR module's fingerprint to compile metadata.
+  uint64_t mlir_fingerprint = tensorflow::Fingerprint64(txt_module);
+  metadata.set_mlir_fingerprint(mlir_fingerprint);
+
+  std::string txt_metadata;
+  if (tpu_compile_metadata_debug)
+    txt_metadata = metadata.DebugString();
+  else
+    metadata.SerializeToString(&txt_metadata);
 
   auto compile_op = builder->create<TF::_TPUCompileMlirOp>(
       cluster_func.getLoc(),

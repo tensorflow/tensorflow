@@ -19,45 +19,53 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 
 
 from tensorflow.examples.adding_an_op import zero_out_grad_2  # pylint: disable=unused-import
 from tensorflow.examples.adding_an_op import zero_out_op_2
-from tensorflow.python.framework import test_util
 
 
 class ZeroOut2Test(tf.test.TestCase):
 
-  @test_util.run_deprecated_v1
   def test(self):
-    with self.cached_session():
-      result = zero_out_op_2.zero_out([5, 4, 3, 2, 1])
-      self.assertAllEqual(result, [5, 0, 0, 0, 0])
+    result = zero_out_op_2.zero_out([5, 4, 3, 2, 1])
+    self.assertAllEqual(result, [5, 0, 0, 0, 0])
 
-  @test_util.run_deprecated_v1
   def test_2d(self):
-    with self.cached_session():
-      result = zero_out_op_2.zero_out([[6, 5, 4], [3, 2, 1]])
-      self.assertAllEqual(result, [[6, 0, 0], [0, 0, 0]])
+    result = zero_out_op_2.zero_out([[6, 5, 4], [3, 2, 1]])
+    self.assertAllEqual(result, [[6, 0, 0], [0, 0, 0]])
 
-  @test_util.run_deprecated_v1
+  def _compute_error(self, theoretical, numerical):
+    """Computes max error between theoretical Jacobian and numerical Jacobian.
+
+    Args:
+      theoretical: A list of theoretical Jacobian
+      numerical: A list of numerical Jacobian
+
+    Returns:
+      The maximum error in between the two Jacobians.
+    """
+    error = 0.0
+    for j_t, j_n in zip(theoretical, numerical):
+      if (j_t.size > 0) and (j_n.size > 0):
+        error = np.maximum(error, np.fabs(j_t - j_n).max())
+    return error
+
   def test_grad(self):
-    with self.cached_session():
-      shape = (5,)
-      x = tf.constant([5, 4, 3, 2, 1], dtype=tf.float32)
-      y = zero_out_op_2.zero_out(x)
-      err = tf.compat.v1.test.compute_gradient_error(x, shape, y, shape)
-      self.assertLess(err, 1e-4)
+    x = tf.constant([5, 4, 3, 2, 1], dtype=tf.float32)
+    theoretical, numerical = tf.test.compute_gradient(zero_out_op_2.zero_out,
+                                                      tuple([x]))
+    err = self._compute_error(theoretical, numerical)
+    self.assertLess(err, 1e-4)
 
-  @test_util.run_deprecated_v1
   def test_grad_2d(self):
-    with self.cached_session():
-      shape = (2, 3)
-      x = tf.constant([[6, 5, 4], [3, 2, 1]], dtype=tf.float32)
-      y = zero_out_op_2.zero_out(x)
-      err = tf.compat.v1.test.compute_gradient_error(x, shape, y, shape)
-      self.assertLess(err, 1e-4)
+    x = tf.constant([[6, 5, 4], [3, 2, 1]], dtype=tf.float32)
+    theoretical, numerical = tf.test.compute_gradient(zero_out_op_2.zero_out,
+                                                      tuple([x]))
+    err = self._compute_error(theoretical, numerical)
+    self.assertLess(err, 1e-4)
 
 
 if __name__ == '__main__':

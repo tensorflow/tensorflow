@@ -33,21 +33,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
-
-// TODO(prakalps): Delete these old metrics after modifying the retention
-// policy.
-auto* mlir_function_pass_failed_fallback = monitoring::Counter<0>::New(
-    "/tensorflow/core/mlir_pass_failed_fallback",
-    "Failure count of MLIR pass runs when fallback used");
-
-auto* mlir_function_pass_succeeded_fallback = monitoring::Counter<0>::New(
-    "/tensorflow/core/mlir_pass_succeeded_fallback",
-    "Success count of MLIR pass runs when fallback enabled");
 
 auto* mlir_function_pass_fallback_count = monitoring::Counter<1>::New(
     /* metric name */ "/tensorflow/core/mlir_function_pass_fallback_count",
@@ -182,16 +173,21 @@ Status MlirFunctionOptimizationPass::Run(
                              /*record_stats=*/true);
 
   if (overall_state == MlirOptimizationPassState::Disabled) {
-    LOG_FIRST_N(INFO, 1) << "None of the MLIR Optimization Passes are enabled "
-                         << "(registered " << registry_->passes().size() << ")";
+    if (VLOG_IS_ON(1)) {
+      LOG_FIRST_N(INFO, 1)
+          << "None of the MLIR Optimization Passes are enabled "
+          << "(registered " << registry_->passes().size() << ")";
+    }
     return Status::OK();
   }
 
-  LOG_FIRST_N(INFO, 1) << "MLIR Graph Optimization Passes."
-                       << " Enabled: " << num_passes_enabled
-                       << ", Disabled: " << num_passes_disabled
-                       << ", FallbackEnabled: " << num_passes_fallback_enabled
-                       << ", Total: " << registry_->passes().size();
+  if (VLOG_IS_ON(1)) {
+    LOG_FIRST_N(INFO, 1) << "MLIR Graph Optimization Passes."
+                         << " Enabled: " << num_passes_enabled
+                         << ", Disabled: " << num_passes_disabled
+                         << ", FallbackEnabled: " << num_passes_fallback_enabled
+                         << ", Total: " << registry_->passes().size();
+  }
 
   GraphDebugInfo debug_info;
   mlir::DialectRegistry registry;
@@ -236,14 +232,25 @@ Status MlirFunctionOptimizationPass::Run(
     Status pass_status = Status::OK();
     auto pass_state = per_pass_state[per_pass_state_index++];
     if (pass_state == MlirOptimizationPassState::Enabled) {
+      const uint64 pass_start_us = Env::Default()->NowMicros();
       pass_status = pass_registration.pass->Run(config_proto, *module_ref,
                                                 **graph, *flib_def);
+      const uint64 pass_end_us = Env::Default()->NowMicros();
+      metrics::UpdateMlirGraphOptimizationPassTime(name.str(),
+                                                   pass_end_us - pass_start_us);
     } else if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
       // Make sure when the pass is FallbackEnabled, it only modifies the MLIR
       // module in case of no failures.
       auto module_ref_clone = module_ref->clone();
+      const uint64 pass_start_us = Env::Default()->NowMicros();
       pass_status = pass_registration.pass->Run(config_proto, module_ref_clone,
                                                 **graph, *flib_def);
+      const uint64 pass_end_us = Env::Default()->NowMicros();
+      metrics::UpdateMlirGraphOptimizationPassTime(
+          formatv("{0}{1}", name, pass_status.ok() ? "" : "_fallback_failed")
+              .str(),
+          pass_end_us - pass_start_us);
+
       if (pass_status.ok())
         module_ref = module_ref_clone;
       else

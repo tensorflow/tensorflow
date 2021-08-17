@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
-#ifndef __ANDROID__
+#ifndef IS_MOBILE_PLATFORM
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #endif
 
@@ -177,7 +177,7 @@ Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
     opts.config_proto = *config;
   }
 
-#ifndef __ANDROID__
+#ifndef IS_MOBILE_PLATFORM
   // Android tf library does not include grappler.
   grappler::GrapplerItem::OptimizationOptions optimization_options;
   // Tensorflow 2.0 in eager mode with automatic control dependencies will

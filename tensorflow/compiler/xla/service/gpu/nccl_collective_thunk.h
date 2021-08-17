@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -65,11 +66,11 @@ struct NcclCollectiveConfig {
 
   NcclCollectiveConfig& operator=(NcclCollectiveConfig&&);
 
-  int64 operand_count;
+  int64_t operand_count;
   std::vector<PrimitiveType> operand_element_type;
   std::vector<ReplicaGroup> replica_groups;
   RendezvousKey::CollectiveOpKind collective_op_kind;
-  int64 op_id;
+  int64_t op_id;
   CollectiveOpGroupMode group_mode;
 
   template <typename OpT>
@@ -81,13 +82,13 @@ template <typename OpT>
 void NcclCollectiveConfig::SetCollectiveOpKindAndID(OpT op) {
   if (op.channel_id()) {
     collective_op_kind = RendezvousKey::kCrossModule;
-    op_id = static_cast<int64>(op.channel_id()->handle().getInt());
+    op_id = static_cast<int64_t>(op.channel_id()->handle().getInt());
   } else {
     collective_op_kind = RendezvousKey::kCrossReplica;
     mlir::ModuleOp parent = op->template getParentOfType<mlir::ModuleOp>();
     mlir::IntegerAttr unique_id =
         parent->getAttrOfType<mlir::IntegerAttr>("hlo.unique_id");
-    op_id = static_cast<int64>(unique_id.getInt());
+    op_id = static_cast<int64_t>(unique_id.getInt());
   }
 }
 
@@ -98,7 +99,7 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
   config.operand_count = op.operands().size();
   config.operand_element_type.reserve(config.operand_count);
   for (int i = 0; i < config.operand_count; i++) {
-    const Shape shape = TypeToShape(op.operands()[i].getType());
+    const Shape shape = GetShape(op.operands()[i]);
     config.operand_element_type.push_back(shape.element_type());
   }
   config.replica_groups =
@@ -116,7 +117,7 @@ class NcclCollectiveThunk : public Thunk {
   using Thunk::Thunk;
 
   struct Buffer {
-    int64 element_count;
+    int64_t element_count;
     BufferAllocation::Slice source_buffer;
     BufferAllocation::Slice destination_buffer;
   };

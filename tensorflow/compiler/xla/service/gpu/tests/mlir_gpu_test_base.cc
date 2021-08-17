@@ -76,12 +76,13 @@ StatusOr<ExecutionOutput> MlirGpuTestBase::RunMlirModule(
   ExecutableRunOptions executable_run_options;
   executable_run_options.set_stream(stream);
   executable_run_options.set_allocator(backend_->memory_allocator());
-  ServiceExecutableRunOptions run_options(executable_run_options);
+  ServiceExecutableRunOptions run_options(executable_run_options,
+                                          backend_->StreamBorrower());
   std::vector<ExecutionInput> execution_inputs;
 
   for (auto arg : arguments) {
     Shape shape =
-        ShapeUtil::MakeShape(xla::U8, {static_cast<int64>(arg.size())});
+        ShapeUtil::MakeShape(xla::U8, {static_cast<int64_t>(arg.size())});
     execution_inputs.emplace_back(shape);
     execution_inputs.back().SetBuffer({}, MaybeOwningDeviceMemory(arg));
   }

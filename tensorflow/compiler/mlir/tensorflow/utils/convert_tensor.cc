@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -140,7 +139,7 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     CONVERT_FLAT(DT_INT8, int8)
     CONVERT_FLAT(DT_INT16, int16)
     CONVERT_FLAT(DT_INT32, int32)
-    CONVERT_FLAT(DT_INT64, int64)
+    CONVERT_FLAT(DT_INT64, int64_t)
     CONVERT_FLAT(DT_UINT8, uint8)
     CONVERT_FLAT(DT_UINT16, uint16)
     CONVERT_FLAT(DT_UINT32, uint32)

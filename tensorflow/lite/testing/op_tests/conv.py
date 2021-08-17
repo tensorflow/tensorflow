@@ -84,6 +84,19 @@ def make_conv_tests(options):
           "quant_16x8": [False],
           "dynamic_range_quantize": [True]
       },
+      {
+          "input_shape": [[1, 3, 4, 3]],
+          "filter_shape": [[1, 1]],
+          "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
+          "dilations": [[1, 1, 1, 1]],
+          "padding": [[[0, 0], [1, 1], [1, 1], [0, 0]]],
+          "data_format": ["NHWC"],
+          "constant_filter": [True],
+          "channel_multiplier": [2],
+          "fully_quantize": [False],
+          "quant_16x8": [False],
+          "dynamic_range_quantize": [True]
+      },
   ]
 
   def get_tensor_shapes(parameters):

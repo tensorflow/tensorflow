@@ -36,6 +36,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 using stream_executor::dnn::DimIndex;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -142,11 +143,11 @@ class Conv3DOp : public BinaryOp<T> {
     OP_REQUIRES(context, filter.dims() == 5,
                 errors::InvalidArgument("filter must be 5-dimensional"));
 
-    const int64 in_depth = GetTensorDim(input, data_format_, 'C');
-    const int64 in_batch = GetTensorDim(input, data_format_, 'N');
+    const int64_t in_depth = GetTensorDim(input, data_format_, 'C');
+    const int64_t in_batch = GetTensorDim(input, data_format_, 'N');
 
-    const int64 filter_depth = filter.dim_size(3);
-    const int64 out_depth = filter.dim_size(4);
+    const int64_t filter_depth = filter.dim_size(3);
+    const int64_t out_depth = filter.dim_size(4);
 
     OP_REQUIRES(context, filter_depth != 0,
                 errors::InvalidArgument("filter_depth must be non-zero"));
@@ -154,22 +155,27 @@ class Conv3DOp : public BinaryOp<T> {
                 errors::InvalidArgument(
                     "Input depth must be evenly divisible by filter depth: ",
                     in_depth, " vs ", filter_depth));
+    OP_REQUIRES(
+        context, filter.NumElements() > 0,
+        errors::InvalidArgument("filter must not have zero elements "
+                                "(i.e. all dimensions must be non-zero)"));
 
     // Dimension order for these arrays is: z, y, x.
-    std::array<int64, 3> input_size = {
+    std::array<int64_t, 3> input_size = {
         {GetTensorDim(input, data_format_, '0'),
          GetTensorDim(input, data_format_, '1'),
          GetTensorDim(input, data_format_, '2')}};
-    std::array<int64, 3> filter_size = {
+    std::array<int64_t, 3> filter_size = {
         {filter.dim_size(0), filter.dim_size(1), filter.dim_size(2)}};
-    std::array<int64, 3> dilations = {
+    std::array<int64_t, 3> dilations = {
         {GetTensorDim(dilation_, data_format_, '0'),
          GetTensorDim(dilation_, data_format_, '1'),
          GetTensorDim(dilation_, data_format_, '2')}};
-    std::array<int64, 3> strides = {{GetTensorDim(stride_, data_format_, '0'),
-                                     GetTensorDim(stride_, data_format_, '1'),
-                                     GetTensorDim(stride_, data_format_, '2')}};
-    std::array<int64, 3> out, padding;
+    std::array<int64_t, 3> strides = {
+        {GetTensorDim(stride_, data_format_, '0'),
+         GetTensorDim(stride_, data_format_, '1'),
+         GetTensorDim(stride_, data_format_, '2')}};
+    std::array<int64_t, 3> out, padding;
 
     OP_REQUIRES_OK(
         context, Get3dOutputSizeV2(input_size, filter_size, dilations, strides,
@@ -207,13 +213,13 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // A dummy type to group forward convolution autotune results together.
-struct Conv3dAutoTuneGroup {
+struct Conv3dAutotuneGroup {
   static string name() { return "Conv3d"; }
 };
 
-typedef AutoTuneSingleton<Conv3dAutoTuneGroup, ConvParameters,
+typedef AutotuneSingleton<Conv3dAutotuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
-    AutoTuneConv3d;
+    AutotuneConv3d;
 
 // TODO(mjanusz): Share logic with 2d implementation as much as possible.
 template <typename T>
@@ -228,29 +234,29 @@ struct LaunchConvOp<GPUDevice, T> {
 
     Tensor input = input_param;
 
-    const int64 in_batch = GetTensorDim(input, data_format, 'N');
-    int64 in_planes = GetTensorDim(input, data_format, '0');
-    int64 in_rows = GetTensorDim(input, data_format, '1');
-    int64 in_cols = GetTensorDim(input, data_format, '2');
-    const int64 in_depth = GetTensorDim(input, data_format, 'C');
+    const int64_t in_batch = GetTensorDim(input, data_format, 'N');
+    int64_t in_planes = GetTensorDim(input, data_format, '0');
+    int64_t in_rows = GetTensorDim(input, data_format, '1');
+    int64_t in_cols = GetTensorDim(input, data_format, '2');
+    const int64_t in_depth = GetTensorDim(input, data_format, 'C');
 
-    const int64 filter_planes = filter.dim_size(0);
-    const int64 filter_rows = filter.dim_size(1);
-    const int64 filter_cols = filter.dim_size(2);
-    const int64 filter_depth = filter.dim_size(3);
-    const int64 out_depth = filter.dim_size(4);
+    const int64_t filter_planes = filter.dim_size(0);
+    const int64_t filter_rows = filter.dim_size(1);
+    const int64_t filter_cols = filter.dim_size(2);
+    const int64_t filter_depth = filter.dim_size(3);
+    const int64_t out_depth = filter.dim_size(4);
 
-    int64 pad_planes = 0, pad_rows = 0, pad_cols = 0;
-    int64 out_planes = GetTensorDim(*output, data_format, '0');
-    int64 out_rows = GetTensorDim(*output, data_format, '1');
-    int64 out_cols = GetTensorDim(*output, data_format, '2');
+    int64_t pad_planes = 0, pad_rows = 0, pad_cols = 0;
+    int64_t out_planes = GetTensorDim(*output, data_format, '0');
+    int64_t out_rows = GetTensorDim(*output, data_format, '1');
+    int64_t out_cols = GetTensorDim(*output, data_format, '2');
 
     if (padding == Padding::SAME) {
-      pad_planes = std::max<int64>(
+      pad_planes = std::max<int64_t>(
           0, (out_planes - 1) * strides[0] + filter_planes - in_planes);
-      pad_rows = std::max<int64>(
+      pad_rows = std::max<int64_t>(
           0, (out_rows - 1) * strides[1] + filter_rows - in_rows);
-      pad_cols = std::max<int64>(
+      pad_cols = std::max<int64_t>(
           0, (out_cols - 1) * strides[2] + filter_cols - in_cols);
     }
 
@@ -311,9 +317,9 @@ struct LaunchConvOp<GPUDevice, T> {
       // overhead and would work as long as an op trained this way is only
       // used on GPU.
       if (rows_odd || cols_odd || planes_odd) {
-        const int64 new_in_rows = in_rows + rows_odd;
-        const int64 new_in_cols = in_cols + cols_odd;
-        const int64 new_in_planes = in_planes + planes_odd;
+        const int64_t new_in_rows = in_rows + rows_odd;
+        const int64_t new_in_cols = in_cols + cols_odd;
+        const int64_t new_in_planes = in_planes + planes_odd;
 
         Tensor transformed_input;
         TensorShape transformed_shape = ShapeFromFormat(
@@ -470,7 +476,7 @@ struct LaunchConvOp<GPUDevice, T> {
         AsDeviceMemory(transformed_output.template flat<T>().data(),
                        transformed_output.template flat<T>().size());
 
-    static int64 ConvolveScratchSize = GetDnnWorkspaceLimit(
+    static int64_t ConvolveScratchSize = GetDnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     int device_id = stream->parent()->device_ordinal();
@@ -501,7 +507,7 @@ struct LaunchConvOp<GPUDevice, T> {
 #endif
     AlgorithmConfig algorithm_config;
 
-    if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
+    if (cudnn_use_autotune && !AutotuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
       profiler::ScopedAnnotation trace("cudnn_autotuning");
 
@@ -526,11 +532,7 @@ struct LaunchConvOp<GPUDevice, T> {
               plan->getWorkspaceSize()));
         }
       } else {
-        OP_REQUIRES(ctx,
-                    stream->parent()->GetConvolveAlgorithms(
-                        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
-                            stream->parent()),
-                        &algorithms),
+        OP_REQUIRES(ctx, stream->parent()->GetConvolveAlgorithms(&algorithms),
                     errors::Unknown(
                         "Failed to get convolution algorithm. This is probably "
                         "because cuDNN failed to initialize, so try looking to "
@@ -670,7 +672,7 @@ struct LaunchConvOp<GPUDevice, T> {
         OP_REQUIRES_OK(
             ctx, BestCudnnConvAlgorithm(results, nullptr, &algorithm_config));
       }
-      AutoTuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
+      AutotuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
     }
 
     Status cudnn_launch_status;
@@ -680,7 +682,7 @@ struct LaunchConvOp<GPUDevice, T> {
         VLOG(4) << "Conv3D Execution Plan: "
                 << algorithm_config.algorithm()->exec_plan_id();
       } else {
-        VLOG(4) << "Convolution AutoTune has been turned off";
+        VLOG(4) << "Convolution Autotune has been turned off";
       }
       cudnn_launch_status = stream->ConvolveWithExecutionPlan(
           input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,

@@ -81,13 +81,13 @@ int GetNumAvailableGPUs(
   return num_eligible_gpus;
 }
 
-int64 AvailableGPUMemory(int gpu_id) {
+int64_t AvailableGPUMemory(int gpu_id) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Look up the device, to see its attributes.
   se::Platform* gpu_platform = GPUMachineManager();
   CHECK_LT(gpu_id, gpu_platform->VisibleDeviceCount());
   se::StreamExecutor* se = gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
-  int64 total_memory, available_memory;
+  int64_t total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
 
   return available_memory;

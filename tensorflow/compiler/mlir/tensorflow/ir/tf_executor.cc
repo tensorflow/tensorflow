@@ -492,16 +492,16 @@ LogicalResult Verify(SwitchNOp switchn) {
     // the same ref type. However, if the output type is a non-ref type T, then
     // the operand can be tensor of type T or T_REF.
     bool is_output_ref =
-        output_tensor_type.getElementType().isa<TF::TensorFlowRefType>();
-    if (is_output_ref &&
-        !operand0_tensor_type.getElementType().isa<TF::TensorFlowRefType>()) {
+        output_tensor_type.getElementType().isa<tf_type::TensorFlowRefType>();
+    if (is_output_ref && !operand0_tensor_type.getElementType()
+                              .isa<tf_type::TensorFlowRefType>()) {
       return switchn.emitOpError()
              << "expects same operand and output element type but got "
              << operand0_tensor_type << " vs " << output_tensor_type;
     }
     Type broadcasted_type = OpTrait::util::getBroadcastedType(
-        TF::DropRefAndSubTypes(operand0_tensor_type),
-        TF::DropRefAndSubTypes(output_tensor_type));
+        tf_type::DropRefAndSubTypes(operand0_tensor_type),
+        tf_type::DropRefAndSubTypes(output_tensor_type));
     if (!broadcasted_type) {
       return switchn.emitOpError()
              << "expects data operand to be broadcastable with all output types"
@@ -595,7 +595,7 @@ LogicalResult Verify(MergeOp merge) {
            << "expects output to have tensor type but got " << output_type;
   }
   bool is_output_ref =
-      output_tensor_ty.getElementType().isa<TF::TensorFlowRefType>();
+      output_tensor_ty.getElementType().isa<tf_type::TensorFlowRefType>();
   for (Type operand_type : merge.getOperandTypes()) {
     if (operand_type.isa<ControlType>()) break;
 
@@ -611,14 +611,14 @@ LogicalResult Verify(MergeOp merge) {
     // same ref type. However, if the output type is a non-ref type T, operands
     // can be tensor of type T or T_REF.
     if (is_output_ref &&
-        !operand_tensor_ty.getElementType().isa<TF::TensorFlowRefType>()) {
+        !operand_tensor_ty.getElementType().isa<tf_type::TensorFlowRefType>()) {
       return merge.emitOpError()
              << "expects same operand and output element type but got "
              << operand_tensor_ty << " vs " << output_tensor_ty;
     }
     Type broadcasted_type = OpTrait::util::getBroadcastedType(
-        TF::DropRefAndSubTypes(output_tensor_ty),
-        TF::DropRefAndSubTypes(operand_tensor_ty));
+        tf_type::DropRefAndSubTypes(output_tensor_ty),
+        tf_type::DropRefAndSubTypes(operand_tensor_ty));
     if (!broadcasted_type)
       return merge.emitOpError()
              << "expects all operands to be broadcastable with output type"

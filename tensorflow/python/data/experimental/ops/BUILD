@@ -64,6 +64,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/experimental/service:_pywrap_utils",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
         "//tensorflow/python/data/util:nest",
     ],
 )
@@ -78,17 +79,8 @@ py_library(
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
         "//tensorflow/python/data/util:nest",
-    ],
-)
-
-py_library(
-    name = "distribute_options",
-    srcs = ["distribute_options.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:util",
-        "//tensorflow/python/data/util:options",
     ],
 )
 
@@ -173,8 +165,10 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -233,16 +227,6 @@ py_library(
 )
 
 py_library(
-    name = "optimization_options",
-    srcs = ["optimization_options.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:util",
-        "//tensorflow/python/data/util:options",
-    ],
-)
-
-py_library(
     name = "parsing_ops",
     srcs = ["parsing_ops.py"],
     srcs_version = "PY3",
@@ -271,6 +255,16 @@ py_library(
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+    ],
+)
+
+py_library(
+    name = "random_access",
+    srcs = ["random_access.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 
@@ -324,18 +318,8 @@ py_library(
     srcs = ["resampling.py"],
     srcs_version = "PY3",
     deps = [
-        ":batching",
-        ":interleave_ops",
-        ":scan_ops",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:logging_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -394,16 +378,6 @@ py_library(
 )
 
 py_library(
-    name = "threading_options",
-    srcs = ["threading_options.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:util",
-        "//tensorflow/python/data/util:options",
-    ],
-)
-
-py_library(
     name = "unique",
     srcs = [
         "unique.py",
@@ -445,6 +419,7 @@ py_library(
         ":map_defun",
         ":matching_files",
         ":prefetching_ops",
+        ":random_access",
         ":readers",
         ":resampling",
         ":scan_ops",

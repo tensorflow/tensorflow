@@ -150,8 +150,8 @@ struct ScatterNdFunctor<CPUDevice, T, Index, NDIMS, scatter_op::UpdateOp::ADD> {
                               .TypeConstraint<TypeIndex>("Tindices"), \
                           SparseTensorDenseAddOp<CPUDevice, TypeT, TypeIndex>)
 
-#define REGISTER_KERNELS(T)       \
-  REGISTER_KERNELS_CPU(T, int64); \
+#define REGISTER_KERNELS(T)         \
+  REGISTER_KERNELS_CPU(T, int64_t); \
   REGISTER_KERNELS_CPU(T, int32)
 
 TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);

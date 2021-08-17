@@ -37,7 +37,7 @@ Tensor AsScalar(const T& val) {
 // Constructs a flat tensor with 'vals'.
 template <typename T>
 Tensor AsTensor(gtl::ArraySlice<T> vals) {
-  Tensor ret(DataTypeToEnum<T>::value, {static_cast<int64>(vals.size())});
+  Tensor ret(DataTypeToEnum<T>::value, {static_cast<int64_t>(vals.size())});
   std::copy_n(vals.data(), vals.size(), ret.flat<T>().data());
   return ret;
 }
@@ -115,6 +115,27 @@ template <typename T>
 void ExpectTensorEqual(const Tensor& x, const Tensor& y) {
   EXPECT_EQ(x.dtype(), DataTypeToEnum<T>::value);
   ExpectEqual(x, y);
+}
+
+::testing::AssertionResult IsSameType(const Tensor& x, const Tensor& y);
+::testing::AssertionResult IsSameShape(const Tensor& x, const Tensor& y);
+
+template <typename T>
+void ExpectTensorEqual(const Tensor& x, const Tensor& y,
+                       std::function<bool(const T&, const T&)> is_equal) {
+  EXPECT_EQ(x.dtype(), DataTypeToEnum<T>::value);
+  ASSERT_TRUE(IsSameType(x, y));
+  ASSERT_TRUE(IsSameShape(x, y));
+
+  const T* Tx = x.unaligned_flat<T>().data();
+  const T* Ty = y.unaligned_flat<T>().data();
+  auto size = x.NumElements();
+  int max_failures = 10;
+  int num_failures = 0;
+  for (decltype(size) i = 0; i < size; ++i) {
+    EXPECT_TRUE(is_equal(Tx[i], Ty[i])) << "i = " << (++num_failures, i);
+    ASSERT_LT(num_failures, max_failures) << "Too many mismatches, giving up.";
+  }
 }
 
 // Expects "x" and "y" are tensors of the same type T, same shape, and

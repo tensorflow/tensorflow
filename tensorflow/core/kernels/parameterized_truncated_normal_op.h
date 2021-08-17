@@ -35,8 +35,8 @@ namespace functor {
 // (minval, maxval) is empty, the result is NaN.
 template <typename Device, typename T>
 struct TruncatedNormalFunctor {
-  void operator()(OpKernelContext* ctx, const Device& d, int64 num_batches,
-                  int64 samples_per_batch, int64 num_elements,
+  void operator()(OpKernelContext* ctx, const Device& d, int64_t num_batches,
+                  int64_t samples_per_batch, int64_t num_elements,
                   typename TTypes<T>::ConstFlat means,
                   typename TTypes<T>::ConstFlat stddevs,
                   typename TTypes<T>::ConstFlat minvals,
@@ -49,8 +49,8 @@ struct TruncatedNormalFunctor {
 // the sample dimension on the left.
 template <typename Device, typename T>
 struct TruncatedNormalFunctorV2 {
-  void operator()(OpKernelContext* ctx, const Device& d, int64 num_batches,
-                  int64 samples_per_batch, int64 num_elements,
+  void operator()(OpKernelContext* ctx, const Device& d, int64_t num_batches,
+                  int64_t samples_per_batch, int64_t num_elements,
                   const BCastList<4>& bcast,
                   typename TTypes<T>::ConstFlat means,
                   typename TTypes<T>::ConstFlat stddevs,

@@ -67,8 +67,9 @@ class GroupLock(object):
       ValueError: If num_groups is less than 1.
     """
     if num_groups < 1:
-      raise ValueError("num_groups must be a positive integer, got {}".format(
-          num_groups))
+      raise ValueError(
+          "Argument `num_groups` must be a positive integer. "
+          f"Received: num_groups={num_groups}")
     self._ready = threading.Condition(threading.Lock())
     self._num_groups = num_groups
     self._group_member_counts = [0] * self._num_groups
@@ -112,8 +113,9 @@ class GroupLock(object):
   def _validate_group_id(self, group_id):
     if group_id < 0 or group_id >= self._num_groups:
       raise ValueError(
-          "group_id={} should be between 0 and num_groups={}".format(
-              group_id, self._num_groups))
+          "Argument `group_id` should verify `0 <= group_id < num_groups` "
+          f"(with `num_groups={self._num_groups}`). "
+          f"Received: group_id={group_id}")
 
   class _Context(object):
     """Context manager helper for `GroupLock`."""

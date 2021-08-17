@@ -113,7 +113,7 @@ tf_class {
   }
   member_method {
     name: "capture_call_time_value"
-    argspec: "args=[\'self\', \'closure\', \'spec\', \'key\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'closure\', \'spec\', \'key\', \'default_value\', \'placeholder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "capture_distributed_variable"

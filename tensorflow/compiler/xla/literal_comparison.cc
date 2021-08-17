@@ -50,7 +50,7 @@ uint16 GetRawValue(Eigen::half val) {
 // -- on miscompare, a nice error message is given in the AssertionFailure.
 template <typename FloatT, typename UnsignedT>
 bool CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs,
-                               absl::Span<const int64> multi_index) {
+                               absl::Span<const int64_t> multi_index) {
   auto ulhs = absl::bit_cast<UnsignedT>(GetRawValue(lhs));
   auto urhs = absl::bit_cast<UnsignedT>(GetRawValue(rhs));
   return ulhs == urhs;
@@ -61,7 +61,7 @@ bool CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs,
 // default gunit implementation).
 template <typename NativeT>
 bool CompareEqual(NativeT lhs, NativeT rhs,
-                  absl::Span<const int64> multi_index) {
+                  absl::Span<const int64_t> multi_index) {
   return lhs == rhs;
 }
 
@@ -69,40 +69,40 @@ bool CompareEqual(NativeT lhs, NativeT rhs,
 // comparison is requested.
 template <>
 bool CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs,
-                            absl::Span<const int64> multi_index) {
+                            absl::Span<const int64_t> multi_index) {
   return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs, multi_index);
 }
 template <>
 bool CompareEqual<Eigen::half>(Eigen::half lhs, Eigen::half rhs,
-                               absl::Span<const int64> multi_index) {
+                               absl::Span<const int64_t> multi_index) {
   return CompareFloatsBitwiseEqual<Eigen::half, uint16>(lhs, rhs, multi_index);
 }
 template <>
 bool CompareEqual<float>(float lhs, float rhs,
-                         absl::Span<const int64> multi_index) {
+                         absl::Span<const int64_t> multi_index) {
   return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs, multi_index);
 }
 template <>
 bool CompareEqual<double>(double lhs, double rhs,
-                          absl::Span<const int64> multi_index) {
-  return CompareFloatsBitwiseEqual<double, uint64>(lhs, rhs, multi_index);
+                          absl::Span<const int64_t> multi_index) {
+  return CompareFloatsBitwiseEqual<double, uint64_t>(lhs, rhs, multi_index);
 }
 template <>
 bool CompareEqual<complex64>(complex64 lhs, complex64 rhs,
-                             absl::Span<const int64> multi_index) {
+                             absl::Span<const int64_t> multi_index) {
   return CompareEqual<float>(lhs.real(), rhs.real(), multi_index) &&
          CompareEqual<float>(lhs.imag(), rhs.imag(), multi_index);
 }
 template <>
 bool CompareEqual<complex128>(complex128 lhs, complex128 rhs,
-                              absl::Span<const int64> multi_index) {
+                              absl::Span<const int64_t> multi_index) {
   return CompareEqual<double>(lhs.real(), rhs.real(), multi_index) &&
          CompareEqual<double>(lhs.imag(), rhs.imag(), multi_index);
 }
 
 template <typename NativeT, typename UnsignedT>
 Status MakeBitwiseErrorStatus(NativeT lhs, NativeT rhs,
-                              absl::Span<const int64> multi_index) {
+                              absl::Span<const int64_t> multi_index) {
   auto ulhs = absl::bit_cast<UnsignedT>(GetRawValue(lhs));
   auto urhs = absl::bit_cast<UnsignedT>(GetRawValue(rhs));
   auto lhs_double = static_cast<double>(lhs);
@@ -117,7 +117,7 @@ Status MakeBitwiseErrorStatus(NativeT lhs, NativeT rhs,
 
 template <typename NativeT>
 Status MakeErrorStatus(NativeT lhs, NativeT rhs,
-                       absl::Span<const int64> multi_index) {
+                       absl::Span<const int64_t> multi_index) {
   return InvalidArgument(
       "first mismatch at array index %s:\n  expected value: %s\n  actual "
       "value:   %s",
@@ -126,27 +126,27 @@ Status MakeErrorStatus(NativeT lhs, NativeT rhs,
 
 template <>
 Status MakeErrorStatus(bfloat16 lhs, bfloat16 rhs,
-                       absl::Span<const int64> multi_index) {
+                       absl::Span<const int64_t> multi_index) {
   return MakeBitwiseErrorStatus<bfloat16, uint16>(lhs, rhs, multi_index);
 }
 template <>
 Status MakeErrorStatus(Eigen::half lhs, Eigen::half rhs,
-                       absl::Span<const int64> multi_index) {
+                       absl::Span<const int64_t> multi_index) {
   return MakeBitwiseErrorStatus<Eigen::half, uint16>(lhs, rhs, multi_index);
 }
 template <>
 Status MakeErrorStatus(float lhs, float rhs,
-                       absl::Span<const int64> multi_index) {
+                       absl::Span<const int64_t> multi_index) {
   return MakeBitwiseErrorStatus<float, uint32>(lhs, rhs, multi_index);
 }
 template <>
 Status MakeErrorStatus(double lhs, double rhs,
-                       absl::Span<const int64> multi_index) {
-  return MakeBitwiseErrorStatus<double, uint64>(lhs, rhs, multi_index);
+                       absl::Span<const int64_t> multi_index) {
+  return MakeBitwiseErrorStatus<double, uint64_t>(lhs, rhs, multi_index);
 }
 template <>
 Status MakeErrorStatus(complex64 lhs, complex64 rhs,
-                       absl::Span<const int64> multi_index) {
+                       absl::Span<const int64_t> multi_index) {
   if (!CompareEqual<float>(lhs.real(), rhs.real(), multi_index)) {
     return MakeErrorStatus(lhs.real(), rhs.real(), multi_index);
   }
@@ -154,7 +154,7 @@ Status MakeErrorStatus(complex64 lhs, complex64 rhs,
 }
 template <>
 Status MakeErrorStatus(complex128 lhs, complex128 rhs,
-                       absl::Span<const int64> multi_index) {
+                       absl::Span<const int64_t> multi_index) {
   if (!CompareEqual<double>(lhs.real(), rhs.real(), multi_index)) {
     return MakeErrorStatus(lhs.real(), rhs.real(), multi_index);
   }
@@ -171,7 +171,7 @@ Status MakeErrorStatus(complex128 lhs, complex128 rhs,
 //      found between expected and actual.
 template <typename NativeT>
 Status Equal(LiteralSlice expected, LiteralSlice actual,
-             absl::Span<int64> multi_index, int64 dimension,
+             absl::Span<int64_t> multi_index, int64_t dimension,
              Literal* mismatched = nullptr) {
   if (dimension == expected.shape().dimensions_size()) {
     NativeT expected_value = expected.Get<NativeT>(multi_index);
@@ -187,7 +187,7 @@ Status Equal(LiteralSlice expected, LiteralSlice actual,
   }
 
   Status result;
-  for (int64 i = 0; i < expected.shape().dimensions(dimension); ++i) {
+  for (int64_t i = 0; i < expected.shape().dimensions(dimension); ++i) {
     multi_index[dimension] = i;
     if (mismatched != nullptr) {
       result.Update(Equal<NativeT>(expected, actual, multi_index, dimension + 1,
@@ -202,11 +202,11 @@ Status Equal(LiteralSlice expected, LiteralSlice actual,
 
 // Gets the total element count.  For tuples, this is not the count of tuple
 // elements, but the sum of elements of each tuple element.
-int64 RecursiveElementCount(const Shape& shape) {
+int64_t RecursiveElementCount(const Shape& shape) {
   if (shape.IsTuple()) {
-    const int64 tuple_elements = ShapeUtil::TupleElementCount(shape);
-    int64 total = 0;
-    for (int64 i = 0; i < tuple_elements; ++i) {
+    const int64_t tuple_elements = ShapeUtil::TupleElementCount(shape);
+    int64_t total = 0;
+    for (int64_t i = 0; i < tuple_elements; ++i) {
       total += RecursiveElementCount(ShapeUtil::GetTupleElementShape(shape, i));
     }
     return total;
@@ -300,7 +300,7 @@ class NearComparator {
 
     // The linear index of the failure within the shape. This linear index is
     // from the 'actual' literal.
-    int64 linear_index;
+    int64_t linear_index;
 
     bool operator<(const Mismatch& other) const {
       return rel_error < other.rel_error;
@@ -376,7 +376,7 @@ class NearComparator {
   }
 
   // Insert the given error into the given error bucket vector.
-  void UpdateErrorBucket(double error, absl::Span<int64> error_buckets) {
+  void UpdateErrorBucket(double error, absl::Span<int64_t> error_buckets) {
     CHECK_EQ(error_buckets.size(), kErrorBucketBounds.size());
     for (int i = 0; i < error_buckets.size(); ++i) {
       if (error >= kErrorBucketBounds[i]) {
@@ -388,7 +388,7 @@ class NearComparator {
   // Compares the two given elements from the expected and actual literals at
   // the given literal_index and keeps track of various mismatch statistics.
   template <typename T>
-  void CompareValues(T expected, T actual, int64 linear_index) {
+  void CompareValues(T expected, T actual, int64_t linear_index) {
     double abs_error;
     double rel_error;
     if (CompareEqual<T>(expected, actual, {linear_index})) {
@@ -477,7 +477,8 @@ class NearComparator {
   }
 
   // For complex types, we compare real and imaginary parts individually.
-  void CompareValues(complex64 expected, complex64 actual, int64 linear_index) {
+  void CompareValues(complex64 expected, complex64 actual,
+                     int64_t linear_index) {
     const auto both_parts_mismatch = num_mismatches_ + 2;
     CompareValues<float>(expected.real(), actual.real(), linear_index);
     CompareValues<float>(expected.imag(), actual.imag(), linear_index);
@@ -491,7 +492,7 @@ class NearComparator {
   }
 
   void CompareValues(complex128 expected, complex128 actual,
-                     int64 linear_index) {
+                     int64_t linear_index) {
     const auto both_parts_mismatch = num_mismatches_ + 2;
     CompareValues<double>(expected.real(), actual.real(), linear_index);
     CompareValues<double>(expected.imag(), actual.imag(), linear_index);
@@ -511,27 +512,28 @@ class NearComparator {
                           expected_.shape().layout())) {
       absl::Span<const NativeT> expected_data = expected_.data<NativeT>();
       absl::Span<const NativeT> actual_data = actual_.data<NativeT>();
-      const int64 len = expected_data.size();
-      for (int64 i = 0; i < len; ++i) {
+      const int64_t len = expected_data.size();
+      for (int64_t i = 0; i < len; ++i) {
         CompareValues(expected_data[i], actual_data[i], i);
       }
       return;
     }
-    std::vector<int64> multi_index(actual_.shape().rank(), 0);
+    std::vector<int64_t> multi_index(actual_.shape().rank(), 0);
     CompareLiteralsSlow(0, &multi_index);
   }
 
   // Slow path for CompareLiterals when 'actual' and 'expected' literals have
   // different layouts. In this case, multidimensional indices are constructed
   // and indexed for each element.
-  void CompareLiteralsSlow(int64 dimension, std::vector<int64>* multi_index) {
+  void CompareLiteralsSlow(int64_t dimension,
+                           std::vector<int64_t>* multi_index) {
     if (dimension == multi_index->size()) {
       CompareValues(expected_.Get<NativeT>(*multi_index),
                     actual_.Get<NativeT>(*multi_index),
                     IndexUtil::MultidimensionalIndexToLinearIndex(
                         actual_.shape(), *multi_index));
     } else {
-      for (int64 i = 0; i < expected_.shape().dimensions(dimension); ++i) {
+      for (int64_t i = 0; i < expected_.shape().dimensions(dimension); ++i) {
         (*multi_index)[dimension] = i;
         CompareLiteralsSlow(dimension + 1, multi_index);
       }
@@ -542,7 +544,7 @@ class NearComparator {
   // mismatches. Called after calling Run().
   string ErrorMessage() {
     string out;
-    int64 element_count = ShapeUtil::ElementsIn(actual_.shape());
+    int64_t element_count = ShapeUtil::ElementsIn(actual_.shape());
 
     auto percent_string = [](float a, float b) {
       float pct = b == 0.0 ? 0.0 : 100.0 * a / b;
@@ -572,8 +574,8 @@ class NearComparator {
     StrAppend(&out, "Absolute magnitude breakdown of actual values:\n");
     CHECK_EQ(abs_value_buckets_.size() + 1, kAbsValueBucketBounds.size());
     for (int i = 0; i < abs_value_buckets_.size(); ++i) {
-      const int64 bucket_size = abs_value_buckets_[i].first;
-      const int64 bucket_mismatches = abs_value_buckets_[i].second;
+      const int64_t bucket_size = abs_value_buckets_[i].first;
+      const int64_t bucket_mismatches = abs_value_buckets_[i].second;
       string mismatch_str =
           bucket_mismatches > 0
               ? absl::StrFormat(", mismatches %d", bucket_mismatches)
@@ -584,8 +586,8 @@ class NearComparator {
                       mismatch_str);
     }
 
-    auto print_accum_buckets = [&](const string& header, int64 total,
-                                   absl::Span<const int64> buckets) {
+    auto print_accum_buckets = [&](const string& header, int64_t total,
+                                   absl::Span<const int64_t> buckets) {
       StrAppend(&out, header, ":\n");
       StrAppendFormat(&out, "  <  %-6g : %7d (%s)\n", kErrorBucketBounds[0],
                       total - buckets[0],
@@ -628,14 +630,14 @@ class NearComparator {
   MiscompareCallback miscompare_callback_;
 
   // Number of element mismatches encountered so far.
-  int64 num_mismatches_ = 0;
+  int64_t num_mismatches_ = 0;
 
   // Number of elements with a nan mismatch.
-  int64 num_nan_mismatches_ = 0;
+  int64_t num_nan_mismatches_ = 0;
 
   // Number of elements which exceed the absolute/relative error bound.
-  int64 num_abs_mismatches_ = 0;
-  int64 num_rel_mismatches_ = 0;
+  int64_t num_abs_mismatches_ = 0;
+  int64_t num_rel_mismatches_ = 0;
 
   // A Literal containing which elements did not match in the expected and
   // actual literals. mismatches_ contains PREDs and is of the same sizes as
@@ -644,7 +646,7 @@ class NearComparator {
 
   // The number of mismatches to report in the output, sorted by relative error
   // magnitude.
-  static constexpr int64 kTopRelativeErrorCount = 5;
+  static constexpr int64_t kTopRelativeErrorCount = 5;
 
   // The set of mismatches with the largest relative error. The size of this set
   // is bounded by kTopRelativeErrorCount.
@@ -655,7 +657,7 @@ class NearComparator {
   // bucket: the element count and failure count.
   static constexpr std::array<float, 7> kAbsValueBucketBounds = {
       0.0, 0.0001, 0.001, 0.01, 0.1, 1, std::numeric_limits<float>::infinity()};
-  std::vector<std::pair<int64, int64>> abs_value_buckets_;
+  std::vector<std::pair<int64_t, int64_t>> abs_value_buckets_;
 
   // Buckets for relative and absolute errors. The relative error buckets only
   // contains those elements which exceed the *absolute* error bound, and vice
@@ -667,8 +669,8 @@ class NearComparator {
   // bounded by 0.01, 0.1, and 1.0.
   static constexpr std::array<float, 5> kErrorBucketBounds = {0.0001, 0.001,
                                                               0.01, 0.1, 1};
-  std::vector<int64> abs_error_buckets_;
-  std::vector<int64> rel_error_buckets_;
+  std::vector<int64_t> abs_error_buckets_;
+  std::vector<int64_t> rel_error_buckets_;
 };
 
 template <typename NativeT>
@@ -697,7 +699,7 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
       next_index.pop_back();
     }
   } else {
-    std::vector<int64> multi_index(expected.shape().dimensions_size(), 0);
+    std::vector<int64_t> multi_index(expected.shape().dimensions_size(), 0);
     auto index = absl::MakeSpan(multi_index);
 
     Shape unequal_shape = ShapeUtil::MakeShape(PrimitiveType::PRED,
@@ -720,7 +722,7 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         result = Equal<int32>(expected, actual, index, 0, miscompared_ptr);
         break;
       case S64:
-        result = Equal<int64>(expected, actual, index, 0, miscompared_ptr);
+        result = Equal<int64_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case U8:
         result = Equal<uint8>(expected, actual, index, 0, miscompared_ptr);
@@ -732,7 +734,7 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         result = Equal<uint32>(expected, actual, index, 0, miscompared_ptr);
         break;
       case U64:
-        result = Equal<uint64>(expected, actual, index, 0, miscompared_ptr);
+        result = Equal<uint64_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case BF16:
         result = Equal<bfloat16>(expected, actual, index, 0, miscompared_ptr);
@@ -780,7 +782,8 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
 
   if (expected.shape().IsTuple()) {
     Status return_status;
-    for (int64 i = 0; i < ShapeUtil::TupleElementCount(expected.shape()); ++i) {
+    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(expected.shape());
+         ++i) {
       const auto expected_element = LiteralSlice(expected, {i});
       const auto actual_element = LiteralSlice(actual, {i});
       ShapeIndex element_index = shape_index;
@@ -803,7 +806,7 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
     if (!return_status.ok() && shape_index.empty()) {
       // Emit a top-level error message containing the top-level shape in case
       // of mismatch.
-      int64 total_elements = RecursiveElementCount(actual.shape());
+      int64_t total_elements = RecursiveElementCount(actual.shape());
       return_status =
           InvalidArgument("\nMismatches in shape %s (%d elements):\n%s",
                           ShapeUtil::HumanString(actual.shape()),

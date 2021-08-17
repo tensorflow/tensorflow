@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/text_line_dataset_op.h"
 
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
@@ -162,14 +162,14 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       ResetStreamsLocked();
-      int64 current_file_index;
+      int64_t current_file_index;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurrentFileIndex),
                                             &current_file_index));
       current_file_index_ = size_t(current_file_index);
       // The key "current_pos" is written only if the iterator was saved
       // with an open file.
       if (reader->Contains(full_name(kCurrentPos))) {
-        int64 current_pos;
+        int64_t current_pos;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name(kCurrentPos), &current_pos));
 
@@ -248,9 +248,9 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kCompressionType,
                                                    &compression_type));
 
-  int64 buffer_size = -1;
+  int64_t buffer_size = -1;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
+                 ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(
       ctx, buffer_size >= 0,
       errors::InvalidArgument("`buffer_size` must be >= 0 (0 == default)"));

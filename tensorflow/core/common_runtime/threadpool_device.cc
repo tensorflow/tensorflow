@@ -97,7 +97,7 @@ Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
 }
 
 Allocator* ThreadPoolDevice::GetScopedAllocator(AllocatorAttributes attr,
-                                                int64 step_id) {
+                                                int64_t step_id) {
   if (attr.scope_id > 0) {
     return scoped_allocator_mgr_->GetContainer(step_id)->GetInstance(
         attr.scope_id);

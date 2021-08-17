@@ -62,7 +62,7 @@ TEST_P(TriangularExpanderTest, TestBlockSize) {
   // Use reference matrix multiplication to test validity of result.
 
   Array2D<float> a(256, 256);
-  for (int64 row = 0; row < a.dim(0); ++row) {
+  for (int64_t row = 0; row < a.dim(0); ++row) {
     a(row, row) = 1;
     if (row > 0) {
       a(row, row - 1) = 0.01;
@@ -71,8 +71,8 @@ TEST_P(TriangularExpanderTest, TestBlockSize) {
 
   Array2D<float> b(256, 192);
   const float kMax = static_cast<float>(b.dim(0) * b.dim(1) + 1);
-  for (int64 row = 0; row < b.dim(0); ++row) {
-    for (int64 col = 0; col < b.dim(1); ++col) {
+  for (int64_t row = 0; row < b.dim(0); ++row) {
+    for (int64_t col = 0; col < b.dim(1); ++col) {
       b(row, col) = static_cast<float>(row + col + 1) / kMax;
     }
   }

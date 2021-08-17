@@ -205,6 +205,28 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
       std::move(fingerprint));
 }
 
+StatusOr<py::bytes> PyClient::SerializeExecutable(
+    const PyExecutable& executable) const {
+  return pjrt_client_->SerializeExecutable(executable.pjrt_executable());
+}
+
+StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
+    const std::string& serialized, CompileOptions options) {
+  std::unique_ptr<PjRtExecutable> executable;
+  absl::optional<std::string> fingerprint;
+  {
+    py::gil_scoped_release gil_release;
+    TF_ASSIGN_OR_RETURN(executable, pjrt_client_->DeserializeExecutable(
+                                        serialized, std::move(options)));
+    TF_ASSIGN_OR_RETURN(fingerprint,
+                        pjrt_client_->ExecutableFingerprint(*executable));
+  }
+  auto traceback = Traceback::Get();
+  return std::make_shared<PyExecutable>(
+      shared_from_this(), std::move(executable), std::move(traceback),
+      std::move(fingerprint));
+}
+
 class ProfileBuilder {
  public:
   ProfileBuilder();
@@ -270,7 +292,7 @@ namespace {
 
 struct HeapProfileKey {
   Traceback* traceback;
-  int64 size;
+  int64_t size;
   PjRtDevice* device;
   bool operator==(const HeapProfileKey& other) const;
 };
@@ -303,12 +325,12 @@ H AbslHashValue(H h, const HeapProfileKey& key) {
 StatusOr<py::bytes> PyClient::HeapProfile() {
   CHECK(PyGILState_Check());
   absl::flat_hash_set<PjRtBuffer*> buffer_set;
-  absl::flat_hash_map<HeapProfileKey, int64> entries;
+  absl::flat_hash_map<HeapProfileKey, int64_t> entries;
   for (PyBuffer* device_buffers : buffers_) {
     for (PyBuffer* buffer = device_buffers; buffer; buffer = buffer->next_) {
       // We only wish to count each PjRtBuffer once, even though they may be
       // shared by multiple PyBuffers.
-      if (buffer_set.insert(buffer->buffer()).second) {
+      if (!buffer->is_deleted() && buffer_set.insert(buffer->buffer()).second) {
         TF_ASSIGN_OR_RETURN(size_t size,
                             buffer->buffer()->GetOnDeviceSizeInBytes());
         HeapProfileKey key{buffer->traceback().get(),
@@ -321,9 +343,11 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
 
   for (PyExecutable* executable = executables_; executable;
        executable = executable->next_) {
-    HeapProfileKey key{executable->traceback(),
-                       executable->SizeOfGeneratedCodeInBytes(), nullptr};
-    ++entries[key];
+    if (!executable->is_deleted()) {
+      HeapProfileKey key{executable->traceback(),
+                         executable->SizeOfGeneratedCodeInBytes(), nullptr};
+      ++entries[key];
+    }
   }
 
   ProfileBuilder builder;
@@ -379,7 +403,7 @@ class CpuCallback {
     absl::InlinedVector<int64_t, 4> expected_dims;
     // Expected output byte strides, for array types. If the strides do not
     // match the output will be transposed into the expected layout.
-    std::vector<ssize_t> expected_strides;
+    std::vector<int64_t> expected_strides;
     // The desired order of output dimensions in major-to-minor order.
     absl::InlinedVector<int64_t, 4> reversed_layout;
     // Size of the array in bytes.
@@ -441,7 +465,10 @@ void CpuCallback::Call(void* result, void** arg_ptrs) {
       continue;
     }
     py::array array = py::cast<py::array>(std::move(output));
-    absl::Span<int64_t const> dims(array.shape(), array.ndim());
+    static_assert(sizeof(ssize_t) == sizeof(int64_t),
+                  "Expected ssize_t to be of equal size to int64_t");
+    absl::Span<int64_t const> dims(
+        reinterpret_cast<const int64_t*>(array.shape()), array.ndim());
     if (dims != results_[i].expected_dims) {
       throw std::runtime_error(absl::StrFormat(
           "Mismatched result shape for %d-th return value from CPU callback; "
@@ -449,7 +476,8 @@ void CpuCallback::Call(void* result, void** arg_ptrs) {
           i, absl::StrJoin(results_[i].expected_dims, ","),
           absl::StrJoin(dims, ",")));
     }
-    absl::Span<int64_t const> strides(array.strides(), array.ndim());
+    absl::Span<int64_t const> strides(
+        reinterpret_cast<const int64_t*>(array.strides()), array.ndim());
     if (strides == results_[i].expected_strides) {
       std::memcpy(outputs[i], array.data(), results_[i].size_in_bytes);
     } else {
@@ -457,7 +485,7 @@ void CpuCallback::Call(void* result, void** arg_ptrs) {
           transpose_cache_.GetOrCreate(
               primitive_util::ByteWidth(results_[i].type), dims,
               results_[i].reversed_layout,
-              /*input_strides_in_bytes=*/strides);
+              /*input_layout=*/TransposePlan::Striding{strides});
       if (!plan.ok()) {
         throw std::runtime_error(plan.status().ToString());
       }
@@ -480,8 +508,7 @@ XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
 StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
     pybind11::function callable, XlaBuilder& builder,
     absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
-    absl::optional<std::vector<Shape const>> operand_layouts,
-    bool has_side_effect) {
+    absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect) {
   if (pjrt_client_->platform_id() != kCpuId) {
     return Unimplemented("EmitPythonCallback is only implemented on CPU");
   }
@@ -497,8 +524,10 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
   }
 
   std::vector<Shape> custom_call_arg_layouts(operands.size() + 1);
-  custom_call_arg_layouts[0] = ShapeUtil::MakeShapeWithDescendingLayout(
-      primitive_util::NativeToPrimitiveType<std::uintptr_t>(), {});
+  static_assert(sizeof(uintptr_t) == sizeof(uint64_t),
+                "Expected 64-bit pointers");
+  custom_call_arg_layouts[0] =
+      ShapeUtil::MakeShapeWithDescendingLayout(U64, {});
   for (int i = 0; i < operands.size(); ++i) {
     TF_ASSIGN_OR_RETURN(Shape shape, builder.GetShape(operands[i]));
     xla::Shape& layout = custom_call_arg_layouts[i + 1];
@@ -549,7 +578,7 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
       callback_results[i].expected_dims.resize(shape.dimensions_size());
       absl::c_copy(shape.dimensions(),
                    callback_results[i].expected_dims.begin());
-      callback_results[i].expected_strides = ByteStridesForShape(shape);
+      callback_results[i].expected_strides = ByteStridesForShapeInt64(shape);
       callback_results[i].type = shape.element_type();
       callback_results[i].size_in_bytes = ShapeUtil::ByteSizeOf(shape);
       callback_results[i].reversed_layout.resize(shape.dimensions_size());
@@ -568,8 +597,8 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
 
   auto callback = std::make_unique<CpuCallback>(
       std::move(callable), callback_args, callback_results);
-  custom_call_args[0] = ConstantR0<std::uintptr_t>(
-      &builder, absl::bit_cast<std::uintptr_t>(callback.get()));
+  custom_call_args[0] = ConstantR0<std::uint64_t>(
+      &builder, absl::bit_cast<std::uint64_t>(callback.get()));
 
   Shape result_shape = ShapeUtil::MakeTupleShape(result_shapes_with_layout);
   XlaOp result = CustomCallWithLayout(&builder, "xla_python_cpu_callback",

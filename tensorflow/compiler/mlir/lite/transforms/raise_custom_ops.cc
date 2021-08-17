@@ -49,6 +49,16 @@ struct RaiseCustomOpsPass
   explicit RaiseCustomOpsPass(const std::vector<std::string> &target_ops)
       : target_op_names(target_ops.begin(), target_ops.end()) {}
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-raise-custom-ops";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Raise custom ops into tflite dialect.";
+  }
+
   void runOnFunction() override;
 
  private:
@@ -107,8 +117,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass(
   return std::make_unique<RaiseCustomOpsPass>(target_ops);
 }
 
-static PassRegistration<RaiseCustomOpsPass> pass(
-    "tfl-raise-custom-ops", "Raise custom ops into tflite dialect.");
+static PassRegistration<RaiseCustomOpsPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

@@ -89,7 +89,9 @@ void OpImplementationRenderer::RenderExecutionMultipleOutputs() {
 
 void OpImplementationRenderer::RenderExecutionZeroOutputs() {
   Statement("int num_retvals = 0");
-  Statement("return $0->Execute(nullptr, &num_retvals)", op_.VariableName());
+  Statement("std::vector<AbstractTensorHandle*> dummy_outputs");
+  Statement("return $0->Execute(absl::MakeSpan(dummy_outputs), &num_retvals)",
+            op_.VariableName());
 }
 
 }  // namespace cpp

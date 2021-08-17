@@ -271,7 +271,7 @@ constexpr const char* const kMapGraphProto = R"proto(
 TEST(Scalar, Standalone) {
   struct TestCase {
     string graph_string;
-    std::vector<int64> expected_outputs;
+    std::vector<int64_t> expected_outputs;
   };
   auto test_cases = {
       TestCase{kRangeGraphProto, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}},
@@ -292,7 +292,7 @@ TEST(Scalar, Standalone) {
       s = iterator->GetNext(&outputs, &end_of_input);
       TF_EXPECT_OK(s);
       if (!end_of_input) {
-        EXPECT_EQ(outputs[0].scalar<int64>()(),
+        EXPECT_EQ(outputs[0].scalar<int64_t>()(),
                   test_case.expected_outputs[num_outputs]);
       } else {
         EXPECT_EQ(test_case.expected_outputs.size(), num_outputs);

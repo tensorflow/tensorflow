@@ -232,9 +232,9 @@ cc_library(
     srcs = if_cuda_is_configured(["cublas_stub.cc"]),
     textual_hdrs = glob(["cublas_*.inc"]),
     deps = if_cuda_is_configured([
-        # LINT.IfChange
-        "@local_config_cuda//cuda:cublas_headers",
-        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
+        # copybara:uncomment-begin
+        # "@local_config_cuda//cuda:cublas_headers",
+        # copybara:uncomment-end
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
@@ -255,9 +255,9 @@ cc_library(
     srcs = if_cuda_is_configured(["cublasLt_stub.cc"]),
     textual_hdrs = glob(["cublasLt_*.inc"]),
     deps = if_cuda_is_configured([
-        # LINT.IfChange
-        "@local_config_cuda//cuda:cublas_headers",
-        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublasLt_headers)
+        # copybara:uncomment-begin
+        # "@local_config_cuda//cuda:cublas_headers",
+        # copybara:uncomment-end
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
@@ -291,9 +291,9 @@ cc_library(
         ":cuda_helpers",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
-        # LINT.IfChange
-        "@local_config_cuda//cuda:cublas_headers",
-        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
+        # copybara:uncomment-begin
+        # "@local_config_cuda//cuda:cublas_headers",
+        # copybara:uncomment-end
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -320,9 +320,9 @@ cc_library(
     textual_hdrs = glob(["cufft_*.inc"]),
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        # LINT.IfChange
-        "@local_config_cuda//cuda:cufft_headers",
-        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
+        # copybara:uncomment-begin
+        # "@local_config_cuda//cuda:cufft_headers",
+        # copybara:uncomment-end
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),
@@ -416,6 +416,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:tensor_float_32_utils",
+        "//tensorflow/core/util:determinism",
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:plugin_registry",
@@ -434,9 +435,9 @@ cc_library(
     textual_hdrs = ["curand_10_0.inc"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        # LINT.IfChange
-        "@local_config_cuda//cuda:curand_headers",
-        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
+        # copybara:uncomment-begin
+        # "@local_config_cuda//cuda:curand_headers",
+        # copybara:uncomment-end
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),
@@ -493,10 +494,10 @@ cc_library(
     srcs = if_cuda_is_configured(["cusolver_stub.cc"]),
     textual_hdrs = glob(["cusolver_dense_*.inc"]),
     deps = if_cuda_is_configured([
-        # LINT.IfChange
-        "@local_config_cuda//cuda:cublas_headers",
-        "@local_config_cuda//cuda:cusolver_headers",
-        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
+        # copybara:uncomment-begin
+        # "@local_config_cuda//cuda:cublas_headers",
+        # "@local_config_cuda//cuda:cusolver_headers",
+        # copybara:uncomment-end
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
@@ -518,9 +519,9 @@ cc_library(
     textual_hdrs = glob(["cusparse_*.inc"]),
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        # LINT.IfChange
-        "@local_config_cuda//cuda:cusparse_headers",
-        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
+        # copybara:uncomment-begin
+        # "@local_config_cuda//cuda:cusparse_headers",
+        # copybara:uncomment-end
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),
@@ -694,4 +695,10 @@ tf_cuda_cc_test(
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
     ],
+)
+
+filegroup(
+    name = "cudnn_wrappers",
+    srcs = glob(["*.inc"]),
+    visibility = ["//visibility:public"],
 )

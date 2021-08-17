@@ -249,6 +249,7 @@ XLA_DEVICE_DEPS = [
     "//tensorflow/compiler/xla/client:global_data",
     "//tensorflow/compiler/xla/client:local_client",
     "//tensorflow/compiler/xla/service:stream_pool",
+    "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
     "//tensorflow/core:array_ops_op_lib",
     "//tensorflow/core:control_flow_ops_op_lib",
     "//tensorflow/core:core_cpu",
@@ -507,6 +508,8 @@ cc_library(
         ":xla_launch_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -941,7 +944,6 @@ tf_cc_test(
         # TODO(b/141643254) Re-enable msan after fixing
         # use-of-uninitialized-value error.
         "nomsan",
-        "no_cuda_asan",  # TODO(b/171317460): re-enable.
     ] + tf_cuda_tests_tags(),
     deps = [
         ":common",

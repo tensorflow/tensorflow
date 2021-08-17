@@ -34,7 +34,7 @@ func @invalid_allreduce(%input0: memref<2xf32>, %input1: memref<3xf16>) {
 
 // CHECK-LABEL: func @reduce_scatter
 func @reduce_scatter(%data: memref<4x16xf32>, %result:memref<4x4xf32>) {
-  "lmhlo.all_reduce_scatter"(%data, %result) ( {
+  "lmhlo.reduce_scatter"(%data, %result) ( {
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>

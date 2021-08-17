@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
@@ -30,12 +31,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
-#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -61,8 +62,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-
-namespace tracing = tensorflow::tracing;
 
 static std::vector<std::string> CandidateCudaRoots(
     const HloModuleConfig& config) {
@@ -124,35 +123,30 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       stream_exec->GetDeviceDescription().cuda_compute_capability());
   pipeline.AddPass<CudnnVectorizeConvolutions>(
       stream_exec->GetDeviceDescription().cuda_compute_capability());
-  // CudnnConvPadForIntegerConvolutions and CudnnConvPadForTensorCores leave
-  // behind unnecessary tuple/get-tuple-element pairs that TupleSimplifier
-  // fixes.
+  // The conv padding/vectorization passes which we need to get rid of.  They
+  // also leave behind unnecessary tuple/get-tuple-element pairs that
+  // TupleSimplifier fixes.
+  pipeline.AddPass<CallInliner>();
   pipeline.AddPass<TupleSimplifier>();
 
   // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter
   // introduces reshapes and transposes that can be eliminated using
-  // AlgebraicSimplifier
-  {
-    auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-        "algebraic_simplification_post_conv_rewriter");
-    pass.AddInvariantCheckerDebug<HloVerifier>(/*layout_sensitive=*/false,
-                                               /*allow_mixed_precision=*/false);
-
-    AlgebraicSimplifierOptions options;
-    // When transposes appear in a fusion node, we can easily adjust the
-    // multi-dimensional index to create the one needed for the operand. This
-    // is not as easy with bitcasts, because we don't have the information
-    // readily available which dimensions are permuted. In addition to that,
-    // if we have a transpose and a reshape next to each other, they will both
-    // be replaced by a bitcast, and we replace bitcast(bitcast) with one
-    // bitcast. This leads to having to linearize and then delinearize the
-    // index.
-    options.set_replace_transpose_with_bitcast(false);
-    options.set_enable_conv_operand_swap(false);
-    options.set_cudnn_batchnorm_forward_training_metadata(
-        kCudnnBatchNormForwardTrainingCallTarget);
-    pass.AddPass<AlgebraicSimplifier>(options);
-  }
+  // AlgebraicSimplifier  We run algsimp to a fixed point.
+  //
+  // When transposes appear in a fusion node, we can easily adjust the
+  // multi-dimensional index to create the one needed for the operand. This
+  // is not as easy with bitcasts, because we don't have the information
+  // readily available which dimensions are permuted. In addition to that,
+  // if we have a transpose and a reshape next to each other, they will both
+  // be replaced by a bitcast, and we replace bitcast(bitcast) with one
+  // bitcast. This leads to having to linearize and then delinearize the
+  // index.
+  AlgebraicSimplifierOptions options;
+  options.set_replace_transpose_with_bitcast(false);
+  options.set_enable_conv_operand_swap(false);
+  options.set_cudnn_batchnorm_forward_training_metadata(
+      kCudnnBatchNormForwardTrainingCallTarget);
+  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
   // GpuConvRewriter, GpuConvPaddingLegalization and
   // CudnnConvPadForTensorCores may add instructions which can be simplified
@@ -170,6 +164,11 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
+  if (stream_exec->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::BF16,
+                                            /*pad_to_multiple_of=*/8);
+  }
   if (stream_exec->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
           se::CudaComputeCapability::VOLTA)) {
     // Pad gemms over S8 to multiples of 4 so cuBLAS can run them.
@@ -430,7 +429,8 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     if (inserted) {
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
-        auto ptxas_config = PtxOptsFromConfig(hlo_module_config);
+        auto ptxas_config =
+            PtxOptsFromDebugOptions(hlo_module_config.debug_options());
         if (relocatable) {
           ptxas_config.extra_flags.push_back("-c");
         }

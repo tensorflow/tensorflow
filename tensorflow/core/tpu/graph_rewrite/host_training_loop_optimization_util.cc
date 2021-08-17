@@ -139,7 +139,7 @@ Status ExtractExecuteNodeInfo(const Node* compile_node, const Graph& graph,
   DataTypeVector arg_types;
   TF_RETURN_IF_ERROR(GetNodeAttr((*execute_node_info)[0].execute_node->attrs(),
                                  "Targs", &arg_types));
-  for (int64 i = 0; i < arg_types.size(); ++i) {
+  for (int64_t i = 0; i < arg_types.size(); ++i) {
     if (arg_types[i] != DT_RESOURCE) {
       continue;
     }
@@ -152,7 +152,7 @@ Status ExtractExecuteNodeInfo(const Node* compile_node, const Graph& graph,
     bool is_supported = true;
     std::unordered_map<Node*, absl::flat_hash_set<Node*>>
         enter_to_execute_nodes;
-    for (int64 j = 0; j < edges.size(); ++j) {
+    for (int64_t j = 0; j < edges.size(); ++j) {
       auto execute = (*execute_node_info)[j].execute_node;
       TF_RETURN_IF_ERROR(execute->input_edge(i, &edges[j]));
       TF_RET_CHECK(edges[j]->src()->output_type(edges[j]->src_output()) ==
@@ -192,7 +192,7 @@ Status ExtractExecuteNodeInfo(const Node* compile_node, const Graph& graph,
     // Add the variable input edges only when they are supported for all
     // executes.
     if (is_supported) {
-      for (int64 j = 0; j < edges.size(); ++j) {
+      for (int64_t j = 0; j < edges.size(); ++j) {
         (*execute_node_info)[j].var_inputs.push_back(edges[j]);
       }
       new_metadata->mutable_args(i)->set_enable_xla_sharding(
@@ -200,7 +200,7 @@ Status ExtractExecuteNodeInfo(const Node* compile_node, const Graph& graph,
     }
   }
 
-  int64 total = 0;
+  int64_t total = 0;
   for (const auto& a : new_metadata->args()) {
     if (a.enable_xla_sharding() == TPUCompileMetadataProto::Arg::ALLOWED) {
       total++;

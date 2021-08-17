@@ -209,12 +209,12 @@ void TpuTransferManager::TransferLiteralFromDevice(
   ApiConverter::Free(&c_literal);
 }
 
-int64 TpuTransferManager::GetByteSizeRequirement(
+int64_t TpuTransferManager::GetByteSizeRequirement(
     const xla::Shape& shape) const {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
 
-  int64 size_in_bytes =
+  int64_t size_in_bytes =
       tpu::ExecutorApiFn()->TpuTransferManager_GetByteSizeRequirementFn(
           manager_, &c_shape);
 

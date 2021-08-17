@@ -361,8 +361,15 @@ class _ResourceSummaryWriter(SummaryWriter):
         self._closed = True
 
 
-class _TrackableResourceSummaryWriter(_ResourceSummaryWriter,
-                                      tracking.TrackableResource):
+class _MultiMetaclass(
+    type(_ResourceSummaryWriter), type(tracking.TrackableResource)):
+  pass
+
+
+class _TrackableResourceSummaryWriter(
+    _ResourceSummaryWriter,
+    tracking.TrackableResource,
+    metaclass=_MultiMetaclass):
   """A `_ResourceSummaryWriter` subclass that implements `TrackableResource`."""
 
   def __init__(self, create_fn, init_op_fn):

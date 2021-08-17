@@ -60,9 +60,9 @@ constexpr const char* const kStartIndex = "start_index";
 
 }  // namespace
 
-/* static */ constexpr const int64
+/* static */ constexpr const int64_t
     CustomReader::kSnappyReaderInputBufferSizeBytes;
-/* static */ constexpr const int64
+/* static */ constexpr const int64_t
     CustomReader::kSnappyReaderOutputBufferSizeBytes;
 
 std::string HashDirectory(const std::string& path, uint64 hash) {
@@ -81,7 +81,7 @@ std::string RunDirectory(const std::string& hash_directory,
   return io::JoinPath(hash_directory, run_id);
 }
 
-std::string ShardDirectory(const std::string& run_directory, int64 shard_id) {
+std::string ShardDirectory(const std::string& run_directory, int64_t shard_id) {
   return io::JoinPath(
       run_directory,
       strings::Printf("%08llu%s", static_cast<unsigned long long>(shard_id),
@@ -238,13 +238,13 @@ Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   std::vector<TensorProto> tensor_protos;
   tensor_protos.reserve(num_complex_);
   experimental::SnapshotTensorMetadata metadata;
-  int64 total_size = 0;
+  int64_t total_size = 0;
   for (int i = 0, end = tensors.size(); i < end; ++i) {
     const Tensor& tensor = tensors[i];
     experimental::TensorMetadata* tensor_metadata =
         metadata.add_tensor_metadata();
     tensor.shape().AsProto(tensor_metadata->mutable_tensor_shape());
-    int64 size = 0;
+    int64_t size = 0;
     if (simple_tensor_mask_[i]) {
       auto tensor_buffer = DMAHelper::buffer(&tensor);
       tensor_buffers.push_back(tensor_buffer);
@@ -359,7 +359,7 @@ Status Reader::Create(Env* env, const std::string& filename,
   return (*out_reader)->Initialize(env);
 }
 
-Status Reader::SkipRecords(int64 num_records) {
+Status Reader::SkipRecords(int64_t num_records) {
   // TODO(frankchn): Optimize to not parse the entire Tensor and actually skip.
   for (int i = 0; i < num_records; ++i) {
     std::vector<Tensor> unused_tensors;
@@ -371,10 +371,10 @@ Status Reader::SkipRecords(int64 num_records) {
 class Reader::Dataset : public DatasetBase {
  public:
   Dataset(DatasetContext&& ctx, const std::string& shard_dir,
-          const std::string& compression, const int64 version,
+          const std::string& compression, const int64_t version,
           const DataTypeVector& dtypes,
           const std::vector<PartialTensorShape>& shapes,
-          const int64 start_index)
+          const int64_t start_index)
       : DatasetBase(std::move(ctx)),
         shard_dir_(shard_dir),
         compression_(compression),
@@ -437,10 +437,13 @@ class Reader::Dataset : public DatasetBase {
           start_index_(dataset()->start_index_) {}
 
     Status Initialize(IteratorContext* ctx) override {
+      // TODO(jsimsa): This only needs to happen when we are not restoring but
+      // parallel_interleave op implementation caches IteratorContext (and thus
+      // the is_restoring bit ends up being inaccurate).
       TF_RETURN_IF_ERROR(Reader::Create(
           ctx->env(), GetCurrentFilename(), dataset()->compression_,
           dataset()->version_, dataset()->dtypes_, &reader_));
-      return AdvanceToStart(ctx);
+      return AdvanceToStartIndex(ctx);
     }
 
    protected:
@@ -480,7 +483,7 @@ class Reader::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(Reader::Create(
           ctx->env(), GetCurrentFilename(), dataset()->compression_,
           dataset()->version_, dataset()->dtypes_, &reader_));
-      return AdvanceToStart(ctx);
+      return AdvanceToStartIndex(ctx);
     }
 
    private:
@@ -497,13 +500,11 @@ class Reader::Dataset : public DatasetBase {
                                    current_checkpoint_id_);
     }
 
-    Status AdvanceToStart(IteratorContext* ctx) {
-      auto num_to_skip = start_index_;
-      bool end_of_sequence;
-      for (int64 i = 0; i < num_to_skip; ++i) {
-        // TODO(frankchn): Optimize this to not parse every single element.
+    // TODO(frankchn): Optimize this to not parse every single element.
+    Status AdvanceToStartIndex(IteratorContext* ctx) {
+      for (int64_t i = 0; i < start_index_; ++i) {
         std::vector<Tensor> unused;
-        TF_RETURN_IF_ERROR(GetNextInternal(ctx, &unused, &end_of_sequence));
+        TF_RETURN_IF_ERROR(reader_->ReadTensors(&unused));
       }
       return Status::OK();
     }
@@ -513,16 +514,16 @@ class Reader::Dataset : public DatasetBase {
     // Stores the id current checkpoint file that we are in the process of
     // reading (e.g. if the file is currently 00000001.snapshot, then this will
     // be 1).
-    int64 current_checkpoint_id_ = 0;
-    int64 start_index_;
+    int64_t current_checkpoint_id_ = 0;
+    int64_t start_index_;
   };
 
   const tstring shard_dir_;
   const std::string compression_;
-  const int64 version_;
+  const int64_t version_;
   const DataTypeVector dtypes_;
   const std::vector<PartialTensorShape> shapes_;
-  const int64 start_index_;
+  const int64_t start_index_;
 };
 
 Reader::DatasetOp::DatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {
@@ -537,7 +538,7 @@ void Reader::DatasetOp::MakeDataset(OpKernelContext* ctx,
   tstring shard_dir;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "shard_dir", &shard_dir));
 
-  int64 start_index;
+  int64_t start_index;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "start_index", &start_index));
 
   *output =
@@ -551,7 +552,7 @@ class Reader::NestedDataset : public DatasetBase {
                          std::vector<DatasetBase*> datasets)
       : DatasetBase(std::move(ctx)), datasets_(datasets) {
     dtypes_.push_back(DT_VARIANT);
-    gtl::InlinedVector<int64, 1> element_dim_sizes;
+    gtl::InlinedVector<int64_t, 1> element_dim_sizes;
     element_dim_sizes.push_back(1);
     partial_shapes_.emplace_back(element_dim_sizes);
   }
@@ -605,13 +606,13 @@ class Reader::NestedDataset : public DatasetBase {
   class Iterator : public DatasetIterator<NestedDataset> {
    public:
     explicit Iterator(const Params& params)
-        : DatasetIterator<NestedDataset>(params), index_(0) {}
+        : DatasetIterator<NestedDataset>(params) {}
 
    protected:
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      const int64 num_datasets = dataset()->datasets_.size();
+      const int64_t num_datasets = dataset()->datasets_.size();
       *end_of_sequence = num_datasets == index_;
       if (!*end_of_sequence) {
         Tensor tensor(DT_VARIANT, TensorShape({}));
@@ -639,7 +640,7 @@ class Reader::NestedDataset : public DatasetBase {
     }
 
    private:
-    int64 index_;
+    int64_t index_ = 0;
   };
 };
 
@@ -658,6 +659,7 @@ void Reader::NestedDatasetOp::MakeDataset(OpKernelContext* ctx,
     inputs.push_back(input);
   }
   *output = new Reader::NestedDataset(DatasetContext(ctx), inputs);
+  (*output)->Initialize();
 }
 
 Status Reader::MakeNestedDataset(Env* env,
@@ -665,15 +667,15 @@ Status Reader::MakeNestedDataset(Env* env,
                                  const string& compression_type, int version,
                                  const DataTypeVector& dtypes,
                                  const std::vector<PartialTensorShape>& shapes,
-                                 const int64 start_index,
+                                 const int64_t start_index,
                                  DatasetBase** output) {
   std::vector<DatasetBase*> datasets;
 
   datasets.reserve(shard_dirs.size());
-  for (int64 i = 0; i < shard_dirs.size(); ++i) {
+  for (int64_t i = 0; i < shard_dirs.size(); ++i) {
     // TODO(frankchn): The reading pattern could be controlled in a non-round
     // robin fashion, so we cannot assume a round-robin manner when restoring.
-    int64 dataset_start_index = start_index / shard_dirs.size();
+    int64_t dataset_start_index = start_index / shard_dirs.size();
     if (start_index % shard_dirs.size() > datasets.size()) {
       dataset_start_index++;
     }
@@ -684,6 +686,7 @@ Status Reader::MakeNestedDataset(Env* env,
                          strings::StrCat("SnapshotDatasetReader/_", i)})),
                     shard_dirs.at(i), compression_type, version, dtypes, shapes,
                     dataset_start_index));
+    datasets.back()->Initialize();
   }
 
   // Rotate the vector such that the first dataset contains the next element
@@ -699,6 +702,7 @@ Status Reader::MakeNestedDataset(Env* env,
       DatasetContext(DatasetContext::Params(
           {"SnapshotNestedDatasetReader", "SnapshotNestedDatasetReader"})),
       datasets);
+  (*output)->Initialize();
   return Status::OK();
 }
 
@@ -879,7 +883,7 @@ Status CustomReader::SnappyUncompress(
   int num_tensors = metadata->tensor_metadata_size();
   std::vector<struct iovec> iov(num_tensors);
   int index = 0;
-  int64 total_size = 0;
+  int64_t total_size = 0;
   for (int i = 0, end = simple_tensor_mask_.size(); i < end; ++i) {
     const auto& tensor_metadata = metadata->tensor_metadata(i);
     if (simple_tensor_mask_[i]) {
@@ -900,7 +904,7 @@ Status CustomReader::SnappyUncompress(
     total_size += iov[index].iov_len;
     index++;
   }
-  const int64 size_int = size;
+  const int64_t size_int = size;
   if (size_int != total_size) {
     return errors::Internal("Uncompressed size mismatch. Snappy expects ", size,
                             " whereas the tensor metadata suggests ",
@@ -1011,8 +1015,8 @@ Status DetermineOpState(const std::string& mode_string, bool file_exists,
     return Status::OK();
   }
 
-  int64 expiration_timer = static_cast<int64>(EnvTime::NowMicros()) -
-                           pending_snapshot_expiry_seconds * 1000000;
+  int64_t expiration_timer = static_cast<int64_t>(EnvTime::NowMicros()) -
+                             pending_snapshot_expiry_seconds * 1000000;
 
   if (metadata->creation_timestamp() >= expiration_timer) {
     // Someone else is already writing and time has not expired.
@@ -1025,10 +1029,10 @@ Status DetermineOpState(const std::string& mode_string, bool file_exists,
   }
 }
 
-AsyncWriter::AsyncWriter(Env* env, int64 file_index,
+AsyncWriter::AsyncWriter(Env* env, int64_t file_index,
                          const std::string& shard_directory,
                          uint64 checkpoint_id, const std::string& compression,
-                         int64 version, const DataTypeVector& output_types,
+                         int64_t version, const DataTypeVector& output_types,
                          std::function<void(Status)> done) {
   thread_ = absl::WrapUnique(env->StartThread(
       ThreadOptions(), absl::StrCat("writer_thread_", file_index),
@@ -1064,8 +1068,8 @@ bool AsyncWriter::ElementAvailable() { return !deque_.empty(); }
 
 Status AsyncWriter::WriterThread(Env* env, const std::string& shard_directory,
                                  uint64 checkpoint_id,
-                                 const std::string& compression, int64 version,
-                                 DataTypeVector output_types) {
+                                 const std::string& compression,
+                                 int64_t version, DataTypeVector output_types) {
   std::unique_ptr<snapshot_util::Writer> writer;
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
 

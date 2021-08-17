@@ -47,9 +47,9 @@ class VariantTensorDataReader : public IteratorStateReader {
   bool Contains(StringPiece key) const override;
   bool Contains(StringPiece name, StringPiece key) const override;
 
-  Status ReadScalar(StringPiece key, int64* val) const override;
+  Status ReadScalar(StringPiece key, int64_t* val) const override;
   Status ReadScalar(StringPiece name, StringPiece key,
-                    int64* val) const override;
+                    int64_t* val) const override;
   Status ReadScalar(StringPiece key, tstring* val) const override;
   Status ReadScalar(StringPiece name, StringPiece key,
                     tstring* val) const override;
@@ -85,9 +85,9 @@ class VariantTensorDataReader : public IteratorStateReader {
 // Now the VariantTensorData objects can be used to serialize.
 class VariantTensorDataWriter : public IteratorStateWriter {
  public:
-  Status WriteScalar(StringPiece key, const int64 val) override;
+  Status WriteScalar(StringPiece key, const int64_t val) override;
   Status WriteScalar(StringPiece name, StringPiece key,
-                     const int64 val) override;
+                     const int64_t val) override;
 
   Status WriteScalar(StringPiece key, const tstring& val) override;
   Status WriteScalar(StringPiece name, StringPiece key,

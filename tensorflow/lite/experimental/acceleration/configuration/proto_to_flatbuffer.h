@@ -26,6 +26,11 @@ const ComputeSettings* ConvertFromProto(
     const proto::ComputeSettings& proto_settings,
     flatbuffers::FlatBufferBuilder* builder);
 
+// Converts the provided MiniBenchmarkSettings from proto to flatbuffer format.
+const MinibenchmarkSettings* ConvertFromProto(
+    const proto::MinibenchmarkSettings& proto_settings,
+    flatbuffers::FlatBufferBuilder* builder);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_PROTO_TO_FLATBUFFER_H_

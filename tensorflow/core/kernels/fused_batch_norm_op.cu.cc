@@ -23,6 +23,7 @@ limitations under the License.
 typedef __half2 half2;
 #endif
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
@@ -76,6 +77,12 @@ struct FusedBatchNormFreezeGrad<GPUDevice, T, U> {
     Eigen::IndexList<Eigen::Index, Eigen::type2index<1> > rest_by_one;
     rest_by_one.set(0, rest_size);
 #endif
+
+    OP_REQUIRES(
+        context, !OpDeterminismRequired(),
+        errors::Unimplemented(
+            "A deterministic GPU implementation of fused batch-norm backprop,"
+            " when training is disabled, is not currently available."));
 
     // offset_backprop  = sum(y_backprop)
     // scale_backprop = y_backprop * ((x - pop_mean) * rsqrt(pop_var + epsilon))

@@ -29,6 +29,9 @@ class Operation;
 template <typename T>
 class OperationPass;
 class Pass;
+namespace lmhlo {
+class FusionOp;
+}
 
 namespace mhlo {
 
@@ -45,13 +48,22 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(
     bool legalize_broadcasts = true, bool expand_compositions = true);
 
+// canonicalize reduction ops to be suitable for codegen.
+std::unique_ptr<FunctionPass> createHloCanonicalizeReductionPass();
+
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
-    bool convert_to_lmhlo_only = false);
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
+
+/// Lowers from HLO dialect to Memref dialect allocating/deallocating temporary
+/// buffers if necessary.
+std::unique_ptr<FunctionPass> createLegalizeToMemrefPass();
 
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
+
+// Place shape calculating subgraph on cpu.
+std::unique_ptr<OperationPass<ModuleOp>> createMarkShapeCalcOpPass();
 
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
@@ -83,6 +95,11 @@ std::unique_ptr<FunctionPass> createLowerComplexPass();
 std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();
 std::unique_ptr<FunctionPass> createLegalizeEinsumToDotGeneralPass();
 std::unique_ptr<FunctionPass> createLegalizeGatherToTorchIndexSelectPass();
+std::unique_ptr<FunctionPass> createFlattenTuplePass();
+
+// Creates a pass for expanding mhlo.tuple ops.
+std::unique_ptr<OperationPass<ModuleOp>> CreateExpandHloTuplesPass(
+    const std::string& entry_function_name = "main");
 
 }  // namespace mhlo
 
@@ -119,6 +136,16 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeTensorLoadOpPass();
 std::unique_ptr<OperationPass<FuncOp>> createLhloFusionPass(
     int max_num_arguments_per_kernel = 64);
 
+// inline lmhlo.Fusion
+std::unique_ptr<OperationPass<FuncOp>> createLhloFusionInlinerPass();
+
+// Lowers the roots of lmhlo.fusion to parallel loops
+std::unique_ptr<OperationPass<FuncOp>>
+createLhloLegalizeRootsToParallelLoopsPass();
+
+// Input inline fusion pass for fusion codegen
+std::unique_ptr<OperationPass<lmhlo::FusionOp>> createInputInlineFusionPass();
+
 }  // namespace lmhlo
 
 namespace disc_ral {
@@ -128,6 +155,9 @@ std::unique_ptr<OperationPass<ModuleOp>> createRalInjectExecutionContextPass(
 
 // Lower some specific ops to library calls (modeled by `disc_ral.launch` op).
 std::unique_ptr<mlir::FunctionPass> createRalLowerToLibraryCallPass();
+
+// Lower disc to llvm dialect
+std::unique_ptr<OperationPass<ModuleOp>> createRalToLLVMPass();
 
 }  // namespace disc_ral
 

@@ -611,9 +611,9 @@ class NodeProcessor : public GraphProcessor {
                          .mutable_list()
                          ->mutable_shape(pos);
         if (shape->dim_size() == 4) {
-          int64 h = shape->dim(1).size();
-          int64 w = shape->dim(2).size();
-          int64 c = shape->dim(3).size();
+          int64_t h = shape->dim(1).size();
+          int64_t w = shape->dim(2).size();
+          int64_t c = shape->dim(3).size();
           shape->mutable_dim(1)->set_size(c);
           shape->mutable_dim(2)->set_size(h);
           shape->mutable_dim(3)->set_size(w);
@@ -781,10 +781,10 @@ class NodeProcessor : public GraphProcessor {
       auto list = node_->mutable_attr()->at("explicit_paddings").mutable_list();
       int size = list->i_size();
       if (size == 8) {
-        int64 height_before = list->i(2);
-        int64 height_after = list->i(3);
-        int64 width_before = list->i(4);
-        int64 width_after = list->i(5);
+        int64_t height_before = list->i(2);
+        int64_t height_after = list->i(3);
+        int64_t width_before = list->i(4);
+        int64_t width_after = list->i(5);
         list->set_i(2, 0);
         list->set_i(3, 0);
         list->set_i(4, height_before);
@@ -987,9 +987,9 @@ class NodeProcessor : public GraphProcessor {
   }
 
   void UpdateTuple(AttrValue_ListValue* list) {
-    int64 h = list->i(1);
-    int64 w = list->i(2);
-    int64 c = list->i(3);
+    int64_t h = list->i(1);
+    int64_t w = list->i(2);
+    int64_t c = list->i(3);
     list->set_i(1, c);
     list->set_i(2, h);
     list->set_i(3, w);

@@ -157,6 +157,14 @@ class GraphOptByNamePass : public GraphOptPass {
   explicit GraphOptByNamePass(const std::vector<std::string>& pass_names)
       : GraphOptPass(FindRegisteredPassesByName(pass_names)) {}
 
+  llvm::StringRef getArgument() const final {
+    return "run-tf-graph-optimization";
+  }
+
+  llvm::StringRef getDescription() const final {
+    return "runs passes registered as tensorflow::GraphOptimizationPass";
+  }
+
  private:
   void runOnOperation() override {
     // Verify all passes requested were registered/found.
@@ -185,5 +193,4 @@ tensorflow::CreateTensorFlowGraphOptimizationPass(
   return std::make_unique<GraphOptByNamePass>(pass_names);
 }
 
-static mlir::PassRegistration<tensorflow::GraphOptByNamePass> pass(
-    DEBUG_TYPE, "runs passes registered as tensorflow::GraphOptimizationPass");
+static mlir::PassRegistration<tensorflow::GraphOptByNamePass> pass;

@@ -139,6 +139,18 @@ TYPED_TEST(ReshapeOpTest, ScalarOutput) {
   }
 }
 
+TYPED_TEST(ReshapeOpTest, ZeroInShape) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  for (ShapeSpecificationType shape_type :
+       ReshapeOpTest<ShapeSpecificationType>::_range_) {
+    ReshapeOpModel<TypeParam> m({4, 0}, {3}, {2, 0, -1}, shape_type);
+    m.Invoke();
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 0, 2}));
+  }
+}
+
 // Some old models specify '[0]' as the new shape, indicating that both input
 // and output are scalars.
 TYPED_TEST(ReshapeOpTest, LegacyScalarOutput) {

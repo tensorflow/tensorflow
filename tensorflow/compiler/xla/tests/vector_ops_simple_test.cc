@@ -322,13 +322,13 @@ XLA_TEST_F(VecOpsSimpleTest, ClampFloatEdgeCases) {
 
 XLA_TEST_F(VecOpsSimpleTest, ClampValuesConstantS64) {
   XlaBuilder builder(TestName());
-  auto zero = ConstantR0<int64>(&builder, 0);
-  auto one = ConstantR0<int64>(&builder, 10);
-  auto x = ConstantR1<int64>(&builder, {-3, 3, 9, 13});
+  auto zero = ConstantR0<int64_t>(&builder, 0);
+  auto one = ConstantR0<int64_t>(&builder, 10);
+  auto x = ConstantR1<int64_t>(&builder, {-3, 3, 9, 13});
   Clamp(zero, x, one);
 
-  std::vector<int64> expected = {0, 3, 9, 10};
-  ComputeAndCompareR1<int64>(&builder, expected, {});
+  std::vector<int64_t> expected = {0, 3, 9, 10};
+  ComputeAndCompareR1<int64_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
@@ -415,6 +415,17 @@ XLA_TEST_F(VecOpsSimpleTest, VectorPredicateNotEqual) {
 
   std::array<bool, 2> expected = {{true, true}};
   ComputeAndCompareR1<bool>(&builder, expected, {});
+}
+
+XLA_TEST_F(VecOpsSimpleTest, CbrtSevenValues) {
+  XlaBuilder builder(TestName());
+  std::vector<float> expected = {16.0, 1888.0, -102.0, 0.16, 0.2, 0., 1.23};
+  std::vector<float> cube = {4096.0, 6729859072., -1061208, .004096,
+                             0.008,  0.,          1.860867};
+  auto x = ConstantR1<float>(&builder, cube);
+  Cbrt(x);
+  ComputeAndCompareR1<float>(&builder, expected, {},
+                             ErrorSpec(/*aabs=*/1e-7, /*arel=*/2e-7));
 }
 
 }  // namespace

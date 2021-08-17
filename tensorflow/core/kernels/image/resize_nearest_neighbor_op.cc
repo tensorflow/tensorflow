@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/image_resizer_state.h"
 
 namespace tensorflow {
@@ -239,13 +240,21 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
     OP_REQUIRES(context, sizes(0) > 0 && sizes(1) > 0,
                 errors::InvalidArgument("shape_t's elements must be positive"));
 
-    const int64 batch_size = input.dim_size(0);
-    const int64 in_height = input.dim_size(1);
-    const int64 in_width = input.dim_size(2);
-    const int64 channels = input.dim_size(3);
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(
+          context, !OpDeterminismRequired(),
+          errors::Unimplemented(
+              "A deterministic GPU implementation of ResizeNearestNeighborGrad"
+              " is not currently available."));
+    }
 
-    const int64 out_height = sizes(0);
-    const int64 out_width = sizes(1);
+    const int64_t batch_size = input.dim_size(0);
+    const int64_t in_height = input.dim_size(1);
+    const int64_t in_width = input.dim_size(2);
+    const int64_t channels = input.dim_size(3);
+
+    const int64_t out_height = sizes(0);
+    const int64_t out_width = sizes(1);
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(

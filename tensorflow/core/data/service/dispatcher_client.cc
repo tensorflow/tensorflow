@@ -26,9 +26,9 @@ limitations under the License.
 #include "grpcpp/support/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
-#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -38,19 +38,20 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
 
 Status DataServiceDispatcherClient::WorkerHeartbeat(
     const std::string& worker_address, const std::string& transfer_address,
-    const std::vector<int64>& current_tasks, std::vector<TaskDef>& new_tasks,
-    std::vector<int64>& tasks_to_delete) {
+    const std::vector<int64_t>& current_tasks, std::vector<TaskDef>& new_tasks,
+    std::vector<int64_t>& tasks_to_delete) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   WorkerHeartbeatRequest req;
   req.set_worker_address(worker_address);
   req.set_transfer_address(transfer_address);
-  for (int64 task : current_tasks) {
+  for (int64_t task : current_tasks) {
     req.add_current_tasks(task);
   }
   WorkerHeartbeatResponse resp;
@@ -62,7 +63,7 @@ Status DataServiceDispatcherClient::WorkerHeartbeat(
   for (const auto& task : resp.new_tasks()) {
     new_tasks.push_back(task);
   }
-  for (int64 task_to_delete : resp.tasks_to_delete()) {
+  for (int64_t task_to_delete : resp.tasks_to_delete()) {
     tasks_to_delete.push_back(task_to_delete);
   }
   return Status::OK();
@@ -86,7 +87,7 @@ Status DataServiceDispatcherClient::WorkerUpdate(
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::GetDatasetDef(int64 dataset_id,
+Status DataServiceDispatcherClient::GetDatasetDef(int64_t dataset_id,
                                                   DatasetDef& dataset_def) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetDatasetDefRequest req;
@@ -101,13 +102,15 @@ Status DataServiceDispatcherClient::GetDatasetDef(int64 dataset_id,
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::GetSplit(int64 job_id, int64 repetition,
+Status DataServiceDispatcherClient::GetSplit(int64_t job_id, int64_t repetition,
+                                             int64_t split_provider_index,
                                              Tensor& split,
                                              bool& end_of_splits) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetSplitRequest req;
   req.set_job_id(job_id);
   req.set_repetition(repetition);
+  req.set_split_provider_index(split_provider_index);
   GetSplitResponse resp;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->GetSplit(&client_ctx, req, &resp);
@@ -123,11 +126,16 @@ Status DataServiceDispatcherClient::GetSplit(int64 job_id, int64 repetition,
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::RegisterDataset(const GraphDef& dataset,
-                                                    int64& dataset_id) {
+Status DataServiceDispatcherClient::RegisterDataset(
+    const DatasetDef& dataset, const absl::optional<std::string>& element_spec,
+    int64_t& dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrRegisterDatasetRequest req;
-  *req.mutable_dataset()->mutable_graph() = dataset;
+  *req.mutable_dataset() = dataset;
+  if (element_spec.has_value()) {
+    req.set_element_spec(element_spec.value());
+  }
+
   GetOrRegisterDatasetResponse resp;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->GetOrRegisterDataset(&client_ctx, req, &resp);
@@ -139,19 +147,20 @@ Status DataServiceDispatcherClient::RegisterDataset(const GraphDef& dataset,
 }
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
-    int64 dataset_id, ProcessingMode processing_mode,
+    int64_t dataset_id, const ProcessingModeDef& processing_mode,
     const absl::optional<JobKey>& job_key, absl::optional<int64> num_consumers,
-    int64& job_client_id) {
+    int64_t& job_client_id, TargetWorkers target_workers) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
   req.set_dataset_id(dataset_id);
-  req.set_processing_mode(ProcessingModeDef(processing_mode));
+  *req.mutable_processing_mode_def() = processing_mode;
   if (job_key.has_value()) {
     *req.mutable_job_key() = job_key.value();
   }
   if (num_consumers.has_value()) {
     req.set_num_consumers(num_consumers.value());
   }
+  req.set_target_workers(target_workers);
   GetOrCreateJobResponse resp;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->GetOrCreateJob(&client_ctx, req, &resp);
@@ -165,7 +174,7 @@ Status DataServiceDispatcherClient::GetOrCreateJob(
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::ReleaseJobClient(int64 job_client_id) {
+Status DataServiceDispatcherClient::ReleaseJobClient(int64_t job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   ReleaseJobClientRequest req;
   req.set_job_client_id(job_client_id);
@@ -180,9 +189,9 @@ Status DataServiceDispatcherClient::ReleaseJobClient(int64 job_client_id) {
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::MaybeRemoveTask(int64 task_id,
-                                                    int64 consumer_index,
-                                                    int64 round,
+Status DataServiceDispatcherClient::MaybeRemoveTask(int64_t task_id,
+                                                    int64_t consumer_index,
+                                                    int64_t round,
                                                     bool& removed) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   MaybeRemoveTaskRequest req;
@@ -224,6 +233,22 @@ Status DataServiceDispatcherClient::GetWorkers(
   for (auto& worker : resp.workers()) {
     workers.push_back(worker);
   }
+  return Status::OK();
+}
+
+Status DataServiceDispatcherClient::GetElementSpec(int64_t dataset_id,
+                                                   std::string& element_spec) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+
+  GetElementSpecRequest req;
+  req.set_dataset_id(dataset_id);
+  GetElementSpecResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status s = stub_->GetElementSpec(&ctx, req, &resp);
+  if (!s.ok()) {
+    return grpc_util::WrapError("Failed to get element_spec", s);
+  }
+  element_spec = resp.element_spec();
   return Status::OK();
 }
 

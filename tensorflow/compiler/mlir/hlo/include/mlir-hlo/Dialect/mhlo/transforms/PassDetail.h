@@ -19,8 +19,15 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
-namespace mhlo {
+namespace scf {
+class SCFDialect;
+}
+namespace memref {
+class MemRefDialect;
+}
 
+namespace mhlo {
+class MhloDialect;
 #define GEN_PASS_CLASSES
 #include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
 

@@ -42,7 +42,7 @@ class GpuHloSchedule {
   // stream assignment.
   static StatusOr<std::unique_ptr<GpuHloSchedule>> Build(
       HloModule* module, const StreamAssignment& stream_assignment,
-      int64 pointer_size);
+      int64_t pointer_size);
 
   // Returns the total order of thunk launches, represented in terms of HLO
   // instructions.

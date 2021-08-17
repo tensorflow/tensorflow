@@ -49,7 +49,7 @@ constexpr char kExhausted[] = "exhausted";
 
 class PaddedBatchDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 batch_size, bool drop_remainder,
+  Dataset(OpKernelContext* ctx, int64_t batch_size, bool drop_remainder,
           bool parallel_copy, std::vector<PartialTensorShape> padded_shapes,
           std::vector<Tensor> padding_values, const DatasetBase* input,
           int op_version)
@@ -113,8 +113,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+  int64_t Cardinality() const override {
+    int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -145,7 +145,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
       Node* node;
       Tensor t(DT_INT64, TensorShape({padded_shapes_[i].dims()}));
       for (int j = 0; j < padded_shapes_[i].dims(); j++) {
-        t.vec<int64>()(j) = padded_shapes_[i].dim_size(j);
+        t.vec<int64_t>()(j) = padded_shapes_[i].dim_size(j);
       }
       TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
       padded_shapes.emplace_back(node);
@@ -169,7 +169,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     b->BuildAttrValue(output_dtypes(), &output_types);
 
     AttrValue N;
-    b->BuildAttrValue<int64>(padded_shapes_.size(), &N);
+    b->BuildAttrValue<int64_t>(padded_shapes_.size(), &N);
 
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {{0, input_graph_node}, {1, batch_size}, {4, drop_remainder}},
@@ -283,7 +283,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
       static bool in_experiment =
           GetExperiments().contains("parallelize_batch_copy");
       const size_t num_tuple_components = batch_elements[0].size();
-      const int64 num_batch_elements = batch_elements.size();
+      const int64_t num_batch_elements = batch_elements.size();
       for (size_t component_index = 0; component_index < num_tuple_components;
            ++component_index) {
         // 1. Determine the shape of the padded tensor.
@@ -299,7 +299,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
           }
         }
 
-        for (int64 i = 0; i < num_batch_elements; ++i) {
+        for (int64_t i = 0; i < num_batch_elements; ++i) {
           const TensorShape& element_shape =
               batch_elements[i][component_index].shape();
           // TODO(mrry): Perform this check in the shape function if
@@ -370,9 +370,9 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
           mutex status_mu;
           const auto num_threads = ctx->runner_threadpool_size();
           const auto slice_size = num_batch_elements / num_threads;
-          int64 offset = 0;
+          int64_t offset = 0;
           for (size_t i = 0; i < num_threads; ++i) {
-            int64 length = slice_size;
+            int64_t length = slice_size;
             // When the number of threads does not divide the number of elements
             // evenly, the size of some slices is incremented to guarantee their
             // sizes add up to the total number of elements.
@@ -405,7 +405,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
   };
 
-  const int64 batch_size_;
+  const int64_t batch_size_;
   const bool drop_remainder_;
   const bool parallel_copy_;
   const std::vector<PartialTensorShape> padded_shapes_;
@@ -426,8 +426,9 @@ PaddedBatchDatasetOp::PaddedBatchDatasetOp(OpKernelConstruction* ctx)
 
 void PaddedBatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                        DatasetBase** output) {
-  int64 batch_size;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kBatchSize, &batch_size));
+  int64_t batch_size;
+  OP_REQUIRES_OK(ctx,
+                 ParseScalarArgument<int64_t>(ctx, kBatchSize, &batch_size));
   OP_REQUIRES(ctx, batch_size > 0,
               errors::InvalidArgument("Batch size must be greater than zero."));
 
@@ -452,7 +453,7 @@ void PaddedBatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                 errors::InvalidArgument("All padded shapes must be vectors"));
     PartialTensorShape padded_shape;
     OP_REQUIRES_OK(ctx, PartialTensorShape::MakePartialShape(
-                            padded_shape_t.vec<int64>().data(),
+                            padded_shape_t.vec<int64_t>().data(),
                             padded_shape_t.NumElements(), &padded_shape));
     padded_shapes.push_back(std::move(padded_shape));
   }

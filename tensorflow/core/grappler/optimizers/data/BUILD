@@ -5,6 +5,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_protos_all")
 package(
     default_visibility = [
         "//tensorflow/core/data:__pkg__",
+        "//tensorflow/core/data/service:__pkg__",
         "//tensorflow/core/grappler/optimizers/data:__subpackages__",
         "//tensorflow/core/kernels/data:__pkg__",
         "//tensorflow/core/kernels/data/experimental:__pkg__",
@@ -46,6 +47,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core/kernels/data:shard_dataset_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/data:dataset_utils",
@@ -660,6 +662,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
     ],
 )

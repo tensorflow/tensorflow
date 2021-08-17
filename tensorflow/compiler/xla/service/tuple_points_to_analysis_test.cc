@@ -653,8 +653,8 @@ TEST_F(TuplePointsToAnalysisTest, CustomCall) {
       ShapeUtil::MakeTupleShape({data_shape, data_shape}), {constant},
       "TestOp"));
   Cast<HloCustomCallInstruction>(ccall)->set_output_to_operand_aliasing(
-      {std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>{
-          ShapeIndex{1}, std::pair<int64, ShapeIndex>(0, {})}});
+      {std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>{
+          ShapeIndex{1}, std::pair<int64_t, ShapeIndex>(0, {})}});
   auto gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(data_shape, ccall, 0));
   auto gte1 = builder.AddInstruction(
@@ -784,7 +784,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
 
   // Returns all users of 'fusion_paran' at 'tuple_index'.
   std::vector<HloInstruction*> GetFusionParameterUsersAt(
-      HloInstruction* fusion_param, int64 tuple_index) {
+      HloInstruction* fusion_param, int64_t tuple_index) {
     CHECK(fusion_param->shape().IsTuple());
     std::vector<HloInstruction*> users_at_tuple_index;
     for (auto user : fusion_param->users()) {
@@ -798,7 +798,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
 
   // Returns the unique user of 'fusion_param' at 'tuple_index'.
   HloInstruction* GetUniqueFusionParameterUserAt(HloInstruction* fusion_param,
-                                                 int64 tuple_index) {
+                                                 int64_t tuple_index) {
     std::vector<HloInstruction*> users =
         GetFusionParameterUsersAt(fusion_param, tuple_index);
     CHECK_EQ(1, users.size());
@@ -809,9 +809,9 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
   // 'index' match 'expected_num_users'.
   void ExpectNumUsersOfAliases(const HloInstruction* instruction,
                                const ShapeIndex& index,
-                               const int64 expected_num_users) {
+                               const int64_t expected_num_users) {
     const auto* buffer = GetBuffer(instruction, index);
-    int64 num_users = 0;
+    int64_t num_users = 0;
     for (const auto& alias : points_to_analysis_->GetBufferAliases(*buffer)) {
       for (auto user : alias.instruction()->users()) {
         if (user->opcode() == HloOpcode::kGetTupleElement && !index.empty()) {

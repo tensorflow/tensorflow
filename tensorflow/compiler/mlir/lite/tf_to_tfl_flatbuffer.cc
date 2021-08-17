@@ -29,11 +29,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
-#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -141,9 +140,8 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
-    mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
-    bool emit_select_tf_ops, bool emit_custom_ops, bool allow_all_select_tf_ops,
-    const std::unordered_set<std::string>& select_user_tf_ops,
+    mlir::ModuleOp module, bool export_to_mlir,
+    const toco::TocoFlags& toco_flags,
     const mlir::TFL::QuantizationSpecs& quant_specs,
     const std::unordered_set<std::string>& saved_model_tags,
     std::string* result, mlir::PassManager* pass_manager) {
@@ -165,25 +163,39 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
 
-  if (failed(IsValidGraph(module)) || failed(pass_manager->run(module))) {
+  if (failed(IsValidGraph(module))) {
     return statusHandler.ConsumeStatus();
+  }
+
+  if (failed(pass_manager->run(module))) {
+    auto status = statusHandler.ConsumeStatus();
+    mlir::TFL::ErrorCollector* collector =
+        mlir::TFL::ErrorCollector::GetErrorCollector();
+    for (const auto& error_data : collector->CollectedErrors()) {
+      if (error_data.subcomponent() == "FreezeGlobalTensorsPass") {
+        // LINT.IfChange
+        return errors::InvalidArgument(
+            "Variable constant folding is failed. Please consider using "
+            "enabling `experimental_enable_resource_variables` flag in the "
+            "TFLite converter object. For example, "
+            "converter.experimental_enable_resource_variables = True");
+        // LINT.ThenChange(//tensorflow/lite/python/lite_v2_test.py)
+      }
+    }
+    return status;
   }
 
   if (export_to_mlir) {
     llvm::raw_string_ostream os(*result);
     module.print(os);
-    return Status::OK();
+    return statusHandler.ConsumeStatus();
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   if (!quant_specs.RunWeightQuantization()) {
     tflite::FlatbufferExportOptions options;
-    options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
-    options.emit_select_tf_ops = emit_select_tf_ops;
-    options.select_user_tf_ops = select_user_tf_ops;
-    options.allow_all_select_tf_ops = allow_all_select_tf_ops;
-    options.emit_custom_ops = emit_custom_ops;
+    options.toco_flags = toco_flags;
     options.saved_model_tags = saved_model_tags;
     options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
     if (quant_specs.support_mask !=
@@ -199,11 +211,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     // we can remove this else statement.
     std::string pre_quantized_result;
     tflite::FlatbufferExportOptions options;
-    options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
-    options.emit_select_tf_ops = emit_select_tf_ops;
-    options.select_user_tf_ops = select_user_tf_ops;
-    options.allow_all_select_tf_ops = allow_all_select_tf_ops;
-    options.emit_custom_ops = emit_custom_ops;
+    options.toco_flags = toco_flags;
     options.saved_model_tags = saved_model_tags;
     options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
     if (quant_specs.support_mask !=
@@ -228,8 +236,10 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     } else {
       return errors::InvalidArgument("Quantized type not supported");
     }
-    if (::tflite::optimize::QuantizeWeights(&q_builder, input_model,
-                                            quantized_type) != kTfLiteOk) {
+    bool use_updated_hybrid_scheme = !quant_specs.disable_per_channel;
+    if (::tflite::optimize::QuantizeWeights(
+            &q_builder, input_model, quantized_type,
+            use_updated_hybrid_scheme) != kTfLiteOk) {
       return errors::InvalidArgument("Quantize weights transformation failed.");
     }
     const uint8_t* q_buffer = q_builder.GetBufferPointer();

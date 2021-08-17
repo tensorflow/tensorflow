@@ -36,7 +36,8 @@ Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
                  AbstractTensorHandle** y, const char* name = nullptr);
 
 Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
-             AbstractTensorHandle** output, const char* name = nullptr);
+             AbstractTensorHandle** output, DataType out_type = DT_INT32,
+             const char* name = nullptr);
 
 Status ExpandDims(AbstractContext* ctx, AbstractTensorHandle* const input,
                   AbstractTensorHandle* const dim,

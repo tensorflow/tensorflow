@@ -16,11 +16,11 @@ limitations under the License.
 
 #include <deque>
 
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/stats_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
@@ -62,8 +62,8 @@ constexpr char kErrorMessageSuffix[] = ".error_message";
 
 class PrefetchDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
-          int64 slack_period, bool legacy_autotune, int64 buffer_size_min)
+  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64_t buffer_size,
+          int64_t slack_period, bool legacy_autotune, int64_t buffer_size_min)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         buffer_size_(buffer_size),
@@ -93,7 +93,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64_t Cardinality() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -234,7 +234,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           /*ratio=*/1,
           {model::MakeParameter(kBufferSize, buffer_size_,
                                 /*min=*/buffer_size_min_,
-                                /*max=*/std::numeric_limits<int64>::max())});
+                                /*max=*/std::numeric_limits<int64_t>::max())});
     }
 
     Status SaveInternal(SerializationContext* ctx,
@@ -271,7 +271,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       size_t buffer_size;
       {
-        int64 temp;
+        int64_t temp;
         TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kBufferSize, &temp));
         buffer_size = static_cast<size_t>(temp);
       }
@@ -282,7 +282,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         if (buffer_element.status.ok()) {
           size_t value_size;
           {
-            int64 temp;
+            int64_t temp;
             TF_RETURN_IF_ERROR(
                 reader->ReadScalar(absl::StrCat(prefix(), "::", i),
                                    absl::StrCat(kBuffer, kSizeSuffix), &temp));
@@ -303,7 +303,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     data::TraceMeMetadata GetTraceMeMetadata() const override {
-      int64 limit = -1, size = -1;
+      int64_t limit = -1, size = -1;
       data::TraceMeMetadata result;
       // NOTE: We only set the parallelism value if the lock can be acquired
       // right away to avoid introducing tracing overhead.
@@ -352,11 +352,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       Status status;
       // The buffered data element.
       std::vector<Tensor> value;
-      int64 created_us;
+      int64_t created_us;
       const uint64 uid;
     };
 
-    int64 buffer_limit() const TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+    int64_t buffer_limit() const TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (legacy_autotune_) {
         return auto_tuner_.buffer_limit();
       }
@@ -391,7 +391,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       // (if we successfully got an element) the output values.
       Status s = buffer_.front().status;
       if (s.ok()) {
-        int64 buffer_element_id = buffer_.front().uid;
+        int64_t buffer_element_id = buffer_.front().uid;
         profiler::TraceMe traceme(
             [&] {
               return profiler::TraceMeEncode(
@@ -402,7 +402,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
             (num_elements() + 1) % dataset()->slack_period_ == 0) {
           // TODO(rachelim): Consider doing something more sophisticated
           // to decide how long to sleep for; e.g. using a kalman filter.
-          int64 slack_us = EnvTime::NowMicros() - buffer_.front().created_us;
+          int64_t slack_us = EnvTime::NowMicros() - buffer_.front().created_us;
           // Every slack_period_-th element, update the most recent slack time,
           // measured by the duration between when the element is prefetched
           // and when it is consumed. We add kSleepFactor * slack_us_ to the
@@ -520,7 +520,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
                        const Status& status) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(absl::StrCat(prefix(), "::", index), CodeKey(),
-                              static_cast<int64>(status.code())));
+                              static_cast<int64_t>(status.code())));
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(absl::StrCat(prefix(), "::", index),
@@ -531,7 +531,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     Status ReadStatus(IteratorStateReader* reader, size_t index, Status* status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-      int64 code_int;
+      int64_t code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(absl::StrCat(prefix(), "::", index),
                                             CodeKey(), &code_int));
       error::Code code = static_cast<error::Code>(code_int);
@@ -568,7 +568,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<CancellationManager> cancellation_manager_;
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(input_mu_);
     const std::shared_ptr<condition_variable> cond_var_;
-    const int64 buffer_size_min_;
+    const int64_t buffer_size_min_;
     PrefetchAutotuner auto_tuner_ TF_GUARDED_BY(*mu_);
     std::deque<BufferElement> buffer_ TF_GUARDED_BY(*mu_);
     std::unique_ptr<Thread> prefetch_thread_ TF_GUARDED_BY(*mu_);
@@ -576,7 +576,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     bool prefetch_thread_finished_ TF_GUARDED_BY(*mu_) = false;
     const bool legacy_autotune_;
 
-    std::atomic<int64> slack_us_;
+    std::atomic<int64_t> slack_us_;
 
     // If legacy_autotune_ is false, identifies the maximum size of the buffer.
     const std::shared_ptr<model::SharedState> buffer_size_;
@@ -585,18 +585,18 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     std::function<void()> deregister_fn_;
   };
   const DatasetBase* const input_;
-  const int64 buffer_size_;
+  const int64_t buffer_size_;
 
   // If non-zero, determines the period between injecting "slack" into the
   // execution.
-  const int64 slack_period_;
+  const int64_t slack_period_;
 
   // Determines whether legacy autotuning should be used.
   const bool legacy_autotune_ = true;
 
   // If autotune is enabled, determines the minimal value of `buffer_size`
   // parameter.
-  const int64 buffer_size_min_ = 0;
+  const int64_t buffer_size_min_ = 0;
 
   TraceMeMetadata traceme_metadata_;
 };
@@ -616,9 +616,9 @@ PrefetchDatasetOp::PrefetchDatasetOp(OpKernelConstruction* ctx)
 
 void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                     DatasetBase** output) {
-  int64 buffer_size = 0;
+  int64_t buffer_size = 0;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
+                 ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(ctx, buffer_size >= 0 || buffer_size == model::kAutotune,
               errors::InvalidArgument("buffer_size must be >= 0 or set "
                                       "buffer_size to be ",

@@ -54,7 +54,7 @@ class IrFunction {
  public:
   IrFunction(const string& function_name, llvm::Function::LinkageTypes linkage,
              const HloModuleConfig& module_config, llvm::Module* llvm_module,
-             llvm::IRBuilder<>* b, int64 num_dynamic_loop_bounds);
+             llvm::IRBuilder<>* b, int64_t num_dynamic_loop_bounds);
   ~IrFunction();
 
   // Emit ir to read and return the set of ir values representing the dynamic
@@ -96,13 +96,13 @@ class IrFunction {
 
   // Emit ir to read and return the ir value for the dynamic loop bound at
   // 'offset' from the "dynamic_loop_bounds" argument of this function.
-  llvm::Value* GetDynamicLoopBound(int64 offset);
+  llvm::Value* GetDynamicLoopBound(int64_t offset);
 
   llvm::IRBuilder<>* b_;
   llvm::Module* llvm_module_;
   llvm::IRBuilder<>::InsertPointGuard caller_insert_point_guard_;
 
-  int64 num_dynamic_loop_bounds_ = 0;
+  int64_t num_dynamic_loop_bounds_ = 0;
   // Encapsulated llvm::Function.
   llvm::Function* function_;
   // Function argument IR values.
@@ -131,8 +131,9 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
 // calls to 'parallel_function' (and joins threads before returning).
 Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
-    const std::vector<int64>& dimension_partition_counts, llvm::IRBuilder<>* b,
-    llvm::Function* parallel_function, const string& name);
+    const std::vector<int64_t>& dimension_partition_counts,
+    llvm::IRBuilder<>* b, llvm::Function* parallel_function,
+    const string& name);
 
 }  // namespace cpu
 }  // namespace xla

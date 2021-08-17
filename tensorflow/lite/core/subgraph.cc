@@ -24,11 +24,11 @@ limitations under the License.
 #include <cstring>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/arena_planner.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
@@ -43,6 +43,11 @@ limitations under the License.
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
+#ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
+#include "tensorflow/lite/simple_planner.h"
+#else
+#include "tensorflow/lite/arena_planner.h"
+#endif
 
 namespace tflite {
 
@@ -99,11 +104,15 @@ void SetForbiddenContextFunction(FunctionType* func) {
 // Returns true if at least one tensor in the given list is kTfLiteDynamic.
 template <typename TensorIntArray>
 bool HasDynamicTensorImpl(const TfLiteContext& context,
-                          const TensorIntArray& int_array) {
+                          const TensorIntArray& int_array,
+                          int* dynamic_tensor_index) {
   for (int i : int_array) {
     if (i == kTfLiteOptionalTensor) continue;
     const TfLiteTensor& tensor = context.tensors[i];
     if (tensor.allocation_type == kTfLiteDynamic) {
+      if (dynamic_tensor_index) {
+        *dynamic_tensor_index = i;
+      }
       return true;
     }
   }
@@ -111,8 +120,10 @@ bool HasDynamicTensorImpl(const TfLiteContext& context,
 }
 
 bool HasDynamicTensor(const TfLiteContext& context,
-                      const TfLiteIntArray* int_array) {
-  return HasDynamicTensorImpl(context, TfLiteIntArrayView{int_array});
+                      const TfLiteIntArray* int_array,
+                      int* dynamic_tensor_index) {
+  return HasDynamicTensorImpl(context, TfLiteIntArrayView{int_array},
+                              dynamic_tensor_index);
 }
 
 // Gets the legacy TfLiteQuantizationParams from the current TfLiteQuantization.
@@ -200,15 +211,16 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
                    TfLiteExternalContext** external_contexts,
                    std::vector<std::unique_ptr<Subgraph>>* subgraphs,
                    resource::ResourceMap* resources,
-                   resource::ResourceIDMap* resource_ids)
+                   resource::ResourceIDMap* resource_ids,
+                   resource::InitializationStatusMap* initialization_status_map)
     : external_contexts_(external_contexts),
       error_reporter_(error_reporter),
       next_execution_plan_index_to_prepare_(0),
       next_execution_plan_index_to_plan_allocation_(0),
       subgraphs_(subgraphs),
       resources_(resources),
-      resource_ids_(resource_ids) {
-  // TODO(b/161272052): Consider a better TfLiteContext initialization pattern:
+      resource_ids_(resource_ids),
+      initialization_status_map_(initialization_status_map) {
   context_.impl_ = static_cast<void*>(this);
   context_.ResizeTensor = ResizeTensor;
   context_.ReportError = ReportErrorC;
@@ -222,6 +234,7 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
   context_.profiler = nullptr;
   context_.GetTensor = nullptr;
   context_.GetEvalTensor = nullptr;
+  context_.GetModelMetadata = GetModelMetadata;
 
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kTensorsReservedCapacity);
@@ -499,6 +512,30 @@ void Subgraph::FreeDelegatePartitioningData() {
   partitioning_preview_cache_.clear();
 }
 
+TfLiteStatus Subgraph::GetModelMetadata(const char* name, const char** ptr,
+                                        size_t* bytes) {
+  TF_LITE_ENSURE(&context_, ptr != nullptr);
+  TF_LITE_ENSURE(&context_, bytes != nullptr);
+  *ptr = nullptr;
+  *bytes = 0;
+  if (!metadata_) return kTfLiteError;
+  const std::string name_str = name;
+  auto itr = metadata_->find(name_str);
+  if (itr != metadata_->end()) {
+    *ptr = itr->second.c_str();
+    *bytes = itr->second.size();
+    return kTfLiteOk;
+  }
+  return kTfLiteError;
+}
+
+TfLiteStatus Subgraph::GetModelMetadata(const struct TfLiteContext* context,
+                                        const char* name, const char** ptr,
+                                        size_t* bytes) {
+  return static_cast<Subgraph*>(context->impl_)
+      ->GetModelMetadata(name, ptr, bytes);
+}
+
 TfLiteStatus Subgraph::PreviewDelegatePartitioning(
     const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegateParams** partition_params_array, int* num_partitions) {
@@ -559,6 +596,12 @@ TfLiteStatus Subgraph::SetVariables(std::vector<int> variables) {
   TF_LITE_ENSURE_OK(&context_, CheckTensorIndices("variables", variables.data(),
                                                   variables.size()));
   variables_ = std::move(variables);
+  return kTfLiteOk;
+}
+
+TfLiteStatus Subgraph::SetMetadata(
+    const std::map<std::string, std::string>* metadata) {
+  metadata_ = metadata;
   return kTfLiteOk;
 }
 
@@ -653,6 +696,8 @@ TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
 TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
                                      size_t dims_size, size_t* bytes) {
   TF_LITE_ENSURE(&context_, bytes != nullptr);
+  // When 'dims_size' is 0, we simply assume it's a scalar. Therefore, we start
+  // 'count' as 1.
   size_t count = 1;
   for (int k = 0; k < dims_size; k++) {
     size_t old_count = count;
@@ -683,7 +728,7 @@ TfLiteStatus Subgraph::AllocateTensors() {
   // have been resized. For inputs marked as dynamic, we can't short-circuit the
   // allocation as the client may have done the resize manually.
   if (state_ != kStateUninvokable &&
-      !HasDynamicTensorImpl(context_, inputs())) {
+      !HasDynamicTensorImpl(context_, inputs(), &dynamic_tensor_index_)) {
     if (memory_planner_ && !memory_planner_->HasNonPersistentMemory()) {
       // If the only change was the release of non-persistent memory via
       // ReleaseNonPersistentMemory(), just re-allocate it. For any other type
@@ -912,11 +957,17 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
     if (IsUnresolvedCustomOp(op_reg)) {
       if (IsFlexOp(op_reg.custom_name)) {
         ReportError(
-            "Regular TensorFlow ops are not supported by this interpreter. "
-            "Make sure you apply/link the Flex delegate before inference.");
+            "Select TensorFlow op(s), included in the given model, is(are) not "
+            "supported by this interpreter. Make sure you apply/link the Flex "
+            "delegate before inference. For the Android, it can be resolved by "
+            "adding \"org.tensorflow:tensorflow-lite-select-tf-ops\" "
+            "dependency. See instructions: "
+            "https://www.tensorflow.org/lite/guide/ops_select");
       } else {
-        ReportError("Encountered unresolved custom op: %s.",
-                    op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
+        ReportError(
+            "Encountered unresolved custom op: %s.\nSee instructions: "
+            "https://www.tensorflow.org/lite/guide/ops_custom",
+            op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
       }
       return kTfLiteError;
     }
@@ -933,7 +984,8 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     // Forwarding inputs without modification won't be not evaluated in the
     // operators. So, it needs to look up the subgraph's output tensors at the
     // beginning.
-    has_dynamic_tensors_ = HasDynamicTensorImpl(context_, outputs());
+    has_dynamic_tensors_ =
+        HasDynamicTensorImpl(context_, outputs(), &dynamic_tensor_index_);
   }
   for (int execution_plan_index = first_execution_plan_index;
        execution_plan_index < execution_plan.size(); execution_plan_index++) {
@@ -952,7 +1004,7 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     // Discontinue if the node has dynamic outputs. Note that we don't
     // stop for dynamic temporary tensors since they won't affect the
     // sizes of other tensors in the graph.
-    if (HasDynamicTensor(context_, node.outputs)) {
+    if (HasDynamicTensor(context_, node.outputs, &dynamic_tensor_index_)) {
       has_dynamic_tensors_ = true;
       return kTfLiteOk;
     }
@@ -962,9 +1014,13 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
 
 TfLiteStatus Subgraph::PrepareOpsAndTensors() {
   if (!memory_planner_) {
-    memory_planner_.reset(new ArenaPlanner(
-        &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this)),
-        preserve_all_tensors_, kDefaultTensorAlignment));
+#ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
+    memory_planner_.reset(new SimplePlanner(&context_, CreateGraphInfo()));
+#else
+    memory_planner_.reset(new ArenaPlanner(&context_, CreateGraphInfo(),
+                                           preserve_all_tensors_,
+                                           kDefaultTensorAlignment));
+#endif
     memory_planner_->PlanAllocations();
   }
 
@@ -1109,7 +1165,7 @@ TfLiteStatus Subgraph::Invoke() {
     // Force execution prep for downstream ops if the latest op triggered the
     // resize of a dynamic tensor.
     if (tensor_resized_since_op_invoke_ &&
-        HasDynamicTensor(context_, node.outputs)) {
+        HasDynamicTensor(context_, node.outputs, nullptr)) {
       next_execution_plan_index_to_prepare_ = execution_plan_index + 1;
 
       // This happens when an intermediate dynamic tensor is resized.
@@ -1272,8 +1328,6 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
                       GetLegacyQuantization(quantization),
                       const_cast<char*>(buffer), bytes, kTfLiteMmapRo,
                       allocation, false, &tensor);
-    // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
-    // if there are other required callers.
     tensor.quantization = *scoped_quantization.release();
     tensor.sparsity = scoped_sparsity.release();
   }
@@ -1326,8 +1380,6 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
                     GetLegacyQuantization(quantization),
                     /*buffer=*/nullptr, required_bytes, allocation_type,
                     nullptr, is_variable, &tensor);
-  // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
-  // if there are other required callers.
   tensor.quantization = *scoped_quantization.release();
   tensor.dims_signature =
       ConvertArrayToTfLiteIntArray(rank_dims_signature, dims_signature);
@@ -1589,7 +1641,9 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
       TF_LITE_ENSURE_STATUS(EnsureMemoryAllocations());
       ReportError(
           "Attempting to use a delegate that only supports static-sized "
-          "tensors with a graph that has dynamic-sized tensors.");
+          "tensors with a graph that has dynamic-sized tensors (tensor#%d is a "
+          "dynamic-sized tensor).",
+          dynamic_tensor_index_);
       return kTfLiteApplicationError;
     }
   }
@@ -1597,8 +1651,6 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   if (delegates_applied_.empty()) {
     // This is the first delegate being applied, so remember original execution
     // plan.
-    // TODO(b/119623453): Restore execution plan to this state if delegate
-    // application fails.
     pre_delegation_execution_plan_ = execution_plan_;
   }
 
@@ -1699,6 +1751,11 @@ void Subgraph::SetName(const char* name) {
 
 const std::string& Subgraph::GetName() const { return name_; }
 
+void Subgraph::DumpMemoryPlannerDebugInfo() const {
+  if (memory_planner_ == nullptr) return;
+  memory_planner_->DumpDebugInfo(execution_plan());
+}
+
 TfLiteStatus Subgraph::PreserveAllTensorsExperimental() {
   if (memory_planner_) {
     ReportError(
@@ -1707,6 +1764,10 @@ TfLiteStatus Subgraph::PreserveAllTensorsExperimental() {
   }
   preserve_all_tensors_ = true;
   return kTfLiteOk;
+}
+
+std::unique_ptr<GraphInfo> Subgraph::CreateGraphInfo() {
+  return std::unique_ptr<GraphInfo>(new InterpreterInfo(this));
 }
 
 }  // namespace tflite

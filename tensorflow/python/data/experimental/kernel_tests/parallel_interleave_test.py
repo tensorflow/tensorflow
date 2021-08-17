@@ -30,6 +30,7 @@ from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -758,8 +759,8 @@ class ParallelInterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
           interleave_ops.parallel_interleave(
               interleave_fn, cycle_length=10, sloppy=sloppy))
 
-      opts = dataset_ops.Options()
-      opts.experimental_deterministic = global_determinism
+      opts = options_lib.Options()
+      opts.deterministic = global_determinism
       dataset = dataset.with_options(opts)
       return dataset
 

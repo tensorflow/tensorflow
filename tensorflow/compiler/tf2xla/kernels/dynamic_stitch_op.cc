@@ -77,7 +77,7 @@ class DynamicStitchOp : public XlaOpKernel {
         // This happens when data shape is a dynamic shape with bound with
         // indices_shape is a concrete shape. We use slice to reconcile the
         // mismatch.
-        for (int64 i = 0; i < indices_shape.dims(); ++i) {
+        for (int64_t i = 0; i < indices_shape.dims(); ++i) {
           data_shape.set_dim(i, indices_shape.dim_size(i));
           data[input_num] = xla::SliceInDim(data[input_num], 0,
                                             indices_shape.dim_size(i), 1, i);
@@ -123,9 +123,9 @@ class DynamicStitchOp : public XlaOpKernel {
       }
     }
     int number_of_indices = max_index + 1;
-    int64 result_rank = 1 + data0_shape.dims() - indices0_shape.dims();
+    int64_t result_rank = 1 + data0_shape.dims() - indices0_shape.dims();
     if (number_of_indices == 0) {
-      std::vector<int64> result_shape(result_rank);
+      std::vector<int64_t> result_shape(result_rank);
       for (int d = indices0_shape.dims(); d < data0_shape.dims(); d++) {
         result_shape[d - indices0_shape.dims() + 1] = data0_shape.dim_size(d);
       }
@@ -179,9 +179,9 @@ class DynamicStitchOp : public XlaOpKernel {
 
     // Set up the vectors for slicing: the first dimension will vary
     // slice by slice, and the rest take the full common extra shape.
-    std::vector<int64> slice_start(result_rank);
-    std::vector<int64> slice_limit(result_rank);
-    std::vector<int64> stride(result_rank, 1);
+    std::vector<int64_t> slice_start(result_rank);
+    std::vector<int64_t> slice_limit(result_rank);
+    std::vector<int64_t> stride(result_rank, 1);
     for (int d = indices0_shape.dims(); d < data0_shape.dims(); d++) {
       slice_limit[1 + d - indices0_shape.dims()] = data0_shape.dim_size(d);
     }

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Gradients for operators defined in sparse_ops.py."""
 from __future__ import absolute_import
 from __future__ import division
@@ -25,7 +24,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
-
 
 # TODO(b/31222613): This op may be differentiable, and there may be
 # latent bugs here.
@@ -52,14 +50,13 @@ def _SparseReorderGrad(op, unused_output_indices_grad, output_values_grad):
 
   num_entries = array_ops.shape(input_indices)[0]
   entry_indices = math_ops.range(num_entries)
-  sp_unordered = sparse_tensor.SparseTensor(
-      input_indices, entry_indices, input_shape)
+  sp_unordered = sparse_tensor.SparseTensor(input_indices, entry_indices,
+                                            input_shape)
   sp_ordered = sparse_ops.sparse_reorder(sp_unordered)
   inverted_permutation = array_ops.invert_permutation(sp_ordered.values)
 
-  return (None,
-          array_ops.gather(output_values_grad, inverted_permutation),
-          None)
+  return (None, array_ops.gather(output_values_grad,
+                                 inverted_permutation), None)
 
 
 @ops.RegisterGradient("SparseAdd")
@@ -112,8 +109,8 @@ def _SparseReduceSumGrad(op, out_grad):
   out_grad_reshaped = array_ops.reshape(out_grad, output_shape_kept_dims)
   scale = sp_shape // math_ops.cast(output_shape_kept_dims, dtypes.int64)
   # (sparse_indices, sparse_values, sparse_shape, reduction_axes)
-  return (None, array_ops.gather_nd(out_grad_reshaped, sp_indices // scale),
-          None, None)
+  return (None, array_ops.gather_nd(out_grad_reshaped,
+                                    sp_indices // scale), None, None)
 
 
 @ops.RegisterGradient("SparseSlice")
@@ -138,8 +135,8 @@ def _SparseSliceGrad(op, *grads):
   input_start = op.inputs[3]
   output_indices = op.outputs[0]
 
-  val_grad = gen_sparse_ops.sparse_slice_grad(
-      backprop_val_grad, input_indices, input_start, output_indices)
+  val_grad = gen_sparse_ops.sparse_slice_grad(backprop_val_grad, input_indices,
+                                              input_start, output_indices)
   val_grad.set_shape(op.inputs[1].get_shape())
   # (indices, values, shape, start, size)
   return (None, val_grad, None, None, None)
@@ -169,8 +166,9 @@ def _SparseTensorDenseMatMulGrad(op, grad):
   a_type = a_values.dtype.base_dtype
   b_type = b.dtype.base_dtype
   if a_type != b_type:
-    raise TypeError("SparseTensorDenseMatMul op received operands with "
-                    "different types: ", a_type, " and ", b_type)
+    raise TypeError(
+        f"SparseTensorDenseMatMul op received operands with different types: "
+        f"`{a_type}` and `{b_type}`.")
 
   # gradient w.r.t. dense
   b_grad = gen_sparse_ops.sparse_tensor_dense_mat_mul(
@@ -201,8 +199,8 @@ def _SparseTensorDenseMatMulGrad(op, grad):
   rows = a_indices[:, 0]
   cols = a_indices[:, 1]
   parts_a = array_ops.gather(grad, rows if not adj_a else cols)
-  parts_b = array_ops.gather(b if not adj_b else array_ops.transpose(b),
-                             cols if not adj_a else rows)
+  parts_b = array_ops.gather(
+      b if not adj_b else array_ops.transpose(b), cols if not adj_a else rows)
 
   if not adj_a and not adj_b:
     # grad[r, :] * conj(b[c, :]) = row(grad[r, :]) @ adjoint(row(b[c, :]))
@@ -236,8 +234,8 @@ def _SparseTensorDenseMatMulGrad(op, grad):
 
 @ops.RegisterGradient("SparseDenseCwiseAdd")
 def _SparseDenseCwiseAddGrad(unused_op, unused_grad):
-  raise NotImplementedError("Gradient for SparseDenseCwiseAdd is currently not"
-                            " implemented yet.")
+  raise NotImplementedError(
+      "Gradient for SparseDenseCwiseAdd is not implemented.")
 
 
 def _SparseDenseCwiseMulOrDivGrad(op, grad, is_mul):
@@ -307,8 +305,9 @@ def _SparseSoftmaxGrad(op, grad):
   out_vals = op.outputs[0]
   sp_output = sparse_tensor.SparseTensor(indices, out_vals, shape)
   sp_grad = sparse_tensor.SparseTensor(indices, grad, shape)
-  sp_product = sparse_tensor.SparseTensor(
-      indices, sp_output.values * sp_grad.values, shape)
+  sp_product = sparse_tensor.SparseTensor(indices,
+                                          sp_output.values * sp_grad.values,
+                                          shape)
 
   # [..., B, 1], dense.
   sum_reduced = -sparse_ops.sparse_reduce_sum(sp_product, [-1], keepdims=True)
@@ -321,14 +320,14 @@ def _SparseSoftmaxGrad(op, grad):
 
 @ops.RegisterGradient("SparseSparseMaximum")
 def _SparseSparseMaximumGrad(unused_op, unused_grad):
-  raise NotImplementedError("Gradient for SparseSparseMaximum is currently not"
-                            " implemented yet.")
+  raise NotImplementedError(
+      "Gradient for SparseSparseMaximum is not implemented.")
 
 
 @ops.RegisterGradient("SparseSparseMinimum")
 def _SparseSparseMinimumGrad(unused_op, unused_grad):
-  raise NotImplementedError("Gradient for SparseSparseMinimum is currently not"
-                            " implemented yet.")
+  raise NotImplementedError(
+      "Gradient for SparseSparseMinimum is not implemented.")
 
 
 @ops.RegisterGradient("SparseFillEmptyRows")

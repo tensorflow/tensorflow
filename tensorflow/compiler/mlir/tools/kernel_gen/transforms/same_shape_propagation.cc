@@ -290,11 +290,10 @@ class ShapeEqualityKnowledge {
             if (val.isConstant()) return false;
             auto dimOp = val.value().getDefiningOp<memref::DimOp>();
             if (!dimOp) return false;
-            if (!candidate) candidate = dimOp.memrefOrTensor();
+            if (!candidate) candidate = dimOp.source();
             auto index = dimOp.getConstantIndex();
             if (!index.hasValue()) return false;
-            return candidate == dimOp.memrefOrTensor() &&
-                   p.index() == index.getValue();
+            return candidate == dimOp.source() && p.index() == index.getValue();
           });
       if (all_are_dimops && candidate) {
         equal_shapes_.unionSets(candidate.getAsOpaquePointer(),

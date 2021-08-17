@@ -51,7 +51,7 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
 
   std::vector<ClientAndPtr<PjRtDevice>> AddressableDevices() const;
 
-  int64 SizeOfGeneratedCodeInBytes() const {
+  int64_t SizeOfGeneratedCodeInBytes() const {
     return executable_->SizeOfGeneratedCodeInBytes();
   }
 

@@ -22,10 +22,13 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/shim/test_util.h"
+#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace shim {
 namespace {
+
+using ::testing::Eq;
 
 TEST(TfLiteTensorW, Bool) {
   ::tflite::Interpreter interpreter;
@@ -45,7 +48,7 @@ TEST(TfLiteTensorW, Bool) {
   for (int32_t i = 0; i < 3 * 2; ++i) data[i] = (i % 5 == 0);
 
   ASSERT_THAT(TfliteTensorDebugString(tflite_tensor),
-              ::testing::Eq("[[1, 0], [0, 0], [0, 1]]"));
+              Eq("[[1, 0], [0, 0], [0, 1]]"));
 }
 
 template <typename IntType>
@@ -67,7 +70,7 @@ void IntTest() {
   for (int32_t i = 0; i < 3 * 2; ++i) data[i] = i;
 
   ASSERT_THAT(TfliteTensorDebugString(tflite_tensor),
-              ::testing::Eq("[[0, 1], [2, 3], [4, 5]]"));
+              Eq("[[0, 1], [2, 3], [4, 5]]"));
 }
 
 TEST(TfLiteTensorW, Int8) { IntTest<int8_t>(); }
@@ -94,7 +97,7 @@ void FloatTest() {
   for (int32_t i = 0; i < 3 * 2; ++i) data[i] = static_cast<FloatType>(i) / 2.;
 
   ASSERT_THAT(TfliteTensorDebugString(tflite_tensor),
-              ::testing::Eq("[[0, 0.5], [1, 1.5], [2, 2.5]]"));
+              Eq("[[0, 0.5], [1, 1.5], [2, 2.5]]"));
 }
 
 TEST(TfLiteTensorW, Float) { FloatTest<float>(); }
@@ -140,7 +143,25 @@ TEST(TfLiteTensorW, Str) {
   }
 
   EXPECT_THAT(TfliteTensorDebugString(tflite_tensor),
-              ::testing::Eq("[[a, bc], [def, g], [, hi]]"));
+              Eq("[[a, bc], [def, g], [, hi]]"));
+}
+
+TEST(TfLiteTensorW, EmptyStr) {
+  ::tflite::Interpreter interpreter;
+  interpreter.AddTensors(1);
+  interpreter.AllocateTensors();
+  auto* tflite_tensor = interpreter.tensor(0);
+  ReallocDynamicTensor<std::string>(/*shape=*/{0}, tflite_tensor);
+  tflite_tensor->name = "test_str";
+  auto owned_tflite_tensor = UniqueTfLiteTensor(tflite_tensor);
+
+  // Placing tensor_view instance in a block to ensure its dtor runs
+  {
+    auto t_or = TensorView::New(tflite_tensor);
+    ASSERT_TRUE(t_or.ok()) << t_or.status();
+  }
+
+  EXPECT_THAT(GetStringCount(tflite_tensor), Eq(0));
 }
 
 }  // namespace

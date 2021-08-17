@@ -439,6 +439,50 @@ void SubgraphBuilder::BuildCallOnceAndReadVariableSubgraph(Subgraph* subgraph) {
       ::tflite::ops::builtin::Register_READ_VARIABLE(), &node_index);
 }
 
+void SubgraphBuilder::BuildCallOnceAndReadVariablePlusOneSubgraph(
+    Subgraph* subgraph) {
+  const int kConstResourceId = 0;
+  const int kConstOne = 1;
+  const int kReadVariableResult = 2;
+  const int kOutput = 3;
+  const int kTensorCount = 4;
+
+  // Construct a graph like ths:
+  //   Output: %3
+  //   %2 = read_variable(%0)
+  //   %3 = add(%2, %1)
+
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(subgraph->SetInputs({}), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kOutput}), kTfLiteOk);
+
+  SetupTensor(subgraph, kReadVariableResult, kTfLiteInt32);
+  SetupTensor(subgraph, kOutput, kTfLiteInt32);
+  CreateConstantInt32Tensor(subgraph, kConstResourceId, {1}, {1024});
+  CreateConstantInt32Tensor(subgraph, kConstOne, {1}, {1});
+
+  TfLiteCallOnceParams* params = reinterpret_cast<TfLiteCallOnceParams*>(
+      malloc(sizeof(TfLiteCallOnceParams)));
+  params->init_subgraph_index = 1;
+
+  int node_index;
+  subgraph->AddNodeWithParameters({}, {}, {}, nullptr, 0, params,
+                                  ::tflite::ops::builtin::Register_CALL_ONCE(),
+                                  &node_index);
+  subgraph->AddNodeWithParameters(
+      {kConstResourceId}, {kReadVariableResult}, {}, nullptr, 0, nullptr,
+      ::tflite::ops::builtin::Register_READ_VARIABLE(), &node_index);
+
+  TfLiteAddParams* add_params =
+      reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+  add_params->activation = kTfLiteActNone;
+  subgraph->AddNodeWithParameters(
+      {kReadVariableResult, kConstOne}, {kOutput}, {}, nullptr, 0, add_params,
+      ::tflite::ops::builtin::Register_ADD(), &node_index);
+}
+
 void SubgraphBuilder::BuildLessEqualCondSubgraphWithDynamicTensor(
     Subgraph* subgraph, int rhs) {
   const int kStringInput1 = 0;

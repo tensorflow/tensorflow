@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/match.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
@@ -299,7 +300,16 @@ void DepthwiseConv3x3::GetPossibleKernelWorkGroups(
   }
 }
 
-bool IsDepthwiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr) {
+bool IsDepthwiseConv3x3Supported(const GpuInfo& gpu_info,
+                                 const DepthwiseConvolution2DAttributes& attr) {
+  if (gpu_info.IsApiOpenCl() && gpu_info.IsAdreno()) {
+    const std::string kBadDriver =
+        "OpenCL 2.0 QUALCOMM build: commit #7daed58 changeid #I7ece6fe30d "
+        "Date: 10/19/16";
+    if (absl::StrContains(gpu_info.opencl_info.platform_version, kBadDriver)) {
+      return false;
+    }
+  }
   return attr.weights.shape.o == 1 && attr.dilations.w == 1 &&
          attr.dilations.h == 1 && attr.weights.shape.w == 3 &&
          attr.weights.shape.h == 3 && attr.strides.w == 1 &&

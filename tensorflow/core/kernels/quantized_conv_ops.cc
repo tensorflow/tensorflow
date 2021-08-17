@@ -62,15 +62,15 @@ class ReferenceConvFunctor {
                   int output_shift, int output_offset, int output_mult) {
     // Set up some constants we need for the output down-shifting and
     // saturation.
-    const int32 highest = static_cast<int32>(Eigen::NumTraits<T3>::highest());
-    const int32 lowest = static_cast<int32>(Eigen::NumTraits<T3>::lowest());
+    const int32_t highest = static_cast<int32>(Eigen::NumTraits<T3>::highest());
+    const int32_t lowest = static_cast<int32>(Eigen::NumTraits<T3>::lowest());
 
     // When we're converting the 32 bit accumulator to a lower bit depth, we
     // need to add on 0.5 in fixed-point terms to make the operation round half
     // up towards positive infinity, rather than a floor.
     // We also need to watch out for the case when there's no down shift,
     // because a left shift by a negative number gives undefined results.
-    const int32 rounding = (output_shift < 1) ? 0 : (1 << (output_shift - 1));
+    const int32_t rounding = (output_shift < 1) ? 0 : (1 << (output_shift - 1));
 
     // The two different padding modes we support can be a bit confusing. SAME
     // means we're trying to produce an output image that's the same size as the
@@ -130,14 +130,14 @@ class ReferenceConvFunctor {
             */
             const int in_x_origin = (out_x * stride) - filter_left_offset;
             const int in_y_origin = (out_y * stride) - filter_top_offset;
-            int32 total = 0;
+            int32_t total = 0;
             for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
               for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
                 for (int in_channel = 0; in_channel < input_depth;
                      ++in_channel) {
                   const int in_x = in_x_origin + filter_x;
                   const int in_y = in_y_origin + filter_y;
-                  int32 input_value;
+                  int32_t input_value;
                   // If the location is outside the bounds of the input image,
                   // use zero as a default value.
                   if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
@@ -160,7 +160,7 @@ class ReferenceConvFunctor {
                                   (filter_x * input_depth * filter_count) +
                                   (in_channel * filter_count) + out_channel];
                   // Another promotion to 32 bit, as above.
-                  const int32 filter_value =
+                  const int32_t filter_value =
                       static_cast<int32>(filter_source_value) - filter_offset;
                   total += (input_value * filter_value);
                 }
@@ -173,8 +173,8 @@ class ReferenceConvFunctor {
                  output_shift);
             // We need to saturate the results against the largest and smallest
             // values that can be represented in this type.
-            const int32 top_clamped_output = std::min(output, highest);
-            const int32 clamped_output = std::max(top_clamped_output, lowest);
+            const int32_t top_clamped_output = std::min(output, highest);
+            const int32_t clamped_output = std::max(top_clamped_output, lowest);
             output_data[(batch * output_height * output_width * filter_count) +
                         (out_y * output_width * filter_count) +
                         (out_x * filter_count) + out_channel] = clamped_output;
@@ -264,9 +264,9 @@ class Im2ColConvFunctor {
     OP_REQUIRES(context, filter_value_count > 0,
                 errors::InvalidArgument(
                     "filter patch must contain at least one element"));
-    const int64 patches_per_chunk =
+    const int64_t patches_per_chunk =
         kMaxChunkSize / (filter_value_count * sizeof(T1));
-    const int64 chunk_value_count =
+    const int64_t chunk_value_count =
         (kMaxChunkSize + (sizeof(T1) - 1)) / sizeof(T1);
     // TODO(petewarden) - Memory allocation can be very slow on Android. Can we
     // optimize this by keeping the scratch buffer around?
@@ -298,19 +298,19 @@ class Im2ColConvFunctor {
     core::ScopedUnref unref_buffer(im2col_buffer_resource);
     T1* im2col_buffer = im2col_buffer_resource->data;
 
-    const int64 patch_count = (input_batches * output_height * output_width);
-    const int64 chunk_count =
+    const int64_t patch_count = (input_batches * output_height * output_width);
+    const int64_t chunk_count =
         (patch_count + (patches_per_chunk - 1)) / patches_per_chunk;
 
-    for (int64 chunk_index = 0; chunk_index < chunk_count; ++chunk_index) {
-      const int64 patch_index_start = chunk_index * patches_per_chunk;
-      const int64 patch_index_end =
+    for (int64_t chunk_index = 0; chunk_index < chunk_count; ++chunk_index) {
+      const int64_t patch_index_start = chunk_index * patches_per_chunk;
+      const int64_t patch_index_end =
           std::min(patch_index_start + patches_per_chunk, patch_count);
-      for (int64 patch_index = patch_index_start; patch_index < patch_index_end;
-           ++patch_index) {
-        const int64 batch = patch_index / (output_height * output_width);
-        const int64 out_y = (patch_index / output_width) % output_height;
-        const int64 out_x = patch_index % output_width;
+      for (int64_t patch_index = patch_index_start;
+           patch_index < patch_index_end; ++patch_index) {
+        const int64_t batch = patch_index / (output_height * output_width);
+        const int64_t out_y = (patch_index / output_width) % output_height;
+        const int64_t out_x = patch_index % output_width;
         const T1* input_batch_start =
             input_data + (batch * input_height * input_width * input_depth);
         const int in_y_origin = (out_y * stride) - filter_top_offset;
@@ -509,44 +509,44 @@ class QuantizedConv2DOp : public OpKernel {
     const float max_input = context->input(3).flat<float>()(0);
     const float min_filter = context->input(4).flat<float>()(0);
     const float max_filter = context->input(5).flat<float>()(0);
-    const int32 offset_input =
+    const int32_t offset_input =
         FloatToQuantizedUnclamped<T1>(0.0f, min_input, max_input);
-    const int32 offset_filter =
+    const int32_t offset_filter =
         FloatToQuantizedUnclamped<T2>(0.0f, min_filter, max_filter);
-    const int32 offset_output = 0;
-    const int32 mult_output = 1;
-    const int32 shift_output = 0;
+    const int32_t offset_output = 0;
+    const int32_t mult_output = 1;
+    const int32_t shift_output = 0;
 
     // The last dimension for input is in_depth. It must be the same as the
     // filter's in_depth.
-    const int64 in_depth = input.dim_size(3);
+    const int64_t in_depth = input.dim_size(3);
     OP_REQUIRES(context, in_depth == filter.dim_size(2),
                 errors::InvalidArgument(
                     "input and filter must have the same depth: ", in_depth,
                     " vs ", filter.dim_size(2)));
 
     // The last dimension for filter is out_depth.
-    const int64 out_depth = filter.dim_size(3);
+    const int64_t out_depth = filter.dim_size(3);
 
     // The second dimension for input is rows/height.
     // The first dimension for filter is rows/height.
-    const int64 input_rows = input.dim_size(1);
-    const int64 filter_rows = filter.dim_size(0);
+    const int64_t input_rows = input.dim_size(1);
+    const int64_t filter_rows = filter.dim_size(0);
 
     // The third dimension for input is columns/width.
     // The second dimension for filter is columns/width.
-    const int64 input_cols = input.dim_size(2);
-    const int64 filter_cols = filter.dim_size(1);
+    const int64_t input_cols = input.dim_size(2);
+    const int64_t filter_cols = filter.dim_size(1);
 
     // The first dimension for input is batch.
-    const int64 batch = input.dim_size(0);
+    const int64_t batch = input.dim_size(0);
 
     // For now we take the stride from the second dimension only (we
     // assume row = col stride, and do not support striding on the
     // batch or depth dimension).
     const int stride = strides_[1];
 
-    int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
+    int64_t out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
     OP_REQUIRES_OK(context,
                    GetWindowedOutputSize(input_rows, filter_rows, stride,
                                          padding_, &out_rows, &pad_rows));

@@ -108,7 +108,7 @@ TEST_F(SaveOpTest, Simple) {
   AddInput<int16>(TensorShape({7}), [](int x) -> int16 { return x - 8; });
 
   // Add a 1-d int64 tensor
-  AddInput<int64>(TensorShape({9}), [](int x) -> int64 { return x - 9; });
+  AddInput<int64_t>(TensorShape({9}), [](int x) -> int64 { return x - 9; });
 
   // Add a 1-d string tensor
   AddInput<tstring>(TensorShape({2}),
@@ -313,7 +313,7 @@ TEST_F(SaveOpTest, Simple) {
 
     // We expect the tensor value to be correct.
     TensorSlice s = TensorSlice::ParseOrDie("-");
-    int64 data[9];
+    int64_t data[9];
     EXPECT_TRUE(reader.CopySliceData("tensor_int64", s, data));
     for (int i = 0; i < 9; ++i) {
       EXPECT_EQ(i - 9, data[i]);
@@ -655,7 +655,7 @@ TEST_F(SaveOpSlices2Test, TwoSlices) {
     EXPECT_TRUE(reader.CopySliceData("small", TensorSlice(reloaded.dims()),
                                      reloaded.flat<float>().data()));
 
-    for (int64 i = 0; i < reloaded.NumElements(); ++i) {
+    for (int64_t i = 0; i < reloaded.NumElements(); ++i) {
       EXPECT_EQ(static_cast<float>(i) / 10, reloaded.flat<float>().data()[i]);
     }
   }

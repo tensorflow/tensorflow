@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
 
+#include <string>
+
 #include "absl/strings/str_cat.h"
 
 namespace tflite {
@@ -34,7 +36,7 @@ GPUOperation CreateReLU(const OperationDef& definition,
       op.args_.AddHalf("alpha", half(attr.alpha));
     }
   } else {
-    min_func = "INIT_FLT(0.0f)";
+    min_func = "INIT_FLT4(0.0f)";
   }
   if (attr.clip != 0.0f) {
     if (definition.precision == CalculationsPrecision::F32) {
@@ -43,7 +45,7 @@ GPUOperation CreateReLU(const OperationDef& definition,
       op.args_.AddHalf("clip", half(attr.clip));
     }
     op.code_ = absl::StrCat("in_out_value = clamp(in_out_value, " + min_func +
-                            ", args.clip);");
+                            ", INIT_FLT4(args.clip));");
   } else {
     op.code_ =
         absl::StrCat("in_out_value = max(in_out_value, ", min_func, ");");

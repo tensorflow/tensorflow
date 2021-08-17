@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -39,16 +40,12 @@ namespace call_once_kernel {
 struct OpData {
   // Subgraph index to be invoked once in a life cycle by this CallOnce op.
   int init_subgraph_index;
-  // Boolean storage to store whether the subgraph for initialization is invoked
-  // successfully once in an interpreter's life cycle.
-  bool init_subgraph_invoked;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* op_data = new OpData;
   const auto* params = reinterpret_cast<const TfLiteCallOnceParams*>(buffer);
   op_data->init_subgraph_index = params->init_subgraph_index;
-  op_data->init_subgraph_invoked = false;
   return op_data;
 }
 
@@ -59,14 +56,20 @@ void Free(TfLiteContext* context, void* buffer) {
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
+  Subgraph* this_subgraph = reinterpret_cast<Subgraph*>(context->impl_);
+
   // Return early if the initialization graph is already invoked.
-  if (op_data->init_subgraph_invoked) return kTfLiteOk;
+  resource::InitializationStatusMap* map =
+      &this_subgraph->initialization_status_map();
+  resource::InitializationStatus* status =
+      resource::GetInitializationStatus(map, op_data->init_subgraph_index);
+  if (status->IsInitialized()) return kTfLiteOk;
+
+  auto* subgraphs = this_subgraph->GetSubgraphs();
 
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 0);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 0);
 
-  Subgraph* this_subgraph = reinterpret_cast<Subgraph*>(context->impl_);
-  auto* subgraphs = this_subgraph->GetSubgraphs();
   TF_LITE_ENSURE(context, op_data->init_subgraph_index < subgraphs->size());
 
   // Ensures that there are no input and output tensors in the subgraph.
@@ -79,10 +82,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
-  // The initialization graph should be invoked once in a life cycle.
-  if (op_data->init_subgraph_invoked) return kTfLiteOk;
-
   Subgraph* this_subgraph = reinterpret_cast<Subgraph*>(context->impl_);
+
+  // The initialization graph should be invoked once in a life cycle.
+  resource::InitializationStatusMap* map =
+      &this_subgraph->initialization_status_map();
+  resource::InitializationStatus* status =
+      resource::GetInitializationStatus(map, op_data->init_subgraph_index);
+  if (status->IsInitialized()) return kTfLiteOk;
+
   auto* subgraphs = this_subgraph->GetSubgraphs();
   Subgraph& init_subgraph = *(*subgraphs)[op_data->init_subgraph_index];
 
@@ -91,7 +99,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, init_subgraph.ReleaseNonPersistentMemory());
 
   // Mark the invocation completed.
-  op_data->init_subgraph_invoked = true;
+  status->MarkInitializationIsDone();
   return kTfLiteOk;
 }
 

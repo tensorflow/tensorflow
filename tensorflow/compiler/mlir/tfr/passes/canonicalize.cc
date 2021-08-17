@@ -46,8 +46,10 @@ namespace TFR {
 
 namespace {
 
-struct UnrollSCFForOp : public OpRewritePattern<scf::ForOp> {
+class UnrollSCFForOp : public OpRewritePattern<scf::ForOp> {
   using OpRewritePattern<scf::ForOp>::OpRewritePattern;
+
+ public:
   LogicalResult matchAndRewrite(scf::ForOp for_op,
                                 PatternRewriter &rewriter) const override {
     Location loc = for_op.getLoc();
@@ -103,8 +105,10 @@ struct UnrollSCFForOp : public OpRewritePattern<scf::ForOp> {
 };
 
 // TODO(fengliuai): up stream this pattern.
-struct SimplifySCFIfOp : public OpRewritePattern<scf::IfOp> {
+class SimplifySCFIfOp : public OpRewritePattern<scf::IfOp> {
   using OpRewritePattern<scf::IfOp>::OpRewritePattern;
+
+ public:
   LogicalResult matchAndRewrite(scf::IfOp if_op,
                                 PatternRewriter &rewriter) const override {
     // Then branch

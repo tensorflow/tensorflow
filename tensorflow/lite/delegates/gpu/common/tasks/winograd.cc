@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
@@ -35,7 +36,10 @@ std::string GetKernelWinograd4x4To36() {
   for (int y = 0; y < 6; ++y) {
     c += "\t";
     for (int x = 0; x < 6; ++x) {
-      c += absl::StrFormat("%.10f", bt_mat[y * 6 + x]) + "f, ";
+      c += absl::StrFormat("%.10f", bt_mat[y * 6 + x]) + "f";
+      if (!(x == 5 && y == 5)) {
+        c += ", ";
+      }
     }
     c += "\n";
   }
@@ -54,7 +58,7 @@ MAIN_FUNCTION($0) {
       I[y][x] = INIT_FLT4(0.0f);
     }
   }
-  const int src_base = S * args.src_tensor.Height() * args.src_tensor.Width();
+  int src_base = S * args.src_tensor.Height() * args.src_tensor.Width();
 )";
   for (int y = 0; y < 6; ++y) {
     const std::string s_y = std::to_string(y);
@@ -63,7 +67,7 @@ MAIN_FUNCTION($0) {
     c += "    bool in_y = coord_y >= 0 && coord_y < "
          "args.src_tensor.Height();\n";
     c += "    coord_y = clamp(coord_y, 0, args.src_tensor.Height() - 1);\n";
-    c += "    const int src_adress_y = src_base + coord_y * "
+    c += "    int src_adress_y = src_base + coord_y * "
          "args.src_tensor.Width();\n";
     for (int x = 0; x < 6; ++x) {
       const std::string s_x = std::to_string(x);
@@ -126,7 +130,10 @@ std::string GetKernelWinograd36To4x4() {
   for (int y = 0; y < 4; ++y) {
     c += "\t";
     for (int x = 0; x < 6; ++x) {
-      c += absl::StrFormat("%.10f", at_mat[y * 6 + x]) + "f, ";
+      c += absl::StrFormat("%.10f", at_mat[y * 6 + x]) + "f";
+      if (!(x == 5 && y == 3)) {
+        c += ", ";
+      }
     }
     c += "\n";
   }
@@ -264,11 +271,14 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
                                   : DataType::FLOAT32;
 
   auto bt_mat = BtMatrixForWinograd4x4To6x6();
-  c += "constant ACCUM_FLT Bt[36] = {\n";
+  c += "__constant ACCUM_FLT Bt[36] = {\n";
   for (int y = 0; y < 6; ++y) {
     c += "\t";
     for (int x = 0; x < 6; ++x) {
-      c += absl::StrFormat("%.10f", bt_mat[y * 6 + x]) + "f, ";
+      c += absl::StrFormat("%.10f", bt_mat[y * 6 + x]) + "f";
+      if (!(x == 5 && y == 5)) {
+        c += ", ";
+      }
     }
     c += "\n";
   }
@@ -579,11 +589,14 @@ std::string Winograd36To4x4Tile4x1::GetWinograd36To4x4Tile4x1Code(
   args_.AddInt("tiles_x");
 
   auto at_mat = AtMatrixForWinograd4x4To6x6();
-  c += "constant ACCUM_FLT At[24] = {\n";
+  c += "__constant ACCUM_FLT At[24] = {\n";
   for (int y = 0; y < 4; ++y) {
     c += "\t";
     for (int x = 0; x < 6; ++x) {
-      c += absl::StrFormat("%.10f", at_mat[y * 6 + x]) + "f, ";
+      c += absl::StrFormat("%.10f", at_mat[y * 6 + x]) + "f";
+      if (!(x == 5 && y == 3)) {
+        c += ", ";
+      }
     }
     c += "\n";
   }

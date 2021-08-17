@@ -70,30 +70,48 @@ class Model(object):
     # function execution.
     self.do_infinite_step = variables.Variable(False)
 
-    def dataset_fn():
+    self.rebuild_iterators()
+
+  def rebuild_iterators(self, use_dataset_fn=True):
+
+    if use_dataset_fn:
+
+      def dataset_fn():
+        data = random_ops.random_uniform((10, 10))
+        dataset = dataset_ops.DatasetV2.from_tensors([data]).repeat()
+        return dataset
+
+      self.iterator = iter(
+          self.cluster_coord.create_per_worker_dataset(dataset_fn))
+      self.iterator2 = iter(
+          self.cluster_coord.create_per_worker_dataset(dataset_fn))
+    else:
       data = random_ops.random_uniform((10, 10))
       dataset = dataset_ops.DatasetV2.from_tensors([data]).repeat()
-      return dataset
 
-    self.iterator = iter(
-        self.cluster_coord.create_per_worker_dataset(dataset_fn))
+      self.iterator = iter(
+          self.cluster_coord.create_per_worker_dataset(dataset))
+      self.iterator2 = iter(
+          self.cluster_coord.create_per_worker_dataset(dataset))
 
-  def _train_fn_internal(self, iterator):
+  def _train_fn_internal(self, iterator, iterator2):
     x = math_ops.matmul(array_ops.squeeze(next(iterator)), self.w)
+    x = math_ops.matmul(array_ops.squeeze(next(iterator2)), x)
     x = math_ops.matmul(random_ops.random_uniform((10, 10)), x)
     self.w.assign_add(x)
 
   @def_function.function
-  def train_fn(self, iterator):
-    self._train_fn_internal(iterator)
+  def train_fn(self, iterator, iterator2):
+    self._train_fn_internal(iterator, iterator2)
     while self.do_infinite_step:
-      self._train_fn_internal(iterator)
+      self._train_fn_internal(iterator, iterator2)
     self.iterations.assign_add(1)
 
   def schedule_training_functions(self, num_steps):
     with self.strategy.scope():
       for _ in range(num_steps):
-        self.cluster_coord.schedule(self.train_fn, args=(self.iterator,))
+        self.cluster_coord.schedule(
+            self.train_fn, args=(self.iterator, self.iterator2))
 
   def join_training_functions(self):
     self.do_infinite_step.assign(False)
@@ -189,7 +207,7 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     # Model does infinite training step, so at this moment, we expect to have
     # `self.num_workers` infinite closures inflight, and `10-self.num_workers`
     # closures in the queue.
-    while (self.cluster_coord._cluster._closure_queue._inflight_closure_count <
+    while (self.cluster_coord._cluster.closure_queue._inflight_closure_count <
            self.num_workers):
       time.sleep(0.1)
     return model
@@ -217,8 +235,8 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     # Model does infinite training step, so at this moment, we expect to have
     # `self.num_workers` infinite closures inflight, and `4-self.num_workers`
     # closures in the queue.
-    while (self.cluster_coord._cluster._closure_queue._inflight_closure_count
-           < self.num_workers):
+    while (self.cluster_coord._cluster.closure_queue._inflight_closure_count <
+           self.num_workers):
       time.sleep(0.1)
     self.assertFalse(self.cluster_coord.done())
     self._restart(downtime_secs=2, job="worker")
@@ -274,12 +292,35 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     failure_handler.stop()
     failure_handler._preemption_handler_thread.join()
 
-  def testHandleDatasetCreationFailure(self):
+  def testHandleDatasetCreationFailureWithDatasetFn(self):
     model = Model(self.cluster_coord)
 
     restart_thread = self._restart_in_thread(5, "worker")
 
     model.schedule_training_functions(3)
+    model.rebuild_iterators()
+    model.schedule_training_functions(3)
+    model.rebuild_iterators()
+    model.schedule_training_functions(3)
+
+    model.join_training_functions()
+
+    self.thread_coord.join([restart_thread])
+    self.assertGreaterEqual(model.iterations.numpy(), 3)
+
+  # TODO(yuefengz): consider using combinations when there is more code
+  # duplication.
+  def testHandleDatasetCreationFailureWithDataset(self):
+    model = Model(self.cluster_coord)
+
+    restart_thread = self._restart_in_thread(5, "worker")
+
+    model.schedule_training_functions(3)
+    model.rebuild_iterators(use_dataset_fn=False)
+    model.schedule_training_functions(3)
+    model.rebuild_iterators(use_dataset_fn=False)
+    model.schedule_training_functions(3)
+
     model.join_training_functions()
 
     self.thread_coord.join([restart_thread])
@@ -542,7 +583,7 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
   def testJoinRaisesUnavailableErrorAtPsFailure(self):
     self._create_model_and_run_indefinitely()
     self._cluster.kill_task("ps", 0)
-    while self.cluster_coord._cluster._closure_queue._error is None:
+    while self.cluster_coord._cluster.closure_queue._error is None:
       time.sleep(1)
     with self.assertRaises((errors.UnavailableError, errors.NotFoundError,
                             errors.FailedPreconditionError)):
@@ -551,7 +592,7 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
   def testScheduleRaisesUnavailableErrorAtPsFailure(self):
     self._create_model_and_run_indefinitely()
     self._cluster.kill_task("ps", 0)
-    while self.cluster_coord._cluster._closure_queue._error is None:
+    while self.cluster_coord._cluster.closure_queue._error is None:
       time.sleep(1)
     with self.assertRaises((errors.UnavailableError, errors.NotFoundError,
                             errors.FailedPreconditionError)):
@@ -561,7 +602,7 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     model = self._create_model_and_run_indefinitely()
     for i in range(self.num_ps):
       self._cluster.kill_task("ps", i)
-    while self.cluster_coord._cluster._closure_queue._error is None:
+    while self.cluster_coord._cluster.closure_queue._error is None:
       time.sleep(1)
 
     @def_function.function

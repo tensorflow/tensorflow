@@ -21,6 +21,7 @@ limitations under the License.
 #include <map>
 
 #include "absl/base/call_once.h"
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/str_util.h"
@@ -192,6 +193,13 @@ string Status::ToString() const {
     string result(error_name(code()));
     result += ": ";
     result += state_->msg;
+
+    for (const std::pair<const std::string, std::string>& element :
+         state_->payloads) {
+      absl::StrAppend(&result, " [", element.first, "='",
+                      absl::CHexEscape(element.second), "']");
+    }
+
     return result;
   }
 }

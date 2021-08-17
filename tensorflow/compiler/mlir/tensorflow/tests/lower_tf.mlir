@@ -584,10 +584,10 @@ func @ZerosLike_unranked(%arg0: tensor<*xi32>) -> tensor<*xi32> {
 }
 
 // CHECK-LABEL: func @ZerosLike_variant
-func @ZerosLike_variant(%arg0: tensor<!tf.variant<tensor<2xi32>>>) -> tensor<!tf.variant<tensor<2xi32>>> {
+func @ZerosLike_variant(%arg0: tensor<!tf_type.variant<tensor<2xi32>>>) -> tensor<!tf_type.variant<tensor<2xi32>>> {
   // CHECK: tf.ZerosLike
-  %0 = "tf.ZerosLike"(%arg0) : (tensor<!tf.variant<tensor<2xi32>>>) -> tensor<!tf.variant<tensor<2xi32>>>
-  return %0 : tensor<!tf.variant<tensor<2xi32>>>
+  %0 = "tf.ZerosLike"(%arg0) : (tensor<!tf_type.variant<tensor<2xi32>>>) -> tensor<!tf_type.variant<tensor<2xi32>>>
+  return %0 : tensor<!tf_type.variant<tensor<2xi32>>>
 }
 
 // CHECK-LABEL: func @OnesLike_unranked
@@ -639,10 +639,10 @@ func @addN_5(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %
 }
 
 // CHECK-LABEL: func @addN_variant
-func @addN_variant(%arg0: tensor<!tf.variant<tensor<2xf32>>>, %arg1: tensor<!tf.variant<tensor<2xf32>>>, %arg2: tensor<!tf.variant<tensor<2xf32>>>) -> tensor<!tf.variant<tensor<2xf32>>> {
+func @addN_variant(%arg0: tensor<!tf_type.variant<tensor<2xf32>>>, %arg1: tensor<!tf_type.variant<tensor<2xf32>>>, %arg2: tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant<tensor<2xf32>>> {
   // CHECK: tf.AddN
-  %0 = "tf.AddN"(%arg0, %arg1, %arg2) : (tensor<!tf.variant<tensor<2xf32>>>, tensor<!tf.variant<tensor<2xf32>>>, tensor<!tf.variant<tensor<2xf32>>>) -> tensor<!tf.variant<tensor<2xf32>>>
-  return %0 : tensor<!tf.variant<tensor<2xf32>>>
+  %0 = "tf.AddN"(%arg0, %arg1, %arg2) : (tensor<!tf_type.variant<tensor<2xf32>>>, tensor<!tf_type.variant<tensor<2xf32>>>, tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant<tensor<2xf32>>>
+  return %0 : tensor<!tf_type.variant<tensor<2xf32>>>
 }
 
 // CHECK-LABEL: func @DynamicStitch_simple
@@ -1231,4 +1231,36 @@ func @unranked_logsoftmax(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-NOT: "tf.LogSoftmax"
   %0 = "tf.LogSoftmax"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0: tensor<*xf32>
+}
+
+// CHECK-LABEL: func @selu
+// CHECK-SAME:  (%[[FEATURES:.*]]: tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32> {
+func @selu(%arg0: tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32> {
+    // CHECK-DAG:   %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+    // CHECK-DAG:   %[[SCALE:.*]] = "tf.Const"() {value = dense<1.05070102> : tensor<f32>} : () -> tensor<f32>
+    // CHECK-DAG:   %[[SCALED_ALPHA:.*]] = "tf.Const"() {value = dense<1.75809932> : tensor<f32>} : () -> tensor<f32>
+    // CHECK-DAG:   %[[PRED:.*]] = "tf.Greater"(%[[FEATURES]], %[[ZERO]]) : (tensor<1x4x4x3xf32>, tensor<f32>) -> tensor<1x4x4x3xi1>
+    // CHECK-NEXT:  %[[SCALED_FEATURES:.*]] = "tf.Mul"(%[[FEATURES]], %[[SCALE]]) : (tensor<1x4x4x3xf32>, tensor<f32>) -> tensor<1x4x4x3xf32>
+    // CHECK-NEXT:  %[[ELU_VAL:.*]] = "tf.Expm1"(%[[FEATURES]]) : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+    // CHECK-NEXT:  %[[SELU_VAL:.*]] = "tf.Mul"(%[[ELU_VAL]], %[[SCALED_ALPHA]]) : (tensor<1x4x4x3xf32>, tensor<f32>) -> tensor<1x4x4x3xf32>
+    // CHECK-NEXT:  %[[RES:.*]] = "tf.SelectV2"(%[[PRED]], %[[SCALED_FEATURES]], %[[SELU_VAL]]) : (tensor<1x4x4x3xi1>, tensor<1x4x4x3xf32>, tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+    // CHECK-NEXT:  return %[[RES]] : tensor<1x4x4x3xf32>
+    %0 = "tf.Selu"(%arg0) : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+    return %0 : tensor<1x4x4x3xf32>
+}
+
+// CHECK-LABEL: func @selu_grad
+// CHECK-SAME: (%[[GRADIENTS:.*]]: tensor<4x8xf32>, %[[FEATURES:.*]]: tensor<4x8xf32>) -> tensor<4x8xf32> {
+func @selu_grad(%gradients: tensor<4x8xf32>, %features: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    // CHECK-DAG:   %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+    // CHECK-DAG:   %[[SCALE:.*]] = "tf.Const"() {value = dense<1.05070102> : tensor<f32>} : () -> tensor<f32>
+    // CHECK-DAG:   %[[SCALED_ALPHA:.*]] = "tf.Const"() {value = dense<1.75809932> : tensor<f32>} : () -> tensor<f32>
+    // CHECK-DAG:   %[[PRED:.*]] = "tf.Greater"(%[[FEATURES]], %[[ZERO]]) : (tensor<4x8xf32>, tensor<f32>) -> tensor<4x8xi1>
+    // CHECK-NEXT:  %[[SCALED_GRADIENTS:.*]] = "tf.Mul"(%[[GRADIENTS]], %[[SCALE]]) : (tensor<4x8xf32>, tensor<f32>) -> tensor<4x8xf32>
+    // CHECK-NEXT:  %[[FEATURES_PLUS_SCALED_ALPHA:.*]] = "tf.Add"(%[[FEATURES]], %[[SCALED_ALPHA]]) : (tensor<4x8xf32>, tensor<f32>) -> tensor<4x8xf32>
+    // CHECK-NEXT:  %[[SELU_GRAD_VALUE:.*]] = "tf.Mul"(%[[GRADIENTS]], %[[FEATURES_PLUS_SCALED_ALPHA]]) : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
+    // CHECK-NEXT:  %[[RES:.*]] = "tf.SelectV2"(%[[PRED]], %[[SCALED_GRADIENTS]], %[[SELU_GRAD_VALUE]]) : (tensor<4x8xi1>, tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
+    // CHECK-NEXT:  return %[[RES]] : tensor<4x8xf32>
+    %2 = "tf.SeluGrad"(%gradients, %features) : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
+    return %2 : tensor<4x8xf32>
 }

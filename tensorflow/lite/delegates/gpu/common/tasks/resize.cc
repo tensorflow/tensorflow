@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/resize.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
@@ -73,11 +76,11 @@ std::string Resize::GetResizeCode(const OperationDef& op_def,
     std::string fxc;
     std::string fyc;
     if (attr.half_pixel_centers) {
-      fxc = "(X + 0.5f) * args.scale_factor_x";
-      fyc = "(Y + 0.5f) * args.scale_factor_y";
+      fxc = "(INIT_FLOAT(X) + 0.5f) * args.scale_factor_x";
+      fyc = "(INIT_FLOAT(Y) + 0.5f) * args.scale_factor_y";
     } else {
-      fxc = "X * args.scale_factor_x";
-      fyc = "Y * args.scale_factor_y";
+      fxc = "INIT_FLOAT(X) * args.scale_factor_x";
+      fyc = "INIT_FLOAT(Y) * args.scale_factor_y";
     }
     if (attr.align_corners) {
       fxc += " + 0.5f";
@@ -213,13 +216,13 @@ std::string Resize3D::GetResize3DCode(const OperationDef& op_def,
     std::string fyc;
     std::string fzc;
     if (attr.half_pixel_centers) {
-      fxc = "(X + 0.5f) * args.scale_factor_x";
-      fyc = "(Y + 0.5f) * args.scale_factor_y";
-      fzc = "(Z + 0.5f) * args.scale_factor_z";
+      fxc = "(INIT_FLOAT(X) + 0.5f) * args.scale_factor_x";
+      fyc = "(INIT_FLOAT(Y) + 0.5f) * args.scale_factor_y";
+      fzc = "(INIT_FLOAT(Z) + 0.5f) * args.scale_factor_z";
     } else {
-      fxc = "X * args.scale_factor_x";
-      fyc = "Y * args.scale_factor_y";
-      fzc = "Z * args.scale_factor_z";
+      fxc = "INIT_FLOAT(X) * args.scale_factor_x";
+      fyc = "INIT_FLOAT(Y) * args.scale_factor_y";
+      fzc = "INIT_FLOAT(Z) * args.scale_factor_z";
     }
     if (attr.align_corners) {
       fxc += " + 0.5f";

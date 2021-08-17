@@ -28,7 +28,7 @@ constexpr DataType ToDataType<Eigen::half>::value;
 constexpr DataType ToDataType<int8>::value;
 constexpr DataType ToDataType<int32>::value;
 
-uint64 AlgorithmDesc::hash() const {
+uint64_t AlgorithmDesc::hash() const {
   if (IsExecutionPlan()) {
     auto p = exec_plan_id();
     return absl::Hash<decltype(p)>()(p);
@@ -49,7 +49,7 @@ std::string AlgorithmDesc::ToString() const {
 }
 
 bool DnnSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
@@ -83,13 +83,13 @@ bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
 }
 
 bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
@@ -294,14 +294,14 @@ ConvDimIndices GetDimIndices(const FilterLayout& layout, const int data_dims) {
   return dim_indices;
 }
 
-std::vector<int64> ReorderDims(const std::vector<int64>& input,
-                               const DataLayout& from, const DataLayout& to) {
+std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
+                                 const DataLayout& from, const DataLayout& to) {
   if (from == to) return input;
 
   ConvDimIndices from_indices = GetDimIndices(from, input.size());
   ConvDimIndices to_indices = GetDimIndices(to, input.size());
 
-  std::vector<int64> reordered(input.size());
+  std::vector<int64_t> reordered(input.size());
   reordered[to_indices.data.batch_idx] = input[from_indices.data.batch_idx];
   reordered[to_indices.data.depth_idx] = input[from_indices.data.depth_idx];
 
@@ -315,15 +315,15 @@ std::vector<int64> ReorderDims(const std::vector<int64>& input,
   return reordered;
 }
 
-std::vector<int64> ReorderDims(const std::vector<int64>& input,
-                               const FilterLayout& from,
-                               const FilterLayout& to) {
+std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
+                                 const FilterLayout& from,
+                                 const FilterLayout& to) {
   if (from == to) return input;
 
   ConvDimIndices from_indices = GetDimIndices(from, input.size());
   ConvDimIndices to_indices = GetDimIndices(to, input.size());
 
-  std::vector<int64> reordered(input.size());
+  std::vector<int64_t> reordered(input.size());
   reordered[to_indices.filter.output_idx] =
       input[from_indices.filter.output_idx];
   reordered[to_indices.filter.input_idx] = input[from_indices.filter.input_idx];
@@ -364,8 +364,9 @@ BatchDescriptor::BatchDescriptor(int ndims)
 
 BatchDescriptor::BatchDescriptor() : BatchDescriptor(/*ndims=*/2) {}
 
-std::vector<int64> BatchDescriptor::full_dims(const DataLayout& layout) const {
-  std::vector<int64> bdyx_dims(ndims() + 2);
+std::vector<int64_t> BatchDescriptor::full_dims(
+    const DataLayout& layout) const {
+  std::vector<int64_t> bdyx_dims(ndims() + 2);
   bdyx_dims[0] = count();
   bdyx_dims[1] = feature_map_count();
   std::copy(spatial_size().begin(), spatial_size().end(),
@@ -373,12 +374,34 @@ std::vector<int64> BatchDescriptor::full_dims(const DataLayout& layout) const {
   return ReorderDims(bdyx_dims, DataLayout::kBatchDepthYX, layout);
 }
 
-std::vector<int64> BatchDescriptor::full_strides(
+std::vector<int64_t> BatchDescriptor::full_strides(
     const DataLayout& layout) const {
-  std::vector<int64> phys_dims = full_dims(this->layout());
-  std::vector<int64> phys_strides(phys_dims.size());
+  std::vector<int64_t> phys_dims = full_dims(this->layout());
+  std::vector<int64_t> phys_strides(phys_dims.size());
   phys_strides[ndims() + 1] = 1;
   for (int i = ndims(); i >= 0; i--) {
+    phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
+  }
+  return ReorderDims(phys_strides, this->layout(), layout);
+}
+
+std::vector<int64_t> BatchDescriptor::vectorized_dims(const DataLayout& layout,
+                                                      int vector_size,
+                                                      int vector_dim) const {
+  std::vector<int64_t> bdyx_dims = full_dims(dnn::DataLayout::kBatchDepthYX);
+  if (vector_dim != -1) {
+    bdyx_dims[vector_dim] /= vector_size;
+  }
+  return dnn::ReorderDims(bdyx_dims, dnn::DataLayout::kBatchDepthYX, layout);
+}
+
+std::vector<int64_t> BatchDescriptor::vectorized_strides(
+    const DataLayout& layout, int vector_size, int vector_dim) const {
+  std::vector<int64_t> phys_dims =
+      vectorized_dims(this->layout(), vector_size, vector_dim);
+  std::vector<int64_t> phys_strides(phys_dims.size());
+  phys_strides[phys_dims.size() - 1] = 1;
+  for (int i = phys_dims.size() - 2; i >= 0; i--) {
     phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
   }
   return ReorderDims(phys_strides, this->layout(), layout);
@@ -440,28 +463,29 @@ std::string BatchDescriptor::ToShortString() const {
   }
 }
 
-int64 BatchDescriptor::NodesPerFeatureMap() const {
-  int64 ret = 1;
+int64_t BatchDescriptor::NodesPerFeatureMap() const {
+  int64_t ret = 1;
   for (int i = 0; i < ndims(); i++) {
     ret *= spatial_size()[i];
   }
   return ret;
 }
 
-int64 BatchDescriptor::NodesAcrossFeatureMaps() const {
+int64_t BatchDescriptor::NodesAcrossFeatureMaps() const {
   return NodesPerFeatureMap() * feature_map_count();
 }
 
-int64 BatchDescriptor::ElementCount() const {
+int64_t BatchDescriptor::ElementCount() const {
   return count() * feature_map_count() * NodesPerFeatureMap();
 }
 
-int64 BatchDescriptor::FullyConnectedWeightCount(
+int64_t BatchDescriptor::FullyConnectedWeightCount(
     const BatchDescriptor& input, const BatchDescriptor& output) {
   return input.NodesAcrossFeatureMaps() * output.NodesAcrossFeatureMaps();
 }
 
-int64 BatchDescriptor::FullyConnectedBiasCount(const BatchDescriptor& output) {
+int64_t BatchDescriptor::FullyConnectedBiasCount(
+    const BatchDescriptor& output) {
   return output.NodesAcrossFeatureMaps();
 }
 
@@ -547,17 +571,17 @@ std::string FilterDescriptor::ToShortString() const {
   }
 }
 
-int64 FilterDescriptor::ComputeWeightCount() const {
-  int64 ret = output_feature_map_count() * input_feature_map_count();
+int64_t FilterDescriptor::ComputeWeightCount() const {
+  int64_t ret = output_feature_map_count() * input_feature_map_count();
   for (int i = 0; i < ndims(); i++) {
     ret *= input_filter_dims()[i];
   }
   return ret;
 }
 
-std::vector<int64> FilterDescriptor::full_dims(
+std::vector<int64_t> FilterDescriptor::full_dims(
     const FilterLayout& layout) const {
-  std::vector<int64> oiyx_dims(ndims() + 2);
+  std::vector<int64_t> oiyx_dims(ndims() + 2);
   oiyx_dims[0] = output_feature_map_count();
   oiyx_dims[1] = input_feature_map_count();
   std::copy(input_filter_dims().begin(), input_filter_dims().end(),
@@ -565,12 +589,33 @@ std::vector<int64> FilterDescriptor::full_dims(
   return ReorderDims(oiyx_dims, FilterLayout::kOutputInputYX, layout);
 }
 
-std::vector<int64> FilterDescriptor::full_strides(
+std::vector<int64_t> FilterDescriptor::full_strides(
     const FilterLayout& layout) const {
-  std::vector<int64> phys_dims = full_dims(this->layout());
-  std::vector<int64> phys_strides(phys_dims.size());
+  std::vector<int64_t> phys_dims = full_dims(this->layout());
+  std::vector<int64_t> phys_strides(phys_dims.size());
   phys_strides[ndims() + 1] = 1;
   for (int i = ndims(); i >= 0; i--) {
+    phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
+  }
+  return ReorderDims(phys_strides, this->layout(), layout);
+}
+
+std::vector<int64_t> FilterDescriptor::vectorized_dims(
+    const FilterLayout& layout, int vector_size, int vector_dim) const {
+  std::vector<int64_t> oiyx_dims = full_dims(dnn::FilterLayout::kOutputInputYX);
+  if (vector_dim != -1) {
+    oiyx_dims[vector_dim] /= vector_size;
+  }
+  return ReorderDims(oiyx_dims, FilterLayout::kOutputInputYX, layout);
+}
+
+std::vector<int64_t> FilterDescriptor::vectorized_strides(
+    const FilterLayout& layout, int vector_size, int vector_dim) const {
+  std::vector<int64_t> phys_dims =
+      vectorized_dims(this->layout(), vector_size, vector_dim);
+  std::vector<int64_t> phys_strides(phys_dims.size());
+  phys_strides[phys_dims.size() - 1] = 1;
+  for (int i = phys_dims.size() - 2; i >= 0; i--) {
     phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
   }
   return ReorderDims(phys_strides, this->layout(), layout);

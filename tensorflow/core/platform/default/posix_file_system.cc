@@ -193,7 +193,7 @@ class PosixWritableFile : public WritableFile {
     return s;
   }
 
-  Status Tell(int64* position) override {
+  Status Tell(int64_t* position) override {
     Status s;
     *position = ftell(file_);
 

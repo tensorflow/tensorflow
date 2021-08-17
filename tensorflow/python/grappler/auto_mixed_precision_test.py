@@ -261,6 +261,14 @@ def _get_config(auto_mixed_precision_mode):
   return config
 
 
+def _get_device(auto_mixed_precision_mode):
+  """Returns the device to run on. If mode is mkl, run on CPU"""
+  if auto_mixed_precision_mode == 'mkl':
+    return '/cpu:0'
+  else:
+    return ''
+
+
 def _is_cast_to_fp16(node_name):
   return node_name.endswith('-CastToFp16-AutoMixedPrecision')
 
@@ -398,19 +406,19 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
         output nodes.
     """
     self._maybe_skip(mode)
-    random_seed.set_random_seed(0)
-    expected_types = []
-    for section in [inp, body, out]:
-      section_expected_types = []
-      for color in section:
-        if color.isupper():
-          expected_type = self._lower_precision_dtype(mode).as_datatype_enum
-        else:
-          expected_type = types_pb2.DT_FLOAT
-        section_expected_types.append(expected_type)
-      expected_types.append(section_expected_types)
-
-    a = _build_simple_loop_graph(inp, body, out)
+    with ops.device(_get_device(mode)):
+      random_seed.set_random_seed(0)
+      expected_types = []
+      for section in [inp, body, out]:
+        section_expected_types = []
+        for color in section:
+          if color.isupper():
+            expected_type = self._lower_precision_dtype(mode).as_datatype_enum
+          else:
+            expected_type = types_pb2.DT_FLOAT
+          section_expected_types.append(expected_type)
+        expected_types.append(section_expected_types)
+      a = _build_simple_loop_graph(inp, body, out)
     output_val_ref, output_val, cost_graph = self._run(mode, a)
     node_map = _build_node_map(cost_graph.node)
 
@@ -437,10 +445,11 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_conv_bn(self, mode):
     """Test graph with convolution followed by batch norm."""
     self._maybe_skip(mode)
-    random_seed.set_random_seed(0)
-    x = _input([2, 8, 8, 1])
-    x = _conv_bn(x)
-    output = _conv_bn(x)
+    with ops.device(_get_device(mode)):
+      random_seed.set_random_seed(0)
+      x = _input([2, 8, 8, 1])
+      x = _conv_bn(x)
+      output = _conv_bn(x)
 
     output_val_ref, output_val, cost_graph = self._run(mode, output)
     node_map = _build_node_map(cost_graph.node)
@@ -471,10 +480,11 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
     if mode == 'cuda':
       # TODO(reedwm): enable these tests when cuDNN is upgraded to >= 7.6.2.
       self.skipTest('Test case should be skipped when cuDNN < 7.6.2')
-    random_seed.set_random_seed(0)
-    x = _input([2, 8, 8, 8, 1])
-    x = _conv3d_bn(x)
-    output = _conv3d_bn(x)
+    with ops.device(_get_device(mode)):
+      random_seed.set_random_seed(0)
+      x = _input([2, 8, 8, 8, 1])
+      x = _conv3d_bn(x)
+      output = _conv3d_bn(x)
 
     output_val_ref, output_val, cost_graph = self._run(mode, output)
     node_map = _build_node_map(cost_graph.node)
@@ -496,14 +506,15 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
     if mode == 'cuda':
       # TODO(reedwm): enable these tests when cuDNN is upgraded to >= 7.6.2.
       self.skipTest('Test case should be skipped when cuDNN < 7.6.2')
-    random_seed.set_random_seed(0)
-    x = _input([2, 8, 8, 8, 1])
-    f = _weight([3, 3, 3, 1, 6])
-    y = _conv3d(x, f)
-    y = array_ops.identity(y)
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
-    g = optimizer.compute_gradients(y, [x, f])
-    output = (y, g)
+    with ops.device(_get_device(mode)):
+      random_seed.set_random_seed(0)
+      x = _input([2, 8, 8, 8, 1])
+      f = _weight([3, 3, 3, 1, 6])
+      y = _conv3d(x, f)
+      y = array_ops.identity(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+      g = optimizer.compute_gradients(y, [x, f])
+      output = (y, g)
 
     output_val_ref, output_val, cost_graph = self._run(mode, output)
     node_map = _build_node_map(cost_graph.node)
@@ -523,16 +534,17 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_conv_bn_dropout(self, mode):
     """Test dropout precision of convolution batch norm graph."""
     self._maybe_skip(mode)
-    random_seed.set_random_seed(0)
-    x = _input([2, 8, 8, 1])
-    y = _conv_bn(x)
-    y = nn.dropout(y, rate=0.5)
-    y = math_ops.add(y, 1, name='addition')
-    y = _conv_bn(y)
-    y = array_ops.identity(y)
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
-    g = optimizer.compute_gradients(y, [x])
-    output = (y, g)
+    with ops.device(_get_device(mode)):
+      random_seed.set_random_seed(0)
+      x = _input([2, 8, 8, 1])
+      y = _conv_bn(x)
+      y = nn.dropout(y, rate=0.5)
+      y = math_ops.add(y, 1, name='addition')
+      y = _conv_bn(y)
+      y = array_ops.identity(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+      g = optimizer.compute_gradients(y, [x])
+      output = (y, g)
 
     output_val_ref, output_val, cost_graph = self._run(mode, output)
     node_map = _build_node_map(cost_graph.node)
@@ -559,9 +571,10 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_conv_pool(self, mode):
     """Test graph with convolution followed by pooling."""
     self._maybe_skip(mode)
-    random_seed.set_random_seed(0)
-    x = _input([2, 8, 8, 1])
-    output = _conv_pool(x)
+    with ops.device(_get_device(mode)):
+      random_seed.set_random_seed(0)
+      x = _input([2, 8, 8, 1])
+      output = _conv_pool(x)
 
     output_val_ref, output_val, cost_graph = self._run(mode, output)
     node_map = _build_node_map(cost_graph.node)
@@ -589,14 +602,15 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
       # Depthwise conv2d ops are only enabled in auto_mixed_precision as of
       # cuDNN v8.
       self.skipTest('cuDNN version >= 8 required')
-    random_seed.set_random_seed(0)
-    x = _input([2, 8, 8, 1])
-    f = _weight([3, 3, 1, 4])
-    y = _depthwise_conv2d(x, f)
-    y = array_ops.identity(y)
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
-    g = optimizer.compute_gradients(y, [x, f])
-    output = (y, g)
+    with ops.device(_get_device(mode)):
+      random_seed.set_random_seed(0)
+      x = _input([2, 8, 8, 1])
+      f = _weight([3, 3, 1, 4])
+      y = _depthwise_conv2d(x, f)
+      y = array_ops.identity(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+      g = optimizer.compute_gradients(y, [x, f])
+      output = (y, g)
 
     output_val_ref, output_val, cost_graph = self._run(mode, output)
     node_map = _build_node_map(cost_graph.node)
@@ -618,12 +632,13 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_simple_loop(self, mode):
     """Test graph with while loop."""
     self._maybe_skip(mode)
-    random_seed.set_random_seed(0)
-    x = _input([8, 8])
-    y = _simple_loop(x, _matmul_act)[1]
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
-    g = optimizer.compute_gradients(y, [x])
-    output = (y, g)
+    with ops.device(_get_device(mode)):
+      random_seed.set_random_seed(0)
+      x = _input([8, 8])
+      y = _simple_loop(x, _matmul_act)[1]
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+      g = optimizer.compute_gradients(y, [x])
+      output = (y, g)
 
     output_val_ref, output_val, cost_graph = self._run(mode, output)
     node_map = _build_node_map(cost_graph.node)
@@ -639,13 +654,14 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_loop_with_vars_intertwined(self, mode):
     """Test graph with intertwined while loops."""
     self._maybe_skip(mode)
-    random_seed.set_random_seed(0)
-    x = _input([8, 8])
-    _, _, k, l = _loop_vars_intertwined(
-        array_ops.ones(array_ops.shape(x)), x, _matmul_act, _matmul_act)
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
-    g = optimizer.compute_gradients(k, [x])
-    output = (k, l, g)
+    with ops.device(_get_device(mode)):
+      random_seed.set_random_seed(0)
+      x = _input([8, 8])
+      _, _, k, l = _loop_vars_intertwined(
+          array_ops.ones(array_ops.shape(x)), x, _matmul_act, _matmul_act)
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+      g = optimizer.compute_gradients(k, [x])
+      output = (k, l, g)
 
     output_val_ref, output_val, cost_graph = self._run(mode, output)
     node_map = _build_node_map(cost_graph.node)
@@ -663,17 +679,18 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_multi_paths(self, mode):
     """Test graph with multiple paths."""
     self._maybe_skip(mode)
-    random_seed.set_random_seed(0)
-    x = _input([2, 8, 8, 3])
-    x1, x2, x3 = array_ops.split(x, num_or_size_splits=3, axis=3)
-    y1 = _conv_pool(x1)
-    y2 = _conv_pool(x2)
-    y3 = _conv_pool(x3)
-    y = array_ops.concat([y1, y2, y3], axis=3)
-    y = array_ops.identity(y)
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
-    g = optimizer.compute_gradients(y, [x])
-    output = (y, g)
+    with ops.device(_get_device(mode)):
+      random_seed.set_random_seed(0)
+      x = _input([2, 8, 8, 3])
+      x1, x2, x3 = array_ops.split(x, num_or_size_splits=3, axis=3)
+      y1 = _conv_pool(x1)
+      y2 = _conv_pool(x2)
+      y3 = _conv_pool(x3)
+      y = array_ops.concat([y1, y2, y3], axis=3)
+      y = array_ops.identity(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+      g = optimizer.compute_gradients(y, [x])
+      output = (y, g)
 
     output_val_ref, output_val, cost_graph = self._run(mode, output)
     node_map = _build_node_map(cost_graph.node)
@@ -692,14 +709,15 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_multi_paths_2(self, mode):
     """Test graph with multiple paths."""
     self._maybe_skip(mode)
-    random_seed.set_random_seed(0)
-    x = _input([8, 8])
-    y1 = _matmul_act(x)
-    y2 = _matmul_act(x)
-    y = y1 + y2 + x
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
-    g = optimizer.compute_gradients(y, [x])
-    output = (g, y)
+    with ops.device(_get_device(mode)):
+      random_seed.set_random_seed(0)
+      x = _input([8, 8])
+      y1 = _matmul_act(x)
+      y2 = _matmul_act(x)
+      y = y1 + y2 + x
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+      g = optimizer.compute_gradients(y, [x])
+      output = (g, y)
 
     output_val_ref, output_val, cost_graph = self._run(mode, output)
     node_map = _build_node_map(cost_graph.node)
@@ -725,13 +743,14 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_recurrent_lstm(self, mode):
     """Test graph with recurrent lstm."""
     self._maybe_skip(mode)
-    random_seed.set_random_seed(0)
-    init_c = _input([8, 4])
-    init_h = _input([8, 4])
-    _, _, h, _ = _recurrent_lstm(init_c, init_h)
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
-    g = optimizer.compute_gradients(h, [init_c, init_h])
-    output = (h, g)
+    with ops.device(_get_device(mode)):
+      random_seed.set_random_seed(0)
+      init_c = _input([8, 4])
+      init_h = _input([8, 4])
+      _, _, h, _ = _recurrent_lstm(init_c, init_h)
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+      g = optimizer.compute_gradients(h, [init_c, init_h])
+      output = (h, g)
 
     output_val_ref, output_val, cost_graph = self._run(mode, output)
     node_map = _build_node_map(cost_graph.node)
@@ -807,13 +826,14 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
       mode: Either 'cuda' or 'mkl'.
     """
     self._maybe_skip(mode)
-    random_seed.set_random_seed(0)
-    x = _input([8, 8])
-    y = _matmul_act(x)
-    y = _example_noninlined_funcdef(y)
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
-    g = optimizer.compute_gradients(y, [x])
-    output = (g, y)
+    with ops.device(_get_device(mode)):
+      random_seed.set_random_seed(0)
+      x = _input([8, 8])
+      y = _matmul_act(x)
+      y = _example_noninlined_funcdef(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+      g = optimizer.compute_gradients(y, [x])
+      output = (g, y)
 
     output_val_ref, output_val, cost_graph = self._run(mode, output)
     node_map = _build_node_map(cost_graph.node)
@@ -839,31 +859,32 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
     if tf2.enabled():
       # This test tests non-resource variables, which are only used in TF1.
       self.skipTest('TensorFlow 1 required')
-    random_seed.set_random_seed(1234)
-    np.random.seed(1234)
-    num_iter, bs, nchan, nclass = 100, 64, 32, 100
+    with ops.device(_get_device(mode)):
+      random_seed.set_random_seed(1234)
+      np.random.seed(1234)
+      num_iter, bs, nchan, nclass = 100, 64, 32, 100
 
-    data = np.random.normal(size=(bs * num_iter, nchan)).astype(np.float32)
-    labels = np.random.randint(nclass, size=(bs * num_iter,))
-    ds = dataset_ops.Dataset.from_tensor_slices((data, labels))
-    ds = ds.batch(bs).prefetch(3)
-    it = ds.make_one_shot_iterator()
+      data = np.random.normal(size=(bs * num_iter, nchan)).astype(np.float32)
+      labels = np.random.randint(nclass, size=(bs * num_iter,))
+      ds = dataset_ops.Dataset.from_tensor_slices((data, labels))
+      ds = ds.batch(bs).prefetch(3)
+      it = ds.make_one_shot_iterator()
 
-    def body(_, i):
-      i += 1
-      x, yt = it.get_next()
-      dense = layers.Dense(nclass)
-      y = dense(x)
-      loss = losses.sparse_softmax_cross_entropy(yt, y)
-      opt = adam.AdamOptimizer()
-      train_op = opt.minimize(loss, var_list=dense.trainable_weights)
-      with ops.control_dependencies([train_op]):
-        loss = array_ops.identity(loss)
-      return loss, i
+      def body(_, i):
+        i += 1
+        x, yt = it.get_next()
+        dense = layers.Dense(nclass)
+        y = dense(x)
+        loss = losses.sparse_softmax_cross_entropy(yt, y)
+        opt = adam.AdamOptimizer()
+        train_op = opt.minimize(loss, var_list=dense.trainable_weights)
+        with ops.control_dependencies([train_op]):
+          loss = array_ops.identity(loss)
+        return loss, i
 
-    begin, end = constant_op.constant(0), constant_op.constant(num_iter)
-    loss, _ = control_flow_ops.while_loop(lambda loss, i: math_ops.less(i, end),
-                                          body, [0.0, begin])
+      begin, end = constant_op.constant(0), constant_op.constant(num_iter)
+      loss, _ = control_flow_ops.while_loop(
+          lambda loss, i: math_ops.less(i, end), body, [0.0, begin])
 
     output_val_ref, output_val, cost_graph = self._run(mode, loss)
     node_map = _build_node_map(cost_graph.node)

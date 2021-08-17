@@ -146,7 +146,8 @@ void DepthwiseConv3x3::RearrangeWeightsAndBiasesData(
   }
 }
 
-bool IsDepthwiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr);
+bool IsDepthwiseConv3x3Supported(const GpuInfo& gpu_info,
+                                 const DepthwiseConvolution2DAttributes& attr);
 
 DepthwiseConv3x3 CreateDepthwiseConv3x3(
     const GpuInfo& gpu_info, const OperationDef& definition,

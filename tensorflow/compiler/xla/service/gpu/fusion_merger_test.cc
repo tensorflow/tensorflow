@@ -317,7 +317,7 @@ TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {
 
 // Check that we limit the number of operands to fusions we create.
 TEST_F(FusionMergerTest, AvoidsLargeFusion) {
-  constexpr int64 kNumParams = kMaxOperandsAndOutputsPerFusion + 1;
+  constexpr int64_t kNumParams = kMaxOperandsAndOutputsPerFusion + 1;
 
   // Compute
   //   p0 + p1 + p2 + ... + pn,
@@ -328,7 +328,7 @@ TEST_F(FusionMergerTest, AvoidsLargeFusion) {
 
   std::vector<HloInstruction*> entry_params;
 
-  for (int64 i = 0; i < kNumParams; ++i) {
+  for (int64_t i = 0; i < kNumParams; ++i) {
     entry_params.push_back(
         b.AddInstruction(HloInstruction::CreateParameter(i, shape, "p")));
   }
@@ -336,7 +336,7 @@ TEST_F(FusionMergerTest, AvoidsLargeFusion) {
     // Build a fusion computation for calculating the sum of all parameters.
     HloComputation::Builder sub_builder("subcomp");
     HloInstruction* sum = nullptr;
-    for (int64 i = 0; i < params.size(); ++i) {
+    for (int64_t i = 0; i < params.size(); ++i) {
       auto p = sub_builder.AddInstruction(
           HloInstruction::CreateParameter(i, shape, "p"));
       if (sum == nullptr) {

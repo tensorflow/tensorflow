@@ -478,8 +478,7 @@ class Layer(base_layer.Layer):
             # When the shim to get variable scope working in TF2 is used,
             # We need to explicitly make the shim track the regularization
             # losses as the collections will not be accessible.
-            if isinstance(var_store,
-                          variable_scope_shim._EagerVariableStore):  # pylint: disable=protected-access
+            if hasattr(var_store, 'add_regularizer'):
               var_store.add_regularizer(variable, regularizer)
 
         if init_graph is not None:

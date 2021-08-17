@@ -49,9 +49,9 @@ class GRUCellBlockOp : public OpKernel {
     const Tensor* b_c_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("b_c", &b_c_tensor));
 
-    const int64 batch_size = x_tensor->dim_size(0);
-    const int64 input_size = x_tensor->dim_size(1);
-    const int64 cell_size = h_prev_tensor->dim_size(1);
+    const int64_t batch_size = x_tensor->dim_size(0);
+    const int64_t input_size = x_tensor->dim_size(1);
+    const int64_t cell_size = h_prev_tensor->dim_size(1);
 
     // Sanity checks for input shapes.
 
@@ -204,9 +204,9 @@ class GRUBlockCellGradOp : public OpKernel {
     const Tensor* d_h_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("d_h", &d_h_tensor));
 
-    const int64 batch_size = x_tensor->dim_size(0);
-    const int64 input_size = x_tensor->dim_size(1);
-    const int64 cell_size = h_prev_tensor->dim_size(1);
+    const int64_t batch_size = x_tensor->dim_size(0);
+    const int64_t input_size = x_tensor->dim_size(1);
+    const int64_t cell_size = h_prev_tensor->dim_size(1);
 
     // Sanity checks for input shapes.
 

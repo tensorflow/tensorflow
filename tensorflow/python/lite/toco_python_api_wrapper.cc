@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <vector>
+
 #include "pybind11/pybind11.h"
 #include "tensorflow/lite/toco/python/toco_python_api.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
@@ -88,5 +91,20 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
       py::arg("custom_opdefs_txt_raw"),
       R"pbdoc(
       Registers the given custom opdefs to the TensorFlow global op registry.
+    )pbdoc");
+  m.def(
+      "RetrieveCollectedErrors",
+      []() {
+        std::vector<std::string> collected_errors =
+            toco::RetrieveCollectedErrors();
+        pybind11::list serialized_message_list(collected_errors.size());
+        int i = 0;
+        for (const auto& error_data : collected_errors) {
+          serialized_message_list[i++] = pybind11::bytes(error_data);
+        }
+        return serialized_message_list;
+      },
+      R"pbdoc(
+      Returns and clears the list of collected errors in ErrorCollector.
     )pbdoc");
 }

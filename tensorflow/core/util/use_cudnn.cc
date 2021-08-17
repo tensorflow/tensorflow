@@ -39,12 +39,16 @@ namespace tensorflow {
 bool CudnnUseFrontend() {
   static bool result = [] {
     bool value = false;
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-    Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_FRONTEND", true, &value);
-    if (!status.ok()) {
-      LOG(ERROR) << status;
+#if GOOGLE_CUDA
+    if (CUDNN_VERSION >= 8100) {
+      // cuDNN 8.1.0 + the frontend has issues regarding fused convolution.
+      Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_FRONTEND",
+                                         CUDNN_VERSION >= 8200, &value);
+      if (!status.ok()) {
+        LOG(ERROR) << status;
+      }
     }
-#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8100
+#endif  // GOOGLE_CUDA
     return value;
   }();
   return result;
@@ -74,8 +78,8 @@ ADD_BOOL_CUDNN_FLAG(DebugCudnnRnnUseTensorOps,
 #undef ADD_BOOL_CUDNN_FLAG
 
 #define ADD_INT64_CUDNN_FLAG(func_name, flag_name, default_value)           \
-  int64 func_name() {                                                       \
-    int64 value = default_value;                                            \
+  int64_t func_name() {                                                     \
+    int64_t value = default_value;                                          \
     Status status = ReadInt64FromEnvVar(#flag_name, default_value, &value); \
     if (!status.ok()) {                                                     \
       LOG(ERROR) << status;                                                 \
@@ -88,9 +92,10 @@ ADD_BOOL_CUDNN_FLAG(DebugCudnnRnnUseTensorOps,
 ADD_INT64_CUDNN_FLAG(DebugCudnnRnnAlgo, TF_DEBUG_CUDNN_RNN_ALGO, -1);
 #undef ADD_INT64_CUDNN_FLAG
 
-bool IsCudnnSupportedFilterSize(const int32 filter_rows,
-                                const int32 filter_cols, const int32 in_depth,
-                                const int32 out_depth) {
+bool IsCudnnSupportedFilterSize(const int32_t filter_rows,
+                                const int32_t filter_cols,
+                                const int32_t in_depth,
+                                const int32_t out_depth) {
   return in_depth == out_depth && filter_rows == filter_cols &&
          (filter_rows == 1 || filter_rows == 3 || filter_rows == 5 ||
           filter_rows == 7);

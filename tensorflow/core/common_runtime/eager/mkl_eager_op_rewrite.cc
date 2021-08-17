@@ -81,7 +81,7 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   std::unordered_map<std::string, bool> registered_kernels_map_;
 };
 
-REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, 20000,
+REGISTER_REWRITE(EagerOpRewriteRegistry::POST_PLACEMENT, 10000,
                  MklEagerOpRewrite);
 
 // Constructor

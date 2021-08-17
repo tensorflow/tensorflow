@@ -35,19 +35,19 @@ class DepthwiseConvolution2DTest
 
 static std::vector<DepthwiseConvolution2DSpec> GetConv2DTestCases() {
   std::vector<DepthwiseConvolution2DSpec> config_set;
-  std::vector<std::vector<int64>> config_options = {
+  std::vector<std::vector<int64_t>> config_options = {
       {128, 6, 3, 64},  {256, 5, 3, 256}, {256, 5, 2, 144}, {144, 5, 3, 64},
       {144, 5, 2, 256}, {8, 48, 17, 8},   {128, 20, 6, 64}, {64, 14, 12, 172},
       {16, 9, 4, 16},   {128, 1, 2, 144}, {256, 1, 2, 64},  {256, 1, 2, 2},
       {144, 5, 3, 3},   {8, 48, 17, 1},   {16, 9, 5, 4}};
 
   for (auto option : config_options) {
-    int64 feature = option[0];
-    int64 activation_size = option[1];
-    int64 kernel_size = option[2];
-    int64 batch = option[3];
+    int64_t feature = option[0];
+    int64_t activation_size = option[1];
+    int64_t kernel_size = option[2];
+    int64_t batch = option[3];
 
-    std::vector<int64> kernel_layout = {3, 2, 1, 0};
+    std::vector<int64_t> kernel_layout = {3, 2, 1, 0};
     DepthwiseConvolution2DSpec config;
     config.output_feature = feature;
     config.window = kernel_size;

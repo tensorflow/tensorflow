@@ -29,6 +29,16 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeVariableTestPass();
 // Test pass for applying TF->TF lowering patterns.
 std::unique_ptr<OperationPass<FuncOp>> CreateTestTFLowerTFPass();
 
+// Test passes for visitor util.
+std::unique_ptr<OperationPass<FuncOp>> CreateTestVisitorUtilPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateTestVisitorUtilInterruptPass();
+
+// Test operation clustering based on user defined policy.
+std::unique_ptr<OperationPass<FuncOp>> CreateTestClusteringPolicyPass();
+
+// Test pass for analyzing side-effect analysis result.
+std::unique_ptr<OperationPass<ModuleOp>> CreateTestSideEffectAnalysisPass();
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
 

@@ -117,7 +117,8 @@ Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
 RendezvousInterface::~RendezvousInterface() {}
 
 Status RendezvousInterface::Recv(const ParsedKey& key, const Args& recv_args,
-                                 Tensor* val, bool* is_dead, int64 timeout_ms) {
+                                 Tensor* val, bool* is_dead,
+                                 int64_t timeout_ms) {
   Status ret;
   Notification n;
   RecvAsync(key, recv_args,
@@ -130,7 +131,7 @@ Status RendezvousInterface::Recv(const ParsedKey& key, const Args& recv_args,
               n.Notify();
             });
   if (timeout_ms > 0) {
-    int64 timeout_us = timeout_ms * 1000;
+    int64_t timeout_us = timeout_ms * 1000;
     bool notified = WaitForNotificationWithTimeout(&n, timeout_us);
     if (!notified) {
       return Status(error::DEADLINE_EXCEEDED,
@@ -144,7 +145,7 @@ Status RendezvousInterface::Recv(const ParsedKey& key, const Args& recv_args,
 
 Status RendezvousInterface::Recv(const ParsedKey& key, const Args& args,
                                  Tensor* val, bool* is_dead) {
-  const int64 no_timeout = 0;
+  const int64_t no_timeout = 0;
   return Recv(key, args, val, is_dead, no_timeout);
 }
 

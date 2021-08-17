@@ -29,6 +29,7 @@ namespace lmhlo {
 
 // Returns true if the op is an elementwise unary lmhlo op.
 // TODO(disc): use fusibility interface
+// TODO(disc): Unify with disc_supported_list.h and Elementwise Trait
 bool isElementWiseUnary(Operation* op) {
   // clang-format off
   return isa<
@@ -135,7 +136,7 @@ bool isFusible(Operation* op) {
 // For some ops (e.g. lmhlo ops), some operands are the output memrefs
 // Thus these operands are supposed to be updated.
 int getNumResultOperands(Operation* op) {
-  if (op->getDialect()->getNamespace() != "lmhlo") {
+  if (!isa<LmhloOp>(op)) {
     return 0;
   }
 
@@ -199,8 +200,8 @@ FusionPattern::FusionPattern(Operation* op) {
 }
 
 // Create a new fusion pattern from the ops inside the lmhlo fusion op.
-FusionPattern::FusionPattern(lmhlo::FusionOp op) {
-  for (Operation& op : op.region().getBlocks().front()) {
+FusionPattern::FusionPattern(lmhlo::FusionOp fusion_op) {
+  for (Operation& op : fusion_op.region().getBlocks().front()) {
     op_list_.push_back(&op);
   }
 
@@ -224,7 +225,7 @@ FusionPattern::FusionPattern(lmhlo::FusionOp op) {
         fusion_type_ = FusionType::kLoop;
         dominant_op_ = op;
       }
-    } else {
+    } else if (!isa<lmhlo::TerminatorOp>(op)) {
       // Not a supported fusionOp, early stop.
       fusion_type_ = FusionType::kNone;
       dominant_op_ = nullptr;
@@ -327,6 +328,7 @@ void FusionPattern::calculateOperandsAndResults() {
 
       if (has_external_user) {
         results_.push_back(v);
+        root_ops_.push_back(op);
       } else {
         internal_results_.push_back(v);
       }

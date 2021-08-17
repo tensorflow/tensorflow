@@ -96,7 +96,7 @@ struct TPUVariableInfo {
   // The TPU core which the variable will be placed on.
   int device_ordinal;
   // If true, try to place the variable on fast memory space if hardware
-  // support. For example, PuffyLite has CMEM space.
+  // support.
   bool fast_mem;
 };
 
@@ -182,7 +182,7 @@ void SetXlaShardingNodeAttr(Node* xla_sharding_node, int num_cores_per_replica,
   auto sharding = absl::make_optional<xla::OpSharding>();
   sharding->set_type(xla::OpSharding::OTHER);
 
-  std::vector<int64> dims(rank, 1LL);
+  std::vector<int64_t> dims(rank, 1LL);
   dims[shard_dim] = num_cores_per_replica;
   for (auto dim : dims) {
     sharding->add_tile_assignment_dimensions(dim);
@@ -306,10 +306,10 @@ Status GetClusterName(Graph* graph, string* cluster_name) {
 // back where necessary.
 //
 // Returns the number of nodes that were removed.
-int64 RemoveDescendantNodeOfArg(Graph* graph,
-                                const std::string& node_type_to_remove,
-                                const std::set<std::string>& must_be_child_of) {
-  int64 nodes_removed = 0;
+int64_t RemoveDescendantNodeOfArg(
+    Graph* graph, const std::string& node_type_to_remove,
+    const std::set<std::string>& must_be_child_of) {
+  int64_t nodes_removed = 0;
   std::vector<std::pair<const Edge*, std::vector<const Edge*>>> edges_to_remove;
 
   for (Node* node : graph->nodes()) {
@@ -438,9 +438,9 @@ Status ConvertEdgeShapesToTensorShapes(
   // keys in tpu_input_shapes may be stale.
   for (const auto& iter : named_input_shapes) {
     VLOG(2) << iter.first << ", rank: " << iter.second.size();
-    const int64 rank = iter.second.size();
-    std::vector<int64> dims(rank);
-    for (int64 d = 0; d < rank; ++d) {
+    const int64_t rank = iter.second.size();
+    std::vector<int64_t> dims(rank);
+    for (int64_t d = 0; d < rank; ++d) {
       VLOG(2) << " dim[" << d << "]: " << iter.second.at(d);
       dims[d] = iter.second.at(d);
     }
@@ -1039,7 +1039,7 @@ Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
     Node* flatten_reshape_shape_node = nullptr;
     Tensor flattened_input_shape_tensor;
     flattened_input_shape_tensor =
-        Tensor(DT_INT32, TensorShape({static_cast<int64>(1)}));
+        Tensor(DT_INT32, TensorShape({static_cast<int64_t>(1)}));
     flattened_input_shape_tensor.flat<int>()(0) = -1;
     TF_RETURN_IF_ERROR(
         NodeBuilder(absl::StrCat(edge->src()->name(), "/flatten/Reshape/shape"),
@@ -1065,7 +1065,7 @@ Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
     Node* recover_reshape_shape_node = nullptr;
     Tensor original_input_shape_tensor(
         DT_INT32,
-        TensorShape({static_cast<int64>(tpu_input_shapes->at(edge).size())}));
+        TensorShape({static_cast<int64_t>(tpu_input_shapes->at(edge).size())}));
     original_input_shape_tensor.flat<int>()(0) = -1;
     for (int d = 1; d < tpu_input_shapes->at(edge).size(); ++d)
       original_input_shape_tensor.flat<int>()(d) =
@@ -1214,6 +1214,9 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     VLOG(3) << "Cache Miss: partitioning function " << func_.name()
             << " cache_hash: " << cache_hash
             << " device_ordinal: " << device_ordinal;
+
+    profiler::TraceMe trace_me(
+        "TPUPartitionedCallOp-RewriteAndInstantiateFunctions");
     std::unique_ptr<Graph> graph(new Graph(flib_def_.get()));
     int num_cores_per_replica = 1;
     bool enable_spmd_xla_partitioning = false;
@@ -1535,8 +1538,8 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
   OpInputList arguments;
   TF_RETURN_IF_ERROR(ctx->input_list("args", &arguments));
 
-  auto* rendez = new PrivateIntraProcessRendezvous(device_mgr_);
-  opts.rendezvous = rendez;
+  PrivateIntraProcessRendezvous rendez(device_mgr_);
+  opts.rendezvous = &rendez;
 
   BlockingCounter bcount(functions.size());
   for (const DeviceAndFHandle& entry : functions) {
@@ -1582,19 +1585,17 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
     int num_cores_per_replica, bool enable_spmd_xla_partitioning) {
   // Currently variable deduplication is not supported for XLA SPMD
   // partitioning. It is possible that it could be supported in the future.
-  const bool enable_variable_deduplication =
+  bool enable_variable_deduplication =
       runtime_params_.enable_variable_deduplication;
-  if (enable_spmd_xla_partitioning && num_cores_per_replica > 1 &&
-      enable_variable_deduplication) {
+  if (enable_spmd_xla_partitioning && num_cores_per_replica > 1) {
     // If enable_spmd_xla_partitioning is true, the user set the
     // enable_auto_xla_input_sharding flag. Warn them that only one of the flags
     // can be set safely when num_cores_per_replica > 1. If
     // num_cores_per_replica==1, enable_spmd_xla_partitioning is effectively a
     // no-op so we can skip this check.
-    return errors::InvalidArgument(
-        "The following flags are incompatible when num_cores_per_replica > 1: "
-        "enable_auto_xla_input_sharding and enable_variable_deduplication. "
-        "Only enable one of the flags.");
+    LOG(WARNING) << "Disabling variable deduplication because it is not "
+                    "compatible with enable_auto_xla_input_sharding.";
+    enable_variable_deduplication = false;
   }
   std::vector<Node*> tpu_resource_args;
   std::vector<int> arg_indices;
@@ -2032,7 +2033,7 @@ Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
       sharding->set_type(xla::OpSharding::OTHER);
 
       // Sets up tile_assignment_dimensions.
-      std::vector<int64> dims(rank, 1LL);
+      std::vector<int64_t> dims(rank, 1LL);
       dims[shard_dim] = num_cores_per_replica;
       for (auto dim : dims) {
         sharding->add_tile_assignment_dimensions(dim);
@@ -2261,7 +2262,7 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
                   /*x_num_cores=*/1, /*y_num_cores=*/1, /*z_num_cores=*/1,
                   /*num_cores_per_chip=*/2, &natural_order));
               break;
-            case 4:  // we assume this is a puffylite donut (2x2 w/ 1 core/chip)
+            case 4:  // we assume this is a device with one core per chip.
               TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
                   /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
                   /*num_cores_per_chip=*/1, &natural_order));
@@ -2274,7 +2275,7 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
             default:
               return errors::Unimplemented(
                   "You must specify a device assignment for all TPU "
-                  "configurations other than JF/DF/PL 1x1 or 2x2.");
+                  "configurations.");
           }
           if (*num_core_per_replica != num_cores &&
               !std::equal(natural_order.begin(), natural_order.end(),
@@ -2328,7 +2329,7 @@ Status TPUPartitionedCallOp::PartitionHelper(
     // per-worker shards at the remote worker(s).
     return node->assigned_device_name();
   };
-  int64 edge_name_counter = 0;
+  int64_t edge_name_counter = 0;
   partition_options.new_name = [&edge_name_counter](const string& prefix) {
     return strings::StrCat(prefix, "/_", ++edge_name_counter);
   };
@@ -2440,9 +2441,9 @@ Status TPUPartitionedCallOp::SetDeviceOrdinal(const DeviceSet& device_set,
         node->AddAttr(kSendDevice, device);
         node->ClearAttr(kSendDeviceIncarnation);
         const Device* d = device_set.FindDeviceByName(device);
-        int64 send_incarnation = (d == nullptr)
-                                     ? PartitionOptions::kIllegalIncarnation
-                                     : d->attributes().incarnation();
+        int64_t send_incarnation = (d == nullptr)
+                                       ? PartitionOptions::kIllegalIncarnation
+                                       : d->attributes().incarnation();
         node->AddAttr(kSendDeviceIncarnation, send_incarnation);
       }
       attr = node->attrs().Find(kRecvDevice);
@@ -2588,6 +2589,7 @@ void TPUPartitionedCallOp::ExecuteLocalFunction(
 void TPUPartitionedCallOp::ExecuteFunctions(
     const std::vector<DeviceAndFHandle>& functions, OpKernelContext* ctx,
     int device_ordinal, int64_t ordinal_selector_req_id, DoneCallback done) {
+  profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteFunctions");
   FunctionLibraryRuntime::Options opts;
   opts.step_container = ctx->step_container();
   opts.cancellation_manager = ctx->cancellation_manager();

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/function.h"
@@ -103,9 +104,9 @@ class IteratorStateReader {
   virtual bool Contains(StringPiece name, StringPiece key) const = 0;
 
   // Reads an integer for the given key.
-  virtual Status ReadScalar(StringPiece key, int64* val) const = 0;
+  virtual Status ReadScalar(StringPiece key, int64_t* val) const = 0;
   virtual Status ReadScalar(StringPiece name, StringPiece key,
-                            int64* val) const = 0;
+                            int64_t* val) const = 0;
 
   // Reads a string for the given key.
   virtual Status ReadScalar(StringPiece key, tstring* val) const = 0;
@@ -137,9 +138,9 @@ class IteratorStateReader {
 class IteratorStateWriter {
  public:
   // Writes an integer for the given key.
-  virtual Status WriteScalar(StringPiece key, const int64 val) = 0;
+  virtual Status WriteScalar(StringPiece key, const int64_t val) = 0;
   virtual Status WriteScalar(StringPiece name, StringPiece key,
-                             const int64 val) = 0;
+                             const int64_t val) = 0;
 
   // Writes a string for the given key.
   virtual Status WriteScalar(StringPiece key, const tstring& val) = 0;
@@ -186,7 +187,7 @@ class GraphDefBuilderWrapper {
   template <typename T>
   Status AddVector(const std::vector<T>& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<T>::v(),
-                          TensorShape({static_cast<int64>(val.size())}));
+                          TensorShape({static_cast<int64_t>(val.size())}));
     for (size_t i = 0; i < val.size(); i++) {
       val_t.flat<T>()(i) = val[i];
     }
@@ -199,7 +200,7 @@ class GraphDefBuilderWrapper {
 
   Status AddVector(const std::vector<string>& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<tstring>::v(),
-                          TensorShape({static_cast<int64>(val.size())}));
+                          TensorShape({static_cast<int64_t>(val.size())}));
     for (size_t i = 0; i < val.size(); i++) {
       val_t.flat<tstring>()(i) = val[i];
     }
@@ -379,20 +380,24 @@ class IteratorContext {
     explicit Params(IteratorContext* ctx)
         : allocator_getter(ctx->allocator_getter()),
           cancellation_manager(ctx->cancellation_manager()),
+          collective_executor(ctx->collective_executor()),
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
+          is_restoring(ctx->is_restoring()),
           resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
-          split_provider(ctx->split_provider()),
+          split_providers(ctx->split_providers()),
           stats_aggregator(ctx->stats_aggregator()),
           thread_factory(ctx->thread_factory()),
           thread_pool(ctx->thread_pool()) {}
 
     explicit Params(OpKernelContext* ctx)
-        : env(ctx->env()), flr(ctx->function_library()) {
+        : collective_executor(ctx->collective_executor()),
+          env(ctx->env()),
+          flr(ctx->function_library()) {
       // NOTE: need reinterpret_cast because function.h forward-declares Device.
       DeviceBase* device =
           reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
@@ -405,7 +410,7 @@ class IteratorContext {
       if (thread_pool) {
         runner_threadpool_size = thread_pool->NumThreads();
       } else {
-        static const int32 kDefaultRunnerThreadpoolSize =
+        static const int32_t kDefaultRunnerThreadpoolSize =
             port::MaxParallelism();
         runner_threadpool_size = kDefaultRunnerThreadpoolSize;
       }
@@ -432,6 +437,9 @@ class IteratorContext {
     // The CancellationManager to be used to cancel execution of ops.
     CancellationManager* cancellation_manager;
 
+    // Collective support.
+    CollectiveExecutor* collective_executor = nullptr;
+
     // Interface to operating system functionality.
     Env* env = nullptr;
 
@@ -440,6 +448,9 @@ class IteratorContext {
 
     // A FunctionHandleCache that owns all the function handles. Not owned.
     FunctionHandleCache* function_handle_cache = nullptr;
+
+    // Marks whether the iterator is restored from a checkpoint.
+    bool is_restoring = false;
 
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
@@ -454,8 +465,9 @@ class IteratorContext {
     // Number of threads used for executing user-defined functions.
     int32 runner_threadpool_size = 0;
 
-    // An optional split provider indicating which splits to process.
-    std::shared_ptr<SplitProvider> split_provider = nullptr;
+    // Split providers indicating which splits to process. May be empty,
+    // indicating that the iterator should process all splits.
+    std::vector<std::shared_ptr<SplitProvider>> split_providers;
 
     // The `StatsAggregator` object to record statistics about the iterator.
     //
@@ -488,6 +500,10 @@ class IteratorContext {
     return params_.cancellation_manager;
   }
 
+  CollectiveExecutor* collective_executor() {
+    return params_.collective_executor;
+  }
+
   Env* env() const { return params_.env; }
 
   FunctionLibraryRuntime* flr() { return params_.flr; }
@@ -495,6 +511,8 @@ class IteratorContext {
   FunctionHandleCache* function_handle_cache() {
     return params_.function_handle_cache;
   }
+
+  bool is_restoring() { return params_.is_restoring; }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
@@ -506,8 +524,8 @@ class IteratorContext {
 
   int32 runner_threadpool_size() { return params_.runner_threadpool_size; }
 
-  std::shared_ptr<SplitProvider> split_provider() {
-    return params_.split_provider;
+  std::vector<std::shared_ptr<SplitProvider>> split_providers() {
+    return params_.split_providers;
   }
 
   std::shared_ptr<StatsAggregator> stats_aggregator() {
@@ -519,8 +537,6 @@ class IteratorContext {
   }
 
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
-
-  Params params() { return params_; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
@@ -667,9 +683,8 @@ class IteratorBase {
   // output will be stored in `*out_tensors` and `false` will be
   // stored in `*end_of_sequence`.
   //
-  // If no more outputs remain in this iterator's range, `true` will
-  // be stored in `*end_of_sequence`, and the content of
-  // `*out_tensors` will be undefined.
+  // If no more outputs remain in this iterator's range, `true` will be stored
+  // in `*end_of_sequence`, and `*out_tensors` will be empty.
   //
   // Implementations should never return `OutOfRange` error. If at end of
   // sequence, set `*end_of_sequence = true` and return `Status::OK()`.
@@ -726,7 +741,7 @@ class IteratorBase {
 
   // Saves the state of this iterator.
   virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
-    int64 start_us = EnvTime::NowMicros();
+    int64_t start_us = EnvTime::NowMicros();
     TF_RETURN_IF_ERROR(SaveInternal(ctx, writer));
     VLOG(1) << "Saved " << prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
@@ -740,7 +755,7 @@ class IteratorBase {
 
   // Restores the state of this iterator.
   virtual Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
-    int64 start_us = EnvTime::NowMicros();
+    int64_t start_us = EnvTime::NowMicros();
     TF_RETURN_IF_ERROR(RestoreInternal(ctx, reader));
     VLOG(1) << "Restored " << prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
@@ -790,7 +805,7 @@ class IteratorBase {
   std::shared_ptr<model::Node> model_node() const { return node_; }
 
   // Returns the number of elements produced by this iterator.
-  int64 num_elements() const {
+  int64_t num_elements() const {
     if (node_) return node_->num_elements();
     return 0;
   }
@@ -803,8 +818,8 @@ class IteratorBase {
   std::vector<std::function<void()>> cleanup_fns_;
   std::shared_ptr<model::Node> node_ = nullptr;
   const IteratorBase* parent_ = nullptr;  // Not owned.
-  int64 id_ = 0;
-  int64 parent_id_ = 0;
+  int64_t id_ = 0;
+  int64_t parent_id_ = 0;
 };
 
 // Represents runtime information needed to construct a dataset.
@@ -831,10 +846,10 @@ class DatasetContext {
 };
 
 // Returns the number of bytes allocated for the given tensor.
-int64 GetAllocatedBytes(const std::vector<Tensor>& element);
+int64_t GetAllocatedBytes(const std::vector<Tensor>& element);
 
 // Returns the estimated memory usage in bytes of the given tensor.
-int64 GetTotalBytes(const std::vector<Tensor>& element);
+int64_t GetTotalBytes(const std::vector<Tensor>& element);
 
 // Validates and extracts a `DatasetBase` object from `tensor`.
 //
@@ -873,13 +888,12 @@ class DatasetBase : public core::RefCounted {
   // the graph.
   const string& node_name() const { return node_name_; }
 
-  // Merges options from inputs to this dataset. If there is a conflict in a
-  // field value, the options set on this dataset takes precedence over those in
-  // the inputs. The order of precedence on the inputs is in the same order as
-  // how they appear for this dataset.
-  Status MergeOptionsFromInputs();
+  // Initializes the dataset.
+  void Initialize();
 
   const Options& options() const { return options_; }
+
+  int64_t num_sources() const { return num_sources_; }
 
   // Returns a new iterator for iterating over the range of elements in
   // this dataset.
@@ -907,8 +921,10 @@ class DatasetBase : public core::RefCounted {
       IteratorStateReader* reader,
       std::unique_ptr<IteratorBase>* iterator) const {
     std::unique_ptr<IteratorBase> it;
-    TF_RETURN_IF_ERROR(
-        MakeIterator(ctx, /*parent=*/nullptr, output_prefix, &it));
+    IteratorContext::Params params(ctx);
+    params.is_restoring = true;
+    TF_RETURN_IF_ERROR(MakeIterator(IteratorContext(std::move(params)),
+                                    /*parent=*/nullptr, output_prefix, &it));
     TF_RETURN_IF_ERROR(it->Restore(ctx, reader));
     *iterator = std::move(it);
     return Status::OK();
@@ -924,8 +940,8 @@ class DatasetBase : public core::RefCounted {
   // Returns a split provider which partitions the dataset's data into splits
   // and provides them in a sequence. The split provider is stored in
   // `*split_provider`.
-  virtual Status MakeSplitProvider(
-      std::unique_ptr<SplitProvider>* split_provider) const;
+  virtual Status MakeSplitProviders(
+      std::vector<std::unique_ptr<SplitProvider>>* split_providers) const;
 
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
@@ -938,13 +954,13 @@ class DatasetBase : public core::RefCounted {
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
 
   // Returns the number of bytes allocated for tensors of this dataset.
-  virtual int64 AllocatedBytes() const { return 0; }
+  virtual int64_t AllocatedBytes() const { return 0; }
 
   // Returns the estimated number of bytes used for tensors of this dataset.
-  virtual int64 TotalBytes() const { return 0; }
+  virtual int64_t TotalBytes() const { return 0; }
 
   // Returns the cardinality of this dataset.
-  virtual int64 Cardinality() const { return kUnknownCardinality; }
+  virtual int64_t Cardinality() const { return kUnknownCardinality; }
 
   // A human-readable debug string for this dataset.
   virtual string DebugString() const = 0;
@@ -962,6 +978,10 @@ class DatasetBase : public core::RefCounted {
   // `errors::FailedPrecondition` with a message that identifies the external
   // state. Otherwise, the method returns `Status::OK()`.
   virtual Status CheckExternalState() const = 0;
+
+  // Return the element at a particular index for a randomly accessible dataset.
+  virtual Status Get(OpKernelContext* ctx, int64 index,
+                     std::vector<Tensor>* out_tensors);
 
   // Wrapper around a GraphDefBuilder which provides support for serializing
   // Datasets as GraphDefs.
@@ -1008,9 +1028,22 @@ class DatasetBase : public core::RefCounted {
   void set_options(const Options& options) { options_ = options; }
 
  private:
+  // Computes the number of source datasets feeding into this dataset. A source
+  // dataset is a leaf in the subtree of dataset inputs.
+  Status ComputeNumSources();
+
+  // Merges options from inputs to this dataset. If there is a conflict in a
+  // field value, the options set on this dataset takes precedence over those in
+  // the inputs. The order of precedence on the inputs is in the same order as
+  // how they appear for this dataset.
+  Status MergeOptionsFromInputs();
+
   const string type_string_;
   const string node_name_;
   Options options_;
+  // The number of source datasets feeding into the dataset. A source dataset is
+  // a leaf in the subtree of dataset inputs.
+  int64_t num_sources_ = -1;
 };
 
 // Represents an iterator that is associated with a particular dataset.
@@ -1073,7 +1106,8 @@ class DatasetBaseIterator : public IteratorBase {
   // Internal implementation of GetNext that is wrapped in tracing logic.
   //
   // See the docstring of `GetNext` method regaring the contract for
-  // `out_tensors` and `end_of_sequence`.
+  // `out_tensors` and `end_of_sequence`. Implementations may assume that
+  // `*out_tensors` is empty.
   virtual Status GetNextInternal(IteratorContext* ctx,
                                  std::vector<Tensor>* out_tensors,
                                  bool* end_of_sequence) = 0;
@@ -1118,6 +1152,8 @@ class DatasetBaseIterator : public IteratorBase {
                            const std::vector<Tensor>& element) {
     if (collect_resource_usage(ctx)) {
       node_->record_buffer_event(-GetAllocatedBytes(element), -1);
+
+      DCHECK_GE(node_->buffered_elements(), 0);
     }
   }
 
@@ -1134,7 +1170,7 @@ class DatasetBaseIterator : public IteratorBase {
   // has produced an element and its size in bytes.
   void RecordElement(IteratorContext* ctx, std::vector<Tensor>* out_tensors) {
     if (node_) {
-      int64 num_bytes = GetAllocatedBytes(*out_tensors);
+      int64_t num_bytes = GetAllocatedBytes(*out_tensors);
       node_->record_element();
       node_->record_bytes_produced(num_bytes);
       if (node_->output()) {
@@ -1147,7 +1183,7 @@ class DatasetBaseIterator : public IteratorBase {
   // this iterator has started work.
   void RecordStart(IteratorContext* ctx) {
     if (collect_resource_usage(ctx)) {
-      int64 now_nanos = EnvTime::NowNanos();
+      int64_t now_nanos = EnvTime::NowNanos();
       node_->record_start(now_nanos);
     }
   }
@@ -1156,7 +1192,7 @@ class DatasetBaseIterator : public IteratorBase {
   // this iterator has stopped work.
   void RecordStop(IteratorContext* ctx) {
     if (collect_resource_usage(ctx)) {
-      int64 now_nanos = EnvTime::NowNanos();
+      int64_t now_nanos = EnvTime::NowNanos();
       node_->record_stop(now_nanos);
     }
   }

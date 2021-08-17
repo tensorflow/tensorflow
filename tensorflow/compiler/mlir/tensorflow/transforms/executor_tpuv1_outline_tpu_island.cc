@@ -46,6 +46,15 @@ constexpr llvm::StringRef kOutlinedFuncPrefix = "_tpu_v1_compat_outlined_func";
 struct TPUBridgeExecutorIslandOutlining
     : public PassWrapper<TPUBridgeExecutorIslandOutlining,
                          OperationPass<ModuleOp>> {
+  StringRef getArgument() const final {
+    return "tf-executor-tpu-v1-island-outlining";
+  }
+
+  StringRef getDescription() const final {
+    return "Outline TPU clusters from island into a nested module, so it can "
+           "be processed like a V2 module, intended for V1 compatibility mode";
+  }
+
   void runOnOperation() override;
 };
 
@@ -168,10 +177,7 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   }
 }
 
-PassRegistration<TPUBridgeExecutorIslandOutlining> tpu_pass(
-    "tf-executor-tpu-v1-island-outlining",
-    "Outline TPU clusters from island into a nested module, so it can be "
-    "processed like a V2 module, intended for V1 compatibility mode");
+PassRegistration<TPUBridgeExecutorIslandOutlining> tpu_pass;
 
 }  // namespace
 

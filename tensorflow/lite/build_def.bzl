@@ -199,7 +199,6 @@ def tf_to_tflite(name, src, options, out):
     toco_cmdline = " ".join([
         "$(location //tensorflow/lite/python:tflite_convert)",
         "--enable_v1_converter",
-        "--experimental_new_converter",
         ("--graph_def_file=$(location %s)" % src),
         ("--output_file=$(location %s)" % out),
     ] + options)
@@ -907,8 +906,8 @@ def tflite_custom_android_library(
 
     android_library(
         name = name,
-        srcs = ["//tensorflow/lite/java:java_srcs"],
         manifest = "//tensorflow/lite/java:AndroidManifest.xml",
+        srcs = ["//tensorflow/lite/java:java_srcs"],
         deps = [
             ":%s_jni" % name,
             "@org_checkerframework_qual",
@@ -1008,6 +1007,10 @@ def tflite_combine_cc_tests(
         # Tests with data, args or special build option are not counted.
         if r["data"] or r["args"] or r["copts"] or r["defines"] or \
            r["includes"] or r["linkopts"] or r["additional_linker_inputs"]:
+            continue
+
+        # We only consider a single-src-file unit test.
+        if len(r["srcs"]) > 1:
             continue
 
         dep_attr = r["deps"]
