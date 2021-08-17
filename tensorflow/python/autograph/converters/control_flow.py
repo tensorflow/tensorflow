@@ -67,8 +67,8 @@ class ControlFlowTransformer(converter.Base):
 
         return results
 
-    def _create_state_functions(
-            self, block_vars, nonlocal_declarations, getter_name, setter_name):
+    @staticmethod
+    def _create_state_functions(block_vars, nonlocal_declarations, getter_name, setter_name):
         if not block_vars:
             template = """
         def getter_name():
@@ -105,7 +105,8 @@ class ControlFlowTransformer(converter.Base):
             setter_name=setter_name,
             state_vars=tuple(block_vars))
 
-    def _create_loop_options(self, node):
+    @staticmethod
+    def _create_loop_options(node):
         if not anno.hasanno(node, anno.Basic.DIRECTIVES):
             return gast.Dict([], [])
 
@@ -119,7 +120,8 @@ class ControlFlowTransformer(converter.Base):
         values = list(values)  # ast and gast don't play well with tuples.
         return gast.Dict(keys, values)
 
-    def _create_undefined_assigns(self, undefined_symbols):
+    @staticmethod
+    def _create_undefined_assigns(undefined_symbols):
         assignments = []
         for s in undefined_symbols:
             template = '''
@@ -145,7 +147,8 @@ class ControlFlowTransformer(converter.Base):
             continue
         return frozenset(basic_scope_vars)
 
-    def _get_block_composite_vars(self, modified, live_in):
+    @staticmethod
+    def _get_block_composite_vars(modified, live_in):
         # The scope variables corresponding to composite symbols (e.g. `self.x`).
         composite_scope_vars = []
         for s in modified:
