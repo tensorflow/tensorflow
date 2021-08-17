@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
@@ -434,8 +435,8 @@ class OptimizeForInferenceTest(test.TestCase):
       const_op_4 = constant_op.constant(
           np.array([0.1, 0.6]), shape=[2], dtype=dtypes.float32)
 
-      add_op_1 = nn_ops.math_ops.add(const_op_1, const_op_2)
-      rsqrt_op = nn_ops.math_ops.rsqrt(add_op_1)
+      add_op_1 = gen_math_ops.add(const_op_1, const_op_2)
+      rsqrt_op = math_ops.rsqrt(add_op_1)
 
       variable_op = None
       if pattern_match_mode == "MATCH_NO_GAMMA":
@@ -443,21 +444,20 @@ class OptimizeForInferenceTest(test.TestCase):
       else:
         const_op_5 = constant_op.constant(
             np.array([1.0, 2.0]), shape=[2], dtype=dtypes.float32)
-        variable_op = nn_ops.math_ops.multiply(rsqrt_op, const_op_5)
+        variable_op = math_ops.multiply(rsqrt_op, const_op_5)
 
-      mul_op_1 = nn_ops.math_ops.multiply(conv_op, variable_op)
+      mul_op_1 = math_ops.multiply(conv_op, variable_op)
 
       mul_op_2 = None
       if pattern_match_mode == "NO_MATCH":
         const_op_6 = constant_op.constant(
             np.array([0.2, 0.5]), shape=[2], dtype=dtypes.float32)
-        mul_op_2 = nn_ops.math_ops.multiply(const_op_3, const_op_6)
+        mul_op_2 = math_ops.multiply(const_op_3, const_op_6)
       else:
-        mul_op_2 = nn_ops.math_ops.multiply(const_op_3, variable_op)
+        mul_op_2 = math_ops.multiply(const_op_3, variable_op)
 
-      sub_op = nn_ops.math_ops.subtract(const_op_4, mul_op_2)
-      nn_ops.math_ops.add(mul_op_1,
-                          sub_op, name="output")
+      sub_op = math_ops.subtract(const_op_4, mul_op_2)
+      gen_math_ops.add(mul_op_1, sub_op, name="output")
 
       test_util.set_producer_version(ops.get_default_graph(), 8)
 
