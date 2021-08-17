@@ -865,7 +865,8 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
   # with ndarrays.
   __array_priority__ = 100
 
-  def __array__(self):
+  def __array__(self, dtype=None):
+    del dtype
     raise NotImplementedError(
         "Cannot convert a symbolic Tensor ({}) to a numpy array."
         " This error may indicate that you're trying to pass a Tensor to"
@@ -1057,8 +1058,12 @@ class _EagerTensorBase(Tensor):
     except core._NotOkStatusException as e:
       raise core._status_to_exception(e.code, e.message) from None
 
-  def __array__(self):
-    return self._numpy()
+  def __array__(self, dtype=None):
+    a = self._numpy()
+    if not dtype:
+      return a
+
+    return np.array(a, dtype=dtype)
 
   def _numpy_internal(self):
     raise NotImplementedError()
