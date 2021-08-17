@@ -44,7 +44,6 @@ def gen_api_init_files(
         compat_init_templates = [],
         packages = [
             "tensorflow.python",
-            "tensorflow.lite.python.analyzer",
             "tensorflow.lite.python.lite",
             "tensorflow.python.modules_with_exports",
         ],

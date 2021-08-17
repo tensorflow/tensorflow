@@ -586,7 +586,6 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
-        "//tensorflow/python/util:tf_export",
     ],
 )
 

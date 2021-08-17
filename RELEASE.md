@@ -275,10 +275,6 @@ This release contains contributions from many people at Google, as well as:
             coming soon.
         *   Old Converter (TOCO) is getting removed from next release. It's been
             deprecated for few releases already.
-    *   lite.experimental.Analyzer API:
-        *   An experimental tool to analyze TFLite flatbuffer models. This API
-            can be used to investigate TFLite model structure and check
-            compatibility with GPU delegate.
 
 *   `tf.saved_model`:
 
