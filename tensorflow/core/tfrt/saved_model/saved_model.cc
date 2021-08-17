@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
+#include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/types.h"
@@ -451,7 +452,8 @@ tensorflow::Status InitSavedModel(
 
   // TODO(b/178227859): We should make TPU resource init code pluggable, as
   // opposed to linking it in
-  if (options.compile_options.target_tpu) {
+  if (options.compile_options.tpu_target ==
+      tensorflow::TfrtTpuInfraTarget::kTpurt) {
     AddTpuResources(resource_context);
   }
 
@@ -1049,7 +1051,8 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
       loading_result->resource_context.get(), *fallback_state_));
   // TODO(b/178227859): We should make TPU resource init code pluggable, as
   // opposed to linking it in
-  if (options_.compile_options.target_tpu) {
+  if (options_.compile_options.tpu_target ==
+      tensorflow::TfrtTpuInfraTarget::kTpurt) {
     AddTpuResources(loading_result->resource_context.get());
   }
 

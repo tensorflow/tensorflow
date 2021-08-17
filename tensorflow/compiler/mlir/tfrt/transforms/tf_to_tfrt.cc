@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -152,6 +153,11 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
     mlir::StringAttr op_name =
         rewriter.getStringAttr(op->getName().getStringRef());
 
+    // Ops with _tpu_replicate attribute are TPU ops.
+    bool is_tpu_op = op->hasAttr("_tpu_replicate") ||
+                     llvm::isa<mlir::TF::TPUReplicatedInputOp,
+                               mlir::TF::TPUReplicatedOutputOp>(op);
+
     // Currently the fallback executeop does not support GPU device. For GPU
     // device, we still lower it to corert executeop where more devices are
     // supported.
@@ -160,7 +166,15 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
     // remove the conversion to corert.
     if (parsed_device_name->device_type == DEVICE_GPU ||
         (parsed_device_name->device_type == kDeviceTypeTpu &&
-         !tpu_lower_to_fallback_)) {
+         !tpu_lower_to_fallback_) ||
+        // Convert ops running on TPU to CoreRT dialect to prevent the creation
+        // of tfrt_fallback_async.createop for them.
+        // These ops will be encountered here only when using fallback to run
+        // TPU models, in which case, these ops are assumed to be in a function
+        // called by a TPUPartitionedCall op and will be compiled in
+        // TPUPartitionedCall op via FunctionLibraryRuntime and not be processed
+        // by BEFExecutor.
+        is_tpu_op) {
       return ConvertToCoreRTExecuteOp(
           op, operands, parsed_device_name->op_handler_name, op_attrs,
           op_func_attrs, op_name, rewriter);
@@ -1562,7 +1576,7 @@ class TfToTfrtConversionPass
   void getDependentDialects(mlir::DialectRegistry &registry) const override {
     getDependentConversionDialects(registry);
 
-    if (target_tpu_) RegisterTPUDialects(&registry);
+    if (target_tpurt_) RegisterTPUDialects(&registry);
   }
 
   llvm::StringRef getArgument() const final { return "tf-to-tfrt"; }
@@ -1574,7 +1588,7 @@ class TfToTfrtConversionPass
  public:
   TfToTfrtConversionPass() = default;
   explicit TfToTfrtConversionPass(const TfrtPipelineOptions &options) {
-    target_tpu_ = options.target_tpu;
+    target_tpurt_ = options.target_tpurt;
     enable_native_ops_ = options.enable_native_ops;
     tpu_use_core_selector_ = options.tpu_use_core_selector;
     tpu_use_bundled_transfer_ = options.tpu_use_bundled_transfer;
@@ -1600,7 +1614,7 @@ class TfToTfrtConversionPass
     CoreRTConverter corert_converter(&context, &side_effect_analysis);
     tfrt_compiler::CostAnalysis cost_analysis(func);
 
-    if (target_tpu_)
+    if (target_tpurt_)
       AddTPUTargetDialectAndPatterns(
           &target, &patterns, &context, &corert_converter,
           TfrtTpuExecuteOpConversionOptions{tpu_use_core_selector_,
@@ -1779,9 +1793,9 @@ class TfToTfrtConversionPass
     llvm_unreachable("invalid fallback op type");
   }
 
-  Option<bool> target_tpu_{*this, "target-tpu",
-                           llvm::cl::desc("Target TPU programs if true."),
-                           llvm::cl::init(false)};
+  Option<bool> target_tpurt_{*this, "target-tpurt",
+                             llvm::cl::desc("Target TPURT dialect if true."),
+                             llvm::cl::init(false)};
 
   Option<bool> enable_native_ops_{
       *this, "enable-native-ops",
@@ -2139,7 +2153,7 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
 
   // Decompose resource ops as resource variables will be converted to tensors
   // directly. Only do use for non-TPU programs.
-  if (options.decompose_resource_ops && !options.target_tpu)
+  if (options.decompose_resource_ops && !options.target_tpurt)
     pm.addNestedPass<mlir::FuncOp>(
         mlir::TFDevice::CreateDecomposeResourceOpsPass());
 

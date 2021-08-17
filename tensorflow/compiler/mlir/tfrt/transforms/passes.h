@@ -126,9 +126,9 @@ struct TfrtPipelineOptions
       *this, "skip-fold-transpose-in-ops",
       llvm::cl::desc("Skip folding transpose operands in Ops which can support "
                      "different layouts.")};
-  Option<bool> target_tpu{*this, "target-tpu",
-                          llvm::cl::desc("target TPU programs if true"),
-                          llvm::cl::init(false)};
+  Option<bool> target_tpurt{*this, "target-tpurt",
+                            llvm::cl::desc("target TPURT dialect if true"),
+                            llvm::cl::init(false)};
   Option<bool> tpu_use_core_selector{
       *this, "tpu-use-core-selector",
       llvm::cl::desc("If true, use ServingCoreSelector to pick TPU core. "

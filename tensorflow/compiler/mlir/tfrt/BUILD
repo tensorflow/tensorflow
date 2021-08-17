@@ -24,6 +24,7 @@ package_group(
         "//learning/serving/contrib/tfrt/mlir/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
+        "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
     ]),
 )

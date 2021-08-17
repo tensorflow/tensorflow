@@ -35,6 +35,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt:saved_model",
         "//tensorflow/compiler/mlir/tfrt:tf_cpurt_kernels_alwayslink",
         "//tensorflow/compiler/mlir/tfrt:tf_cpurt_request_context",
+        "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
