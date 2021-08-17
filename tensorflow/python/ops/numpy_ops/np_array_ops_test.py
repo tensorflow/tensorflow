@@ -86,7 +86,7 @@ class ArrayCreationTest(test.TestCase):
 
     self.all_types = [
         int, float, np.int16, np.int32, np.int64, np.float16, np.float32,
-        np.float64
+        np.float64, np.complex64, np.complex128
     ]
 
     source_array_data = [
@@ -1261,6 +1261,51 @@ class ArrayMathTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(result, expected_result)
     else:
       self.assertAllEqual(result, expected_result)
+
+
+class StringArrayTest(test.TestCase, parameterized.TestCase):
+
+  StringParameters = parameterized.named_parameters(  # pylint: disable=invalid-name
+      # Tensorflow always encodes python string into bytes, regardless of
+      # requested dtype.
+      ('str_u8', 'abcde\U0001f005', 'U8', b'abcde\xf0\x9f\x80\x85'),
+      ('str_s8', 'abcde\U0001f005', 'S8', b'abcde\xf0\x9f\x80\x85'),
+      ('str_none', 'abcde\U0001f005', None, b'abcde\xf0\x9f\x80\x85'),
+      ('zstr_u8', '\0abcde\U0001f005', 'U8', b'\0abcde\xf0\x9f\x80\x85'),
+      ('zstr_s8', '\0abcde\U0001f005', 'S8', b'\0abcde\xf0\x9f\x80\x85'),
+      ('zstr_none', '\0abcde\U0001f005', None, b'\0abcde\xf0\x9f\x80\x85'),
+      ('bytes_u8', b'abcdef', 'U8', b'abcdef'),
+      ('bytes_s8', b'abcdef', 'S8', b'abcdef'),
+      ('bytes_none', b'abcdef', None, b'abcdef'),
+      ('zbytes_u8', b'\0abcdef', 'U8', b'\0abcdef'),
+      ('zbytes_s8', b'\0abcdef', 'S8', b'\0abcdef'),
+      ('zbytes_none', b'\0abcdef', None, b'\0abcdef'),
+  )
+
+  @StringParameters
+  def testArray(self, a, dtype, a_as_bytes):
+    b = np_array_ops.array(a, dtype=dtype)
+    self.assertIsInstance(b.numpy(), bytes)
+    self.assertEqual(b.numpy(), a_as_bytes)
+
+  @StringParameters
+  def testAsArray(self, a, dtype, a_as_bytes):
+    b = np_array_ops.asarray(a, dtype=dtype)
+    self.assertIsInstance(b.numpy(), bytes)
+    self.assertEqual(b.numpy(), a_as_bytes)
+
+  @StringParameters
+  def testZerosLike(self, a, dtype, unused_a_as_bytes):
+    b = np_array_ops.zeros_like(a, dtype=dtype)
+    self.assertIsInstance(b.numpy(), bytes)
+    self.assertEqual(b.numpy(), b'')
+
+  @StringParameters
+  def testEmptyLike(self, a, dtype, unused_a_as_bytes):
+    b = np_array_ops.empty_like(a, dtype=dtype)
+    self.assertIsInstance(b.numpy(), bytes)
+    self.assertEqual(b.numpy(), b'')
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
