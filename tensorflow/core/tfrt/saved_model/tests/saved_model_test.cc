@@ -815,13 +815,3 @@ TEST(SavedModelTest, DeadlineExceeded) {
 }  // namespace
 }  // namespace saved_model_test
 }  // namespace tfrt
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-
-  absl::SetFlag(&FLAGS_tfrt_default_device,
-                "/job:localhost/replica:0/task:0/device:CPU:0");
-  absl::SetFlag(&FLAGS_tfrt_num_threads, 1);
-
-  return RUN_ALL_TESTS();
-}

@@ -31,13 +31,11 @@ cc_library(
     ),
     deps = [
         ":work_queue_interface",
-        "@com_google_absl//absl/flags:flag",
         "//tensorflow/core:lib",
         "//tensorflow/core:framework",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
-        "@tf_runtime//:core_runtime",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",

@@ -499,7 +499,8 @@ namespace {
 // Gets the signatures from `signature_defs` and inserts them into `signatures`.
 void GetSignaturesFromSignatureDef(
     SignatureMap& signatures,
-    const google::protobuf::Map<std::string, tensorflow::SignatureDef>& signature_defs) {
+    const google::protobuf::Map<std::string, tensorflow::SignatureDef>& signature_defs,
+    const SavedModel::Options& options) {
   for (const auto& p : signature_defs) {
     const std::string& signature_name = p.first;
     const tensorflow::SignatureDef& signature_def = p.second;
@@ -516,9 +517,8 @@ void GetSignaturesFromSignatureDef(
           TensorSpec(tensor_info.dtype(), tensor_info.tensor_shape()));
     }
 
-    signature.input_devices =
-        std::vector<std::string>(signature_def.inputs().size(),
-                                 absl::GetFlag(FLAGS_tfrt_default_device));
+    signature.input_devices = std::vector<std::string>(
+        signature_def.inputs().size(), options.compile_options.default_device);
 
     signature.output_names.reserve(signature_def.outputs().size());
     signature.output_specs.reserve(signature_def.outputs().size());
@@ -539,9 +539,6 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     tensorflow::MetaGraphDef meta_graph_def, tensorflow::Status* status) {
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
   metrics::AddTFRTVersionMetric();
-
-  options.compile_options.default_device =
-      absl::GetFlag(FLAGS_tfrt_default_device);
 
   auto statusor_saved_model =
       [&]() -> tensorflow::StatusOr<std::unique_ptr<SavedModel>> {
@@ -587,7 +584,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     // TODO(b/187228559): Unify the code paths for populating the signature map.
     if (options.enable_lazy_loading) {
       GetSignaturesFromSignatureDef(initializers_and_signatures.signature_map,
-                                    meta_graph_def.signature_def());
+                                    meta_graph_def.signature_def(), options);
     }
     tfrt::BefBuffer bef;
     TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(options.compile_options,

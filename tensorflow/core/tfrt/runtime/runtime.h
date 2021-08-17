@@ -17,16 +17,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/flags/declare.h"
-#include "absl/flags/flag.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-
-// TODO(chky): Move these flags to test-only targets.
-ABSL_DECLARE_FLAG(std::string, tfrt_default_device);
-ABSL_DECLARE_FLAG(bool, tfrt_enable_sync_logging);
-ABSL_DECLARE_FLAG(bool, tfrt_enable_fallback);
-ABSL_DECLARE_FLAG(int, tfrt_num_threads);
-ABSL_DECLARE_FLAG(int, tfrt_num_blocking_threads);
 
 namespace tfrt {
 class CoreRuntime;
@@ -47,9 +38,13 @@ namespace tfrt_stub {
 // tensorflow::experimental::cc::Runtime when it lands.
 class Runtime {
  public:
-  // Creates a runtime instance with default configuration. Returns null upon
-  // creation error.
+  ABSL_DEPRECATED("Use other Create() methods instead.")
   static std::unique_ptr<Runtime> Create();
+
+  // Creates a runtime instance with specified threading configuration. Returns
+  // null upon creation error.
+  static std::unique_ptr<Runtime> Create(int num_inter_op_threads,
+                                         int num_intra_op_threads = 0);
 
   // Creates a runtime instance with the specified work_queue. Returns null upon
   // creation error.
