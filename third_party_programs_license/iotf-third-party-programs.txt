@@ -2236,7 +2236,7 @@ limitations under the License.
 The following third party programs have their own third party program files. These additional third party program files are as follows:
 
 1. IntelÂ® Math Kernel Library (IntelÂ® MKL): ./third_party_programs_license/oneDNN-THIRD-PARTY-PROGRAMS
-2. IntelÂ® Optimization for TensorFlow*(Intel tensorflow): ./third_party_programs_license/third-party-programs.txt
+2. IntelÂ® Optimization for TensorFlow*(Intel tensorflow): ./third_party_programs_license/iotf-third-party-programs.txt
 
 
 ---------------------------------------------------------------------------------------------------------------------
