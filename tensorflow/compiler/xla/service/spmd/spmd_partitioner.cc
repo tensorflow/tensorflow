@@ -1523,7 +1523,8 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
             manual_to_onedevice(operand->shape(), operand->sharding()));
         GetPartitionedHlo(operand).hlo()->set_sharding(operand->sharding());
       }
-    } else if (hlo->sharding().IsManualSubgroup()) {
+    } else if (hlo->sharding().IsManualSubgroup() &&
+               !hlo->IsCustomCall("SPMDFullToShardShape")) {
       GroupedSharding group_sharding =
           hlo_sharding_util::GetManualSubgroupSharding(hlo->sharding());
       // Update sharding.

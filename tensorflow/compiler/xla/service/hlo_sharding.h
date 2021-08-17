@@ -80,9 +80,9 @@ class HloSharding {
       absl::Span<const OpMetadata> metadata = {});
 
   // Creates a subgroup sharding with device-level tile assignment, the
-  // sharding type of each subgroup is defined by sharding_types.
+  // sharding type of each subgroup is defined by subgroup_types.
   static HloSharding Subgroup(const Array<int64_t>& tile_assignment,
-                              absl::Span<const OpSharding::Type> sharding_types,
+                              absl::Span<const OpSharding::Type> subgroup_types,
                               absl::Span<const OpMetadata> metadata = {});
 
   // Creates a new sharding which splits a one-dimensional input shape into
@@ -159,7 +159,7 @@ class HloSharding {
   // Returns whether the sharding represents manual subgroup sharding.
   bool IsManualSubgroup() const {
     if (!IsTuple()) {
-      return absl::c_linear_search(sharding_types_, OpSharding::MANUAL);
+      return absl::c_linear_search(subgroup_types_, OpSharding::MANUAL);
     }
     return absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
       return s.IsManualSubgroup();
@@ -267,7 +267,7 @@ class HloSharding {
            tile_assignment_ == other.tile_assignment_ &&
            tuple_elements_ == other.tuple_elements_ &&
            replicate_on_last_tile_dim_ == other.replicate_on_last_tile_dim_ &&
-           sharding_types_ == other.sharding_types_;
+           subgroup_types_ == other.subgroup_types_;
   }
   bool operator!=(const HloSharding& other) const { return !(*this == other); }
 
@@ -283,10 +283,10 @@ class HloSharding {
   // REQUIRES: !IsReplicated() && !IsTuple()
   const Array<int64_t>& tile_assignment() const { return tile_assignment_; }
 
-  // Gets the sharding types array.
-  // REQUIRES: !sharding_tyes.empty() && !IsTuple()
-  const std::vector<OpSharding::Type>& sharding_types() const {
-    return sharding_types_;
+  // Gets the subgroup types array.
+  // REQUIRES: !IsTuple()
+  const std::vector<OpSharding::Type>& subgroup_types() const {
+    return subgroup_types_;
   }
 
   // Returns the flattened list of all the leaf shardings in a tuple shape, by
@@ -351,7 +351,7 @@ class HloSharding {
         replicate_on_last_tile_dim_(replicate_on_last_tile_dim),
         metadata_(metadata.begin(), metadata.end()) {}
   explicit HloSharding(const Array<int64_t>& tile_assignment,
-                       absl::Span<const OpSharding::Type> sharding_types,
+                       absl::Span<const OpSharding::Type> subgroup_types,
                        absl::Span<const OpMetadata> metadata = {})
       : replicated_(false),
         maximal_(false),
@@ -360,7 +360,7 @@ class HloSharding {
         tile_assignment_(tile_assignment),
         replicate_on_last_tile_dim_(false),
         metadata_(metadata.begin(), metadata.end()),
-        sharding_types_(sharding_types.begin(), sharding_types.end()) {}
+        subgroup_types_(subgroup_types.begin(), subgroup_types.end()) {}
   explicit HloSharding(const std::vector<HloSharding>& tuple_shardings)
       : replicated_(false),
         maximal_(false),
@@ -420,7 +420,7 @@ class HloSharding {
   // For example, sharding={devices=[2,2,2,2]0,1,2,...,15 last_tile_dims={
   // replicate, manual, unreduced}} means that each of the last 3 dimensions
   // in [2,2,2,2] represents a subgrouping in replicate, manual,
-  std::vector<OpSharding::Type> sharding_types_;
+  std::vector<OpSharding::Type> subgroup_types_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding);

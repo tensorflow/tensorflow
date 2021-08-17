@@ -529,14 +529,17 @@ def _spmd_full_to_shard_shape_grad(op, grad):
   s2f = gen_xla_ops.xla_spmd_shard_to_full_shape(
       grad,
       manual_sharding=op.get_attr("manual_sharding"),
-      full_shape=op.inputs[0].shape.as_list())
+      full_shape=op.inputs[0].shape.as_list(),
+      dim=op.get_attr("dim"))
   return [s2f]
 
 
 @ops.RegisterGradient("XlaSpmdShardToFullShape")
 def _spmd_shard_to_full_shape_grad(op, grad):
   f2s = gen_xla_ops.xla_spmd_full_to_shard_shape(
-      grad, manual_sharding=op.get_attr("manual_sharding"))
+      grad,
+      manual_sharding=op.get_attr("manual_sharding"),
+      dim=op.get_attr("dim"))
   return [f2s]
 
 

@@ -434,7 +434,7 @@ def get_sharding_tile_shape(sharding):
     return None
 
 
-def auto_to_manual_spmd_partition(tensor, manual_sharding):
+def auto_to_manual_spmd_partition(tensor, manual_sharding, single_dim=-1):
   """Switches from automatic SPMD partitioning to manual partitioning.
 
   Converts a full-shaped tensor (to be automatically partitioned by SPMD
@@ -443,17 +443,22 @@ def auto_to_manual_spmd_partition(tensor, manual_sharding):
 
   Args:
     tensor: A tf.Tensor in full shape.
-    manual_sharding: a serialized string of OpSharding to be used in manual
+    manual_sharding: A serialized string of OpSharding to be used in manual
       partitioning.
+    single_dim: If >= 0, the conversion will happen only on this dim in
+      subgroups.
 
   Returns:
     A shard-shaped tensor to be consumed by manually partitioned ops.
   """
   return tf2xla.spmd_full_to_shard_shape(
-      tensor, manual_sharding=manual_sharding)
+      tensor, manual_sharding=manual_sharding, dim=single_dim)
 
 
-def manual_to_auto_spmd_partition(tensor, manual_sharding, full_shape):
+def manual_to_auto_spmd_partition(tensor,
+                                  manual_sharding,
+                                  full_shape,
+                                  single_dim=-1):
   """Switches from manual partitioning to automatic SPMD partitioning.
 
   Converts a shard-shaped tensor (manually partitioned in SPMD-style) to a
@@ -464,13 +469,18 @@ def manual_to_auto_spmd_partition(tensor, manual_sharding, full_shape):
     manual_sharding: a serialized string of OpSharding to be used in manual
       partitioning.
     full_shape: the shape of tensor before partitioning.
+    single_dim: If >= 0, the conversion will happen only on this dim in
+      subgroups.
 
   Returns:
     A full-shaped tensor to be partitioned automatically by the SPMD
     partitioner.
   """
   return tf2xla.spmd_shard_to_full_shape(
-      tensor, manual_sharding=manual_sharding, full_shape=full_shape)
+      tensor,
+      manual_sharding=manual_sharding,
+      full_shape=full_shape,
+      dim=single_dim)
 
 
 def mesh_split_sharding(device_mesh, tensor_split_dims_mapping):
