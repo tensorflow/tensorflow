@@ -74,7 +74,12 @@ struct RequantizeState {
 
   // Quantization parameters will be used to add the requantize ops.
   QuantParams params;
+
+  // Avoid clobbering all uses of the value, limit to just these ops.
+  SmallVector<std::pair<Operation *, int>> users;
 };
+
+using RequantizeStates = SmallVector<RequantizeState>;
 
 // This is a worklist-driven driver for propagating quantization parameters
 // across operations.
@@ -195,13 +200,14 @@ class QuantizationDriver {
   void QuantizeValue(Value value, QuantParams params, Location loc);
 
   // Inserts the Quantize ops for requantizing the index-th result of the op.
-  void RequantizeOpResult(Operation *op, int index, RequantizeState *state);
+  void RequantizeOpResult(Operation *op, int index, RequantizeStates *states);
 
-  void RequantizeArg(BlockArgument arg, RequantizeState *state);
+  // Inserts the Quantize ops for requantizing a block argument.
+  void RequantizeArg(BlockArgument arg, RequantizeStates *states);
 
   // Inserts the Quantize and Dequantize ops to quantize the value and returns
   // the Quantize op.
-  void RequantizeValue(Value value, RequantizeState *state, Location loc);
+  void RequantizeValue(Value value, RequantizeStates *states, Location loc);
 
   // A heuristic to get the quantization parameter satisfies the same scale
   // constraints for the op. Returns an empty option if this quantization
@@ -218,21 +224,23 @@ class QuantizationDriver {
     return states_[result_states_[{op, index}]];
   }
 
+  // Returns the state of the block argument.
   QuantState &GetArgQuantState(BlockArgument arg) {
     return states_[arg_states_[arg]];
   }
 
-  // Returns the state of the index-th operand of the op.
-  RequantizeState &GetOperandRequantizeState(Operation *op, int index) {
+  // Returns the states of the index-th operand of the op.
+  RequantizeStates &GetOperandRequantizeStates(Operation *op, int index) {
     return rescale_states_[operand_states_[{op, index}]];
   }
 
-  // Returns the state of the index-th result of the op.
-  RequantizeState &GetResultRequantizeState(Operation *op, int index) {
+  // Returns the states of the index-th result of the op.
+  RequantizeStates &GetResultRequantizeStates(Operation *op, int index) {
     return rescale_states_[result_states_[{op, index}]];
   }
 
-  RequantizeState &GetArgRequantizeState(BlockArgument arg) {
+  // Returns the states of the arg.
+  RequantizeStates &GetArgRequantizeStates(BlockArgument arg) {
     return rescale_states_[arg_states_[arg]];
   }
 
@@ -287,6 +295,16 @@ class QuantizationDriver {
     cached.first->second = InitializeState(op, index, res, /*as_result=*/true);
   }
 
+  // Utility function for debug output for requantize states.
+  void DumpRequantizeStates(const RequantizeStates &requantize_states) {
+    for (auto &requantize_state : requantize_states) {
+      if (requantize_state.pos != RequantizeState::NO_REQUANTIZE) {
+        llvm::dbgs() << "+";
+        requantize_state.params.print(llvm::dbgs());
+      }
+    }
+  }
+
   void DumpStates(Operation *current_op) {
     if (current_op) {
       llvm::dbgs() << "\n\n\n" << current_op->getName() << "\n";
@@ -303,11 +321,7 @@ class QuantizationDriver {
         for (auto &arg : fn_.getArguments()) {
           if (auto params = GetArgQuantState(arg).params) {
             params.print(llvm::dbgs());
-            auto requantize_state = GetArgRequantizeState(arg);
-            if (requantize_state.pos != RequantizeState::NO_REQUANTIZE) {
-              llvm::dbgs() << "+";
-              requantize_state.params.print(llvm::dbgs());
-            }
+            DumpRequantizeStates(GetArgRequantizeStates(arg));
           }
           llvm::dbgs() << ",";
         }
@@ -315,11 +329,7 @@ class QuantizationDriver {
       for (int i = 0, e = op->getNumOperands(); i < e; ++i) {
         if (auto params = GetOperandQuantState(op, i).params) {
           params.print(llvm::dbgs());
-          auto requantize_state = GetOperandRequantizeState(op, i);
-          if (requantize_state.pos != RequantizeState::NO_REQUANTIZE) {
-            llvm::dbgs() << "+";
-            requantize_state.params.print(llvm::dbgs());
-          }
+          DumpRequantizeStates(GetOperandRequantizeStates(op, i));
         } else {
           op->getOperand(i).getType().cast<ShapedType>().getElementType().print(
               llvm::dbgs());
@@ -330,11 +340,7 @@ class QuantizationDriver {
       for (int i = 0, e = op->getNumResults(); i < e; ++i) {
         if (auto params = GetResultQuantState(op, i).params) {
           params.print(llvm::dbgs());
-          auto requantize_state = GetResultRequantizeState(op, i);
-          if (requantize_state.pos != RequantizeState::NO_REQUANTIZE) {
-            llvm::dbgs() << "+";
-            requantize_state.params.print(llvm::dbgs());
-          }
+          DumpRequantizeStates(GetResultRequantizeStates(op, i));
         } else {
           op->getResult(i).getType().cast<ShapedType>().getElementType().print(
               llvm::dbgs());
@@ -371,7 +377,7 @@ class QuantizationDriver {
   // The map contains all the quantization parameters which are required to
   // satisfy the same operands and results constraint. The keys of this map are
   // the values from `operand_states_` and `result_state_`.
-  std::unordered_map<int, RequantizeState> rescale_states_;
+  std::unordered_map<int, RequantizeStates> rescale_states_;
 
   // Maps of indexes to the propagation state vector from the ops operands,
   // results and arguments.
@@ -464,9 +470,10 @@ bool QuantizationDriver::SetResultParams(Operation *op, int res_index,
     return false;
   }
   if (!state.IsEmpty()) {
-    auto &rescale = GetResultRequantizeState(op, res_index);
-    rescale.params = params;
+    auto &rescales = GetResultRequantizeStates(op, res_index);
+    RequantizeState &rescale = rescales.emplace_back();
     rescale.pos = RequantizeState::ON_INPUT;
+    rescale.params = params;
     return true;
   }
   state.params = params;
@@ -499,9 +506,17 @@ bool QuantizationDriver::SetOperandParams(Operation *op, int index,
   }
 
   if (!state.IsEmpty()) {
-    auto &rescale = GetOperandRequantizeState(op, index);
-    rescale.params = params;
+    auto &rescales = GetOperandRequantizeStates(op, index);
+    for (RequantizeState &rescale : rescales) {
+      if (rescale.params == params) {
+        rescale.users.emplace_back(op, index);
+        return true;
+      }
+    }
+    RequantizeState &rescale = rescales.emplace_back();
     rescale.pos = RequantizeState::ON_OUTPUT;
+    rescale.params = params;
+    rescale.users.emplace_back(op, index);
     return true;
   }
 
@@ -528,7 +543,6 @@ void QuantizationDriver::QuantizeValue(Value value, QuantParams params,
   Type new_type = params.castFromExpressedType(expressed_type);
   // This value isn't an expressed type (float), skip.
   if (!new_type) return;
-
   auto quantize = builder_.create<quant::QuantizeCastOp>(loc, new_type, value);
   auto dequantize = builder_.create<quant::DequantizeCastOp>(
       loc, expressed_type, quantize.getResult());
@@ -546,11 +560,23 @@ void QuantizationDriver::QuantizeValue(Value value, QuantParams params,
 }
 
 void QuantizationDriver::RequantizeOpResult(Operation *op, int index,
-                                            RequantizeState *state) {
-  if (state->pos == RequantizeState::NO_REQUANTIZE) return;
+                                            RequantizeStates *states) {
+  if (states->empty()) return;
+
   builder_.setInsertionPointAfter(op);
   Value value = op->getResult(index);
-  if (state->pos == RequantizeState::ON_OUTPUT) {
+  RequantizeState::RequantizePosition pos = states->front().pos;
+  if (pos == RequantizeState::NO_REQUANTIZE) {
+    return;
+  }
+  for (auto &state : *states) {
+    // Check that all requantization positions are the same for each state.
+    // Unsure if this check is required.
+    if (state.pos != pos) {
+      return;
+    }
+  }
+  if (pos == RequantizeState::ON_OUTPUT) {
     Operation *user = value.getUses().begin().getUser();
     if (llvm::isa<quant::QuantizeCastOp>(user)) {
       // The requantize op is inserted between `quantize` and `dequantize` ops.
@@ -558,11 +584,11 @@ void QuantizationDriver::RequantizeOpResult(Operation *op, int index,
       builder_.setInsertionPointAfter(user);
     }
   }
-  RequantizeValue(value, state, op->getLoc());
+  RequantizeValue(value, states, op->getLoc());
 }
 
 void QuantizationDriver::RequantizeArg(BlockArgument arg,
-                                       RequantizeState *state) {
+                                       RequantizeStates *states) {
   Value value = arg;
   builder_.setInsertionPointToStart(arg.getOwner());
   if (value.hasOneUse()) {
@@ -572,33 +598,75 @@ void QuantizationDriver::RequantizeArg(BlockArgument arg,
       builder_.setInsertionPoint(arg.getOwner(), ++Block::iterator(user));
     }
   }
-  RequantizeValue(value, state, builder_.getUnknownLoc());
+  RequantizeValue(value, states, builder_.getUnknownLoc());
 }
 
-void QuantizationDriver::RequantizeValue(Value value, RequantizeState *state,
+void QuantizationDriver::RequantizeValue(Value value, RequantizeStates *states,
                                          Location loc) {
-  Type new_type;
-  if (state->pos == RequantizeState::ON_INPUT) {
+  if (states->empty() ||
+      states->front().pos == RequantizeState::NO_REQUANTIZE) {
+    return;
+  }
+  if (states->front().pos == RequantizeState::ON_INPUT) {
+    auto &state = states->front();
     Type expressed_type = value.getType();
     // The value needs to be requantized. A Quantize op will be created to use
     // it as the operand and replace its uses.
-    new_type = state->params.castFromExpressedType(expressed_type);
-  } else {
+    Type new_type = state.params.castFromExpressedType(expressed_type);
+    if (!new_type) return;
+    auto requantize_op =
+        builder_.create<quant::QuantizeCastOp>(loc, new_type, value);
+    value.replaceAllUsesWith(requantize_op);
+    requantize_op.getOperation()->replaceUsesOfWith(requantize_op, value);
+    // This requantization was defined as required for the result value, so
+    // there should be only one requant state.
+    return;
+  }
+
+  // If this is an operand that requires requantization, then the value should
+  // only have one DequantizeCastOp user which produces the operand value.
+  if (!value.hasOneUse()) {
+    return;
+  }
+  auto dequant_op = llvm::dyn_cast_or_null<quant::DequantizeCastOp>(
+      value.use_begin().getUser());
+  if (!dequant_op) {
+    return;
+  }
+  // It is possible that the dequant value is used by a op that doesn't require
+  // requant, so only overwrite the first if that is not the case.
+  const int num_uses = std::distance(dequant_op.getResult().use_begin(),
+                                     dequant_op.getResult().use_end());
+
+  // Whether to replace quantization params of the first dequantize op
+  // after the quantized value is produced.
+  // If there is a use other than the requantize states, then we can't clobber.
+  bool clobber_first = num_uses <= states->size();
+  for (auto &state : *states) {
     Type expressed_type =
         quant::QuantizedType::castToExpressedType(value.getType());
-    if (!expressed_type) return;
-
+    if (!expressed_type) continue;
     // The value needs to be requantized. A Quantize op will be created to use
     // it as the operand and replace its uses.
-    new_type = state->params.castFromExpressedType(expressed_type);
-  }
-  // This value isn't an expressed type (float), skip.
-  if (!new_type) return;
+    Type new_type = state.params.castFromExpressedType(expressed_type);
+    // This value isn't an expressed type (float), skip.
+    if (!new_type) continue;
 
-  auto requantize_op =
-      builder_.create<quant::QuantizeCastOp>(loc, new_type, value);
-  value.replaceAllUsesWith(requantize_op);
-  requantize_op.getOperation()->replaceUsesOfWith(requantize_op, value);
+    auto requantize_op =
+        builder_.create<quant::QuantizeCastOp>(loc, new_type, value);
+
+    if (clobber_first) {
+      dequant_op.setOperand(requantize_op.getResult());
+      // All ops requiring this value already use the result of dequant.
+      clobber_first = false;
+    } else {
+      auto new_dequant_op = builder_.create<quant::DequantizeCastOp>(
+          loc, dequant_op.getResult().getType(), requantize_op.getResult());
+      for (auto &op_index : state.users) {
+        op_index.first->setOperand(op_index.second, new_dequant_op.getResult());
+      }
+    }
+  }
 }
 
 // A heuristic to get quantization parameters satisfies the same scale
@@ -879,9 +947,8 @@ bool QuantizationDriver::PropagateParams() {
 void QuantizationDriver::Finalize() {
   for (auto arg : args_) {
     auto &state = GetArgQuantState(arg);
-    auto &requantize = GetArgRequantizeState(arg);
-    if (state.IsEmpty() ||
-        (state.immutable && requantize.pos == RequantizeState::NO_REQUANTIZE)) {
+    auto &requantizes = GetArgRequantizeStates(arg);
+    if (state.IsEmpty() || (state.immutable && requantizes.empty())) {
       continue;
     }
 
@@ -889,8 +956,8 @@ void QuantizationDriver::Finalize() {
       QuantizeArg(arg, state.params);
     }
 
-    if (requantize.pos != RequantizeState::NO_REQUANTIZE) {
-      RequantizeArg(arg, &requantize);
+    if (!requantizes.empty()) {
+      RequantizeArg(arg, &requantizes);
     }
   }
 
@@ -898,9 +965,8 @@ void QuantizationDriver::Finalize() {
     Operation *op = it.first.first;
     int res_index = it.first.second;
     auto &state = GetResultQuantState(op, res_index);
-    auto &requantize = GetResultRequantizeState(op, res_index);
-    if (state.IsEmpty() ||
-        (state.immutable && requantize.pos == RequantizeState::NO_REQUANTIZE)) {
+    auto &requantizes = GetResultRequantizeStates(op, res_index);
+    if (state.IsEmpty() || (state.immutable && requantizes.empty())) {
       continue;
     }
 
@@ -908,8 +974,8 @@ void QuantizationDriver::Finalize() {
       QuantizeOpResult(op, res_index, state.params);
     }
 
-    if (requantize.pos != RequantizeState::NO_REQUANTIZE) {
-      RequantizeOpResult(op, res_index, &requantize);
+    if (!requantizes.empty()) {
+      RequantizeOpResult(op, res_index, &requantizes);
     }
   }
 }
