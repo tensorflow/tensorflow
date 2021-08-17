@@ -405,8 +405,8 @@ struct PostorderDFSVisitor {
   absl::flat_hash_map<CacheKey, Literal> evaluated;
   HandleToInstruction handle_to_instruction;
   HandleToComputation handle_to_computation;
-  // Give up when dealing with more than 1M elements.
-  static constexpr int64_t kLargeShapeElementLimit = 1000 * 1000;
+  // Give up when dealing with more than 10k elements.
+  static constexpr int64_t kLargeShapeElementLimit = 100 * 100;
 };
 
 // Returns a result representing that value is fully dynamic and can't be
