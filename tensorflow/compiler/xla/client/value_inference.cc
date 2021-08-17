@@ -404,7 +404,28 @@ struct PostorderDFSVisitor {
   absl::flat_hash_map<CacheKey, Literal> evaluated;
   HandleToInstruction handle_to_instruction;
   HandleToComputation handle_to_computation;
+  // Give up when dealing with more than 1M elements.
+  static constexpr int64_t kLargeShapeElementLimit = 1000 * 1000;
 };
+
+// Returns a result representing that value is fully dynamic and can't be
+// inferred. In other words, "give up" and return most conservative value.
+PostorderDFSNode CreateAllDynamicResult(Shape shape,
+                                        PostorderDFSNodeType type) {
+  return PostorderDFSNode().AddVisit(
+      [shape, type](absl::Span<Literal>) -> Literal {
+        if (type == PostorderDFSNodeType::kConstantValue ||
+            type == PostorderDFSNodeType::kConstantUpperBound ||
+            type == PostorderDFSNodeType::kConstantLowerBound) {
+          // When inferencing constant values, create garbage data, which will
+          // be masked out by dynamism counterpart.
+          return CreateGarbageLiteral(shape);
+        } else {
+          // When dynamism, return true, indicating all values are dynamic.
+          return CreatePredLiteral(true, shape);
+        }
+      });
+}
 
 }  // namespace
 
@@ -561,6 +582,14 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
     int64_t handle, InferenceContext context) {
   const HloInstructionProto* root = handle_to_instruction(handle);
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
+  Shape subshape =
+      ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
+
+  if (subshape.IsArray() &&
+      ShapeUtil::ElementsIn(subshape) > kLargeShapeElementLimit) {
+    return CreateAllDynamicResult(subshape,
+                                  PostorderDFSNodeType::kConstantUpperBound);
+  }
   switch (opcode) {
     case HloOpcode::kGetDimensionSize: {
       int64_t dimension = root->dimensions(0);
@@ -714,6 +743,13 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
     int64_t handle, InferenceContext context) {
   const HloInstructionProto* root = handle_to_instruction(handle);
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
+  Shape subshape =
+      ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
+  if (subshape.IsArray() &&
+      ShapeUtil::ElementsIn(subshape) > kLargeShapeElementLimit) {
+    return CreateAllDynamicResult(subshape,
+                                  PostorderDFSNodeType::kConstantLowerBound);
+  }
   switch (opcode) {
     case HloOpcode::kGetDimensionSize: {
       int64_t dimension = root->dimensions(0);
@@ -784,6 +820,13 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
     int64_t handle, InferenceContext context) {
   const HloInstructionProto* root = handle_to_instruction(handle);
   HloOpcode opcode = StringToHloOpcode(root->opcode()).ValueOrDie();
+  Shape subshape =
+      ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
+  if (subshape.IsArray() &&
+      ShapeUtil::ElementsIn(subshape) > kLargeShapeElementLimit) {
+    return CreateAllDynamicResult(subshape,
+                                  PostorderDFSNodeType::kConstantValue);
+  }
   switch (opcode) {
     case HloOpcode::kGetDimensionSize: {
       int64_t dimension = root->dimensions(0);
@@ -877,6 +920,12 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
   // Invariant check.
   TF_RET_CHECK(root);
   VLOG(1) << "Analyzing IsDynamic on " << root->DebugString();
+  Shape subshape =
+      ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
+  if (subshape.IsArray() &&
+      ShapeUtil::ElementsIn(subshape) > kLargeShapeElementLimit) {
+    return CreateAllDynamicResult(subshape, type);
+  }
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
   PostorderDFSNode result;
   for (auto operand_id : root->operand_ids()) {
