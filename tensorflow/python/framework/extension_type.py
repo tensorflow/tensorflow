@@ -38,11 +38,6 @@ from tensorflow.python.util import tf_inspect
 # (in which case the fields of `self` may be modified).
 _IN_CONSTRUCTOR = '_tf_extension_type_in_constructor'
 
-_MUTABLE_KERAS_PROPERTIES = [
-    # Keras uses _keras_mask property to pass the mask around
-    '_keras_mask',
-]
-
 
 # ==============================================================================
 # Utility functions
@@ -219,26 +214,22 @@ class ExtensionType(
     return f'{type(self).__name__}({fields})'
 
   def __setattr__(self, name, value):
-    if (name in _MUTABLE_KERAS_PROPERTIES or
-        (hasattr(self, _IN_CONSTRUCTOR) and
-         self._tf_extension_type_has_field(name))):
+    if hasattr(self,
+               _IN_CONSTRUCTOR) and self._tf_extension_type_has_field(name):
       self.__dict__[name] = value
     else:
       raise AttributeError(f'Cannot mutate attribute `{name}` '
                            f'outside the custom constructor of ExtensionType.')
 
   def __delattr__(self, name):
-    if (name in _MUTABLE_KERAS_PROPERTIES or
-        (hasattr(self, _IN_CONSTRUCTOR) and
-         self._tf_extension_type_has_field(name))):
+    if hasattr(self,
+               _IN_CONSTRUCTOR) and self._tf_extension_type_has_field(name):
       del self.__dict__[name]
     else:
       raise AttributeError(f'Cannot mutate attribute `{name}` '
                            f'outside the custom constructor of ExtensionType.')
 
   def __getattr__(self, name):
-    if name in _MUTABLE_KERAS_PROPERTIES:
-      return object.__getattribute__(self, name)
     if '_tf_extension_type_packed_variant' in self.__dict__:
       # Note: it's *not* ok to cache the results of unpack() here.  In
       # particular, it would be nice if we could do something like
@@ -367,8 +358,7 @@ def is_packed(value):
 # TODO(b/184565242) Support custom TypeSpec validation.
 # TODO(b/184565242) Support custom TypeSpec repr.
 # TODO(b/184565242) Support customizing type relaxation for tracing.
-# TODO(b/184565242) Support conversion to/from FullType.
-# TODO(b/195884675) Support batch and unbatch.
+# TODO(b/184565242) Support conversion to/from FullType
 
 
 class ExtensionTypeSpec(type_spec.TypeSpec):
