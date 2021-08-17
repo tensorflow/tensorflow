@@ -86,20 +86,23 @@ def regression_signature_def(examples, predictions):
     ValueError: If examples is `None`.
   """
   if examples is None:
-    raise ValueError('Regression examples cannot be None.')
+    raise ValueError('Regression `examples` cannot be None.')
   if not isinstance(examples, ops.Tensor):
-    raise ValueError('Regression examples must be a string Tensor.')
+    raise ValueError('Expected regression `examples` to be of type Tensor. '
+                     f'Found `examples` of type {type(examples)}.')
   if predictions is None:
-    raise ValueError('Regression predictions cannot be None.')
+    raise ValueError('Regression `predictions` cannot be None.')
 
   input_tensor_info = utils.build_tensor_info(examples)
   if input_tensor_info.dtype != types_pb2.DT_STRING:
-    raise ValueError('Regression examples must be a string Tensor.')
+    raise ValueError('Regression input tensors must be of type string. '
+                     f'Found tensors with type {input_tensor_info.dtype}.')
   signature_inputs = {signature_constants.REGRESS_INPUTS: input_tensor_info}
 
   output_tensor_info = utils.build_tensor_info(predictions)
   if output_tensor_info.dtype != types_pb2.DT_FLOAT:
-    raise ValueError('Regression output must be a float Tensor.')
+    raise ValueError('Regression output tensors must be of type float. '
+                     f'Found tensors with type {output_tensor_info.dtype}.')
   signature_outputs = {signature_constants.REGRESS_OUTPUTS: output_tensor_info}
 
   signature_def = build_signature_def(
@@ -136,22 +139,26 @@ def classification_signature_def(examples, classes, scores):
     ValueError: If examples is `None`.
   """
   if examples is None:
-    raise ValueError('Classification examples cannot be None.')
+    raise ValueError('Classification `examples` cannot be None.')
   if not isinstance(examples, ops.Tensor):
-    raise ValueError('Classification examples must be a string Tensor.')
+    raise ValueError('Classification `examples` must be a string Tensor. '
+                     f'Found `examples` of type {type(examples)}.')
   if classes is None and scores is None:
-    raise ValueError('Classification classes and scores cannot both be None.')
+    raise ValueError('Classification `classes` and `scores` cannot both be '
+                     'None.')
 
   input_tensor_info = utils.build_tensor_info(examples)
   if input_tensor_info.dtype != types_pb2.DT_STRING:
-    raise ValueError('Classification examples must be a string Tensor.')
+    raise ValueError('Classification input tensors must be of type string. '
+                     f'Found tensors of type {input_tensor_info.dtype}')
   signature_inputs = {signature_constants.CLASSIFY_INPUTS: input_tensor_info}
 
   signature_outputs = {}
   if classes is not None:
     classes_tensor_info = utils.build_tensor_info(classes)
     if classes_tensor_info.dtype != types_pb2.DT_STRING:
-      raise ValueError('Classification classes must be a string Tensor.')
+      raise ValueError('Classification classes must be of type string Tensor. '
+                       f'Found tensors of type {classes_tensor_info.dtype}.`')
     signature_outputs[signature_constants.CLASSIFY_OUTPUT_CLASSES] = (
         classes_tensor_info)
   if scores is not None:
@@ -193,9 +200,9 @@ def predict_signature_def(inputs, outputs):
     ValueError: If inputs or outputs is `None`.
   """
   if inputs is None or not inputs:
-    raise ValueError('Prediction inputs cannot be None or empty.')
+    raise ValueError('Prediction `inputs` cannot be None or empty.')
   if outputs is None or not outputs:
-    raise ValueError('Prediction outputs cannot be None or empty.')
+    raise ValueError('Prediction `outputs` cannot be None or empty.')
 
   signature_inputs = {key: utils.build_tensor_info(tensor)
                       for key, tensor in inputs.items()}
@@ -248,7 +255,7 @@ def _supervised_signature_def(
     ValueError: If inputs or outputs is `None`.
   """
   if inputs is None or not inputs:
-    raise ValueError('{} inputs cannot be None or empty.'.format(method_name))
+    raise ValueError(f'{method_name} `inputs` cannot be None or empty.')
 
   signature_inputs = {key: utils.build_tensor_info(tensor)
                       for key, tensor in inputs.items()}
@@ -264,7 +271,7 @@ def _supervised_signature_def(
       signature_inputs, signature_outputs, method_name)
 
   return signature_def
-# LINT.ThenChange(//tensorflow/python/keras/saving/utils_v1/signature_def_utils.py)
+# LINT.ThenChange(//keras/saving/utils_v1/signature_def_utils.py)
 
 
 @tf_export(
@@ -391,7 +398,7 @@ def load_op_from_signature_def(signature_def, key, import_scope=None):
   except KeyError:
     raise errors.NotFoundError(
         None, None,
-        'The {0} could not be found in the graph. Please make sure the '
-        'SavedModel was created by the internal _SavedModelBuilder. If you '
+        f'The key "{key}" could not be found in the graph. Please make sure the'
+        ' SavedModel was created by the internal _SavedModelBuilder. If you '
         'are using the public API, please make sure the SignatureDef in the '
-        'SavedModel does not contain the key "{0}".'.format(key))
+        f'SavedModel does not contain the key "{key}".')

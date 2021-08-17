@@ -219,7 +219,7 @@ class GraphOptimizerStage {
   const string optimizer_name_;
   const string stage_name_;
   const GraphOptimizerContext ctx_;
-  std::atomic<int64> optimized_node_name_counter_ = {0};
+  std::atomic<int64_t> optimized_node_name_counter_ = {0};
 };
 
 template <typename Result>

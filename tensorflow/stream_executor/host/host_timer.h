@@ -36,11 +36,11 @@ class HostTimer : public internal::TimerInterface {
 
   // Returns the most recent value recorded for a start/stopcycle, in
   // microseconds.
-  uint64 Microseconds() const override;
+  uint64_t Microseconds() const override;
 
   // Returns the most recent value recorded for a start/stopcycle, in
   // nanoseconds.
-  uint64 Nanoseconds() const override;
+  uint64_t Nanoseconds() const override;
 
  private:
   using clock = std::chrono::high_resolution_clock;

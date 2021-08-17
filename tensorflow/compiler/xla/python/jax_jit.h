@@ -68,12 +68,11 @@ struct ThreadLocalJitState {
   absl::optional<pybind11::function> post_hook;
 };
 
-GlobalJitState& GetGlobalState();
-ThreadLocalJitState& GetLocalState();
-
 // Returns the value for jax_enable_x64 (defined by a thread-local value if
 // defined, defaulting to the value of the flag otherwise).
 bool GetEnableX64();
+GlobalJitState& GetGlobalState();
+ThreadLocalJitState& GetLocalState();
 
 // The signature of Python jitted function call, partitioned into:
 // - dynamic positional arguments (i.e. positional args which are not static)

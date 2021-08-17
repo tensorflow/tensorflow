@@ -83,7 +83,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override {
+  int64_t Cardinality() const override {
     int64_t n1 = input_->Cardinality();
     int64_t n2 = to_concatenate_->Cardinality();
     if (n1 == kInfiniteCardinality || n2 == kInfiniteCardinality) {
@@ -203,7 +203,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    int64 i_ TF_GUARDED_BY(mu_);
+    int64_t i_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     std::vector<IteratorContext> input_contexts_;
   };

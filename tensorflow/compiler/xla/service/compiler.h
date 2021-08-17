@@ -75,8 +75,8 @@ class AotCompilationOptions {
   // Returns the ID of the platform to which these options apply.
   virtual se::Platform::Id PlatformId() const = 0;
 
-  virtual int64 replica_count() const { return 0; }
-  virtual int64 num_cores() const { return 0; }
+  virtual int64_t replica_count() const { return 0; }
+  virtual int64_t num_cores() const { return 0; }
   virtual bool use_spmd_partitioning() const { return false; }
   virtual bool deduplicate_hlo() const { return false; }
 
@@ -291,7 +291,7 @@ class Compiler {
 
   // Returns a function that computes the size in bytes of a given
   // logical buffer.
-  std::function<int64(const BufferValue&)> BufferSizeBytesFunction() {
+  std::function<int64_t(const BufferValue&)> BufferSizeBytesFunction() {
     HloCostAnalysis::ShapeSizeFunction shape_size = ShapeSizeBytesFunction();
     return [shape_size](const BufferValue& buffer) {
       return shape_size(buffer.shape());

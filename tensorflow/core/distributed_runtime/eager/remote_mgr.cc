@@ -82,7 +82,7 @@ Status RemoteMgr::GetMirroredResourceShape(
 
 Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
                                         const bool wait_until_ready,
-                                        int64* op_id, int32* output_num) {
+                                        int64_t* op_id, int32* output_num) {
   TF_RETURN_IF_ERROR(handle->RemoteAddress(handle->device(), wait_until_ready,
                                            op_id, output_num));
   tensorflow::TensorHandle* h;

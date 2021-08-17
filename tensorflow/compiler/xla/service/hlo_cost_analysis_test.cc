@@ -39,7 +39,7 @@ namespace {
 
 constexpr int64_t kPointerSize = 8;
 
-int64 ShapeSize(const Shape& shape) {
+int64_t ShapeSize(const Shape& shape) {
   return ShapeUtil::ByteSizeOf(shape, kPointerSize);
 }
 

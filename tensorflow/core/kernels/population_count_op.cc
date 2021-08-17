@@ -113,10 +113,10 @@ struct PopulationCount<CPUDevice, T> {
     // (std::bitset constructor) and convert int64 to uint8
     // (bitset.count() -> output).  The .count() itself is relatively cheap.
     const double total_cost = (Eigen::TensorOpCost::CastCost<T, uint8>() +
-                               Eigen::TensorOpCost::CastCost<int64, uint8>());
+                               Eigen::TensorOpCost::CastCost<int64_t, uint8>());
     const int64_t shard_cost = (total_cost >= static_cast<double>(kint64max))
                                    ? kint64max
-                                   : static_cast<int64>(total_cost);
+                                   : static_cast<int64_t>(total_cost);
 
     auto worker_threads = *(c->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, total_shards,

@@ -88,8 +88,8 @@ static StatusOr<HloComputation*> BuilderToHloComputation(
 static XlaOp SplitAtDim(XlaOp instr, int64_t dim, int64_t vect_size) {
   XlaBuilder& b = *instr.builder();
   Shape shape = b.GetShape(instr).ValueOrDie();
-  absl::InlinedVector<int64, 6> new_dims(shape.dimensions().begin(),
-                                         shape.dimensions().end());
+  absl::InlinedVector<int64_t, 6> new_dims(shape.dimensions().begin(),
+                                           shape.dimensions().end());
   CHECK_EQ(new_dims[dim] % vect_size, 0);
   new_dims[dim] /= vect_size;
   new_dims.insert(new_dims.begin() + dim + 1, vect_size);
@@ -102,8 +102,8 @@ static XlaOp SplitAtDim(XlaOp instr, int64_t dim, int64_t vect_size) {
 // For example given shape=s8[10, 32, 20], dim=1, vect_size=4, returns
 // s8[10, 8, 4, 20].
 static Shape SplitShapeAtDim(Shape shape, int64_t dim, int64_t vect_size) {
-  absl::InlinedVector<int64, 5> new_dims(shape.dimensions().begin(),
-                                         shape.dimensions().end());
+  absl::InlinedVector<int64_t, 5> new_dims(shape.dimensions().begin(),
+                                           shape.dimensions().end());
   CHECK_EQ(new_dims[dim] % vect_size, 0);
   new_dims[dim] /= vect_size;
   new_dims.insert(new_dims.begin() + dim + 1, vect_size);
@@ -115,7 +115,7 @@ static XlaOp MoveDim(XlaOp instr, int64_t src, int64_t dst) {
   XlaBuilder& b = *instr.builder();
   int64_t rank = b.GetShape(instr)->dimensions_size();
 
-  absl::InlinedVector<int64, 6> idxs(rank);
+  absl::InlinedVector<int64_t, 6> idxs(rank);
   absl::c_iota(idxs, 0);
   if (src < dst) {
     idxs.insert(idxs.begin() + dst, src);
@@ -215,7 +215,7 @@ static ConvolutionDimensionNumbers VectorizeDnums(
   if (dnums.input_batch_dimension() > input_vect_dim) {
     dnums.set_input_batch_dimension(dnums.input_batch_dimension() + 1);
   }
-  for (int64& d : *dnums.mutable_input_spatial_dimensions()) {
+  for (int64_t& d : *dnums.mutable_input_spatial_dimensions()) {
     if (d > input_vect_dim) {
       ++d;
     }
@@ -226,7 +226,7 @@ static ConvolutionDimensionNumbers VectorizeDnums(
     dnums.set_kernel_output_feature_dimension(
         dnums.kernel_output_feature_dimension() + 1);
   }
-  for (int64& d : *dnums.mutable_kernel_spatial_dimensions()) {
+  for (int64_t& d : *dnums.mutable_kernel_spatial_dimensions()) {
     if (d > kernel_vect_dim) {
       ++d;
     }
@@ -236,7 +236,7 @@ static ConvolutionDimensionNumbers VectorizeDnums(
   if (dnums.output_batch_dimension() > output_vect_dim) {
     dnums.set_output_batch_dimension(dnums.output_batch_dimension() + 1);
   }
-  for (int64& d : *dnums.mutable_output_spatial_dimensions()) {
+  for (int64_t& d : *dnums.mutable_output_spatial_dimensions()) {
     if (d > output_vect_dim) {
       ++d;
     }
@@ -260,9 +260,9 @@ static StatusOr<bool> TryRevectorizeConv(HloInstruction* conv, int vect_size) {
   const auto& dnums = conv->convolution_dimension_numbers();
 
   // Find the vectorized-features dim in the input/kernel/output.
-  absl::optional<int64> input_vect_dim;
-  absl::optional<int64> kernel_vect_dim;
-  absl::optional<int64> output_vect_dim;
+  absl::optional<int64_t> input_vect_dim;
+  absl::optional<int64_t> kernel_vect_dim;
+  absl::optional<int64_t> output_vect_dim;
   std::tie(input_vect_dim, kernel_vect_dim, output_vect_dim) =
       FindVectorizedFeatureDims(dnums, input_shape, kernel_shape, output_shape);
 
@@ -316,7 +316,7 @@ static StatusOr<bool> TryRevectorizeConv(HloInstruction* conv, int vect_size) {
 
   // The custom-call returns a tuple (new_output_shape, u8[0]), where the second
   // value in the tuple represents the convolution's scratch memory.
-  absl::InlinedVector<int64, 5> new_output_dims(
+  absl::InlinedVector<int64_t, 5> new_output_dims(
       output_shape.dimensions().begin(), output_shape.dimensions().end());
   new_output_dims[dnums.output_feature_dimension()] /=
       (vect_size / output_vect_size);

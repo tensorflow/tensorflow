@@ -80,7 +80,7 @@ void XfeedQueueManager::ReleaseCurrentBuffer(int32_t length, void* data,
   current_buffer_ = nullptr;
 }
 
-int64 GetByteSizeRequirement(const Shape& shape, int64_t pointer_size) {
+int64_t GetByteSizeRequirement(const Shape& shape, int64_t pointer_size) {
   if (shape.is_static() || shape.IsTuple()) {
     return ShapeUtil::ByteSizeOf(shape, pointer_size);
   }

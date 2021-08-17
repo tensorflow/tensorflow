@@ -46,7 +46,7 @@ Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
 }
 
 Status ReadInt64FromEnvVar(StringPiece env_var_name, int64_t default_val,
-                           int64* value) {
+                           int64_t* value) {
   *value = default_val;
   const char* tf_env_var_val = getenv(string(env_var_name).c_str());
   if (tf_env_var_val == nullptr) {
@@ -83,6 +83,14 @@ Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
   } else {
     *value = string(default_val);
   }
+  return Status::OK();
+}
+
+Status ReadStringsFromEnvVar(StringPiece env_var_name, StringPiece default_val,
+                             std::vector<string>* value) {
+  string str_val;
+  TF_RETURN_IF_ERROR(ReadStringFromEnvVar(env_var_name, default_val, &str_val));
+  *value = str_util::Split(str_val, ',');
   return Status::OK();
 }
 

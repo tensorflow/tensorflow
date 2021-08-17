@@ -30,8 +30,8 @@ limitations under the License.
 namespace toco {
 namespace {
 
-absl::InlinedVector<int64, 4> ToInlinedVector(const std::vector<int>& vec) {
-  return absl::InlinedVector<int64, 4>(vec.begin(), vec.end());
+absl::InlinedVector<int64_t, 4> ToInlinedVector(const std::vector<int>& vec) {
+  return absl::InlinedVector<int64_t, 4>(vec.begin(), vec.end());
 }
 
 std::vector<std::string> SliceInput(

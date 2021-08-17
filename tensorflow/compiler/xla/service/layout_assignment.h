@@ -65,7 +65,7 @@ class LayoutConstraint {
 
   // Return the priority of the current constraint. When conflicting constraints
   // are encountered, the higher priority one should win.
-  int64 priority() const { return priority_; }
+  int64_t priority() const { return priority_; }
 
   // The default priority of all constraints when not set explicitly.
   static constexpr int64_t kDefaultPriority = 1;
@@ -73,7 +73,7 @@ class LayoutConstraint {
  private:
   bool mandatory_;
   bool dfs_;
-  int64 priority_;
+  int64_t priority_;
 };
 
 std::ostream& operator<<(std::ostream& out, const LayoutConstraint& constraint);
@@ -110,7 +110,7 @@ class OperandLayoutConstraint : public LayoutConstraint {
 
   const ShapeLayout& shape_layout() const { return shape_layout_; }
   const HloInstruction* instruction() const { return instruction_; }
-  const int64 operand_no() const { return operand_no_; }
+  const int64_t operand_no() const { return operand_no_; }
   const HloInstruction* operand() const {
     return instruction_->operand(operand_no_);
   }
@@ -120,7 +120,7 @@ class OperandLayoutConstraint : public LayoutConstraint {
  private:
   ShapeLayout shape_layout_;
   const HloInstruction* instruction_;
-  int64 operand_no_;
+  int64_t operand_no_;
 };
 
 // Constraint on the layout of the result of the entry computation.
@@ -233,7 +233,7 @@ class LayoutConstraints {
       buffer_constraints_;
 
   // The set of OperandLayoutConstraints applied to the computation.
-  using OperandConstraintKey = std::pair<const HloInstruction*, int64>;
+  using OperandConstraintKey = std::pair<const HloInstruction*, int64_t>;
   std::map<OperandConstraintKey, OperandLayoutConstraint> operand_constraints_;
 
   // The result constraint for the computation (can be null).
@@ -298,7 +298,7 @@ class ChannelLayoutConstraints {
   }
 
  private:
-  absl::flat_hash_map<int64, Layout> constraints_;
+  absl::flat_hash_map<int64_t, Layout> constraints_;
 };
 
 // HLO pass which assigns layouts to all instructions in the HLO module while

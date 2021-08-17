@@ -368,7 +368,7 @@ Status GPUUtil::SyncAll(Device* gpu_device) {
 string GPUUtil::MemoryDebugString(const Device* device, Tensor* tensor) {
   string ret;
   CHECK(tensor);
-  const int64_t num_bytes = std::min<int64>(
+  const int64_t num_bytes = std::min<int64_t>(
       FLAGS_brain_gpu_util_debug_string_maxlen, tensor->TotalBytes());
   void* ptr = (num_bytes > 0) ? GetBase(tensor) : nullptr;
   strings::Appendf(&ret, "%p:", ptr);

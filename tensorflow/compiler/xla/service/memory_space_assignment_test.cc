@@ -40,7 +40,7 @@ constexpr float kBytesPerSecond = 100;
 constexpr float kFlopsPerSecond = 1000;
 constexpr float kTranscendentalsPerSecond = 10;
 
-int64 ShapeSize(const Shape& shape) {
+int64_t ShapeSize(const Shape& shape) {
   return ShapeUtil::ByteSizeOf(shape, kPointerSize);
 }
 
@@ -49,8 +49,8 @@ class MemorySpaceAssignmentTest : public HloTestBase,
  protected:
   // We use the following two memory space values to describe the default (slow
   // and large) and alternate (fast and small) memory spaces.
-  const int64 kDefaultMemorySpace = 0;
-  const int64 kAlternateMemorySpace = 1;
+  const int64_t kDefaultMemorySpace = 0;
+  const int64_t kAlternateMemorySpace = 1;
 
   std::unique_ptr<PresetAssignments> AssignMemorySpaceUsingCostAnalysis(
       HloModule* module,
@@ -210,9 +210,9 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   }
 
   struct OutstandingAsyncCopies {
-    int64 max_copies;
-    int64 max_prefetches;
-    int64 max_evictions;
+    int64_t max_copies;
+    int64_t max_prefetches;
+    int64_t max_evictions;
   };
 
   /*static*/ OutstandingAsyncCopies CountMaximumOutstandingAsyncCopies(
@@ -250,9 +250,9 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     return copies;
   }
 
-  int64 GetAlternateMemoryOffset(const PresetAssignments& preset_assignments,
-                                 const HloInstruction* instruction,
-                                 const ShapeIndex& index = {}) const {
+  int64_t GetAlternateMemoryOffset(const PresetAssignments& preset_assignments,
+                                   const HloInstruction* instruction,
+                                   const ShapeIndex& index = {}) const {
     // Returns the offset of the assignment, -1 if it's not in the alternate
     // memory.
     const HloModule* module = instruction->parent()->parent();
@@ -5071,7 +5071,7 @@ ENTRY entry {
 class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
  public:
   explicit FakeMemorySpaceAssignmentRepacker(
-      absl::flat_hash_map<std::pair<int64, int64>, int64>& repack_map,
+      absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t>& repack_map,
       std::function<void(absl::Span<AllocationBlock*>)> check_fun = nullptr,
       bool always_return_modified = false)
       : MemorySpaceAssignmentRepacker(/*max_size=*/128, /*alignment=*/8),
@@ -5082,7 +5082,7 @@ class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
   StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) override {
     bool modified = false;
     for (AllocationBlock* block : allocations) {
-      absl::flat_hash_set<int64> colocations;
+      absl::flat_hash_set<int64_t> colocations;
       std::string colocations_str;
       for (const AllocationBlock* colocation : block->colocations) {
         absl::StrAppend(&colocations_str, colocation->id, ", ");
@@ -5116,7 +5116,7 @@ class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
 
  private:
   // A map from (start_time, offset) to new_offset.
-  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map_;
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map_;
   std::function<void(absl::Span<AllocationBlock*>)> check_fun_;
   bool always_return_modified_;
 };
@@ -5219,7 +5219,7 @@ TEST_P(MemorySpaceAssignmentTest, Repack) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
-  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map;
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
   // Move "a" from offset 0 to 32.
   repack_map[{2, 0}] = 32;
   // Move "b" from offset 32 to 0.
@@ -5330,7 +5330,7 @@ TEST_P(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
-  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map;
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
 
   // Expect that of the four separate allocations for the "a" buffer, the first
   // and the next three are in separate colocations.
@@ -5387,7 +5387,7 @@ ENTRY entry {
     return 0;
   };
 
-  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map;
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
   bool repacker_ran = false;
 
   // Expect that the first two value to repack has a colocations size of 2,
@@ -5444,7 +5444,7 @@ TEST_P(MemorySpaceAssignmentTest,
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map;
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map, nullptr,
                                         /*always_return_modified=*/true);
@@ -5591,20 +5591,20 @@ TEST_F(AsynchronousCopyOrderingTest, Simple) {
   auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
   AsynchronousCopyOrdering ordering;
   EXPECT_FALSE(ordering.ViolatesOrdering(3, 11));
-  ordering.AddCopy({3, 11, alternate_mem_space});
+  ordering.AddCopy({3, 11, 11, alternate_mem_space});
   EXPECT_FALSE(ordering.ViolatesOrdering(1, 8));
-  ordering.AddCopy({1, 8, alternate_mem_space});
+  ordering.AddCopy({1, 8, 8, alternate_mem_space});
   EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
-  ordering.AddCopy({5, 14, alternate_mem_space});
+  ordering.AddCopy({5, 14, 14, alternate_mem_space});
   EXPECT_FALSE(ordering.ViolatesOrdering(7, 14));
-  ordering.AddCopy({7, 14, alternate_mem_space});
+  ordering.AddCopy({7, 14, 14, alternate_mem_space});
   EXPECT_TRUE(ordering.ViolatesOrdering(2, 16));
   EXPECT_TRUE(ordering.ViolatesOrdering(9, 12));
   EXPECT_TRUE(ordering.ViolatesOrdering(6, 17));
   EXPECT_FALSE(ordering.ViolatesOrdering(5, 13));
-  ordering.AddCopy({5, 13, alternate_mem_space});
+  ordering.AddCopy({5, 13, 13, alternate_mem_space});
   EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
-  ordering.AddCopy({5, 14, alternate_mem_space});
+  ordering.AddCopy({5, 14, 14, alternate_mem_space});
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
@@ -5892,7 +5892,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
   // This test is for checking if the cross-program-prefetched buffer is freed
   // after its last use and there is an end-of-program prefetch.
   absl::string_view hlo_string = R"(
@@ -5916,9 +5916,9 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
@@ -5949,9 +5949,29 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
   EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
                              is_end_of_program_prefetch),
             1);
+  // Also verify that the copy-done for the end-of-program prefetch is the last
+  // instruction in schedule.
+  const HloInstruction* last_instruction =
+      module->schedule()
+          .sequence(module->entry_computation())
+          .instructions()[module->entry_computation()->instruction_count() - 1];
+  EXPECT_THAT(last_instruction, op::CopyDone());
+  EXPECT_NE(last_instruction, module->entry_computation()->root_instruction());
+  // Cross program prefetch would use offset 0 because that's the first
+  // assignment. Since we are freeing the cross-program prefetch buffer, we
+  // would also expect to see some of the intermediate computations (one of the
+  // negate ops) to also get 0 offset allocations.
+  bool has_zero_offset_allocations = false;
+  for (auto pos_and_chunk : preset_assignments->chunks()) {
+    if (pos_and_chunk.first.instruction->opcode() == HloOpcode::kNegate &&
+        pos_and_chunk.second.offset == 0) {
+      has_zero_offset_allocations = true;
+    }
+  }
+  EXPECT_TRUE(has_zero_offset_allocations);
 }
 
-TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
   // This tests the scenario that the cross-program-prefetched buffer is used
   // again close to the end of the computation. In this case, it is better not
   // to free the buffer.

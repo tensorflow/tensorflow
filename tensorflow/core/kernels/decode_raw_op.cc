@@ -135,7 +135,7 @@ REGISTER(uint16);
 REGISTER(uint8);
 REGISTER(int16);
 REGISTER(int8);
-REGISTER(int64);
+REGISTER(int64_t);
 REGISTER(bool);
 REGISTER(complex64);
 REGISTER(complex128);

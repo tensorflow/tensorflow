@@ -77,8 +77,8 @@ void PortableAsymmetricQuantizeFloats(const float* values, const int size,
   const double qmin_double = kMinScale;
   const double qmax_double = kMaxScale;
   const auto minmax = std::minmax_element(values, values + size);
-  const double rmin = std::fmin(0, *minmax.first);
-  const double rmax = std::fmax(0, *minmax.second);
+  const double rmin = static_cast<double>(std::min(0.0f, *minmax.first));
+  const double rmax = static_cast<double>(std::max(0.0f, *minmax.second));
   if (rmin == rmax) {
     memset(quantized_values, 0, size * sizeof(int8_t));
     *scaling_factor = 1;
@@ -495,7 +495,7 @@ void PortableApplyLayerNormFloat(const int16_t* input,
       const float weighted_normalized_value =
           normalized_value * layer_norm_weights[i] * layer_norm_scale +
           bias[i] * bias_scale;
-      const int32_t quant_output = static_cast<int32_t>(std::round(
+      const int32_t quant_output = static_cast<int32_t>(round(
           weighted_normalized_value * static_cast<float>(std::pow(2, 12))));
       output[index] = std::min(int16_max, std::max(int16_min, quant_output));
     }

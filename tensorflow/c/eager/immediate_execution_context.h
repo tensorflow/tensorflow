@@ -77,7 +77,7 @@ class ImmediateExecutionContext : public AbstractContext {
 
   // Tensor creation functions
   virtual AbstractTensorInterface* CreateTensor(
-      DataType dtype, absl::Span<const int64> dim_sizes) = 0;
+      DataType dtype, absl::Span<const int64_t> dim_sizes) = 0;
 
   typedef void (*MemoryReleaser)(void* data, size_t len, void* arg);
 

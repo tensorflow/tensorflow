@@ -138,7 +138,7 @@ class GaugeCell {
 // template, it uses atomic values as opposed to mutex. This class is
 // thread-safe.
 template <>
-class GaugeCell<int64> {
+class GaugeCell<int64_t> {
  public:
   explicit GaugeCell(int64_t value) : value_(value) {}
   ~GaugeCell() {}
@@ -147,10 +147,10 @@ class GaugeCell<int64> {
   void Set(int64_t value);
 
   // Retrieves the current value.
-  int64 value() const;
+  int64_t value() const;
 
  private:
-  std::atomic<int64> value_;
+  std::atomic<int64_t> value_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GaugeCell);
 };
@@ -272,9 +272,9 @@ T GaugeCell<T>::value() const {
   return value_;
 }
 
-inline void GaugeCell<int64>::Set(int64_t value) { value_ = value; }
+inline void GaugeCell<int64_t>::Set(int64_t value) { value_ = value; }
 
-inline int64 GaugeCell<int64>::value() const { return value_; }
+inline int64_t GaugeCell<int64_t>::value() const { return value_; }
 
 inline void GaugeCell<bool>::Set(bool value) { value_ = value; }
 
@@ -285,10 +285,10 @@ template <typename... MetricDefArgs>
 Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
     MetricDefArgs&&... metric_def_args) {
   static_assert(
-      std::is_same<ValueType, int64>::value ||
+      std::is_same<ValueType, int64_t>::value ||
           std::is_same<ValueType, std::string>::value ||
           std::is_same<ValueType, bool>::value ||
-          std::is_same<ValueType, std::function<int64()> >::value ||
+          std::is_same<ValueType, std::function<int64_t()> >::value ||
           std::is_same<ValueType, std::function<std::string()> >::value ||
           std::is_same<ValueType, std::function<bool()> >::value,
       "Gauge only allows bool, int64, and string types.");

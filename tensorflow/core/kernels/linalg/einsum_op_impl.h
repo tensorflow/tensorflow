@@ -52,12 +52,12 @@ namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-using ShapeVec = gtl::InlinedVector<int64, 8>;
+using ShapeVec = gtl::InlinedVector<int64_t, 8>;
 using Labels = gtl::InlinedVector<int, 8>;
 using OperandLabels = gtl::InlinedVector<Labels, 2>;
 using LabelCounts = gtl::InlinedVector<int, 8>;
 using OperandLabelCounts = gtl::InlinedVector<LabelCounts, 2>;
-using LabelToDimSizes = gtl::InlinedVector<int64, 8>;
+using LabelToDimSizes = gtl::InlinedVector<int64_t, 8>;
 
 // Dummy axis label used to denote an ellipsis in an input or output subscript.
 constexpr int kEllipsisLabel = -1;
@@ -489,7 +489,7 @@ struct EinsumHelper {
 
     // Reshape denotes the rank-5 shape [broadcast, batch, free, contract,
     // reduce] where we've compacted the dimensions of each DimensionType.
-    gtl::InlinedVector<int64, 5> reshape(5, 1);
+    gtl::InlinedVector<int64_t, 5> reshape(5, 1);
     // The output shape is [batch shape] + [free size, contract size]
     // That is, the batch shape is preserved (for broadcasting while
     // contracting) while the free dims and contract dims are compressed to one

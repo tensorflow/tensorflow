@@ -80,6 +80,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/lite/version.h"
@@ -479,19 +480,14 @@ class Translator {
   // the serialized output. Returns llvm::None on unsupported, invalid inputs or
   // internal error.
   static Optional<std::string> Translate(
-      ModuleOp module, bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
-      bool emit_custom_ops, bool allow_all_select_tf_ops,
-      const std::unordered_set<std::string>& select_user_tf_ops,
+      ModuleOp module, const toco::TocoFlags& toco_flags,
       const std::unordered_set<std::string>& tags,
       OpOrArgNameMapper* op_or_arg_name_mapper,
       const std::map<std::string, std::string>& metadata);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
-  explicit Translator(ModuleOp module, bool emit_builtin_tflite_ops,
-                      bool emit_select_tf_ops, bool emit_custom_ops,
-                      bool allow_all_select_tf_ops,
-                      const std::unordered_set<std::string>& select_user_tf_ops,
+  explicit Translator(ModuleOp module, const toco::TocoFlags& toco_flags,
                       const std::unordered_set<std::string>& saved_model_tags,
                       OpOrArgNameMapper* op_or_arg_name_mapper,
                       const std::map<std::string, std::string>& metadata)
@@ -499,19 +495,22 @@ class Translator {
         name_mapper_(*op_or_arg_name_mapper),
         builder_(kInitialBufferSize),
         saved_model_tags_(saved_model_tags),
-        allow_all_select_tf_ops_(allow_all_select_tf_ops),
-        select_user_tf_ops_(select_user_tf_ops),
-        metadata_(metadata) {
+        allow_all_select_tf_ops_(toco_flags.allow_all_select_tf_ops()),
+        select_user_tf_ops_(toco_flags.select_user_tf_ops().begin(),
+                            toco_flags.select_user_tf_ops().end()),
+        metadata_(metadata),
+        supported_backends_(toco_flags.supported_backends().begin(),
+                            toco_flags.supported_backends().end()) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
-    if (emit_builtin_tflite_ops) {
+    if (!toco_flags.force_select_tf_ops()) {
       enabled_op_types_.emplace(OpType::kTfliteBuiltin);
     }
-    if (emit_select_tf_ops) {
+    if (toco_flags.enable_select_tf_ops()) {
       enabled_op_types_.emplace(OpType::kSelectTf);
     }
-    if (emit_custom_ops) {
+    if (toco_flags.allow_custom_ops()) {
       enabled_op_types_.emplace(OpType::kCustomOp);
     }
     tf_dialect_ =
@@ -635,6 +634,9 @@ class Translator {
 
   bool EstimateArithmeticCount(int64_t* count);
 
+  // Check compatibility with GPU delegate and returns the compatibility.
+  bool CheckGpuDelegateCompatibility(uint8_t* model_buffer_pointer);
+
   ModuleOp module_;
 
   tensorflow::OpOrArgNameMapper& name_mapper_;
@@ -680,6 +682,11 @@ class Translator {
   const std::unordered_set<std::string> select_user_tf_ops_;
   // Map of key value pairs of metadata to export.
   const std::map<std::string, std::string> metadata_;
+  // User's defined supported backends.
+  const std::unordered_set<std::string> supported_backends_;
+  // A mapping table to mlir::Operation objects for TFL subgraph and operator
+  // index in a flatbuffer.
+  std::vector<std::vector<Operation*>> subgraph_op_inst_map_;
 };
 
 bool Translator::EstimateArithmeticCount(int64_t* count) {
@@ -1398,6 +1405,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
   };
 
   std::vector<BufferOffset<tflite::Operator>> operators;
+  std::vector<Operation*> operators_in_mlir;
   auto& bb = region->front();
 
   // Main function's arguments are first passed to `input` op so they don't
@@ -1498,12 +1506,17 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     }
 
     if (auto tfl_operator =
-            BuildOperator(real_inst, operands, results, intermediates))
+            BuildOperator(real_inst, operands, results, intermediates)) {
       operators.push_back(*tfl_operator);
-    else
+      operators_in_mlir.push_back(real_inst);
+    } else {
       failed_once = true;
+    }
   }
-
+  if (index + 1 > subgraph_op_inst_map_.size()) {
+    subgraph_op_inst_map_.resize(index + 1);
+  }
+  subgraph_op_inst_map_[index] = operators_in_mlir;
   if (failed_once) return llvm::None;
 
   // Get input and output tensor indices for the subgraph.
@@ -1747,9 +1760,7 @@ bool UpdateEntryFunction(ModuleOp module) {
 }
 
 Optional<std::string> Translator::Translate(
-    ModuleOp module, bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
-    bool emit_custom_ops, bool allow_all_select_tf_ops,
-    const std::unordered_set<std::string>& select_user_tf_ops,
+    ModuleOp module, const toco::TocoFlags& toco_flags,
     const std::unordered_set<std::string>& tags,
     OpOrArgNameMapper* op_or_arg_name_mapper,
     const std::map<std::string, std::string>& metadata) {
@@ -1758,11 +1769,35 @@ Optional<std::string> Translator::Translate(
     op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
   if (!UpdateEntryFunction(module)) return llvm::None;
   if (!IsValidTFLiteMlirModule(module)) return llvm::None;
-  Translator translator(module, emit_builtin_tflite_ops, emit_select_tf_ops,
-                        emit_custom_ops, allow_all_select_tf_ops,
-                        select_user_tf_ops, tags, op_or_arg_name_mapper,
+  Translator translator(module, toco_flags, tags, op_or_arg_name_mapper,
                         metadata);
   return translator.TranslateInternal();
+}
+
+bool Translator::CheckGpuDelegateCompatibility(uint8_t* model_buffer_pointer) {
+  bool gpu_compatibile = true;
+  auto model = tflite::GetModel(model_buffer_pointer);
+  auto subgraphs = model->subgraphs();
+
+  for (int i = 0; i < subgraphs->Length(); ++i) {
+    const tflite::SubGraph* subgraph = subgraphs->Get(i);
+    for (int j = 0; j < subgraph->operators()->Length(); ++j) {
+      const tflite::Operator* op = subgraph->operators()->Get(j);
+      const tflite::OperatorCode* op_code =
+          model->operator_codes()->Get(op->opcode_index());
+      auto status =
+          tflite::CheckGpuDelegateCompatibility(op_code, op, subgraph, model);
+      if (!status.ok()) {
+        gpu_compatibile = false;
+        auto inst = subgraph_op_inst_map_[i][j];
+        tfl::AttachErrorCode(
+            inst->emitOpError()
+                << "is not GPU compatible: " << status.message(),
+            tflite::metrics::ConverterErrorData::ERROR_GPU_NOT_COMPATIBLE);
+      }
+    }
+  }
+  return gpu_compatibile;
 }
 
 Optional<std::string> Translator::TranslateInternal() {
@@ -1966,6 +2001,11 @@ Optional<std::string> Translator::TranslateInternal() {
   tflite::FinishModelBuffer(builder_, model);
   tflite::UpdateOpVersion(builder_.GetBufferPointer());
   tflite::UpdateMinimumRuntimeVersionForModel(builder_.GetBufferPointer());
+  if (supported_backends_.find("GPU") != supported_backends_.end()) {
+    if (!CheckGpuDelegateCompatibility(builder_.GetBufferPointer())) {
+      return llvm::None;
+    }
+  }
 
   // Return serialized string for the built FlatBuffer.
   return std::string(reinterpret_cast<const char*>(builder_.GetBufferPointer()),
@@ -2074,19 +2114,12 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
 }  // namespace
 
 namespace tflite {
-// TODO(hinsu): Support all valid MLIR modules in TFLite dialect by supporting
-// the following:
-//
-// * Quantization
-// * Ops with variable tensors
-//
+
 bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        const FlatbufferExportOptions& options,
                                        std::string* serialized_flatbuffer) {
   auto maybe_translated = Translator::Translate(
-      module, options.emit_builtin_tflite_ops, options.emit_select_tf_ops,
-      options.emit_custom_ops, options.allow_all_select_tf_ops,
-      options.select_user_tf_ops, options.saved_model_tags,
+      module, options.toco_flags, options.saved_model_tags,
       options.op_or_arg_name_mapper, options.metadata);
   if (!maybe_translated) return false;
   *serialized_flatbuffer = std::move(*maybe_translated);

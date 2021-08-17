@@ -47,7 +47,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // shape_size is a function which returns the size in bytes of the top-level
   // buffer of a shape.
-  using ShapeSizeFunction = std::function<int64(const Shape&)>;
+  using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
   explicit HloCostAnalysis(const ShapeSizeFunction& shape_size);
 
   Status HandleElementwiseUnary(const HloInstruction* hlo) override;
@@ -135,7 +135,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Decorates shape_size_ by returning 0 immediately if the shape does not have
   // a layout.
-  int64 GetShapeSize(const Shape& shape) const;
+  int64_t GetShapeSize(const Shape& shape) const;
 
   // Set the rates used to calculate the time taken by the computation. These
   // need to be set before visiting starts.
@@ -161,22 +161,23 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Note that the cost for sub HLO instructions are also returned if asked. For
   // example, body and condition of a while, fused instructions within a
   // fusion, or the add instruction of a reduce.
-  int64 flop_count(const HloInstruction& hlo) const;
-  int64 transcendental_count(const HloInstruction& hlo) const;
-  int64 bytes_accessed(const HloInstruction& hlo) const;
-  int64 operand_bytes_accessed(const HloInstruction& hlo, int64_t operand_num,
-                               ShapeIndex index = {}) const;
-  int64 output_bytes_accessed(const HloInstruction& hlo,
-                              ShapeIndex index = {}) const;
+  int64_t flop_count(const HloInstruction& hlo) const;
+  int64_t transcendental_count(const HloInstruction& hlo) const;
+  int64_t bytes_accessed(const HloInstruction& hlo) const;
+  int64_t operand_bytes_accessed(const HloInstruction& hlo, int64_t operand_num,
+                                 ShapeIndex index = {}) const;
+  int64_t output_bytes_accessed(const HloInstruction& hlo,
+                                ShapeIndex index = {}) const;
   float optimal_seconds(const HloInstruction& hlo) const;
 
   // Get bytes read/written by this HLO. If memory_space is provided, it returns
   // the bytes read/written from/to the given memory space only.
-  int64 GetBytesRead(const HloInstruction& hlo,
-                     absl::optional<int64> memory_space = absl::nullopt) const;
-  int64 GetBytesWritten(
+  int64_t GetBytesRead(
       const HloInstruction& hlo,
-      absl::optional<int64> memory_space = absl::nullopt) const;
+      absl::optional<int64_t> memory_space = absl::nullopt) const;
+  int64_t GetBytesWritten(
+      const HloInstruction& hlo,
+      absl::optional<int64_t> memory_space = absl::nullopt) const;
 
   const Properties& properties() const { return properties_sum_; }
   const float property(const string& key) const {
@@ -229,7 +230,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Traverses a fusion operand to find the actual bytes accessed by the fusion
   // node.
-  int64 FusionParameterReadBytes(const HloInstruction* hlo) const;
+  int64_t FusionParameterReadBytes(const HloInstruction* hlo) const;
 
   // Set bytes accessed by the specified operand and shape index.
   void SetOperandBytesAccessed(int64_t operand_num, float value);

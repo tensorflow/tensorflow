@@ -57,7 +57,7 @@ class RaggedTensorToSparseOp : public OpKernel {
     //   dimension.
     // - `index_middle` is the index in the last ragged dimension.
     // - `index_suffix` is the index in the dense value dimensions.
-    std::vector<int64> index_prefix(rt_nested_splits_len);
+    std::vector<int64_t> index_prefix(rt_nested_splits_len);
     std::vector<std::vector<int64>> index_suffixes =
         MakeIndexSuffixes(rt_dense_values_in.shape());
 
@@ -71,12 +71,12 @@ class RaggedTensorToSparseOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->allocate_output(0, TensorShape({nvals, indices_len}),
                                           &sparse_indices_out));
-    auto sparse_indices = sparse_indices_out->tensor<int64, 2>();
+    auto sparse_indices = sparse_indices_out->tensor<int64_t, 2>();
 
     // pos[i] is the current position in rt_nested_splits[i].  final_pos is a
     // reference to make it easier to refer to pos[-1].
-    std::vector<int64> pos(rt_nested_splits_len);
-    int64& final_pos = pos[rt_nested_splits_len - 1];
+    std::vector<int64_t> pos(rt_nested_splits_len);
+    int64_t& final_pos = pos[rt_nested_splits_len - 1];
 
     // Each iteration through the loop, we increment pos[-1], and add indices
     // for all the values corresponding to
@@ -136,7 +136,7 @@ class RaggedTensorToSparseOp : public OpKernel {
     Tensor* sparse_dense_shape_out = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(2, TensorShape({ndims}),
                                                      &sparse_dense_shape_out));
-    auto sparse_dense_shape = sparse_dense_shape_out->vec<int64>();
+    auto sparse_dense_shape = sparse_dense_shape_out->vec<int64_t>();
     sparse_dense_shape(0) = rt_nested_splits_in[0].dim_size(0) - 1;
     for (int dim = 0; dim < rt_nested_splits_len; ++dim) {
       const auto& splits = rt_nested_splits[dim];
@@ -233,7 +233,7 @@ REGISTER_KERNEL_BUILDER(Name("RaggedTensorToSparse")
 
 REGISTER_KERNEL_BUILDER(Name("RaggedTensorToSparse")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int64>("Tsplits"),
+                            .TypeConstraint<int64_t>("Tsplits"),
                         RaggedTensorToSparseOp<int64>);
 
 }  // namespace tensorflow

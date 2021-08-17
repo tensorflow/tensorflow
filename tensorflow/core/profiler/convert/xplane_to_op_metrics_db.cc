@@ -128,7 +128,7 @@ void ProcessTfActivities(std::vector<TfActivity>* tf_activities,
 }
 
 void CollectTfActivities(const XLineVisitor& line,
-                         const absl::flat_hash_map<int64, TfOp>& tf_ops,
+                         const absl::flat_hash_map<int64_t, TfOp>& tf_ops,
                          std::vector<TfActivity>* tf_activities) {
   uint32 tf_op_id = 0;
   tf_activities->reserve(line.NumEvents() * 2);
@@ -153,9 +153,9 @@ void CollectTfActivities(const XLineVisitor& line,
 
 }  // namespace
 
-absl::flat_hash_map<int64, TfOp> CollectTfOpsFromHostThreadsXPlane(
+absl::flat_hash_map<int64_t, TfOp> CollectTfOpsFromHostThreadsXPlane(
     const XPlane& host_trace) {
-  absl::flat_hash_map<int64, TfOp> tf_ops;
+  absl::flat_hash_map<int64_t, TfOp> tf_ops;
   for (const auto& id_metadata : host_trace.event_metadata()) {
     const XEventMetadata& metadata = id_metadata.second;
     // On the host, we have added some user-specified TraceMe's in addition to
@@ -171,7 +171,8 @@ absl::flat_hash_map<int64, TfOp> CollectTfOpsFromHostThreadsXPlane(
 }
 
 TfMetricsDbData ConvertHostThreadsXLineToTfMetricsDbData(
-    const XLineVisitor& line, const absl::flat_hash_map<int64, TfOp>& tf_ops) {
+    const XLineVisitor& line,
+    const absl::flat_hash_map<int64_t, TfOp>& tf_ops) {
   TfMetricsDbData tf_metrics_db_data;
   if (!tf_ops.empty()) {
     std::vector<TfActivity> tf_activities;
@@ -188,7 +189,7 @@ void ConsumeTfMetricsDbData(TfMetricsDbData src, OpMetricsDbCombiner* dst) {
 }
 
 OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace) {
-  absl::flat_hash_map<int64, TfOp> tf_ops =
+  absl::flat_hash_map<int64_t, TfOp> tf_ops =
       CollectTfOpsFromHostThreadsXPlane(host_trace);
   OpMetricsDb result;
   OpMetricsDbCombiner combiner(&result);

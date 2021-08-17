@@ -70,7 +70,8 @@ def build_tensor_info(tensor):
   @end_compatibility
   """
   if context.executing_eagerly():
-    raise RuntimeError("build_tensor_info is not supported in Eager mode.")
+    raise RuntimeError("`build_tensor_info` is not supported in eager "
+                       "execution.")
   return build_tensor_info_internal(tensor)
 
 
@@ -139,7 +140,7 @@ def build_tensor_info_from_op(op):
   """
   if context.executing_eagerly():
     raise RuntimeError(
-        "build_tensor_info_from_op is not supported in Eager mode.")
+        "`build_tensor_info_from_op` is not supported in eager execution.")
   return meta_graph_pb2.TensorInfo(
       dtype=types_pb2.DT_INVALID,
       tensor_shape=tensor_shape.unknown_shape().as_proto(),
@@ -193,7 +194,9 @@ def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
                   tensor_info.composite_tensor.components]
     return nest.pack_sequence_as(spec, components, expand_composites=True)
   else:
-    raise ValueError("Invalid TensorInfo.encoding: %s" % encoding)
+    raise ValueError(f"Invalid TensorInfo.encoding: {encoding}. Expected `"
+                     "coo_sparse`, `composite_tensor`, or `name` for a dense "
+                     "tensor.")
 
 
 def get_element_from_tensor_info(tensor_info, graph=None, import_scope=None):

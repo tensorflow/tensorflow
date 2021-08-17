@@ -81,7 +81,7 @@ int GetNumAvailableGPUs(
   return num_eligible_gpus;
 }
 
-int64 AvailableGPUMemory(int gpu_id) {
+int64_t AvailableGPUMemory(int gpu_id) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Look up the device, to see its attributes.
   se::Platform* gpu_platform = GPUMachineManager();

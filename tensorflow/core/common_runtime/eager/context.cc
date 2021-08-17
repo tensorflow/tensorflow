@@ -170,7 +170,7 @@ AbstractTensorInterface* EagerContext::CreateBoolScalar(bool value) {
 }
 
 AbstractTensorInterface* EagerContext::CreateTensor(
-    DataType dtype, absl::Span<const int64> dim_sizes) {
+    DataType dtype, absl::Span<const int64_t> dim_sizes) {
   return new TensorInterface(Tensor(dtype, TensorShape(dim_sizes)));
 }
 

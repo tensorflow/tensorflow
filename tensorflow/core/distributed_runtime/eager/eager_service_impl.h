@@ -161,8 +161,8 @@ class EagerServiceImpl {
     const WorkerEnv* const env_;  // Not owned.
 
     mutex last_accessed_mu_;
-    int64 last_accessed_micros_ TF_GUARDED_BY(last_accessed_mu_);
-    int64 destroy_after_micros_;
+    int64_t last_accessed_micros_ TF_GUARDED_BY(last_accessed_mu_);
+    int64_t destroy_after_micros_;
 
     const bool is_master_;
   };

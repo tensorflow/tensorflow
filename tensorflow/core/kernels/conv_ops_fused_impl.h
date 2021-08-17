@@ -95,10 +95,10 @@ struct LaunchFusedConv2DOp {
 template <typename T>
 class LaunchFusedConv2DWithOutputKernel {
  public:
-  LaunchFusedConv2DWithOutputKernel(int row_stride, int col_stride,      //
-                                    int row_dilation, int col_dilation,  //
-                                    Padding padding,
-                                    const std::vector<int64>& explicit_paddings)
+  LaunchFusedConv2DWithOutputKernel(
+      int row_stride, int col_stride,      //
+      int row_dilation, int col_dilation,  //
+      Padding padding, const std::vector<int64_t>& explicit_paddings)
       : row_stride_(row_stride),
         col_stride_(col_stride),
         row_dilation_(row_dilation),
@@ -204,7 +204,7 @@ class LaunchFusedConv2DWithOutputKernel {
   int row_dilation_;
   int col_dilation_;
   const Padding padding_;
-  const std::vector<int64>& explicit_paddings_;
+  const std::vector<int64_t>& explicit_paddings_;
 };
 
 template <typename T>
@@ -305,8 +305,7 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
 
 #if GOOGLE_CUDA
 
-
-inline int64 ConvolveScratchSize() {
+inline int64_t ConvolveScratchSize() {
   static int64_t convolve_scratch_size = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB

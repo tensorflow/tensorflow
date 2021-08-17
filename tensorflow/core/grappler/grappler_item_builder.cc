@@ -61,7 +61,7 @@ void InitializeTensor(DataType type, Tensor* tensor) {
       flat(i) = static_cast<float>(i % period) / 10.0f;
     }
   } else if (type == DT_INT64) {
-    auto flat = tensor->flat<int64>();
+    auto flat = tensor->flat<int64_t>();
     // Populate numbers 0, 1, 2, ..., 5, 6, 0, 1, 2, ...
     for (int i = 0; i < flat.size(); i++) {
       flat(i) = i % period;

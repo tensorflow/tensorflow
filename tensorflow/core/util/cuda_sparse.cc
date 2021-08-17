@@ -930,7 +930,7 @@ static inline Status Csru2csrImpl(SparseFnT op, BufferSizeFnT buffer_size_op,
 
   Tensor pBuffer_t;
   TF_RETURN_IF_ERROR(context->allocate_temp(
-      DT_INT8, TensorShape({static_cast<int64>(pBufferSizeInBytes)}),
+      DT_INT8, TensorShape({static_cast<int64_t>(pBufferSizeInBytes)}),
       &pBuffer_t));
   auto pBuffer = pBuffer_t.flat<int8>();
   DCHECK(pBuffer.data() != nullptr);
@@ -1004,7 +1004,7 @@ static inline Status Csr2cscImpl(cudaDataType_t dtype, OpKernelContext* context,
   Tensor buffer;
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataTypeToEnum<Scalar>::value,
-      TensorShape({static_cast<int64>(bufferSize)}), &buffer));
+      TensorShape({static_cast<int64_t>(bufferSize)}), &buffer));
 
   DCHECK(buffer.flat<Scalar>().data() != nullptr);
 

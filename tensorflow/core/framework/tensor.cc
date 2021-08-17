@@ -34,12 +34,14 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -135,7 +137,7 @@ class Buffer : public BufferBase {
   size_t size() const override { return sizeof(T) * elem_; }
 
  private:
-  int64 elem_;
+  int64_t elem_;
 
   ~Buffer() override;
 
@@ -185,7 +187,7 @@ struct Helper {
   }
 
   // Memory usage.
-  static int64 TotalBytes(TensorBuffer* in, int64_t n) {
+  static int64_t TotalBytes(TensorBuffer* in, int64_t n) {
     DCHECK_EQ(in->size(), sizeof(T) * n);
     return in->size();
   }
@@ -221,7 +223,7 @@ struct Helper<tstring> {
 
   // Returns the estimated memory usage of "n" elements of type T
   // stored in buffer "in".
-  static int64 TotalBytes(TensorBuffer* in, int n) {
+  static int64_t TotalBytes(TensorBuffer* in, int n) {
     int64_t tot = in->size();
     DCHECK_EQ(tot, sizeof(tstring) * n);
     const tstring* p = in->base<const tstring>();
@@ -260,7 +262,7 @@ struct Helper<ResourceHandle> {
 
   // Returns the estimated memory usage of "n" elements of type T
   // stored in buffer "in".
-  static int64 TotalBytes(TensorBuffer* in, int n) {
+  static int64_t TotalBytes(TensorBuffer* in, int n) {
     return n * sizeof(ResourceHandle);
   }
 };
@@ -292,7 +294,7 @@ struct Helper<Variant> {
 
   // Returns the estimated memory usage of "n" elements of type T
   // stored in buffer "in".
-  static int64 TotalBytes(TensorBuffer* in, int n) {
+  static int64_t TotalBytes(TensorBuffer* in, int n) {
     return n * sizeof(Variant);
   }
 };
@@ -336,14 +338,14 @@ PROTO_TRAITS(quint16, int32, int);
 #undef PROTO_TRAITS
 
 template <>
-struct ProtoHelper<int64> {
-  static const int64* Begin(const TensorProto& proto) {
-    return reinterpret_cast<const int64*>(proto.int64_val().begin());
+struct ProtoHelper<int64_t> {
+  static const int64_t* Begin(const TensorProto& proto) {
+    return reinterpret_cast<const int64_t*>(proto.int64_val().begin());
   }
   static size_t NumElements(const TensorProto& proto) {
     return proto.int64_val().size();
   }
-  static void Fill(const int64* data, size_t n, TensorProto* proto) {
+  static void Fill(const int64_t* data, size_t n, TensorProto* proto) {
     protobuf::RepeatedField<protobuf_int64> copy(data, data + n);
     proto->mutable_int64_val()->Swap(&copy);
   }
@@ -741,7 +743,7 @@ bool Tensor::RefCountIsOne() const {
     CASE(tstring, SINGLE_ARG(STMTS))                           \
     CASE(complex64, SINGLE_ARG(STMTS))                         \
     CASE(complex128, SINGLE_ARG(STMTS))                        \
-    CASE(int64, SINGLE_ARG(STMTS))                             \
+    CASE(int64_t, SINGLE_ARG(STMTS))                           \
     CASE(bool, SINGLE_ARG(STMTS))                              \
     CASE(qint32, SINGLE_ARG(STMTS))                            \
     CASE(quint8, SINGLE_ARG(STMTS))                            \
@@ -853,7 +855,7 @@ class SubBuffer : public TensorBuffer {
 
  private:
   TensorBuffer* root_;
-  int64 elem_;
+  int64_t elem_;
 
   ~SubBuffer() override { root_->Unref(); }
 
@@ -1020,7 +1022,7 @@ inline float PrintOneElement(bfloat16 f, bool print_v2) {
 template <typename T>
 void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
                  int64_t limit, int shape_size, const T* data,
-                 int64* data_index, string* result) {
+                 int64_t* data_index, string* result) {
   if (*data_index >= limit) return;
   int64_t element_count = shape[dim_index];
   // We have reached the right-most dimension of the tensor.
@@ -1121,7 +1123,7 @@ string SummarizeArray(int64_t limit, int64_t num_elts,
   string ret;
   const T* array = reinterpret_cast<const T*>(data);
 
-  const gtl::InlinedVector<int64, 4> shape = tensor_shape.dim_sizes();
+  const gtl::InlinedVector<int64_t, 4> shape = tensor_shape.dim_sizes();
   if (shape.empty()) {
     for (int64_t i = 0; i < limit; ++i) {
       if (i > 0) strings::StrAppend(&ret, " ");
@@ -1196,7 +1198,7 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
       return SummarizeArray<uint64>(limit, num_elts, shape_, data, print_v2);
       break;
     case DT_INT64:
-      return SummarizeArray<int64>(limit, num_elts, shape_, data, print_v2);
+      return SummarizeArray<int64_t>(limit, num_elts, shape_, data, print_v2);
       break;
     case DT_BOOL:
       // TODO(tucker): Is it better to emit "True False..."?  This
@@ -1209,7 +1211,7 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
     default: {
       // All irregular cases
       string ret;
-      if (print_v2) {
+      if (print_v2 && (dims() > 0)) {
         strings::StrAppend(&ret, "[");
       }
       // TODO(irving): Don't call flat every time around this
@@ -1219,7 +1221,11 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
         switch (dtype()) {
           case DT_VARIANT: {
             const Variant& v = flat<Variant>()(i);
-            strings::StrAppend(&ret, v.DebugString());
+            strings::StrAppend(&ret, "<", v.SummarizeValue(), ">");
+          } break;
+          case DT_RESOURCE: {
+            const ResourceHandle& r = flat<ResourceHandle>()(i);
+            strings::StrAppend(&ret, "<", r.SummarizeValue(), ">");
           } break;
           default:
             // TODO(zhifengc, josh11b): Pretty-print other types (bool,
@@ -1228,7 +1234,7 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
         }
       }
       if (max_entries < num_elts) strings::StrAppend(&ret, "...");
-      if (print_v2) {
+      if (print_v2 && (dims() > 0)) {
         strings::StrAppend(&ret, "]");
       }
       return ret;
@@ -1271,9 +1277,9 @@ void Tensor::FillDescription(TensorDescription* description) const {
   }
 }
 
-gtl::InlinedVector<int64, 4> Tensor::ComputeFlatInnerDims(
-    gtl::ArraySlice<int64> orig, int64_t num_out_dims) {
-  gtl::InlinedVector<int64, 4> out_dims(num_out_dims, 0);
+gtl::InlinedVector<int64_t, 4> Tensor::ComputeFlatInnerDims(
+    gtl::ArraySlice<int64_t> orig, int64_t num_out_dims) {
+  gtl::InlinedVector<int64_t, 4> out_dims(num_out_dims, 0);
   int64_t offset = orig.size() - num_out_dims;
   for (int64_t out_dim = num_out_dims - 1; out_dim >= 0; --out_dim) {
     const int64_t in_dim = out_dim + offset;
@@ -1285,9 +1291,9 @@ gtl::InlinedVector<int64, 4> Tensor::ComputeFlatInnerDims(
   return out_dims;
 }
 
-gtl::InlinedVector<int64, 4> Tensor::ComputeFlatOuterDims(
-    gtl::ArraySlice<int64> orig, int64_t num_out_dims) {
-  gtl::InlinedVector<int64, 4> out_dims(num_out_dims, 0);
+gtl::InlinedVector<int64_t, 4> Tensor::ComputeFlatOuterDims(
+    gtl::ArraySlice<int64_t> orig, int64_t num_out_dims) {
+  gtl::InlinedVector<int64_t, 4> out_dims(num_out_dims, 0);
   for (int64_t out_dim = 0; out_dim <= num_out_dims - 1; ++out_dim) {
     out_dims[out_dim] = out_dim >= orig.size() ? 1 : orig[out_dim];
   }

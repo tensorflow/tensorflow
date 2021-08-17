@@ -71,7 +71,7 @@ struct AllocationAttributes {
 // tag allocations with the annotations.
 struct MemoryDebugAnnotation {
   const char* pending_op_name = nullptr;
-  int64 pending_step_id = 0;
+  int64_t pending_step_id = 0;
   const char* pending_region_type = nullptr;
   int32 pending_data_type = 0;
   const TensorShape* pending_shape = nullptr;
@@ -148,23 +148,23 @@ class ScopedMemoryDebugAnnotation {
 // stream_executor::AllocatorStats, but independently defined to preserve the
 // mutual independence of StreamExecutor and TensorFlow.
 struct AllocatorStats {
-  int64 num_allocs;          // Number of allocations.
-  int64 bytes_in_use;        // Number of bytes in use.
-  int64 peak_bytes_in_use;   // The peak bytes in use.
-  int64 largest_alloc_size;  // The largest single allocation seen.
+  int64_t num_allocs;          // Number of allocations.
+  int64_t bytes_in_use;        // Number of bytes in use.
+  int64_t peak_bytes_in_use;   // The peak bytes in use.
+  int64_t largest_alloc_size;  // The largest single allocation seen.
 
   // The upper limit of bytes of user allocatable device memory, if such a limit
   // is known.
-  absl::optional<int64> bytes_limit;
+  absl::optional<int64_t> bytes_limit;
 
   // Stats for reserved memory usage.
-  int64 bytes_reserved;       // Number of bytes reserved.
-  int64 peak_bytes_reserved;  // The peak number of bytes reserved.
+  int64_t bytes_reserved;       // Number of bytes reserved.
+  int64_t peak_bytes_reserved;  // The peak number of bytes reserved.
   // The upper limit on the number bytes of reservable memory,
   // if such a limit is known.
-  absl::optional<int64> bytes_reservable_limit;
+  absl::optional<int64_t> bytes_reservable_limit;
 
-  int64 largest_free_block_bytes;  // Largest free block's size in heap.
+  int64_t largest_free_block_bytes;  // Largest free block's size in heap.
 
   AllocatorStats()
       : num_allocs(0),
@@ -266,7 +266,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual int64 AllocationId(const void* ptr) const { return 0; }
+  virtual int64_t AllocationId(const void* ptr) const { return 0; }
 
   // Returns the allocated size of the buffer at 'ptr' if known,
   // otherwise returns 0. This method can be called when
@@ -340,7 +340,7 @@ class AllocatorWrapper : public Allocator {
     return wrapped_->AllocatedSize(ptr);
   }
 
-  int64 AllocationId(const void* ptr) const override {
+  int64_t AllocationId(const void* ptr) const override {
     return wrapped_->AllocationId(ptr);
   }
 

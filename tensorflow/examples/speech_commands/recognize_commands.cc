@@ -29,7 +29,7 @@ RecognizeCommands::RecognizeCommands(const std::vector<string>& labels,
       minimum_count_(minimum_count) {
   labels_count_ = labels.size();
   previous_top_label_ = "_silence_";
-  previous_top_label_time_ = std::numeric_limits<int64>::min();
+  previous_top_label_time_ = std::numeric_limits<int64_t>::min();
 }
 
 Status RecognizeCommands::ProcessLatestResults(const Tensor& latest_results,
@@ -105,8 +105,8 @@ Status RecognizeCommands::ProcessLatestResults(const Tensor& latest_results,
   // soon afterwards is a bad result.
   int64_t time_since_last_top;
   if ((previous_top_label_ == "_silence_") ||
-      (previous_top_label_time_ == std::numeric_limits<int64>::min())) {
-    time_since_last_top = std::numeric_limits<int64>::max();
+      (previous_top_label_time_ == std::numeric_limits<int64_t>::min())) {
+    time_since_last_top = std::numeric_limits<int64_t>::max();
   } else {
     time_since_last_top = current_time_ms - previous_top_label_time_;
   }

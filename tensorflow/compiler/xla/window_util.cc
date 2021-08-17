@@ -26,7 +26,7 @@ limitations under the License.
 namespace xla {
 namespace window_util {
 
-Window MakeWindow(absl::Span<const int64> sizes) {
+Window MakeWindow(absl::Span<const int64_t> sizes) {
   Window window;
   for (int64_t size : sizes) {
     auto* dimension = window.add_dimensions();
@@ -38,8 +38,8 @@ Window MakeWindow(absl::Span<const int64> sizes) {
   return window;
 }
 
-Window MakeWindow(absl::Span<const int64> sizes,
-                  absl::Span<const int64> strides) {
+Window MakeWindow(absl::Span<const int64_t> sizes,
+                  absl::Span<const int64_t> strides) {
   Window window;
   CHECK_EQ(sizes.size(), strides.size());
   for (auto nb = 0; nb < sizes.size(); ++nb) {
@@ -52,7 +52,7 @@ Window MakeWindow(absl::Span<const int64> sizes,
   return window;
 }
 
-PaddingConfig MakeSymmetricPadding(absl::Span<const int64> sizes) {
+PaddingConfig MakeSymmetricPadding(absl::Span<const int64_t> sizes) {
   PaddingConfig config;
   for (int64_t size : sizes) {
     auto* dimension = config.add_dimensions();
@@ -231,7 +231,7 @@ bool HasOverlappingWindow(const Window& window) {
   return false;
 }
 
-int64 DilatedBound(int64_t bound, int64_t dilation) {
+int64_t DilatedBound(int64_t bound, int64_t dilation) {
   CHECK_GE(bound, 0);
   CHECK_GE(dilation, 1);
   if (bound == 0) {
@@ -245,7 +245,7 @@ int64 DilatedBound(int64_t bound, int64_t dilation) {
   return (bound - 1) * dilation + 1;
 }
 
-int64 StridedBound(int64_t bound, int64_t window_size, int64_t stride) {
+int64_t StridedBound(int64_t bound, int64_t window_size, int64_t stride) {
   CHECK_GE(window_size, 0);
   CHECK_GE(bound, 0);
   CHECK_GE(stride, 1);

@@ -135,14 +135,14 @@ Status HloCostAnalysis::HandleElementwiseOp(
   }
 }
 
-int64 HloCostAnalysis::GetShapeSize(const Shape& shape) const {
+int64_t HloCostAnalysis::GetShapeSize(const Shape& shape) const {
   if (!LayoutUtil::HasLayout(shape)) {
     return 0;
   }
   return shape_size_(shape);
 }
 
-int64 HloCostAnalysis::FusionParameterReadBytes(
+int64_t HloCostAnalysis::FusionParameterReadBytes(
     const HloInstruction* hlo) const {
   int64_t size = 0;
   bool seen_trivial_user = false;
@@ -630,7 +630,7 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
         kernel_limits[spatial_dimension] == output_limits[spatial_dimension] &&
         input_limits[spatial_dimension] == window_dim.base_dilation() &&
         window_dim.window_dilation() == 1 &&
-        std::max<int64>(1, input_limits[spatial_dimension] - 1) ==
+        std::max<int64_t>(1, input_limits[spatial_dimension] - 1) ==
             window_dim.stride() &&
         window_dim.padding_low() == 0 && window_dim.padding_high() == 0) {
       valid_position_counts.push_back(input_limits[spatial_dimension]);
@@ -1097,27 +1097,27 @@ float HloCostAnalysis::optimal_seconds() const {
   return GetProperty(kOptimalSecondsKey, properties_sum_);
 }
 
-int64 HloCostAnalysis::flop_count(const HloInstruction& hlo) const {
+int64_t HloCostAnalysis::flop_count(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kFlopsKey, hlo_properties_);
 }
 
-int64 HloCostAnalysis::transcendental_count(const HloInstruction& hlo) const {
+int64_t HloCostAnalysis::transcendental_count(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kTranscendentalsKey, hlo_properties_);
 }
 
-int64 HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
+int64_t HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kBytesAccessedKey, hlo_properties_);
 }
 
-int64 HloCostAnalysis::operand_bytes_accessed(const HloInstruction& hlo,
-                                              int64_t operand_num,
-                                              ShapeIndex index) const {
+int64_t HloCostAnalysis::operand_bytes_accessed(const HloInstruction& hlo,
+                                                int64_t operand_num,
+                                                ShapeIndex index) const {
   return GetPropertyForHlo(hlo, GetOperandBytesAccessedKey(operand_num, index),
                            hlo_properties_);
 }
 
-int64 HloCostAnalysis::output_bytes_accessed(const HloInstruction& hlo,
-                                             ShapeIndex index) const {
+int64_t HloCostAnalysis::output_bytes_accessed(const HloInstruction& hlo,
+                                               ShapeIndex index) const {
   return GetPropertyForHlo(hlo, GetOutputBytesAccessedKey(index),
                            hlo_properties_);
 }
@@ -1126,14 +1126,14 @@ float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kOptimalSecondsKey, hlo_properties_);
 }
 
-int64 HloCostAnalysis::GetBytesRead(const HloInstruction& hlo,
-                                    absl::optional<int64> memory_space) const {
+int64_t HloCostAnalysis::GetBytesRead(
+    const HloInstruction& hlo, absl::optional<int64_t> memory_space) const {
   int64_t bytes_read = 0;
   for (int operand_number = 0; operand_number < hlo.operand_count();
        ++operand_number) {
     for (const ShapeUtil::IndexedShape& indexed_shape :
          ShapeUtil::GetLeafShapes(hlo.operand(operand_number)->shape())) {
-      absl::optional<int64> index_memory_space;
+      absl::optional<int64_t> index_memory_space;
       if (indexed_shape.shape.has_layout()) {
         index_memory_space = indexed_shape.shape.layout().memory_space();
       }
@@ -1146,12 +1146,12 @@ int64 HloCostAnalysis::GetBytesRead(const HloInstruction& hlo,
   return bytes_read;
 }
 
-int64 HloCostAnalysis::GetBytesWritten(
-    const HloInstruction& hlo, absl::optional<int64> memory_space) const {
+int64_t HloCostAnalysis::GetBytesWritten(
+    const HloInstruction& hlo, absl::optional<int64_t> memory_space) const {
   int64_t bytes_written = 0;
   for (const ShapeUtil::IndexedShape& indexed_shape :
        ShapeUtil::GetLeafShapes(hlo.shape())) {
-    absl::optional<int64> index_memory_space;
+    absl::optional<int64_t> index_memory_space;
     if (indexed_shape.shape.has_layout()) {
       index_memory_space = indexed_shape.shape.layout().memory_space();
     }

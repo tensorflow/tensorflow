@@ -80,7 +80,7 @@ class ExhaustiveComplexUnaryTestBase
     }
   }
 
-  int64 GetInputSize() override {
+  int64_t GetInputSize() override {
     FpValues real_values = std::get<0>(GetParam());
     FpValues imag_values = std::get<1>(GetParam());
     return real_values.GetTotalNumValues() * imag_values.GetTotalNumValues();

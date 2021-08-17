@@ -28,18 +28,33 @@ struct InputTensorSpec {
   llvm::SmallVector<ssize_t> dims;
 };
 
-// Benchmark arbitrary MLIR function using inputs of given type and shape. The
-// number of results is required to prepare placeholders for returned values.
+// Benchmark arbitrary MLIR function using inputs of given type and shape.
 void RunMlirBenchmark(::testing::benchmark::State& state,
                       llvm::StringRef mlir_input, llvm::StringRef function_name,
-                      llvm::ArrayRef<InputTensorSpec> input_specs,
-                      int num_results);
+                      llvm::ArrayRef<InputTensorSpec> input_specs);
 
-#define BM_TFMlir(NAME, MLIR_INPUT, FN, INPUT_SPEC, NUM_RESULTS)      \
-  static void BM_mlir_##NAME(::testing::benchmark::State& state) {    \
-    RunMlirBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC, NUM_RESULTS); \
-  }                                                                   \
+// Benchmark arbitrary compute function written as Eigen expression(s).
+void RunEigenBenchmark(
+    ::testing::benchmark::State& state,
+    std::function<void(llvm::ArrayRef<Tensor>,
+                       llvm::Optional<Eigen::ThreadPoolDevice>)>
+        compute,
+    llvm::ArrayRef<InputTensorSpec> input_specs);
+
+// TODO(ezhulenev): Benchmarking macro should generate unit tests to verify
+// that benchmarks at least do not crash with the specified inputs.
+
+#define BM_Mlir(NAME, MLIR_INPUT, FN, INPUT_SPEC)                  \
+  static void BM_mlir_##NAME(::testing::benchmark::State& state) { \
+    RunMlirBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC);           \
+  }                                                                \
   BENCHMARK(BM_mlir_##NAME)
+
+#define BM_Eigen(NAME, FN, INPUT_SPEC)                              \
+  static void BM_eigen_##NAME(::testing::benchmark::State& state) { \
+    RunEigenBenchmark(state, FN, INPUT_SPEC);                       \
+  }                                                                 \
+  BENCHMARK(BM_eigen_##NAME)
 
 }  // namespace tensorflow
 

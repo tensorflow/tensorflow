@@ -244,7 +244,7 @@ REGISTER_KERNEL_BUILDER(Name("StringNGrams")
                         StringNGramsOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("StringNGrams")
                             .Device(tensorflow::DEVICE_CPU)
-                            .TypeConstraint<int64>("Tsplits"),
+                            .TypeConstraint<int64_t>("Tsplits"),
                         StringNGramsOp<int64>);
 
 }  // namespace text

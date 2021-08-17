@@ -358,7 +358,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         TF_GUARDED_BY(mu_);
     std::vector<std::vector<Tensor>> args_list_ TF_GUARDED_BY(mu_);
     size_t cycle_index_ TF_GUARDED_BY(mu_) = 0;
-    int64 block_index_ TF_GUARDED_BY(mu_) = 0;
+    int64_t block_index_ TF_GUARDED_BY(mu_) = 0;
     bool end_of_input_ TF_GUARDED_BY(mu_) = false;
     size_t num_open_ TF_GUARDED_BY(mu_) = 0;
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
@@ -366,8 +366,8 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
 
   const DatasetBase* const input_;
   const std::unique_ptr<CapturedFunction> captured_func_;
-  const int64 cycle_length_;
-  const int64 block_length_;
+  const int64_t cycle_length_;
+  const int64_t block_length_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
   const TraceMeMetadata traceme_metadata_;

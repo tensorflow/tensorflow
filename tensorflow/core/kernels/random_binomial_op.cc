@@ -365,8 +365,8 @@ class RandomBinomialOp : public OpKernel {
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int32>(),
                                                       &output_shape));
     } else {
-      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int64>(),
-                                                      &output_shape));
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
+                              shape_tensor.vec<int64_t>(), &output_shape));
     }
     OP_REQUIRES(ctx, TensorShapeUtils::EndsWith(output_shape, bcast_shape),
                 errors::InvalidArgument(
@@ -376,7 +376,7 @@ class RandomBinomialOp : public OpKernel {
     OP_REQUIRES(ctx, alg_tensor.dims() == 0,
                 errors::InvalidArgument("algorithm must be of shape [], not ",
                                         alg_tensor.shape().DebugString()));
-    Algorithm alg = Algorithm(alg_tensor.flat<int64>()(0));
+    Algorithm alg = Algorithm(alg_tensor.flat<int64_t>()(0));
 
     int64_t samples_per_batch = 1;
     const int64_t num_sample_dims =
@@ -409,7 +409,7 @@ class RandomBinomialOp : public OpKernel {
     auto var_tensor_flat = var_tensor->flat<StateElementType>();
     OP_REQUIRES(ctx, alg == RNG_ALG_PHILOX,
                 errors::InvalidArgument("Unsupported algorithm id: ", alg));
-    static_assert(std::is_same<StateElementType, int64>::value,
+    static_assert(std::is_same<StateElementType, int64_t>::value,
                   "StateElementType must be int64");
     static_assert(std::is_same<PhiloxRandom::ResultElementType, uint32>::value,
                   "PhiloxRandom::ResultElementType must be uint32");
@@ -482,8 +482,8 @@ class StatelessRandomBinomialOp : public OpKernel {
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int32>(),
                                                       &output_shape));
     } else {
-      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int64>(),
-                                                      &output_shape));
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
+                              shape_tensor.vec<int64_t>(), &output_shape));
     }
     OP_REQUIRES(ctx, TensorShapeUtils::EndsWith(output_shape, bcast_shape),
                 errors::InvalidArgument(
@@ -554,7 +554,7 @@ REGISTER_ALL(Eigen::half);
 REGISTER_ALL(float);
 REGISTER_ALL(double);
 REGISTER_ALL(int32);
-REGISTER_ALL(int64);
+REGISTER_ALL(int64_t);
 
 #undef REGISTER
 #undef REGISTER_ALL

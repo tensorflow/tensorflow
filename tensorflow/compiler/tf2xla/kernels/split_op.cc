@@ -72,9 +72,9 @@ class SplitOp : public XlaOpKernel {
 
     // The vectors we will use to define the slice. The entry for the
     // split dimensions varies for each output.
-    std::vector<int64> begin(input_shape.dims(), 0);
-    std::vector<int64> limits(input_shape.dims());
-    std::vector<int64> strides(input_shape.dims(), 1);
+    std::vector<int64_t> begin(input_shape.dims(), 0);
+    std::vector<int64_t> limits(input_shape.dims());
+    std::vector<int64_t> strides(input_shape.dims(), 1);
     for (int i = 0; i < input_shape.dims(); ++i) {
       // Initially set up the limits to be the full size of the input:
       // the split dimension is filled in below.
@@ -143,7 +143,7 @@ class SplitVOp : public XlaOpKernel {
                     split_size_shape.dims(), "-D and ",
                     split_size_shape.num_elements(), " elements"));
     // Get the dimension of this split.
-    std::vector<int64> split_sizes;
+    std::vector<int64_t> split_sizes;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &split_sizes));
 
     for (int i = 0; i < num_split; ++i) {
@@ -180,10 +180,10 @@ class SplitVOp : public XlaOpKernel {
 
     // The vectors we will use to define the slice. The entry for the
     // split dimensions varies for each output.
-    std::vector<int64> begin(input_shape.dims(), 0);
+    std::vector<int64_t> begin(input_shape.dims(), 0);
     auto dim_sizes = input_shape.dim_sizes();
-    std::vector<int64> limits(dim_sizes.begin(), dim_sizes.end());
-    std::vector<int64> strides(input_shape.dims(), 1);
+    std::vector<int64_t> limits(dim_sizes.begin(), dim_sizes.end());
+    std::vector<int64_t> strides(input_shape.dims(), 1);
     for (int i = 0; i < num_split; ++i) {
       TensorShape output_shape(input_shape);
       int slice_size = split_sizes[i];

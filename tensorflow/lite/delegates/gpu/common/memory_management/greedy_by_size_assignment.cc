@@ -78,7 +78,8 @@ absl::Status GreedyBySizeAssignment(
   for (size_t i = 0; i < num_tensors; ++i) {
     ordered_records.emplace_back(&usage_records[i], i);
   }
-  std::sort(ordered_records.begin(), ordered_records.end(), CompareBySize);
+  std::stable_sort(ordered_records.begin(), ordered_records.end(),
+                   CompareBySize);
 
   // Vector of ids of already allocated tensors, ordered by offset.
   std::vector<size_t> ordered_allocs;

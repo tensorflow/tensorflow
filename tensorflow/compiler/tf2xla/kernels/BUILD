@@ -101,6 +101,7 @@ tf_kernel_library(
         "shape_op.cc",
         "shape_util.cc",
         "sharding_op.cc",
+        "sharding_util_ops.cc",
         "slice_op.cc",
         "softmax_op.cc",
         "sort_ops.cc",

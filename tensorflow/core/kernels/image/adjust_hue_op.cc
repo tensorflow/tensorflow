@@ -45,7 +45,7 @@ class AdjustHueOpBase : public OpKernel {
     const Tensor* input;
     const Tensor* delta;
     Tensor* output;
-    int64 channel_count;
+    int64_t channel_count;
   };
 
   virtual void DoCompute(OpKernelContext* context,

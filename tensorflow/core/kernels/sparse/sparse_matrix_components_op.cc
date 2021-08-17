@@ -68,7 +68,7 @@ class CSRSparseMatrixComponentsOp : public OpKernel {
       c->set_output(2, csr_sparse_matrix->values());
     } else {
       auto batch_ptrs = csr_sparse_matrix->batch_pointers().vec<int32>();
-      auto dense_shape = csr_sparse_matrix->dense_shape().vec<int64>();
+      auto dense_shape = csr_sparse_matrix->dense_shape().vec<int64_t>();
       int64_t rows = dense_shape(1);
       int nnz = batch_ptrs(index + 1) - batch_ptrs(index);
       Tensor* row_ptrs_t;

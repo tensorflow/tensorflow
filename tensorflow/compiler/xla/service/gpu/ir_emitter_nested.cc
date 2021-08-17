@@ -56,7 +56,7 @@ StatusOr<std::unique_ptr<IrEmitterNested>> IrEmitterNested::Create(
 Status IrEmitterNested::CodegenNestedComputation() {
   std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
-  std::vector<int64> argument_dereferenceable_bytes;
+  std::vector<int64_t> argument_dereferenceable_bytes;
   for (const HloInstruction* param :
        nested_computation_.parameter_instructions()) {
     io_hlos.push_back(param);

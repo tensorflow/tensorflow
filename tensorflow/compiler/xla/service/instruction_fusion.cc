@@ -364,7 +364,7 @@ class ReversePostOrderFusionQueue : public FusionQueue {
     }
   }
 
-  std::pair<HloInstruction*, std::vector<int64>>
+  std::pair<HloInstruction*, std::vector<int64_t>>
   DequeueNextInstructionAndOperandsToFuseInOrder() override {
     // Instructions are "removed" from the post order by nulling out the element
     // in the vector, so if the pointer is null, continue to the next
@@ -373,7 +373,7 @@ class ReversePostOrderFusionQueue : public FusionQueue {
       post_order_.pop_back();
     }
     if (post_order_.empty()) {
-      return std::pair<HloInstruction*, std::vector<int64>>{nullptr, {}};
+      return std::pair<HloInstruction*, std::vector<int64_t>>{nullptr, {}};
     }
     // We want to iterate in reverse post order, so remove from the back of the
     // vector.
@@ -425,7 +425,7 @@ class ReversePostOrderFusionQueue : public FusionQueue {
     // considered before A.
     //
     // We store the original indices of the operands to pass to ShouldFuse.
-    std::vector<int64> sorted_operand_numbers;
+    std::vector<int64_t> sorted_operand_numbers;
     sorted_operand_numbers.reserve(instruction->operands().size());
     for (int i = 0; i < instruction->operands().size(); ++i) {
       // This will happen if we have two possible instructions to fuse the
@@ -527,7 +527,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         continue;
       }
 
-      std::vector<int64>& sorted_operand_numbers = next_entry.second;
+      std::vector<int64_t>& sorted_operand_numbers = next_entry.second;
 
       for (int64_t i : sorted_operand_numbers) {
         HloInstruction* operand = instruction->mutable_operand(i);

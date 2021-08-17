@@ -665,9 +665,9 @@ int64_t TransposePlan::OutputNumElems() const {
 }
 
 // Parses and validates a tiling specification, and populates `tiling`.
-static Status ParseTilingSpecification(int ndim,
-                                       absl::Span<int64_t const> tiling_spec,
-                                       absl::InlinedVector<int64, 4>& tiling) {
+static Status ParseTilingSpecification(
+    int ndim, absl::Span<int64_t const> tiling_spec,
+    absl::InlinedVector<int64_t, 4>& tiling) {
   tiling.resize(ndim, 1);
   if (tiling_spec.size() > ndim) {
     return InvalidArgument(
@@ -1258,7 +1258,7 @@ std::vector<int> TransposePlan::ChooseParallelizationStrategy(
     const Loop& loop = loop_order_[i];
     CHECK_GE(available_parallelism, 1);
     int64_t iterations = loop_iterations(loop);
-    int kMinBytesPerThread = inner_kernel_is_memcpy_ ? (1 << 20) : (1 << 17);
+    int kMinBytesPerThread = inner_kernel_is_memcpy_ ? (1 << 20) : (1 << 26);
     int64_t min_iterations_per_thread =
         CeilOfRatio<int64_t>(kMinBytesPerThread, work_in_bytes[i]);
     int64_t parallel_work = CeilOfRatio(iterations, min_iterations_per_thread);

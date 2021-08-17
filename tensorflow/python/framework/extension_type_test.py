@@ -136,14 +136,20 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     mt2 = extension_type.pack(mt1)
 
     for mt in [mt1, mt2]:
-      with self.assertRaisesRegex(AttributeError,
-                                  "cannot assign to field 'score'"):
+      with self.assertRaisesRegex(
+          AttributeError,
+          'Cannot mutate attribute `score` outside the custom constructor of ExtensionType'
+      ):
         mt.score = 12
-      with self.assertRaisesRegex(AttributeError,
-                                  "cannot assign to field 'values'"):
+      with self.assertRaisesRegex(
+          AttributeError,
+          'Cannot mutate attribute `values` outside the custom constructor of ExtensionType'
+      ):
         mt.values = constant_op.constant([4, 3, 2, 1])
-      with self.assertRaisesRegex(AttributeError,
-                                  "cannot delete field 'values'"):
+      with self.assertRaisesRegex(
+          AttributeError,
+          'Cannot mutate attribute `values` outside the custom constructor of ExtensionType'
+      ):
         del mt.values
 
   def testClassAndStaticMethod(self):
@@ -268,7 +274,10 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       def __init__(self, foo):
         foo.x = 33  # This raises an exception
 
-    with self.assertRaisesRegex(AttributeError, "cannot assign to field 'x'"):
+    with self.assertRaisesRegex(
+        AttributeError,
+        'Cannot mutate attribute `x` outside the custom constructor of ExtensionType'
+    ):
       Bar(Foo(12))
 
   def testCustomValidate(self):
@@ -879,13 +888,17 @@ class ExtensionTypeSpecTest(test_util.TensorFlowTestCase,
   def testSpecAttributesAreImmutable(self):
     mt = MaskedTensorV1([1, 2, 3, 4], [True, True, False, True])
     mt_spec = MaskedTensorV1.Spec.from_value(mt)
-    with self.assertRaisesRegex(AttributeError,
-                                "cannot assign to field 'score'"):
+    with self.assertRaisesRegex(
+        AttributeError, 'Cannot mutate attribute `score` '
+        'outside the custom constructor of ExtensionTypeSpec'):
       mt_spec.score = 12
-    with self.assertRaisesRegex(AttributeError,
-                                "cannot assign to field 'values'"):
+    with self.assertRaisesRegex(
+        AttributeError, 'Cannot mutate attribute `values` '
+        'outside the custom constructor of ExtensionTypeSpec'):
       mt_spec.values = constant_op.constant([4, 3, 2, 1])
-    with self.assertRaisesRegex(AttributeError, "cannot delete field 'values'"):
+    with self.assertRaisesRegex(
+        AttributeError, 'Cannot mutate attribute `values` '
+        'outside the custom constructor of ExtensionTypeSpec'):
       del mt_spec.values
 
   def testSpecFromValue(self):
@@ -987,12 +1000,12 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
     extension_type.AnonymousExtensionType(**fields)
 
   @parameterized.parameters([
-      [dict(x=[1, 2, 3]), 'Unsupported field value'],
-      [dict(x=set([1, 2])), 'Unsupported field value'],
-      [dict(x=(1, dict([(2, [])]))), 'Unsupported field value'],
+      [dict(x=[1, 2, 3]), 'unsupported `value` argument'],
+      [dict(x=set([1, 2])), 'unsupported `value` argument'],
+      [dict(x=(1, dict([(2, [])]))), 'unsupported `value` argument'],
       [
           dict(_tf_extension_type_xyz=5),
-          "The field name '_tf_extension_type_xyz' is reserved"
+          'Reserved field name .*_tf_extension_type_xyz.*'
       ],
   ])
   def testConstructionErrors(self, fields, error):
@@ -1021,9 +1034,9 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
 
   def testAttributeAccessorsAreImmutable(self):
     s = extension_type.AnonymousExtensionType(x=12, y={'x': 55})
-    with self.assertRaisesRegex(AttributeError, "cannot assign to field 'x'"):
+    with self.assertRaisesRegex(AttributeError, 'Cannot set attribute `x`'):
       s.x = 22
-    with self.assertRaisesRegex(AttributeError, "cannot delete field 'y'"):
+    with self.assertRaisesRegex(AttributeError, 'Cannot delete attribute `y`'):
       del s.y
     with self.assertRaisesRegex(TypeError, 'does not support item assignment'):
       s.y['x'] = 66
@@ -1070,12 +1083,15 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
       [
           lambda: extension_type.AnonymousExtensionType(
               values=constant_op.constant([1, 2, 3])), ops.Tensor,
-          'Expected `new_type` to be a subclass of tf.ExtensionType'
+          'reinterpret expects `new_type` to be a subclass of '
+          'tf.ExtensionType; '
+          'got .*.Tensor.*'
       ],
       [
           lambda: constant_op.constant([1, 2, 3]),
           extension_type.AnonymousExtensionType,
-          'Expected `value` to be a tf.ExtensionType'
+          'reinterpret expects `value` to be a tf.ExtensionType instance; '
+          'got.*.Tensor.*'
       ],
   ])
   def testReinterpretErrors(self, value, new_type, error):

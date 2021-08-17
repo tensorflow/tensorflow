@@ -86,7 +86,7 @@ Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
   if (axis.dtype() == DT_INT32) {
     TF_RETURN_IF_ERROR(SimplifyHelper<int32>(data, axis, bitmap));
   } else {
-    TF_RETURN_IF_ERROR(SimplifyHelper<int64>(data, axis, bitmap));
+    TF_RETURN_IF_ERROR(SimplifyHelper<int64_t>(data, axis, bitmap));
   }
   // Output tensor's dim sizes.
   out_shape_.clear();

@@ -448,7 +448,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortNormalCompleteParamsAsync) {
   // code to explicitly test every possible scenarios, so we run the test for
   // many times to have a better chance to cover different cases.
   CancellationManager cancel_mgr;
-  std::atomic<int64> num_ok{0};
+  std::atomic<int64_t> num_ok{0};
   for (int cnt = 0; cnt < 100; ++cnt) {
     // Launching threads that keep doing CompleteInstanceLocal.
     BlockingCounter done(NUM_DEVS);

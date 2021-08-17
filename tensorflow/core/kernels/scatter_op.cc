@@ -155,7 +155,7 @@ class ScatterUpdateOp : public OpKernel {
 
 #define REGISTER_SCATTER_KERNEL(type, dev, name, op)         \
   REGISTER_SCATTER_KERNEL_INDEX(type, int32, dev, name, op); \
-  REGISTER_SCATTER_KERNEL_INDEX(type, int64, dev, name, op);
+  REGISTER_SCATTER_KERNEL_INDEX(type, int64_t, dev, name, op);
 
 #define REGISTER_SCATTER_ARITHMETIC(type, dev)                                 \
   REGISTER_SCATTER_KERNEL(type, dev, "ScatterAdd", scatter_op::UpdateOp::ADD); \

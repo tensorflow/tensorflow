@@ -390,7 +390,9 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
           AddValueUniqueIDMapping(result, kUnknownResourceId);
         }
       }
-    } else if (isa<tf_device::LaunchOp, tf_device::ClusterOp>(op)) {
+    } else if (isa<tf_device::LaunchOp, tf_device::ClusterOp,
+                   tf_executor::IslandOp, tf_executor::GraphOp>(op) &&
+               op->getNumRegions() == 1) {
       Region& region = op->getRegion(0);
       const auto& body_info = backtrack_analysis.GetAnalysisForRegion(region);
       for (auto result : filter_resources(op->getResults())) {

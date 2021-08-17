@@ -24,7 +24,7 @@ limitations under the License.
 namespace tensorflow {
 
 template <class T>
-using BatchedMap = std::vector<absl::flat_hash_map<int64, T>>;
+using BatchedMap = std::vector<absl::flat_hash_map<int64_t, T>>;
 
 namespace {
 // TODO(momernick): Extend this function to work with outputs of rank > 2.
@@ -46,7 +46,7 @@ Status OutputSparse(const BatchedMap<T>& per_batch_counts, int num_values,
   TF_RETURN_IF_ERROR(
       context->allocate_output(1, TensorShape({total_values}), &values));
 
-  auto output_indices = indices->matrix<int64>();
+  auto output_indices = indices->matrix<int64_t>();
   auto output_values = values->flat<T>();
   int64_t value_loc = 0;
   for (int b = 0; b < num_batches; ++b) {
@@ -69,12 +69,12 @@ Status OutputSparse(const BatchedMap<T>& per_batch_counts, int num_values,
   if (is_1d) {
     TF_RETURN_IF_ERROR(
         context->allocate_output(2, TensorShape({1}), &dense_shape));
-    dense_shape->flat<int64>().data()[0] = num_values;
+    dense_shape->flat<int64_t>().data()[0] = num_values;
   } else {
     TF_RETURN_IF_ERROR(
         context->allocate_output(2, TensorShape({2}), &dense_shape));
-    dense_shape->flat<int64>().data()[0] = num_batches;
-    dense_shape->flat<int64>().data()[1] = num_values;
+    dense_shape->flat<int64_t>().data()[0] = num_batches;
+    dense_shape->flat<int64_t>().data()[1] = num_values;
   }
 
   return Status::OK();
@@ -200,7 +200,7 @@ class SparseCount : public OpKernel {
                     "The shape argument requires at least one element."));
 
     bool is_1d = shape.NumElements() == 1;
-    auto shape_vector = shape.flat<int64>();
+    auto shape_vector = shape.flat<int64_t>();
     int num_batches = is_1d ? 1 : shape_vector(0);
     int num_values = values.NumElements();
 
@@ -217,7 +217,7 @@ class SparseCount : public OpKernel {
                     "Got ", num_values,
                     " values, indices shape: ", indices.shape().DebugString()));
 
-    const auto indices_values = indices.matrix<int64>();
+    const auto indices_values = indices.matrix<int64_t>();
     const auto values_values = values.flat<T>();
     const auto weight_values = weights.flat<W>();
 
@@ -297,7 +297,7 @@ class RaggedCount : public OpKernel {
               "; values shape: ", values.shape().DebugString()));
     }
 
-    const auto splits_values = splits.flat<int64>();
+    const auto splits_values = splits.flat<int64_t>();
     const auto values_values = values.flat<T>();
     const auto weight_values = weights.flat<W>();
     int num_batches = splits.NumElements() - 1;
@@ -352,7 +352,7 @@ class RaggedCount : public OpKernel {
 
 #define REGISTER_W(W_TYPE) \
   REGISTER(int32, W_TYPE)  \
-  REGISTER(int64, W_TYPE)
+  REGISTER(int64_t, W_TYPE)
 
 #define REGISTER(I_TYPE, W_TYPE)                                     \
                                                                      \

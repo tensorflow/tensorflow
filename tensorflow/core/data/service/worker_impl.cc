@@ -27,9 +27,9 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/auto_shard_rewriter.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
-#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
@@ -441,7 +441,7 @@ void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
 }
 
 Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
-  std::vector<int64> current_tasks;
+  std::vector<int64_t> current_tasks;
   {
     mutex_lock l(mu_);
     for (const auto& task : tasks_) {
@@ -449,7 +449,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     }
   }
   std::vector<TaskDef> new_tasks;
-  std::vector<int64> task_ids_to_delete;
+  std::vector<int64_t> task_ids_to_delete;
   TF_RETURN_IF_ERROR(dispatcher_->WorkerHeartbeat(
       worker_address_, transfer_address_, current_tasks, new_tasks,
       task_ids_to_delete));

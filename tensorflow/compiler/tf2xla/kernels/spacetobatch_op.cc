@@ -23,10 +23,10 @@ namespace {
 
 void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
                   DataType input_dtype, const TensorShape& input_tensor_shape,
-                  absl::Span<const int64> block_shape,
+                  absl::Span<const int64_t> block_shape,
                   const xla::Literal& paddings) {
   const int input_rank = input_tensor_shape.dims();
-  const absl::InlinedVector<int64, 4> input_shape =
+  const absl::InlinedVector<int64_t, 4> input_shape =
       input_tensor_shape.dim_sizes();
   const int block_rank = block_shape.size();
 
@@ -34,7 +34,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
       ctx, input_rank >= 1 + block_rank,
       errors::InvalidArgument("input rank should be >= ", 1 + block_rank,
                               " instead of ", input_rank));
-  absl::Span<const int64> remainder_shape(input_shape);
+  absl::Span<const int64_t> remainder_shape(input_shape);
   remainder_shape.remove_prefix(1 + block_rank);
 
   OP_REQUIRES(
@@ -51,13 +51,13 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   // 1. Zero-pad the start and end of dimensions `[1, ..., M]` of the
   //  input according to `paddings` to produce `padded` of shape `padded_shape`.
   xla::PaddingConfig padding_config;
-  std::vector<int64> padded_shape(input_shape.begin(), input_shape.end());
+  std::vector<int64_t> padded_shape(input_shape.begin(), input_shape.end());
   int64_t block_num_elems = 1LL;
   padding_config.add_dimensions();  // Don't pad the batch dimension.
   for (int i = 0; i < block_rank; ++i) {
     auto* dim = padding_config.add_dimensions();
-    int64_t pad_start = paddings.Get<int64>({i, 0});
-    int64_t pad_end = paddings.Get<int64>({i, 1});
+    int64_t pad_start = paddings.Get<int64_t>({i, 0});
+    int64_t pad_end = paddings.Get<int64_t>({i, 1});
     OP_REQUIRES(ctx, pad_start >= 0 && pad_end >= 0,
                 errors::InvalidArgument("Paddings must be non-negative"));
     dim->set_edge_padding_low(pad_start);
@@ -86,7 +86,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   //       block_shape[M-1]] +
   //      remaining_shape
   const int64_t batch_size = input_shape[0];
-  std::vector<int64> reshaped_padded_shape(input_rank + block_rank);
+  std::vector<int64_t> reshaped_padded_shape(input_rank + block_rank);
   reshaped_padded_shape[0] = batch_size;
   for (int i = 0; i < block_rank; ++i) {
     OP_REQUIRES(ctx, padded_shape[1 + i] % block_shape[i] == 0,
@@ -112,7 +112,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   //       ...,
   //       padded_shape[M] / block_shape[M-1]] +
   //      remaining_shape
-  std::vector<int64> permutation(reshaped_padded_shape.size());
+  std::vector<int64_t> permutation(reshaped_padded_shape.size());
   for (int i = 0; i < block_rank; ++i) {
     permutation[i] = 1 + 2 * i + 1;
     permutation[block_rank + 1 + i] = 1 + 2 * i;
@@ -133,7 +133,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   //      remaining_shape
   // Determine the length of the prefix of block dims that can be combined
   // into the batch dimension due to having no padding and block_shape=1.
-  std::vector<int64> output_shape(input_rank);
+  std::vector<int64_t> output_shape(input_rank);
   output_shape[0] = batch_size * block_num_elems;
   for (int i = 0; i < block_rank; ++i) {
     output_shape[1 + i] = padded_shape[1 + i] / block_shape[i];
@@ -150,7 +150,7 @@ class SpaceToBatchNDOp : public XlaOpKernel {
   explicit SpaceToBatchNDOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    std::vector<int64> block_shape;
+    std::vector<int64_t> block_shape;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &block_shape));
 
     xla::Literal paddings;

@@ -70,7 +70,7 @@ class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
   // If false, a caller might implement pretty-printing by resolving and
   // iterating over the resulting tensor. This may still be viable if resolving
   // the handle loses information, but `SummarizeValue` would be more precise.
-  virtual bool HasCustomSummarizer() const { return false; }
+  virtual bool PreferCustomSummarizer() const { return false; }
 
   // Returns a string which summarizes the value of this TensorHandle, for
   // debugging. Does not include a shape or dtype.

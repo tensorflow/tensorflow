@@ -61,8 +61,8 @@ class InstructionFusionForTesting : public InstructionFusion {
     return InstructionFusion::Fuse(producer, consumer);
   }
 
-  int64 EvaluateEmittedInstructions(const HloInstruction* producer,
-                                    const HloInstruction* consumer) {
+  int64_t EvaluateEmittedInstructions(const HloInstruction* producer,
+                                      const HloInstruction* consumer) {
     if (consumer->opcode() != HloOpcode::kFusion) {
       return 0;
     }

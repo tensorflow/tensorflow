@@ -19,7 +19,7 @@ namespace tensorflow {
 
 #if !defined(MLIR_GENERATED_CPU_KERNELS_ENABLED) || \
     !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-REGISTER8(UnaryOp, CPU, "Invert", functor::invert, int8, int16, int32, int64,
+REGISTER8(UnaryOp, CPU, "Invert", functor::invert, int8, int16, int32, int64_t,
           uint8, uint16, uint32, uint64);
 #endif
 

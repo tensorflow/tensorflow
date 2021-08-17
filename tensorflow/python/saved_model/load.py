@@ -45,6 +45,7 @@ from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import nested_structure_coder
+from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
@@ -181,7 +182,7 @@ class Loader(object):
         if node_path[0] != "root":
           raise ValueError(
               "When passing string identifiers to node_filters, the first name"
-              " must be root.")
+              f" must be root. Received {node_path[0]}.")
         int_node_id = 0
         for n, name in enumerate(node_path[1:]):
           int_node_id = self._find_node_child(
@@ -220,9 +221,9 @@ class Loader(object):
         if not isinstance(node, base.Trackable):
           raise TypeError(
               "Error when processing dictionary values passed to nodes_to_load."
-              "Object at {} is expected to be a checkpointable TensorFlow "
-              "object (e.g. tf.Variable, tf.Module or Keras layer)."
-              .format(node_path))
+              f"Object at {node_path} is expected to be a checkpointable (i.e. "
+              "'trackable') TensorFlow object (e.g. tf.Variable, tf.Module or "
+              "Keras layer).")
         node._maybe_initialize_trackable()  # pylint: disable=protected-access
 
       for reference in self._proto.nodes[node_id].children:
@@ -252,7 +253,7 @@ class Loader(object):
     for reference in self._proto.nodes[node_id].children:
       if reference.local_name == child_name:
         return reference.node_id
-    raise ValueError("unable to find node {}".format(path))
+    raise ValueError(f"Unable to find node {path}.")
 
   def _load_all(self):
     """Loads all nodes and functions from the SavedModel and their edges."""
@@ -379,9 +380,9 @@ class Loader(object):
     """Resolves a node id into a tensor to be captured for a function."""
     if self._node_filters is not None and self._nodes[node_id] is None:
       raise ValueError(
-          "Error when processing nodes_to_load. Function \"{}\" requires "
-          "inputs/variables that are not loaded when nodes_to_load={}"
-          .format(fn_name, self._node_filters))
+          f"Error when processing nodes_to_load. Function '{fn_name}' requires "
+          "inputs/variables that are not loaded when nodes_to_load="
+          f"{self._node_filters}.")
 
     with ops.init_scope():
       obj = self._nodes[node_id]
@@ -396,7 +397,7 @@ class Loader(object):
       elif isinstance(obj, tracking.CapturableResource):
         # Note: this executes restored functions in the CapturableResource.
         return obj.resource_handle
-      raise ValueError("Can't convert node %s to tensor" % (type(obj)))
+      raise ValueError(f"Cannot convert node {obj} to tensor.")
 
   def _initialize_loaded_nodes(self):
     nodes = {}
@@ -501,8 +502,7 @@ class Loader(object):
             ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, restore_ops)
           else:
             raise NotImplementedError(
-                ("Missing functionality to restore state of object "
-                 "%r from the checkpoint." % obj))
+                f"Unable to restore state of object {obj} from the checkpoint.")
 
   def adjust_debug_info_func_names(self, debug_info):
     """Rewrite func names in the debug info by using the concrete func names."""
@@ -523,6 +523,25 @@ class Loader(object):
     return self._nodes[node_id]
 
   def _recreate(self, proto, node_id):
+    """Creates a Python object from a SavedObject protocol buffer.
+
+    Args:
+      proto: a SavedObject proto
+      node_id: int, the index of this object in the SavedObjectGraph node list.
+
+    Returns:
+      The recreated object, and the set-attribute function for reconnecting
+      the trackable children.
+    """
+    registered_class = registration.get_registered_class(proto.registered_name)
+    if registered_class:
+      obj = registered_class._deserialize_from_proto(  # pylint: disable=protected-access
+          proto=proto.serialized_user_proto)
+      return obj, type(obj)._add_trackable_child  # pylint: disable=protected-access
+    else:
+      return self._recreate_default(proto, node_id)
+
+  def _recreate_default(self, proto, node_id):
     """Creates a Python object from a SavedObject protocol buffer."""
     factory = {
         "user_object": (
@@ -540,7 +559,8 @@ class Loader(object):
     }
     kind = proto.WhichOneof("kind")
     if kind not in factory:
-      raise ValueError("Unknown SavedObject type: %r" % kind)
+      raise ValueError(f"Unknown SavedObject type: {kind}. Expected one of "
+                       f"{list(factory.keys())}.")
     return factory[kind]()
 
   def _recreate_user_object(self, proto, node_id):
@@ -888,10 +908,10 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
     if (tags is not None
         and set(tags) != set(meta_graph_def.meta_info_def.tags)):
       raise ValueError(
-          ("The SavedModel at {} has one MetaGraph with tags {}, but got an "
-           "incompatible argument tags={} to tf.saved_model.load. You may omit "
-           "it, pass 'None', or pass matching tags.")
-          .format(export_dir, meta_graph_def.meta_info_def.tags, tags))
+          "Got an incompatible argument to `tags`: {tags}. The SavedModel at "
+          f"{export_dir} has one MetaGraph with tags "
+          f"{meta_graph_def.meta_info_def.tags}. You may omit the argument, "
+          "pass 'None', or pass matching tags.")
     object_graph_proto = meta_graph_def.object_graph_def
 
     ckpt_options = checkpoint_options.CheckpointOptions(
@@ -902,11 +922,10 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
                             ckpt_options, options, filters)
       except errors.NotFoundError as err:
         raise FileNotFoundError(
-            str(err) + "\n If trying to load on a different device from the "
-            "computational device, consider using setting the "
-            "`experimental_io_device` option on tf.saved_model.LoadOptions "
-            "to the io_device such as '/job:localhost'."
-        )
+            str(err) + "\n You may be trying to load on a different device "
+            "from the computational device. Consider setting the "
+            "`experimental_io_device` option in `tf.saved_model.LoadOptions` "
+            "to the io_device such as '/job:localhost'.")
       root = loader.get(0)
       if isinstance(loader, Loader):
         root.graph_debug_info = loader.adjust_debug_info_func_names(debug_info)
@@ -916,8 +935,8 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
     metrics.IncrementRead(write_version="2")
   else:
     if filters:
-      raise ValueError("SavedModels saved from Tensorflow V1 or Estimator (any "
-                       "version) cannot be loaded with node filters.")
+      raise ValueError("SavedModels saved from Tensorflow 1.x or Estimator (any"
+                       " version) cannot be loaded with node filters.")
     with ops.init_scope():
       root = load_v1_in_v2.load(export_dir, tags)
       root.graph_debug_info = debug_info

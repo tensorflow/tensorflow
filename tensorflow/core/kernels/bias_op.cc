@@ -392,7 +392,7 @@ class BiasAddGradGPUConfig {
 class BiasAddParams {
  public:
   // We use a list to maintain both the shape value and the order (data format).
-  using SpatialArray = gtl::InlinedVector<int64, 4>;
+  using SpatialArray = gtl::InlinedVector<int64_t, 4>;
   BiasAddParams(const SpatialArray& in_shape, TensorFormat data_format,
                 DataType dtype, int device_id)
       : in_shape_(in_shape),

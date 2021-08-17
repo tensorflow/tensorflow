@@ -67,6 +67,13 @@ elif _tf_api_dir not in __path__:
 # lazy loading.
 _current_module.compat.v2  # pylint: disable=pointless-statement
 
+# Load tensorflow-io-gcs-filesystem if enabled
+# pylint: disable=g-import-not-at-top
+if (_os.getenv('TF_USE_MODULAR_FILESYSTEM', '0') == 'true' or
+    _os.getenv('TF_USE_MODULAR_FILESYSTEM', '0') == '1'):
+  import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
+# pylint: enable=g-import-not-at-top
+
 # Lazy-load estimator.
 _estimator_module = "tensorflow_estimator.python.estimator.api._v1.estimator"
 estimator = _LazyLoader("estimator", globals(), _estimator_module)

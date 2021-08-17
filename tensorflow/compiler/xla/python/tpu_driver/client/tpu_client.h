@@ -122,7 +122,7 @@ class PyTpuClient : public std::enable_shared_from_this<PyTpuClient> {
   }
   int process_index() const { return process_index_; }
   const absl::string_view platform_name() const { return platform_name_; }
-  const absl::string_view platform_version() const { return "<unknown>"; }
+  const absl::string_view platform_version() const { return platform_version_; }
 
   StatusOr<Shape> ChooseCompactLayoutForShape(Shape subshape) {
     return Unimplemented("ChooseCompactLayoutForShape not implemented.");
@@ -138,6 +138,7 @@ class PyTpuClient : public std::enable_shared_from_this<PyTpuClient> {
 
  protected:
   std::string platform_name_;
+  std::string platform_version_;
   std::unique_ptr<tpu_driver::TpuDriver> driver_;
 
   // Includes all devices, including non-local devices on multi-host platforms.
@@ -322,7 +323,7 @@ class PyTpuExecutable {
   int num_replicas() const { return device_assignment_.replica_count(); }
   int num_partitions() const { return device_assignment_.computation_count(); }
 
-  int64 SizeOfGeneratedCodeInBytes() const {
+  int64_t SizeOfGeneratedCodeInBytes() const {
     CHECK_GE(executables_.size(), 1);
     return executables_.begin()->second->size_in_bytes();
   }

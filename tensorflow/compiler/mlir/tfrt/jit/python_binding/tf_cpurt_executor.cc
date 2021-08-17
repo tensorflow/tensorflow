@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime

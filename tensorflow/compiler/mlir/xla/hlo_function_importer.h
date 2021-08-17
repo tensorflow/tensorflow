@@ -73,8 +73,7 @@ class HloFunctionImporter {
   // TODO(b/179166199): move this to attribute_importer.h.
   // Converts XLA instruction source target pairs to MLIR attribute.
   static mlir::NamedAttribute ConvertSourceTargetPairs(
-      const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
-          source_target_pairs,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
       mlir::Builder* builder);
 
   // TODO(b/179166199): move this to attribute_importer.h.
@@ -152,7 +151,7 @@ class HloFunctionImporter {
 
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
   mlir::DenseIntElementsAttr ConvertDimensions(
-      llvm::ArrayRef<tensorflow::int64> op_dimensions);
+      llvm::ArrayRef<int64_t> op_dimensions);
 
   // Converts Array ref to an DenseIntElementsAttr.
   mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> elements);
@@ -162,8 +161,7 @@ class HloFunctionImporter {
   mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);
 
   // Converts channel id to attribute
-  mlir::NamedAttribute ConvertChannelHandle(
-      absl::optional<tensorflow::int64> channel_id);
+  mlir::NamedAttribute ConvertChannelHandle(absl::optional<int64_t> channel_id);
 
   // Converts channel handle to attribute
   mlir::NamedAttribute ConvertChannelHandle(const xla::ChannelHandle& channel);

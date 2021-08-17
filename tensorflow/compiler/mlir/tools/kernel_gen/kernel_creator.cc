@@ -63,7 +63,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -74,9 +73,6 @@ namespace {
 
 using mlir::Value;
 using mlir::scf::ParallelOp;
-using tensorflow::Status;
-using xla::InternalError;
-using xla::StatusOr;
 
 constexpr llvm::StringRef kGpuBinaryAttrName = "gpu.binary";
 
@@ -226,7 +222,8 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
   pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
 
   if (failed(pm.run(module))) {
-    return InternalError("Lowering TF to JIT invocation failed.");
+    return tensorflow::errors::Internal(
+        "Lowering TF to JIT invocation failed.");
   }
   return Status::OK();
 }
@@ -328,7 +325,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   if (failed(pm.run(module))) {
-    return InternalError("Lowering TF to loops failed.");
+    return tensorflow::errors::Internal("Lowering TF to loops failed.");
   }
   return Status::OK();
 }
@@ -405,7 +402,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
         mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
   }
   if (failed(pm.run(module))) {
-    return InternalError("Lowering to GPU kernels failed.");
+    return tensorflow::errors::Internal("Lowering to GPU kernels failed.");
   }
   return Status::OK();
 }
@@ -420,7 +417,7 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module) {
                     "module, see https://bugs.llvm.org/show_bug.cgi?id=48385";
   }
 #if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
-  return InternalError(
+  return tensorflow::errors::Internal(
       "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
       " Did you specify either --config=rocm or --config=cuda ?");
 #endif
@@ -439,7 +436,8 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module) {
   pm.addPass(::mlir::createStripDebugInfoPass());
 
   if (failed(pm.run(module))) {
-    return InternalError("Lowering to low-level device IR failed.");
+    return tensorflow::errors::Internal(
+        "Lowering to low-level device IR failed.");
   }
 
   return Status::OK();
@@ -455,7 +453,8 @@ Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module) {
       mlir::kernel_gen::transforms::CreatePropagateTfAbiKnowledgeToKernels());
 
   return failed(pm.run(module))
-             ? InternalError("Amending LLVMIR with static knowledge failed.")
+             ? tensorflow::errors::Internal(
+                   "Amending LLVMIR with static knowledge failed.")
              : Status::OK();
 }
 
@@ -475,7 +474,7 @@ Status GenerateDeviceCode(mlir::ModuleOp module,
       enable_ftz));
 
   return failed(pm.run(module))
-             ? InternalError("Generating device code failed.")
+             ? tensorflow::errors::Internal("Generating device code failed.")
              : Status::OK();
 }
 
@@ -488,9 +487,9 @@ Status LowerHostSideToFinalForm(mlir::ModuleOp module) {
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  return failed(pm.run(module))
-             ? InternalError("Final lowering of host side failed.")
-             : Status::OK();
+  return failed(pm.run(module)) ? tensorflow::errors::Internal(
+                                      "Final lowering of host side failed.")
+                                : Status::OK();
 }
 
 }  // namespace

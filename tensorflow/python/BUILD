@@ -884,6 +884,7 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/core:tpu_ordinal_selector_ops_op_lib",
         "//tensorflow/core:tpu_outfeed_ops_op_lib",
         "//tensorflow/core:tpu_replication_ops_op_lib",
+        "//tensorflow/core:tpu_sharding_util_ops_op_lib",
     ],
 )
 

@@ -70,17 +70,17 @@ struct SliceInputs {
 
   // The size of the TF slice operation as a std::vector.  We can always compute
   // this because we only manipulate slices with a Const size.
-  std::vector<int64> size_as_vector;
+  std::vector<int64_t> size_as_vector;
 };
 
-std::vector<int64> IntTensorAsVector(const Tensor& t) {
+std::vector<int64_t> IntTensorAsVector(const Tensor& t) {
   DCHECK(t.dtype() == DT_INT32 || t.dtype() == DT_INT64);
-  std::vector<int64> result;
+  std::vector<int64_t> result;
   result.reserve(t.NumElements());
   for (int i = 0; i < t.NumElements(); i++) {
     int64_t element = t.dtype() == DT_INT32
-                          ? static_cast<int64>(t.flat<int32>()(i))
-                          : t.flat<int64>()(i);
+                          ? static_cast<int64_t>(t.flat<int32>()(i))
+                          : t.flat<int64_t>()(i);
     result.push_back(element);
   }
   return result;

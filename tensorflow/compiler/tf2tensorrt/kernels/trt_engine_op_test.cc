@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 #include "tensorflow/cc/framework/scope.h"
@@ -77,9 +78,8 @@ class TRTEngineOpTestBase : public OpsTestBase {
     GraphDef graph_def;
     TF_ASSERT_OK(s.ToGraphDef(&graph_def));
     Graph* graph = s.graph();
-    const char* op_name = "myop";
-    TF_ASSERT_OK(
-        convert::RegisterGraphToFunctionLibrary(graph_def, graph, op_name));
+    TF_ASSERT_OK(convert::RegisterGraphToFunctionLibrary(graph_def, graph,
+                                                         std::string(kOpName)));
     TF_ASSERT_OK(flib_def_->AddLibrary(graph->flib_def()));
 
     // Create the op.
@@ -90,7 +90,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
     // the network for the TensorRT engine.
     OpsTestBase::SetDevice(DEVICE_GPU, std::move(device));
     NameAttrList function;
-    function.set_name(StrCat(op_name, "_native_segment"));
+    function.set_name(StrCat(std::string(kOpName), "_native_segment"));
     // We disable allow_soft_placement when executing the native segment of the
     // TRTEngineOp for the following reasons:
     //    OpsTestBase only allow one device in the device manager.
@@ -98,7 +98,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
     //    When allow_soft_placement is true, the TensorFlow runtime produces an
     //      error if a CPU device is not defined
     //      (see ProcessFunctionLibraryRuntime::InstantiateMultiDevice).
-    TF_ASSERT_OK(NodeDefBuilder(op_name, "TRTEngineOp")
+    TF_ASSERT_OK(NodeDefBuilder(std::string(kOpName), "TRTEngineOp")
                      .Input(FakeInput(1, dtype))
                      .Attr("input_shapes", {shape})
                      .Attr("output_shapes", {shape})
@@ -118,6 +118,8 @@ class TRTEngineOpTestBase : public OpsTestBase {
                      .Finalize(OpsTestBase::node_def()));
     TF_ASSERT_OK(InitOpWithFunctionLibrary());
   }
+
+  static constexpr absl::string_view kOpName = "myop";
 
   template <typename T>
   void AddSimpleInput(const TensorShape& shape) {
@@ -161,8 +163,8 @@ TEST_F(TRTEngineOpTestBase, DynamicEngines) {
 
   // Get the engine cache.
   TRTEngineCacheResource* cache_resource = nullptr;
-  TF_ASSERT_OK(
-      device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
+  TF_ASSERT_OK(device_->resource_manager()->Lookup(
+      std::string(kTfTrtContainerName), std::string(kOpName), &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
   // It should contain only one engine.
@@ -214,8 +216,8 @@ TEST_F(TRTEngineOpTestBase, AllowBuildAtRuntime) {
 
   // Get the engine cache.
   TRTEngineCacheResource* cache_resource = nullptr;
-  TF_ASSERT_OK(
-      device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
+  TF_ASSERT_OK(device_->resource_manager()->Lookup(
+      std::string(kTfTrtContainerName), std::string(kOpName), &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
   // It should contain a placeholder with an empty cuda_engine (to mark that
@@ -241,8 +243,8 @@ TEST_F(TRTEngineOpTestBase, ExplicitBatch) {
 
   // Get the engine cache.
   TRTEngineCacheResource* cache_resource = nullptr;
-  TF_ASSERT_OK(
-      device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
+  TF_ASSERT_OK(device_->resource_manager()->Lookup(
+      std::string(kTfTrtContainerName), std::string(kOpName), &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
   auto cache = &cache_resource->cache_;
@@ -269,8 +271,8 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
 
   // Get the engine cache.
   TRTEngineCacheResource* cache_resource = nullptr;
-  TF_ASSERT_OK(
-      device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
+  TF_ASSERT_OK(device_->resource_manager()->Lookup(
+      std::string(kTfTrtContainerName), std::string(kOpName), &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
   auto cache = &cache_resource->cache_;

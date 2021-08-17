@@ -22,11 +22,12 @@ func @complex128() -> tensor<4xcomplex<f64>> {
   return %0 : tensor<4xcomplex<f64>>
 }
 
-// TODO(b/138847107) this should work but doesn't
-// func @f16() -> tensor<4xf16> {
-//   %0 = "tfl.pseudo_const"() { value = dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf16> } : () -> tensor<4xf16>
-//   return %0 : tensor<4xf16>
-// }
+func @f16() -> tensor<4xf16> {
+  // CHECK-LABEL: @f16
+  // CHECK: value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf16>
+  %0 = "tfl.pseudo_const"() { value = dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf16> } : () -> tensor<4xf16>
+  return %0 : tensor<4xf16>
+}
 
 func @f32() -> tensor<4xf32> {
   // CHECK-LABEL: @f32

@@ -45,9 +45,9 @@ class TFProfTensor {
 
  private:
   // Max length of tensor value displayed to CLI.
-  const int64 kTFProfTenosrMaxDisplayLen = 10000;
+  const int64_t kTFProfTenosrMaxDisplayLen = 10000;
   // Max length after which a latency warning will be printed.
-  const int64 kTFProfTensorMaxWarnLen = 100000;
+  const int64_t kTFProfTensorMaxWarnLen = 100000;
 
   void Build();
 
@@ -61,7 +61,7 @@ class TFProfTensor {
       dim->add_value_double(double_val);
       absl::StrAppendFormat(&formatted_str_, "%.2f ",
                             dim->value_double(dim->value_double_size() - 1));
-    } else if (typeid(value) == typeid(int64)) {
+    } else if (typeid(value) == typeid(int64_t)) {
       int64_t int64_val = 0;
       CHECK(absl::SimpleAtoi(sstream.str(), &int64_val));  // Crash OK
       dim->add_value_int64(int64_val);
@@ -80,8 +80,8 @@ class TFProfTensor {
   // indirectly at various places:
   // TODO(xpan): Further verifying it.
   template <typename T>
-  int64 BuildOutput(int64_t start, int depth, const std::vector<T>& values,
-                    TFProfTensorProto* dim) {
+  int64_t BuildOutput(int64_t start, int depth, const std::vector<T>& values,
+                      TFProfTensorProto* dim) {
     formatted_str_ += "[";
     int64_t nstart = start;
     if (tensor_->dims() == 0 && values.size() == 1) {
@@ -94,7 +94,7 @@ class TFProfTensor {
         dim->add_value_double(double_val);
         absl::StrAppendFormat(&formatted_str_, "%.2f ",
                               dim->value_double(dim->value_double_size() - 1));
-      } else if (typeid(values[nstart]) == typeid(int64)) {
+      } else if (typeid(values[nstart]) == typeid(int64_t)) {
         int64_t int64_val = 0;
         CHECK(absl::SimpleAtoi(sstream.str(), &int64_val));  // Crash OK
         dim->add_value_int64(int64_val);
@@ -121,7 +121,7 @@ class TFProfTensor {
             absl::StrAppendFormat(
                 &formatted_str_, "%.2f ",
                 dim->value_double(dim->value_double_size() - 1));
-          } else if (typeid(values[nstart]) == typeid(int64)) {
+          } else if (typeid(values[nstart]) == typeid(int64_t)) {
             int64_t int64_val = 0;
             CHECK(absl::SimpleAtoi(sstream.str(), &int64_val));  // Crash OK
             dim->add_value_int64(int64_val);

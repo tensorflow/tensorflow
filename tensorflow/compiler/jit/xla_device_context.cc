@@ -86,7 +86,7 @@ XlaDeviceContext::XlaDeviceContext(
     std::shared_ptr<se::Stream> device_to_host_stream,
     std::vector<std::shared_ptr<se::Stream>> device_to_device_streams,
     xla::LocalClient* client,
-    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     thread::ThreadPool* thread_pool, bool use_fast_mem)
     : stream_(std::move(compute_stream)),
       host_to_device_stream_(std::move(host_to_device_stream)),

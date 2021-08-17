@@ -159,7 +159,7 @@ Allocator* GPUProcessState::GetGPUAllocator(
   DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, GPUMachineManager(),
                                      tf_device_id);
 
-  if (tf_device_id.value() >= static_cast<int64>(gpu_allocators_.size())) {
+  if (tf_device_id.value() >= static_cast<int64_t>(gpu_allocators_.size())) {
     gpu_allocators_.resize(tf_device_id.value() + 1);
   }
 
@@ -260,7 +260,7 @@ SharedCounter* GPUProcessState::GPUAllocatorCounter(TfDeviceId tf_device_id) {
   DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, GPUMachineManager(),
                                      tf_device_id);
   mutex_lock l(mu_);
-  if (tf_device_id.value() >= static_cast<int64>(gpu_allocators_.size())) {
+  if (tf_device_id.value() >= static_cast<int64_t>(gpu_allocators_.size())) {
     LOG(ERROR) << "Asked for counter for GPU allocator " << tf_device_id.value()
                << " but only have " << gpu_allocators_.size();
     return nullptr;
@@ -389,7 +389,7 @@ void GPUProcessState::AddGPUAllocVisitor(int bus_id,
       << "AddGPUAllocVisitor must be called before "
          "first call to GetGPUAllocator.";
   DCHECK_GE(bus_id, 0);
-  while (bus_id >= static_cast<int64>(gpu_visitors_.size())) {
+  while (bus_id >= static_cast<int64_t>(gpu_visitors_.size())) {
     gpu_visitors_.push_back(std::vector<SubAllocator::Visitor>());
   }
   gpu_visitors_[bus_id].push_back(visitor);
@@ -404,7 +404,7 @@ void GPUProcessState::AddGpuHostAllocVisitor(
   CHECK(gpu_host_allocators_.empty())  // Crash OK
       << "AddGpuHostAllocVisitor must be called before "
          "first call to GetGpuHostAllocator.";
-  while (numa_node >= static_cast<int64>(gpu_host_alloc_visitors_.size())) {
+  while (numa_node >= static_cast<int64_t>(gpu_host_alloc_visitors_.size())) {
     gpu_host_alloc_visitors_.push_back(std::vector<SubAllocator::Visitor>());
   }
   gpu_host_alloc_visitors_[numa_node].push_back(visitor);
@@ -419,7 +419,7 @@ void GPUProcessState::AddGpuHostFreeVisitor(
   CHECK(gpu_host_allocators_.empty())  // Crash OK
       << "AddGpuHostFreeVisitor must be called before "
          "first call to GetGpuHostAllocator.";
-  while (numa_node >= static_cast<int64>(gpu_host_free_visitors_.size())) {
+  while (numa_node >= static_cast<int64_t>(gpu_host_free_visitors_.size())) {
     gpu_host_free_visitors_.push_back(std::vector<SubAllocator::Visitor>());
   }
   gpu_host_free_visitors_[numa_node].push_back(visitor);

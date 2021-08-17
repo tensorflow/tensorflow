@@ -71,7 +71,7 @@ Literal CreateS64Literal(int64_t value, const Shape& reference_shape) {
   if (element_type == TOKEN) {
     return LiteralUtil::CreateToken();
   }
-  Literal literal = LiteralUtil::CreateR0<int64>(value);
+  Literal literal = LiteralUtil::CreateR0<int64_t>(value);
   return literal
       .Broadcast(ShapeUtil::ChangeElementType(reference_shape, S64), {})
       .ValueOrDie();
@@ -145,7 +145,7 @@ struct HloProtoEvaluator {
     // Evaluate the instruction by swapping it's operands with constant
     // instructions with given literals.
     HloComputation::Builder builder("EmptyComputation");
-    absl::flat_hash_map<int64, HloInstruction*> operand_map;
+    absl::flat_hash_map<int64_t, HloInstruction*> operand_map;
     for (int64_t i = 0; i < inst.operand_ids_size(); ++i) {
       int64_t operand_handle = inst.operand_ids(i);
       std::unique_ptr<HloInstruction> operand =
@@ -162,7 +162,7 @@ struct HloProtoEvaluator {
     if (opcode.has_value()) {
       *inst.mutable_opcode() = HloOpcodeString(opcode.value());
     }
-    absl::flat_hash_map<int64, HloComputation*> computation_map;
+    absl::flat_hash_map<int64_t, HloComputation*> computation_map;
     if (inst.called_computation_ids_size() != 0) {
       TF_RET_CHECK(inst.called_computation_ids_size() == 1 &&
                    computation != nullptr)
@@ -227,7 +227,7 @@ std::string PostorderDFSNodeTypeToString(PostorderDFSNodeType type) {
 
 struct InferenceContext {
   explicit InferenceContext(ShapeIndex shape_index,
-                            std::vector<int64> caller_operand_handles)
+                            std::vector<int64_t> caller_operand_handles)
       : shape_index(std::move(shape_index)),
         caller_operand_handles(std::move(caller_operand_handles)) {}
   // `shape_index` represents the subshape that we care about in the inference.
@@ -259,7 +259,7 @@ struct InferenceContext {
   // forwarded to inner_p0 and op is what should be forwarded to p0. similarly,
   // when we analyze true_computation, the `caller_operand_handlers` will be
   // [op].
-  std::vector<int64> caller_operand_handles;
+  std::vector<int64_t> caller_operand_handles;
 };
 
 // Each node in the postorder traversal tree may depend on traversing the
@@ -271,7 +271,7 @@ struct PostorderDFSDep {
         type(type),
         context(std::move(context)),
         annotation(std::move(annotation)) {}
-  int64 handle;
+  int64_t handle;
   PostorderDFSNodeType type;
   InferenceContext context;
   std::string annotation;
@@ -374,7 +374,7 @@ struct PostorderDFSVisitor {
     return false;
   }
 
-  absl::flat_hash_map<int64, Literal> evaluated;
+  absl::flat_hash_map<int64_t, Literal> evaluated;
   HandleToInstruction handle_to_instruction;
   HandleToComputation handle_to_computation;
 };
@@ -1045,26 +1045,27 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
               VLOG(1) << "predict is dynamic value" << result.ToString();
               // If predicate is dynamic, the result is only static if all
               // branches are static and return the same value.
-              result.MutableEachCell<bool>([&](absl::Span<const int64> indices,
-                                               bool value) {
-                string branch_value = operands[2].GetAsString(indices, {});
-                for (int64_t i = 0; i < branch_size; ++i) {
-                  const int64_t branch_value_index = 2 + 2 * i;
-                  const int64_t branch_dynamism_index = 2 + 2 * i + 1;
-                  auto branch_is_dynamic =
-                      operands[branch_dynamism_index].Get<bool>(indices);
-                  if (branch_is_dynamic) {
-                    return true;
-                  }
+              result.MutableEachCell<bool>(
+                  [&](absl::Span<const int64_t> indices, bool value) {
+                    string branch_value = operands[2].GetAsString(indices, {});
+                    for (int64_t i = 0; i < branch_size; ++i) {
+                      const int64_t branch_value_index = 2 + 2 * i;
+                      const int64_t branch_dynamism_index = 2 + 2 * i + 1;
+                      auto branch_is_dynamic =
+                          operands[branch_dynamism_index].Get<bool>(indices);
+                      if (branch_is_dynamic) {
+                        return true;
+                      }
 
-                  if (branch_value !=
-                      operands[branch_value_index].GetAsString(indices, {})) {
-                    return true;
-                  }
-                }
-                // Value of the branch is static.
-                return false;
-              });
+                      if (branch_value !=
+                          operands[branch_value_index].GetAsString(indices,
+                                                                   {})) {
+                        return true;
+                      }
+                    }
+                    // Value of the branch is static.
+                    return false;
+                  });
               return result;
             } else {
               VLOG(1) << "predict is constant value";
@@ -1102,16 +1103,28 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
         if (root_shape.IsTuple()) {
           // Variadic reduce.
           HloComputation::Builder b("reduce_or");
-          std::vector<HloInstruction*> results;
-          results.reserve(root_shape.tuple_shapes_size());
+          // Assuming all operands interact with each other. This could be
+          // overly conservative.  If needed, a dataflow analysis could be
+          // performed in the future.
+          //
+          // The value starts with `false` (static) and will be `or`ed with all
+          // operands's dynamism.
+          auto accum = b.AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<bool>(false)));
+
           for (int64_t i = 0; i < root_shape.tuple_shapes_size(); ++i) {
             auto lhs = b.AddInstruction(
                 HloInstruction::CreateParameter(i, scalar_shape, "lhs"));
             auto rhs = b.AddInstruction(HloInstruction::CreateParameter(
                 i + root_shape.tuple_shapes_size(), scalar_shape, "rhs"));
-            results.push_back(b.AddInstruction(HloInstruction::CreateBinary(
-                scalar_shape, HloOpcode::kOr, lhs, rhs)));
+            accum = b.AddInstruction(HloInstruction::CreateBinary(
+                scalar_shape, HloOpcode::kOr, accum, lhs));
+            accum = b.AddInstruction(HloInstruction::CreateBinary(
+                scalar_shape, HloOpcode::kOr, accum, rhs));
           }
+          // `Broadcast` the result to all positions in the result.
+          std::vector<HloInstruction*> results(root_shape.tuple_shapes_size(),
+                                               accum);
           b.AddInstruction(HloInstruction::CreateTuple(results));
           reduce_or = b.Build();
         } else {
@@ -1171,7 +1184,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
             auto result = CreatePredLiteral(true, Shape(root->shape()));
 
             result.MutableEachCell<bool>(
-                [&](absl::Span<const int64> indices, bool value) {
+                [&](absl::Span<const int64_t> indices, bool value) {
                   absl::optional<bool> optional_selector =
                       optional_selector_literal.Get<bool>(indices);
 
@@ -1277,14 +1290,14 @@ StatusOr<Literal> PostorderDFSVisitor::PostOrderDFSVisit(
           type(type),
           state(state),
           id(id) {}
-    int64 handle;  // Handle of the node in the graph.
+    int64_t handle;  // Handle of the node in the graph.
     InferenceContext context;
     PostorderDFSNodeType type;
     VisitState state;
     Visit visit;  // The handler to call once the dependencies are resolved into
                   // literal form.
-    int64 id;     // Unique id in the work queue, starting from 0.
-    std::vector<int64> dependencies;
+    int64_t id;   // Unique id in the work queue, starting from 0.
+    std::vector<int64_t> dependencies;
   };
 
   std::vector<WorkItem> stack;
@@ -1376,7 +1389,7 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamic(XlaOp op) {
   return result;
 }
 
-absl::optional<int64> ValueInference::CseOpHandle(int64_t handle) {
+absl::optional<int64_t> ValueInference::CseOpHandle(int64_t handle) {
   auto inst = builder_->LookUpInstructionByHandle(handle).ValueOrDie();
   HloOpcode opcode = StringToHloOpcode(inst->opcode()).ValueOrDie();
   // For now, only handle kGetDimensionSize as that's the most duplicated one.
@@ -1384,8 +1397,8 @@ absl::optional<int64> ValueInference::CseOpHandle(int64_t handle) {
     return absl::nullopt;
   }
   int64_t hash = inst->operand_ids(0);
-  hash =
-      tensorflow::Hash64Combine(hash, std::hash<int64>()(inst->dimensions(0)));
+  hash = tensorflow::Hash64Combine(hash,
+                                   std::hash<int64_t>()(inst->dimensions(0)));
   auto lookup = cse_map_.find(hash);
   if (lookup == cse_map_.end()) {
     cse_map_[hash] = handle;
@@ -1451,26 +1464,27 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
       if (output_shape.rank() == 0) {
         TF_ASSIGN_OR_RETURN(auto lhs, SimplifyOp(inst->operand_ids(0)));
         TF_ASSIGN_OR_RETURN(auto rhs, SimplifyOp(inst->operand_ids(1)));
-        int64_t lhs_handle = lhs.Get<int64>({});
-        int64_t rhs_handle = rhs.Get<int64>({});
+        int64_t lhs_handle = lhs.Get<int64_t>({});
+        int64_t rhs_handle = rhs.Get<int64_t>({});
         if (lhs_handle == -1 || rhs_handle == -1) {
           return CreateS64Literal(-1, output_shape);
         }
         // Recursive lambda needs explicit signature.
-        std::function<absl::optional<int64>(int64_t, int64_t)> can_be_optimized;
+        std::function<absl::optional<int64_t>(int64_t, int64_t)>
+            can_be_optimized;
         can_be_optimized = [this, &can_be_optimized](
                                int64_t lhs,
-                               int64_t rhs) -> absl::optional<int64> {
+                               int64_t rhs) -> absl::optional<int64_t> {
           auto rhs_inst = builder_->LookUpInstructionByHandle(rhs).ValueOrDie();
           HloOpcode rhs_opcode =
               StringToHloOpcode(rhs_inst->opcode()).ValueOrDie();
           if (rhs_opcode == HloOpcode::kSubtract) {
             auto sub_lhs_handle = SimplifyOp(rhs_inst->operand_ids(0))
                                       .ValueOrDie()
-                                      .Get<int64>({});
+                                      .Get<int64_t>({});
             auto sub_rhs_handle = SimplifyOp(rhs_inst->operand_ids(1))
                                       .ValueOrDie()
-                                      .Get<int64>({});
+                                      .Get<int64_t>({});
             if (sub_rhs_handle == lhs) {
               // lhs + (sub_lhs - sub_rhs) = sub_lhs if lhs == sub_rhs
               return sub_lhs_handle;
@@ -1484,10 +1498,10 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
           if (lhs_opcode == HloOpcode::kAdd) {
             auto add_lhs_handle = SimplifyOp(lhs_inst->operand_ids(0))
                                       .ValueOrDie()
-                                      .Get<int64>({});
+                                      .Get<int64_t>({});
             auto add_rhs_handle = SimplifyOp(lhs_inst->operand_ids(1))
                                       .ValueOrDie()
-                                      .Get<int64>({});
+                                      .Get<int64_t>({});
             if (auto optimized = can_be_optimized(add_lhs_handle, rhs)) {
               return Add(XlaOp(add_rhs_handle, builder_),
                          XlaOp(optimized.value(), builder_))
@@ -1502,11 +1516,11 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
           return absl::nullopt;
         };
         if (auto optimized = can_be_optimized(lhs_handle, rhs_handle)) {
-          return LiteralUtil::CreateR0<int64>(optimized.value());
+          return LiteralUtil::CreateR0<int64_t>(optimized.value());
         }
         // Swap lhs and rhs.
         if (auto optimized = can_be_optimized(rhs_handle, lhs_handle)) {
-          return LiteralUtil::CreateR0<int64>(optimized.value());
+          return LiteralUtil::CreateR0<int64_t>(optimized.value());
         }
         // This sum can't be optimized, return sum of lhs and rhs. Note that we
         // can't just return the original sum as its lhs and rhs could be
@@ -1514,14 +1528,14 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
         XlaOp new_sum =
             Add(XlaOp(lhs_handle, builder_), XlaOp(rhs_handle, builder_));
 
-        return LiteralUtil::CreateR0<int64>(new_sum.handle());
+        return LiteralUtil::CreateR0<int64_t>(new_sum.handle());
       } else {
         return CreateS64Literal(-1, output_shape);
       }
     }
     default: {
       if (ShapeUtil::IsScalar(output_shape)) {
-        return LiteralUtil::CreateR0<int64>(handle);
+        return LiteralUtil::CreateR0<int64_t>(handle);
       } else {
         return CreateS64Literal(-1, output_shape);
       }
@@ -1539,7 +1553,7 @@ StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(
   int64_t handle = op.handle();
   if (ShapeUtil::IsScalar(builder_->GetShape(op).ValueOrDie())) {
     TF_ASSIGN_OR_RETURN(auto result, SimplifyOp(handle));
-    auto optimized_handle = result.Get<int64>({});
+    auto optimized_handle = result.Get<int64_t>({});
     if (optimized_handle != -1) {
       handle = optimized_handle;
     }

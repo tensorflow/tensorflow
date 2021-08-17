@@ -183,7 +183,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     sub_output = sub_signature_runner(x=input_data)
     self.assertEqual(sub_output['output_0'], -2)
 
-  def _getIntegerQuantizeModel(self):
+  def _getIntegerQuantizeModel(self, num_filters=16):
     np.random.seed(0)
 
     root = tracking.AutoTrackable()
@@ -192,7 +192,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         input_signature=[tf.TensorSpec(shape=[1, 5, 5, 3], dtype=tf.float32)])
     def func(inp):
       conv = tf.nn.conv2d(
-          inp, tf.ones([3, 3, 3, 16]), strides=[1, 1, 1, 1], padding='SAME')
+          inp,
+          tf.ones([3, 3, 3, num_filters]), strides=[1, 1, 1, 1], padding='SAME')
       output = tf.nn.relu(conv, name='output')
       return output
 
@@ -929,13 +930,17 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       ('_PerChannelQuant', False, False),
       ('_PerChannelMlirQuant', False, True),
       ('_PerTensorQuant', True, False),
-      ('_PerTensorMlirQuant', True, True))
+      ('_PerTensorMlirQuant', True, True),
+      ('_PerChannelDynamicRange', False, False, False),
+      ('_PerTensorDynamicRange', True, False, False))
   @test_util.run_v2_only
   def testDisablePerChannelQuantization(self, disable_per_channel=False,
-                                        enable_mlir_quantizer=False):
+                                        enable_mlir_quantizer=False,
+                                        representative_dataset=True):
     k_conv_name = 'Conv2D1'
-    k_num_filters = 16
-    root, func, calib_gen = self._getIntegerQuantizeModel()
+    # Dynamic range quant requires total num elements of filters > 1024.
+    k_num_filters = 38
+    root, func, calib_gen = self._getIntegerQuantizeModel(k_num_filters)
     quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
         [func], root)
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
@@ -1549,10 +1554,13 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     def representative_dataset_gen():
       for _ in range(2):
-        yield [
-            np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32),
-            np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32)
-        ]
+        yield {
+            'x':
+                np.random.uniform(low=0, high=1,
+                                  size=(1, 1)).astype(np.float32),
+            'y':
+                np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32)
+        }
 
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
     converter.representative_dataset = representative_dataset_gen
@@ -1814,26 +1822,30 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
       ('_PerChannelQuant', False, False),
       ('_PerChannelMlirQuant', False, True),
       ('_PerTensorQuant', True, False),
-      ('_PerTensorMlirQuant', True, True))
+      ('_PerTensorMlirQuant', True, True),
+      ('_PerChannelDynamicRange', False, False, True),
+      ('_PerTensorDynamicRange', True, False, True))
   @test_util.run_v2_only
   def testDisablePerChannelQuantization(self, disable_per_channel=False,
-                                        enable_mlir_quantizer=False):
+                                        enable_mlir_quantizer=False,
+                                        representative_dataset=True):
+    # Dynamic range quant requires total num elements of filters > 1024.
+    k_num_filters = 38
     model = tf.keras.models.Sequential([
-        tf.keras.layers.Conv2D(16, (3, 3), activation='relu')
+        tf.keras.layers.Conv2D(k_num_filters, (3, 3), activation='relu')
     ])
     model.build(input_shape=(1, 5, 5, 3))
     saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
     save(model, saved_model_dir)
     k_conv_name = 'sequential/conv2d/Conv2D1'
-    k_num_filters = 16
     quantized_converter = tf.lite.TFLiteConverter.from_saved_model(
         saved_model_dir)
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
-    def calib_gen():
-      for _ in range(5):
-        yield [np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)]
-
-    quantized_converter.representative_dataset = calib_gen
+    if representative_dataset:
+      def calib_gen():
+        for _ in range(5):
+          yield [np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)]
+      quantized_converter.representative_dataset = calib_gen
     quantized_converter.target_spec.supported_ops = [
         lite.OpsSet.TFLITE_BUILTINS
     ]
@@ -2144,11 +2156,15 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
         expected = expected.c
       self.assertAllClose(expected, actual)
 
-  @parameterized.named_parameters(('LSTM', tf.keras.layers.LSTM),
-                                  ('SimpleRNN', tf.keras.layers.SimpleRNN),
-                                  ('GRU', tf.keras.layers.GRU))
+  @parameterized.named_parameters(
+      ('LSTMBatchSizeOne', tf.keras.layers.LSTM, True),
+      ('LSTM', tf.keras.layers.LSTM, False),
+      ('SimpleRNNBatchSizeOne', tf.keras.layers.SimpleRNN, True),
+      ('SimpleRNN', tf.keras.layers.SimpleRNN, False),
+      ('GRUBatchSizeOne', tf.keras.layers.GRU, True),
+      ('GRU', tf.keras.layers.GRU, False))
   @test_util.run_v2_only
-  def testKerasRNN(self, rnn_layer):
+  def testKerasRNN(self, rnn_layer, default_to_single_batch):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     rnn_obj = rnn_layer(units=10, input_shape=(10, 10))
@@ -2159,6 +2175,11 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter._experimental_default_to_single_batch_in_tensor_list_ops = default_to_single_batch
+    if not default_to_single_batch:
+      converter.target_spec.supported_ops = [
+          tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+      ]
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
@@ -2187,8 +2208,10 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
+  @parameterized.named_parameters(('ForceToUseBatchSizeOne', True),
+                                  ('DontForceToUseBatchSizeOne', False))
   @test_util.run_v2_only
-  def testKerasBidirectionalRNNReturnSequence(self):
+  def testKerasBidirectionalRNNReturnSequence(self, default_to_single_batch):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
@@ -2203,6 +2226,11 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter._experimental_default_to_single_batch_in_tensor_list_ops = default_to_single_batch
+    if not default_to_single_batch:
+      converter.target_spec.supported_ops = [
+          tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+      ]
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
@@ -2210,8 +2238,10 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
+  @parameterized.named_parameters(('ForceToUseBatchSizeOne', True),
+                                  ('DontForceToUseBatchSizeOne', False))
   @test_util.run_v2_only
-  def testKerasBidirectionalRNN(self):
+  def testKerasBidirectionalRNN(self, default_to_single_batch):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
@@ -2222,6 +2252,11 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter._experimental_default_to_single_batch_in_tensor_list_ops = default_to_single_batch
+    if not default_to_single_batch:
+      converter.target_spec.supported_ops = [
+          tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+      ]
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 

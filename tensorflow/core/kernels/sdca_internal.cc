@@ -34,7 +34,7 @@ namespace tensorflow {
 namespace sdca {
 
 using UnalignedFloatVector = TTypes<const float>::UnalignedConstVec;
-using UnalignedInt64Vector = TTypes<const int64>::UnalignedConstVec;
+using UnalignedInt64Vector = TTypes<const int64_t>::UnalignedConstVec;
 
 void FeatureWeightsDenseStorage::UpdateDenseDeltaWeights(
     const Eigen::ThreadPoolDevice& device,
@@ -133,7 +133,7 @@ Status ModelWeights::Initialize(OpKernelContext* const context) {
     auto deltas = delta_t->shaped<float, 2>({1, delta_t->NumElements()});
     deltas.setZero();
     sparse_weights_.emplace_back(FeatureWeightsSparseStorage{
-        sparse_indices_inputs[i].flat<int64>(),
+        sparse_indices_inputs[i].flat<int64_t>(),
         sparse_weights_inputs[i].shaped<float, 2>(
             {1, sparse_weights_inputs[i].NumElements()}),
         deltas});

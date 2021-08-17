@@ -126,10 +126,10 @@ SliceIndex HandleCopiesBatched(OpKernelContext* ctx,
 
 template <typename T, typename Index>
 struct GatherFunctorBatchedCPU {
-  int64 operator()(OpKernelContext* ctx,
-                   typename TTypes<T, 4>::ConstTensor params,
-                   typename TTypes<Index>::ConstFlat indices,
-                   typename TTypes<T, 4>::Tensor out) {
+  int64_t operator()(OpKernelContext* ctx,
+                     typename TTypes<T, 4>::ConstTensor params,
+                     typename TTypes<Index>::ConstFlat indices,
+                     typename TTypes<T, 4>::Tensor out) {
     const int64_t indices_size = indices.size();  // Includes the batch_size.
     const int64_t slice_size = out.dimension(3);
     int64_t bad_i;
@@ -142,16 +142,16 @@ struct GatherFunctorBatchedCPU {
                       indices_size > std::numeric_limits<int32>::max() ||
                       batch_size * outer_size * indices_size * slice_size >
                           std::numeric_limits<int32>::max());
-#define CALL(elems)                                                      \
-  do {                                                                   \
-    if (use_large) {                                                     \
-      bad_i = HandleCopiesBatched<T, Index, int64, elems>(               \
-          ctx, params, indices, slice_size, out);                        \
-    } else {                                                             \
-      const int32 small_slice = static_cast<int32>(slice_size);          \
-      bad_i = HandleCopiesBatched<T, Index, int32, elems>(               \
-          ctx, params, indices, small_slice, out);                       \
-    }                                                                    \
+#define CALL(elems)                                             \
+  do {                                                          \
+    if (use_large) {                                            \
+      bad_i = HandleCopiesBatched<T, Index, int64_t, elems>(    \
+          ctx, params, indices, slice_size, out);               \
+    } else {                                                    \
+      const int32 small_slice = static_cast<int32>(slice_size); \
+      bad_i = HandleCopiesBatched<T, Index, int32, elems>(      \
+          ctx, params, indices, small_slice, out);              \
+    }                                                           \
   } while (0)
 
     // TODO(rmlarsen): Investigate whether these specializations are still
@@ -170,28 +170,28 @@ struct GatherFunctorBatchedCPU {
 
 template <typename Device, typename T, typename Index>
 struct GatherFunctorBatched {
-  int64 operator()(OpKernelContext* ctx,
-                   typename TTypes<T, 4>::ConstTensor params,
-                   typename TTypes<Index>::ConstFlat indices,
-                   typename TTypes<T, 4>::Tensor out);
+  int64_t operator()(OpKernelContext* ctx,
+                     typename TTypes<T, 4>::ConstTensor params,
+                     typename TTypes<Index>::ConstFlat indices,
+                     typename TTypes<T, 4>::Tensor out);
 };
 
 template <typename T, typename Index>
 struct GatherFunctorBatched<CPUDevice, T, Index> {
-  int64 operator()(OpKernelContext* ctx,
-                   typename TTypes<T, 4>::ConstTensor params,
-                   typename TTypes<Index>::ConstFlat indices,
-                   typename TTypes<T, 4>::Tensor out) {
+  int64_t operator()(OpKernelContext* ctx,
+                     typename TTypes<T, 4>::ConstTensor params,
+                     typename TTypes<Index>::ConstFlat indices,
+                     typename TTypes<T, 4>::Tensor out) {
     return GatherFunctorBatchedCPU<T, Index>()(ctx, params, indices, out);
   }
 };
 
 template <typename Index>
 struct GatherFunctorBatched<GPUDevice, Variant, Index> {
-  int64 operator()(OpKernelContext* ctx,
-                   typename TTypes<Variant, 4>::ConstTensor params,
-                   typename TTypes<Index>::ConstFlat indices,
-                   typename TTypes<Variant, 4>::Tensor out) {
+  int64_t operator()(OpKernelContext* ctx,
+                     typename TTypes<Variant, 4>::ConstTensor params,
+                     typename TTypes<Index>::ConstFlat indices,
+                     typename TTypes<Variant, 4>::Tensor out) {
     return GatherFunctorBatchedCPU<Variant, Index>()(ctx, params, indices, out);
   }
 };

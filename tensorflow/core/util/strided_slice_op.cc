@@ -30,7 +30,7 @@ constexpr int32_t kShrinkAxis = -1, kNewAxis = -2;
 // Sparse slicing specification
 // if one does foo[3:5, ..., -3], this will have 3 length tensors
 struct StridedSliceSparseSpec {
-  int64 dims;
+  int64_t dims;
   int32 num_add_axis_after_ellipsis;
   const Tensor* begin_tensor;
   const Tensor* end_tensor;
@@ -46,14 +46,14 @@ struct StridedSliceSparseSpec {
 // each inlinedVector will have 10 entries whereas the
 // sparse had 3 length tensors.
 struct StridedSliceDenseSpec {
-  const int64 dims;
+  const int64_t dims;
   int32 begin_mask;
   int32 end_mask;
   bool begin_valid;
   bool end_valid;
-  gtl::InlinedVector<int64, 4>& begin;
-  gtl::InlinedVector<int64, 4>& end;
-  gtl::InlinedVector<int64, 4>& strides;
+  gtl::InlinedVector<int64_t, 4>& begin;
+  gtl::InlinedVector<int64_t, 4>& end;
+  gtl::InlinedVector<int64_t, 4>& strides;
   // This vector helps construct the final shape of the slice.
   // The final tensor is reduced in rank whenever a single index e.g. foo[3]
   // is called for. The final tensor increases in rank with tf.newaxis
@@ -173,8 +173,9 @@ Status ValidateStridedSliceOp(
     int32_t new_axis_mask, int32_t shrink_axis_mask,
     PartialTensorShape* processing_shape, PartialTensorShape* final_shape,
     bool* is_identity, bool* is_simple_slice, bool* slice_dim0,
-    gtl::InlinedVector<int64, 4>* begin, gtl::InlinedVector<int64, 4>* end,
-    gtl::InlinedVector<int64, 4>* strides, StridedSliceShapeSpec* shape_spec) {
+    gtl::InlinedVector<int64_t, 4>* begin, gtl::InlinedVector<int64_t, 4>* end,
+    gtl::InlinedVector<int64_t, 4>* strides,
+    StridedSliceShapeSpec* shape_spec) {
   const bool begin_is_wrong =
       begin_tensor != nullptr &&
       !(TensorShapeUtils::IsVector(begin_tensor->shape()) &&
@@ -259,7 +260,7 @@ Status ValidateStridedSliceOp(
   if (strides_tensor.dtype() == DT_INT32) {
     TF_RETURN_IF_ERROR(BuildDenseSpec<int32>(sparse_spec, &dense_spec));
   } else if (strides_tensor.dtype() == DT_INT64) {
-    TF_RETURN_IF_ERROR(BuildDenseSpec<int64>(sparse_spec, &dense_spec));
+    TF_RETURN_IF_ERROR(BuildDenseSpec<int64_t>(sparse_spec, &dense_spec));
   } else {
     LOG(FATAL) << "begin must be either int32 or int64";
   }
@@ -271,9 +272,9 @@ Status ValidateStridedSliceOp(
   *is_simple_slice = true;
   processing_shape->Clear();
   for (int i = 0; i < input_shape.dims(); ++i) {
-    int64& begin_i = (*begin)[i];
-    int64& end_i = (*end)[i];
-    int64& stride_i = (*strides)[i];
+    int64_t& begin_i = (*begin)[i];
+    int64_t& end_i = (*end)[i];
+    int64_t& stride_i = (*strides)[i];
     int64_t dim_i = input_shape.dim_size(i);
     if (stride_i == 0) {
       return errors::InvalidArgument("strides[", i, "] must be non-zero");
@@ -284,9 +285,9 @@ Status ValidateStridedSliceOp(
       continue;
     }
 
-    const std::array<int64, 2> masks = {
+    const std::array<int64_t, 2> masks = {
         {dense_spec.begin_mask & (1 << i), dense_spec.end_mask & (1 << i)}};
-    const std::array<int64, 2> valid_range = {
+    const std::array<int64_t, 2> valid_range = {
         {stride_i > 0 ? 0 : -1, stride_i > 0 ? dim_i : dim_i - 1}};
 
     auto canonical = [stride_i, dim_i, masks, valid_range](int64_t x, int c) {
@@ -422,8 +423,9 @@ Status ValidateStridedSliceOp(
     int32_t new_axis_mask, int32_t shrink_axis_mask,
     TensorShape* processing_shape, TensorShape* final_shape, bool* is_identity,
     bool* is_simple_slice, bool* slice_dim0,
-    gtl::InlinedVector<int64, 4>* begin, gtl::InlinedVector<int64, 4>* end,
-    gtl::InlinedVector<int64, 4>* strides, StridedSliceShapeSpec* shape_spec) {
+    gtl::InlinedVector<int64_t, 4>* begin, gtl::InlinedVector<int64_t, 4>* end,
+    gtl::InlinedVector<int64_t, 4>* strides,
+    StridedSliceShapeSpec* shape_spec) {
   // Validate with PartialTensorShape output
   PartialTensorShape partial_processing_shape, partial_final_shape;
   TF_RETURN_IF_ERROR(ValidateStridedSliceOp(

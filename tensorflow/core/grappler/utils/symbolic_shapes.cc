@@ -59,7 +59,7 @@ int Rank(const TensorShapeProto& shape) {
   return shape.dim_size();
 }
 
-int64 NumCoefficients(const TensorShapeProto& shape) {
+int64_t NumCoefficients(const TensorShapeProto& shape) {
   if (shape.unknown_rank()) {
     return -1;
   }
@@ -140,8 +140,8 @@ bool CompareSymbolicallyShapedTensorSizes(const TensorShapeProto& left,
   int64_t right_defined_size = 1;
 
   // Keep how many times each unknown dimension appeared on the left and right
-  std::unordered_map<int64, int64> left_unknown_dims;
-  std::unordered_map<int64, int64> right_unknown_dims;
+  std::unordered_map<int64_t, int64_t> left_unknown_dims;
+  std::unordered_map<int64_t, int64_t> right_unknown_dims;
 
   // Assign unique id to every unknown dimension (-1). We are going to
   // assign positive ids, because negative values are already used by
@@ -170,7 +170,7 @@ bool CompareSymbolicallyShapedTensorSizes(const TensorShapeProto& left,
   process_dimensions(right, &right_defined_size, &right_unknown_dims);
 
   // Compute a union of unknown dimension ids appeared in both shapes
-  std::set<int64> unknown_dims;
+  std::set<int64_t> unknown_dims;
   for (const auto& el : left_unknown_dims) unknown_dims.insert(el.first);
   for (const auto& el : right_unknown_dims) unknown_dims.insert(el.first);
 
@@ -216,8 +216,8 @@ bool CompareSymbolicallyShapedTensorSizes(
   return CompareSymbolicallyShapedTensorSizes(left.shape(), right.shape());
 }
 
-int64 ComputeSizeRatio(const TensorShapeProto& numerator,
-                       const TensorShapeProto& denominator) {
+int64_t ComputeSizeRatio(const TensorShapeProto& numerator,
+                         const TensorShapeProto& denominator) {
   if (numerator.unknown_rank() || denominator.unknown_rank()) {
     return -1;
   }

@@ -182,7 +182,7 @@ void SetXlaShardingNodeAttr(Node* xla_sharding_node, int num_cores_per_replica,
   auto sharding = absl::make_optional<xla::OpSharding>();
   sharding->set_type(xla::OpSharding::OTHER);
 
-  std::vector<int64> dims(rank, 1LL);
+  std::vector<int64_t> dims(rank, 1LL);
   dims[shard_dim] = num_cores_per_replica;
   for (auto dim : dims) {
     sharding->add_tile_assignment_dimensions(dim);
@@ -306,9 +306,9 @@ Status GetClusterName(Graph* graph, string* cluster_name) {
 // back where necessary.
 //
 // Returns the number of nodes that were removed.
-int64 RemoveDescendantNodeOfArg(Graph* graph,
-                                const std::string& node_type_to_remove,
-                                const std::set<std::string>& must_be_child_of) {
+int64_t RemoveDescendantNodeOfArg(
+    Graph* graph, const std::string& node_type_to_remove,
+    const std::set<std::string>& must_be_child_of) {
   int64_t nodes_removed = 0;
   std::vector<std::pair<const Edge*, std::vector<const Edge*>>> edges_to_remove;
 
@@ -439,7 +439,7 @@ Status ConvertEdgeShapesToTensorShapes(
   for (const auto& iter : named_input_shapes) {
     VLOG(2) << iter.first << ", rank: " << iter.second.size();
     const int64_t rank = iter.second.size();
-    std::vector<int64> dims(rank);
+    std::vector<int64_t> dims(rank);
     for (int64_t d = 0; d < rank; ++d) {
       VLOG(2) << " dim[" << d << "]: " << iter.second.at(d);
       dims[d] = iter.second.at(d);
@@ -1039,7 +1039,7 @@ Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
     Node* flatten_reshape_shape_node = nullptr;
     Tensor flattened_input_shape_tensor;
     flattened_input_shape_tensor =
-        Tensor(DT_INT32, TensorShape({static_cast<int64>(1)}));
+        Tensor(DT_INT32, TensorShape({static_cast<int64_t>(1)}));
     flattened_input_shape_tensor.flat<int>()(0) = -1;
     TF_RETURN_IF_ERROR(
         NodeBuilder(absl::StrCat(edge->src()->name(), "/flatten/Reshape/shape"),
@@ -1065,7 +1065,7 @@ Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
     Node* recover_reshape_shape_node = nullptr;
     Tensor original_input_shape_tensor(
         DT_INT32,
-        TensorShape({static_cast<int64>(tpu_input_shapes->at(edge).size())}));
+        TensorShape({static_cast<int64_t>(tpu_input_shapes->at(edge).size())}));
     original_input_shape_tensor.flat<int>()(0) = -1;
     for (int d = 1; d < tpu_input_shapes->at(edge).size(); ++d)
       original_input_shape_tensor.flat<int>()(d) =
@@ -1538,8 +1538,8 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
   OpInputList arguments;
   TF_RETURN_IF_ERROR(ctx->input_list("args", &arguments));
 
-  auto* rendez = new PrivateIntraProcessRendezvous(device_mgr_);
-  opts.rendezvous = rendez;
+  PrivateIntraProcessRendezvous rendez(device_mgr_);
+  opts.rendezvous = &rendez;
 
   BlockingCounter bcount(functions.size());
   for (const DeviceAndFHandle& entry : functions) {
@@ -2033,7 +2033,7 @@ Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
       sharding->set_type(xla::OpSharding::OTHER);
 
       // Sets up tile_assignment_dimensions.
-      std::vector<int64> dims(rank, 1LL);
+      std::vector<int64_t> dims(rank, 1LL);
       dims[shard_dim] = num_cores_per_replica;
       for (auto dim : dims) {
         sharding->add_tile_assignment_dimensions(dim);

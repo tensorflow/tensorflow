@@ -54,7 +54,7 @@ class MemoryInputStream : public io::InputStreamInterface {
     return s;
   }
 
-  int64 Tell() const override { return pos_; }
+  int64_t Tell() const override { return pos_; }
 
   Status Reset() override {
     pos_ = 0;
@@ -63,8 +63,8 @@ class MemoryInputStream : public io::InputStreamInterface {
 
  private:
   const char* buf_;  // Not owned.
-  int64 len_;
-  int64 pos_ = 0;  // Tracks where we are in the file.
+  int64_t len_;
+  int64_t pos_ = 0;  // Tracks where we are in the file.
 };
 }  // namespace
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/python/jax_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
 #include "tensorflow/compiler/mlir/lite/sparsity/sparsify_model.h"
@@ -160,7 +161,8 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
       PyErr_SetString(PyExc_ValueError, "Input GraphDef is invalid.");
       return nullptr;
     }
-    if (!graph_def.ParseFromString(input_contents_txt)) {
+    if (!model_flags.use_hlo_import() &&
+        !graph_def.ParseFromString(input_contents_txt)) {
       PyErr_SetString(PyExc_ValueError,
                       "Failed to convert GraphDef to Python String.");
       return nullptr;
@@ -181,7 +183,17 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
 
   // Convert model.
   if (enable_mlir_converter) {
-    if (!model_flags.saved_model_dir().empty()) {
+    if (model_flags.use_hlo_import() && model_flags.has_saved_model_dir()) {
+      PyErr_SetString(PyExc_ValueError,
+                      "Cannot specify both saved_model and hlo import.");
+      return nullptr;
+    }
+
+    if (model_flags.use_hlo_import()) {
+      status = tensorflow::ConvertJaxToTFLiteFlatBuffer(
+          input_contents_txt, model_flags, toco_flags,
+          &output_file_contents_txt);
+    } else if (!model_flags.saved_model_dir().empty()) {
       status = tensorflow::ConvertSavedModelToTFLiteFlatBuffer(
           model_flags, toco_flags, &output_file_contents_txt);
     } else {

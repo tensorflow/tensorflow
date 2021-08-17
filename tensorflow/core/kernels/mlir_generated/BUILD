@@ -261,6 +261,9 @@ tf_kernel_library(
         "gpu_op_xlogy.cc",
         "gpu_op_zeta.cc",
     ]),
+    copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
@@ -388,6 +391,24 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "gpu_nextafter_op",
+    srcs = if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_next_after.cc",
+    ]),
+    tags = ["manual"],
+    deps = if_mlir_generated_experimental_kernels_enabled([
+        ":base_gpu_op",
+        ":gpu_next_after_kernels",
+    ]),
+)
+
+tf_kernel_library(
+    name = "nextafter_op",
+    srcs = [],
+    deps = [] + if_cuda_or_rocm([":gpu_nextafter_op"]),
+)
+
+tf_kernel_library(
     name = "gpu_relu_op",
     srcs = if_mlir_generated_gpu_kernels_enabled([
         "gpu_op_elu.cc",
@@ -505,6 +526,7 @@ tf_cuda_cc_test(
     ),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # TODO(b/171341759): re-enable.
+        "no_cuda",  # TODO(b/196608406): re-enable
     ],
     deps = [
         ":base_ops_test",
@@ -556,6 +578,10 @@ tf_cuda_cc_test(
     srcs = ["gpu_binary_ops_test.cc"],
     extra_copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ) + if_mlir_generated_experimental_kernels_enabled(
+        [
+            "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+        ],
     ),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
@@ -815,7 +841,6 @@ gpu_kernel_library(
     op = "reciprocal",
     tile_size = "256",
     types = [
-        # TODO(b/162572921): Enable when it works for complex types.
         "c64",
         "c128",
         "f16",
@@ -929,6 +954,7 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_sub_kernels",
+    jit_types = ["i16"],
     op = "sub",
     tile_size = "1024",
     types = [
@@ -1198,8 +1224,8 @@ gpu_kernel_library(
     name = "gpu_floor_div_kernels",
     op = "floor_div",
     tile_size = "1024",
-    # TODO(172804967): Enable for integer types also once unsigned integers are
-    # supported.
+    # TODO(b/196539835): Enable for integer types also once unsigned integers
+    # and unranked tensors are supported.
     types = [
         "f16",
         "f32",
@@ -1385,11 +1411,6 @@ cpu_kernel_library(
         "i16",
         "i32",
         "i64",
-        # TODO(b/172804967): Enable once fixed.
-        # "ui8",
-        # "ui16",
-        # "ui32",
-        # "ui64",
     ],
     unroll_factors = "4",
 )
@@ -1698,5 +1719,15 @@ gpu_kernel_library(
         # TODO(b/190374484): Enable it for complex types once it is supported.
         # "c64",
         # "c128",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_next_after_kernels",
+    op = "next_after",
+    tile_size = "1024",
+    types = [
+        "f32",
+        "f64",
     ],
 )

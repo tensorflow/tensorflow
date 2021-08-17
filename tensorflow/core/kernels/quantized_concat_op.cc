@@ -105,8 +105,8 @@ class QuantizedConcatOp : public OpKernel {
     }
   }
 
-  int64 CalculateInputsDim(const TensorShape& input_shape,
-                           const int32_t concat_dim) {
+  int64_t CalculateInputsDim(const TensorShape& input_shape,
+                             const int32_t concat_dim) {
     int64_t inputs_flat_dim0 = 1;
     for (int d = 0; d < concat_dim; ++d) {
       inputs_flat_dim0 *= input_shape.dim_size(d);

@@ -16,7 +16,7 @@ cc_library(
     hdrs = ["benchmark.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_passes",
+        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_pipeline",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:logging",
@@ -41,7 +41,7 @@ cc_library(
     deps = [
         ":benchmark",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_passes",
+        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_pipeline",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -150,4 +150,11 @@ tf_cc_binary(
         "manual",
     ]),
     deps = [":benchmark"],
+)
+
+tf_cc_binary(
+    name = "transpose_op_benchmark",
+    testonly = 1,
+    srcs = ["transpose_op_benchmark.cc"],
+    deps = [":benchmark_mlir_function"],
 )

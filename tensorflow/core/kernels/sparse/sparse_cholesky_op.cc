@@ -108,7 +108,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
         nnz_per_row * nnz_per_row * num_rows;
     // Perform sparse Cholesky factorization of each batch in parallel.
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
-    std::atomic<int64> invalid_input_index(-1);
+    std::atomic<int64_t> invalid_input_index(-1);
     Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
           sparse_cholesky_cost_per_batch,
           [&](int64_t batch_begin, int64_t batch_end) {
@@ -230,7 +230,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
  private:
   Status ValidateInputs(const CSRSparseMatrix& sparse_matrix,
                         const Tensor& permutation_indices, int* batch_size,
-                        int64* num_rows) {
+                        int64_t* num_rows) {
     if (sparse_matrix.dtype() != DataTypeToEnum<T>::value)
       return errors::InvalidArgument(
           "Asked for a CSRSparseMatrix of type ",
@@ -243,7 +243,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
       return errors::InvalidArgument("sparse matrix must have rank 2 or 3; ",
                                      "but dense_shape has size ", rank);
     const int row_dim = (rank == 2) ? 0 : 1;
-    auto dense_shape_vec = dense_shape.vec<int64>();
+    auto dense_shape_vec = dense_shape.vec<int64_t>();
     *num_rows = dense_shape_vec(row_dim);
     const int64_t num_cols = dense_shape_vec(row_dim + 1);
     if (*num_rows != num_cols)

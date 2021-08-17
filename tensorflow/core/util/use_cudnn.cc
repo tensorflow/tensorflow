@@ -78,8 +78,8 @@ ADD_BOOL_CUDNN_FLAG(DebugCudnnRnnUseTensorOps,
 #undef ADD_BOOL_CUDNN_FLAG
 
 #define ADD_INT64_CUDNN_FLAG(func_name, flag_name, default_value)           \
-  int64 func_name() {                                                       \
-    int64 value = default_value;                                            \
+  int64_t func_name() {                                                     \
+    int64_t value = default_value;                                          \
     Status status = ReadInt64FromEnvVar(#flag_name, default_value, &value); \
     if (!status.ok()) {                                                     \
       LOG(ERROR) << status;                                                 \

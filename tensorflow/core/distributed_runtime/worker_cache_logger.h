@@ -76,7 +76,7 @@ class WorkerCacheLogger {
     StepStats step_stats;
     StepStatsCollector* collector;
   };
-  typedef std::unordered_map<int64, StepLog> LogMap;
+  typedef std::unordered_map<int64_t, StepLog> LogMap;
   mutex mu_;
   LogMap log_map_ TF_GUARDED_BY(mu_);
 

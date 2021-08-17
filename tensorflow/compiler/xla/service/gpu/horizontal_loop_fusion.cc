@@ -395,7 +395,7 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
           MakeReshapeHlo(ShapeUtil::MakeShapeWithLayout(
                              new_output->shape().element_type(),
                              {ShapeUtil::ElementsIn(new_output->shape())},
-                             /*minor_to_major=*/std::vector<int64>(1, 0)),
+                             /*minor_to_major=*/std::vector<int64_t>(1, 0)),
                          new_output));
     }
     TF_ASSIGN_OR_RETURN(HloInstruction * concated_output,

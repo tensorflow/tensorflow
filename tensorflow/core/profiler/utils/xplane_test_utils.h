@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-using XStatValue = absl::variant<int64, uint64, absl::string_view>;
+using XStatValue = absl::variant<int64_t, uint64, absl::string_view>;
 
 XPlane* GetOrCreateHostXPlane(XSpace* space);
 

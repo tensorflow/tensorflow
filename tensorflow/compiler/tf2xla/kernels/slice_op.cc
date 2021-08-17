@@ -55,13 +55,13 @@ class SliceOp : public XlaOpKernel {
             input_dims, ", but got shapes ", begin_tensor_shape.DebugString(),
             " and ", size_tensor_shape.DebugString(), " instead."));
 
-    std::vector<int64> begin;
-    std::vector<int64> size;
+    std::vector<int64_t> begin;
+    std::vector<int64_t> size;
     const bool begin_is_constant =
         ctx->ConstantInputAsIntVector(1, &begin).ok();
     const bool size_is_constant = ctx->ConstantInputAsIntVector(2, &size).ok();
     if (begin_is_constant && size_is_constant) {
-      std::vector<int64> wrapped_size(size.size());
+      std::vector<int64_t> wrapped_size(size.size());
       // `begin` is a compile-time constant.
       for (int i = 0; i < input_dims; ++i) {
         if (size[i] == -1) {
@@ -93,12 +93,12 @@ class SliceOp : public XlaOpKernel {
         }
       }
 
-      std::vector<int64> limits;
+      std::vector<int64_t> limits;
       limits.reserve(begin.size());
       for (int i = 0; i < begin.size(); ++i) {
         limits.push_back(begin[i] + wrapped_size[i]);
       }
-      std::vector<int64> strides(begin.size(), 1);
+      std::vector<int64_t> strides(begin.size(), 1);
       auto slice = xla::Slice(ctx->Input(0), begin, limits, strides);
       // Check for slice on dynamic dimensions.
       ctx->set_dynamic_dimension_is_minus_one(true);
@@ -157,7 +157,7 @@ class SliceOp : public XlaOpKernel {
         // First pad input with input size to avoid OOB -- dynamic slice with
         // OOB slice produces undesired results.
         xla::PaddingConfig padding_config;
-        for (xla::int64 i = 0; i < input_dims; ++i) {
+        for (int64_t i = 0; i < input_dims; ++i) {
           auto* dims = padding_config.add_dimensions();
           dims->set_edge_padding_low(0);
           dims->set_edge_padding_high(input_shape.dim_size(i));

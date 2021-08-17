@@ -72,7 +72,7 @@ TEST(GraphUtilsTest, AddScalarConstNodeInt) {
 TEST(GraphUtilsTest, AddScalarConstNodeInt64) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  NodeDef* int64_node = AddScalarConstNode<int64>(42, &graph);
+  NodeDef* int64_node = AddScalarConstNode<int64_t>(42, &graph);
   EXPECT_TRUE(ContainsGraphNodeWithName(int64_node->name(), *graph.graph()));
   EXPECT_EQ(int64_node->attr().at("value").tensor().int64_val(0), 42);
 }
@@ -88,9 +88,9 @@ TEST(GraphUtilsTest, AddScalarConstNodeString) {
 TEST(GraphUtilsTest, GetScalarConstNodeInt64) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  NodeDef* int64_node = AddScalarConstNode<int64>(128, &graph);
+  NodeDef* int64_node = AddScalarConstNode<int64_t>(128, &graph);
   int64_t result;
-  EXPECT_TRUE(GetScalarConstNodeValue<int64>(*int64_node, &result).ok());
+  EXPECT_TRUE(GetScalarConstNodeValue<int64_t>(*int64_node, &result).ok());
   EXPECT_EQ(result, 128);
 }
 
@@ -108,7 +108,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeErrorWithNonConst) {
   MutableGraphView graph(&graph_def);
   NodeDef* non_const = AddScalarPlaceholder(DT_INT64, &graph);
   int64_t result;
-  Status s = GetScalarConstNodeValue<int64>(*non_const, &result);
+  Status s = GetScalarConstNodeValue<int64_t>(*non_const, &result);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.error_message(),
             "Node Placeholder is not a Const node. Op: Placeholder");
@@ -117,7 +117,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeErrorWithNonConst) {
 TEST(GraphUtilsTest, GetScalarConstNodeErrorWithType) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  NodeDef* int64_node = AddScalarConstNode<int64>(128, &graph);
+  NodeDef* int64_node = AddScalarConstNode<int64_t>(128, &graph);
   bool result;
   Status s = GetScalarConstNodeValue<bool>(*int64_node, &result);
   EXPECT_FALSE(s.ok());
@@ -137,7 +137,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeErrorWithVector) {
   tensor->add_int64_val(128);
 
   int64_t result;
-  Status s = GetScalarConstNodeValue<int64>(node, &result);
+  Status s = GetScalarConstNodeValue<int64_t>(node, &result);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.error_message(),
             "Node Const should be a scalar but has shape: [1]");

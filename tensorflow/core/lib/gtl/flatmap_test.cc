@@ -27,7 +27,7 @@ namespace tensorflow {
 namespace gtl {
 namespace {
 
-typedef FlatMap<int64, int32> NumMap;
+typedef FlatMap<int64_t, int32> NumMap;
 
 // If map has an entry for k, return the corresponding value, else return def.
 int32 Get(const NumMap& map, int64_t k, int32_t def = -1) {
@@ -44,7 +44,7 @@ int32 Get(const NumMap& map, int64_t k, int32_t def = -1) {
 }
 
 // Return contents of map as a sorted list of pairs.
-typedef std::vector<std::pair<int64, int32>> NumMapContents;
+typedef std::vector<std::pair<int64_t, int32>> NumMapContents;
 NumMapContents Contents(const NumMap& map) {
   NumMapContents result;
   for (const auto& p : map) {
@@ -143,7 +143,7 @@ TEST(FlatMapTest, Emplace) {
 }
 
 TEST(FlatMapTest, EmplaceUniquePtr) {
-  FlatMap<int64, std::unique_ptr<string>> smap;
+  FlatMap<int64_t, std::unique_ptr<string>> smap;
   smap.emplace(1, std::unique_ptr<string>(new string("hello")));
 }
 
@@ -341,7 +341,7 @@ TEST(FlatMap, InitializerList) {
   NumMap b({{1, 10}, {2, 20}, {3, 30}});
   NumMap c = {{1, 10}, {2, 20}, {3, 30}};
 
-  typedef std::unordered_map<int64, int32> StdNumMap;
+  typedef std::unordered_map<int64_t, int32> StdNumMap;
   StdNumMap std({{1, 10}, {2, 20}, {3, 30}});
   StdNumMap::value_type std_r1 = *std.find(1);
   StdNumMap::value_type std_r2 = *std.find(2);
@@ -463,7 +463,7 @@ TEST(FlatMap, Prefetch) {
 
 // Non-assignable values should work.
 struct NA {
-  int64 value;
+  int64_t value;
   NA() : value(-1) {}
   explicit NA(int64_t v) : value(v) {}
   NA(const NA& x) : value(x.value) {}
@@ -611,8 +611,8 @@ TEST(FlatMap, ConstructDestruct) {
 // Type to use to ensure that custom equality operator is used
 // that ignores extra value.
 struct CustomCmpKey {
-  int64 a;
-  int64 b;
+  int64_t a;
+  int64_t b;
   CustomCmpKey(int64_t v1, int64_t v2) : a(v1), b(v2) {}
   bool operator==(const CustomCmpKey& x) const { return a == x.a && b == x.b; }
 };

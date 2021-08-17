@@ -49,8 +49,8 @@ struct PoolParameters {
   // elements otherwise.
   PoolParameters(OpKernelContext* context, const std::vector<int32>& ksize,
                  const std::vector<int32>& stride, Padding padding,
-                 std::vector<int64> explicit_paddings, TensorFormat data_format,
-                 const TensorShape& tensor_in_shape);
+                 std::vector<int64_t> explicit_paddings,
+                 TensorFormat data_format, const TensorShape& tensor_in_shape);
 
   // Returns the shape of the output for "forward" pooling operations.
   TensorShape forward_output_shape();
@@ -69,14 +69,14 @@ struct PoolParameters {
   int col_stride;
   int depth_stride;
 
-  int64 out_height;
-  int64 out_width;
+  int64_t out_height;
+  int64_t out_width;
   int out_depth;
 
-  int64 pad_top;
-  int64 pad_bottom;
-  int64 pad_left;
-  int64 pad_right;
+  int64_t pad_top;
+  int64_t pad_bottom;
+  int64_t pad_left;
+  int64_t pad_right;
 
   int pad_depth;
 
@@ -297,7 +297,7 @@ class MaxPoolingOp : public OpKernel {
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
-  std::vector<int64> explicit_paddings_;
+  std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
 };
 
@@ -650,7 +650,7 @@ void SpatialAvgPool(OpKernelContext* context, Tensor* output,
   // so the factor 0.01 (i.e. 1/100) with a max of 10000, was chosen to limit
   // the work unit cost to an operating range in which it empirically performed
   // best.
-  const int64_t work_unit_cost = std::max(int64{10000}, work_unit_size / 100);
+  const int64_t work_unit_cost = std::max(int64_t{10000}, work_unit_size / 100);
   const DeviceBase::CpuWorkerThreads& worker_threads =
       *(context->device()->tensorflow_cpu_worker_threads());
   Shard(worker_threads.num_threads, worker_threads.workers,

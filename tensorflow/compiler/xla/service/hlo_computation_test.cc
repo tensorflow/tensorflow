@@ -246,7 +246,7 @@ TEST_F(HloComputationTest, VisitWithMultipleRoots) {
 
     HloComputation* computation_;
     absl::flat_hash_set<HloInstruction*> visited_set_;
-    int64 finish_visit_calls_ = 0;
+    int64_t finish_visit_calls_ = 0;
     HloInstruction* last_visited_ = nullptr;
   };
 

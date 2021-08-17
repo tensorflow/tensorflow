@@ -67,11 +67,11 @@ class ShapePartitionAssigner {
   ShapePartitionAssigner(const Shape& shape) : shape_(shape) {}
 
   // Returns dimension partition counts (starting at outer-most dimension).
-  std::vector<int64> Run(int64_t target_partition_count);
+  std::vector<int64_t> Run(int64_t target_partition_count);
 
   // Returns the total partition count based on 'dimension_partition_counts'.
-  static int64 GetTotalPartitionCount(
-      const std::vector<int64>& dimension_partition_counts);
+  static int64_t GetTotalPartitionCount(
+      const std::vector<int64_t>& dimension_partition_counts);
 
  private:
   const Shape& shape_;
@@ -81,22 +81,23 @@ class ShapePartitionAssigner {
 // 'shape' as specified by 'dimension_partition_counts'.
 class ShapePartitionIterator {
  public:
-  ShapePartitionIterator(const Shape& shape,
-                         const std::vector<int64>& dimension_partition_counts);
+  ShapePartitionIterator(
+      const Shape& shape,
+      const std::vector<int64_t>& dimension_partition_counts);
 
   // Returns a partition [start, size] for each dimension.
   // Partitions are listed starting from outer-most dimension first.
-  std::vector<std::pair<int64, int64>> GetPartition(int64_t index) const;
+  std::vector<std::pair<int64_t, int64_t>> GetPartition(int64_t index) const;
 
-  int64 GetTotalPartitionCount() const;
+  int64_t GetTotalPartitionCount() const;
 
  private:
   const Shape& shape_;
-  const std::vector<int64> dimension_partition_counts_;
+  const std::vector<int64_t> dimension_partition_counts_;
 
-  std::vector<int64> dimensions_;
-  std::vector<int64> dimension_partition_sizes_;
-  std::vector<int64> dimension_partition_strides_;
+  std::vector<int64_t> dimensions_;
+  std::vector<int64_t> dimension_partition_sizes_;
+  std::vector<int64_t> dimension_partition_strides_;
 };
 
 }  // namespace cpu

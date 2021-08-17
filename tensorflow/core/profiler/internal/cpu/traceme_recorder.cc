@@ -86,7 +86,7 @@ class SplitEventTracker {
 
   // Start events are collected from each ThreadLocalRecorder::Consume() call.
   // Their data is merged into end_events.
-  absl::flat_hash_map<int64, TraceMeRecorder::Event> start_events_;
+  absl::flat_hash_map<int64_t, TraceMeRecorder::Event> start_events_;
 
   // End events are stored in the output of TraceMeRecorder::Consume().
   std::vector<TraceMeRecorder::Event*> end_events_;
@@ -393,7 +393,7 @@ TraceMeRecorder::Events TraceMeRecorder::StopRecording() {
   return events;
 }
 
-/*static*/ int64 TraceMeRecorder::NewActivityId() {
+/*static*/ int64_t TraceMeRecorder::NewActivityId() {
   // Activity IDs: To avoid contention over a counter, the top 32 bits identify
   // the originating thread, the bottom 32 bits name the event within a thread.
   // IDs may be reused after 4 billion events on one thread, or 2 billion
@@ -402,7 +402,7 @@ TraceMeRecorder::Events TraceMeRecorder::StopRecording() {
   const thread_local static int32_t thread_id =
       thread_counter.fetch_add(1, std::memory_order_relaxed);
   thread_local static uint32 per_thread_activity_id = 0;
-  return static_cast<int64>(thread_id) << 32 | per_thread_activity_id++;
+  return static_cast<int64_t>(thread_id) << 32 | per_thread_activity_id++;
 }
 
 }  // namespace profiler

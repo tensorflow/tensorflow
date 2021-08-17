@@ -21,6 +21,7 @@ from __future__ import print_function
 from typing import Union
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import errors
 from tensorflow.python.util import _pywrap_determinism
 from tensorflow.python.util import _pywrap_tensor_float_32_execution
 from tensorflow.python.util import deprecation
@@ -300,7 +301,8 @@ def get_device_policy():
   elif device_policy == context.DEVICE_PLACEMENT_EXPLICIT:
     return 'explicit'
   else:
-    raise ValueError('Not a valid device policy: %r' % device_policy)
+    raise errors.InternalError(
+        f'Got an invalid device policy: {device_policy!r}.')
 
 
 @tf_export('config.experimental.set_device_policy')
@@ -343,7 +345,10 @@ def set_device_policy(device_policy):
   elif device_policy is None:
     context.context().device_policy = None
   else:
-    raise ValueError('Not a valid device policy: %r' % device_policy)
+    raise ValueError(
+        f'Invalid argument `device_policy`: {device_policy!r}. Please refer to '
+        'https://www.tensorflow.org/api_docs/python/tf/config/experimental/set_device_policy '
+        'for valid `device_policy` arguments.')
 
 
 @tf_export('config.experimental.get_synchronous_execution')

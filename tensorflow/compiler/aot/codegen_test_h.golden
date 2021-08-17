@@ -20,7 +20,7 @@ namespace xla { class ExecutableRunOptions; }
 // (Implementation detail) Entry point to the function in the object file.
 extern "C" void entry_point(
     void* result, const ::xla::ExecutableRunOptions* run_options,
-    const void** args, void** temps, tensorflow::int64* profile_counters);
+    const void** args, void** temps, int64_t* profile_counters);
 
 extern "C" char __tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[];
 
@@ -68,7 +68,7 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   static constexpr size_t kNumVariables = 3;
 
   // Byte size of each argument buffer. There are kNumArgs entries.
-  static const ::tensorflow::int64 ArgSize(::tensorflow::int32 index) {
+  static const ::int64_t ArgSize(::tensorflow::int32 index) {
     return BufferInfos()[ArgIndexToBufferIndex()[index]].size();
   }
 
@@ -172,22 +172,22 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   void set_arg1_data(const void* data) {
     set_arg_data(1, data);
   }
-  tensorflow::int64* arg1_data() {
-    return static_cast<tensorflow::int64*>(arg_data(1));
+  int64_t* arg1_data() {
+    return static_cast<int64_t*>(arg_data(1));
   }
-  tensorflow::int64& arg1(size_t dim0, size_t dim1) {
-    return (*static_cast<tensorflow::int64(*)[3][4]>(
+  int64_t& arg1(size_t dim0, size_t dim1) {
+    return (*static_cast<int64_t(*)[3][4]>(
         arg_data(1)))[dim0][dim1];
   }
-  const tensorflow::int64* arg1_data() const {
-    return static_cast<const tensorflow::int64*>(arg_data(1));
+  const int64_t* arg1_data() const {
+    return static_cast<const int64_t*>(arg_data(1));
   }
-  const tensorflow::int64& arg1(size_t dim0, size_t dim1) const {
-    return (*static_cast<const tensorflow::int64(*)[3][4]>(
+  const int64_t& arg1(size_t dim0, size_t dim1) const {
+    return (*static_cast<const int64_t(*)[3][4]>(
         arg_data(1)))[dim0][dim1];
   }
   int arg1_size() const {
-    return 12 * sizeof(tensorflow::int64);
+    return 12 * sizeof(int64_t);
   }
   int arg1_count() const {
     return 12;

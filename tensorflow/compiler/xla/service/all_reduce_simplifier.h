@@ -38,7 +38,7 @@ class AllReduceSimplifier : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  int64 replica_count_;
+  int64_t replica_count_;
 };
 
 }  // namespace xla

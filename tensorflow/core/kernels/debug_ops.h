@@ -253,7 +253,7 @@ class DebugNanCountOp : public BaseDebugOp {
 
     TensorShape shape({1});
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output_tensor));
-    output_tensor->vec<int64>()(0) = nan_count;
+    output_tensor->vec<int64_t>()(0) = nan_count;
     OP_REQUIRES_OK(context, PublishTensor(*output_tensor));
   }
 };
@@ -447,7 +447,7 @@ class DebugIdentityV2Op : public OpKernel {
   string op_name_;
   int32 output_slot_;
   int32 tensor_debug_mode_;
-  int64 circular_buffer_size_;
+  int64_t circular_buffer_size_;
   string tfdbg_run_id_;
 };
 
@@ -681,7 +681,7 @@ class DebugNumericSummaryV2Op<CPUDevice, Tin, Tout> : public OpKernel {
 
  private:
   int tensor_debug_mode_;
-  int64 tensor_id_;
+  int64_t tensor_id_;
   static constexpr int kShapeDims = 6;
   static constexpr int kNegInfBit = 0x01;
   static constexpr int kPosInfBit = 0x02;
@@ -880,7 +880,7 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
  private:
   int tensor_debug_mode_;
-  int64 tensor_id_;
+  int64_t tensor_id_;
   static constexpr int64_t kMaxTensorId = 1L
                                           << std::numeric_limits<Tout>::digits;
 };

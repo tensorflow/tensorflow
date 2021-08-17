@@ -154,7 +154,7 @@ class BundleWriter {
   string data_path_;
   bool use_temp_file_;
   std::unique_ptr<FileOutputBuffer> out_;
-  int64 size_;  // Number of bytes written into out_.
+  int64_t size_;  // Number of bytes written into out_.
   std::map<string, BundleEntryProto> entries_;
   Status status_;
 

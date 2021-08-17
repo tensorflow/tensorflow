@@ -200,7 +200,7 @@ struct RendezvousKey {
   std::vector<GlobalDeviceId> global_devices;
   int num_local_participants;
   CollectiveOpKind collective_op_kind;
-  int64 op_id;
+  int64_t op_id;
 };
 
 template <typename DescFn>
@@ -246,12 +246,12 @@ struct AllReduceParticipantData : ParticipantData {
   // on how well the NCCL in-place implementation performs vs the out-of-place
   // implementation).
   struct Buffer {
-    int64 element_count;
+    int64_t element_count;
     se::DeviceMemoryBase source_data;
     se::DeviceMemoryBase destination_data;
     PrimitiveType primitive_type;
   };
-  int64 device_ordinal;
+  int64_t device_ordinal;
   se::Stream* stream;
   std::vector<Buffer> buffers;
 
@@ -259,7 +259,7 @@ struct AllReduceParticipantData : ParticipantData {
 
   // For each local all-reduce participant a (global ID, local device ordinal)
   // pair for the participant. Participants are in no particular order.
-  std::vector<std::pair<GlobalDeviceId, int64>> local_devices;
+  std::vector<std::pair<GlobalDeviceId, int64_t>> local_devices;
 
   string ToString() const override {
     std::vector<std::string> buffer_strs;

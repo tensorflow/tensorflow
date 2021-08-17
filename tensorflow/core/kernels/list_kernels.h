@@ -290,7 +290,7 @@ class TensorListConcat : public OpKernel {
     PartialTensorShape element_shape_except_first_dim;
     if (!element_shape_.unknown_rank()) {
       element_shape_except_first_dim = PartialTensorShape(
-          gtl::ArraySlice<int64>(element_shape_.dim_sizes()).subspan(1));
+          gtl::ArraySlice<int64_t>(element_shape_.dim_sizes()).subspan(1));
     }
     // Check that the input Variant tensor is indeed a TensorList and has the
     // correct element type.
@@ -349,7 +349,7 @@ class TensorListConcat : public OpKernel {
               errors::InvalidArgument("Concat saw a scalar shape at index ", i,
                                       " but requires at least vectors."));
           TensorShape shape_except_first_dim = TensorShape(
-              gtl::ArraySlice<int64>(t.shape().dim_sizes()).subspan(1));
+              gtl::ArraySlice<int64_t>(t.shape().dim_sizes()).subspan(1));
           OP_REQUIRES_OK(c, tmp.MergeWith(shape_except_first_dim,
                                           &element_shape_except_first_dim));
           OP_REQUIRES(c, first_dim == -1 || first_dim == t.shape().dim_size(0),
@@ -379,12 +379,11 @@ class TensorListConcat : public OpKernel {
     // Build the lengths_tensor and leading dim of the output tensor by
     // iterating over all element tensors.
     Tensor* lengths_tensor = nullptr;
-    OP_REQUIRES_OK(
-        c,
-        c->allocate_output(
-            1, TensorShape({static_cast<int64>(tensor_list->tensors().size())}),
-            &lengths_tensor));
-    auto lengths_tensor_vec = lengths_tensor->vec<int64>();
+    OP_REQUIRES_OK(c, c->allocate_output(1,
+                                         TensorShape({static_cast<int64_t>(
+                                             tensor_list->tensors().size())}),
+                                         &lengths_tensor));
+    auto lengths_tensor_vec = lengths_tensor->vec<int64_t>();
     int64_t leading_dim = 0;
     for (size_t i = 0; i < tensor_list->tensors().size(); i++) {
       int64_t dim;
@@ -408,7 +407,7 @@ class TensorListConcat : public OpKernel {
                           "List contains uninitialized tensor at index ", i,
                           " but leading_dims has only ",
                           c->input(2).NumElements(), " elements."));
-          dim = c->input(2).vec<int64>()(i);
+          dim = c->input(2).vec<int64_t>()(i);
         }
       }
       leading_dim += dim;
@@ -517,7 +516,7 @@ class TensorListSplit : public OpKernel {
     int64_t start = 0;
     int64_t end = 0;
     for (int i = 0; i < lengths.shape().dim_size(0); ++i) {
-      int64_t length = lengths.vec<int64>()(i);
+      int64_t length = lengths.vec<int64_t>()(i);
       OP_REQUIRES(
           c, length >= 0,
           errors::InvalidArgument("Invalid value in lengths: ", length));

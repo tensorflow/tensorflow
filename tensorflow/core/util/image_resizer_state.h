@@ -129,7 +129,7 @@ struct ImageResizerState {
     // Guard against overflows
     OP_REQUIRES(context,
                 ceilf((out_height - 1) * height_scale) <=
-                    static_cast<float>(std::numeric_limits<int64>::max()),
+                    static_cast<float>(std::numeric_limits<int64_t>::max()),
                 errors::InvalidArgument(
                     "input image height scale would cause an overflow"));
     OP_REQUIRES(
@@ -150,12 +150,12 @@ struct ImageResizerState {
             &output));
   }
 
-  int64 batch_size;
-  int64 out_height;
-  int64 out_width;
-  int64 in_height;
-  int64 in_width;
-  int64 channels;
+  int64_t batch_size;
+  int64_t out_height;
+  int64_t out_width;
+  int64_t in_height;
+  int64_t in_width;
+  int64_t channels;
   float height_scale;
   float width_scale;
   Tensor* output = nullptr;
@@ -235,12 +235,12 @@ struct ImageResizerGradientState {
                                 &output));
   }
 
-  int64 batch_size;
-  int64 channels;
-  int64 resized_height;
-  int64 resized_width;
-  int64 original_height;
-  int64 original_width;
+  int64_t batch_size;
+  int64_t channels;
+  int64_t resized_height;
+  int64_t resized_width;
+  int64_t original_height;
+  int64_t original_width;
   float height_scale;
   float width_scale;
   Tensor* output = nullptr;

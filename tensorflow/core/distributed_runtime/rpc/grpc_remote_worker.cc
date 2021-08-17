@@ -301,7 +301,7 @@ class GrpcRemoteWorker : public WorkerInterface {
 
   // Helper function for configuring max GRPC retries. Defaults to 0 (no
   // retries).
-  const int64 MaxRetries() {
+  const int64_t MaxRetries() {
     int64_t max_retries = -1;
     TF_CHECK_OK(ReadInt64FromEnvVar("GRPC_MAX_RETRIES", 0, &max_retries));
     return max_retries;

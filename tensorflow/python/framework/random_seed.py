@@ -23,6 +23,7 @@ from __future__ import print_function
 import weakref
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -82,6 +83,13 @@ def get_seed(op_seed):
       seeds = DEFAULT_GRAPH_SEED, _truncate_seed(op_seed)
     else:
       seeds = None, None
+
+  if seeds == (None, None) and config.deterministic_ops_enabled():
+    raise RuntimeError(  # pylint: disable=g-doc-exception
+        'Random ops require a seed to be set when determinism is enabled. '
+        'Please set a seed before running the op, e.g. by calling '
+        'tf.random.set_seed(1).')
+
   # Avoid (0, 0) as the C++ ops interpret it as nondeterminism, which would
   # be unexpected since Python docs say nondeterminism is (None, None).
   if seeds == (0, 0):

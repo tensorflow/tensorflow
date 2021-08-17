@@ -1024,7 +1024,7 @@ static llvm::Expected<bool> Predicate(
       CASE(int8);
       CASE(int16);
       CASE(int32);
-      CASE(int64);
+      CASE(int64_t);
       CASE(bool);
 #undef CASE
       case DT_STRING:

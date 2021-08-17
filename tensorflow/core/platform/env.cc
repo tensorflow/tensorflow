@@ -151,7 +151,7 @@ Status Env::SetOption(const std::string& scheme, const std::string& key,
 }
 
 Status Env::SetOption(const std::string& scheme, const std::string& key,
-                      const std::vector<int64>& values) {
+                      const std::vector<int64_t>& values) {
   FileSystem* file_system = file_system_registry_->Lookup(scheme);
   if (!file_system) {
     return errors::Unimplemented("File system scheme '", scheme,
@@ -317,8 +317,8 @@ Status Env::HasAtomicMove(const string& path, bool* has_atomic_move) {
   return fs->HasAtomicMove(path, has_atomic_move);
 }
 
-Status Env::DeleteRecursively(const string& dirname, int64* undeleted_files,
-                              int64* undeleted_dirs) {
+Status Env::DeleteRecursively(const string& dirname, int64_t* undeleted_files,
+                              int64_t* undeleted_dirs) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
   return fs->DeleteRecursively(dirname, undeleted_files, undeleted_dirs);
@@ -559,7 +559,7 @@ class FileStream : public protobuf::io::ZeroCopyInputStream {
   static constexpr int kBufSize = 512 << 10;
 
   RandomAccessFile* file_;
-  int64 pos_;
+  int64_t pos_;
   Status status_;
   char scratch_[kBufSize];
 };

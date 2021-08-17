@@ -111,7 +111,7 @@ class GpuCompiler : public LLVMCompiler {
     };
   }
 
-  static int64 GetSizeOfShape(const Shape& shape, int pointer_size) {
+  static int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
     if (shape.is_static() || shape.IsTuple()) {
       return ShapeUtil::ByteSizeOf(shape, pointer_size);
     }
@@ -136,7 +136,7 @@ class GpuCompiler : public LLVMCompiler {
   const char* data_layout_;
 
   // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
-  const int64 pointer_size_;
+  const int64_t pointer_size_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuCompiler);
 };

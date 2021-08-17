@@ -30,12 +30,12 @@ namespace tensorflow {
 
 ReaderBase::ReaderBase(const string& name) : name_(name) {}
 
-int64 ReaderBase::NumRecordsProduced() {
+int64_t ReaderBase::NumRecordsProduced() {
   mutex_lock lock(mu_);
   return num_records_produced_;
 }
 
-int64 ReaderBase::NumWorkUnitsCompleted() {
+int64_t ReaderBase::NumWorkUnitsCompleted() {
   mutex_lock lock(mu_);
   return work_finished_;
 }
@@ -75,10 +75,10 @@ Status ReaderBase::RestoreStateLocked(const tstring& state) {
   return errors::Unimplemented("Reader RestoreState");
 }
 
-int64 ReaderBase::ReadUpTo(const int64_t num_records, QueueInterface* queue,
-                           std::vector<tstring>* keys,
-                           std::vector<tstring>* values,
-                           OpKernelContext* context) {
+int64_t ReaderBase::ReadUpTo(const int64_t num_records, QueueInterface* queue,
+                             std::vector<tstring>* keys,
+                             std::vector<tstring>* values,
+                             OpKernelContext* context) {
   mutex_lock lock(mu_);
   int64_t records_produced_this_call = 0;
   while (true) {
@@ -135,8 +135,8 @@ int64 ReaderBase::ReadUpTo(const int64_t num_records, QueueInterface* queue,
 // Default implementation just reads one record at a time.
 Status ReaderBase::ReadUpToLocked(int64_t num_records,
                                   std::vector<tstring>* keys,
-                                  std::vector<tstring>* values, int64* num_read,
-                                  bool* at_end) {
+                                  std::vector<tstring>* values,
+                                  int64_t* num_read, bool* at_end) {
   bool produced = false;
   tstring key;
   tstring value;
@@ -179,9 +179,9 @@ void ReaderBase::Read(QueueInterface* queue, tstring* key, tstring* value,
           " must set *at_end=true, *produced=true, or return an error.");
     }
     if (!status.ok() && produced) {
-      status = errors::Internal(
-          "ReadLocked() for ", name(),
-          " set *produced=true *and* returned an error: ", status.ToString());
+      status = errors::Internal("ReadLocked() for ", name(),
+                                " set *produced=true *and* returned an error: ",
+                                status.error_message());
     }
     if (status.ok() && at_end) {
       status = OnWorkFinishedLocked();

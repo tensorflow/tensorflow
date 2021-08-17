@@ -26,18 +26,18 @@ namespace {
 // element of an image by the count of elements that contributed to that
 // element during pooling.
 XlaOp AvgPoolDivideByCountWithGeneralPadding(
-    XlaOp sums, PrimitiveType dtype, absl::Span<const int64> input_shape,
-    absl::Span<const std::pair<int64, int64>> spatial_padding,
-    absl::Span<const int64> ksize, absl::Span<const int64> stride,
+    XlaOp sums, PrimitiveType dtype, absl::Span<const int64_t> input_shape,
+    absl::Span<const std::pair<int64_t, int64_t>> spatial_padding,
+    absl::Span<const int64_t> ksize, absl::Span<const int64_t> stride,
     const TensorFormat& data_format) {
   // The padding shouldn't be included in the counts. We use another
   // ReduceWindow to find the right counts.
   const int num_spatial_dims = spatial_padding.size();
 
-  std::vector<int64> input_dim_sizes(num_spatial_dims);
-  std::vector<int64> window_dims(num_spatial_dims);
-  std::vector<int64> window_ksize(num_spatial_dims);
-  std::vector<int64> window_stride(num_spatial_dims);
+  std::vector<int64_t> input_dim_sizes(num_spatial_dims);
+  std::vector<int64_t> window_dims(num_spatial_dims);
+  std::vector<int64_t> window_ksize(num_spatial_dims);
+  std::vector<int64_t> window_stride(num_spatial_dims);
   CHECK_EQ(data_format.num_spatial_dims(), num_spatial_dims)
       << "Invalid number of spatial dimensions in data format specification";
   for (int i = 0; i < num_spatial_dims; ++i) {
@@ -71,8 +71,8 @@ XlaOp AvgPoolDivideByCountWithGeneralPadding(
 
 // Sums all elements in the window specified by 'kernel_size' and 'stride'.
 XlaOp ComputeSums(XlaOp operand, XlaOp init_value,
-                  absl::Span<const int64> kernel_size,
-                  absl::Span<const int64> stride,
+                  absl::Span<const int64_t> kernel_size,
+                  absl::Span<const int64_t> stride,
                   const TensorFormat& data_format) {
   XlaBuilder* b = operand.builder();
   return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -87,8 +87,8 @@ XlaOp ComputeSums(XlaOp operand, XlaOp init_value,
 
 // Creates a padding configuration out of spatial padding values.
 PaddingConfig MakeSpatialPaddingConfig(
-    absl::Span<const std::pair<int64, int64>> spatial_padding,
-    int num_spatial_dims, absl::Span<const int64> stride,
+    absl::Span<const std::pair<int64_t, int64_t>> spatial_padding,
+    int num_spatial_dims, absl::Span<const int64_t> stride,
     const TensorFormat& data_format) {
   PaddingConfig padding_config;
   padding_config.mutable_dimensions()->Reserve(2 + num_spatial_dims);
@@ -106,12 +106,12 @@ PaddingConfig MakeSpatialPaddingConfig(
   return padding_config;
 }
 
-XlaOp AvgPoolDivideByCount(XlaOp pooled, absl::Span<const int64> input_size,
-                           absl::Span<const int64> window_dimensions,
-                           absl::Span<const int64> window_strides,
-                           absl::Span<const std::pair<int64, int64>> padding,
-                           PrimitiveType dtype, const TensorFormat& data_format,
-                           bool counts_include_padding) {
+XlaOp AvgPoolDivideByCount(
+    XlaOp pooled, absl::Span<const int64_t> input_size,
+    absl::Span<const int64_t> window_dimensions,
+    absl::Span<const int64_t> window_strides,
+    absl::Span<const std::pair<int64_t, int64_t>> padding, PrimitiveType dtype,
+    const TensorFormat& data_format, bool counts_include_padding) {
   if (counts_include_padding) {
     // If counts include padding, all windows have the same number of elements
     // contributing to each average. Divide by the window size everywhere to get
@@ -131,8 +131,8 @@ XlaOp AvgPoolDivideByCount(XlaOp pooled, absl::Span<const int64> input_size,
 
 }  // namespace
 
-XlaOp MaxPool(XlaOp operand, absl::Span<const int64> kernel_size,
-              absl::Span<const int64> stride, Padding padding,
+XlaOp MaxPool(XlaOp operand, absl::Span<const int64_t> kernel_size,
+              absl::Span<const int64_t> stride, Padding padding,
               const TensorFormat& data_format) {
   XlaBuilder* b = operand.builder();
   return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -145,9 +145,9 @@ XlaOp MaxPool(XlaOp operand, absl::Span<const int64> kernel_size,
   });
 }
 
-XlaOp AvgPool(XlaOp operand, absl::Span<const int64> kernel_size,
-              absl::Span<const int64> stride,
-              absl::Span<const std::pair<int64, int64>> padding,
+XlaOp AvgPool(XlaOp operand, absl::Span<const int64_t> kernel_size,
+              absl::Span<const int64_t> stride,
+              absl::Span<const std::pair<int64_t, int64_t>> padding,
               const TensorFormat& data_format,
               const bool counts_include_padding) {
   XlaBuilder* b = operand.builder();
@@ -155,8 +155,8 @@ XlaOp AvgPool(XlaOp operand, absl::Span<const int64> kernel_size,
     TF_ASSIGN_OR_RETURN(Shape operand_shape, b->GetShape(operand));
     PrimitiveType dtype = operand_shape.element_type();
     auto init_value = Zero(b, dtype);
-    std::vector<int64> input_size(operand_shape.dimensions().begin(),
-                                  operand_shape.dimensions().end());
+    std::vector<int64_t> input_size(operand_shape.dimensions().begin(),
+                                    operand_shape.dimensions().end());
     const int num_dims = kernel_size.size();
     const int num_spatial_dims = num_dims - 2;
     auto padding_config = MakeSpatialPaddingConfig(padding, num_spatial_dims,
@@ -170,14 +170,14 @@ XlaOp AvgPool(XlaOp operand, absl::Span<const int64> kernel_size,
   });
 }
 
-std::vector<std::pair<int64, int64>> MakeSpatialPadding(
-    absl::Span<const int64> input_size, absl::Span<const int64> kernel_size,
-    absl::Span<const int64> stride, Padding padding,
+std::vector<std::pair<int64_t, int64_t>> MakeSpatialPadding(
+    absl::Span<const int64_t> input_size, absl::Span<const int64_t> kernel_size,
+    absl::Span<const int64_t> stride, Padding padding,
     const TensorFormat& data_format) {
   const int num_spatial_dims = kernel_size.size() - 2;
-  std::vector<int64> input_spatial_dimensions;
-  std::vector<int64> kernel_size_spatial_dimensions;
-  std::vector<int64> stride_spatial_dimensions;
+  std::vector<int64_t> input_spatial_dimensions;
+  std::vector<int64_t> kernel_size_spatial_dimensions;
+  std::vector<int64_t> stride_spatial_dimensions;
   CHECK_EQ(data_format.num_spatial_dims(), num_spatial_dims)
       << "Invalid number of spatial dimensions in data format specification";
   for (int i = 0; i < num_spatial_dims; ++i) {
@@ -190,10 +190,10 @@ std::vector<std::pair<int64, int64>> MakeSpatialPadding(
                      stride_spatial_dimensions, padding);
 }
 
-XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64> gradients_size,
-                  absl::Span<const int64> kernel_size,
-                  absl::Span<const int64> stride,
-                  absl::Span<const std::pair<int64, int64>> spatial_padding,
+XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64_t> gradients_size,
+                  absl::Span<const int64_t> kernel_size,
+                  absl::Span<const int64_t> stride,
+                  absl::Span<const std::pair<int64_t, int64_t>> spatial_padding,
                   const TensorFormat& data_format,
                   const bool counts_include_padding) {
   XlaBuilder* b = out_backprop.builder();
@@ -240,8 +240,8 @@ XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64> gradients_size,
     // Pad the gradients in the spatial dimensions. We use the same padding
     // as Conv2DBackpropInput.
     PaddingConfig padding_config = MakeNoPaddingConfig(num_dims);
-    std::vector<int64> padded_gradients_size(gradients_size.begin(),
-                                             gradients_size.end());
+    std::vector<int64_t> padded_gradients_size(gradients_size.begin(),
+                                               gradients_size.end());
     // First, pad the output gradients the same way as the input. The additional
     // padding will be removed as a last step before returning the input
     // gradients.
@@ -271,15 +271,16 @@ XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64> gradients_size,
     auto padded_gradients = Pad(out_backprop_div, zero, padding_config);
 
     // in_backprop = padded_gradients <conv> ones
-    std::vector<int64> ones(num_dims, 1LL);
+    std::vector<int64_t> ones(num_dims, 1LL);
     auto in_backprop =
         ReduceWindow(padded_gradients, Zero(b, dtype),
                      CreateScalarAddComputation(dtype, b), kernel_size,
                      /*window_strides=*/ones, Padding::kValid);
     // The input padding doesn't contribute to the gradient, remove it.
-    std::vector<std::pair<int64, int64>> neg_spatial_padding;
+    std::vector<std::pair<int64_t, int64_t>> neg_spatial_padding;
     neg_spatial_padding.reserve(spatial_padding.size());
-    for (const std::pair<int64, int64>& spatial_padding_dim : spatial_padding) {
+    for (const std::pair<int64_t, int64_t>& spatial_padding_dim :
+         spatial_padding) {
       neg_spatial_padding.emplace_back(-spatial_padding_dim.first,
                                        -spatial_padding_dim.second);
     }

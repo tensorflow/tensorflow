@@ -141,7 +141,6 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitCopy(mlir::Operation* op);
 
   Status EmitConditional(mlir::Operation* op);
-  Status EmitCustomCall(mlir::Operation* op);
   Status EmitConvolutionThunk(mlir::Operation* op);
   Status EmitGemmThunk(mlir::Operation* op);
   Status EmitBatchNormThunk(mlir::Operation* op);
@@ -279,7 +278,7 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<BufferAllocation::Slice> GetAllocationSlice(
       mlir::Value v, std::string* constant_name = nullptr);
 
-  int64 ByteSizeOf(const Shape& shape) const {
+  int64_t ByteSizeOf(const Shape& shape) const {
     return llvm_ir::ByteSizeOf(
         shape, ir_emitter_context_->llvm_module()->getDataLayout());
   }
@@ -435,8 +434,8 @@ class IrEmitterUnnested : public IrEmitter {
                       const MlirEmitterContext& context,
                       absl::Span<const llvm_ir::IrArray> operand_arrays,
                       absl::Span<const llvm_ir::IrArray> output_arrays,
-                      absl::Span<const int64> reduced_output_dims,
-                      absl::Span<const int64> tiled_param_ids,
+                      absl::Span<const int64_t> reduced_output_dims,
+                      absl::Span<const int64_t> tiled_param_ids,
                       const KernelMappingScheme& mapping_scheme,
                       const LaunchDimensions& launch_dimensions);
 
@@ -655,8 +654,8 @@ class IrEmitterUnnested : public IrEmitter {
   // to only given thread and/or block id.
   void EmitPrintfWithThreadId(
       absl::string_view fmt, absl::Span<llvm::Value* const> arguments,
-      absl::optional<int64> thread_id_filter = absl::nullopt,
-      absl::optional<int64> block_id_filter = absl::nullopt);
+      absl::optional<int64_t> thread_id_filter = absl::nullopt,
+      absl::optional<int64_t> block_id_filter = absl::nullopt);
 
   // __shared__ memory uses a different address space, so we cast it to
   // global address space before writing or reading.

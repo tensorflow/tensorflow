@@ -73,7 +73,7 @@ class GrpcResponseCache {
     };
 
     State state = State::PENDING;
-    int64 step_id = -1;
+    int64_t step_id = -1;
     Tensor tensor;
     bool is_dead = false;
     Status response_status;
@@ -87,7 +87,7 @@ class GrpcResponseCache {
   mutex mu_;
   // response_cache_ is expected to be small, as entries are cleared immediately
   // on ack from the receiver.
-  gtl::FlatMap<int64, ResponseCacheEntry> response_cache_ TF_GUARDED_BY(mu_);
+  gtl::FlatMap<int64_t, ResponseCacheEntry> response_cache_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

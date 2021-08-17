@@ -197,8 +197,8 @@ TEST_F(DebugNanCountOpTest, Float_has_NaNs) {
 
   // Verify the NaN-count debug signal
   Tensor expected_nan_count(allocator(), DT_INT64, TensorShape({1}));
-  test::FillValues<int64>(&expected_nan_count, {3});
-  test::ExpectTensorEqual<int64>(expected_nan_count, *GetOutput(0));
+  test::FillValues<int64_t>(&expected_nan_count, {3});
+  test::ExpectTensorEqual<int64_t>(expected_nan_count, *GetOutput(0));
 }
 
 TEST_F(DebugNanCountOpTest, Float_no_NaNs) {
@@ -209,8 +209,8 @@ TEST_F(DebugNanCountOpTest, Float_no_NaNs) {
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_nan_count(allocator(), DT_INT64, TensorShape({1}));
-  test::FillValues<int64>(&expected_nan_count, {0});
-  test::ExpectTensorEqual<int64>(expected_nan_count, *GetOutput(0));
+  test::FillValues<int64_t>(&expected_nan_count, {0});
+  test::ExpectTensorEqual<int64_t>(expected_nan_count, *GetOutput(0));
 }
 
 TEST_F(DebugNanCountOpTest, Double_has_NaNs) {
@@ -222,8 +222,8 @@ TEST_F(DebugNanCountOpTest, Double_has_NaNs) {
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_nan_count(allocator(), DT_INT64, TensorShape({1}));
-  test::FillValues<int64>(&expected_nan_count, {3});
-  test::ExpectTensorEqual<int64>(expected_nan_count, *GetOutput(0));
+  test::FillValues<int64_t>(&expected_nan_count, {3});
+  test::ExpectTensorEqual<int64_t>(expected_nan_count, *GetOutput(0));
 }
 
 TEST_F(DebugNanCountOpTest, Double_no_NaNs) {
@@ -234,8 +234,8 @@ TEST_F(DebugNanCountOpTest, Double_no_NaNs) {
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_nan_count(allocator(), DT_INT64, TensorShape({1}));
-  test::FillValues<int64>(&expected_nan_count, {0});
-  test::ExpectTensorEqual<int64>(expected_nan_count, *GetOutput(0));
+  test::FillValues<int64_t>(&expected_nan_count, {0});
+  test::ExpectTensorEqual<int64_t>(expected_nan_count, *GetOutput(0));
 }
 
 // Tests for DebugNumericSummaryOp
@@ -523,7 +523,7 @@ TEST_F(DebugNumericSummaryOpTest, Int32Success) {
 
 TEST_F(DebugNumericSummaryOpTest, Int64Success) {
   TF_ASSERT_OK(Init(DT_INT64));
-  AddInputFromArray<int64>(TensorShape({2, 2, 2}), {0, 0, -1, 3, 3, 7, 0, 0});
+  AddInputFromArray<int64_t>(TensorShape({2, 2, 2}), {0, 0, -1, 3, 3, 7, 0, 0});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_DOUBLE, TensorShape({17}));

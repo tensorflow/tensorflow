@@ -86,7 +86,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
                                      tf_device_id);
 
   if (tf_device_id.value() >=
-      static_cast<int64>(pluggable_device_allocators_.size())) {
+      static_cast<int64_t>(pluggable_device_allocators_.size())) {
     pluggable_device_allocators_.resize(tf_device_id.value() + 1);
   }
 

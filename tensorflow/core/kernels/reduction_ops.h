@@ -121,9 +121,9 @@ struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
 CASTING_SPECIALIZATION(uint8, uint64);
 CASTING_SPECIALIZATION(uint16, uint64);
 CASTING_SPECIALIZATION(uint32, uint64);
-CASTING_SPECIALIZATION(int8, int64);
-CASTING_SPECIALIZATION(int16, int64);
-CASTING_SPECIALIZATION(int32, int64);
+CASTING_SPECIALIZATION(int8, int64_t);
+CASTING_SPECIALIZATION(int16, int64_t);
+CASTING_SPECIALIZATION(int32, int64_t);
 #undef CASTING_SPECIALIZATION
 
 // TODO(rmlarsen): Refactor this such that taking the sqrt can be optional
@@ -202,7 +202,11 @@ FIX_MEAN_IDENTITY(complex128)
 
 template <typename Device, typename OUT_T, typename Reducer>
 void FillIdentityEigenImpl(const Device& d, OUT_T out, const Reducer& reducer) {
-  out.device(d) = out.constant(Identity<Reducer>::identity(reducer));
+  MaybeWith32BitIndexing<Device>(
+      [&](auto out32) {
+        out32.device(d) = out32.constant(Identity<Reducer>::identity(reducer));
+      },
+      out);
 }
 
 //on ROCm with complex input, reducer produces hipFloatComplex/hipDoubleComplex
@@ -215,7 +219,8 @@ void FillIdentityEigenImplWithCast(const Device& d, OUT_T out, const Reducer& re
   static_assert(sizeof(id)==sizeof(cast_id), 
       "Error: FillIdentityEigenImplWithCast with incompatible types?");
   memcpy(&cast_id, &id, sizeof(cast_id)); // to avoid strict-aliasing warnings
-  out.device(d) = out.constant(cast_id);
+  MaybeWith32BitIndexing<Device>(
+      [&](auto out32) { out32.device(d) = out32.constant(cast_id); }, out);
 }
 
 template <typename Device, typename Reducer>

@@ -39,11 +39,11 @@ namespace xla {
 namespace {
 
 struct SelectAndScatterTestParam {
-  std::vector<int64> operand_shape;
-  std::vector<int64> source_shape;
+  std::vector<int64_t> operand_shape;
+  std::vector<int64_t> source_shape;
   Padding padding_type;
-  std::vector<int64> window_dimensions;
-  std::vector<int64> window_strides;
+  std::vector<int64_t> window_dimensions;
+  std::vector<int64_t> window_strides;
 };
 
 class SelectAndScatterTest

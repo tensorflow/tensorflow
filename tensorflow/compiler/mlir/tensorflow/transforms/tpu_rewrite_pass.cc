@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -337,11 +338,6 @@ Operation* BuildCompileOp(
           std::move(xla_device_assignment), &metadata)))
     return nullptr;
 
-  std::string txt_metadata;
-  if (tpu_compile_metadata_debug)
-    txt_metadata = metadata.DebugString();
-  else
-    metadata.SerializeToString(&txt_metadata);
 
   // Build a shape op for each input to cluster_func.
   // TODO(b/139377366): When shape inference is ready, we can use compile time
@@ -374,6 +370,16 @@ Operation* BuildCompileOp(
       RankedTensorType::get({}, builder->getType<TF::StringType>());
   auto program_type =
       RankedTensorType::get({3}, builder->getType<TF::StringType>());
+
+  // Add MLIR module's fingerprint to compile metadata.
+  uint64_t mlir_fingerprint = tensorflow::Fingerprint64(txt_module);
+  metadata.set_mlir_fingerprint(mlir_fingerprint);
+
+  std::string txt_metadata;
+  if (tpu_compile_metadata_debug)
+    txt_metadata = metadata.DebugString();
+  else
+    metadata.SerializeToString(&txt_metadata);
 
   auto compile_op = builder->create<TF::_TPUCompileMlirOp>(
       cluster_func.getLoc(),

@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   registry.insert<mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
-                  tfrt::gpu::GpuDialect,
+                  mlir::mhlo::MhloDialect, tfrt::gpu::GpuDialect,
                   tfrt::gpu::conversion::GpuConversionDialect>();
   tfrt::RegisterTFRTDialects(registry);
   tensorflow::registerTFRTGPUPasses();

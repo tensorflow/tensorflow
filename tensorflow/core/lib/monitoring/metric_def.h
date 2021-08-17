@@ -57,12 +57,12 @@ template <typename Value>
 ValueType GetValueType();
 
 template <>
-inline ValueType GetValueType<int64>() {
+inline ValueType GetValueType<int64_t>() {
   return ValueType::kInt64;
 }
 
 template <>
-inline ValueType GetValueType<std::function<int64()>>() {
+inline ValueType GetValueType<std::function<int64_t()>>() {
   return ValueType::kInt64;
 }
 

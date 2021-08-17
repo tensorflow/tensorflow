@@ -32,9 +32,9 @@ namespace {
 template <PrimitiveType T>
 class Exhaustive16BitBinaryTest
     : public ExhaustiveBinaryTest<T>,
-      public ::testing::WithParamInterface<std::pair<int64, int64>> {
+      public ::testing::WithParamInterface<std::pair<int64_t, int64_t>> {
  public:
-  int64 GetInputSize() override {
+  int64_t GetInputSize() override {
     int64_t begin, end;
     std::tie(begin, end) = GetParam();
     return end - begin;

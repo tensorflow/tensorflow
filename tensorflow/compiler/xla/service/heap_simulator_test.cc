@@ -204,7 +204,7 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   auto size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape());
   };
-  absl::flat_hash_map<const HloComputation*, int64> memory_by_computation;
+  absl::flat_hash_map<const HloComputation*, int64_t> memory_by_computation;
   memory_by_computation[cond_computation] = 5;
   memory_by_computation[body_computation] = 16;
 
@@ -336,7 +336,7 @@ class HeapSimulatorTracker {
                                                                   index);
   }
 
-  int64 OffsetAt(const HloInstruction* instruction, const ShapeIndex& index) {
+  int64_t OffsetAt(const HloInstruction* instruction, const ShapeIndex& index) {
     const HloValue* buffer = BufferAt(instruction, index);
     CHECK_EQ(1, result_.heap_results.size());
     return result_.heap_results.at(0).chunk_map.at(buffer).offset;
@@ -1023,10 +1023,9 @@ class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {
         : GlobalDecreasingSizeBestFitHeap(/*alignment=*/1) {}
 
     // Finds a chunk candidate and returns the offset and the new heap size.
-    std::pair<int64, int64> FindChunkCandidate(const HloValue* buffer,
-                                               int64_t size, int64_t start,
-                                               int64_t end,
-                                               int64_t preferred_offset = -1) {
+    std::pair<int64_t, int64_t> FindChunkCandidate(
+        const HloValue* buffer, int64_t size, int64_t start, int64_t end,
+        int64_t preferred_offset = -1) {
       buffer_interval_.buffer = buffer;
       buffer_interval_.size = size;
       buffer_interval_.start = start;
@@ -1312,7 +1311,7 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ChunkCandidate) {
   //  0|+--d--+  +--b--+
   //   -----------------------------------------> time
   //    0  1  2  3  4  5  6  7  8  9 10 11 12 13
-  using pair = std::pair<int64, int64>;
+  using pair = std::pair<int64_t, int64_t>;
   EXPECT_EQ(pair(5, 10), heap_.FindChunkCandidate(buffer_a_, 5, 6, 10, 5));
   heap_.CommitChunk();  // offset: 5, size: 5, start: 6, end: 10
   // Preferred offset 5 is returned.

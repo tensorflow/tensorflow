@@ -222,6 +222,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:hlo_ops_base_enums",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",

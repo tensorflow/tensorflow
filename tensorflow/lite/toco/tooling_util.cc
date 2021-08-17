@@ -1895,7 +1895,7 @@ std::string CreateInt32Array(Model* model, const std::string& param_name,
 }
 
 bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
-                                int64* result) {
+                                int64_t* result) {
   switch (op.type) {
     case OperatorType::kFullyConnected:
     case OperatorType::kConv:
@@ -2023,7 +2023,7 @@ bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
   return true;
 }
 
-bool EstimateArithmeticOpsCount(const Model& model, int64* result) {
+bool EstimateArithmeticOpsCount(const Model& model, int64_t* result) {
   int64_t total = 0;
   for (const auto& op : model.operators) {
     int64_t num_ops;

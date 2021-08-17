@@ -114,7 +114,7 @@ class GraphMgr {
     Executor* root = nullptr;               // not owned.
     FunctionLibraryRuntime* lib = nullptr;  // not owned.
     // Build the cost model if this value is strictly positive.
-    int64 build_cost_model = 0;
+    int64_t build_cost_model = 0;
   };
 
   struct Item : public core::RefCounted {
@@ -141,7 +141,7 @@ class GraphMgr {
     // manager.
     GraphMgr* graph_mgr;
 
-    int64 collective_graph_key;
+    int64_t collective_graph_key;
   };
 
   const WorkerEnv* worker_env_;  // Not owned.
@@ -151,7 +151,7 @@ class GraphMgr {
 
   // Owned.
   mutex mu_;
-  int64 next_id_ TF_GUARDED_BY(mu_) = 0;
+  int64_t next_id_ TF_GUARDED_BY(mu_) = 0;
 
   // If true, blocks until device has finished all queued operations in a step.
   bool sync_on_finish_ = true;

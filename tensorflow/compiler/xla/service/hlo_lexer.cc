@@ -225,7 +225,7 @@ TokKind HloLexer::LexToken() {
   }
 }
 
-absl::optional<int64> HloLexer::LexNanPayload(absl::string_view& consumable) {
+absl::optional<int64_t> HloLexer::LexNanPayload(absl::string_view& consumable) {
   static LazyRE2 payload_pattern = {R"(\(0x[0-9a-fA-F]+\))"};
   if (!RE2::Consume(&consumable, *payload_pattern)) {
     return absl::nullopt;
@@ -414,7 +414,7 @@ TokKind HloLexer::LexNumberOrPattern() {
     }
     uint64 uint64_val;
     if (absl::SimpleAtoi(slice, &uint64_val)) {
-      token_state_.int64_val = absl::bit_cast<int64>(uint64_val);
+      token_state_.int64_val = absl::bit_cast<int64_t>(uint64_val);
       return TokKind::kInt;
     }
     LOG(ERROR) << "Failed to parse int literal: " << slice;

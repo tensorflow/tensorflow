@@ -97,12 +97,11 @@ extern "C" {
 
 extern int __xla_cpu_runtime_PrintfToStderr(const char* format, ...);
 
-extern xla::int64 __xla_cpu_runtime_TracingStart(
+extern int64_t __xla_cpu_runtime_TracingStart(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
     const char* name);
 extern void __xla_cpu_runtime_TracingEnd(
-    const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
-    xla::int64 id);
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr, int64_t id);
 
 // Some things common to all of the runtime entry points below:
 //
@@ -176,21 +175,21 @@ extern void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
 extern void __xla_cpu_runtime_AllReduce(
     const xla::ExecutableRunOptions* run_options,
     const void* replica_groups_str, xla::int32 replica_groups_str_size,
-    xla::int32 channel_id_present, xla::int64 op_id, xla::int32 reduction_kind,
+    xla::int32 channel_id_present, int64_t op_id, xla::int32 reduction_kind,
     const void* shape_ptr, xla::int32 shape_length, xla::int32 num_buffers,
     void** input_buffers, void** output_buffers);
 
 extern void __xla_cpu_runtime_CollectivePermute(
     const xla::ExecutableRunOptions* run_options, xla::int32 channel_id_present,
-    xla::int64 op_id, xla::int32 byte_size, void* input_buffer,
+    int64_t op_id, xla::int32 byte_size, void* input_buffer,
     void* output_buffer, const void* source_target_pairs,
     xla::int32 source_target_pairs_size);
 
 extern void __xla_cpu_runtime_AllToAll(
     const xla::ExecutableRunOptions* run_options, xla::int32 channel_id_present,
-    xla::int64 op_id, const void* replica_groups_str,
+    int64_t op_id, const void* replica_groups_str,
     xla::int32 replica_groups_str_size, xla::int32 num_buffers,
-    xla::int64 buffer_size, void** source_buffers, void** destination_buffers);
+    int64_t buffer_size, void** source_buffers, void** destination_buffers);
 
 // Write the replica ID into the output buffer.
 extern void __xla_cpu_runtime_ReplicaId(

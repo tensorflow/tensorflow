@@ -31,7 +31,7 @@ namespace {
 constexpr StringPiece kJournal = "journal";
 
 Status ParseSequenceNumber(const std::string& journal_file,
-                           int64* sequence_number) {
+                           int64_t* sequence_number) {
   if (!RE2::FullMatch(journal_file, ".*_(\\d+)", sequence_number)) {
     return errors::InvalidArgument("Failed to parse journal file name: ",
                                    journal_file);

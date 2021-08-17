@@ -112,9 +112,9 @@ std::unique_ptr<Array2D<float>> EigenMatrixMultiply(const Array2D<float>& a,
 }
 
 struct MatMulShape {
-  int64 m;
-  int64 k;
-  int64 n;
+  int64_t m;
+  int64_t k;
+  int64_t n;
 };
 
 MatMulShape MatMulShapes[] = {
@@ -190,9 +190,9 @@ std::unique_ptr<Array2D<float>> MKLMatrixMultiply(const Array2D<float>& a,
                                                   bool transpose_rhs,
                                                   bool single_threaded) {
   CHECK_EQ(a.width(), b.height());
-  int64 m = a.height();
-  int64 n = b.width();
-  int64 k = a.width();
+  int64_t m = a.height();
+  int64_t n = b.width();
+  int64_t k = a.width();
 
   // The MKL matmul runtime function expects the matrix to be in column major
   // order and array2d is in row-major order. Create transposes of a and b. The

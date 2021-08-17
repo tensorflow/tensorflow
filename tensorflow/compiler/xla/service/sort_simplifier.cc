@@ -42,7 +42,7 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
     return false;
   }
 
-  absl::flat_hash_set<int64> used_indices;
+  absl::flat_hash_set<int64_t> used_indices;
   for (const HloInstruction* user : sort->users()) {
     if (user->opcode() != HloOpcode::kGetTupleElement) {
       // Can't analyse users other then get-tuple-element.
@@ -108,7 +108,7 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
   new_sort->set_to_apply(new_compare);
 
   // Map from original get-tuple-element tuple index to new HLO instruction
-  absl::flat_hash_map<int64, HloInstruction*> result_map;
+  absl::flat_hash_map<int64_t, HloInstruction*> result_map;
   if (new_sort->shape().IsTuple()) {
     // Old sort key maps to new sort key.
     int64_t new_index = 0;

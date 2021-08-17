@@ -676,7 +676,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       MakeAndReturn(TriangularSolveOp);
     }
     case HloOpcode::kReduceWindow: {
-      llvm::SmallVector<int64, 4> sizes, strides, base_dilations, win_dilations;
+      llvm::SmallVector<int64_t, 4> sizes, strides, base_dilations,
+          win_dilations;
       llvm::SmallVector<int64_t, 8> padding;
       for (const auto& dim : instruction->window().dimensions()) {
         sizes.push_back(dim.size());
@@ -953,7 +954,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonType(
 }
 
 mlir::DenseIntElementsAttr HloFunctionImporter::ConvertDimensions(
-    llvm::ArrayRef<int64> op_dimensions) {
+    llvm::ArrayRef<int64_t> op_dimensions) {
   llvm::SmallVector<APInt, 8> dimensions;
   dimensions.reserve(op_dimensions.size());
   for (auto value : op_dimensions) dimensions.emplace_back(APInt(64, value));
@@ -980,8 +981,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(
-    const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
-        source_target_pairs,
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
     mlir::Builder* builder) {
   std::vector<int64_t> attr(source_target_pairs.size() * 2);
   for (auto p : llvm::enumerate(source_target_pairs)) {
@@ -1008,7 +1008,8 @@ mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
   std::vector<int64_t> attr(num_groups * group_size, -1);
   for (int i = 0; i < num_groups; ++i) {
     int index = i * group_size;
-    for (const int64& id : replica_groups[i].replica_ids()) attr[index++] = id;
+    for (const int64_t& id : replica_groups[i].replica_ids())
+      attr[index++] = id;
   }
   auto type = mlir::RankedTensorType::get({num_groups, group_size},
                                           builder->getIntegerType(64));
@@ -1017,7 +1018,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
-    absl::optional<tensorflow::int64> channel_id) {
+    absl::optional<int64_t> channel_id) {
   xla::ChannelHandle channel_handle;
   if (channel_id) channel_handle.set_handle(*channel_id);
   return ConvertChannelHandle(channel_handle);

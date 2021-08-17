@@ -131,7 +131,7 @@ class SparseConcatOp : public OpKernel {
                   errors::InvalidArgument(
                       "Input shapes should be a vector but received shape ",
                       shapes[i].shape().DebugString(), " at position ", i));
-      auto input_shape_vector = shapes[i].vec<int64>();
+      auto input_shape_vector = shapes[i].vec<int64_t>();
       for (int j = 0; j < input_shape_vector.size(); j++) {
         new_num_elements =
             MultiplyWithoutOverflow(new_num_elements, input_shape_vector(j));
@@ -150,7 +150,7 @@ class SparseConcatOp : public OpKernel {
         context, !overflow_ocurred,
         errors::Internal("Encountered overflow from large input shape."));
 
-    const TensorShape input_shape(shapes[0].vec<int64>());
+    const TensorShape input_shape(shapes[0].vec<int64_t>());
     const int input_rank = input_shape.dims();
     const int concat_dim = (concat_dim_attr_ < 0)
                                ? input_rank + concat_dim_attr_
@@ -161,7 +161,7 @@ class SparseConcatOp : public OpKernel {
                                         "), got ", concat_dim_attr_));
     TensorShape output_shape = input_shape;
     for (int i = 1; i < N; ++i) {
-      const TensorShape current_shape(shapes[i].vec<int64>());
+      const TensorShape current_shape(shapes[i].vec<int64_t>());
       OP_REQUIRES(
           context, current_shape.dims() == input_rank,
           errors::InvalidArgument(
@@ -191,7 +191,7 @@ class SparseConcatOp : public OpKernel {
       output_shape_t(j) = output_shape.dim_size(j);
     }
 
-    int64 output_nnz = 0;
+    int64_t output_nnz = 0;
     for (int i = 0; i < N; ++i) {
       output_nnz += inds[i].dim_size(0);
     }

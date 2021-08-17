@@ -67,8 +67,8 @@ using absl::StrJoin;
 /* static */
 StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     const HloInstructionProto& proto,
-    const absl::flat_hash_map<int64, HloInstruction*>& instruction_map,
-    const absl::flat_hash_map<int64, HloComputation*>& computation_map,
+    const absl::flat_hash_map<int64_t, HloInstruction*>& instruction_map,
+    const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
     bool prohibit_empty_literal) {
   TF_RET_CHECK(!proto.opcode().empty());
   HloOpcode opcode;
@@ -165,10 +165,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                         proto.epsilon(), proto.feature_index());
       break;
     case HloOpcode::kFft: {
-      std::vector<int64> fft_length(proto.fft_length().begin(),
-                                    proto.fft_length().end());
+      std::vector<int64_t> fft_length(proto.fft_length().begin(),
+                                      proto.fft_length().end());
       instruction = CreateFft(shape, operands(0), proto.fft_type(),
-                              absl::Span<const int64>(fft_length));
+                              absl::Span<const int64_t>(fft_length));
       break;
     }
     case HloOpcode::kCopyStart: {
@@ -223,9 +223,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction = CreateRecvDone(operands(0), proto.is_host_transfer());
       break;
     case HloOpcode::kReverse:
-      instruction = CreateReverse(shape, operands(0),
-                                  std::vector<int64>(proto.dimensions().begin(),
-                                                     proto.dimensions().end()));
+      instruction =
+          CreateReverse(shape, operands(0),
+                        std::vector<int64_t>(proto.dimensions().begin(),
+                                             proto.dimensions().end()));
       break;
     case HloOpcode::kConcatenate:
       TF_RET_CHECK(proto.dimensions_size() == 1)
@@ -271,8 +272,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                 .subspan(reduce_operands.size() / 2, reduce_operands.size());
         instruction =
             CreateReduce(shape, inputs, init_values,
-                         std::vector<int64>(proto.dimensions().begin(),
-                                            proto.dimensions().end()),
+                         std::vector<int64_t>(proto.dimensions().begin(),
+                                              proto.dimensions().end()),
                          computations(0));
       }
       break;
@@ -293,14 +294,14 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kTranspose:
       instruction =
           CreateTranspose(shape, operands(0),
-                          std::vector<int64>(proto.dimensions().begin(),
-                                             proto.dimensions().end()));
+                          std::vector<int64_t>(proto.dimensions().begin(),
+                                               proto.dimensions().end()));
       break;
     case HloOpcode::kBroadcast:
       instruction =
           CreateBroadcast(shape, operands(0),
-                          std::vector<int64>(proto.dimensions().begin(),
-                                             proto.dimensions().end()));
+                          std::vector<int64_t>(proto.dimensions().begin(),
+                                               proto.dimensions().end()));
       break;
     case HloOpcode::kMap:
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
@@ -309,7 +310,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction = CreateMap(shape, all_operands(), computations(0));
       break;
     case HloOpcode::kSlice: {
-      std::vector<int64> slice_starts, slice_limits, slice_strides;
+      std::vector<int64_t> slice_starts, slice_limits, slice_strides;
       for (const HloInstructionProto::SliceDimensions& slice_dimensions :
            proto.slice_dimensions()) {
         slice_starts.push_back(slice_dimensions.start());
@@ -412,7 +413,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     }
     case HloOpcode::kAllGather:
     case HloOpcode::kAllGatherStart: {
-      absl::optional<int64> channel_id;
+      absl::optional<int64_t> channel_id;
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
@@ -445,7 +446,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << proto.called_computation_ids_size();
       TF_RET_CHECK(proto.channel_id() <= 0 || proto.all_reduce_id() <= 0)
           << "AllReduce cannot have both channel_id() and all_reduce_id()";
-      absl::optional<int64> channel_id;
+      absl::optional<int64_t> channel_id;
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
@@ -476,11 +477,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kAllToAll: {
-      absl::optional<int64> channel_id;
+      absl::optional<int64_t> channel_id;
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
-      absl::optional<int64> split_dimension;
+      absl::optional<int64_t> split_dimension;
       if (proto.dimensions_size() > 0) {
         TF_RET_CHECK(proto.dimensions_size() == 1)
             << "AllToAll cannot have more than 1 dimension (split dimension)";
@@ -627,8 +628,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
       instruction = CreateConvolve(
           shape, operands(0), operands(1),
-          std::max<int64>(proto.feature_group_count(), 1),
-          std::max<int64>(proto.batch_group_count(), 1), proto.window(),
+          std::max<int64_t>(proto.feature_group_count(), 1),
+          std::max<int64_t>(proto.batch_group_count(), 1), proto.window(),
           proto.convolution_dimension_numbers(), precision_config);
       break;
     }
@@ -703,10 +704,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         custom_call_instr->set_convolution_dimension_numbers(
             proto.convolution_dimension_numbers());
       }
-      custom_call_instr->set_feature_group_count(
-          std::max(static_cast<int64>(proto.feature_group_count()), int64{1}));
-      custom_call_instr->set_batch_group_count(
-          std::max(static_cast<int64>(proto.batch_group_count()), int64{1}));
+      custom_call_instr->set_feature_group_count(std::max(
+          static_cast<int64_t>(proto.feature_group_count()), int64_t{1}));
+      custom_call_instr->set_batch_group_count(std::max(
+          static_cast<int64_t>(proto.batch_group_count()), int64_t{1}));
       custom_call_instr->set_custom_call_has_side_effect(
           proto.custom_call_has_side_effect());
       custom_call_instr->set_padding_type(proto.padding_type());
@@ -715,13 +716,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
       *custom_call_instr->mutable_precision_config() = precision_config;
-      std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+      std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
           output_to_operand_aliasing;
       for (const auto& aliasing : proto.custom_call_output_operand_aliasing()) {
         output_to_operand_aliasing.emplace_back(
             ShapeIndex(aliasing.output_shape_index().begin(),
                        aliasing.output_shape_index().end()),
-            std::pair<int64, ShapeIndex>{
+            std::pair<int64_t, ShapeIndex>{
                 aliasing.operand_index(),
                 ShapeIndex(aliasing.operand_shape_index().begin(),
                            aliasing.operand_shape_index().end())});
@@ -738,7 +739,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           CreatePad(shape, operands(0), operands(1), proto.padding_config());
       break;
     case HloOpcode::kDynamicSlice: {
-      std::vector<int64> slice_sizes(proto.dynamic_slice_sizes_size());
+      std::vector<int64_t> slice_sizes(proto.dynamic_slice_sizes_size());
       absl::c_copy(proto.dynamic_slice_sizes(), slice_sizes.begin());
       TF_RET_CHECK(proto.operand_ids_size() >= 1)
           << "DynamicSlice instruction should have at least 1 operands but "
@@ -782,7 +783,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "Gather instruction should have GatherDimensionNumbers set.";
       auto gather_dimension_numbers = absl::make_unique<GatherDimensionNumbers>(
           proto.gather_dimension_numbers());
-      std::vector<int64> gather_slice_sizes;
+      std::vector<int64_t> gather_slice_sizes;
       for (int64_t bound : proto.gather_slice_sizes()) {
         gather_slice_sizes.push_back(bound);
       }
@@ -1109,7 +1110,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
     const Shape& shape, HloInstruction* operand, FftType fft_type,
-    absl::Span<const int64> fft_length) {
+    absl::Span<const int64_t> fft_length) {
   return absl::make_unique<HloFftInstruction>(shape, operand, fft_type,
                                               fft_length);
 }
@@ -1160,7 +1161,7 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllGather(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     int64_t all_gather_dimension, absl::Span<const ReplicaGroup> replica_groups,
-    bool constrain_layout, const absl::optional<int64>& channel_id,
+    bool constrain_layout, const absl::optional<int64_t>& channel_id,
     bool use_global_device_ids) {
   return absl::make_unique<HloAllGatherInstruction>(
       HloOpcode::kAllGather, shape, operands, all_gather_dimension,
@@ -1171,7 +1172,7 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 HloInstruction::CreateAllGatherStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     int64_t all_gather_dimension, absl::Span<const ReplicaGroup> replica_groups,
-    bool constrain_layout, const absl::optional<int64>& channel_id,
+    bool constrain_layout, const absl::optional<int64_t>& channel_id,
     bool use_global_device_ids) {
   return absl::make_unique<HloAllGatherInstruction>(
       HloOpcode::kAllGatherStart, shape, operands, all_gather_dimension,
@@ -1182,7 +1183,7 @@ HloInstruction::CreateAllGatherStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id, bool use_global_device_ids) {
+    const absl::optional<int64_t>& channel_id, bool use_global_device_ids) {
   return absl::make_unique<HloAllReduceInstruction>(
       HloOpcode::kAllReduce, shape, operands, reduce_computation,
       replica_groups, constrain_layout, channel_id, use_global_device_ids);
@@ -1193,7 +1194,7 @@ HloInstruction::CreateReduceScatter(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id, bool use_global_device_ids,
+    const absl::optional<int64_t>& channel_id, bool use_global_device_ids,
     int64_t scatter_dimension) {
   return absl::make_unique<HloReduceScatterInstruction>(
       shape, operands, reduce_computation, replica_groups, constrain_layout,
@@ -1205,7 +1206,7 @@ HloInstruction::CreateAllReduceStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id, bool use_global_device_ids) {
+    const absl::optional<int64_t>& channel_id, bool use_global_device_ids) {
   return absl::make_unique<HloAllReduceInstruction>(
       HloOpcode::kAllReduceStart, shape, operands, reduce_computation,
       replica_groups, constrain_layout, channel_id, use_global_device_ids);
@@ -1214,8 +1215,8 @@ HloInstruction::CreateAllReduceStart(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id,
-    const absl::optional<int64>& split_dimension) {
+    const absl::optional<int64_t>& channel_id,
+    const absl::optional<int64_t>& split_dimension) {
   return absl::make_unique<HloAllToAllInstruction>(
       shape, operands, replica_groups, constrain_layout, channel_id,
       split_dimension);
@@ -1330,7 +1331,7 @@ HloInstruction::CreateCollectivePermuteStart(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReverse(
     const Shape& shape, HloInstruction* operand,
-    absl::Span<const int64> dimensions) {
+    absl::Span<const int64_t> dimensions) {
   return absl::make_unique<HloReverseInstruction>(shape, operand, dimensions);
 }
 
@@ -1406,8 +1407,9 @@ HloInstruction::CreateAddDependency(HloInstruction* data_operand,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSlice(
     const Shape& shape, HloInstruction* operand,
-    absl::Span<const int64> start_indices,
-    absl::Span<const int64> limit_indices, absl::Span<const int64> strides) {
+    absl::Span<const int64_t> start_indices,
+    absl::Span<const int64_t> limit_indices,
+    absl::Span<const int64_t> strides) {
   return absl::make_unique<HloSliceInstruction>(shape, operand, start_indices,
                                                 limit_indices, strides);
 }
@@ -1415,7 +1417,7 @@ HloInstruction::CreateAddDependency(HloInstruction* data_operand,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDynamicSlice(
     const Shape& shape, HloInstruction* operand,
     absl::Span<HloInstruction* const> start_indices,
-    absl::Span<const int64> slice_sizes) {
+    absl::Span<const int64_t> slice_sizes) {
   return absl::make_unique<HloDynamicSliceInstruction>(
       shape, operand, start_indices, slice_sizes);
 }
@@ -1462,7 +1464,7 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduce(
     const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
-    absl::Span<const int64> dimensions_to_reduce,
+    absl::Span<const int64_t> dimensions_to_reduce,
     HloComputation* reduce_computation) {
   auto instruction = absl::WrapUnique(new HloReduceInstruction(
       shape, {operand, init_value}, dimensions_to_reduce, reduce_computation));
@@ -1472,7 +1474,7 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduce(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::Span<HloInstruction* const> init_values,
-    absl::Span<const int64> dimensions_to_reduce,
+    absl::Span<const int64_t> dimensions_to_reduce,
     HloComputation* reduce_computation) {
   std::vector<HloInstruction*> all_args;
   all_args.reserve(operands.size() * 2);
@@ -1537,7 +1539,7 @@ HloInstruction::CreateSelectAndScatter(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateBroadcast(
     const Shape& shape, HloInstruction* operand,
-    absl::Span<const int64> broadcast_dimensions) {
+    absl::Span<const int64_t> broadcast_dimensions) {
   return absl::make_unique<HloBroadcastInstruction>(shape, operand,
                                                     broadcast_dimensions);
 }
@@ -1579,8 +1581,8 @@ HloInstruction::CreateBroadcastSequence(
     return broadcast;
   }
   // Do explicit broadcast for degenerate broadcast.
-  std::vector<int64> broadcast_dimensions;
-  std::vector<int64> reshaped_dimensions;
+  std::vector<int64_t> broadcast_dimensions;
+  std::vector<int64_t> reshaped_dimensions;
   for (int i = 0; i < operand->shape().rank(); i++) {
     if (operand->shape().dimensions(i) == output_shape.dimensions(i)) {
       broadcast_dimensions.push_back(i);
@@ -1646,7 +1648,7 @@ HloInstruction::CreateDynamicReshape(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTranspose(
     const Shape& shape, HloInstruction* operand,
-    absl::Span<const int64> dimensions) {
+    absl::Span<const int64_t> dimensions) {
   return absl::make_unique<HloTransposeInstruction>(shape, operand, dimensions);
 }
 
@@ -1802,7 +1804,7 @@ bool HloInstruction::HasSideEffect() const {
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateGather(
     const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
     const GatherDimensionNumbers& gather_dim_numbers,
-    absl::Span<const int64> slice_sizes, bool indices_are_sorted) {
+    absl::Span<const int64_t> slice_sizes, bool indices_are_sorted) {
   return absl::make_unique<HloGatherInstruction>(
       shape, operand, start_indices, gather_dim_numbers, slice_sizes,
       indices_are_sorted);
@@ -2135,7 +2137,7 @@ HloInstruction* HloInstruction::mutable_operand(int64_t i) {
   return operands_.at(i);
 }
 
-int64 HloInstruction::operand_index(const HloInstruction* target) const {
+int64_t HloInstruction::operand_index(const HloInstruction* target) const {
   for (int64_t i = 0; i < operand_count(); ++i) {
     if (target == operand(i)) {
       return i;
@@ -2286,7 +2288,7 @@ void HloInstruction::AddUser(HloInstruction* user) {
   }
 }
 
-int64 HloInstruction::UserId(HloInstruction* user) {
+int64_t HloInstruction::UserId(HloInstruction* user) {
   auto result = user_map_.find(user);
   CHECK(result != user_map_.end());
   return result->second;
@@ -2455,7 +2457,7 @@ uint64 HloInstruction::Hash(
     const std::function<uint64(const HloInstruction*)>& hash_operand) const {
   using tensorflow::Hash64Combine;
 
-  uint64 hash_value = Hash64Combine(0, static_cast<uint64>(opcode()));
+  uint64 hash_value = Hash64Combine(0, static_cast<uint64_t>(opcode()));
   hash_value = Hash64Combine(hash_value, ShapeUtil::Hash(shape()));
 
   if (!IsCrossModuleAllReduce()) {
@@ -2870,7 +2872,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
 }
 
 bool HloInstruction::IsElementwiseImpl(
-    const absl::optional<int64>& operand_idx) const {
+    const absl::optional<int64_t>& operand_idx) const {
   if (opcode_ == HloOpcode::kDynamicUpdateSlice) {
     return operand_idx.has_value() && operand_idx.value() == 0;
   }
@@ -3668,9 +3670,9 @@ Status HloInstruction::AcceptWithOperandOrder(
 
 const Shape& HloInstruction::shape() const { return shape_; }
 
-absl::InlinedVector<int64, 4> HloInstruction::OperandIndices(
+absl::InlinedVector<int64_t, 4> HloInstruction::OperandIndices(
     const HloInstruction* operand) const {
-  absl::InlinedVector<int64, 4> result;
+  absl::InlinedVector<int64_t, 4> result;
   for (int64_t i = 0; i < operand_count(); ++i) {
     if (this->operand(i) == operand) {
       result.push_back(i);
@@ -3856,10 +3858,11 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(
   }
 }
 
-std::tuple<bool, std::vector<int64>, std::vector<int64>>
+std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
 HloInstruction::ReshapeMerelyInsertsOrDeletes1SizedDimensions() const {
   if (HloOpcode::kReshape != opcode_) {
-    return std::make_tuple(false, std::vector<int64>(), std::vector<int64>());
+    return std::make_tuple(false, std::vector<int64_t>(),
+                           std::vector<int64_t>());
   }
   return ShapeUtil::InsertedOrDeleted1SizedDimensions(operand(0)->shape_,
                                                       shape_);
@@ -3947,7 +3950,7 @@ static string CustomCallApiVersionToString(
 
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums) {
-  auto len_required = [](int64_t a, int64_t b, absl::Span<const int64> cs) {
+  auto len_required = [](int64_t a, int64_t b, absl::Span<const int64_t> cs) {
     return std::max({a, b, cs.empty() ? 0 : *absl::c_max_element(cs)}) + 1;
   };
 
@@ -4183,12 +4186,12 @@ void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
 }
 
 void HloInstruction::set_outer_dimension_partitions(
-    const std::vector<int64>& outer_dimension_partitions) {
+    const std::vector<int64_t>& outer_dimension_partitions) {
   outer_dimension_partitions_ = outer_dimension_partitions;
 }
 
 // TODO(b/80131774): Remove these temporary methods after transition.
-int64 HloInstruction::feature_index() const {
+int64_t HloInstruction::feature_index() const {
   return Cast<HloBatchNormInstruction>(this)->feature_index();
 }
 
@@ -4200,22 +4203,22 @@ FftType HloInstruction::fft_type() const {
   return Cast<HloFftInstruction>(this)->fft_type();
 }
 
-const std::vector<int64>& HloInstruction::fft_length() const {
+const std::vector<int64_t>& HloInstruction::fft_length() const {
   return Cast<HloFftInstruction>(this)->fft_length();
 }
 
-int64 HloInstruction::concatenate_dimension() const {
+int64_t HloInstruction::concatenate_dimension() const {
   return Cast<HloConcatenateInstruction>(this)->concatenate_dimension();
 }
 
-int64 HloInstruction::dimension() const {
+int64_t HloInstruction::dimension() const {
   if (auto set_size = DynCast<HloSetDimensionSizeInstruction>(this)) {
     return set_size->dimension();
   }
   return Cast<HloGetDimensionSizeInstruction>(this)->dimension();
 }
 
-int64 HloInstruction::inferred_dimension() const {
+int64_t HloInstruction::inferred_dimension() const {
   return Cast<HloReshapeInstruction>(this)->inferred_dimension();
 }
 
@@ -4224,39 +4227,39 @@ bool HloInstruction::IsRank2Transpose() const {
   return transpose != nullptr && transpose->IsRank2Transpose();
 }
 
-int64 HloInstruction::slice_starts(int64_t dimension) const {
+int64_t HloInstruction::slice_starts(int64_t dimension) const {
   return Cast<HloSliceInstruction>(this)->slice_starts(dimension);
 }
 
-const std::vector<int64>& HloInstruction::slice_starts() const {
+const std::vector<int64_t>& HloInstruction::slice_starts() const {
   return Cast<HloSliceInstruction>(this)->slice_starts();
 }
 
-std::vector<int64>* HloInstruction::mutable_slice_starts() {
+std::vector<int64_t>* HloInstruction::mutable_slice_starts() {
   return Cast<HloSliceInstruction>(this)->mutable_slice_starts();
 }
 
-int64 HloInstruction::slice_limits(int64_t dimension) const {
+int64_t HloInstruction::slice_limits(int64_t dimension) const {
   return Cast<HloSliceInstruction>(this)->slice_limits(dimension);
 }
 
-const std::vector<int64>& HloInstruction::slice_limits() const {
+const std::vector<int64_t>& HloInstruction::slice_limits() const {
   return Cast<HloSliceInstruction>(this)->slice_limits();
 }
 
-std::vector<int64>* HloInstruction::mutable_slice_limits() {
+std::vector<int64_t>* HloInstruction::mutable_slice_limits() {
   return Cast<HloSliceInstruction>(this)->mutable_slice_limits();
 }
 
-int64 HloInstruction::slice_strides(int64_t dimension) const {
+int64_t HloInstruction::slice_strides(int64_t dimension) const {
   return Cast<HloSliceInstruction>(this)->slice_strides(dimension);
 }
 
-const std::vector<int64>& HloInstruction::slice_strides() const {
+const std::vector<int64_t>& HloInstruction::slice_strides() const {
   return Cast<HloSliceInstruction>(this)->slice_strides();
 }
 
-std::vector<int64>* HloInstruction::mutable_slice_strides() {
+std::vector<int64_t>* HloInstruction::mutable_slice_strides() {
   return Cast<HloSliceInstruction>(this)->mutable_slice_strides();
 }
 
@@ -4327,7 +4330,7 @@ HloInstruction::fused_instructions() {
   return Cast<HloFusionInstruction>(this)->fused_instructions();
 }
 
-int64 HloInstruction::fused_instruction_count() const {
+int64_t HloInstruction::fused_instruction_count() const {
   return Cast<HloFusionInstruction>(this)->fused_instruction_count();
 }
 
@@ -4357,7 +4360,7 @@ RandomDistribution HloInstruction::random_distribution() const {
   return Cast<HloRngInstruction>(this)->random_distribution();
 }
 
-int64 HloInstruction::parameter_number() const {
+int64_t HloInstruction::parameter_number() const {
   return Cast<HloParameterInstruction>(this)->parameter_number();
 }
 
@@ -4381,7 +4384,7 @@ HloInstruction::parameter_replicated_at_leaf_buffers() const {
       ->parameter_replicated_at_leaf_buffers();
 }
 
-int64 HloInstruction::tuple_index() const {
+int64_t HloInstruction::tuple_index() const {
   return Cast<HloGetTupleElementInstruction>(this)->tuple_index();
 }
 
@@ -4426,16 +4429,16 @@ const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {
   return Cast<HloCollectiveInstruction>(this)->replica_groups();
 }
 
-const std::vector<std::pair<int64, int64>>&
+const std::vector<std::pair<int64_t, int64_t>>&
 HloInstruction::source_target_pairs() const {
   return Cast<HloCollectivePermuteInstruction>(this)->source_target_pairs();
 }
 
-absl::optional<int64> HloInstruction::channel_id() const {
+absl::optional<int64_t> HloInstruction::channel_id() const {
   return Cast<HloChannelInstruction>(this)->channel_id();
 }
 
-void HloInstruction::set_channel_id(const absl::optional<int64>& channel_id) {
+void HloInstruction::set_channel_id(const absl::optional<int64_t>& channel_id) {
   return Cast<HloChannelInstruction>(this)->set_channel_id(channel_id);
 }
 
@@ -4461,7 +4464,7 @@ void HloInstruction::set_convolution_dimension_numbers(
   }
 }
 
-int64 HloInstruction::feature_group_count() const {
+int64_t HloInstruction::feature_group_count() const {
   if (auto convolution = DynCast<HloConvolutionInstruction>(this)) {
     return convolution->feature_group_count();
   }
@@ -4476,7 +4479,7 @@ void HloInstruction::set_feature_group_count(int64_t feature_group_count) {
       feature_group_count);
 }
 
-int64 HloInstruction::batch_group_count() const {
+int64_t HloInstruction::batch_group_count() const {
   if (auto convolution = DynCast<HloConvolutionInstruction>(this)) {
     return convolution->batch_group_count();
   }
@@ -4523,11 +4526,11 @@ PaddingConfig* HloInstruction::mutable_padding_config() {
   return Cast<HloPadInstruction>(this)->mutable_padding_config();
 }
 
-int64 HloInstruction::slice_sizes(int64_t dimension) const {
+int64_t HloInstruction::slice_sizes(int64_t dimension) const {
   return Cast<HloDynamicSliceInstruction>(this)->slice_sizes(dimension);
 }
 
-const std::vector<int64>& HloInstruction::dynamic_slice_sizes() const {
+const std::vector<int64_t>& HloInstruction::dynamic_slice_sizes() const {
   return Cast<HloDynamicSliceInstruction>(this)->dynamic_slice_sizes();
 }
 
@@ -4541,7 +4544,7 @@ const GatherDimensionNumbers& HloInstruction::gather_dimension_numbers() const {
   return Cast<HloGatherInstruction>(this)->gather_dimension_numbers();
 }
 
-absl::Span<const int64> HloInstruction::gather_slice_sizes() const {
+absl::Span<const int64_t> HloInstruction::gather_slice_sizes() const {
   return Cast<HloGatherInstruction>(this)->gather_slice_sizes();
 }
 

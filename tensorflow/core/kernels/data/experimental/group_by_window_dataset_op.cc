@@ -107,7 +107,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       return "GroupByWindowDatasetOp::Dataset";
     }
 
-    int64 Cardinality() const override {
+    int64_t Cardinality() const override {
       int64_t n = input_->Cardinality();
       if (n == kInfiniteCardinality) {
         return n;
@@ -248,7 +248,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 return errors::InvalidArgument(
                     "`key_func` must return a scalar int64.");
               }
-              const int64_t key = key_func_output[0].scalar<int64>()();
+              const int64_t key = key_func_output[0].scalar<int64_t>()();
 
               if (window_sizes_.find(key) == window_sizes_.end()) {
                 // Run the window size function on the key to identify its
@@ -266,7 +266,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                       "`window_size_func` must return a scalar int64.");
                 }
                 const int64_t window_size =
-                    window_size_func_output[0].scalar<int64>()();
+                    window_size_func_output[0].scalar<int64_t>()();
                 if (window_size <= 0) {
                   return errors::InvalidArgument(
                       "Window size must be greater than zero, but got ",
@@ -480,7 +480,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                       dataset()->input_->output_shapes(), &group_dataset));
 
         Tensor key_arg(DT_INT64, TensorShape({}));
-        key_arg.scalar<int64>()() = key;
+        key_arg.scalar<int64_t>()() = key;
 
         Tensor group_dataset_arg(DT_VARIANT, TensorShape({}));
         TF_RETURN_IF_ERROR(
@@ -513,15 +513,15 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
       mutex mu_;
-      int64 group_counter_ TF_GUARDED_BY(mu_) = 0;
+      int64_t group_counter_ TF_GUARDED_BY(mu_) = 0;
       std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
       // TODO(mrry): Optimize for dense key space if appropriate.
       bool end_of_input_ TF_GUARDED_BY(mu_) = false;
-      int64 current_key_ TF_GUARDED_BY(mu_);
-      std::map<int64, std::vector<std::vector<Tensor>>> groups_
+      int64_t current_key_ TF_GUARDED_BY(mu_);
+      std::map<int64_t, std::vector<std::vector<Tensor>>> groups_
           TF_GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> current_group_iterator_ TF_GUARDED_BY(mu_);
-      std::map<int64, int64> window_sizes_ TF_GUARDED_BY(mu_);
+      std::map<int64_t, int64_t> window_sizes_ TF_GUARDED_BY(mu_);
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_key_func_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_reduce_func_;
       std::unique_ptr<InstantiatedCapturedFunction>

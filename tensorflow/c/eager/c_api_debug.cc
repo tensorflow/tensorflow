@@ -27,9 +27,9 @@ using tensorflow::string;
 
 namespace {
 
-std::vector<tensorflow::int64> TensorShapeAsVector(
-    const tensorflow::TensorHandle& handle, tensorflow::Status* status) {
-  std::vector<tensorflow::int64> shape;
+std::vector<int64_t> TensorShapeAsVector(const tensorflow::TensorHandle& handle,
+                                         tensorflow::Status* status) {
+  std::vector<int64_t> shape;
   int rank = -1;
   *status = handle.NumDims(&rank);
   if (!status->ok()) {
@@ -61,8 +61,7 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
     return nullptr;
   }
 
-  std::vector<tensorflow::int64> dev_dims =
-      TensorShapeAsVector(*handle, &status->status);
+  std::vector<int64_t> dev_dims = TensorShapeAsVector(*handle, &status->status);
   if (!status->status.ok()) {
     return nullptr;
   }

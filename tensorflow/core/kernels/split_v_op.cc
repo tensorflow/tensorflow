@@ -375,7 +375,7 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
 
     std::tie(prefix_dim_size, split_dim_size, suffix_dim_size) =
         Base::template SetDims<Eigen::DenseIndex>(input_shape, split_dim);
-    std::vector<int64> split_start_points(num_split);
+    std::vector<int64_t> split_start_points(num_split);
     for (int i = 0; i < num_split; ++i) {
       if (i == 0) {
         split_start_points[i] = 0;
@@ -538,7 +538,7 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
 
 #define REGISTER_SPLIT_LEN(type) \
   REGISTER_SPLIT(type, int32);   \
-  REGISTER_SPLIT(type, int64);
+  REGISTER_SPLIT(type, int64_t);
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT_LEN);
 
@@ -558,7 +558,7 @@ TF_CALL_ALL_TYPES(REGISTER_SPLIT_LEN);
 
 #define REGISTER_GPU_LEN(type) \
   REGISTER_GPU(type, int32);   \
-  REGISTER_GPU(type, int64);
+  REGISTER_GPU(type, int64_t);
 
 TF_CALL_bfloat16(REGISTER_GPU_LEN);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_LEN);
@@ -580,7 +580,7 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU_LEN);
                           SplitVOpCPU<int32, len_type>);
 
 REGISTER_GPU_int32(int32);
-REGISTER_GPU_int32(int64);
+REGISTER_GPU_int32(int64_t);
 
 #undef REGISTER_GPU_int32
 

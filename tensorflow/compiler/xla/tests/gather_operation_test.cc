@@ -335,7 +335,7 @@ ENTRY main {
 )";
   Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR2<int64>(
+  Literal start_indices = LiteralUtil::CreateR2<int64_t>(
       {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {21474836407, 1}, {1, 2}});
   RunTest(hlo_text, &operand, &start_indices);
 }

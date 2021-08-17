@@ -54,7 +54,7 @@ class Window : public DatasetBase {
     return output_shapes_;
   }
 
-  int64 AllocatedBytes() const override {
+  int64_t AllocatedBytes() const override {
     int64_t allocated_bytes = 0;
     for (auto& element : elements_) {
       allocated_bytes += GetAllocatedBytes(element);
@@ -62,7 +62,7 @@ class Window : public DatasetBase {
     return allocated_bytes;
   }
 
-  int64 TotalBytes() const override {
+  int64_t TotalBytes() const override {
     int64_t total_bytes = 0;
     for (auto& element : elements_) {
       total_bytes += GetTotalBytes(element);
@@ -70,7 +70,7 @@ class Window : public DatasetBase {
     return total_bytes;
   }
 
-  int64 Cardinality() const override { return elements_.size(); }
+  int64_t Cardinality() const override { return elements_.size(); }
 
   string DebugString() const override { return kWindow; }
 

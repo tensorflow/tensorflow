@@ -34,7 +34,7 @@ namespace tensorflow {
 //
 // CancellationToken values must be created by a call to
 // CancellationManager::get_cancellation_token.
-typedef int64 CancellationToken;
+typedef int64_t CancellationToken;
 
 // A callback that is invoked when a step is canceled.
 //

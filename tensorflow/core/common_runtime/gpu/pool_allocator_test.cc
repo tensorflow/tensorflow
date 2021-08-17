@@ -94,7 +94,7 @@ TEST(PoolAllocatorTest, Alignment) {
     size_t alignment = 1 << i;
     void* p = pool.AllocateRaw(alignment, 111);
     EXPECT_TRUE(p != nullptr);
-    EXPECT_EQ(0, reinterpret_cast<int64>(p) & (alignment - 1))
+    EXPECT_EQ(0, reinterpret_cast<int64_t>(p) & (alignment - 1))
         << "ptr: " << p << " alignment " << alignment;
     // Intentionally don't deallocate, to test that destruction of
     // the PoolAllocator frees all pending memory.

@@ -54,8 +54,8 @@ class DeepConv2DTransform {
 
   struct Shape {
     Shape(int64_t r, int64_t c) : rows(r), cols(c) {}
-    int64 rows;
-    int64 cols;
+    int64_t rows;
+    int64_t cols;
   };
 
   virtual const Shape& filter_shape() const = 0;

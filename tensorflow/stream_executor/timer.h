@@ -46,11 +46,11 @@ class Timer {
 
   // Returns the elapsed number of microseconds for a completed timer.
   // Completed means has been through a start/stop lifecycle.
-  uint64 Microseconds() const;
+  uint64_t Microseconds() const;
 
   // Returns the elapsed number of nanoseconds for a completed timer.
   // Completed means has been through a start/stop lifecycle.
-  uint64 Nanoseconds() const;
+  uint64_t Nanoseconds() const;
 
   // Returns the (opaque) backing platform ITimer instance. Ownership is
   // not transferred to the caller.

@@ -88,7 +88,7 @@ class RemoteMgr {
   // Returns the op_id and output_num if the given local TensorHandle exists in
   // remote_tensor_handle_map_.
   Status GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
-                               const bool wait_until_ready, int64* op_id,
+                               const bool wait_until_ready, int64_t* op_id,
                                int32* output_num)
       TF_SHARED_LOCKS_REQUIRED(remote_tensor_handle_mu_);
 

@@ -56,8 +56,8 @@ namespace data {
     ShuffleAndRepeatDatasetOp::kDatasetType;
 /* static */ constexpr const char* const ShuffleAndRepeatDatasetOp::kCount;
 
-const int64 kLogIntervalMicros = 10 * 1000000;  // 10 seconds.
-const int64 kMaxEpochsInBuffer = 3;
+const int64_t kLogIntervalMicros = 10 * 1000000;  // 10 seconds.
+const int64_t kMaxEpochsInBuffer = 3;
 
 constexpr char kNumRandomSamples[] = "num_random_samples";
 constexpr char kDataProduced[] = "data_produced";
@@ -82,8 +82,9 @@ ShuffleDatasetOpBase::ShuffleDatasetOpBase(OpKernelConstruction* ctx)
 class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
  public:
   ShuffleDatasetBase(OpKernelContext* ctx, const DatasetBase* input,
-                     int64 buffer_size,
-                     std::shared_ptr<SeedGenerator> seed_generator, int64 count)
+                     int64_t buffer_size,
+                     std::shared_ptr<SeedGenerator> seed_generator,
+                     int64_t count)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         buffer_size_(buffer_size),
@@ -107,7 +108,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     return input_->output_shapes();
   }
 
-  int64 Cardinality() const override {
+  int64_t Cardinality() const override {
     if (count_ == -1 || input_->Cardinality() == kInfiniteCardinality) {
       return kInfiniteCardinality;
     } else if (input_->Cardinality() == kUnknownCardinality) {
@@ -175,8 +176,9 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       DCHECK(!slices_.empty());
       // Choose an element to produce uniformly at random from the first
       // slice, and then remove the element from the slice.
-      int64 offset = Random() % (slices_.front()->end - slices_.front()->start);
-      int64 index = (slices_.front()->start + offset) % buffer_->size();
+      int64_t offset =
+          Random() % (slices_.front()->end - slices_.front()->start);
+      int64_t index = (slices_.front()->start + offset) % buffer_->size();
       *out_tensors = std::move(buffer_->at(index));
       this->RecordBufferDequeue(ctx, *out_tensors);
       std::swap(buffer_->at(index),
@@ -250,7 +252,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       // Restore the random number generators.
-      int64 num_random_samples;
+      int64_t num_random_samples;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kEpochNumRandomSamples),
                                             &num_random_samples));
       seed_generator_->set_num_random_samples(num_random_samples);
@@ -276,7 +278,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           reader->ReadScalar(this->full_name(kNumElements), &num_elements_));
       size_t slices_size;
       {
-        int64 temp;
+        int64_t temp;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(this->full_name(kSlicesSize), &temp));
         slices_size = static_cast<size_t>(temp);
@@ -287,12 +289,12 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       buffer_->resize(dataset()->buffer_size_);
       slices_.clear();
       for (size_t i = 0; i < slices_size; ++i) {
-        int64 start;
+        int64_t start;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(this->full_name(absl::StrJoin(
                                    std::make_tuple(kSlicesStart, i), "_")),
                                &start));
-        int64 end;
+        int64_t end;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             this->full_name(absl::StrJoin(std::make_tuple(kSlicesEnd, i), "_")),
             &end));
@@ -314,10 +316,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     // should be taken modulo the size of `buffer_` as their absolute value
     // can be greater than the range of `buffer_`.
     struct Slice {
-      Slice(int64 start, int64 end) : start(start), end(end) {}
+      Slice(int64_t start, int64_t end) : start(start), end(end) {}
 
-      int64 start;
-      int64 end;
+      int64_t start;
+      int64_t end;
     };
 
     random::SingleSampleAdapter<random::PhiloxRandom>::ResultType Random()
@@ -329,8 +331,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
     // Fills the shuffle buffer, preparing the buffer for sampling.
     Status FillBuffer(IteratorContext* ctx) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      int64 start_micros = EnvTime::NowMicros();
-      int64 num_log_entries = 0;
+      int64_t start_micros = EnvTime::NowMicros();
+      int64_t num_log_entries = 0;
       while (ShouldFillBuffer()) {
         if (EnvTime::NowMicros() >
             ((num_log_entries + 1) * kLogIntervalMicros) + start_micros) {
@@ -386,7 +388,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       if (epoch_ == 0) {
         slices_.push_back(absl::make_unique<Slice>(0, 0));
       } else {
-        int64 n = slices_.back()->end;
+        int64_t n = slices_.back()->end;
         slices_.push_back(absl::make_unique<Slice>(n, n));
         for (const auto& provider : ctx->split_providers()) {
           TF_RETURN_IF_ERROR(provider->Reset());
@@ -432,10 +434,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     std::unique_ptr<std::vector<std::vector<Tensor>>> buffer_
         TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_) = nullptr;
-    int64 epoch_ TF_GUARDED_BY(mu_) = 0;
-    int64 num_elements_ TF_GUARDED_BY(mu_) = 0;
-    int64 seed_ TF_GUARDED_BY(mu_) = 0;
-    int64 seed2_ TF_GUARDED_BY(mu_) = 0;
+    int64_t epoch_ TF_GUARDED_BY(mu_) = 0;
+    int64_t num_elements_ TF_GUARDED_BY(mu_) = 0;
+    int64_t seed_ TF_GUARDED_BY(mu_) = 0;
+    int64_t seed2_ TF_GUARDED_BY(mu_) = 0;
     // Indices into `buffer_` indicating which data belongs to which epoch.
     // The slice at the front of the deque references data from the earliest
     // buffered epoch. It is an invariant that all slices reference
@@ -444,17 +446,17 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
     random::SingleSampleAdapter<random::PhiloxRandom> generator_
         TF_GUARDED_BY(mu_);
-    int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
+    int64_t num_random_samples_ TF_GUARDED_BY(mu_) = 0;
     bool data_produced_ TF_GUARDED_BY(mu_) = false;
   };
 
   const DatasetBase* const input_;
-  const int64 buffer_size_;
+  const int64_t buffer_size_;
   const std::shared_ptr<SeedGenerator> seed_generator_;
   // The number of epochs to run for. Normally this is just 1, but sometimes we
   // fuse shuffle and repeat together, and make the shuffle dataset op
   // responsible for repeating as well.
-  const int64 count_;
+  const int64_t count_;
   const TraceMeMetadata traceme_metadata_;
 };  // ShuffleDatasetBase
 
@@ -464,8 +466,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 // iterators.
 class ShuffleDatasetOp::Dataset : public ShuffleDatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
-          int64 count, RandomSeeds&& seeds, SeedGeneratorManager* manager,
+  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64_t buffer_size,
+          int64_t count, RandomSeeds&& seeds, SeedGeneratorManager* manager,
           ResourceHandle&& resource_handle)
       : ShuffleDatasetBase(ctx, input, buffer_size, manager->get(), count),
         manager_(manager),
@@ -522,8 +524,8 @@ class ShuffleDatasetOp::Dataset : public ShuffleDatasetBase {
 // iterators.
 class ShuffleDatasetOp::DatasetV2 : public ShuffleDatasetBase {
  public:
-  DatasetV2(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
-            int64 count, SeedGeneratorManager* manager,
+  DatasetV2(OpKernelContext* ctx, const DatasetBase* input, int64_t buffer_size,
+            int64_t count, SeedGeneratorManager* manager,
             ResourceHandle&& resource_handle, bool owns_resource)
       : ShuffleDatasetBase(ctx, input, buffer_size, manager->get(), count),
         manager_(manager),
@@ -576,8 +578,8 @@ class ShuffleDatasetOp::DatasetV2 : public ShuffleDatasetBase {
 // whether to reshuffle each iteration) across serialization of the dataset.
 class ShuffleDatasetOp::DatasetV3 : public ShuffleDatasetBase {
  public:
-  DatasetV3(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
-            int64 count, RandomSeeds&& seeds, SeedGeneratorManager* manager,
+  DatasetV3(OpKernelContext* ctx, const DatasetBase* input, int64_t buffer_size,
+            int64_t count, RandomSeeds&& seeds, SeedGeneratorManager* manager,
             ResourceHandle&& resource_handle, bool owns_resource)
       : ShuffleDatasetBase(ctx, input, buffer_size, manager->get(), count),
         manager_(manager),
@@ -654,15 +656,15 @@ ShuffleDatasetOp::ShuffleDatasetOp(OpKernelConstruction* ctx)
 
 void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                    DatasetBase** output) {
-  int64 buffer_size = 0;
+  int64_t buffer_size = 0;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
+                 ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(
       ctx, buffer_size > 0,
       errors::InvalidArgument("buffer_size must be greater than zero."));
 
-  int64 count = 1;
-  static std::atomic<int64> resource_id_counter(0);
+  int64_t count = 1;
+  static std::atomic<int64_t> resource_id_counter(0);
   const string& container = ctx->resource_manager()->default_container();
   auto name = strings::StrCat(ctx->op_kernel().name(), "/", kSeedGenerator, "_",
                               resource_id_counter.fetch_add(1));
@@ -671,10 +673,10 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     SeedGeneratorManager* manager = nullptr;
     Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);
-    int64 seed;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed));
-    int64 seed2;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));
+    int64_t seed;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed, &seed));
+    int64_t seed2;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed2, &seed2));
     RandomSeeds seeds(seed, seed2);
     bool owns_resource = false;
     if (errors::IsNotFound(s)) {
@@ -737,10 +739,10 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
       LOG(WARNING) << "Unsupported version of shuffle dataset op: "
                    << op_version_ << ". Defaulting to version 1.";
     }
-    int64 seed;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed));
-    int64 seed2;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));
+    int64_t seed;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed, &seed));
+    int64_t seed2;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed2, &seed2));
     RandomSeeds seeds(seed, seed2);
     SeedGeneratorManager* manager;
     OP_REQUIRES_OK(
@@ -770,8 +772,8 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 
 class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
-          RandomSeeds&& seeds, SeedGeneratorManager* manager, int64 count,
+  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64_t buffer_size,
+          RandomSeeds&& seeds, SeedGeneratorManager* manager, int64_t count,
           ResourceHandle&& resource_handle)
       : ShuffleDatasetBase(ctx, input, buffer_size, manager->get(), count),
         manager_(manager),
@@ -825,8 +827,8 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
 
 class ShuffleAndRepeatDatasetOp::DatasetV2 : public ShuffleDatasetBase {
  public:
-  DatasetV2(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
-            int64 count, RandomSeeds&& seeds, SeedGeneratorManager* manager,
+  DatasetV2(OpKernelContext* ctx, const DatasetBase* input, int64_t buffer_size,
+            int64_t count, RandomSeeds&& seeds, SeedGeneratorManager* manager,
             ResourceHandle&& resource_handle, bool owns_resource)
       : ShuffleDatasetBase(ctx, input, buffer_size, manager->get(), count),
         manager_(manager),
@@ -904,21 +906,21 @@ ShuffleAndRepeatDatasetOp::ShuffleAndRepeatDatasetOp(OpKernelConstruction* ctx)
 void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
                                             DatasetBase* input,
                                             DatasetBase** output) {
-  int64 buffer_size = 0;
+  int64_t buffer_size = 0;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
+                 ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(
       ctx, buffer_size > 0,
       errors::InvalidArgument("buffer_size must be greater than zero."));
 
-  int64 seed;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed));
+  int64_t seed;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed, &seed));
 
-  int64 seed2;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));
+  int64_t seed2;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed2, &seed2));
 
-  int64 count;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kCount, &count));
+  int64_t count;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kCount, &count));
 
   OP_REQUIRES(ctx, count > 0 || count == -1,
               errors::InvalidArgument(
@@ -926,7 +928,7 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
 
   RandomSeeds seeds(seed, seed2);
 
-  static std::atomic<int64> resource_id_counter(0);
+  static std::atomic<int64_t> resource_id_counter(0);
   const string& container = ctx->resource_manager()->default_container();
   auto name = strings::StrCat(ctx->op_kernel().name(), "/", kSeedGenerator, "_",
                               resource_id_counter.fetch_add(1));

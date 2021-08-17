@@ -47,7 +47,7 @@ OpDef MakeOpDefWithLists() {
   return op_reg_data.op_def;
 }
 
-PartialTensorShape S(std::initializer_list<int64> dims) {
+PartialTensorShape S(std::initializer_list<int64_t> dims) {
   return PartialTensorShape(dims);
 }
 
@@ -1102,13 +1102,13 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
   t = ::tensorflow::test::AsTensor<int32>({1, 2, 3});
   EXPECT_EQ("[1,2,3]", create(&t));
 
-  t = ::tensorflow::test::AsTensor<int64>({3, 2, 1});
+  t = ::tensorflow::test::AsTensor<int64_t>({3, 2, 1});
   EXPECT_EQ("[3,2,1]", create(&t));
 
-  t = ::tensorflow::test::AsTensor<int64>({3, -1, 1});
+  t = ::tensorflow::test::AsTensor<int64_t>({3, -1, 1});
   EXPECT_EQ("[3,?,1]", create(&t));
 
-  t = ::tensorflow::test::AsTensor<int64>({});
+  t = ::tensorflow::test::AsTensor<int64_t>({});
   EXPECT_EQ("[]", create(&t));
 
   // Test negative scalar
@@ -1130,7 +1130,7 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
   EXPECT_CONTAINS(s_matrix, "Input tensor must be rank 1, but was rank 2");
 
   // Test negative values for the dims.
-  t = ::tensorflow::test::AsTensor<int64>({3, -2, 1});
+  t = ::tensorflow::test::AsTensor<int64_t>({3, -2, 1});
   EXPECT_CONTAINS(create(&t), "Invalid value in tensor used for shape: -2");
 
   // Test negative values for the dims.
@@ -1281,8 +1281,8 @@ TEST_F(ShapeInferenceTest, MakeDimForScalarInput) {
                   "non-negative but is -1");
 
   // Same tests, with int64 values.
-  t1 = tensorflow::test::AsScalar<int64>(20);
-  t2 = tensorflow::test::AsScalar<int64>(-1);
+  t1 = tensorflow::test::AsScalar<int64_t>(20);
+  t2 = tensorflow::test::AsScalar<int64_t>(-1);
   EXPECT_TRUE(c.MakeDimForScalarInput(0, &d).ok());
   EXPECT_EQ("20", c.DebugString(d));
 
@@ -1395,22 +1395,23 @@ TEST_F(ShapeInferenceTest, Add) {
   // Test addition.
   EXPECT_TRUE(c.Add(d_6, 2, &out).ok());
   EXPECT_EQ("8", c.DebugString(out));
-  EXPECT_TRUE(c.Add(d_6, std::numeric_limits<int64>::max() - 6, &out).ok());
-  EXPECT_EQ(std::numeric_limits<int64>::max(), c.Value(out));
+  EXPECT_TRUE(c.Add(d_6, std::numeric_limits<int64_t>::max() - 6, &out).ok());
+  EXPECT_EQ(std::numeric_limits<int64_t>::max(), c.Value(out));
 
   // Test addition using dimension as second value.
   EXPECT_TRUE(c.Add(d_6, c.MakeDim(2), &out).ok());
   EXPECT_EQ("8", c.DebugString(out));
   EXPECT_TRUE(
-      c.Add(d_6, c.MakeDim(std::numeric_limits<int64>::max() - 6), &out).ok());
-  EXPECT_EQ(std::numeric_limits<int64>::max(), c.Value(out));
+      c.Add(d_6, c.MakeDim(std::numeric_limits<int64_t>::max() - 6), &out)
+          .ok());
+  EXPECT_EQ(std::numeric_limits<int64_t>::max(), c.Value(out));
   EXPECT_TRUE(c.Add(d_6, c.UnknownDim(), &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
   EXPECT_TRUE(c.Add(d_0, d_6, &out).ok());
   EXPECT_TRUE(SameHandle(out, d_6));
 
   EXPECT_CONTAINS(
-      c.Add(d_6, std::numeric_limits<int64>::max() - 5, &out).error_message(),
+      c.Add(d_6, std::numeric_limits<int64_t>::max() - 5, &out).error_message(),
       "Dimension size overflow from adding 6 and 9223372036854775802");
 }
 

@@ -64,13 +64,13 @@ struct Pool3dParameters {
   int row_stride;
   int depth_stride;
 
-  int64 out_plane;
-  int64 out_height;
-  int64 out_width;
+  int64_t out_plane;
+  int64_t out_height;
+  int64_t out_width;
 
-  int64 pad_planes;
-  int64 pad_cols;
-  int64 pad_rows;
+  int64_t pad_planes;
+  int64_t pad_cols;
+  int64_t pad_rows;
 
   TensorFormat data_format;
 };

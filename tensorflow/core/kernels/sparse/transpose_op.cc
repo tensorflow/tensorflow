@@ -150,8 +150,8 @@ Status CSRSparseMatrixTranspose<Device, T>::operator()(
   const int rank = input_matrix.dims();
   Tensor output_dense_shape_t(cpu_allocator(), DT_INT64, TensorShape({rank}));
   const Tensor& input_dense_shape_t = input_matrix.dense_shape();
-  auto input_dense_shape = input_dense_shape_t.vec<int64>();
-  auto output_dense_shape = output_dense_shape_t.vec<int64>();
+  auto input_dense_shape = input_dense_shape_t.vec<int64_t>();
+  auto output_dense_shape = output_dense_shape_t.vec<int64_t>();
   const int64_t batch_size = input_matrix.batch_size();
   if (rank == 3) {
     output_dense_shape(0) = batch_size;

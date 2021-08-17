@@ -213,7 +213,7 @@ TEST(TensorUtil, DeepCopySliceVariant) {
 }
 
 TEST(TensorUtil, Concat) {
-  std::vector<int64> sizes = {1, 4, 5};
+  std::vector<int64_t> sizes = {1, 4, 5};
   std::vector<Tensor> to_concat;
   int64_t total_size = 0;
   int offset = 0;
@@ -244,11 +244,11 @@ TEST(TensorUtil, Split) {
   Tensor to_split(DT_INT64, TensorShape({10, 2}));
   for (int i = 0; i < 10; ++i) {
     for (int j = 0; j < 2; ++j) {
-      to_split.matrix<int64>()(i, j) = 2 * i + j;
+      to_split.matrix<int64_t>()(i, j) = 2 * i + j;
     }
   }
 
-  std::vector<int64> sizes = {1, 4, 5};
+  std::vector<int64_t> sizes = {1, 4, 5};
   std::vector<Tensor> splits;
   TF_ASSERT_OK(tensor::Split(to_split, sizes, &splits));
   ASSERT_EQ(sizes.size(), splits.size());
@@ -261,7 +261,7 @@ TEST(TensorUtil, Split) {
     ASSERT_EQ(TensorShape({size, 2}), split.shape());
     for (int i = offset; i < offset + size; ++i) {
       for (int j = 0; j < 2; ++j) {
-        EXPECT_EQ(2 * i + j, split.matrix<int64>()(i - offset, j));
+        EXPECT_EQ(2 * i + j, split.matrix<int64_t>()(i - offset, j));
       }
     }
 
@@ -332,7 +332,7 @@ TEST(TensorProtoUtil, CreatesInt32TensorProto) {
 }
 
 TEST(TensorProtoUtil, CreatesInt64TensorProto) {
-  std::vector<int64> values{1, 2};
+  std::vector<int64_t> values{1, 2};
   std::vector<size_t> shape{2};
 
   auto proto = tensor::CreateTensorProto(values, shape);
@@ -564,8 +564,9 @@ void ConstantTailTest(int64_t length, int64_t tail_length, bool as_field) {
   int64_t size_as_tensor_content = length * sizeof(T);
   int64_t size_as_field = std::min(length, (length - tail_length + 1)) *
                           (is_complex<T>::value ? 2 : 1) * sizeof(FieldType);
-  bool will_compress = std::min(size_as_tensor_content, size_as_field) <=
-                       static_cast<int64>(original_size / kMinCompressionRatio);
+  bool will_compress =
+      std::min(size_as_tensor_content, size_as_field) <=
+      static_cast<int64_t>(original_size / kMinCompressionRatio);
 
   EXPECT_EQ(tensor::CompressTensorProtoInPlace(kMinSize, kMinCompressionRatio,
                                                &tensor_proto),
@@ -593,7 +594,7 @@ TEST(TensorProtoUtil, CompressTensorProtoConstantTail) {
       ConstantTailTest<complex128>(kLength, tail_length, as_field);
       ConstantTailTest<int32>(kLength, tail_length, as_field);
       ConstantTailTest<uint32>(kLength, tail_length, as_field);
-      ConstantTailTest<int64>(kLength, tail_length, as_field);
+      ConstantTailTest<int64_t>(kLength, tail_length, as_field);
       ConstantTailTest<uint64>(kLength, tail_length, as_field);
       ConstantTailTest<int8>(kLength, tail_length, as_field);
       ConstantTailTest<uint8>(kLength, tail_length, as_field);

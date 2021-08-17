@@ -330,7 +330,7 @@ static Status PutValueIntoTensor(const int64_t value, const DataType& type,
     }
     tensor->flat<int32>()(index) = static_cast<int32>(value);
   } else {
-    tensor->flat<int64>()(index) = value;
+    tensor->flat<int64_t>()(index) = value;
   }
   return Status::OK();
 }
@@ -564,7 +564,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
 
 namespace {
 bool ExtractShape(const NodeDef& shape_node, const GraphProperties& properties,
-                  BCast::Vec* shape, int64* min_id) {
+                  BCast::Vec* shape, int64_t* min_id) {
   if (shape_node.op() == "Shape") {
     const std::vector<OpInfo::TensorProperties>& prop1 =
         properties.GetInputProperties(shape_node.name());
@@ -577,7 +577,7 @@ bool ExtractShape(const NodeDef& shape_node, const GraphProperties& properties,
     }
     for (const auto& dim : shp.dim()) {
       shape->push_back(dim.size());
-      *min_id = std::min<int64>(*min_id, dim.size());
+      *min_id = std::min<int64_t>(*min_id, dim.size());
     }
   } else {
     if (shape_node.attr().count("value") == 0) {
@@ -593,7 +593,7 @@ bool ExtractShape(const NodeDef& shape_node, const GraphProperties& properties,
     }
     for (int j = 0; j < value.NumElements(); ++j) {
       if (raw_val.dtype() == DT_INT64) {
-        shape->push_back(value.vec<int64>()(j));
+        shape->push_back(value.vec<int64_t>()(j));
       } else {
         shape->push_back(value.vec<int>()(j));
       }
@@ -691,7 +691,7 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
       if (type == DT_INT32) {
         value.vec<int32>()(i) = reduce_dims[j][i];
       } else {
-        value.vec<int64>()(i) = reduce_dims[j][i];
+        value.vec<int64_t>()(i) = reduce_dims[j][i];
       }
     }
     string const_name =
@@ -810,7 +810,7 @@ Status ConstantFolding::MaterializeReductionIndices(
     if (dtype == DT_INT32) {
       value.vec<int32>()(i) = i;
     } else {
-      value.vec<int64>()(i) = i;
+      value.vec<int64_t>()(i) = i;
     }
   }
   TF_RETURN_IF_ERROR(
@@ -1147,8 +1147,8 @@ Status CreateConstantTensorAttrValue(DataType type, double value,
       break;
       SET_TENSOR_VAL_CASE(DT_FLOAT, float, float);
       SET_TENSOR_VAL_CASE(DT_DOUBLE, double, double);
-      SET_TENSOR_VAL_CASE(DT_INT64, int64, int64);
-      SET_TENSOR_VAL_CASE(DT_UINT64, int64, int64);
+      SET_TENSOR_VAL_CASE(DT_INT64, int64_t, int64);
+      SET_TENSOR_VAL_CASE(DT_UINT64, int64_t, int64);
       SET_TENSOR_VAL_CASE(DT_INT32, int32, int);
       SET_TENSOR_VAL_CASE(DT_UINT32, int32, int);
       SET_TENSOR_VAL_CASE(DT_INT16, int32, int);
@@ -1250,8 +1250,8 @@ Status ConstantFolding::CreateNodeDef(const string& name,
   {                                                                            \
     const auto* val_ptr = tensor->flat<TYPE>().data();                         \
     auto last = *val_ptr;                                                      \
-    int64 last_index = 0;                                                      \
-    for (int64 i = 0; i < tensor->NumElements(); ++i) {                        \
+    int64_t last_index = 0;                                                    \
+    for (int64_t i = 0; i < tensor->NumElements(); ++i) {                      \
       TYPE cur = *val_ptr++;                                                   \
       if (PackedValuesNotEqual(cur, last)) {                                   \
         last = cur;                                                            \
@@ -1727,9 +1727,9 @@ bool ConstantFolding::IsSimplifiableReshape(
     }
     TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
   } else {
-    std::vector<int64> shp;
+    std::vector<int64_t> shp;
     for (int i = 0; i < outputs[0]->NumElements(); ++i) {
-      int64_t dim = outputs[0]->flat<int64>()(i);
+      int64_t dim = outputs[0]->flat<int64_t>()(i);
       shp.push_back(dim);
     }
     TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
@@ -2158,7 +2158,7 @@ Status ConstantFolding::RemoveShuffleOrTranspose(
     std::vector<int> permutation;
     for (int j = 0; j < permutation_tensor.NumElements(); ++j) {
       if (permutation_tensor.dtype() == DT_INT64) {
-        permutation.push_back(permutation_tensor.vec<int64>()(j));
+        permutation.push_back(permutation_tensor.vec<int64_t>()(j));
       } else {
         permutation.push_back(permutation_tensor.vec<int>()(j));
       }
@@ -2212,7 +2212,7 @@ Status ConstantFolding::RemoveReverse(const GraphProperties& properties,
     for (int j = 0; j < axis.NumElements(); ++j) {
       // value of axis can be negative.
       if (axis.dtype() == DT_INT64) {
-        target_axes.insert((axis.vec<int64>()(j) + shape.dim_size()) %
+        target_axes.insert((axis.vec<int64_t>()(j) + shape.dim_size()) %
                            shape.dim_size());
       } else {
         target_axes.insert((axis.vec<int>()(j) + shape.dim_size()) %
@@ -2254,14 +2254,14 @@ Status ConstantFolding::SimplifySlice(const GraphProperties& properties,
       if (begin.dtype() == DT_INT32) {
         replaceable &= begin.vec<int>()(j) == 0;
       } else {
-        replaceable &= begin.vec<int64>()(j) == 0;
+        replaceable &= begin.vec<int64_t>()(j) == 0;
       }
       if (size.dtype() == DT_INT32) {
         replaceable &= (size.vec<int>()(j) == -1 ||
                         size.vec<int>()(j) == input.shape().dim(j).size());
       } else {
-        replaceable &= (size.vec<int64>()(j) == -1 ||
-                        size.vec<int64>()(j) == input.shape().dim(j).size());
+        replaceable &= (size.vec<int64_t>()(j) == -1 ||
+                        size.vec<int64_t>()(j) == input.shape().dim(j).size());
       }
     }
     if (replaceable) {
@@ -2347,10 +2347,11 @@ Status ConstantFolding::SimplifyStridedSlice(const GraphProperties& properties,
         i = j - expanded_ellipsis_indices_size;
       }
       int b = begin.dtype() == DT_INT32 ? begin.vec<int>()(i)
-                                        : begin.vec<int64>()(i);
-      int e = end.dtype() == DT_INT32 ? end.vec<int>()(i) : end.vec<int64>()(i);
+                                        : begin.vec<int64_t>()(i);
+      int e =
+          end.dtype() == DT_INT32 ? end.vec<int>()(i) : end.vec<int64_t>()(i);
       int s = strides.dtype() == DT_INT32 ? strides.vec<int>()(i)
-                                          : strides.vec<int64>()(i);
+                                          : strides.vec<int64_t>()(i);
       replaceable &= (begin_mask & 1 << i || b == 0) &&
                      (end_mask & 1 << i || e == input.shape().dim(j).size()) &&
                      s == 1;
@@ -2375,8 +2376,9 @@ Status ConstantFolding::SimplifyTile(const GraphProperties& properties,
         replaceable &= multiplies.vec<int>()(j) == 1;
       }
     } else {
-      for (int j = 0; replaceable && j < multiplies.vec<int64>().size(); ++j) {
-        replaceable &= multiplies.vec<int64>()(j) == 1;
+      for (int j = 0; replaceable && j < multiplies.vec<int64_t>().size();
+           ++j) {
+        replaceable &= multiplies.vec<int64_t>()(j) == 1;
       }
     }
     if (replaceable) {
@@ -2401,7 +2403,7 @@ Status ConstantFolding::SimplifyPad(const GraphProperties& properties,
         replaceable &= flatten(j) == 0;
       }
     } else {
-      const auto flatten = paddings.flat<int64>();
+      const auto flatten = paddings.flat<int64_t>();
       for (int j = 0; replaceable && j < flatten.size(); ++j) {
         replaceable &= flatten(j) == 0;
       }
@@ -2810,7 +2812,7 @@ bool ConstantFolding::IsReductionSimplifiableToIdentity(
     if (reduction_indices_vector[0]->dtype() == DT_INT32) {
       dim = reduction_indices_vector[0]->flat<int32>()(i);
     } else {
-      dim = reduction_indices_vector[0]->flat<int64>()(i);
+      dim = reduction_indices_vector[0]->flat<int64_t>()(i);
     }
     if (dim < 0) {
       dim += input_shape.dim_size();
@@ -3797,7 +3799,7 @@ bool ConstantFolding::GetConcatAxis(const NodeDef& node, int* axis) {
     return false;
   }
   *axis = axis_tensor.dtype() == DT_INT64
-              ? static_cast<int>(axis_tensor.scalar<int64>()())
+              ? static_cast<int>(axis_tensor.scalar<int64_t>()())
               : axis_tensor.scalar<int32>()();
   return true;
 }

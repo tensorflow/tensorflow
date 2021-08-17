@@ -396,7 +396,7 @@ table::Options TableBuilderOptions() {
 // Writes zeros to output buffer to align the next write to the requested
 // alignment. "size" is the current size of the buffer and is updated to the
 // new size.
-Status PadAlignment(FileOutputBuffer* out, int alignment, int64* size) {
+Status PadAlignment(FileOutputBuffer* out, int alignment, int64_t* size) {
   int bytes_over = *size % alignment;
   if (bytes_over == 0) {
     return Status::OK();
@@ -1090,7 +1090,7 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
       HANDLE_COPY(int8)
       HANDLE_COPY(complex64)
       HANDLE_COPY(complex128)
-      HANDLE_COPY(int64)
+      HANDLE_COPY(int64_t)
       HANDLE_COPY(bool)
       HANDLE_COPY(qint32)
       HANDLE_COPY(quint8)

@@ -69,7 +69,7 @@ class SparseSoftmaxOp : public OpKernel {
     OP_REQUIRES_OK(
         context, SparseTensor::Create(
                      tensor::DeepCopy(*indices_t), tensor::DeepCopy(*values_t),
-                     TensorShape(shape_t->flat<int64>()), &st));
+                     TensorShape(shape_t->flat<int64_t>()), &st));
 
     Tensor *output_values = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape({nnz}),
@@ -81,12 +81,12 @@ class SparseSoftmaxOp : public OpKernel {
                                                    TensorShape({}), &tmp_t));
     typename TTypes<T>::Scalar tmp_scalar = tmp_t.scalar<T>();
 
-    gtl::InlinedVector<int64, 4> dims(rank);
+    gtl::InlinedVector<int64_t, 4> dims(rank);
     std::iota(dims.begin(), dims.end(), 0);
     // { 0, ..., rank-1 }.
-    const ArraySlice<int64> kReorderDims(dims);
+    const ArraySlice<int64_t> kReorderDims(dims);
     // All but the last dim -- the class dimension to be max-reduced along.
-    const ArraySlice<int64> kGroupByDims = kReorderDims.subspan(0, rank - 1);
+    const ArraySlice<int64_t> kGroupByDims = kReorderDims.subspan(0, rank - 1);
     st.Reorder<T>(kReorderDims);
     int count = 0;
 

@@ -35,8 +35,10 @@ template <typename T, bool conjugate>
 void TransposeSimple(const CPUDevice& device, const Tensor& in,
                      const gtl::ArraySlice<int32> perm, Tensor* out) {
   const int ndims = in.dims();
-  gtl::InlinedVector<int64, 8> in_strides = ComputeStride<int64>(in.shape());
-  gtl::InlinedVector<int64, 8> out_strides = ComputeStride<int64>(out->shape());
+  gtl::InlinedVector<int64_t, 8> in_strides =
+      ComputeStride<int64_t>(in.shape());
+  gtl::InlinedVector<int64_t, 8> out_strides =
+      ComputeStride<int64_t>(out->shape());
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
   auto transpose_fn = [=, &in_strides, &out_strides, &perm](int64_t begin,
@@ -57,9 +59,10 @@ void TransposeSimple(const CPUDevice& device, const Tensor& in,
     }
   };
   double cycles_per_element =
-      (conjugate ? 1 : 0) + ndims * (Eigen::TensorOpCost::DivCost<int64>() +
-                                     2 * Eigen::TensorOpCost::MulCost<int64>() +
-                                     2 * Eigen::TensorOpCost::AddCost<int64>());
+      (conjugate ? 1 : 0) +
+      ndims * (Eigen::TensorOpCost::DivCost<int64_t>() +
+               2 * Eigen::TensorOpCost::MulCost<int64_t>() +
+               2 * Eigen::TensorOpCost::AddCost<int64_t>());
   Eigen::TensorOpCost cost(/*bytes_loaded=*/sizeof(T),
                            /*bytes_stored=*/sizeof(T), cycles_per_element);
   device.parallelFor(in.NumElements(), cost, std::move(transpose_fn));

@@ -46,8 +46,9 @@ namespace tensorflow {
 
 // from graph_partition.cc
 extern Status TopologicalSortNodesWithTimePriority(
-    const GraphDef* gdef, std::vector<std::pair<const NodeDef*, int64>>* nodes,
-    std::unordered_map<const NodeDef*, int64>* node_to_start_time_out);
+    const GraphDef* gdef,
+    std::vector<std::pair<const NodeDef*, int64_t>>* nodes,
+    std::unordered_map<const NodeDef*, int64_t>* node_to_start_time_out);
 
 namespace {
 
@@ -540,8 +541,8 @@ TEST(TopologicalSortNodesWithTimePriorityTest, NoDependencies) {
   GraphDef gdef;
   TF_EXPECT_OK(root.ToGraphDef(&gdef));
 
-  std::vector<std::pair<const NodeDef*, int64>> nodes;
-  std::unordered_map<const NodeDef*, int64> node_to_start_time;
+  std::vector<std::pair<const NodeDef*, int64_t>> nodes;
+  std::unordered_map<const NodeDef*, int64_t> node_to_start_time;
   TF_CHECK_OK(
       TopologicalSortNodesWithTimePriority(&gdef, &nodes, &node_to_start_time));
   ASSERT_EQ(nodes.size(), 20);
@@ -591,8 +592,8 @@ TEST(TopologicalSortNodesWithTimePriority, Dependencies) {
   GraphDef gdef;
   TF_EXPECT_OK(root.ToGraphDef(&gdef));
 
-  std::vector<std::pair<const NodeDef*, int64>> nodes;
-  std::unordered_map<const NodeDef*, int64> node_to_start_time;
+  std::vector<std::pair<const NodeDef*, int64_t>> nodes;
+  std::unordered_map<const NodeDef*, int64_t> node_to_start_time;
   TF_CHECK_OK(
       TopologicalSortNodesWithTimePriority(&gdef, &nodes, &node_to_start_time));
   ASSERT_EQ(1 + squares.size() + placeholders.size(), nodes.size());
@@ -679,8 +680,8 @@ TEST(TopologicalSortNodesWithTimePriority, WhileLoop) {
   TF_EXPECT_OK(root.ToGraphDef(&gdef));
 
   // Run the sort. The while loop nodes do not appear in the output <nodes>.
-  std::vector<std::pair<const NodeDef*, int64>> nodes;
-  std::unordered_map<const NodeDef*, int64> node_to_start_time;
+  std::vector<std::pair<const NodeDef*, int64_t>> nodes;
+  std::unordered_map<const NodeDef*, int64_t> node_to_start_time;
   TF_CHECK_OK(
       TopologicalSortNodesWithTimePriority(&gdef, &nodes, &node_to_start_time));
   ASSERT_LT(while_exits.size() + squares.size() + placeholders.size(),

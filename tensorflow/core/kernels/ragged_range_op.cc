@@ -114,16 +114,16 @@ class RaggedRangeOp : public OpKernel {
   }
 };
 
-#define REGISTER_CPU_KERNEL(TYPE)                                \
-  REGISTER_KERNEL_BUILDER(Name("RaggedRange")                    \
-                              .Device(DEVICE_CPU)                \
-                              .TypeConstraint<TYPE>("T")         \
-                              .TypeConstraint<int32>("Tsplits"), \
-                          RaggedRangeOp<TYPE, int32>);           \
-  REGISTER_KERNEL_BUILDER(Name("RaggedRange")                    \
-                              .Device(DEVICE_CPU)                \
-                              .TypeConstraint<TYPE>("T")         \
-                              .TypeConstraint<int64>("Tsplits"), \
+#define REGISTER_CPU_KERNEL(TYPE)                                  \
+  REGISTER_KERNEL_BUILDER(Name("RaggedRange")                      \
+                              .Device(DEVICE_CPU)                  \
+                              .TypeConstraint<TYPE>("T")           \
+                              .TypeConstraint<int32>("Tsplits"),   \
+                          RaggedRangeOp<TYPE, int32>);             \
+  REGISTER_KERNEL_BUILDER(Name("RaggedRange")                      \
+                              .Device(DEVICE_CPU)                  \
+                              .TypeConstraint<TYPE>("T")           \
+                              .TypeConstraint<int64_t>("Tsplits"), \
                           RaggedRangeOp<TYPE, int64>);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);

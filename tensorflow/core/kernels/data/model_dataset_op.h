@@ -51,8 +51,8 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
   class Dataset;
 
   model::AutotuneAlgorithm algorithm_;
-  int64 cpu_budget_;
-  int64 ram_budget_;
+  int64_t cpu_budget_;
+  int64_t ram_budget_;
 };
 
 }  // namespace data

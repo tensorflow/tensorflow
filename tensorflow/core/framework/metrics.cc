@@ -332,6 +332,26 @@ void UpdateGrapplerPassTime(const string& pass_name,
   }
 }
 
+void UpdateMlirGraphOptimizationPassTime(const string& pass_name,
+                                         const uint64 running_time_usecs) {
+  // TODO(jpienaar): Name here is temporary, currently the frameworks are
+  // distinct and so useful to be able to differentiate (esp as I have not
+  // checked for name conflicts) but not desirable in end state. Unify these
+  // post cleanups.
+  if (running_time_usecs > 0) {
+    graph_optimization_usecs->GetCell("TfMlir", pass_name)
+        ->IncrementBy(running_time_usecs);
+  }
+}
+
+void UpdateTFDataPassTime(const string& pass_name,
+                          const uint64 running_time_usecs) {
+  if (running_time_usecs > 0) {
+    graph_optimization_usecs->GetCell("TFDataPass", pass_name)
+        ->IncrementBy(running_time_usecs);
+  }
+}
+
 void UpdateGraphBuildTime(const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
     static auto* build_graph_calls_cell = build_graph_calls->GetCell();

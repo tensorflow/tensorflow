@@ -23,7 +23,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
-    td_srcs = [
+    deps = [
         "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )

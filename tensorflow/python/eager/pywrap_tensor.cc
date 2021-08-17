@@ -55,6 +55,11 @@ PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
     return nullptr;
   }
 
+  if (TFE_TensorHandleDataType(handle) == TF_VARIANT) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Cannot convert a Tensor of dtype variant to a NumPy array.");
+    return nullptr;
+  }
   tensorflow::Safe_TF_TensorPtr tensor = nullptr;
   Py_BEGIN_ALLOW_THREADS;
   tensor = tensorflow::make_safe(TFE_TensorHandleResolve(handle, status));
@@ -708,12 +713,12 @@ static PyObject* EagerTensor_numpy_internal(EagerTensor* self) {
   }
 }
 
-// Function `_has_custom_summarizer`.
+// Function `_prefer_custom_summarizer`.
 //
 // A hint that callers should prefer `SummarizeValue` to resolving this handle
 // and formatting the tensor.
-static PyObject* EagerTensor_has_custom_summarizer(EagerTensor* self) {
-  if (tensorflow::unwrap(self->handle)->HasCustomSummarizer()) {
+static PyObject* EagerTensor_prefer_custom_summarizer(EagerTensor* self) {
+  if (tensorflow::unwrap(self->handle)->PreferCustomSummarizer()) {
     Py_RETURN_TRUE;
   } else {
     Py_RETURN_FALSE;
@@ -814,8 +819,8 @@ static PyMethodDef EagerTensor_methods[] = {
      PyDoc_STR("Copies the tensor to the desired device.")},
     {"_num_elements", (PyCFunction)EagerTensor_num_elements, METH_NOARGS,
      PyDoc_STR("Number of elements in the tensor.")},
-    {"_has_custom_summarizer", (PyCFunction)EagerTensor_has_custom_summarizer,
-     METH_NOARGS,
+    {"_prefer_custom_summarizer",
+     (PyCFunction)EagerTensor_prefer_custom_summarizer, METH_NOARGS,
      PyDoc_STR("Indicates whether _numpy_internal loses information.")},
     {"_summarize_value", (PyCFunction)EagerTensor_summarize_value, METH_NOARGS,
      PyDoc_STR("A string which summarizes the value of this tensor.")},
@@ -976,7 +981,7 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
   return reinterpret_cast<PyObject*>(t);
 }
 
-tensorflow::int64 PyEagerTensor_ID(const PyObject* tensor) {
+int64_t PyEagerTensor_ID(const PyObject* tensor) {
   DCHECK(EagerTensor_CheckExact(tensor));
   return reinterpret_cast<const EagerTensor*>(tensor)->id;
 }
@@ -987,7 +992,7 @@ tensorflow::DataType PyEagerTensor_Dtype(const PyObject* tensor) {
       reinterpret_cast<const EagerTensor*>(tensor)->handle));
 }
 
-tensorflow::int64 PyEagerTensor_NumElements(PyObject* tensor) {
+int64_t PyEagerTensor_NumElements(PyObject* tensor) {
   DCHECK(EagerTensor_CheckExact(tensor));
   EagerTensor* as_c_eager_tensor = reinterpret_cast<EagerTensor*>(tensor);
   int64_t result = TFE_TensorHandleNumElements(as_c_eager_tensor->handle,

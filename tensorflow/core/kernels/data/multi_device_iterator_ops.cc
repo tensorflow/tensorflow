@@ -91,7 +91,7 @@ class MultiDeviceIterator : public ResourceBase {
   }
 
   Status Init(std::unique_ptr<IteratorBase> iterator, int64_t max_buffer_size,
-              int64* incarnation_id) {
+              int64_t* incarnation_id) {
     if (iterator) {
       TF_RETURN_IF_ERROR(
           VerifyTypesMatch(output_types_, iterator->output_dtypes()));
@@ -428,8 +428,8 @@ class MultiDeviceIterator : public ResourceBase {
     std::vector<HostBuffer> buffer_;
 
     const size_t size_;
-    const int64 max_buffer_size_;
-    const int64 incarnation_id_;
+    const int64_t max_buffer_size_;
+    const int64_t incarnation_id_;
     const std::unique_ptr<IteratorBase> host_iterator_;
     CancellationManager cancellation_manager_;
     MultiDeviceIterator* const parent_;  // Not owned.
@@ -447,12 +447,12 @@ class MultiDeviceIterator : public ResourceBase {
   ResourceMgr resource_mgr_;
   CancellationManager cancellation_manager_;
 
-  int64 incarnation_id_ TF_GUARDED_BY(mu_) = 0;
+  int64_t incarnation_id_ TF_GUARDED_BY(mu_) = 0;
   std::unique_ptr<MultiDeviceBuffer> multi_device_buffer_ TF_GUARDED_BY(mu_);
 };
 
 // Used to generate unique names for anonymous multi device iterators.
-static std::atomic<int64> current_id_;
+static std::atomic<int64_t> current_id_;
 
 // Just creates a MultiDeviceIterator and returns it.
 class MultiDeviceIteratorHandleOp : public OpKernel {
@@ -614,7 +614,7 @@ class MultiDeviceIteratorInitOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* tensor_max_buffer_size;
     OP_REQUIRES_OK(ctx, ctx->input("max_buffer_size", &tensor_max_buffer_size));
-    int64_t max_buffer_size = tensor_max_buffer_size->scalar<int64>()();
+    int64_t max_buffer_size = tensor_max_buffer_size->scalar<int64_t>()();
 
     DatasetBase* dataset;
     OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
@@ -647,7 +647,7 @@ class MultiDeviceIteratorInitOp : public OpKernel {
     OP_REQUIRES_OK(ctx, resource->Init(std::move(iterator), max_buffer_size,
                                        &incarnation_id));
     Tensor tensor_incarnation_id(DT_INT64, TensorShape({}));
-    tensor_incarnation_id.scalar<int64>()() = incarnation_id;
+    tensor_incarnation_id.scalar<int64_t>()() = incarnation_id;
     OP_REQUIRES_OK(ctx,
                    ctx->set_output("incarnation_id", tensor_incarnation_id));
   }
@@ -672,7 +672,7 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
     const Tensor* tensor_incarnation_id;
     OP_REQUIRES_OK_ASYNC(
         ctx, ctx->input("incarnation_id", &tensor_incarnation_id), done);
-    int64_t incarnation_id = tensor_incarnation_id->scalar<int64>()();
+    int64_t incarnation_id = tensor_incarnation_id->scalar<int64_t>()();
 
     MultiDeviceIterator* iterator;
     OP_REQUIRES_OK_ASYNC(

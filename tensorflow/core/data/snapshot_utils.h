@@ -180,7 +180,7 @@ class Reader {
     DataTypeVector output_types_;
     std::vector<PartialTensorShape> output_shapes_;
     std::string compression_;
-    int64 version_;
+    int64_t version_;
   };
 
   // Op kernel that creates an instance of `Reader::NestedDataset` needed to

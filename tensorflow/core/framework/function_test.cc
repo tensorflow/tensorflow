@@ -929,7 +929,7 @@ TEST(FunctionCallFrame, Float_Float_Float) {
   EXPECT_EQ(frame.SetArgs({}).code(), error::INVALID_ARGUMENT);
   auto a = test::AsTensor<float>({100});
   auto b = test::AsTensor<float>({200});
-  auto c = test::AsTensor<int64>({300});
+  auto c = test::AsTensor<int64_t>({300});
   EXPECT_EQ(frame.SetArgs({a, c}).code(), error::INVALID_ARGUMENT);
   TF_EXPECT_OK(frame.SetArgs({a, b}));
 
@@ -945,7 +945,7 @@ TEST(FunctionCallFrame, Float_Float_Float) {
   Tensor w = test::AsTensor<float>({-100});
   EXPECT_EQ(frame.SetRetval(-1, w).code(), error::INVALID_ARGUMENT);
   EXPECT_EQ(frame.SetRetval(1, w).code(), error::INVALID_ARGUMENT);
-  EXPECT_EQ(frame.SetRetval(0, test::AsTensor<int64>({-100})).code(),
+  EXPECT_EQ(frame.SetRetval(0, test::AsTensor<int64_t>({-100})).code(),
             error::INVALID_ARGUMENT);
 
   std::vector<Tensor> rets;

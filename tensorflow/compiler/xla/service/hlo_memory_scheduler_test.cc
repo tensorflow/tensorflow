@@ -38,7 +38,7 @@ namespace {
 
 class HloSchedulingTest : public HloTestBase {};
 
-int64 PeakMemoryUseOfEntryComputation(
+int64_t PeakMemoryUseOfEntryComputation(
     HloModule* module, LogicalBuffer::SizeFunction size_function) {
   CHECK(module->has_entry_computation());
   CHECK(module->has_schedule());

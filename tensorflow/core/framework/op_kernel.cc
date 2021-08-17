@@ -979,7 +979,7 @@ void OpKernelContext::record_temp_memory_allocation(int64_t size,
   }
 }
 
-int64 OpKernelContext::temp_memory_allocated() const {
+int64_t OpKernelContext::temp_memory_allocated() const {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
     return tracking_state_->temp_memory_allocated;
@@ -999,7 +999,7 @@ void OpKernelContext::record_persistent_memory_allocation(int64_t size,
   }
 }
 
-int64 OpKernelContext::persistent_memory_allocated() const {
+int64_t OpKernelContext::persistent_memory_allocated() const {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
     return tracking_state_->persistent_memory_allocated;
@@ -1008,13 +1008,13 @@ int64 OpKernelContext::persistent_memory_allocated() const {
   }
 }
 
-std::vector<int64> OpKernelContext::persistent_alloc_ids() const {
+std::vector<int64_t> OpKernelContext::persistent_alloc_ids() const {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
-    return std::vector<int64>(tracking_state_->persistent_alloc_ids.begin(),
-                              tracking_state_->persistent_alloc_ids.end());
+    return std::vector<int64_t>(tracking_state_->persistent_alloc_ids.begin(),
+                                tracking_state_->persistent_alloc_ids.end());
   } else {
-    return std::vector<int64>();
+    return std::vector<int64_t>();
   }
 }
 
@@ -1436,12 +1436,12 @@ Status SupportedDeviceTypesForNode(
       TF_RETURN_IF_ERROR(ValidateNodeDef(def, op_reg_data->op_def));
     }
 
-    std::sort(prioritized_device_types->begin(),
-              prioritized_device_types->end(),
-              [](const std::pair<DeviceType, int32>& a,
-                 const std::pair<DeviceType, int32>& b) {
-                return a.second > b.second;
-              });
+    std::stable_sort(prioritized_device_types->begin(),
+                     prioritized_device_types->end(),
+                     [](const std::pair<DeviceType, int32>& a,
+                        const std::pair<DeviceType, int32>& b) {
+                       return a.second > b.second;
+                     });
   } else {
     // Assumes that all device types support this node.
     for (const DeviceType& device_type : prioritized_types) {

@@ -46,7 +46,7 @@ static void CreateLoopInvariantCopy(
 
   struct DFSFrame {
     HloInstruction* instruction;
-    int64 operand_index;
+    int64_t operand_index;
   };
 
   InlinedVector<DFSFrame, 8> dfs_stack;

@@ -36,7 +36,7 @@ constexpr int kShardHint = -1;
 template <typename T>
 Status CreateHandle(OpKernelContext* ctx, T* resource,
                     const string& container_name, ResourceHandle* handle) {
-  static std::atomic<int64> resource_id_counter(0);
+  static std::atomic<int64_t> resource_id_counter(0);
   string unique_name =
       strings::StrCat(container_name, resource_id_counter.fetch_add(1));
   ResourceMgr* mgr = ctx->resource_manager();
@@ -152,7 +152,8 @@ class DeterminismPolicy {
 //
 // By TensorFlow convention, if both seeds are 0, they should be replaced with
 // non-deterministically chosen seeds.
-std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds);
+std::pair<int64_t, int64_t> MaybeOverrideSeeds(
+    std::pair<int64_t, int64_t> seeds);
 
 // Adds the functions in `to_add` to `base`. If a function with a matching
 // signature already exists in `base`, replaces it with the function from
@@ -204,6 +205,10 @@ class DummyResourceOp : public OpKernel {
 // MatchesAnyVersion("PaddedBatchDataset", "BatchDataset") == false
 bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match);
 
+// Returns the index-th slice of a given tensor. If the index-th slice of
+// the tensor is not aligned, returns a deep copy of the tensor.
+Tensor MaybeCopySubSlice(const Tensor& tensor, int64 index);
+
 // Removes device placements from the ops of all functions in `library`.
 void StripDevicePlacement(FunctionDefLibrary* library);
 
@@ -237,8 +242,17 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
                     bool* end_of_sequence, std::vector<Tensor>* batch);
 
 // Copies the input elements to a batch.
-Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
+//
+// The `batch_elements` argument contains the individual elements to copy into a
+// batch. The `parallel_copy` argument indicates whether to parallelize the
+// copy. The `allocation_callback` argument can be used to pass a callback to
+// invoke upon successful allocation of the memory for the batch. The
+// `out_tensors` argument will be used to store the resulting batch (one for
+// each component of the input).
+Status CopyBatch(IteratorContext* ctx,
                  const std::vector<std::vector<Tensor>>& batch_elements,
+                 bool parallel_copy,
+                 std::function<Status()> allocation_callback,
                  std::vector<Tensor>* out_tensors);
 
 // Computes the set of experiments to apply based on the job name, rollout
@@ -283,6 +297,12 @@ bool ShouldApplyOptimizations(
     const absl::flat_hash_set<tstring>& optimizations_enabled,
     const absl::flat_hash_set<tstring>& optimizations_default);
 
+// Returns the default CPU budget.
+inline int GetCpuBudget() {
+  static bool in_experiment = GetExperiments().contains("tune_cpu_budget");
+  return (in_experiment ? 1.2 : 1.0) * port::NumSchedulableCPUs();
+}
+
 // Registry of tf.data experiments.
 class DatasetExperimentRegistry {
  public:
@@ -290,7 +310,7 @@ class DatasetExperimentRegistry {
   static void Register(const string& experiment, int64_t rollout_pct);
 
   // Returns all registered experiments.
-  static absl::flat_hash_map<string, int64> Experiments();
+  static absl::flat_hash_map<string, int64_t> Experiments();
 };
 
 // Helper class to register a dataset experiment.

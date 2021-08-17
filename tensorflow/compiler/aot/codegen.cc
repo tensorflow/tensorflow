@@ -64,7 +64,7 @@ Status XLATypeToCpp(xla::PrimitiveType type, string* str) {
       *str = "tensorflow::int32";
       break;
     case xla::S64:
-      *str = "tensorflow::int64";
+      *str = "int64_t";
       break;
     case xla::U8:
       *str = "tensorflow::uint8";
@@ -502,7 +502,7 @@ namespace xla { class ExecutableRunOptions; }
 // (Implementation detail) Entry point to the function in the object file.
 extern "C" void {{ENTRY}}(
     void* result, const ::xla::ExecutableRunOptions* run_options,
-    const void** args, void** temps, tensorflow::int64* profile_counters);
+    const void** args, void** temps, int64_t* profile_counters);
 
 {{DECLS_FROM_OBJ_FILE}}
 
@@ -547,7 +547,7 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
   static constexpr size_t kNumVariables = {{VARIABLE_NUM}};
 
   // Byte size of each argument buffer. There are kNumArgs entries.
-  static const ::tensorflow::int64 ArgSize(::tensorflow::int32 index) {
+  static const ::int64_t ArgSize(::tensorflow::int32 index) {
     return BufferInfos()[ArgIndexToBufferIndex()[index]].size();
   }
 

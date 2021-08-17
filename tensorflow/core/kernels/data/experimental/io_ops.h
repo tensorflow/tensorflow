@@ -49,7 +49,8 @@ class SaveDatasetOp : public HybridAsyncOpKernel {
 
   Status GetShardIndex(IteratorContext* ctx,
                        InstantiatedCapturedFunction* function,
-                       const std::vector<Tensor>& element, int64* shard_index);
+                       const std::vector<Tensor>& element,
+                       int64_t* shard_index);
 
   Status WriteData(OpKernelContext* ctx, DatasetBase* dataset,
                    std::unique_ptr<CapturedFunction> captured_func,

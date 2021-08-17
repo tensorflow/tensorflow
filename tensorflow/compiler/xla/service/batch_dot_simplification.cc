@@ -25,7 +25,7 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
     HloInstruction* batch_dot) {
   // This pass assumes the lhs and rhs batch dimensions are equal and strictly
   // ascending.
-  const auto& is_iota = [](absl::Span<const int64> dims) {
+  const auto& is_iota = [](absl::Span<const int64_t> dims) {
     for (int64_t i = 0; i < dims.size(); ++i) {
       if (dims[i] != i) {
         return false;
@@ -53,7 +53,7 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
     return false;
   }
 
-  std::vector<int64> degenerate_dims;
+  std::vector<int64_t> degenerate_dims;
   for (int64_t batch_dim : dim_numbers.lhs_batch_dimensions()) {
     if (lhs_shape.dimensions(batch_dim) == 1) {
       degenerate_dims.push_back(batch_dim);

@@ -33,7 +33,7 @@ namespace profiler {
 // Additional information of an XEvent used to separate consecutive invocations
 // of the same Op on the XLine.
 struct XEventInfo {
-  int64 group_id;  // group ID of this XEvent or kInvalidGroupId.
+  int64_t group_id;  // group ID of this XEvent or kInvalidGroupId.
   // The set of low level events associated with this XEvent.
   // For a TF op that is compiled by XLA, these are its composing HLO op names.
   // For a TF op that is not compiled by XLA, these are its composing kernel
@@ -115,7 +115,7 @@ using SymbolResolver = std::function<Symbol(absl::string_view hlo_module_name,
 // with the name of the originating low-level event.
 void ProcessTfOpEvent(absl::string_view tf_op_full_name,
                       absl::string_view low_level_event_name, int64_t offset_ps,
-                      int64_t duration_ps, absl::optional<int64> group_id,
+                      int64_t duration_ps, absl::optional<int64_t> group_id,
                       XPlaneBuilder* plane_builder,
                       DerivedXLineBuilder* tf_name_scope_line_builder,
                       DerivedXLineBuilder* tf_op_line_builder);

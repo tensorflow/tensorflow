@@ -32,7 +32,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using XlaCompareOp = XlaOp (*)(XlaOp, XlaOp, absl::Span<const int64>);
+using XlaCompareOp = XlaOp (*)(XlaOp, XlaOp, absl::Span<const int64_t>);
 
 XlaComputation CreateScalarComparisonComputation(
     const string& name, const std::vector<PrimitiveType>& operand_types,

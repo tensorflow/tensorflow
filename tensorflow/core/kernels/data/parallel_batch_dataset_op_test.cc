@@ -47,9 +47,9 @@ class ParallelBatchDatasetParams : public DatasetParams {
   }
 
   std::vector<Tensor> GetInputTensors() const override {
-    Tensor batch_size = CreateTensor<int64>(TensorShape({}), {batch_size_});
+    Tensor batch_size = CreateTensor<int64_t>(TensorShape({}), {batch_size_});
     Tensor num_parallel_calls =
-        CreateTensor<int64>(TensorShape({}), {num_parallel_calls_});
+        CreateTensor<int64_t>(TensorShape({}), {num_parallel_calls_});
     Tensor drop_remainder =
         CreateTensor<bool>(TensorShape({}), {drop_remainder_});
     return {batch_size, num_parallel_calls, drop_remainder};
@@ -76,8 +76,8 @@ class ParallelBatchDatasetParams : public DatasetParams {
   }
 
  private:
-  int64 batch_size_;
-  int64 num_parallel_calls_;
+  int64_t batch_size_;
+  int64_t num_parallel_calls_;
   bool drop_remainder_;
   bool parallel_copy_;
   std::string deterministic_;
@@ -248,44 +248,45 @@ ParallelBatchDatasetParams InvalidBatchSizeParallelBatchDatasetParams() {
 }
 
 std::vector<GetNextTestCase<ParallelBatchDatasetParams>> GetNextTestCases() {
-  return {{/*dataset_params=*/ParallelBatchDatasetParams1(),
-           /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
-          {/*dataset_params=*/ParallelBatchDatasetParams2(),
-           /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
-          {/*dataset_params=*/ParallelBatchDatasetParams3(),
-           /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-            CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-            CreateTensor<int64>(TensorShape({3}), {6, 7, 8}),
-            CreateTensor<int64>(TensorShape({1}), {9})}},
-          {/*dataset_params=*/ParallelBatchDatasetParams4(),
-           /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({3}),
-                                {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}})},
-          {/*dataset_params=*/ParallelBatchDatasetParams5(),
-           /*expected_outputs=*/{}},
-          {/*dataset_params=*/ParallelBatchDatasetParams6(),
-           /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({10}),
-                                {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}})},
-          {/*dataset_params=*/ParallelBatchDatasetParams7(),
-           /*expected_outputs=*/{}},
-          {/*dataset_params=*/ParallelBatchDatasetParams8(),
-           /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
-          {/*dataset_params=*/ParallelBatchDatasetParams9(),
-           /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
-          {/*dataset_params=*/ParallelBatchDatasetParams10(),
-           /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})}};
+  return {
+      {/*dataset_params=*/ParallelBatchDatasetParams1(),
+       /*expected_outputs=*/
+       CreateTensors<int64_t>(TensorShape({4}),
+                              {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+      {/*dataset_params=*/ParallelBatchDatasetParams2(),
+       /*expected_outputs=*/
+       CreateTensors<int64_t>(TensorShape({4}),
+                              {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+      {/*dataset_params=*/ParallelBatchDatasetParams3(),
+       /*expected_outputs=*/
+       {CreateTensor<int64_t>(TensorShape({3}), {0, 1, 2}),
+        CreateTensor<int64_t>(TensorShape({3}), {3, 4, 5}),
+        CreateTensor<int64_t>(TensorShape({3}), {6, 7, 8}),
+        CreateTensor<int64_t>(TensorShape({1}), {9})}},
+      {/*dataset_params=*/ParallelBatchDatasetParams4(),
+       /*expected_outputs=*/
+       CreateTensors<int64_t>(TensorShape({3}),
+                              {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}})},
+      {/*dataset_params=*/ParallelBatchDatasetParams5(),
+       /*expected_outputs=*/{}},
+      {/*dataset_params=*/ParallelBatchDatasetParams6(),
+       /*expected_outputs=*/
+       CreateTensors<int64_t>(TensorShape({10}),
+                              {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}})},
+      {/*dataset_params=*/ParallelBatchDatasetParams7(),
+       /*expected_outputs=*/{}},
+      {/*dataset_params=*/ParallelBatchDatasetParams8(),
+       /*expected_outputs=*/
+       CreateTensors<int64_t>(TensorShape({4}),
+                              {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+      {/*dataset_params=*/ParallelBatchDatasetParams9(),
+       /*expected_outputs=*/
+       CreateTensors<int64_t>(TensorShape({4}),
+                              {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+      {/*dataset_params=*/ParallelBatchDatasetParams10(),
+       /*expected_outputs=*/
+       CreateTensors<int64_t>(TensorShape({4}),
+                              {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(ParallelBatchDatasetOpTest, ParallelBatchDatasetParams,
@@ -413,55 +414,56 @@ TEST_F(ParallelBatchDatasetOpTest, IteratorOutputPrefix) {
 
 std::vector<IteratorSaveAndRestoreTestCase<ParallelBatchDatasetParams>>
 IteratorSaveAndRestoreTestCases() {
-  return {{/*dataset_params=*/ParallelBatchDatasetParams1(),
-           /*breakpoints=*/{0, 1, 5},
-           /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
-          {/*dataset_params=*/ParallelBatchDatasetParams2(),
-           /*breakpoints=*/{0, 1, 5},
-           /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
-          {/*dataset_params=*/ParallelBatchDatasetParams3(),
-           /*breakpoints=*/{0, 1, 5},
-           /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-            CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-            CreateTensor<int64>(TensorShape({3}), {6, 7, 8}),
-            CreateTensor<int64>(TensorShape({1}), {9})}},
-          {/*dataset_params=*/ParallelBatchDatasetParams4(),
-           /*breakpoints=*/{0, 1, 5},
-           /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-            CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-            CreateTensor<int64>(TensorShape({3}), {6, 7, 8})}},
-          {/*dataset_params=*/ParallelBatchDatasetParams5(),
-           /*breakpoints=*/{0, 1, 5},
-           /*expected_outputs=*/{}},
-          {/*dataset_params=*/ParallelBatchDatasetParams6(),
-           /*breakpoints=*/{0, 1, 5},
-           /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({10}),
-                                {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})}},
-          {/*dataset_params=*/ParallelBatchDatasetParams7(),
-           /*breakpoints=*/{0, 1, 5},
-           /*expected_outputs=*/{}},
-          {/*dataset_params=*/ParallelBatchDatasetParams8(),
-           /*breakpoints=*/{0, 1, 5},
-           /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
-          {/*dataset_params=*/ParallelBatchDatasetParams9(),
-           /*breakpoints=*/{0, 1, 5},
-           /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
-          {/*dataset_params=*/ParallelBatchDatasetParams10(),
-           /*breakpoints=*/{0, 1, 5},
-           /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})}};
+  return {
+      {/*dataset_params=*/ParallelBatchDatasetParams1(),
+       /*breakpoints=*/{0, 1, 5},
+       /*expected_outputs=*/
+       CreateTensors<int64_t>(TensorShape({4}),
+                              {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+      {/*dataset_params=*/ParallelBatchDatasetParams2(),
+       /*breakpoints=*/{0, 1, 5},
+       /*expected_outputs=*/
+       CreateTensors<int64_t>(TensorShape({4}),
+                              {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+      {/*dataset_params=*/ParallelBatchDatasetParams3(),
+       /*breakpoints=*/{0, 1, 5},
+       /*expected_outputs=*/
+       {CreateTensor<int64_t>(TensorShape({3}), {0, 1, 2}),
+        CreateTensor<int64_t>(TensorShape({3}), {3, 4, 5}),
+        CreateTensor<int64_t>(TensorShape({3}), {6, 7, 8}),
+        CreateTensor<int64_t>(TensorShape({1}), {9})}},
+      {/*dataset_params=*/ParallelBatchDatasetParams4(),
+       /*breakpoints=*/{0, 1, 5},
+       /*expected_outputs=*/
+       {CreateTensor<int64_t>(TensorShape({3}), {0, 1, 2}),
+        CreateTensor<int64_t>(TensorShape({3}), {3, 4, 5}),
+        CreateTensor<int64_t>(TensorShape({3}), {6, 7, 8})}},
+      {/*dataset_params=*/ParallelBatchDatasetParams5(),
+       /*breakpoints=*/{0, 1, 5},
+       /*expected_outputs=*/{}},
+      {/*dataset_params=*/ParallelBatchDatasetParams6(),
+       /*breakpoints=*/{0, 1, 5},
+       /*expected_outputs=*/
+       {CreateTensor<int64_t>(TensorShape({10}),
+                              {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})}},
+      {/*dataset_params=*/ParallelBatchDatasetParams7(),
+       /*breakpoints=*/{0, 1, 5},
+       /*expected_outputs=*/{}},
+      {/*dataset_params=*/ParallelBatchDatasetParams8(),
+       /*breakpoints=*/{0, 1, 5},
+       /*expected_outputs=*/
+       CreateTensors<int64_t>(TensorShape({4}),
+                              {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+      {/*dataset_params=*/ParallelBatchDatasetParams9(),
+       /*breakpoints=*/{0, 1, 5},
+       /*expected_outputs=*/
+       CreateTensors<int64_t>(TensorShape({4}),
+                              {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+      {/*dataset_params=*/ParallelBatchDatasetParams10(),
+       /*breakpoints=*/{0, 1, 5},
+       /*expected_outputs=*/
+       CreateTensors<int64_t>(TensorShape({4}),
+                              {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})}};
 }
 
 ITERATOR_SAVE_AND_RESTORE_TEST_P(ParallelBatchDatasetOpTest,

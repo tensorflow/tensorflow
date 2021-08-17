@@ -28,7 +28,7 @@ namespace shape_inference {
 
 namespace {
 
-PartialTensorShape S(std::initializer_list<int64> dims) {
+PartialTensorShape S(std::initializer_list<int64_t> dims) {
   return PartialTensorShape(dims);
 }
 

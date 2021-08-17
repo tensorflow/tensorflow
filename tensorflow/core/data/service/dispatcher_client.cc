@@ -26,9 +26,9 @@ limitations under the License.
 #include "grpcpp/support/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
-#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -45,8 +45,8 @@ namespace data {
 
 Status DataServiceDispatcherClient::WorkerHeartbeat(
     const std::string& worker_address, const std::string& transfer_address,
-    const std::vector<int64>& current_tasks, std::vector<TaskDef>& new_tasks,
-    std::vector<int64>& tasks_to_delete) {
+    const std::vector<int64_t>& current_tasks, std::vector<TaskDef>& new_tasks,
+    std::vector<int64_t>& tasks_to_delete) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   WorkerHeartbeatRequest req;
   req.set_worker_address(worker_address);
@@ -128,7 +128,7 @@ Status DataServiceDispatcherClient::GetSplit(int64_t job_id, int64_t repetition,
 
 Status DataServiceDispatcherClient::RegisterDataset(
     const DatasetDef& dataset, const absl::optional<std::string>& element_spec,
-    int64& dataset_id) {
+    int64_t& dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrRegisterDatasetRequest req;
   *req.mutable_dataset() = dataset;
@@ -149,7 +149,7 @@ Status DataServiceDispatcherClient::RegisterDataset(
 Status DataServiceDispatcherClient::GetOrCreateJob(
     int64_t dataset_id, const ProcessingModeDef& processing_mode,
     const absl::optional<JobKey>& job_key, absl::optional<int64> num_consumers,
-    int64& job_client_id, TargetWorkers target_workers) {
+    int64_t& job_client_id, TargetWorkers target_workers) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
   req.set_dataset_id(dataset_id);

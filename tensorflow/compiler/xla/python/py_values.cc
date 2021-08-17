@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
+#include "tensorflow/compiler/xla/python/sharded_device_array.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -94,12 +95,12 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, PjRtDevice* to_device,
     type = S32;
   } else {
     try {
-      data_int64 = py::cast<int64>(obj);
+      data_int64 = py::cast<int64_t>(obj);
     } catch (const std::exception& e) {
       return InvalidArgument(
           "Unable to convert Python scalar to %s. This most likely means the "
           "value (%s) overflows the range of the type.",
-          PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int64>()),
+          PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int64_t>()),
           py::repr(obj));
     }
     ptr = &data_int64;
@@ -164,8 +165,8 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, PjRtDevice* to_device,
     squashed_type = type;
   }
 
-  absl::InlinedVector<int64, 4> dims(array.ndim());
-  absl::InlinedVector<int64, 4> byte_strides(array.ndim());
+  absl::InlinedVector<int64_t, 4> dims(array.ndim());
+  absl::InlinedVector<int64_t, 4> byte_strides(array.ndim());
   for (int i = 0; i < array.ndim(); ++i) {
     dims[i] = array.shape(i);
     byte_strides[i] = array.strides(i);
@@ -246,7 +247,7 @@ StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
 
 }  // namespace
 
-StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
+StatusOr<DevicePutResult> DevicePut(py::handle arg, PjRtDevice* to_device,
                                     const DevicePutOptions& options) {
   tensorflow::profiler::TraceMe traceme("DevicePut");
   static const absl::flat_hash_map<PyObject*, DevicePutFunc>* const handlers =
@@ -364,7 +365,7 @@ std::string PyArgSignature::DebugString() const {
 using ToPyArgSignatureHandler =
     std::function<StatusOr<PyArgSignature>(py::handle, bool)>;
 
-StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
+StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
                                                bool jax_enable_x64) {
   static const absl::flat_hash_map<PyObject*, ToPyArgSignatureHandler>* const
       handlers = [] {
@@ -423,7 +424,7 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
           TF_ASSIGN_OR_RETURN(auto dtype,
                               DtypeToPrimitiveType(aval.attr("dtype")));
           return PyArgSignature(
-              dtype, py::cast<std::vector<int64>>(aval.attr("shape")),
+              dtype, py::cast<std::vector<int64_t>>(aval.attr("shape")),
               py::cast<py::bool_>(aval.attr("weak_type")));
         };
         (*p)[PyBuffer::base_type()] = device_array_handler;
@@ -533,6 +534,22 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
     return PyArgSignature(buffer->buffer()->on_device_shape().element_type(),
                           buffer->buffer()->on_device_shape().dimensions(),
                           weak_type);
+  }
+
+  // Fast-path for ShardedDeviceArray.
+  static PyObject* sda_type = []() {
+    return py::type::handle_of<jax::ShardedDeviceArray>().ptr();
+  }();
+  if (arg.get_type().ptr() == sda_type) {
+    jax::ShardedDeviceArray* sda = py::cast<jax::ShardedDeviceArray*>(arg);
+
+    // TODO(jblespiau): See if we can be faster not accessing the aval attribute
+    // and storing these directly.
+    py::handle aval = arg.attr("aval");
+    TF_ASSIGN_OR_RETURN(auto dtype, DtypeToPrimitiveType(aval.attr("dtype")));
+    return PyArgSignature(dtype,
+                          py::cast<std::vector<int64_t>>(aval.attr("shape")),
+                          sda->weak_type());
   }
 
   auto res = handlers->find(arg.get_type().ptr());

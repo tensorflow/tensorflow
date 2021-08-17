@@ -78,8 +78,8 @@ class RandomShuffleQueue : public TypedQueue<std::vector<Tensor> > {
                                              Tensor* out_tensor);
 
   const int32 min_after_dequeue_;
-  const int64 original_seed_;
-  const int64 original_seed2_;
+  const int64_t original_seed_;
+  const int64_t original_seed2_;
 
   random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
   random::SingleSampleAdapter<random::PhiloxRandom> generator_
@@ -504,8 +504,8 @@ class RandomShuffleQueueOp : public TypedQueueOp {
   }
 
   int32 min_after_dequeue_;
-  int64 seed_;
-  int64 seed2_;
+  int64_t seed_;
+  int64_t seed2_;
   std::vector<TensorShape> component_shapes_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RandomShuffleQueueOp);

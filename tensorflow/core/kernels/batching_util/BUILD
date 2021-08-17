@@ -295,12 +295,27 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/common_runtime:cost_measurement_registry",
+        "//tensorflow/core/common_runtime:request_cost",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/util:incremental_barrier",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_resource_base_test",
+    srcs = ["batch_resource_base_test.cc"],
+    deps = [
+        ":batch_resource_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:no_op_cost_measurement",
+        "@com_google_absl//absl/time",
     ],
 )

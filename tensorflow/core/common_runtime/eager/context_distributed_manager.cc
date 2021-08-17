@@ -136,14 +136,14 @@ tensorflow::Tensor GenerateIncarnationIdTensor(
     int32 worker_id, std::vector<DeviceAttributes> local_devices) {
   tensorflow::Tensor tensor(
       tensorflow::DT_INT64,
-      tensorflow::TensorShape({static_cast<int64>(local_devices.size()), 2}));
-  std::vector<int64> incarnation_vec;
+      tensorflow::TensorShape({static_cast<int64_t>(local_devices.size()), 2}));
+  std::vector<int64_t> incarnation_vec;
   for (const auto& local_device : local_devices) {
     incarnation_vec.push_back(worker_id);
     incarnation_vec.push_back(local_device.incarnation());
   }
-  memcpy(tensor.flat<int64>().data(), incarnation_vec.data(),
-         incarnation_vec.size() * sizeof(int64));
+  memcpy(tensor.flat<int64_t>().data(), incarnation_vec.data(),
+         incarnation_vec.size() * sizeof(int64_t));
   return tensor;
 }
 
@@ -175,7 +175,7 @@ Status FetchAllDeviceAttributes(
       context, server_def, tensor, &output_tensor, cluster_size));
 
   DCHECK_EQ(output_tensor->NumDims(), 2);
-  int64* data = reinterpret_cast<int64*>(output_tensor->Data());
+  int64_t* data = reinterpret_cast<int64_t*>(output_tensor->Data());
   int device_type_tracker = 0;
   for (int i = 0; i < output_tensor->NumElements(); i += 2) {
     // Since the order of the devices is the same on all workers, we use the

@@ -161,7 +161,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
 
   int PlatformDeviceCount() override { return 1; }
 
-  bool DeviceMemoryUsage(int64 *free, int64 *total) const override {
+  bool DeviceMemoryUsage(int64_t *free, int64_t *total) const override {
     return false;
   }
 

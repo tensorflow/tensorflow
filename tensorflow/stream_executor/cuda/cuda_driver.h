@@ -46,7 +46,7 @@ class GpuContext {
   GpuContext(CUcontext context, int64_t id) : context_(context), id_(id) {}
 
   CUcontext context() const { return context_; }
-  int64 id() const { return id_; }
+  int64_t id() const { return id_; }
 
   // Disallow copying and moving.
   GpuContext(GpuContext&&) = delete;
@@ -56,7 +56,7 @@ class GpuContext {
 
  private:
   CUcontext const context_;
-  const int64 id_;
+  const int64_t id_;
 };
 
 // Manages the singleton map of contexts that we've created, mapping

@@ -689,15 +689,15 @@ class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
   explicit CudnnBatchNormAllocatorInTemp(OpKernelContext* context)
       : context_(context) {}
 
-  int64 GetMemoryLimitInBytes() override {
-    return std::numeric_limits<int64>::max();
+  int64_t GetMemoryLimitInBytes() override {
+    return std::numeric_limits<int64_t>::max();
   }
 
   StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
     Tensor temporary_memory;
     const DataType tf_data_type = DataTypeToEnum<T>::v();
     int64_t allocate_count =
-        Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
+        Eigen::divup(byte_size, static_cast<int64_t>(sizeof(T)));
     Status allocation_status(context_->allocate_temp(
         tf_data_type, TensorShape({allocate_count}), &temporary_memory));
     if (!allocation_status.ok()) {
@@ -712,14 +712,14 @@ class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
         temporary_memory.template flat<T>().size() * sizeof(T));
   }
 
-  int64 TotalByteSize() const { return total_byte_size_; }
+  int64_t TotalByteSize() const { return total_byte_size_; }
 
   Tensor get_allocated_tensor(int index) const {
     return allocated_tensors_[index];
   }
 
  private:
-  int64 total_byte_size_ = 0;
+  int64_t total_byte_size_ = 0;
   OpKernelContext* context_;  // not owned
   std::vector<Tensor> allocated_tensors_;
 };
@@ -742,8 +742,8 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
   CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index)
       : context_(context), output_index_(output_index) {}
 
-  int64 GetMemoryLimitInBytes() override {
-    return std::numeric_limits<int64>::max();
+  int64_t GetMemoryLimitInBytes() override {
+    return std::numeric_limits<int64_t>::max();
   }
 
   StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
@@ -751,7 +751,7 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
     DCHECK(total_byte_size_ == 0)
         << "Reserve space allocator can only be called once";
     int64_t allocate_count =
-        Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
+        Eigen::divup(byte_size, static_cast<int64_t>(sizeof(T)));
 
     Tensor* temporary_memory = nullptr;
     Status allocation_status(context_->allocate_output(
@@ -766,10 +766,10 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
     return StatusOr<DeviceMemory<uint8>>(memory_uint8);
   }
 
-  int64 TotalByteSize() { return total_byte_size_; }
+  int64_t TotalByteSize() { return total_byte_size_; }
 
  private:
-  int64 total_byte_size_ = 0;
+  int64_t total_byte_size_ = 0;
   OpKernelContext* context_;  // not owned
   int output_index_;
   bool output_allocated = false;

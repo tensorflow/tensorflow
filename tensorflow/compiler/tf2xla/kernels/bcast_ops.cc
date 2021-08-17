@@ -45,7 +45,7 @@ class BCastArgsOp : public XlaOpKernel {
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in_shape),
                   errors::InvalidArgument("In[", i, "] must be a vector.",
                                           in_shape.DebugString()));
-      std::vector<int64> shape;
+      std::vector<int64_t> shape;
       OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(i, &shape));
       shapes.push_back(BCast::Vec(shape.begin(), shape.end()));
     }
@@ -94,7 +94,7 @@ class BCastGradArgsOp : public XlaOpKernel {
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in_shape),
                   errors::InvalidArgument("In[", i, "] must be a vector.",
                                           in_shape.DebugString()));
-      std::vector<int64> vec;
+      std::vector<int64_t> vec;
       OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(i, &vec));
 
       shapes.push_back(BCast::Vec(vec.begin(), vec.end()));

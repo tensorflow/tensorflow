@@ -7,8 +7,7 @@ The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
 , macOS Catalina (x86_64) and TensorFlow devel Docker image
 [tensorflow/tensorflow:devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
-**Note:** This feature is currently experimental and available since version 2.4
-and may change.
+**Note:** This feature is available since version 2.4.
 
 #### Prerequisites
 
@@ -50,9 +49,9 @@ version. Here is the list of supported containers.
 
 Container   | Supported Python version
 ----------- | ------------------------
-PI          | Python 3.5
 PI-PYTHON37 | Python 3.7
 PI-PYTHON38 | Python 3.8
+PI-PYTHON39 | Python 3.9
 
 ### Available target names
 

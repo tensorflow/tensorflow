@@ -27,8 +27,8 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/rewrite_utils.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -186,7 +186,7 @@ void WorkerIndexResolver::AddWorker(absl::string_view worker_address) {
   }
 }
 
-StatusOr<int64> WorkerIndexResolver::GetWorkerIndex(
+StatusOr<int64_t> WorkerIndexResolver::GetWorkerIndex(
     absl::string_view worker_address) const {
   const auto it = absl::c_find(worker_addresses_, worker_address);
   if (it == worker_addresses_.cend()) {
