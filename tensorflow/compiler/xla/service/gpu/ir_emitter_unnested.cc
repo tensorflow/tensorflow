@@ -527,7 +527,7 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     llvm::Argument* fn_arg = &*arg_it;
     ++arg_it;
 
-    kernel->addDereferenceableAttr(arg_no + 1, alloc->size());
+    kernel->addDereferenceableParamAttr(arg_no, alloc->size());
 
     const int64_t alignment = [&] {
       if (alloc->is_entry_computation_parameter()) {
