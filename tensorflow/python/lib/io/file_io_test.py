@@ -208,7 +208,7 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     glob_pattern = os.path.join(dir_path, "*")
     self.assertItemsEqual(
         file_io.get_matching_files(glob_pattern), expected_match,
-        "Check #35489 https://git.io/JR8jL")
+        "https://github.com/tensorflow/tensorflow/issues/35489")
 
   @run_all_path_types
   def testCreateRecursiveDir(self, join):
