@@ -30,6 +30,11 @@
 * `tf.lite`:
   * Rename fields `SignatureDef` table in schema to maximize the parity with
     TF SavedModel's Signature concept.
+  * Deprecate Makefile builds. Makefile users need to migrate their builds to
+    CMake or Bazel. Please refer to the
+    [Build TensorFlow Lite with CMake](https://www.tensorflow.org/lite/guide/build_cmake)
+    and [Build TensorFlow Lite for ARM boards](https://www.tensorflow.org/lite/guide/build_arm)
+    for the migration.
 
 * TF Core:
     *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
