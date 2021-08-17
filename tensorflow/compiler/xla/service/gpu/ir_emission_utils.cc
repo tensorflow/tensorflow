@@ -286,8 +286,7 @@ static bool IsReductionFromOrToContiguousDimensionsHelper(
                                                dims_to_reduce)) &&
          IsUnnestedReductionFasterThanElemental(
              GetReductionKindAndContiguousComponentsImpl(operand_shape,
-                                                         dims_to_reduce)) &&
-         operand_shape.element_type() != C128;
+                                                         dims_to_reduce));
 }
 
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
