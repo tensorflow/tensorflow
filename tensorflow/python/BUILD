@@ -3200,8 +3200,9 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
-        "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/core/profiler/internal/cpu:python_tracer",
+        "//tensorflow/lite/delegates/flex:delegate",
+        "//tensorflow/lite/kernels/shim:tf_kernel_shim",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/client:tf_session_helper",
@@ -3262,6 +3263,7 @@ filegroup(
         "//tensorflow/core/common_runtime/eager:tensor_handle",  # tfe
         "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
         "//tensorflow/core/framework:attr_value_proto_cc_impl",  # tf_text
+        "//tensorflow/core/framework:op_def_proto_cc_impl",  # tf_text
         "//tensorflow/core/grappler:devices",  # tf_cluster
         "//tensorflow/core/grappler:grappler_item",  # tf_item
         "//tensorflow/core/grappler:grappler_item_builder",  # tf_item
@@ -3289,6 +3291,8 @@ filegroup(
         "//tensorflow/python/framework:python_api_parameter_converter",  # python_api_parameter_converter
         "//tensorflow/core/util:port",  # util_port
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
+        "//tensorflow/lite/kernels/shim:shape",  # tf_text
+        "//tensorflow/lite/kernels/shim:tf_op_shim",  # tf_text
         "//tensorflow/lite/toco/python:toco_python_api",  # toco
         "//tensorflow/python/client:tf_session_helper",  # tf_session
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib

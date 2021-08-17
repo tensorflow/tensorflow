@@ -228,6 +228,24 @@ tensorflow::ApiDefMap::~ApiDefMap
 [//tensorflow/core/framework:attr_value_proto_cc_impl] # tf_text
 tensorflow::AttrValue::`vftable'
 
+[//tensorflow/core/framework:op_def_proto_cc_impl] # tf_text
+tensorflow::OpDef::`vftable'
+
+[//tensorflow/lite/kernels/shim:shape] # tf_text
+tflite::shim::Shape::AddDims
+tflite::shim::Shape::Dim
+
+[//tensorflow/lite/kernels/shim:tf_op_shim] # tf_text
+tflite::shim::FromAbslStatus
+tflite::shim::TfInitContext::TfInitContext
+tflite::shim::TfInvokeContext::GetInput
+tflite::shim::TfInvokeContext::GetOutput
+tflite::shim::TfInvokeContext::TfInvokeContext
+tflite::shim::TfShapeInferenceContext::GetInputShape
+tflite::shim::TfShapeInferenceContext::SetInputShape
+tflite::shim::TfShapeInferenceContext::SetOutputShape
+tflite::shim::TfShapeInferenceContext::TfShapeInferenceContext
+
 [//tensorflow/core/common_runtime:graph_constructor] # tf_session
 tensorflow::ShapeRefiner::~ShapeRefiner
 
