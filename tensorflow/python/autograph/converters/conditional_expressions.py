@@ -26,25 +26,25 @@ from tensorflow.python.autograph.pyct import templates
 
 
 class ConditionalExpressionTransformer(converter.Base):
-  """Converts conditional expressions to functional form."""
+    """Converts conditional expressions to functional form."""
 
-  def visit_IfExp(self, node):
-    template = '''
+    def visit_IfExp(self, node):
+        template = '''
         ag__.if_exp(
             test,
             lambda: true_expr,
             lambda: false_expr,
             expr_repr)
     '''
-    expr_repr = parser.unparse(node.test, include_encoding_marker=False).strip()
-    return templates.replace_as_expression(
-        template,
-        test=node.test,
-        true_expr=node.body,
-        false_expr=node.orelse,
-        expr_repr=gast.Constant(expr_repr, kind=None))
+        expr_repr = parser.unparse(node.test, include_encoding_marker=False).strip()
+        return templates.replace_as_expression(
+            template,
+            test=node.test,
+            true_expr=node.body,
+            false_expr=node.orelse,
+            expr_repr=gast.Constant(expr_repr, kind=None))
 
 
 def transform(node, ctx):
-  node = ConditionalExpressionTransformer(ctx).visit(node)
-  return node
+    node = ConditionalExpressionTransformer(ctx).visit(node)
+    return node
