@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
@@ -1656,6 +1657,8 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
 
 StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(
     XlaOp op, ValueInferenceMode mode) {
+  TF_RETURN_IF_ERROR(builder_->LookUpInstructionByHandle(op.handle()).status());
+
   PostorderDFSVisitor visitor(
       [&](int64_t handle) {
         return builder_->LookUpInstructionByHandle(handle).ValueOrDie();
