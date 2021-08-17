@@ -2994,7 +2994,8 @@ bool IsHloVeryCheap(const HloInstruction* hlo) {
          hlo->opcode() == HloOpcode::kTuple ||
          hlo->opcode() == HloOpcode::kGetTupleElement ||
          hlo->opcode() == HloOpcode::kParameter ||
-         hlo->opcode() == HloOpcode::kConstant;
+         hlo->opcode() == HloOpcode::kConstant ||
+         hlo->opcode() == HloOpcode::kReplicaId;
 }
 }  // namespace
 
