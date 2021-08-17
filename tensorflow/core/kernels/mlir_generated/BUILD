@@ -854,9 +854,6 @@ gpu_kernel_library(
 gpu_kernel_library(
     name = "gpu_polygamma_kernels",
     op = "polygamma",
-    test_tags = [
-        "notsan",  # Frequently times-out. See b/191888012.
-    ],
     tile_size = "256",
     types = [
         "f32",
