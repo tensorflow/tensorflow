@@ -183,13 +183,15 @@ class TileLoops : public mlir::PassWrapper<TileLoops, mlir::FunctionPass> {
       // Support unrolling only for simple memory access patterns (that result
       // from same shape operands, scalar operands, and/or constant operands).
       if (!is_simple_access_pattern(ploop)) {
-        tileParallelLoop(ploop, tile_sizes_);
+        tileParallelLoop(ploop, tile_sizes_, /*noMinMaxBounds=*/false);
         continue;
       }
-      auto tiled_loops = tileParallelLoop(ploop, outer_tile_);
+      auto tiled_loops =
+          tileParallelLoop(ploop, outer_tile_, /*noMinMaxBounds=*/false);
       // Tile twice if the inner_tile is non-empty.
       if (!inner_tile_.empty()) {
-        tileParallelLoop(tiled_loops.second, inner_tile_);
+        tileParallelLoop(tiled_loops.second, inner_tile_,
+                         /*noMinMaxBounds=*/false);
       }
     }
   }
